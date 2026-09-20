@@ -113,15 +113,17 @@ namespace MphRead.Mods.Launcher.Gui
             title.Children.Add(new TextBlock
             {
                 Text = "PRIME HUNTERS // ONLINE",
-                FontFamily = Deck.MonoBold,
-                FontSize = 16,
+                FontFamily = HubTheme.Ui,
+                FontWeight = FontWeight.Bold,
+                FontSize = 18,
                 Foreground = HubTheme.TextBrush
             });
             title.Children.Add(new TextBlock
             {
                 Text = "HUNTER NETWORK  /  COMBAT INTERFACE",
-                FontFamily = Deck.Mono,
-                FontSize = 9,
+                FontFamily = HubTheme.Ui,
+                FontWeight = FontWeight.Medium,
+                FontSize = 10,
                 Foreground = HubTheme.AccentBrush
             });
             header.Children.Add(title);
@@ -137,7 +139,7 @@ namespace MphRead.Mods.Launcher.Gui
             headerState.Children.Add(new TextBlock
             {
                 Text = "LOCAL SYSTEM ONLINE",
-                FontFamily = Deck.Mono,
+                FontFamily = HubTheme.Data,
                 FontSize = 9,
                 Foreground = HubTheme.TextDimBrush,
                 VerticalAlignment = VerticalAlignment.Center
@@ -240,22 +242,24 @@ namespace MphRead.Mods.Launcher.Gui
             copy.Children.Add(new TextBlock
             {
                 Text = "DEPLOYMENT",
-                FontFamily = Deck.MonoBold,
-                FontSize = 10,
+                FontFamily = HubTheme.Ui,
+                FontWeight = FontWeight.SemiBold,
+                FontSize = 11,
                 Foreground = HubTheme.AccentBrush
             });
             copy.Children.Add(new TextBlock
             {
                 Text = "ENTER THE HUNT",
-                FontFamily = GuiTheme.Prose,
-                FontSize = 31,
+                FontFamily = HubTheme.Ui,
+                FontWeight = FontWeight.Bold,
+                FontSize = 32,
                 Foreground = HubTheme.TextBrush
             });
             copy.Children.Add(new TextBlock
             {
                 Text = "Public multiplayer, custom lobbies, offline combat, story and replay studio from one command surface.",
-                FontFamily = Deck.Mono,
-                FontSize = 10,
+                FontFamily = HubTheme.Ui,
+                FontSize = 11,
                 Foreground = HubTheme.TextDimBrush,
                 TextWrapping = TextWrapping.Wrap,
                 MaxWidth = 470
@@ -340,8 +344,8 @@ namespace MphRead.Mods.Launcher.Gui
             stack.Children.Add(new TextBlock
             {
                 Text = "Your hunter preview is rendered by the same shared UI path used by desktop and Android.",
-                FontFamily = Deck.Mono,
-                FontSize = 8.5,
+                FontFamily = HubTheme.Ui,
+                FontSize = 9.5,
                 Foreground = HubTheme.TextDimBrush,
                 TextWrapping = TextWrapping.Wrap
             });
@@ -364,7 +368,7 @@ namespace MphRead.Mods.Launcher.Gui
             line.Children.Add(new TextBlock
             {
                 Text = "ONE WINDOW  //  CONTROLLER FIRST  //  DESKTOP + ANDROID",
-                FontFamily = Deck.Mono,
+                FontFamily = HubTheme.Data,
                 FontSize = 8.5,
                 Foreground = HubTheme.TextDimBrush,
                 VerticalAlignment = VerticalAlignment.Center
@@ -372,7 +376,7 @@ namespace MphRead.Mods.Launcher.Gui
             var right = new TextBlock
             {
                 Text = "FPS HUB / FOUNDATION",
-                FontFamily = Deck.MonoBold,
+                FontFamily = HubTheme.DataBold,
                 FontSize = 8.5,
                 Foreground = HubTheme.AccentBrush,
                 VerticalAlignment = VerticalAlignment.Center
@@ -485,8 +489,9 @@ namespace MphRead.Mods.Launcher.Gui
             Child = new TextBlock
             {
                 Text = text,
-                FontFamily = Deck.MonoBold,
-                FontSize = 8,
+                FontFamily = HubTheme.Ui,
+                FontWeight = FontWeight.SemiBold,
+                FontSize = 9,
                 Foreground = HubTheme.TextDimBrush
             }
         };
@@ -503,15 +508,16 @@ namespace MphRead.Mods.Launcher.Gui
         private static TextBlock Section(string text) => new()
         {
             Text = text,
-            FontFamily = Deck.MonoBold,
-            FontSize = 10,
+            FontFamily = HubTheme.Ui,
+            FontWeight = FontWeight.SemiBold,
+            FontSize = 11,
             Foreground = HubTheme.AccentBrush
         };
 
         private static TextBlock Key(string text) => new()
         {
             Text = text,
-            FontFamily = Deck.Mono,
+            FontFamily = HubTheme.Data,
             FontSize = 8,
             Foreground = HubTheme.TextDimBrush,
             Margin = new Thickness(0, 6, 0, -5)
@@ -520,8 +526,9 @@ namespace MphRead.Mods.Launcher.Gui
         private static TextBlock Value(string text) => new()
         {
             Text = text,
-            FontFamily = Deck.MonoBold,
-            FontSize = 11,
+            FontFamily = HubTheme.Ui,
+            FontWeight = FontWeight.SemiBold,
+            FontSize = 12,
             Foreground = HubTheme.TextBrush
         };
     }
