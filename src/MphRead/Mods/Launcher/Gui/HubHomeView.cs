@@ -25,6 +25,7 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly Border _profile;
         private readonly StackPanel _headerState;
         private readonly HunterStand _stand;
+        private readonly Border _heroArt;
         private readonly TextBlock _player;
         private readonly TextBlock _hunter;
         private readonly TextBlock _data;
@@ -63,9 +64,11 @@ namespace MphRead.Mods.Launcher.Gui
             _compactNav.IsVisible = false;
             _main.Children.Add(_compactNav);
 
-            _hero = BuildHero(out HunterStand stand, out Grid heroBody);
+            _hero = BuildHero(out HunterStand stand, out Grid heroBody,
+                out Border heroArt);
             _stand = stand;
             _heroBody = heroBody;
+            _heroArt = heroArt;
             Grid.SetColumn(_hero, 1);
             _main.Children.Add(_hero);
 
@@ -212,7 +215,8 @@ namespace MphRead.Mods.Launcher.Gui
             return grid;
         }
 
-        private Border BuildHero(out HunterStand stand, out Grid heroBody)
+        private Border BuildHero(out HunterStand stand, out Grid heroBody,
+            out Border heroArt)
         {
             heroBody = new Grid
             {
@@ -288,7 +292,7 @@ namespace MphRead.Mods.Launcher.Gui
             art.Children.Add(HubChrome.Kicker("HUNTER PREVIEW"));
             Grid.SetRow(stand, 1);
             art.Children.Add(stand);
-            var artFrame = new Border
+            heroArt = new Border
             {
                 Margin = new Thickness(0, 18, 10, 18),
                 Background = HubTheme.AccentPanel(HubTheme.Accent, 24),
@@ -296,8 +300,8 @@ namespace MphRead.Mods.Launcher.Gui
                 BorderThickness = new Thickness(1),
                 Child = art
             };
-            Grid.SetColumn(artFrame, 1);
-            body.Children.Add(artFrame);
+            Grid.SetColumn(heroArt, 1);
+            body.Children.Add(heroArt);
 
             return new Border
             {
@@ -425,8 +429,9 @@ namespace MphRead.Mods.Launcher.Gui
                 _hero.Margin = new Thickness(0);
                 _heroBody.ColumnDefinitions = new ColumnDefinitions("*");
                 _heroBody.RowDefinitions = new RowDefinitions("*");
-                Grid.SetColumn(_stand, 0);
-                Grid.SetRow(_stand, 0);
+                Grid.SetColumn(_heroArt, 0);
+                Grid.SetRow(_heroArt, 0);
+                _heroArt.IsVisible = false;
                 _stand.IsVisible = false;
             }
             else
@@ -444,11 +449,12 @@ namespace MphRead.Mods.Launcher.Gui
                 Grid.SetRow(_profile, 0);
                 _heroBody.ColumnDefinitions = new ColumnDefinitions("*,220");
                 _heroBody.RowDefinitions = new RowDefinitions("*");
-                Grid.SetColumn(_stand, 1);
-                Grid.SetRow(_stand, 0);
+                Grid.SetColumn(_heroArt, 1);
+                Grid.SetRow(_heroArt, 0);
+                _heroArt.IsVisible = true;
                 _stand.IsVisible = true;
                 _stand.Width = 190;
-                _stand.Height = 310;
+                _stand.Height = 282;
             }
         }
 
