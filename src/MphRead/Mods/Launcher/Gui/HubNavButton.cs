@@ -51,8 +51,9 @@ namespace MphRead.Mods.Launcher.Gui
             _label = new TextBlock
             {
                 Text = label,
-                FontFamily = Deck.MonoBold,
-                FontSize = compact ? 10 : 13,
+                FontFamily = HubTheme.Ui,
+                FontWeight = FontWeight.SemiBold,
+                FontSize = compact ? 11 : 14,
                 Foreground = primary ? _accent : HubTheme.TextBrush,
                 VerticalAlignment = VerticalAlignment.Center
             };
@@ -60,8 +61,8 @@ namespace MphRead.Mods.Launcher.Gui
             var detailText = new TextBlock
             {
                 Text = detail,
-                FontFamily = Deck.Mono,
-                FontSize = 9,
+                FontFamily = HubTheme.Ui,
+                FontSize = 10,
                 Foreground = HubTheme.TextDimBrush,
                 TextWrapping = TextWrapping.Wrap,
                 IsVisible = !compact && detail.Length > 0,
