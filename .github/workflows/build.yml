@@ -177,7 +177,11 @@ jobs:
       # same shared launcher on every desktop target.
       - name: the headless UI layouts render
         if: matrix.id == 'linux-x64'
-        run: publish/${{ matrix.id }}/FruityPrime -uishot "$RUNNER_TEMP/uishot"
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y xvfb libgl1 libglx-mesa0
+          xvfb-run -a --server-args="-screen 0 1280x800x24" \
+            publish/${{ matrix.id }}/FruityPrime -uishot "$RUNNER_TEMP/uishot"
 
       - name: the headless UI layouts
         if: matrix.id == 'linux-x64' && always()
