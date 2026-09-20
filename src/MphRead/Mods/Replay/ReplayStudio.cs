@@ -362,6 +362,7 @@ namespace MphRead.Mods.Replay
         {
             File.Delete(path);
             File.Delete(path + ".favorite");
+            ReplayAnnotations.DeleteFor(path);
             string cache = CachePath(path);
             File.Delete(cache);
         }
