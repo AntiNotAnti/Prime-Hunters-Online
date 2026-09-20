@@ -65,7 +65,7 @@
          without this one and leaves those two files out. -->
     <DefineConstants Condition="'$(MphReadAvalonia)' == 'true'">$(DefineConstants);MPHREAD_SHELL</DefineConstants>
     <!-- The runtime game window uses the embedded Project Prime mark below.
-         Legacy FruityPrime shell icons were intentionally removed as part of
+         Legacy shell icons were intentionally removed as part of
          the product migration rather than being silently carried forward. -->
     <PublishSingleFile>true</PublishSingleFile>
     <DebugType>embedded</DebugType>
