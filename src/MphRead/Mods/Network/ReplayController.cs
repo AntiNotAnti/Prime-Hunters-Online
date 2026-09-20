@@ -25,8 +25,22 @@ namespace MphRead.Mods.Network
         public static bool IsSeeking => State == ReplayState.Seeking;
         public static uint? ClipIn { get; private set; }
         public static uint? ClipOut { get; private set; }
-        public static void MarkIn() { ClipIn = CurrentFrame; NoteInput(); }
-        public static void MarkOut() { ClipOut = CurrentFrame; NoteInput(); }
+        public static void MarkIn() => SetMarkIn(CurrentFrame);
+        public static void MarkOut() => SetMarkOut(CurrentFrame);
+        public static void SetMarkIn(uint frame)
+        {
+            uint value = Math.Min(frame, DurationFrames);
+            if (ClipOut.HasValue) value = Math.Min(value, ClipOut.Value);
+            ClipIn = value;
+            NoteInput();
+        }
+        public static void SetMarkOut(uint frame)
+        {
+            uint value = Math.Min(frame, DurationFrames);
+            if (ClipIn.HasValue) value = Math.Max(value, ClipIn.Value);
+            ClipOut = value;
+            NoteInput();
+        }
         public static ReplayOpenResult SaveSelection()
         {
             if (!ClipIn.HasValue || !ClipOut.HasValue || DemoPlayback.CurrentPath == null) return ReplayOpenResult.Empty;
