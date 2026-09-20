@@ -464,6 +464,11 @@ namespace MphRead
                 {
                     var data = Mods.Multiplayer.MapResourceRules.ResolveData(metadata, resources,
                         ((Entity<ItemSpawnEntityData>)entity).Data);
+                    if (Mods.Network.NetSession.ActiveMatchDefinition?.DisablePowerups == true
+                        && Mods.Multiplayer.MapResourceRules.IsPowerup(data.ItemType))
+                    {
+                        continue;
+                    }
                     results.Add(new ItemSpawnEntity(data, nodeName, scene));
                 }
                 else if (entity.Type == EntityType.FhItemSpawn)

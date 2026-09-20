@@ -79,7 +79,7 @@ namespace MphRead.Mods.Launcher.Gui
             ControllerNav.Identify(_resume, "pause.resume", initial: true);
             if (DemoPlayback.IsActive)
             {
-                Add(menu, "REPLAY CONTROLS",
+                Add(menu, "REPLAY STUDIO",
                     () => ReplayControlsRequested?.Invoke(this, EventArgs.Empty),
                     HubTheme.Accent);
             }
@@ -121,7 +121,7 @@ namespace MphRead.Mods.Launcher.Gui
             }
             if (!DemoPlayback.IsActive && NetSession.Active)
             {
-                Add(menu, DemoRecorder.IsRecording ? "STOP RECORDING" : "RECORD DEMO",
+                Add(menu, DemoRecorder.IsRecording ? "STOP REPLAY RECORDING" : "RECORD REPLAY",
                     () => RecordToggleRequested?.Invoke(this, EventArgs.Empty));
             }
             Add(menu, "SETTINGS", () => SettingsRequested?.Invoke(this, EventArgs.Empty));

@@ -32,44 +32,106 @@ namespace MphRead.Entities
 
         internal void ModDrawStylusZone()
         {
-            if (!IsMainPlayer || !StylusZone.Enabled && !StylusZone.Placing)
+            if (!IsMainPlayer)
             {
                 return;
             }
-            // The overlay is drawn in the HUD's 256x192 space, and the zone is
-            // stated in window fractions, so one is turned into the other
-            // here. HudAspectFix is not wanted: a fraction of the window is
-            // already a fraction of the window, whatever shape it is.
-            float left = StylusZone.Left * 256f;
-            float top = StylusZone.Top * 192f;
-            float width = StylusZone.Width * 256f;
-            float height = StylusZone.Height * 192f;
-            if (width <= 1 || height <= 1)
+
+            // The platform cursor has no portable opacity control. During
+            // stylus gameplay the window hides it without grabbing it, and
+            // this HUD cursor takes its place. Menus, results and placement
+            // keep the normal platform cursor instead.
+            bool drawCursor = PointerInput.StylusMode && !StylusZone.Placing
+                && (_scene.CameraMode == CameraMode.Player || _scene.IsFreeCam)
+                && !_scene.FrameAdvance && !Mods.Network.DemoPlayback.IsActive
+                && !Mods.PauseMenu.Open && !Mods.EndScreen.Available
+                && !GameState.DialogPause && !GameState.MenuPause;
+
+            if (StylusZone.Enabled || StylusZone.Placing)
+            {
+                // The overlay is drawn in the HUD's 256x192 space, and the zone is
+                // stated in window fractions, so one is turned into the other
+                // here. HudAspectFix is not wanted: a fraction of the window is
+                // already a fraction of the window, whatever shape it is.
+                float left = StylusZone.Left * 256f;
+                float top = StylusZone.Top * 192f;
+                float width = StylusZone.Width * 256f;
+                float height = StylusZone.Height * 192f;
+                if (width > 1 && height > 1)
+                {
+                    // Placement is deliberately visible even if the normal
+                    // overlay has been set to 0%; otherwise an invisible
+                    // rectangle could not be positioned.
+                    float outlineAlpha = StylusZone.Placing ? 0.55f : StylusZone.OutlineOpacity;
+                    float buttonAlpha = StylusZone.Placing ? 0.275f : StylusZone.ButtonOpacity;
+                    float line = Math.Max(0.5f, height / 96f);
+
+                    if (outlineAlpha > 0)
+                    {
+                        var edge = new Vector4(_stylusInk.Xyz, outlineAlpha);
+                        _scene.DrawHudFlatBox(left, top, left + width, top + line, edge);
+                        _scene.DrawHudFlatBox(left, top + height - line, left + width, top + height, edge);
+                        _scene.DrawHudFlatBox(left, top, left + line, top + height, edge);
+                        _scene.DrawHudFlatBox(left + width - line, top, left + width, top + height, edge);
+                    }
+
+                    if (buttonAlpha > 0)
+                    {
+                        float scaleX = width / StylusZone.DsWidth;
+                        float scaleY = height / StylusZone.DsHeight;
+                        foreach (StylusZone.Button button in StylusZone.Buttons)
+                        {
+                            bool lit = !StylusZone.Placing && StylusZone.Contact
+                                && StylusZone.Region == button.Region;
+                            float alpha = lit ? Math.Min(1, buttonAlpha * 6) : buttonAlpha;
+                            Vector4 colour = lit
+                                ? new Vector4(_stylusLit.Xyz, alpha)
+                                : new Vector4(_stylusFill.Xyz, alpha);
+                            DrawStylusCircle(left + button.X * scaleX, top + button.Y * scaleY,
+                                button.Radius * scaleX, button.Radius * scaleY, colour);
+                        }
+                    }
+                }
+            }
+
+            if (drawCursor)
+            {
+                DrawStylusCursor();
+            }
+        }
+
+        private void DrawStylusCursor()
+        {
+            float alpha = Math.Clamp(StylusZone.CursorOpacity, 0, 1);
+            float pointerX = Mods.EndScreen.PointerX;
+            float pointerY = Mods.EndScreen.PointerY;
+            if (alpha <= 0 || pointerX < 0 || pointerX > 1 || pointerY < 0 || pointerY > 1)
             {
                 return;
             }
-            // Bright while it is being placed, barely there while it is being
-            // played with.
-            float alpha = StylusZone.Placing ? 0.55f : StylusZone.Opacity;
-            var edge = new Vector4(_stylusInk.Xyz, alpha);
-            var fill = new Vector4(_stylusFill.Xyz, alpha * 0.5f);
-            // The screen itself: a hairline box, not a filled panel. What is
-            // behind this is the game.
-            float line = Math.Max(0.5f, height / 96f);
-            _scene.DrawHudFlatBox(left, top, left + width, top + line, edge);
-            _scene.DrawHudFlatBox(left, top + height - line, left + width, top + height, edge);
-            _scene.DrawHudFlatBox(left, top, left + line, top + height, edge);
-            _scene.DrawHudFlatBox(left + width - line, top, left + width, top + height, edge);
-            float scaleX = width / StylusZone.DsWidth;
-            float scaleY = height / StylusZone.DsHeight;
-            foreach (StylusZone.Button button in StylusZone.Buttons)
+
+            float x = pointerX * 256f;
+            float y = pointerY * 192f;
+            const float pixel = 0.42f;
+            // One offset black copy gives the white pixel arrow enough edge
+            // contrast to stay readable on both bright and dark rooms.
+            DrawStylusCursorShape(x + pixel, y + pixel, pixel,
+                new Vector4(0, 0, 0, alpha * 0.7f));
+            DrawStylusCursorShape(x, y, pixel, new Vector4(1, 1, 1, alpha));
+        }
+
+        private void DrawStylusCursorShape(float x, float y, float pixel, Vector4 colour)
+        {
+            // A small stepped arrow with the hotspot at its top-left corner.
+            // Flat HUD boxes keep it crisp at the same logical resolution as
+            // the DS overlay and avoid adding a cursor texture/resource.
+            for (int row = 0; row < 7; row++)
             {
-                bool lit = !StylusZone.Placing && StylusZone.Contact
-                    && StylusZone.Region == button.Region;
-                Vector4 colour = lit ? new Vector4(_stylusLit.Xyz, Math.Min(1, alpha * 3)) : fill;
-                DrawStylusCircle(left + button.X * scaleX, top + button.Y * scaleY,
-                    button.Radius * scaleX, button.Radius * scaleY, colour);
+                _scene.DrawHudFlatBox(x, y + row * pixel,
+                    x + (row + 1) * pixel, y + (row + 1) * pixel, colour);
             }
+            _scene.DrawHudFlatBox(x + 2 * pixel, y + 6 * pixel,
+                x + 4 * pixel, y + 10 * pixel, colour);
         }
 
         /// <summary>

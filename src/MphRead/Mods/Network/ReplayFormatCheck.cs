@@ -3,6 +3,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using MphRead.Mods.Multiplayer;
 
 namespace MphRead.Mods.Network
 {
@@ -25,8 +26,22 @@ namespace MphRead.Mods.Network
                     MatchId = 1, AuthorityEpoch = 1 };
                 var matchBytes = new byte[1 + MatchStatePacket.Size];
                 matchBytes[0] = (byte)PacketType.MatchState; match.Write(matchBytes.AsSpan(1));
+                var session = new SessionStatePacket
+                {
+                    Phase = SessionPhase.InMatch, Policy = ServerSessionPolicy.Lobby,
+                    OwnerSlot = byte.MaxValue, MaxPlayers = 8, MatchId = match.MatchId,
+                    AuthorityEpoch = match.AuthorityEpoch,
+                    WorldProfile = MatchWorldProfile.Resolve(8),
+                    Match = new MatchDefinition
+                    {
+                        RoomKey = match.RoomKey, Mode = GameMode.Battle, Format = MatchFormat.Auto,
+                        DisablePowerups = true
+                    }
+                };
+                var sessionBytes = new byte[1 + SessionStatePacket.Size];
+                sessionBytes[0] = (byte)PacketType.SessionState; session.Write(sessionBytes.AsSpan(1));
                 var metadata = new ReplayMetadata { RoomKey = match.RoomKey, Mode = GameMode.Battle,
-                    Bootstrap = new ReplayBootstrap { Packets = new[] { matchBytes } } };
+                    Bootstrap = new ReplayBootstrap { Packets = new[] { sessionBytes, matchBytes } } };
 
                 // Current snapshots append match-time and health-sync state after
                 // the player array. The replay validator must accept the same wire
@@ -43,7 +58,7 @@ namespace MphRead.Mods.Network
                 snapshotBytes[0] = (byte)PacketType.Snapshot;
                 snapshotPayload.CopyTo(snapshotBytes.AsSpan(1));
                 var currentSnapshotMetadata = new ReplayMetadata { RoomKey = match.RoomKey, Mode = GameMode.Battle,
-                    Bootstrap = new ReplayBootstrap { Packets = new[] { matchBytes, snapshotBytes } } };
+                    Bootstrap = new ReplayBootstrap { Packets = new[] { sessionBytes, matchBytes, snapshotBytes } } };
                 string currentSnapshot = Path.Combine(directory, "current-snapshot.fpdemo");
                 using (var snapshotWriter = new ReplayWriterV3(currentSnapshot, currentSnapshotMetadata)) { }
                 Require(File.Exists(currentSnapshot), "current snapshot tails accepted in bootstrap");
@@ -120,6 +135,8 @@ namespace MphRead.Mods.Network
                     Require(delivered == 4096 && transport.PacketsDropped == 0, "recorded packet burst is not dropped");
                 }
                 Require(DemoPlayback.Join(clean), "matching protocol bootstrap joins");
+                Require(NetSession.ActiveMatchDefinition?.DisablePowerups == true,
+                    "session rules survive replay bootstrap");
                 foreach (byte[] control in new[] { new byte[] { (byte)PacketType.Welcome, 0 },
                     new byte[] { (byte)PacketType.Authority }, new byte[] { (byte)PacketType.Bye } })
                     NetSession.InjectPlaybackPacket(control, control.Length);

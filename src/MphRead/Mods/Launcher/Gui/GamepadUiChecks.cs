@@ -362,8 +362,18 @@ namespace MphRead.Mods.Launcher.Gui
             var settings = new SettingsView(new MenuSettings());
             window.Width = 960; window.Height = 660; window.Content = settings;
             settings.ShowSection("Controls", 1); window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
-            var rows = settings.GetVisualDescendants().OfType<PadRow>().ToArray();
-            GamepadChecks.Check(rows.Length == PadBindings.Actions.Count, "every pad action appears in settings");
+            var rows = settings.GetVisualDescendants().OfType<PadRow>()
+                .Where(row => row.IsEffectivelyVisible).ToArray();
+            GamepadChecks.Check(rows.Length == PadBindings.GameplayActions.Count,
+                "every gameplay pad action appears in controller settings");
+            settings.ShowSection("Replays"); window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            var replayRows = settings.GetVisualDescendants().OfType<PadRow>()
+                .Where(row => row.IsEffectivelyVisible).ToArray();
+            GamepadChecks.Check(replayRows.Length == PadBindings.ReplayActions.Count,
+                "every replay pad action appears in replay settings");
+            settings.ShowSection("Controls", 1); window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            rows = settings.GetVisualDescendants().OfType<PadRow>()
+                .Where(row => row.IsEffectivelyVisible).ToArray();
             FocusNavigator.Focus(rows[^1]); window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
             GamepadChecks.Check(rows[^1].IsFocused, "last binding reachable through scrolling");
             var rowPoint = rows[^1].TranslatePoint(new Point(), window);

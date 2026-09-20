@@ -11,10 +11,10 @@
 # nothing else: the game's own files are unpacked from the player's cartridge
 # dump by the launcher, on their machine, and are never part of a release.
 #
-# Finished packages are published to a public binary-only release repository
-# so clients can discover them without access to this private source repo.
-# A manual run may leave a draft; tag pushes publish after all build and
-# verification jobs succeed.
+# Finished packages are published as GitHub Releases in this public repository,
+# so the project page, download links and in-app updater all use one canonical
+# release channel. A manual run may leave a draft; tag pushes publish after all
+# build and verification jobs succeed.
 name: release
 
 on:
@@ -167,7 +167,7 @@ jobs:
           # Android also needs a monotonically increasing integer versionCode;
           # encode the same semver as MAJOR.MINOR.PATCH without losing order.
           echo "android_version_code=$ANDROID_VERSION_CODE" >> "$GITHUB_OUTPUT"
-          echo "### Fruity Prime $TAG" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Prime Hunters Online $TAG" >> "$GITHUB_STEP_SUMMARY"
 
   release:
     needs: resolve
@@ -366,7 +366,7 @@ jobs:
           mkdir -p dist
           cp LICENSE publish/win-x64/ 2>/dev/null || true
           cat > publish/win-x64/README.txt <<'NOTE'
-          Fruity Prime -- Metroid Prime Hunters, on a PC, with multiplayer.
+          Prime Hunters Online -- Metroid Prime Hunters, on PC, with multiplayer.
 
           Double-click FruityPrime.exe. The first thing it asks for is your own
           Metroid Prime Hunters cartridge dump (.nds); it unpacks what it needs
@@ -379,14 +379,15 @@ jobs:
           F11 or Alt+Enter switches to fullscreen, Escape leaves it.
 
           To run a server for other people without playing on it yourself,
-          download the server package instead -- it is a separate, smaller
-          download that needs no game files at all.
+          download the server package instead. The package is smaller because
+          it omits the launcher/UI, but the authoritative server still needs
+          your extracted game files and a valid paths.txt beside the binary.
           NOTE
           ( cd publish/win-x64 && zip -qr "../../dist/FruityPrime-$TAG-win-x64.zip" . )
 
           cp LICENSE publish/linux-x64/ 2>/dev/null || true
           cat > publish/linux-x64/README.txt <<'NOTE'
-          Fruity Prime -- Metroid Prime Hunters, on a PC, with multiplayer.
+          Prime Hunters Online -- Metroid Prime Hunters, on PC, with multiplayer.
 
           Set up with your own Metroid Prime Hunters cartridge dump (.nds).
           It is unpacked next to this program and the file is left alone. No
@@ -409,22 +410,26 @@ jobs:
             ./FruityPrime -hostgame "ROOM"      have a server run a match for you
             ./FruityPrime -menu                 volumes, controls, match rules
 
-          This build can also run a dedicated server, with -server; it needs no
-          game files to do it. If that is all a machine is for, the server
-          package is a smaller download with no launcher in it -- there is one
-          for plain x64 Linux and one for a Raspberry Pi.
+          This build can also run a dedicated server with -server. The server
+          runs the match authoritatively, so it needs your extracted game files
+          and a valid paths.txt beside the binary. If that is all a machine is
+          for, the server package is a smaller download with no launcher in it
+          -- there is one for plain x64 Linux and one for a Raspberry Pi.
 
           F11 or Alt+Enter switches to fullscreen, Escape opens the pause menu.
           NOTE
           ( cd publish/linux-x64 && tar czf "../../dist/FruityPrime-$TAG-linux-x64.tar.gz" . )
 
           cat > publish/linux-arm64/SERVER.txt <<'NOTE'
-          Fruity Prime dedicated server.
+          Prime Hunters Online dedicated server.
 
             ./FruityPrime -server -port 27888 -players 8 -servername "My server"
 
-          It needs no game files. Maps come from maprotation.txt, written
-          beside the binary on first run.
+          This server runs the match authoritatively and therefore requires
+          your extracted Metroid Prime Hunters game files. Put a valid paths.txt
+          beside the binary pointing at those files. No game data is included
+          in this package. Maps come from maprotation.txt, written beside the
+          binary on first run.
 
           The server lists itself on net.livetek.fr so that players can find it
           in the launcher's server browser. Pass -nomaster to stay private, or
@@ -434,18 +439,22 @@ jobs:
 
             ./FruityPrime -masterserver -port 27889
           NOTE
+          cp SERVER.md publish/linux-arm64/SERVER.md
           ( cd publish/linux-arm64 && tar czf "../../dist/FruityPrime-$TAG-server-linux-arm64.tar.gz" . )
 
           cp LICENSE publish/linux-x64-server/ 2>/dev/null || true
           cat > publish/linux-x64-server/SERVER.txt <<'NOTE'
-          Fruity Prime dedicated server, for a plain x64 Linux machine -- a
+          Prime Hunters Online dedicated server, for a plain x64 Linux machine -- a
           VPS, a spare desktop, anything that is not a Raspberry Pi (see the
           ARM64 package for that) and that nobody is playing on.
 
             ./FruityPrime -server -port 27888 -players 8 -servername "My server"
 
-          It needs no game files. Maps come from maprotation.txt, written
-          beside the binary on first run.
+          This server runs the match authoritatively and therefore requires
+          your extracted Metroid Prime Hunters game files. Put a valid paths.txt
+          beside the binary pointing at those files. No game data is included
+          in this package. Maps come from maprotation.txt, written beside the
+          binary on first run.
 
           The server lists itself on net.livetek.fr so that players can find it
           in the launcher's server browser. Pass -nomaster to stay private, or
@@ -459,19 +468,22 @@ jobs:
           systemd; deploy-server.sh automates that end to end for the ARM64
           build, and the same units work here with the RID changed.
           NOTE
+          cp SERVER.md publish/linux-x64-server/SERVER.md
           ( cd publish/linux-x64-server && tar czf "../../dist/FruityPrime-$TAG-server-linux-x64.tar.gz" . )
 
           cp LICENSE publish/win-x64-server/ 2>/dev/null || true
           cat > publish/win-x64-server/SERVER.txt <<'NOTE'
-          Fruity Prime dedicated server, for Windows.
+          Prime Hunters Online dedicated server, for Windows.
 
           From a Command Prompt or PowerShell, in this folder:
 
             FruityPrimeServer.exe -server -port 27888 -players 8 -servername "My server"
 
-          It needs no game files, and no copy of the game on this machine.
-          Maps come from maprotation.txt, written beside the binary on first
-          run.
+          This server runs the match authoritatively and therefore requires
+          your extracted Metroid Prime Hunters game files. Put a valid paths.txt
+          beside FruityPrimeServer.exe pointing at those files. No game data is
+          included in this package. Maps come from maprotation.txt, written
+          beside the binary on first run.
 
           This is a console program, unlike FruityPrime.exe: the window stays until
           the server stops, Ctrl+C shuts it down cleanly, and its exit code is
@@ -495,6 +507,7 @@ jobs:
 
             FruityPrimeServer.exe -servers
           NOTE
+          cp SERVER.md publish/win-x64-server/SERVER.md
           ( cd publish/win-x64-server && zip -qr "../../dist/FruityPrime-$TAG-server-win-x64.zip" . )
 
           # The APK goes out on its own rather than in an archive: what a phone
@@ -570,35 +583,24 @@ jobs:
           pattern: release-*
           merge-multiple: true
           path: dist
-      # The source repository is private. The updater must be able to reach
-      # releases anonymously, so packages are published to a separate public,
-      # binary-only repository. RELEASE_REPO_TOKEN is a fine-grained token with
-      # Contents: write on that one repository only.
+      # Publish directly to this public repository. The built-in GITHUB_TOKEN
+      # has contents: write above, so release creation and asset uploads need no
+      # personal access token or second repository.
       #
       # Tag pushes publish automatically. A manual run can turn "publish" off
       # to leave a draft for inspection. Releases are stable, not prereleases,
       # because releases/latest intentionally skips prereleases.
       - name: release
         env:
-          SOURCE_TOKEN: ${{ github.token }}
-          RELEASE_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
-          SOURCE_REPOSITORY: ${{ github.repository }}
-          RELEASE_REPOSITORY: AntiNotAnti/Prime-Hunters-Online-Releases
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
           TAG: ${{ needs.resolve.outputs.tag }}
           PUBLISH_NOW: ${{ github.event_name == 'push' || github.event.inputs.publish == 'true' }}
         run: |
           set -euo pipefail
-          if [ -z "${RELEASE_TOKEN:-}" ]; then
-            echo "::error::RELEASE_REPO_TOKEN is not configured. Create a fine-grained token with Contents: write for $RELEASE_REPOSITORY and add it as a repository secret."
-            exit 1
-          fi
-          if ! GH_TOKEN="$RELEASE_TOKEN" gh repo view "$RELEASE_REPOSITORY" >/dev/null 2>&1; then
-            echo "::error::Cannot access $RELEASE_REPOSITORY with RELEASE_REPO_TOKEN."
-            exit 1
-          fi
-          visibility=$(GH_TOKEN="$RELEASE_TOKEN" gh repo view "$RELEASE_REPOSITORY" --json visibility --jq .visibility)
+          visibility=$(gh repo view "$REPOSITORY" --json visibility --jq .visibility)
           if [ "$visibility" != "PUBLIC" ]; then
-            echo "::error::$RELEASE_REPOSITORY must be public so clients can check releases without a GitHub credential."
+            echo "::error::$REPOSITORY must remain public so clients can check releases without a GitHub credential."
             exit 1
           fi
 
@@ -618,10 +620,10 @@ jobs:
           and Android can install a matching package in-app; macOS opens this release page.
           NOTE
 
-          # Generate release notes from the private source repository. The token
-          # used for public releases never needs access to source.
-          CHANGES=$(GH_TOKEN="$SOURCE_TOKEN" gh api -X POST \
-            "repos/$SOURCE_REPOSITORY/releases/generate-notes" \
+          # Generate the changelog from the same repository that owns the tag
+          # and release.
+          CHANGES=$(gh api -X POST \
+            "repos/$REPOSITORY/releases/generate-notes" \
             -f tag_name="$TAG" --jq .body 2>/dev/null || true)
           if [ -n "$CHANGES" ]; then
             printf '\n---\n\n%s\n' "$CHANGES" >> notes.md
@@ -629,22 +631,22 @@ jobs:
             echo "::warning::No changelog could be generated for $TAG."
           fi
 
-          if GH_TOKEN="$RELEASE_TOKEN" gh release view "$TAG" \
-              --repo "$RELEASE_REPOSITORY" >/dev/null 2>&1; then
-            GH_TOKEN="$RELEASE_TOKEN" gh release upload "$TAG" dist/* --clobber \
-              --repo "$RELEASE_REPOSITORY"
-            GH_TOKEN="$RELEASE_TOKEN" gh release edit "$TAG" \
-              --repo "$RELEASE_REPOSITORY" \
+          if gh release view "$TAG" \
+              --repo "$REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber \
+              --repo "$REPOSITORY"
+            gh release edit "$TAG" \
+              --repo "$REPOSITORY" \
               --title "Prime Hunters Online $TAG" --notes-file notes.md
             if [ "$PUBLISH_NOW" = "true" ]; then
-              GH_TOKEN="$RELEASE_TOKEN" gh release edit "$TAG" \
-                --repo "$RELEASE_REPOSITORY" --draft=false
+              gh release edit "$TAG" \
+                --repo "$REPOSITORY" --draft=false
             fi
           else
-            args=(release create "$TAG" dist/* --repo "$RELEASE_REPOSITORY" \
-              --target main --title "Prime Hunters Online $TAG" --notes-file notes.md)
+            args=(release create "$TAG" dist/* --repo "$REPOSITORY" \
+              --verify-tag --title "Prime Hunters Online $TAG" --notes-file notes.md)
             if [ "$PUBLISH_NOW" != "true" ]; then
               args+=(--draft)
             fi
-            GH_TOKEN="$RELEASE_TOKEN" gh "${args[@]}"
+            gh "${args[@]}"
           fi

@@ -53,16 +53,15 @@ anything could be kept out of.
 | `Mods/InputSettings.cs` | `ChatKey`, saved to `controls.txt` as `chat_key` |
 | `MphRead.Android/GameView.cs` | Android's key events, and the soft-keyboard editor |
 | `MphRead.Android/TouchControls.cs` | the CHAT button |
-| `~/mph-net-test/probe-chat.py` | the three things `-netcheck` cannot ask |
+| External `probe-chat.py` (when available) | private/historical wire probe for spoof/flood cases that `-netcheck` cannot emit |
 
 ## The protocol
 
-**No version bump.** `PacketType.Chat` is 23, additive and ignorable in both
-directions -- the same argument `RefusedPacket` makes. A server built before
-this drops the type on the floor: the sender still sees its own line, nobody
-else does, and the match is otherwise unaffected. A client built before it is
-never sent one. So chat can be deployed without taking every running match
-offline, and `NetConfig.ProtocolVersion` stays at 4.
+`PacketType.Chat` is 23. **When chat was introduced** it was additive and
+ignorable in both directions, so that feature alone did not require a protocol
+bump. A peer from before chat dropped the unknown packet safely. The current
+wire version is always `NetConfig.ProtocolVersion`; the old "stays at 4"
+statement is historical, not a current protocol declaration.
 
 What that costs is the one failure mode worth knowing about: **against a
 server that predates this build, chat looks exactly like nobody answering.**
@@ -206,13 +205,12 @@ clients over 90 s reported 9, 5 and 7. What matters is that M is well above
 zero on every client and that `grep chat server.log` attributes each line to
 the right name.
 
-```
-cd ~/mph-net-test && ./run-check.sh 60 Samus Weavel Sylux
-grep 'chat:' *.log          # sent=2 received=4 on all three
-grep chat server.log        # six lines, each attributed to the right name
-```
+Run several current `-netcheck` clients against the same server and
+compare each `chat:` line with the authoritative server log. A private
+`run-check.sh` wrapper may automate that when available, but is not part of
+this repository.
 
-`probe-chat.py` asks the three questions a real client cannot, by sending what
+The historical/private `probe-chat.py` asks three questions a real client cannot, by sending what
 no real client would send:
 
 ```

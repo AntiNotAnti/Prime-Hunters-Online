@@ -102,6 +102,31 @@ namespace MphRead.Mods
 
         private static Keys _clipKey = Keys.F10;
 
+        // Replay transport keys live outside PlayerControls for the same
+        // reason chat does: they control the replay host, not a hunter.
+        public static Keys ReplayPlayPauseKey { get; set; } = Keys.Space;
+        public static Keys ReplayStepBackKey { get; set; } = Keys.Comma;
+        public static Keys ReplayStepForwardKey { get; set; } = Keys.Period;
+        public static Keys ReplaySeekBackKey { get; set; } = Keys.Left;
+        public static Keys ReplaySeekForwardKey { get; set; } = Keys.Right;
+        public static Keys ReplaySlowerKey { get; set; } = Keys.LeftBracket;
+        public static Keys ReplayFasterKey { get; set; } = Keys.RightBracket;
+        public static Keys ReplayRestartKey { get; set; } = Keys.Home;
+
+        public static void ResetReplayBindings()
+        {
+            ReplayPlayPauseKey = Keys.Space;
+            ReplayStepBackKey = Keys.Comma;
+            ReplayStepForwardKey = Keys.Period;
+            ReplaySeekBackKey = Keys.Left;
+            ReplaySeekForwardKey = Keys.Right;
+            ReplaySlowerKey = Keys.LeftBracket;
+            ReplayFasterKey = Keys.RightBracket;
+            ReplayRestartKey = Keys.Home;
+            foreach (Input.PadAction action in Input.PadBindings.ReplayActions)
+                Input.PadBindings.Set(action, Input.PadBindings.Default(action));
+        }
+
         /// <summary>
         /// How far a stick must move before it counts, 0 to 0.9.
         ///
@@ -341,6 +366,10 @@ namespace MphRead.Mods
             {
                 bool? stylusMode = null;
                 bool? legacyGuard = null;
+                float? legacyStylusOpacity = null;
+                float? stylusOutlineOpacity = null;
+                float? stylusButtonOpacity = null;
+                float? stylusCursorOpacity = null;
                 string[] savedLines = File.ReadAllLines(Path);
                 foreach (string raw in savedLines)
                 {
@@ -396,7 +425,28 @@ namespace MphRead.Mods
                     if (key == "stylus_zone_opacity" && Single.TryParse(value, NumberStyles.Float,
                         CultureInfo.InvariantCulture, out float zoneOpacity))
                     {
-                        Input.StylusZone.Opacity = Math.Clamp(zoneOpacity, 0.02f, 1f);
+                        // Legacy combined value: the old renderer used it for
+                        // the outline and half of it for the circular buttons.
+                        legacyStylusOpacity = Math.Clamp(zoneOpacity, 0, 1);
+                        continue;
+                    }
+                    if (key == "stylus_zone_outline_opacity" && Single.TryParse(value, NumberStyles.Float,
+                        CultureInfo.InvariantCulture, out float outlineOpacity))
+                    {
+                        stylusOutlineOpacity = Math.Clamp(outlineOpacity, 0, 1);
+                        continue;
+                    }
+                    if (key == "stylus_zone_button_opacity" && Single.TryParse(value, NumberStyles.Float,
+                        CultureInfo.InvariantCulture, out float buttonOpacity))
+                    {
+                        stylusButtonOpacity = Math.Clamp(buttonOpacity, 0, 1);
+                        continue;
+                    }
+                    if (key == "stylus_cursor_opacity" && Single.TryParse(value, NumberStyles.Float,
+                        CultureInfo.InvariantCulture, out float cursorOpacity))
+                    {
+                        stylusCursorOpacity = Math.Clamp(cursorOpacity, 0, 1);
+                        continue;
                     }
                     if (key == "stylus_zone_rect")
                     {
@@ -437,6 +487,10 @@ namespace MphRead.Mods
                         _clipKey = value.Equals("none", StringComparison.OrdinalIgnoreCase)
                             ? Keys.Unknown
                             : Enum.TryParse(value, out Keys parsedClip) ? parsedClip : _clipKey;
+                        continue;
+                    }
+                    if (TryReplayKey(key, value))
+                    {
                         continue;
                     }
                     if (key == "clip_postroll" && Int32.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int postRoll))
@@ -499,6 +553,26 @@ namespace MphRead.Mods
                 // new settings win regardless of line order.
                 Input.PointerInput.StylusMode = !OperatingSystem.IsAndroid()
                     && (stylusMode ?? legacyGuard ?? false);
+
+                // Split the old one-slider overlay without changing how an
+                // existing controls.txt looks: outline = old value, buttons =
+                // half of it. Explicit per-element settings always win,
+                // regardless of their order in the file.
+                if (stylusOutlineOpacity.HasValue || legacyStylusOpacity.HasValue)
+                {
+                    Input.StylusZone.OutlineOpacity = stylusOutlineOpacity
+                        ?? legacyStylusOpacity!.Value;
+                }
+                if (stylusButtonOpacity.HasValue || legacyStylusOpacity.HasValue)
+                {
+                    Input.StylusZone.ButtonOpacity = stylusButtonOpacity
+                        ?? Math.Clamp(legacyStylusOpacity!.Value * 0.5f, 0, 1);
+                }
+                if (stylusCursorOpacity.HasValue)
+                {
+                    Input.StylusZone.CursorOpacity = stylusCursorOpacity.Value;
+                }
+
                 Input.GamepadOptions.Load(savedLines);
                 Input.PadBindings.LoadSlots(savedLines);
                 string? preset = savedLines.LastOrDefault(l => l.StartsWith("gamepad_preset=", StringComparison.Ordinal));
@@ -514,6 +588,28 @@ namespace MphRead.Mods
                 // install under Program Files is exactly where that happens.
             }
         }
+
+        private static bool TryReplayKey(string key, string value)
+        {
+            Keys parsed = value.Equals("none", StringComparison.OrdinalIgnoreCase)
+                ? Keys.Unknown
+                : Enum.TryParse(value, out Keys replayKey) ? replayKey : Keys.Unknown;
+            switch (key)
+            {
+                case "replay_play_pause": ReplayPlayPauseKey = parsed; return true;
+                case "replay_step_back": ReplayStepBackKey = parsed; return true;
+                case "replay_step_forward": ReplayStepForwardKey = parsed; return true;
+                case "replay_seek_back": ReplaySeekBackKey = parsed; return true;
+                case "replay_seek_forward": ReplaySeekForwardKey = parsed; return true;
+                case "replay_slower": ReplaySlowerKey = parsed; return true;
+                case "replay_faster": ReplayFasterKey = parsed; return true;
+                case "replay_restart": ReplayRestartKey = parsed; return true;
+                default: return false;
+            }
+        }
+
+        private static string SaveKey(Keys key)
+            => key == Keys.Unknown ? "none" : key.ToString();
 
         private static void ParseBind(PropertyInfo property, string value)
         {
@@ -554,14 +650,26 @@ namespace MphRead.Mods
                     // What was asked for, not what is in force: the zone's
                     // switch survives stylus mode being turned off and on.
                     $"stylus_zone={Input.StylusZone.Wanted.ToString().ToLowerInvariant()}",
-                    "stylus_zone_opacity="
-                        + Input.StylusZone.Opacity.ToString("0.###", CultureInfo.InvariantCulture),
+                    "stylus_cursor_opacity="
+                        + Input.StylusZone.CursorOpacity.ToString("0.###", CultureInfo.InvariantCulture),
+                    "stylus_zone_outline_opacity="
+                        + Input.StylusZone.OutlineOpacity.ToString("0.###", CultureInfo.InvariantCulture),
+                    "stylus_zone_button_opacity="
+                        + Input.StylusZone.ButtonOpacity.ToString("0.###", CultureInfo.InvariantCulture),
                     "stylus_zone_rect="
                         + Input.StylusZone.Left.ToString("0.####", CultureInfo.InvariantCulture) + ","
                         + Input.StylusZone.Top.ToString("0.####", CultureInfo.InvariantCulture) + ","
                         + Input.StylusZone.Width.ToString("0.####", CultureInfo.InvariantCulture),
                     $"chat_key={(ChatKey == Keys.Unknown ? "none" : ChatKey.ToString())}",
                     $"clip_key={(ClipKey == Keys.Unknown ? "none" : ClipKey.ToString())}",
+                    $"replay_play_pause={SaveKey(ReplayPlayPauseKey)}",
+                    $"replay_step_back={SaveKey(ReplayStepBackKey)}",
+                    $"replay_step_forward={SaveKey(ReplayStepForwardKey)}",
+                    $"replay_seek_back={SaveKey(ReplaySeekBackKey)}",
+                    $"replay_seek_forward={SaveKey(ReplaySeekForwardKey)}",
+                    $"replay_slower={SaveKey(ReplaySlowerKey)}",
+                    $"replay_faster={SaveKey(ReplayFasterKey)}",
+                    $"replay_restart={SaveKey(ReplayRestartKey)}",
                     $"clip_seconds={Network.DemoClip.Seconds.ToString(CultureInfo.InvariantCulture)}",
                     $"clip_postroll={Network.DemoClip.PostRollSeconds.ToString(CultureInfo.InvariantCulture)}",
                     "gamepad_deadzone=" + GamepadDeadZone.ToString(CultureInfo.InvariantCulture),
@@ -587,6 +695,9 @@ namespace MphRead.Mods
                 // Retain keys from newer versions and extensions when updating known settings.
                 var keys = new HashSet<string>(lines.Where(l => l.Contains('='))
                     .Select(l => l[..l.IndexOf('=')].Trim()), StringComparer.Ordinal);
+                // Retired by the three per-element opacity settings above.
+                // Treat it as known so Save removes it after it has migrated.
+                keys.Add("stylus_zone_opacity");
                 if (File.Exists(Path)) foreach (string original in File.ReadAllLines(Path))
                 {
                     int split = original.IndexOf('=');
@@ -615,6 +726,14 @@ namespace MphRead.Mods
             ScrollAllWeapons = true;
             ChatKey = Keys.T;
             ClipKey = Keys.F10;
+            ReplayPlayPauseKey = Keys.Space;
+            ReplayStepBackKey = Keys.Comma;
+            ReplayStepForwardKey = Keys.Period;
+            ReplaySeekBackKey = Keys.Left;
+            ReplaySeekForwardKey = Keys.Right;
+            ReplaySlowerKey = Keys.LeftBracket;
+            ReplayFasterKey = Keys.RightBracket;
+            ReplayRestartKey = Keys.Home;
             Network.DemoClip.Seconds = 30;
             Network.DemoClip.PostRollSeconds = 3;
             Input.PadBindings.Reset();
@@ -622,6 +741,7 @@ namespace MphRead.Mods
             Input.PointerInput.StylusMode = false;
             Input.PointerInput.GuardJumps = true;
             Input.StylusZone.Enabled = false;
+            Input.StylusZone.ResetAppearance();
             Input.PointerDevice.Reset();
             Input.GamepadOptions.Reset();
             GamepadDeadZone = 0.2f;

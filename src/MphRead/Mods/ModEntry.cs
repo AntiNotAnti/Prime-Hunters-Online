@@ -26,10 +26,11 @@ namespace MphRead.Mods
         /// be refactored later.
         /// </summary>
         /// <summary>
-        /// Commands that must run before the game-file setup check, because
-        /// they need neither paths.txt nor extracted assets. Kept separate
-        /// from TryHandle so the dedicated server can run on a machine that
-        /// has no game data at all.
+        /// Commands dispatched before the ordinary client game-file setup check.
+        /// Metadata-only replay tools, the directory/master server and several
+        /// diagnostics need no extracted assets. A dedicated game server is
+        /// dispatched here too, but it performs its own authoritative-world
+        /// validation and refuses to start without paths.txt/game files.
         /// </summary>
         public static bool TryHandleHeadless(string[] args)
         {
@@ -595,9 +596,10 @@ namespace MphRead.Mods
 #if MPHREAD_SERVER
             // The server package, run with nothing to do. Falling through to
             // upstream's setup check would answer with "could not find
-            // paths.txt, drag a ROM onto the executable" -- true of this
-            // binary, and useless: it ships without game files because it
-            // needs none, and it cannot play a match even with them.
+            // paths.txt, drag a ROM onto the executable", which is the wrong
+            // bare-invocation experience for a console server binary. Print
+            // server usage first; actually starting -server still requires a
+            // valid paths.txt and extracted game files.
             if (args.Length == 0)
             {
                 ServerUsage();

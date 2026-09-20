@@ -30,9 +30,10 @@ namespace MphRead.Mods.Network
     /// never did -- and it is the reason <c>SERVER.md</c> no longer says a
     /// server needs none.
     ///
-    /// The relay path survives for exactly the two servers that cannot
-    /// simulate because they live in a process that already has a simulation
-    /// or is about to have several. See <see cref="RunsTheMatch"/>.
+    /// The old relay/client-authority path remains only as a compatibility and
+    /// test path behind <see cref="RunsTheMatch"/> = false. Normal standalone,
+    /// local-hosted and directory-hosted games all run authoritative simulation
+    /// in a dedicated process.
     /// </summary>
     public sealed partial class DedicatedServer
     {
@@ -178,8 +179,8 @@ namespace MphRead.Mods.Network
         private NetTransport? _transport;
         private Peer? _authority;
         /// <summary>
-        /// The match, simulated in this process. Null when this server is the
-        /// relay it has always been and the authority is a client.
+        /// The match simulated in this process. Null only in the explicit
+        /// RunsTheMatch=false compatibility/test path.
         /// </summary>
         private ServerSim? _sim;
         private byte[]? _lastSnapshot;
@@ -327,8 +328,9 @@ namespace MphRead.Mods.Network
         public bool AutoUpdate { get; set; }
 
         /// <summary>
-        /// Canonical server replay recording/retention. Standalone dedicated servers
-        /// configure this before <see cref="Run"/>; hosted relay instances never use it.
+        /// Canonical server replay recording/retention for any server process
+        /// that runs the authoritative match. The legacy RunsTheMatch=false
+        /// compatibility path does not produce canonical server replays.
         /// </summary>
         public ServerReplayPolicy ReplayPolicy { get; set; } = ServerReplayPolicy.Default;
 
@@ -342,27 +344,11 @@ namespace MphRead.Mods.Network
         /// something else. <c>-simulate</c> and <c>-authority</c> are still
         /// accepted so deployed units keep starting, and do nothing.
         ///
-        /// The two servers that must set it false are the two inside a process
-        /// that already has a simulation, or is about to have several:
-        ///
-        /// <list type="bullet">
-        /// <item><see cref="NetHostSession"/> -- "Host: this computer". The
-        /// server is a thread inside the host's own game, and that game's
-        /// player owns the session; simulating here would have
-        /// <c>ServerSim.Start</c> call <c>NetSession.StartServerAuthority</c>
-        /// on top of the player who started it.</item>
-        /// <item><see cref="NetMaster"/> -- "Host: online". The directory runs
-        /// one of these per hosted match, several at a time, in one
-        /// process.</item>
-        /// </list>
-        ///
-        /// The reason is the same for both, and it is that
-        /// <see cref="NetSession"/> is static: a process has exactly one
-        /// session, so it can run exactly one match. For those two, a client
-        /// running the match is not a fallback -- it is how hosting works.
-        /// Removing the relay for good means an instance-based NetSession,
-        /// which is its own piece of work; see
-        /// <c>.claude/multiplayer/NETWORK-SERVERAUTH.md</c>.
+        /// False is retained only for compatibility and deterministic tests of
+        /// the old client-authority protocol. Normal hosting does not select it:
+        /// <see cref="NetHostSession"/>, <see cref="NetMaster"/> and
+        /// <see cref="HostPool"/> start isolated server processes so each match
+        /// gets its own static <see cref="NetSession"/> and server authority.
         /// </summary>
         public bool RunsTheMatch { get; init; } = true;
 
@@ -408,7 +394,7 @@ namespace MphRead.Mods.Network
             if (_phase == SessionPhase.InMatch) StartSimulation();
             Log(Simulating
                 ? "this server runs the match itself"
-                : "hosted game: the first client to connect runs the match");
+                : "compatibility mode: the first client to connect runs the match");
             Log($"rotation: {_rotation.Entries.Count} map(s), starting on {_rotation.Current}");
             Log(Hosts.Describe());
 
@@ -450,11 +436,9 @@ namespace MphRead.Mods.Network
                     }
                     else if (_matchEndedAt >= 0 && now - _matchEndedAt >= EndSequenceFor())
                     {
-                        if (SessionPolicy == ServerSessionPolicy.Lobby)
-                        {
-                            if (_returnToLobbyPending) ReturnToLobby();
-                            else ContinueLobbyMatch(now);
-                        }
+                        // Persistent lobbies always stop at the lobby after the
+                        // report. Continuous servers keep their rotation behavior.
+                        if (SessionPolicy == ServerSessionPolicy.Lobby) ReturnToLobby();
                         else AdvanceMap(now);
                     }
                     // Repeated rather than sent once: UDP drops, and a client that
@@ -499,9 +483,9 @@ namespace MphRead.Mods.Network
                     // once, and only with an empty server, so a busy one keeps
                     // playing and swaps when the last person leaves.
                     //
-                    // Hosted games count as people: they live in this process,
-                    // so a restart ends them, and somebody mid-match on one
-                    // would be dropped by an update they cannot see.
+                    // Hosted games count as active work too. They run in child
+                    // server processes tracked by Hosts, and restarting this parent
+                    // would tear those children down while people are playing.
                     if (AutoUpdate
                         && Update.ServerUpdate.ShouldRestart(_peers.Count + Hosts.Count))
                     {
@@ -617,13 +601,20 @@ namespace MphRead.Mods.Network
             }
             _matchEndedAt = now;
             foreach (Peer peer in _peers) peer.PostMatchReady = false;
+            CancelMapVote(now);
             SetPhase(SessionPhase.PostMatch);
-            // Before the state goes out, so the first results screen anybody
-            // draws can already be scrolled.
-            OpenBallot();
+
+            // A persistent lobby is the between-match decision point now. Keep
+            // the report/hunter picker, but do not ask a second map question on
+            // top of it. Continuous servers retain the results ballot/rotation.
+            if (SessionPolicy == ServerSessionPolicy.Lobby) CloseBallot();
+            else OpenBallot();
+
             Log($"match over on {CurrentDefinition.RoomKey} ({reason}); "
-                + $"{_rotation.Next.RoomKey} in {EndSequenceFor():0} s"
-                + (_ballotOpen ? "; ballot open" : ""));
+                + (SessionPolicy == ServerSessionPolicy.Lobby
+                    ? $"returning to lobby in {EndSequenceFor():0} s"
+                    : $"{_rotation.Next.RoomKey} in {EndSequenceFor():0} s"
+                        + (_ballotOpen ? "; ballot open" : "")));
             BroadcastMatchState(now);
             BroadcastMapChoices();
         }
@@ -641,18 +632,9 @@ namespace MphRead.Mods.Network
             Array.Clear(_slotLives);
             foreach (Peer connected in _peers) connected.LastIntentFrame = 0;
             TouchLobbyRevision("rotation advanced");
-            // A vote about which map to play next has been answered by the
-            // match ending, whatever the room was going to say.
-            if (_voteRunning)
-            {
-                _voteRunning = false;
-                _voteResolvedAt = now;
-                _voteResult = VoteStatePacket.StateFailed;
-                for (int i = 0; i < _peers.Count; i++)
-                {
-                    _peers[i].Ballot = 0;
-                }
-            }
+            // Votes belong to one match. No prompt, result or cooldown may
+            // leak into the next room.
+            CancelMapVote(now);
             // Ready describes the match that just ended. Carried into the next
             // one it would rotate the following map the moment it finished.
             for (int i = 0; i < _peers.Count; i++)
@@ -705,7 +687,12 @@ namespace MphRead.Mods.Network
                 MatchId = _matchId,
                 AuthorityEpoch = _authorityEpoch,
                 RoomKey = entry.RoomKey,
-                NextRoomKey = _returnToLobbyPending ? "" : _rotation.Next.RoomKey
+                // In a persistent lobby the next match is not committed until
+                // somebody starts it from the lobby, so the results screen must
+                // not promise a map that can still be changed there.
+                NextRoomKey = SessionPolicy == ServerSessionPolicy.Lobby
+                    ? ""
+                    : (_returnToLobbyPending ? "" : _rotation.Next.RoomKey)
             };
         }
 
@@ -746,8 +733,9 @@ namespace MphRead.Mods.Network
         /// else. An installation that has been running without the game files
         /// stops here, with the reason, on the first start after the update.
         ///
-        /// Skipped entirely -- not failed -- when <see cref="RunsTheMatch"/>
-        /// is false, which is a hosted game rather than a misconfiguration.
+        /// Skipped entirely when <see cref="RunsTheMatch"/> is false. That mode
+        /// exists for compatibility/tests; normal hosted games run in isolated
+        /// server processes with RunsTheMatch=true.
         /// </summary>
         /// <exception cref="ProgramException">
         /// The world could not be built. Thrown rather than logged and limped
@@ -814,8 +802,12 @@ namespace MphRead.Mods.Network
 
             try
             {
+                SessionStatePacket session = BuildSessionState();
                 MatchStatePacket state = BuildState(_now);
                 RosterPacket roster = BuildRoster();
+                byte[] sessionPacket = new byte[1 + SessionStatePacket.Size];
+                sessionPacket[0] = (byte)PacketType.SessionState;
+                session.Write(sessionPacket.AsSpan(1));
                 byte[] statePacket = new byte[1 + MatchStatePacket.Size];
                 statePacket[0] = (byte)PacketType.MatchState;
                 state.Write(statePacket.AsSpan(1));
@@ -842,7 +834,7 @@ namespace MphRead.Mods.Network
                     Players = players,
                     Bootstrap = new ReplayBootstrap
                     {
-                        Packets = new[] { statePacket, rosterPacket, snapshotPacket }
+                        Packets = new[] { sessionPacket, statePacket, rosterPacket, snapshotPacket }
                     }
                 };
                 ServerReplayRecorder.Start(metadata);
@@ -1394,6 +1386,31 @@ namespace MphRead.Mods.Network
             }
         }
 
+        /// <summary>
+        /// Forget a mid-match vote at a match/session boundary. This is a hard
+        /// reset rather than a failed result: the next lobby/match must not
+        /// inherit the old room, ballots, or cooldown.
+        /// </summary>
+        private void CancelMapVote(double now)
+        {
+            bool publish = _voteRunning || _voteResult != VoteStatePacket.StateIdle;
+            _voteRunning = false;
+            _voteRoom = "";
+            _voteProposer = "";
+            _voteProposerSlot = -1;
+            _voteStartedAt = 0;
+            _voteResolvedAt = Double.NegativeInfinity;
+            _voteResult = VoteStatePacket.StateIdle;
+            for (int i = 0; i < _peers.Count; i++)
+            {
+                _peers[i].Ballot = 0;
+            }
+            if (publish)
+            {
+                BroadcastVoteState(now);
+            }
+        }
+
         private (int Yes, int No, int Eligible, int Needed) CountVotes()
         {
             int yes = 0;
@@ -1478,8 +1495,8 @@ namespace MphRead.Mods.Network
             string wanted = roomKey.Trim();
             // The compiled-in room table, which custom maps in the server's
             // own maps folder are already part of (see CustomRooms.AppendRooms).
-            // No game files are read: a dedicated server has none, and this
-            // has to work there.
+            // This lookup itself performs no file I/O; authoritative servers
+            // still require the operator's game files to build/simulate rooms.
             foreach (KeyValuePair<string, RoomMetadata> entry in Metadata.RoomMetadata)
             {
                 if (entry.Value.Multiplayer

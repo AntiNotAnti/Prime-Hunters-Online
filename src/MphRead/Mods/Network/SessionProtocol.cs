@@ -49,7 +49,7 @@ namespace MphRead.Mods.Network
                 || src[8] > (byte)MatchFormat.Custom
                 || !Enum.IsDefined(typeof(GameMode), src[9])) return false;
             var flags = (SessionRules)BinaryPrimitives.ReadUInt16LittleEndian(src[14..]);
-            if (((ushort)flags & ~127) != 0) return false;
+            if (((ushort)flags & ~255) != 0) return false;
             state = new SessionStatePacket
             {
                 Phase = (SessionPhase)src[0], Policy = (ServerSessionPolicy)src[1],
@@ -69,7 +69,8 @@ namespace MphRead.Mods.Network
                     FriendlyFire = flags.HasFlag(SessionRules.FriendlyFire),
                     AffinityWeapons = flags.HasFlag(SessionRules.AffinityWeapons),
                     ShadowFreeze = flags.HasFlag(SessionRules.ShadowFreeze),
-                    HideOpponentHealth = flags.HasFlag(SessionRules.HideOpponentHealth)
+                    HideOpponentHealth = flags.HasFlag(SessionRules.HideOpponentHealth),
+                    DisablePowerups = flags.HasFlag(SessionRules.DisablePowerups)
                 }
             };
             return LobbyRules.ValidateDefinition(state.Match, out _) == LobbyResultCode.Ok

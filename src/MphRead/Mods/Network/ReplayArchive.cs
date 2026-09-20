@@ -98,7 +98,8 @@ namespace MphRead.Mods.Network
                     }
                 }
                 var packets = new List<byte[]>();
-                foreach (PacketType type in new[] { PacketType.MatchState, PacketType.Roster, PacketType.Snapshot })
+                foreach (PacketType type in new[] { PacketType.SessionState, PacketType.MatchState,
+                    PacketType.Roster, PacketType.Snapshot })
                     if (bootstrap.TryGetValue(type, out byte[]? packet)) packets.Add(packet);
                 ulong hash = match.RoomKey == metadata.RoomKey ? metadata.MapHash : ReplayMapIdentity.Compute(match.RoomKey);
                 var clip = Copy(metadata, new ReplayBootstrap { Packets = packets }, match.RoomKey,
@@ -137,6 +138,8 @@ namespace MphRead.Mods.Network
                 }
                 packets[type] = packet;
             }
+            else if (type == PacketType.SessionState && packet.Length == 1 + SessionStatePacket.Size)
+                packets[type] = packet;
             else if (type is PacketType.Roster or PacketType.Snapshot) packets[type] = packet;
         }
 

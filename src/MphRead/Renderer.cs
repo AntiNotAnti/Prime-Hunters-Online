@@ -4998,25 +4998,6 @@ namespace MphRead
             _hudDrawScale = scale;
         }
 
-        private float DiegeticHudFovScale(LayerInfo info)
-        {
-            bool visorOrHelmet = ReferenceEquals(info, Layer1Info)
-                || ReferenceEquals(info, Layer2Info)
-                || ReferenceEquals(info, Layer3Info);
-            if (!visorOrHelmet
-                || Features.ProHud
-                || PlayerEntity.Main?.ScanVisor == true
-                || _cameraMode != CameraMode.Player
-                || GameState.MenuPause
-                || GameState.DialogPause
-                || GameState.MatchState != MatchState.InProgress
-                || PlayerEntity.Main?.Flags1.TestFlag(PlayerFlags1.WeaponMenuOpen) == true)
-            {
-                return 1f;
-            }
-            return Mods.RenderOptions.HudFovScale;
-        }
-
         private void DrawHudLayer(LayerInfo info)
         {
             if (info.BindingId == -1)
@@ -5048,11 +5029,14 @@ namespace MphRead
                 width = viewWidth * info.ScaleX / 2 / (viewWidth / 2);
                 height = viewHeight * info.ScaleY / 2 / (viewHeight / 2);
             }
-            float fovScale = DiegeticHudFovScale(info);
-            width *= fovScale;
-            height *= fovScale;
-            float shiftX = info.ShiftX * fovScale;
-            float shiftY = info.ShiftY * fovScale;
+            // These layers are authored screen-space art. In particular, the
+            // helmet deliberately overscans the viewport (ScaleX = 2), so
+            // shrinking the quad around the screen centre when world FOV
+            // changes reveals normally cropped helmet/visor pixels and pulls
+            // the frame away from the screen edges. FOV belongs to the 3D
+            // projection only; preserve the HUD's authored crop and shifts.
+            float shiftX = info.ShiftX;
+            float shiftY = info.ShiftY;
             GL.Begin(PrimitiveType.TriangleStrip);
             // top right
             GL.TexCoord3(1f, 0f, 0f);
@@ -5908,6 +5892,13 @@ namespace MphRead
 
         public void OnKeyDown(KeyboardKeyEventArgs e)
         {
+            // Replay transport belongs to the replay itself, not the pause menu.
+            // Take these keys before debug/viewer shortcuts so the same controls
+            // work on desktop that Android already exposes through ReplayInput.
+            if (Mods.Replay.ReplayInput.HandleKey(e.Key))
+            {
+                return;
+            }
 #if DEBUG
             if (Selection.OnKeyDown(e, this))
             {
@@ -7605,17 +7596,29 @@ namespace MphRead
             // The pause menu wants the pointer back, and so does the results
             // screen: its hunter picker is something you click, and a grabbed
             // cursor has no position on screen to click with.
-            // A pen is an absolute device -- a point on the tablet is a point
-            // on the screen -- so grabbing the cursor, which is what turns the
-            // pointer into an endless stream of deltas, takes away the one
-            // property the whole feature rests on. The zone is released for
-            // the same reason the results screen is.
-            CursorState = (Scene.CameraMode == CameraMode.Player || Scene.IsFreeCam) && !Scene.FrameAdvance
+            //
+            // A pen is an absolute device, so stylus gameplay must keep a free
+            // pointer. Hidden is deliberately different from Grabbed here: it
+            // preserves that absolute position while PlayerEntityStylusHud
+            // draws the pointer itself, which is how its opacity can range all
+            // the way down to 0%. Placement and UI screens keep the platform
+            // cursor so they are never made unusable by that setting.
+            bool gameplayPointer = (Scene.CameraMode == CameraMode.Player || Scene.IsFreeCam)
+                && !Scene.FrameAdvance && !Mods.Network.DemoPlayback.IsActive
                 && !Mods.PauseMenu.Open && !Mods.EndScreen.Available
-                && !Mods.Input.PointerInput.StylusMode && !Mods.Input.StylusZone.Placing
-                && !Scene.ShowCursor && !GameState.DialogPause && !GameState.MenuPause
-                ? CursorState.Grabbed
-                : CursorState.Normal;
+                && !Mods.Input.StylusZone.Placing && !GameState.DialogPause && !GameState.MenuPause;
+            if (gameplayPointer && Mods.Input.PointerInput.StylusMode)
+            {
+                CursorState = CursorState.Hidden;
+            }
+            else if (gameplayPointer && !Scene.ShowCursor)
+            {
+                CursorState = CursorState.Grabbed;
+            }
+            else
+            {
+                CursorState = CursorState.Normal;
+            }
             // Where the pointer is, for the picker to light up what it is
             // over, and in the same units its hit boxes are kept in. Against
             // the client area, which is what GLFW reports the pointer in --

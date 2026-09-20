@@ -79,6 +79,19 @@ namespace MphRead.Mods.Network
         public static readonly int[] Replayed = new int[Slots];
 
         /// <summary>
+        /// Session-wide damage-pipeline totals. Unlike <see cref="Resolved"/>
+        /// and <see cref="Replayed"/>, these survive room/match resets so a
+        /// final netcheck report cannot erase earlier confirmed hits merely
+        /// because the lobby crossed a match boundary. They reset only with
+        /// the network session.
+        ///
+        /// Indexed by slot, so slot reuse deliberately means "traffic through
+        /// this slot during the session", not one immutable player identity.
+        /// </summary>
+        public static readonly int[] ResolvedSession = new int[Slots];
+        public static readonly int[] ReplayedSession = new int[Slots];
+
+        /// <summary>
         /// Beams each slot actually spawned on this machine.
         ///
         /// The missing third of the picture. Resolved says whether a hit
@@ -261,7 +274,9 @@ namespace MphRead.Mods.Network
         /// happening, four "damage sequence jumped" events per client per
         /// rotation.
         ///
-        /// The tallies go, because they are per-match diagnostics.
+        /// The per-match tallies go. Session-wide pipeline totals deliberately
+        /// survive so the final run report still describes everything that
+        /// crossed before this boundary.
         /// </summary>
         public static void ResetForRoomChange()
         {
@@ -348,7 +363,7 @@ namespace MphRead.Mods.Network
             _lastSeen[slot] = sequence;
         }
 
-        public static void Reset()
+        public static void Reset(bool resetSessionTotals = true)
         {
             Array.Clear(_history);
             Array.Clear(_sequence);
@@ -360,6 +375,11 @@ namespace MphRead.Mods.Network
             Array.Clear(_everSeen);
             Array.Clear(Resolved);
             Array.Clear(Replayed);
+            if (resetSessionTotals)
+            {
+                Array.Clear(ResolvedSession);
+                Array.Clear(ReplayedSession);
+            }
             Array.Clear(Fired);
             NetShotDiagnostics.Reset();
             NetTimingDiagnostics.Reset();
@@ -536,6 +556,7 @@ namespace MphRead.Mods.Network
             _sequence[slot] = NetLifecycleTracker.Next(_sequence[slot]);
             if (NetLog.Enabled) NetLog.Event($"[damage-publish] epoch={NetSession.AuthorityEpoch} match={NetSession.CurrentMatchId} victim={slot}/{NetPlayerLifecycle.Generation(slot)}/{NetPlayerLifecycle.Get(slot)} event={_sequence[slot]} shooter={attacker?.SlotIndex} launch={launchFrame}");
             Resolved[slot]++;
+            ResolvedSession[slot]++;
             if (NetLog.Enabled)
             {
                 // Every hit the machine running the match resolves, with the
@@ -776,6 +797,7 @@ namespace MphRead.Mods.Network
             int slot = player.SlotIndex;
             const int landed = 1;
             Replayed[slot]++;
+            ReplayedSession[slot]++;
             bool lethal = state.Health == 0;
             // Consumed before the "already down" return below, not after it.
             //
@@ -815,18 +837,12 @@ namespace MphRead.Mods.Network
             // itself. Only the health is still owed, and ApplyState assigns
             // that from this same snapshot immediately after.
             //
-            // A lethal confirmation still replays, even when the hit itself
-            // was predicted: reaching here with a lethal snapshot means this
-            // machine's prediction did *not* kill them -- either it was
-            // clamped (-nodeathprediction) or the killing blow was somebody
-            // else's -- and returning early would leave a player alive here
-            // and dead on every other screen. A kill this machine did predict
-            // never reaches this line; it is the "already down" return above.
-            //
-            // Not for a hit on this machine's own player, even one it dealt
-            // itself: nothing is ever predicted onto the local player, so
-            // asking would only report every splash from one's own bomb as a
-            // hit the prediction had missed.
+            // A lethal confirmation still replays even when the nonlethal part
+            // of the hit was predicted. Remote lethal prediction is always
+            // clamped to one health now, so the authority owns the body falling;
+            // returning early here would leave this client alive while the
+            // authoritative state says dead. Self-damage is handled by the exact
+            // confirmation path above and is not double-applied.
             if (predicted && !lethal)
             {
                 if (authorityHeadshot && attacker == PlayerEntity.Main)

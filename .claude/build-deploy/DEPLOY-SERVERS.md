@@ -26,96 +26,55 @@ dotnet publish src/MphRead/MphRead.csproj -c Release -r win-x64 \
 
 Notes
 
-- The exe may be locked by a running game; write `MphRead.new.exe` then `mv`.
-- Any protocol change requires server and every client to be the same build. `NetConfig.ProtocolVersion` is **8** in this build — a mismatched client is refused outright at Hello. Deploy the server before handing out a client built against a new version.
+- A running binary may be locked. Stage a new file and atomically rename/swap it; use the actual current binary name (`FruityPrime` / `FruityPrimeServer.exe`).
+- Any incompatible protocol change requires server and clients to match. Do **not** copy the protocol number into this runbook; read `NetConfig.ProtocolVersion` from `NetProtocol.cs` (15 at this audit). A mismatch is refused during Hello. Deploy authoritative servers before distributing a client that requires a new protocol.
 
 Standalone authoritative servers record canonical replays by default. Retention defaults to **25 GiB / 14 days / keep newest 100**. Override with `-serverreplays on|off`, `-serverreplaystoragegb N`, `-serverreplayretentiondays N`, and `-serverreplaykeeplast N`; `0` disables the corresponding size/age limit.
 
-## The fleet
+## Live fleet and deployment state
 
-Four boxes, not one. `deploy-server.sh` only ever touches the Pi -- the three
-Azure VMs are deployed by hand, and forgetting them is easy because the Pi is
-the one with a name anybody says out loud. **Ask the directory rather than
-remembering**, which is the only inventory that is never out of date:
+Do not keep IP addresses, VM counts, firewall snapshots, subscriptions or
+current unit state in this repository as architectural truth. They age faster
+than the code and have repeatedly turned this file into a map of yesterday.
 
-```bash
-FruityPrime -servers -master net.livetek.fr -masterport 27889
-```
-
-| Box | Region | Public relay | Also |
-|---|---|---|---|
-| `raspberrypi`, 89.160.162.50 (ARM64) | home | `mphread-server`, 27888 | `mphread-master` 27889 (the directory), `fruityprime-sim` 27890 |
-| `vm-test-01`, 13.78.14.98 | japaneast | `mphread-server`, 27888 | `fruityprime-sim` 27890 |
-| `vm-test-02`, 20.16.135.109 | westeurope | `mphread-server`, 27888 | |
-| `vm-test-03`, 20.230.186.218 | westus2 | `mphread-server`, 27888 | |
-
-Every Azure relay is `/opt/fruityprime-server/FruityPrime`, unit
-`mphread-server`, user `fpserver`, and all three take the same x86-64 build:
+Ask the directory for the current public game-server inventory:
 
 ```bash
-dotnet publish src/MphRead -c Release -r linux-x64 -p:MphReadServer=true \
-  --self-contained true -p:PublishSingleFile=true -o publish/server-x64
+./FruityPrime -servers -master <directory-host> -masterport 27889
 ```
 
-**All three Azure boxes are reached only through the Pi** -- port 22 is closed
-to the internet on every one of them, not just Japan, and they share one
-resource group (`RG-SANDBOX-PERSONAL`, subscription
-`03f0ad6d-b361-4a4c-a460-7bc5d94663e4`) and one login. Ask the VM what it is
-rather than guessing from the IP:
+Then verify the target host itself (service unit, binary SHA/version, UDP
+firewall, `paths.txt`, extracted game-data path and free disk) before deploying.
+A directory entry proves that a heartbeat arrived; the launcher's
+`StatusQuery`/join probe is what proves that a player can actually reach the
+server.
 
-```bash
-curl -s -H Metadata:true \
-  "http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01"
-```
+## Authoritative game servers
 
-## The simulation-authority servers (test, deployed 2026-09-09)
+Server authority is no longer a test-side `-simulate` deployment. A normal
+`-server` process runs the match itself, and `-simulate` / `-authority` are
+accepted compatibility no-ops. Every game server therefore needs operator-
+supplied extracted game files plus a valid `paths.txt`; it refuses startup
+rather than falling back to first-client authority.
 
-`-simulate` (`.claude/multiplayer/NETWORK-SERVERAUTH.md`) needs the game files
-beside the binary, so it is deployed by hand rather than by
-`deploy-server.sh`. Two boxes carry one, **on port 27890, unlisted, alongside
-the production relay on 27888 which is untouched**:
+Hosted games created by the launcher, directory or a host pool are isolated
+server child processes. Do not deploy an old relay beside a newer authoritative
+server and describe one as production and one as the test authority. If a
+legacy relay is intentionally kept for protocol testing, name and isolate it as
+legacy compatibility infrastructure.
 
-| Box | Path | Unit |
-|---|---|---|
-| the Pi (ARM64) | `~/mphread-sim/` | `fruityprime-sim.service`, user `livetek` |
-| Japan, `13.78.14.98` (x86-64) | `/opt/fruityprime-sim/` | `fruityprime-sim.service`, user `fpserver` |
+## Post-deploy checks
 
-**A box can carry both**, and Japan does: the relay on 27888 and the sim on
-27890 are separate units, separate directories and separate binaries. Deploying
-one is not deploying the other, and the relay is the one players join.
+1. Confirm the service is running the intended binary/version and that
+   `paths.txt` resolves on that host.
+2. Query its status from another machine and confirm protocol/map/player cap.
+3. Join with a current client and verify the client is **not** granted
+   `PacketType.Authority`.
+4. Cross at least one match boundary/rematch and confirm room rebuild plus
+   `MatchLoaded`/spawn lifecycle.
+5. Confirm canonical replay creation/retention when enabled.
+6. For a renamed/older systemd install, inspect `systemctl cat` after the first
+   migration instead of assuming `deploy-server.sh` changed the live unit.
 
-Both units carry two flags that are not optional here:
-
-- **`-nomaster`** — these are test servers and must not appear in the browser.
-- **`-noautoupdate`** — the newest GitHub release does not carry the
-  server-authority code, so an auto-update would silently put the relay build
-  back. Remove it once this work is released.
-
-The 52 MB pruned file set and `paths.txt` sit beside each binary. See
-NETWORK-SERVERAUTH.md for what is in it and why.
-
-**The Japan box is only reachable through the Pi**, which is the SSH jump host
-— port 22 is not open to the internet on it:
-
-```bash
-sshpass -e ssh -o ProxyCommand="sshpass -p <pi-pass> ssh -W %h:%p livetek@net.livetek.fr" \
-  livetek@13.78.14.98
-```
-
-**27890/UDP is open on Japan now, and is the test server anybody means when
-they say "Japan"** -- `13.78.14.98:27890`, simulating. Re-checked 2026-09-09
-from the WSL box: `-netcheck 13.78.14.98 -port 27890` joins, takes a slot and
-gets snapshots, at 267-278 ms.
-
-It was not always. This file used to say the NSG opened 27888 alone, which was
-measured and was true at the time: the service was listening on 0.0.0.0:27890
-and stepping the simulation while nothing outside could reach it, and 27889
-was equally closed, so the rule was a single port and not the 27888-28999 range
-it is assumed to be. If a fourth port is ever needed the fix is the same cloud
-control-plane change, from a machine with the Azure CLI:
-
-```bash
-az network nsg rule create --resource-group <rg> --nsg-name <nsg> \
-  --name fruityprime-sim --priority 1010 --protocol Udp \
-  --destination-port-ranges 27890 --access Allow --direction Inbound
-```
+See `SERVER.md`, `ARCHITECTURE-INVARIANTS.md` and
+`.claude/multiplayer/NETWORK-SERVERAUTH.md` for the current contract.

@@ -34,6 +34,9 @@ namespace MphRead.NetTest
                 ReorderedIntentDoesNotDuplicateShot();
                 DeadHeldFireDoesNotSpawnGhostShot();
                 GhostShotFaultMatrix();
+                ClaimGeometryBoundaries();
+                ClaimArbitrationOrdering();
+                DamagePipelineSessionTotalsSurviveMatchReset();
                 Console.WriteLine($"PASS: {_checks} health/shot assertions");
                 return 0;
             }
@@ -214,6 +217,70 @@ namespace MphRead.NetTest
             var dead = Intent(11, shooting: true, playing: false); dead.Presses[0] = (uint)IntentButtons.Shoot;
             NetPlayerBridge.ApplyIntent(shooter, dead);
             Check(!shooter.Controls.Shoot.IsDown && !shooter.Controls.Shoot.IsPressed, nameof(DeadHeldFireDoesNotSpawnGhostShot));
+        }
+
+        private static void ClaimGeometryBoundaries()
+        {
+            MethodInfo within = typeof(NetHitClaims).GetMethod("WithinClaimRadius",
+                BindingFlags.NonPublic | BindingFlags.Static)!;
+            bool Accepted(Vector3 point, byte beam = (byte)BeamType.Imperialist)
+                => (bool)within.Invoke(null, new object[] { Vector3.Zero, point, beam })!;
+
+            Check(Accepted(Vector3.Zero), "claim geometry accepts exact position");
+            Check(Accepted(Vector3.UnitX * (NetHitClaims.ClaimRadius - 0.001f)),
+                "claim geometry accepts just inside beam radius");
+            Check(Accepted(Vector3.UnitX * NetHitClaims.ClaimRadius),
+                "claim geometry accepts exact beam radius");
+            Check(!Accepted(Vector3.UnitX * (NetHitClaims.ClaimRadius + 0.001f)),
+                "claim geometry rejects just outside beam radius");
+            Check(Accepted(Vector3.UnitX * NetHitClaims.MeleeRadius, HitClaimPacket.NoBeam),
+                "claim geometry accepts exact melee radius");
+            Check(!Accepted(Vector3.UnitX * (NetHitClaims.MeleeRadius + 0.001f), HitClaimPacket.NoBeam),
+                "claim geometry rejects just outside melee radius");
+            Check(!Accepted(new Vector3(Single.NaN, 0, 0)),
+                "claim geometry rejects non-finite point");
+        }
+
+        private static void ClaimArbitrationOrdering()
+        {
+            MethodInfo diedBefore = typeof(NetHitClaims).GetMethod("ShooterDiedBeforeShot",
+                BindingFlags.NonPublic | BindingFlags.Static)!;
+            bool Refused(bool dead, uint deathFire, uint launch, uint ack)
+                => (bool)diedBefore.Invoke(null, new object[] { dead, deathFire, launch, ack })!;
+
+            Check(!Refused(false, 10, 20, 20), "live shooter is never voided");
+            Check(!Refused(true, 20, 20, 20), "equal-world lethal shots trade");
+            Check(Refused(true, 19, 20, 20), "strictly earlier death voids later shot");
+            Check(!Refused(true, 21, 20, 20), "later death does not void earlier shot");
+            Check(Refused(true, 19, 0, 20), "zero launch frame falls back to ack");
+            Check(!Refused(true, 20, 0, 20), "ack fallback preserves equal-world trade");
+        }
+
+        private static void DamagePipelineSessionTotalsSurviveMatchReset()
+        {
+            NetDamage.Reset();
+            NetDamage.Resolved[1] = 3;
+            NetDamage.Replayed[1] = 2;
+            NetDamage.ResolvedSession[1] = 3;
+            NetDamage.ReplayedSession[1] = 2;
+
+            NetDamage.ResetForRoomChange();
+            Check(NetDamage.Resolved[1] == 0 && NetDamage.Replayed[1] == 0,
+                "room reset clears match damage pipeline");
+            Check(NetDamage.ResolvedSession[1] == 3 && NetDamage.ReplayedSession[1] == 2,
+                "room reset preserves session damage pipeline");
+
+            NetDamage.Resolved[1] = 4;
+            NetDamage.Replayed[1] = 4;
+            NetDamage.Reset(resetSessionTotals: false);
+            Check(NetDamage.Resolved[1] == 0 && NetDamage.Replayed[1] == 0,
+                "persistent match reset clears match damage pipeline");
+            Check(NetDamage.ResolvedSession[1] == 3 && NetDamage.ReplayedSession[1] == 2,
+                "persistent match reset preserves session damage pipeline");
+
+            NetDamage.Reset();
+            Check(NetDamage.ResolvedSession[1] == 0 && NetDamage.ReplayedSession[1] == 0,
+                "session reset clears session damage pipeline");
         }
 
         private static void GhostShotFaultMatrix()

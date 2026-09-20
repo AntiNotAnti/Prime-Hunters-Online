@@ -76,14 +76,13 @@ macOS and Android
   The smoke test checks headless startup; it does not prove a visible GLFW
   window, OpenGL gameplay, or Gatekeeper acceptance of an Internet download.
 - **Android** is `src/MphRead.Android/`, a head project compiling the same
-  sources with `ANDROID` defined. It now builds a front screen **and a
-  match**: the engine's desktop GL is redirected to OpenGL ES 3.0 by a single
-  using alias pointing `GL` at `Mods/Render/GlEs.cs`, and the keyboard and
-  mouse it reads are synthesised from on-screen controls, so no call site in
-  the renderer or the input path changed. Full account:
-  `.claude/android/ANDROID-PORT.md`. The front screen has been run on an
-  emulator; **the match has not been loaded anywhere** -- see
-  `.claude/KNOWN-GAPS.md`.
+  sources with `ANDROID` defined. It builds the launcher and a playable match:
+  desktop GL calls are redirected to the OpenGL ES compatibility layer and
+  keyboard/mouse input is synthesized from touch/controller input. The launcher
+  and an offline match have been driven on an emulator with extracted game files.
+  Emulator rendering is not a quality reference; real-device touch, driver and
+  presentation behavior remain the important manual checks. See
+  `../android/ANDROID-PORT.md` and `../KNOWN-GAPS.md`.
 - The head is still a compile check on shared code: it **stops building** the
   moment that code grows something desktop-only. It already forced out
   `LauncherPrefs.Directory` (an Android package's directory is read-only, so
@@ -91,8 +90,8 @@ macOS and Android
   `GameFiles.Root` for `paths.txt`, and the `ANDROID` guard in `GuiLauncher`
   (Android stands the toolkit up from its activity, with no desktop backend
   to detect).
-- Building Android needs the workload, a JDK 17 and an SDK with
-  `platforms;android-35`:
+- Building Android needs the workload, a JDK 17 and an SDK with the platform
+  required by `net10.0-android36.0` (currently Android API 36):
   ```bash
   export JAVA_HOME=$HOME/jdk17
   dotnet workload install android

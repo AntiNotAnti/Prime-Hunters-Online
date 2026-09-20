@@ -702,14 +702,11 @@ its hash and its size), `MapWant` (the client asks for the bytes from offset N),
 `MapChunk` (one piece of the `.fpmap`), `MapDone` (the client has it and it
 hashes right). Nothing in this build sends or answers any of them.
 
-They were spent early on purpose. `NetConfig.ProtocolVersion` 7 already refuses
-every client built before it, for reasons that have nothing to do with map
-transfer; taking the numbers now means that refusal is the same refusal that
-will cover the transfer, instead of a second protocol bump -- and a second bump
-is a second day of every server in the world having to be redeployed before
-anybody can play. A client built today cannot meet a server that speaks the
-transfer and misread a chunk as something else, because it cannot connect to it
-at all.
+They were reserved early so future map-transfer work cannot collide with
+lobby/gameplay packet IDs. The current protocol already refuses incompatible
+peers before a match begins. Whether implementing transfer requires another
+protocol bump depends on the final wire semantics at that time; do not infer it
+from the historical protocol-7 reservation.
 
 What is settled about the shape, so that the numbers mean something:
 

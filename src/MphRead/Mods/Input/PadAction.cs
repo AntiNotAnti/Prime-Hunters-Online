@@ -48,7 +48,19 @@ namespace MphRead.Mods.Input
         Chat,
         WeaponWheel,
         VoltDriver, Battlehammer, Imperialist, Judicator, Magmaul, ShockCoil,
-        OmegaCannon, AffinitySlot, LastWeapon
+        OmegaCannon, AffinitySlot, LastWeapon,
+
+        // Replay-only actions. Appended so existing persisted enum values and
+        // controller profile data remain stable.
+        ReplayPlayPause,
+        ReplayStep,
+        ReplaySeekBack,
+        ReplaySeekForward,
+        ReplaySlower,
+        ReplayFaster,
+        ReplayPrevPlayer,
+        ReplayNextPlayer,
+        ReplayCameraMode
     }
 
 }

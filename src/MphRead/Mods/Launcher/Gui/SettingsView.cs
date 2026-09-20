@@ -646,7 +646,7 @@ namespace MphRead.Mods.Launcher.Gui
                     Mods.Network.DemoClip.PostRollSeconds))));
 
             Heading(page, "Replay library");
-            Explain(page, "Full recordings, instant clips and recovered sessions appear under "
+            Explain(page, "Full recordings, instant clips and recovered sessions appear in "
                 + "REPLAY STUDIO on the main screen. Files are stored in:\n"
                 + Mods.Network.DemoLibrary.Directory);
 
@@ -664,10 +664,50 @@ namespace MphRead.Mods.Launcher.Gui
             Explain(page, "When the limit is reached, the oldest full-match recordings are "
                 + "removed first. Favorites are always protected. Clips remain protected unless "
                 + "you explicitly allow them to be pruned.");
+
+            Heading(page, "Replay keyboard");
+            Explain(page, "These keys control replay playback directly while the match is on screen.");
+            _keyRows.Add(Add(page, new KeyRow("Play / pause",
+                () => InputSettings.ReplayPlayPauseKey, k => InputSettings.ReplayPlayPauseKey = k)));
+            _keyRows.Add(Add(page, new KeyRow("Step backward",
+                () => InputSettings.ReplayStepBackKey, k => InputSettings.ReplayStepBackKey = k)));
+            _keyRows.Add(Add(page, new KeyRow("Step forward",
+                () => InputSettings.ReplayStepForwardKey, k => InputSettings.ReplayStepForwardKey = k)));
+            _keyRows.Add(Add(page, new KeyRow("Seek back 5 seconds",
+                () => InputSettings.ReplaySeekBackKey, k => InputSettings.ReplaySeekBackKey = k)));
+            _keyRows.Add(Add(page, new KeyRow("Seek forward 5 seconds",
+                () => InputSettings.ReplaySeekForwardKey, k => InputSettings.ReplaySeekForwardKey = k)));
+            _keyRows.Add(Add(page, new KeyRow("Slower",
+                () => InputSettings.ReplaySlowerKey, k => InputSettings.ReplaySlowerKey = k)));
+            _keyRows.Add(Add(page, new KeyRow("Faster",
+                () => InputSettings.ReplayFasterKey, k => InputSettings.ReplayFasterKey = k)));
+            _keyRows.Add(Add(page, new KeyRow("Restart replay",
+                () => InputSettings.ReplayRestartKey, k => InputSettings.ReplayRestartKey = k)));
+
+            Heading(page, "Replay controller");
+            Explain(page, "Replay controller bindings are separate from gameplay bindings, so A can "
+                + "play/pause here while still being Jump during a match.");
+            foreach (Mods.Input.PadAction action in Mods.Input.PadBindings.ReplayActions)
+                _replayPadRows.Add(Add(page, new PadRow(action)));
+
+            var resetReplay = new DeckButton("Reset replay controls", Deck.Face.Brass,
+                sizeEms: .9, padXEms: .8, padYEms: .38, lip: 3)
+            {
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Margin = new Thickness(0, 10, 0, 0)
+            };
+            resetReplay.Click += (_, _) =>
+            {
+                InputSettings.ResetReplayBindings();
+                foreach (KeyRow row in _keyRows) row.InvalidateVisual();
+                foreach (PadRow row in _replayPadRows) row.InvalidateVisual();
+            };
+            page.Children.Add(resetReplay);
         }
 
         /// <summary>Every key row, so Reset can redraw them from whichever page it is on.</summary>
         private List<KeyRow> _keyRows = new();
+        private readonly List<PadRow> _replayPadRows = new();
 
         /// <summary>The pen tablet page keeps common setup visible and hides tuning.</summary>
         private void BuildStylus(StackPanel page)
@@ -686,7 +726,7 @@ namespace MphRead.Mods.Launcher.Gui
 
             Heading(page, "Controller buttons");
             var padRows = new List<PadRow>();
-            foreach (Mods.Input.PadAction action in Mods.Input.PadBindings.Actions)
+            foreach (Mods.Input.PadAction action in Mods.Input.PadBindings.GameplayActions)
             {
                 padRows.Add(Add(page, new PadRow(action)));
             }
@@ -706,15 +746,21 @@ namespace MphRead.Mods.Launcher.Gui
                 _invertX.On = InputSettings.InvertMouseX;
                 _penTablet.On = Mods.Input.PointerInput.StylusMode;
                 if (_repositionFilter != null) _repositionFilter.On = Mods.Input.PointerInput.GuardJumps;
-                if (_stylusZone != null && _stylusOpacity != null)
+                if (_stylusZone != null)
                 {
                     _stylusZone.On = Mods.Input.StylusZone.Wanted;
-                    _stylusOpacity.Value = (int)MathF.Round(Mods.Input.StylusZone.Opacity * 100);
                 }
+                if (_stylusCursorOpacity != null)
+                    _stylusCursorOpacity.Value = (int)MathF.Round(Mods.Input.StylusZone.CursorOpacity * 100);
+                if (_stylusOutlineOpacity != null)
+                    _stylusOutlineOpacity.Value = (int)MathF.Round(Mods.Input.StylusZone.OutlineOpacity * 100);
+                if (_stylusButtonOpacity != null)
+                    _stylusButtonOpacity.Value = (int)MathF.Round(Mods.Input.StylusZone.ButtonOpacity * 100);
                 ShowStylusRows();
                 _scrollAllWeapons.On = InputSettings.ScrollAllWeapons;
                 _gamepadSettings.Reload();
                 foreach (PadRow row in padRows) row.InvalidateVisual();
+                foreach (PadRow row in _replayPadRows) row.InvalidateVisual();
                 foreach (KeyRow row in _keyRows) row.InvalidateVisual();
                 if (_touchButtonsRow != null) _touchButtonsRow.On = Mods.Input.TouchSettings.ButtonsVisible;
                 foreach ((Mods.Input.TouchControl control, ToggleRow row) in _touchRows)
@@ -728,7 +774,9 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly List<(Mods.Input.TouchControl Control, ToggleRow Row)> _touchRows = new();
 
         private ToggleRow? _stylusZone;
-        private SliderRow? _stylusOpacity;
+        private SliderRow? _stylusCursorOpacity;
+        private SliderRow? _stylusOutlineOpacity;
+        private SliderRow? _stylusButtonOpacity;
         private readonly List<Control> _stylusRows = new();
 
         private void ShowStylusRows()
@@ -764,11 +812,17 @@ namespace MphRead.Mods.Launcher.Gui
             _stylusAdvanced = new StackPanel { Spacing = 2, IsVisible = false };
             _repositionFilter = Add(_stylusAdvanced,
                 new ToggleRow("Reposition filtering", Mods.Input.PointerInput.GuardJumps));
-            _stylusOpacity = Add(_stylusAdvanced, new SliderRow("Overlay opacity",
-                (int)MathF.Round(Mods.Input.StylusZone.Opacity * 100),
-                v => $"{v}%", min: 4, max: 60, keyStep: 2));
+            _stylusCursorOpacity = Add(_stylusAdvanced, new SliderRow("Cursor opacity",
+                (int)MathF.Round(Mods.Input.StylusZone.CursorOpacity * 100),
+                v => $"{v}%", min: 0, max: 100, keyStep: 5));
+            _stylusOutlineOpacity = Add(_stylusAdvanced, new SliderRow("Rectangle opacity",
+                (int)MathF.Round(Mods.Input.StylusZone.OutlineOpacity * 100),
+                v => $"{v}%", min: 0, max: 100, keyStep: 5));
+            _stylusButtonOpacity = Add(_stylusAdvanced, new SliderRow("Button opacity",
+                (int)MathF.Round(Mods.Input.StylusZone.ButtonOpacity * 100),
+                v => $"{v}%", min: 0, max: 100, keyStep: 5));
             _stylusAdvanced.Children.Add(new Note(
-                "Reposition filtering ignores tablet jumps after lift/re-contact. The overlay opacity only affects the DS touch-screen guide."));
+                "Reposition filtering ignores tablet jumps after lift/re-contact. Cursor, rectangle, and circular button opacity are independent; 0% hides that element during play. Zone placement stays visible while you configure it."));
             _stylusAdvancedButton = new DeckButton("Advanced", Deck.Face.Slate,
                 sizeEms: .9, padXEms: .8, padYEms: .38, lip: 3)
             {
@@ -1183,11 +1237,16 @@ namespace MphRead.Mods.Launcher.Gui
             Mods.Input.PointerInput.StylusMode = _penTablet.On;
             if (_repositionFilter != null)
                 Mods.Input.PointerInput.GuardJumps = _repositionFilter.On;
-            if (_stylusZone != null && _stylusOpacity != null)
+            if (_stylusZone != null)
             {
                 Mods.Input.StylusZone.Enabled = _stylusZone.On;
-                Mods.Input.StylusZone.Opacity = Math.Clamp(_stylusOpacity.Value / 100f, 0.02f, 1f);
             }
+            if (_stylusCursorOpacity != null)
+                Mods.Input.StylusZone.CursorOpacity = Math.Clamp(_stylusCursorOpacity.Value / 100f, 0, 1);
+            if (_stylusOutlineOpacity != null)
+                Mods.Input.StylusZone.OutlineOpacity = Math.Clamp(_stylusOutlineOpacity.Value / 100f, 0, 1);
+            if (_stylusButtonOpacity != null)
+                Mods.Input.StylusZone.ButtonOpacity = Math.Clamp(_stylusButtonOpacity.Value / 100f, 0, 1);
             InputSettings.ScrollAllWeapons = _scrollAllWeapons.On;
             if (_clipPostRollRow != null)
                 Mods.Network.DemoClip.PostRollSeconds = Mods.Network.DemoClip.PostRollLengths[

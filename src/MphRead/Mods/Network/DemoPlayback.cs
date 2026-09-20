@@ -182,8 +182,8 @@ namespace MphRead.Mods.Network
             }
             LastResult = _reader.LastResult != ReplayOpenResult.Success ? _reader.LastResult : !hadRecords ? ReplayOpenResult.Empty : ReplayOpenResult.MissingMatchState;
             LastError = !hadRecords
-                ? "That demo file is empty -- nothing was ever recorded to it."
-                : "That demo has no match info in its first few seconds -- "
+                ? "That replay file is empty -- nothing was ever recorded to it."
+                : "That replay has no match info in its first few seconds -- "
                     + "the recording may have started before the server said what map it was running.";
             Console.WriteLine($"[demo] \"{path}\": {LastError}");
             Stop();
@@ -214,7 +214,7 @@ namespace MphRead.Mods.Network
             LastResult = result;
             if (_reader == null)
             {
-                LastError = "That demo could not be read a second time.";
+                LastError = "That replay could not be read a second time.";
                 Console.WriteLine($"[demo] \"{path}\": {LastError}");
                 Stop();
                 return false;

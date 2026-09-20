@@ -35,7 +35,8 @@ namespace MphRead.Mods.Launcher
         /// working on this, and a name that resolves somewhere else later
         /// would send every copy of the launcher with it.
         /// </summary>
-        public const string DefaultServer = "89.160.162.50";
+        public const string DefaultServer = "51.161.113.128";
+        private const string LegacyDefaultServer = "89.160.162.50";
 
         public static string ServerAddress { get; set; } = DefaultServer;
         public static int ServerPort { get; set; } = Network.NetConfig.DefaultPort;
@@ -198,7 +199,9 @@ namespace MphRead.Mods.Launcher
                     switch (key)
                     {
                         case "server_address":
-                            ServerAddress = value;
+                            ServerAddress = value.Equals(LegacyDefaultServer, StringComparison.OrdinalIgnoreCase)
+                                ? DefaultServer
+                                : value;
                             break;
                         case "master_host":
                             if (value.Length > 0)

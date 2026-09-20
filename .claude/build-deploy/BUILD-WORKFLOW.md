@@ -19,7 +19,7 @@ Workflows
 | Workflow | When | What |
 |---|---|---|
 | `.github/workflows/build.yml` | every push and PR | publishes Windows/Linux targets on Ubuntu and signed macOS application archives on matching ARM64/Intel Mac runners, plus a Windows-runner job that builds and starts the Windows dedicated server |
-| `.github/workflows/release.yml` | a `v*` tag, or by hand -- naming a tag or picking a bump that creates one | resolves one tag, builds desktop/Android and macOS packages in parallel, then attaches all validated archives to a draft release |
+| `.github/workflows/release.yml` | a `v*` tag, or by hand -- naming a tag or picking a bump that creates one | resolves one tag, builds desktop/Android and macOS packages in parallel, then publishes a GitHub Release directly in this public repository. Tag pushes publish; a manual run may set `publish=false` to leave a draft |
 
 Tagging
 
@@ -62,10 +62,10 @@ Three things worth not rediscovering:
   empty, which is exactly what the bump does -- hence
   `PUSHED_TAG: ${{ github.event_name == 'push' && github.ref_name || '' }}`,
   empty for every event that is not a tag push.
-- **Nothing auto-tags on a push to master**, deliberately: every push would
-  be a release. Nothing derives a version from commit messages either -- the
-  history here is not conventional-commits shaped, and the human gate already
-  exists downstream, since the release comes out as a draft either way.
+- **Nothing auto-tags on a push to main**, deliberately: every push would be a
+  release. Nothing derives a version from commit messages either. A tag push
+  publishes after validation; a manually dispatched run may explicitly leave
+  the release as a draft.
 
 Release notes
 
@@ -77,9 +77,10 @@ never fatal -- a rate limit or a tag with no predecessor leaves the standing
 block and a `::warning::` in the log. Before this the notes were the same
 words on every release and said nothing about the build being downloaded.
 
-Rerunning the same tag updates the draft instead of failing: the
-create-vs-upload arms are chosen by `gh release view`, so the notes are
-regenerated and the assets `--clobber`ed.
+Rerunning the same tag updates the existing release instead of failing: the
+create-vs-upload arms are chosen by `gh release view`, so notes are regenerated
+and assets are `--clobber`ed. A manual run follows its `publish` input; tag
+pushes publish.
 
 Two Windows executables, one PE header field
 
@@ -99,9 +100,11 @@ Linux keeps the plain `FruityPrime` name, and the Pi's own
 `deploy-server.sh` migrates a systemd unit still pointing at the old name,
 `MphRead`.
 
-Both x64 Linux builds (game's server capability, and the standalone server
-package) are started on the Ubuntu release runner, since it can actually run
-x64; the Windows server gets the same proof on a Windows runner. The ARM64
+Both x64 Linux builds (game's server capability and the standalone server
+package) run the dedicated-server startup contract on the Ubuntu release
+runner. CI has no operator-supplied game files, so the expected gameplay-server
+result is an actionable refusal and exit 1, not a live match. The Windows
+server gets the same contract on a Windows runner. The ARM64
 package is cross-compiled and never started by CI -- only the Pi, through
 `deploy-server.sh`, has ever run it.
 `tools/check-dedicated-server.sh` runs on the Windows runner too, in Git
@@ -125,7 +128,7 @@ tools/check-no-game-assets.sh publish/win-x64    # a build
 
 Notes
 
-- The repository was renamed from `liveteklol/MphRead` to `liveteklol/Fruity-Prime`. `Mods/Branding.cs.Repository` contains the current name; GitHub's old-slug redirect covers `gh`/API calls but should not be relied on.
+- `AntiNotAnti/Prime-Hunters-Online` is public and is the single source, tag, release and updater repository. The release workflow uses its built-in `GITHUB_TOKEN`; no cross-repository release PAT is required. `Mods/Branding.cs` keeps `ReleaseRepository` as a semantic alias of `Repository`.
 - `MPHREAD_SERVER` (defined on server builds) is a different question from "has no launcher": it is what makes a bare invocation print what the binary is for, instead of falling through to upstream's setup check.
 
 ## Updating in place

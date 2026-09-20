@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 namespace MphRead.Mods.Input
 {
     public sealed class PadBindingState
@@ -25,7 +26,18 @@ namespace MphRead.Mods.Input
             /* Chat       */ GamepadButtons.LeftThumb,
             /* WeaponWheel */ GamepadButtons.RightThumb,
             /* Direct weapons and last weapon are opt-in. */
-            0, 0, 0, 0, 0, 0, 0, 0, 0
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+            // Replay controls occupy a different input context, so sharing
+            // physical buttons with gameplay is intentional and conflict-free.
+            /* ReplayPlayPause */ GamepadButtons.A,
+            /* ReplayStep      */ GamepadButtons.X,
+            /* ReplaySeekBack  */ GamepadButtons.DpadLeft,
+            /* ReplaySeekForward */ GamepadButtons.DpadRight,
+            /* ReplaySlower    */ GamepadButtons.DpadDown,
+            /* ReplayFaster    */ GamepadButtons.DpadUp,
+            /* ReplayPrevPlayer */ GamepadButtons.LeftBumper,
+            /* ReplayNextPlayer */ GamepadButtons.RightBumper,
+            /* ReplayCameraMode */ GamepadButtons.Y
         };
 
         public string Preset { get; internal set; } = "Default";
@@ -39,7 +51,10 @@ namespace MphRead.Mods.Input
 
         /// <summary>Every action, in the order a settings screen should list them.</summary>
         public IReadOnlyList<PadAction> Actions => ActionOrder;
-        private readonly PadAction[] ActionOrder = new[]
+        public IReadOnlyList<PadAction> GameplayActions => GameplayActionOrder;
+        public IReadOnlyList<PadAction> ReplayActions => ReplayActionOrder;
+
+        private static readonly PadAction[] GameplayActionOrder = new[]
         {
             PadAction.Shoot, PadAction.Jump, PadAction.Morph, PadAction.Zoom,
             PadAction.ScanVisor, PadAction.Scan, PadAction.NextWeapon,
@@ -48,6 +63,18 @@ namespace MphRead.Mods.Input
             PadAction.VoltDriver, PadAction.Battlehammer, PadAction.Imperialist, PadAction.Judicator,
             PadAction.Magmaul, PadAction.ShockCoil, PadAction.OmegaCannon, PadAction.AffinitySlot, PadAction.LastWeapon
         };
+
+        private static readonly PadAction[] ReplayActionOrder = new[]
+        {
+            PadAction.ReplayPlayPause, PadAction.ReplayStep,
+            PadAction.ReplaySeekBack, PadAction.ReplaySeekForward,
+            PadAction.ReplaySlower, PadAction.ReplayFaster,
+            PadAction.ReplayPrevPlayer, PadAction.ReplayNextPlayer,
+            PadAction.ReplayCameraMode
+        };
+
+        private static readonly PadAction[] ActionOrder = GameplayActionOrder
+            .Concat(ReplayActionOrder).ToArray();
 
         public GamepadButtons Get(PadAction action)
         {
@@ -66,7 +93,7 @@ namespace MphRead.Mods.Input
                     if (Primary[index] == 0) Primary[index] = button;
                     else if (Secondary[index] == 0) Secondary[index] = button;
                 }
-            Preset = "Custom";
+            if (!IsReplay(action)) Preset = "Custom";
             Revision++;
         }
 
@@ -86,7 +113,7 @@ namespace MphRead.Mods.Input
             GamepadButtons old = Slot(action, slot);
             if (slot == 0) Primary[index] = button; else Secondary[index] = button;
             _current[index] = (_current[index] & ~old) | Primary[index] | Secondary[index];
-            Preset = "Custom";
+            if (!IsReplay(action)) Preset = "Custom";
             Revision++;
         }
         public bool Single(GamepadButtons button)
@@ -94,18 +121,21 @@ namespace MphRead.Mods.Input
         public GamepadButtons Modifier(PadAction action, int slot) => Modifiers[(int)action, slot];
         public string DescribeSlot(PadAction action, int slot)
             => (Modifier(action, slot) == 0 ? "" : ButtonName(Modifier(action, slot)) + " + ") + Describe(Slot(action, slot));
-        public ulong Evaluate(GamepadButtons buttons, GamepadButtons suppressed = 0)
+        public ulong Evaluate(GamepadButtons buttons, GamepadButtons suppressed = 0,
+            bool replayContext = false)
         {
             GamepadButtons modifiers = 0, used = 0;
             ulong result = 0;
-            foreach (var action in ActionOrder) for (int slot = 0; slot < 2; slot++)
+            IEnumerable<PadAction> actions = replayContext
+                ? ReplayActionOrder.Append(PadAction.Menu) : GameplayActionOrder;
+            foreach (var action in actions) for (int slot = 0; slot < 2; slot++)
             {
                 var modifier = Modifier(action, slot); var button = Slot(action, slot);
                 modifiers |= modifier;
                 if (modifier != 0 && button != 0 && (buttons & (modifier | button)) == (modifier | button))
                 { result |= 1UL << (int)action; used |= modifier | button; }
             }
-            foreach (var action in ActionOrder)
+            foreach (var action in actions)
             {
                 var available = buttons & ~(modifiers | used | suppressed);
                 // Retain additional alternatives from legacy flag-set bindings.
@@ -115,10 +145,12 @@ namespace MphRead.Mods.Input
             }
             return result;
         }
-        public GamepadButtons ChordButtons(GamepadButtons buttons)
+        public GamepadButtons ChordButtons(GamepadButtons buttons, bool replayContext = false)
         {
             GamepadButtons used = 0;
-            foreach (var action in ActionOrder) for (int slot = 0; slot < 2; slot++)
+            IEnumerable<PadAction> actions = replayContext
+                ? ReplayActionOrder.Append(PadAction.Menu) : GameplayActionOrder;
+            foreach (var action in actions) for (int slot = 0; slot < 2; slot++)
             {
                 var modifier = Modifier(action, slot); var chord = modifier | Slot(action, slot);
                 if (modifier != 0 && (buttons & chord) == chord) used |= chord;
@@ -168,12 +200,21 @@ namespace MphRead.Mods.Input
         public IReadOnlyList<PadAction> Conflicts(PadAction action, GamepadButtons button, GamepadButtons modifier = 0)
         {
             var result = new List<PadAction>();
-            if (button != 0) foreach (var other in Actions)
-                if (other != action && ((Slot(other, 0) == button && Modifier(other, 0) == modifier)
+            if (button != 0) foreach (var other in ActionOrder)
+                if (other != action && SameContext(action, other)
+                    && ((Slot(other, 0) == button && Modifier(other, 0) == modifier)
                     || (Slot(other, 1) == button && Modifier(other, 1) == modifier)
                     || (modifier == 0 && (Get(other) & ~(Slot(other, 0) | Slot(other, 1)) & button) != 0))) result.Add(other);
             return result;
         }
+
+        private static bool SameContext(PadAction first, PadAction second)
+            => first == PadAction.Menu || second == PadAction.Menu
+                || IsReplay(first) == IsReplay(second);
+
+        private static bool IsReplay(PadAction action)
+            => action >= PadAction.ReplayPlayPause;
+
         public void Assign(PadAction action, int slot, GamepadButtons button, string resolution, GamepadButtons modifier = 0)
         {
             if (resolution == "Cancel") return;
@@ -195,7 +236,7 @@ namespace MphRead.Mods.Input
         public void ApplyPreset(string name)
         {
             if (name == "Custom") { Preset = name; return; }
-            Reset();
+            ResetGameplay();
 
             if (name == "Bumper Jumper")
             {
@@ -220,9 +261,17 @@ namespace MphRead.Mods.Input
             Array.Copy(Modifiers, copy.Modifiers, Modifiers.Length);
             copy.Preset = Preset; copy.Revision = Revision; return copy;
         }
+        private void ResetGameplay()
+        {
+            foreach (PadAction action in GameplayActionOrder)
+                Set(action, _defaults[(int)action]);
+            Preset = "Default";
+        }
+
         public void Reset()
         {
-            foreach (PadAction action in Actions) Set(action, _defaults[(int)action]);
+            foreach (PadAction action in ActionOrder)
+                Set(action, _defaults[(int)action]);
             Preset = "Default";
         }
 
@@ -249,6 +298,15 @@ namespace MphRead.Mods.Input
                 PadAction.PowerBeam => "Power beam",
                 PadAction.Menu => "Menu",
                 PadAction.WeaponWheel => "Weapon wheel",
+                PadAction.ReplayPlayPause => "Replay: play / pause",
+                PadAction.ReplayStep => "Replay: step frame",
+                PadAction.ReplaySeekBack => "Replay: seek back",
+                PadAction.ReplaySeekForward => "Replay: seek forward",
+                PadAction.ReplaySlower => "Replay: slower",
+                PadAction.ReplayFaster => "Replay: faster",
+                PadAction.ReplayPrevPlayer => "Replay: previous player",
+                PadAction.ReplayNextPlayer => "Replay: next player",
+                PadAction.ReplayCameraMode => "Replay: camera mode",
                 _ => action.ToString()
             };
         }

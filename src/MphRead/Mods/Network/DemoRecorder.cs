@@ -5,7 +5,7 @@ namespace MphRead.Mods.Network
 {
     /// <summary>
     /// Records every packet this client receives to a demo file, from
-    /// whenever the player asks (the pause menu's "Record demo", online
+    /// whenever the player asks (the pause menu's "Record replay", online
     /// matches only) to whenever they ask again or the match ends.
     ///
     /// Fed from <see cref="NetSession.Update"/>'s own drain loop -- it sees
