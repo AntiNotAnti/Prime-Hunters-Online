@@ -355,7 +355,7 @@ namespace MphRead.Mods.Launcher.Gui
                     OpenDeployment();
                     break;
                 case HubDestination.Servers:
-                    _ = OpenPlay(PlayScreen.Face.Online);
+                    OpenServerBrowser();
                     break;
                 case HubDestination.Custom:
                     if (!GameFiles.Ready) OpenSetup();
@@ -391,7 +391,7 @@ namespace MphRead.Mods.Launcher.Gui
                 {
                     case HubPlayDestination.Online:
                         Pop();
-                        _ = OpenPlay(PlayScreen.Face.Online);
+                        OpenServerBrowser();
                         break;
                     case HubPlayDestination.Custom:
                         Pop();
@@ -407,6 +407,20 @@ namespace MphRead.Mods.Launcher.Gui
                         break;
                 }
             };
+            Push(view);
+        }
+
+        private void OpenServerBrowser()
+        {
+            if (!GameFiles.Ready)
+            {
+                OpenSetup();
+                return;
+            }
+            var view = new HubServerBrowserView();
+            view.Closed += (_, _) => Pop();
+            view.CreateRequested += (_, _) => OpenCreateServer();
+            view.Launched += (_, plan) => ConnectedOrFinished(plan);
             Push(view);
         }
 
@@ -456,7 +470,11 @@ namespace MphRead.Mods.Launcher.Gui
                 _lobby.Closed += (_, reason) =>
                 {
                     _lobby = null; Pop();
-                    if (_stack.Count > 0 && _stack[^1] is PlayScreen play) play.SessionEnded(reason);
+                    if (_stack.Count > 0)
+                    {
+                        if (_stack[^1] is PlayScreen play) play.SessionEnded(reason);
+                        else if (_stack[^1] is HubServerBrowserView browser) browser.SessionEnded(reason);
+                    }
                 };
                 Push(_lobby);
             }
