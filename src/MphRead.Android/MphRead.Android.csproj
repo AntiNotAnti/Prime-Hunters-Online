@@ -30,8 +30,8 @@
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>MphRead</RootNamespace>
-    <AssemblyName>FruityPrime</AssemblyName>
-    <ApplicationId>fr.livetek.fruityprime</ApplicationId>
+    <AssemblyName>ProjectPrime</AssemblyName>
+    <ApplicationId>com.projectprime.game</ApplicationId>
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
     <!-- Release builds replace this local fallback with the versionCode
          derived from the vMAJOR.MINOR.PATCH release tag. -->

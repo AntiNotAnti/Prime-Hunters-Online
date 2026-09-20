@@ -29,11 +29,11 @@ namespace MphRead.Droid
     /// <see cref="LaunchPlan"/> across a process boundary for no gain.
     /// </summary>
     [Activity(
-        Label = "Fruity Prime",
+        Label = "Project Prime",
         // Must be an AppCompat descendant: Avalonia's activity is an AndroidX
         // AppCompatActivity and throws out of onCreate under anything else.
         // See Resources/values/styles.xml.
-        Theme = "@style/FruityPrime",
+        Theme = "@style/ProjectPrime",
         MainLauncher = true,
         // Landscape, from the icon onwards, and not only for a match.
         //
