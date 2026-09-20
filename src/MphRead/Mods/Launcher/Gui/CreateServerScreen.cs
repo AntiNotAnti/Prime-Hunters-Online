@@ -698,7 +698,7 @@ namespace MphRead.Mods.Launcher.Gui
             string name = _name.Value.Trim();
             if (name.Length == 0)
             {
-                name = "Fruity lobby";
+                name = "Project Prime lobby";
             }
             GameMode mode = _modes[_mode.Index].Mode;
             var hunter = (Hunter)Enum.Parse(typeof(Hunter), _hunter.Value);

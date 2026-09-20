@@ -532,7 +532,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         private void AskToQuit()
         {
-            var view = new ConfirmScreen("Quit Prime Hunters Online?");
+            var view = new ConfirmScreen("Quit Project Prime?");
             view.Answered += (_, yes) =>
             {
                 Pop();
