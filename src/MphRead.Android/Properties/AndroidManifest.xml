@@ -24,7 +24,7 @@
   <application android:label="Project Prime" android:appCategory="game"
                android:allowBackup="true"
                android:supportsRtl="true" android:hardwareAccelerated="true"
-               android:icon="@mipmap/appicon" android:roundIcon="@mipmap/appicon">
+               android:icon="@drawable/appicon_project_prime" android:roundIcon="@drawable/appicon_project_prime">
     <!-- How the zipped debug logs reach another app. Handing out a file://
          URI has thrown FileUriExposedException since Android 7, so the file
          goes through a provider; @xml/file_paths limits it to the one cache

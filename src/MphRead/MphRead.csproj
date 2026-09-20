@@ -36,11 +36,9 @@
          package holds exactly one binary, and renaming it would mean a Pi that
          has been running MphRead under systemd since before this change gets a
          second binary beside the one its unit still points at. -->
-    <!-- The public project/repository is Project Prime. The C#
-         namespace remains MphRead for upstream compatibility, while the
-         ProjectPrime assembly/binary and Project Prime product metadata are
-         legacy installation identities. Rename those only as an explicit
-         package/updater migration, not as documentation cleanup. -->
+    <!-- The public product is Project Prime. The C# namespace remains MphRead
+         for upstream compatibility; the assembly, binary and package identities
+         intentionally use the Project Prime name after the product migration. -->
     <AssemblyName>ProjectPrime</AssemblyName>
     <AssemblyName Condition="'$(MphReadServer)' == 'true' and $(RuntimeIdentifier.StartsWith('win'))">ProjectPrimeServer</AssemblyName>
     <Product>Project Prime</Product>
@@ -66,13 +64,9 @@
          stack gives for nothing. The Android head defines MPHREAD_AVALONIA
          without this one and leaves those two files out. -->
     <DefineConstants Condition="'$(MphReadAvalonia)' == 'true'">$(DefineConstants);MPHREAD_SHELL</DefineConstants>
-    <!-- The exe's own icon: Explorer, the taskbar, a pinned shortcut. Two
-         variants of the same mark, because the game and the server are two
-         different things to have pinned next to each other, and the server's
-         carries a small badge so the two are not the same picture at a
-         glance. Windows only; the property does nothing on other platforms. -->
-    <ApplicationIcon Condition="$(RuntimeIdentifier.StartsWith('win')) and '$(MphReadServer)' != 'true'">Assets\project-prime.ico</ApplicationIcon>
-    <ApplicationIcon Condition="$(RuntimeIdentifier.StartsWith('win')) and '$(MphReadServer)' == 'true'">Assets\project-prime-server.ico</ApplicationIcon>
+    <!-- The runtime game window uses the embedded Project Prime mark below.
+         Legacy FruityPrime shell icons were intentionally removed as part of
+         the product migration rather than being silently carried forward. -->
     <PublishSingleFile>true</PublishSingleFile>
     <DebugType>embedded</DebugType>
     <Nullable>enable</Nullable>

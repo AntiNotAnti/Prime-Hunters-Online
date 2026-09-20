@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Renderer-native Project Prime double-P mark. Keeping this as vector data
+     means Android no longer packages the legacy FruityPrime raster icons. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+        android:width="108dp"
+        android:height="108dp"
+        android:viewportWidth="108"
+        android:viewportHeight="108">
+  <path
+      android:fillColor="#050A10"
+      android:pathData="M18,8 H90 C96,8 100,12 100,18 V90 C100,96 96,100 90,100 H18 C12,100 8,96 8,90 V18 C8,12 12,8 18,8 Z" />
+  <path
+      android:fillColor="#00000000"
+      android:strokeColor="#30D3EE"
+      android:strokeWidth="4"
+      android:strokeLineJoin="round"
+      android:pathData="M18,8 H90 C96,8 100,12 100,18 V90 C100,96 96,100 90,100 H18 C12,100 8,96 8,90 V18 C8,12 12,8 18,8 Z" />
+  <path
+      android:fillColor="#00000000"
+      android:strokeColor="#EBF4F7"
+      android:strokeWidth="8"
+      android:strokeLineCap="square"
+      android:strokeLineJoin="round"
+      android:pathData="M31,78 L31,30 L55,30 C69,30 69,51 55,51 L42,51" />
+  <path
+      android:fillColor="#00000000"
+      android:strokeColor="#30D3EE"
+      android:strokeWidth="8"
+      android:strokeLineCap="square"
+      android:strokeLineJoin="round"
+      android:pathData="M53,78 L53,48 L70,48 C82,48 82,67 70,67 L63,67" />
+  <path
+      android:fillColor="#30D3EE"
+      android:pathData="M74,23 L86,18 L81,34 L72,38 Z" />
+</vector>
