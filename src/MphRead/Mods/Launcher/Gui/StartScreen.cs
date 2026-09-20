@@ -352,6 +352,8 @@ namespace MphRead.Mods.Launcher.Gui
             switch (destination)
             {
                 case HubDestination.Play:
+                    OpenDeployment();
+                    break;
                 case HubDestination.Servers:
                     _ = OpenPlay(PlayScreen.Face.Online);
                     break;
@@ -372,6 +374,40 @@ namespace MphRead.Mods.Launcher.Gui
                     AskToQuit();
                     break;
             }
+        }
+
+        private void OpenDeployment()
+        {
+            if (!GameFiles.Ready)
+            {
+                OpenSetup();
+                return;
+            }
+            var view = new HubPlayView();
+            view.Closed += (_, _) => Pop();
+            view.Selected += destination =>
+            {
+                switch (destination)
+                {
+                    case HubPlayDestination.Online:
+                        Pop();
+                        _ = OpenPlay(PlayScreen.Face.Online);
+                        break;
+                    case HubPlayDestination.Custom:
+                        Pop();
+                        OpenCreateServer();
+                        break;
+                    case HubPlayDestination.Offline:
+                        Pop();
+                        _ = OpenPlay(PlayScreen.Face.Offline);
+                        break;
+                    case HubPlayDestination.Adventure:
+                        Pop();
+                        _ = OpenPlay(PlayScreen.Face.Story);
+                        break;
+                }
+            };
+            Push(view);
         }
 
         private Task OpenPlay(PlayScreen.Face face = PlayScreen.Face.Online)
