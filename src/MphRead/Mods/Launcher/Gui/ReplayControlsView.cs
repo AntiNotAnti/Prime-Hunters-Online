@@ -527,7 +527,15 @@ namespace MphRead.Mods.Launcher.Gui
                 => key == OpenTK.Windowing.GraphicsLibraryFramework.Keys.Unknown
                     ? "unbound" : InputSettings.KeyName(key);
             string Pad(Mods.Input.PadAction action)
-                => Mods.Input.PadBindings.Describe(Mods.Input.PadBindings.Get(action));
+            {
+                for (int slot = 0; slot < 2; slot++)
+                {
+                    if (Mods.Input.PadBindings.Slot(action, slot)
+                        != Mods.Input.GamepadButtons.None)
+                        return Mods.Input.PadBindings.DescribeSlot(action, slot);
+                }
+                return "unbound";
+            }
             return $"Keyboard: {Key(InputSettings.ReplayPlayPauseKey)} play/pause · "
                 + $"{Key(InputSettings.ReplayStepBackKey)}/{Key(InputSettings.ReplayStepForwardKey)} step · "
                 + $"{Key(InputSettings.ReplaySlowerKey)}/{Key(InputSettings.ReplayFasterKey)} speed · "
