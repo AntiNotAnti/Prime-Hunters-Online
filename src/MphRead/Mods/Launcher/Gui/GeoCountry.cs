@@ -103,7 +103,7 @@ namespace MphRead.Mods.Launcher.Gui
             try
             {
                 using Stream packed = AssetLoader.Open(
-                    new Uri("avares://FruityPrime/Assets/Geo/ipcountry.bin.gz"));
+                    new Uri("avares://ProjectPrime/Assets/Geo/ipcountry.bin.gz"));
                 using var gz = new GZipStream(packed, CompressionMode.Decompress);
                 using var memory = new MemoryStream();
                 gz.CopyTo(memory);

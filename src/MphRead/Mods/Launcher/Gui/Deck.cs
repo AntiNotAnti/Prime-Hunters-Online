@@ -98,10 +98,10 @@ namespace MphRead.Mods.Launcher.Gui
         /// keycap).
         /// </summary>
         public static readonly FontFamily Mono =
-            new("avares://FruityPrime/Assets/Fonts/JetBrainsMono-Regular.ttf#JetBrains Mono");
+            new("avares://ProjectPrime/Assets/Fonts/JetBrainsMono-Regular.ttf#JetBrains Mono");
 
         public static readonly FontFamily MonoBold =
-            new("avares://FruityPrime/Assets/Fonts/JetBrainsMono-Bold.ttf#JetBrains Mono");
+            new("avares://ProjectPrime/Assets/Fonts/JetBrainsMono-Bold.ttf#JetBrains Mono");
 
         /// <summary>The body face at a weight. Never synthesised; a real file either way.</summary>
         public static Typeface Body(bool bold) =>

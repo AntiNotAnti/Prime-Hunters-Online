@@ -73,7 +73,7 @@ namespace MphRead.Mods.Diagnostics
                     "Fonts/heyNovember.ttf", "Fonts/Roboto-Bold.ttf", "Backgrounds/launcher-bg.jpg" })
                 {
                     using Stream stream = Avalonia.Platform.AssetLoader.Open(
-                        new Uri($"avares://FruityPrime/Assets/{resource}"));
+                        new Uri($"avares://ProjectPrime/Assets/{resource}"));
                     if (stream.ReadByte() < 0)
                     {
                         throw new InvalidDataException($"Empty launcher resource: {resource}");

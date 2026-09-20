@@ -80,24 +80,24 @@ namespace MphRead.Mods.Launcher.Gui
         /// New hub-facing prose should use <see cref="Interface"/>.
         /// </summary>
         public static readonly FontFamily Prose =
-            new("avares://FruityPrime/Assets/Fonts/Roboto-Bold.ttf#Roboto");
+            new("avares://ProjectPrime/Assets/Fonts/Roboto-Bold.ttf#Roboto");
 
         /// <summary>
         /// Legacy Pixelify asset retained while old wordmark/deck code is
         /// retired. It is no longer the launcher display role.
         /// </summary>
         public static readonly FontFamily Pixel =
-            new("avares://FruityPrime/Assets/Fonts/PixelifySans-Regular.ttf#Pixelify Sans");
+            new("avares://ProjectPrime/Assets/Fonts/PixelifySans-Regular.ttf#Pixelify Sans");
 
         /// <summary>
         /// Legacy static Pixelify weights. Kept only until the remaining
         /// Pixelify-specific controls/assets are removed.
         /// </summary>
         public static readonly FontFamily PixelSemi =
-            new("avares://FruityPrime/Assets/Fonts/PixelifySans-SemiBold.ttf#Pixelify Sans");
+            new("avares://ProjectPrime/Assets/Fonts/PixelifySans-SemiBold.ttf#Pixelify Sans");
 
         public static readonly FontFamily PixelBold =
-            new("avares://FruityPrime/Assets/Fonts/PixelifySans-Bold.ttf#Pixelify Sans");
+            new("avares://ProjectPrime/Assets/Fonts/PixelifySans-Bold.ttf#Pixelify Sans");
 
         /// <summary>
         /// Legacy Pixelify grid helper. New Inter text must not use it.
@@ -117,7 +117,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         /// <summary>Legacy title asset retained for compatibility; not used by the FPS hub.</summary>
         public static readonly FontFamily Title =
-            new("avares://FruityPrime/Assets/Fonts/heyNovember.ttf#Hey November");
+            new("avares://ProjectPrime/Assets/Fonts/heyNovember.ttf#Hey November");
 
         /// <summary>
         /// The face every self-drawn launcher control uses for player-facing
@@ -191,7 +191,7 @@ namespace MphRead.Mods.Launcher.Gui
             try
             {
                 using Stream stream = AssetLoader.Open(
-                    new Uri("avares://FruityPrime/Assets/fruity-prime-mark.png"));
+                    new Uri("avares://ProjectPrime/Assets/fruity-prime-mark.png"));
                 return new WindowIcon(stream);
             }
             catch (Exception)
