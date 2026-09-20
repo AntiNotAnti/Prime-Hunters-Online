@@ -8,11 +8,11 @@ using Avalonia.Media;
 namespace MphRead.Mods.Launcher.Gui
 {
     /// <summary>
-    /// The name, set rather than drawn.
+    /// Project Prime's renderer-native deck wordmark.
     ///
-    /// <see cref="UiLayout.Wordmark"/> hands back the shipped PNG, which is
-    /// the Project Prime name in the deck pixel face.
-    /// This keeps the front-door identity renderer-native instead of depending on a baked legacy wordmark.
+    /// The two words are drawn directly in the deck pixel face so the front
+    /// door does not depend on a baked legacy logo asset. The same control is
+    /// reused by design captures and responsive launcher layouts.
     ///
     /// <para>
     /// Two lines, because the name is two words and stacking them is what
