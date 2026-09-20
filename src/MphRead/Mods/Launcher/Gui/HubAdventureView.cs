@@ -11,8 +11,8 @@ namespace MphRead.Mods.Launcher.Gui
 {
     internal sealed class HubAdventureView : UserControl
     {
-        private static readonly string[] Hunters =
-            Enumerable.Range(0, Hunters.Playable)
+        private static readonly string[] HunterNames =
+            Enumerable.Range(0, MphRead.Hunters.Playable)
                 .Select(i => ((Hunter)i).ToString())
                 .Append(Hunter.Random.ToString()).ToArray();
 
@@ -115,12 +115,12 @@ namespace MphRead.Mods.Launcher.Gui
                 Height = 175,
                 MinHeight = 150,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
-                Name2 = Hunters[Math.Clamp((int)LauncherPrefs.LastHunter, 0, Hunters.Length - 1)]
+                Name2 = HunterNames[Math.Clamp((int)LauncherPrefs.LastHunter, 0, Hunters.Length - 1)]
             };
             detailStack.Children.Add(_stand);
 
-            int hunterIndex = Array.IndexOf(Hunters, LauncherPrefs.LastHunter.ToString());
-            _hunter = new ChoiceRow("Hunter", Hunters, Math.Max(0, hunterIndex));
+            int hunterIndex = Array.IndexOf(HunterNames, LauncherPrefs.LastHunter.ToString());
+            _hunter = new ChoiceRow("Hunter", HunterNames, Math.Max(0, hunterIndex));
             _hunter.Changed += (_, _) => _stand.Name2 = _hunter.Value;
             detailStack.Children.Add(_hunter);
 
