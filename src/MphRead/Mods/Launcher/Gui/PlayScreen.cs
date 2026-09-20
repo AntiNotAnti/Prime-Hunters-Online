@@ -1584,8 +1584,7 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 return server.RoomKey.Length > 0 ? server.RoomKey : null;
             }
-            if (Current == Face.Clips
-                && (_list.Selected as UiListRow)?.Choice is string replay)
+            if (Current == Face.Clips && SelectedReplayPath() is string replay)
             {
                 if (replay.EndsWith(ReplayVirtualClips.Extension, StringComparison.OrdinalIgnoreCase)
                     && ReplayVirtualClips.TryLoad(replay, out ReplayVirtualClipDocument? virtualClip)
@@ -1598,6 +1597,17 @@ namespace MphRead.Mods.Launcher.Gui
                 return demo.Path != null && demo.Room.Length > 0 ? demo.Room : null;
             }
             return SelectedRoom();
+        }
+
+        private string? SelectedReplayPath()
+        {
+            if (Current != Face.Clips) return null;
+            if (_replayViewIndex == 1
+                && (_list.Selected as UiListRow)?.Choice is string listPath)
+            {
+                _replaySelectedPath = listPath;
+            }
+            return _replaySelectedPath;
         }
 
         // --------------------------------------------------------------- story
