@@ -150,10 +150,34 @@ namespace MphRead.Mods.Input
         /// </summary>
         public static float AspectCorrection { get; set; } = 16f / 9f;
 
-        /// <summary>How solid the overlay is drawn. Barely there by design --
-        /// see the class summary -- but a slider's worth of a question, since
-        /// screens and eyes differ.</summary>
-        public static float Opacity { get; set; } = 0.22f;
+        /// <summary>
+        /// Defaults preserve the old combined overlay's appearance: a 22%
+        /// outline and buttons drawn at half of that. The pointer used to be
+        /// the operating system cursor, which was fully opaque.
+        /// </summary>
+        public const float DefaultOutlineOpacity = 0.22f;
+        public const float DefaultButtonOpacity = 0.11f;
+        public const float DefaultCursorOpacity = 1f;
+
+        /// <summary>Opacity of the DS screen rectangle, from invisible to solid.</summary>
+        public static float OutlineOpacity { get; set; } = DefaultOutlineOpacity;
+
+        /// <summary>Opacity of the circular touch targets, from invisible to solid.</summary>
+        public static float ButtonOpacity { get; set; } = DefaultButtonOpacity;
+
+        /// <summary>
+        /// Opacity of the pointer drawn while stylus mode owns the free cursor.
+        /// It is drawn by the HUD so 0% can really mean invisible; a platform
+        /// cursor cannot be assigned an arbitrary alpha consistently.
+        /// </summary>
+        public static float CursorOpacity { get; set; } = DefaultCursorOpacity;
+
+        public static void ResetAppearance()
+        {
+            OutlineOpacity = DefaultOutlineOpacity;
+            ButtonOpacity = DefaultButtonOpacity;
+            CursorOpacity = DefaultCursorOpacity;
+        }
 
         public static void SetRect(float left, float top, float width)
         {
