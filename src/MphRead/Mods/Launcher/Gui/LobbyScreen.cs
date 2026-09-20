@@ -57,7 +57,7 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly ChoiceRow _target, _moveTeam;
         private readonly PickRow _map, _customTeams;
         private readonly ButtonToggleRow _fire, _affinity, _freeze, _requireReady, _join;
-        private readonly ButtonToggleRow _lockTeams, _opponentHealth;
+        private readonly ButtonToggleRow _lockTeams, _opponentHealth, _disablePowerups;
         private readonly Note _layoutSummary = new("");
         private readonly FieldRow _time, _goal;
         private readonly TextBox _chatEntry = new()
@@ -126,10 +126,12 @@ namespace MphRead.Mods.Launcher.Gui
             _requireReady = Toggle("Require ready");
             _join = Toggle("Join in progress");
             _lockTeams = Toggle("Lock teams");
-            _opponentHealth = Toggle("Opponent health", on: true);
+            _opponentHealth = Toggle("Opponent health");
+            _disablePowerups = Toggle("Disable powerups", on: true);
             foreach (ButtonToggleRow toggle in new[]
             {
-                _fire, _affinity, _freeze, _opponentHealth, _requireReady, _join, _lockTeams
+                _fire, _affinity, _freeze, _opponentHealth, _requireReady, _join, _lockTeams,
+                _disablePowerups
             })
                 toggle.Changed += (_, _) => DraftChanged();
             _ownerControls.Children.Add(_preview);
@@ -158,7 +160,7 @@ namespace MphRead.Mods.Launcher.Gui
             Control[] toggleRows =
             {
                 _fire, _affinity, _freeze, _opponentHealth,
-                _requireReady, _join, _lockTeams
+                _requireReady, _join, _lockTeams, _disablePowerups
             };
             for (int i = 0; i < toggleRows.Length; i++)
             {
@@ -474,6 +476,7 @@ namespace MphRead.Mods.Launcher.Gui
                 _affinity.On = session.Match.AffinityWeapons;
                 _freeze.On = session.Match.ShadowFreeze;
                 _opponentHealth.On = !session.Match.HideOpponentHealth;
+                _disablePowerups.On = session.Match.DisablePowerups;
                 _requireReady.On = session.RequireReady;
                 _join.On = session.AllowJoinInProgress;
                 _lockTeams.On = PlayerChoosesTeam(session.Match) && session.LockTeams;
@@ -658,7 +661,8 @@ namespace MphRead.Mods.Launcher.Gui
                 FriendlyFire = _fire.On,
                 AffinityWeapons = _affinity.On,
                 ShadowFreeze = _freeze.On,
-                HideOpponentHealth = !_opponentHealth.On
+                HideOpponentHealth = !_opponentHealth.On,
+                DisablePowerups = _disablePowerups.On
             };
             return true;
         }

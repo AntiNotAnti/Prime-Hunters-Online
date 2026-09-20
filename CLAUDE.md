@@ -898,7 +898,7 @@ MPH_SERVER_HOST=net.livetek.fr MPH_SERVER_USER=livetek \
 
 The exe is often locked by a running game: write `MphRead.new.exe`, then `mv`.
 
-**The current protocol is `NetConfig.ProtocolVersion = 14`.** Never duplicate
+**The current protocol is `NetConfig.ProtocolVersion = 15`.** Never duplicate
 that number as a design constant elsewhere: read it from `NetProtocol.cs` when
 validating a deployment. Server and clients must match; incompatible builds are
 refused during Hello. Versions 7/8 in the measurement sections below are dated

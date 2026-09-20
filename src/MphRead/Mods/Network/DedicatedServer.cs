@@ -802,8 +802,12 @@ namespace MphRead.Mods.Network
 
             try
             {
+                SessionStatePacket session = BuildSessionState();
                 MatchStatePacket state = BuildState(_now);
                 RosterPacket roster = BuildRoster();
+                byte[] sessionPacket = new byte[1 + SessionStatePacket.Size];
+                sessionPacket[0] = (byte)PacketType.SessionState;
+                session.Write(sessionPacket.AsSpan(1));
                 byte[] statePacket = new byte[1 + MatchStatePacket.Size];
                 statePacket[0] = (byte)PacketType.MatchState;
                 state.Write(statePacket.AsSpan(1));
@@ -830,7 +834,7 @@ namespace MphRead.Mods.Network
                     Players = players,
                     Bootstrap = new ReplayBootstrap
                     {
-                        Packets = new[] { statePacket, rosterPacket, snapshotPacket }
+                        Packets = new[] { sessionPacket, statePacket, rosterPacket, snapshotPacket }
                     }
                 };
                 ServerReplayRecorder.Start(metadata);

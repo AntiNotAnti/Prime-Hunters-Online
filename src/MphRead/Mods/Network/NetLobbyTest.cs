@@ -52,7 +52,7 @@ namespace MphRead.Mods.Network
 
         private static void ProtocolChecks()
         {
-            Check(NetConfig.ProtocolVersion == 14 && (byte)PacketType.SessionState == 36
+            Check(NetConfig.ProtocolVersion == 15 && (byte)PacketType.SessionState == 36
                 && (byte)PacketType.MapOffer == 32 && (byte)PacketType.MapDone == 35,
                 "combined protocol and non-overlapping map/lobby IDs");
             var state = new SessionStatePacket { Phase = SessionPhase.Starting, Policy = ServerSessionPolicy.Lobby,
@@ -62,10 +62,16 @@ namespace MphRead.Mods.Network
                 ExpectedParticipants = 255, LoadedParticipants = 3,
                 Match = new MatchDefinition { RoomKey = new string('X', 40), Mode = GameMode.BattleTeams,
                     Format = MatchFormat.FourVsFour, TimeLimitSeconds = 600, PointGoal = 20,
-                    FriendlyFire = true, AffinityWeapons = true, ShadowFreeze = true, HideOpponentHealth = true } };
+                    FriendlyFire = true, AffinityWeapons = true, ShadowFreeze = true, HideOpponentHealth = true,
+                    DisablePowerups = true } };
             byte[] data = new byte[SessionStatePacket.Size]; state.Write(data);
             Check(SessionStatePacket.TryRead(data, out var read) && read.Match == state.Match
                 && read.Revision == state.Revision && read.LoadedParticipants == 3, "session round trip/max room/revision");
+            Check(MapResourceRules.IsPowerup(ItemType.DoubleDamage)
+                && MapResourceRules.IsPowerup(ItemType.Cloak)
+                && MapResourceRules.IsPowerup(ItemType.Deathalt)
+                && !MapResourceRules.IsPowerup(ItemType.HealthBig),
+                "multiplayer powerup classification");
             for (int length = 0; length < data.Length; length++)
                 Check(!SessionStatePacket.TryRead(data.AsSpan(0, length), out _), "truncated session");
             foreach (int offset in new[] { 0, 1, 8, 9 })
@@ -108,6 +114,7 @@ namespace MphRead.Mods.Network
             Check(RosterPacket.TryRead(rosterBytes, out var rr) && rr.Teams.SequenceEqual(roster.Teams)
                 && rr.LobbyReady.SequenceEqual(roster.LobbyReady) && rr.Revision == 123, "roster team/ready/revision round trip");
             for (int length = 0; length < rosterBytes.Length; length++) Check(!RosterPacket.TryRead(rosterBytes.AsSpan(0, length), out _), "truncated roster");
+            Check(!new HostRequestPacket().RequireReady, "host requests default ready off");
             var host = new HostRequestPacket { Protocol = NetConfig.ProtocolVersion, MaxPlayers = 8, RoomKey = "room", ServerName = "test",
                 Policy = ServerSessionPolicy.Lobby, RequireReady = true, AllowJoinInProgress = true, Format = MatchFormat.FourVsFour };
             byte[] hostBytes = new byte[host.Length]; host.Write(hostBytes); var hr = HostRequestPacket.Read(hostBytes);
