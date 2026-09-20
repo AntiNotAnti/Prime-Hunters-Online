@@ -7,6 +7,7 @@ namespace MphRead.Mods.Input
         public static string Preset { get => State.Preset; internal set => State.Preset = value; }
         public static long Revision => State.Revision;
         public static IReadOnlyList<PadAction> Actions => State.Actions;
+        public static IReadOnlyList<PadAction> ReplayActions => State.ReplayActions;
         public static GamepadButtons Get(PadAction action) => State.Get(action);
         public static void Set(PadAction action, GamepadButtons buttons) => State.Set(action, buttons);
         public static GamepadButtons Default(PadAction action) => State.Default(action);
