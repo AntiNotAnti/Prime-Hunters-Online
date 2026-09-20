@@ -23,24 +23,24 @@ namespace MphRead.Mods.Launcher.Gui
     /// </summary>
     internal static class GuiTheme
     {
-        public static readonly Color Ink = Color.FromRgb(10, 12, 16);
-        public static readonly Color Panel = Color.FromRgb(18, 21, 28);
-        public static readonly Color PanelLight = Color.FromRgb(26, 31, 41);
-        public static readonly Color Edge = Color.FromRgb(38, 46, 60);
+        public static readonly Color Ink = Color.FromRgb(7, 13, 20);
+        public static readonly Color Panel = Color.FromRgb(13, 23, 34);
+        public static readonly Color PanelLight = Color.FromRgb(18, 34, 49);
+        public static readonly Color Edge = Color.FromRgb(45, 67, 87);
         /// <summary>Under Panel: the well a row or a card sits in.</summary>
-        public static readonly Color PanelDeep = Color.FromRgb(14, 17, 24);
-        public static readonly Color Text = Color.FromRgb(230, 234, 242);
-        public static readonly Color TextDim = Color.FromRgb(138, 147, 166);
+        public static readonly Color PanelDeep = Color.FromRgb(8, 17, 26);
+        public static readonly Color Text = Color.FromRgb(237, 247, 255);
+        public static readonly Color TextDim = Color.FromRgb(138, 160, 179);
         /// <summary>The one accent colour everywhere: the same warm the main menu's Play uses.</summary>
-        public static readonly Color Accent = Color.FromRgb(255, 179, 71);
-        public static readonly Color Warm = Color.FromRgb(255, 179, 71);
+        public static readonly Color Accent = Color.FromRgb(98, 217, 255);
+        public static readonly Color Warm = Color.FromRgb(240, 174, 85);
         // The deck palette's, not the old neon pair: #6ee787 and #ff6b6b were
         // chosen against a flat dark panel and buzz on this one, which is two
         // stops down and forty points less saturated. A ping column is where
         // that showed -- three rows of vivid green over a map render.
-        public static readonly Color Good = Color.FromRgb(0x5f, 0x9e, 0x72);
-        public static readonly Color Warn = Color.FromRgb(0xc0, 0x8a, 0x3e);
-        public static readonly Color Bad = Color.FromRgb(0xa8, 0x54, 0x54);
+        public static readonly Color Good = Color.FromRgb(0x75, 0xd6, 0x9d);
+        public static readonly Color Warn = Color.FromRgb(0xf0, 0xae, 0x55);
+        public static readonly Color Bad = Color.FromRgb(0xdb, 0x6b, 0x74);
 
         public static readonly IBrush InkBrush = new SolidColorBrush(Ink);
         public static readonly IBrush PanelBrush = new SolidColorBrush(Panel);
