@@ -74,13 +74,13 @@ namespace MphRead.Mods.Network
                 bindings.SetSlot(PadAction.ReplayPlayPause, 0, GamepadButtons.A,
                     GamepadButtons.LeftBumper);
                 ulong liveButtons = bindings.Evaluate(
-                    GamepadButtons.LeftBumper | GamepadButtons.A, includeReplay: false);
+                    GamepadButtons.LeftBumper | GamepadButtons.A, replayContext: false);
                 Require((liveButtons & (1UL << (int)PadAction.ReplayPlayPause)) == 0,
                     "replay controller chord leaked into live gameplay");
                 Require((liveButtons & (1UL << (int)PadAction.Jump)) != 0,
                     "replay controller chord suppressed live jump");
                 ulong replayButtons = bindings.Evaluate(
-                    GamepadButtons.LeftBumper | GamepadButtons.A, includeReplay: true);
+                    GamepadButtons.LeftBumper | GamepadButtons.A, replayContext: true);
                 Require((replayButtons & (1UL << (int)PadAction.ReplayPlayPause)) != 0,
                     "replay controller chord did not activate in replay context");
                 Console.WriteLine("[replaycheck] input: replay controller context isolation passed");
