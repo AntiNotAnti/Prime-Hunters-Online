@@ -41,4 +41,9 @@ jobs:
             echo "Cancelling stale build run ${run_id}"
             gh api --method POST \
               "/repos/${GH_REPO}/actions/runs/${run_id}/cancel" >/dev/null || true
+            # A matrix job can take a while to acknowledge normal cancellation.
+            # Force-cancel is safe here because this run is already superseded
+            # by KEEP_SHA and its artifacts are intentionally disposable.
+            gh api --method POST \
+              "/repos/${GH_REPO}/actions/runs/${run_id}/force-cancel" >/dev/null || true
           done
