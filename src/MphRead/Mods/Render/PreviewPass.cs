@@ -87,6 +87,17 @@ namespace MphRead
 
         public static int PreviewDrawnSuit { get; private set; } = -1;
 
+        // The launcher can render at 60, 120, 144 or more Hz. The preview
+        // animation is authored on the game's 60 Hz simulation clock, so
+        // advancing it once per launcher draw makes it visibly frantic on a
+        // high-refresh display.
+        private readonly System.Diagnostics.Stopwatch _launcherPreviewClock =
+            System.Diagnostics.Stopwatch.StartNew();
+        private double _launcherPreviewNextStep;
+        private Hunter _launcherPreviewClockHunter = Hunter.Random;
+        private int _launcherPreviewClockSuit = -1;
+        private const double LauncherPreviewStepSeconds = 1.0 / 60.0;
+
         /// <summary>
         /// Turn the model, once a simulation step. Called from the step rather
         /// than the draw for the reason everything else here is: a picture with
@@ -125,6 +136,44 @@ namespace MphRead
                 }
             }
             _preview.Step();
+        }
+
+        private void ModStepLauncherPreview()
+        {
+            double now = _launcherPreviewClock.Elapsed.TotalSeconds;
+            bool changed = _launcherPreviewClockHunter != LauncherHunter
+                || _launcherPreviewClockSuit != LauncherSuit;
+
+            if (changed)
+            {
+                _launcherPreviewClockHunter = LauncherHunter;
+                _launcherPreviewClockSuit = LauncherSuit;
+                _launcherPreviewNextStep = now + LauncherPreviewStepSeconds;
+                // Apply the newly selected model/suit immediately. Only the
+                // continuing idle animation is rate-limited.
+                ModStepPreview();
+                return;
+            }
+
+            if (now < _launcherPreviewNextStep)
+            {
+                return;
+            }
+
+            // Catch up modestly after a hitch without turning one slow frame
+            // into a burst of dozens of animation frames.
+            int steps = Math.Clamp(
+                (int)((now - _launcherPreviewNextStep) / LauncherPreviewStepSeconds) + 1,
+                1, 3);
+            for (int i = 0; i < steps; i++)
+            {
+                ModStepPreview();
+            }
+            _launcherPreviewNextStep += steps * LauncherPreviewStepSeconds;
+            if (now - _launcherPreviewNextStep > LauncherPreviewStepSeconds * 3)
+            {
+                _launcherPreviewNextStep = now + LauncherPreviewStepSeconds;
+            }
         }
 
         /// <summary>
@@ -224,7 +273,7 @@ namespace MphRead
             _targetSize = windowSize;
             try
             {
-                ModStepPreview();
+                ModStepLauncherPreview();
                 ModCollectPreview();
                 if (!ModPreviewDrawn)
                 {

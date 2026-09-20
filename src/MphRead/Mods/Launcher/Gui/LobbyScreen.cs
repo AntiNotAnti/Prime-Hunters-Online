@@ -75,7 +75,7 @@ namespace MphRead.Mods.Launcher.Gui
         };
         private readonly HubNavButton _ready, _start;
         private readonly HubNavButton _moveButton, _closeLobby;
-        private readonly Image _preview = new() { Height = 156, Stretch = Stretch.UniformToFill };
+        private readonly Image _preview = new() { Height = 148, Stretch = Stretch.UniformToFill };
         private readonly string[] _rooms;
         private readonly List<byte> _targetSlots = new();
 
@@ -147,7 +147,7 @@ namespace MphRead.Mods.Launcher.Gui
                 BorderThickness = new Thickness(1),
                 ClipToBounds = true,
                 Child = _preview,
-                MinHeight = 156
+                MinHeight = 148
             });
             arena.Children.Add(_map);
             arena.Children.Add(_mode);
@@ -184,7 +184,12 @@ namespace MphRead.Mods.Launcher.Gui
 
             _target = new ChoiceRow("Manage player", Array.Empty<string>());
             _moveTeam = new ChoiceRow("Move to team", new[] { "Auto", "Team A", "Team B" });
-            var administration = new StackPanel { Spacing = 5 };
+
+            // Owner actions belong beside the roster they operate on, not under
+            // the match rules. That uses otherwise empty roster space and
+            // keeps every rule visible without a scrollbar on a normal
+            // desktop-sized lobby.
+            var administration = new StackPanel { Spacing = 4 };
             administration.Children.Add(LobbySubhead("OWNER ACTIONS"));
             administration.Children.Add(_target);
             administration.Children.Add(_moveTeam);
@@ -218,35 +223,21 @@ namespace MphRead.Mods.Launcher.Gui
             _closeLobby.HorizontalAlignment = HorizontalAlignment.Stretch;
             administration.Children.Add(_closeLobby);
 
-            var rules = new StackPanel { Spacing = 4 };
-            rules.Children.Add(limits);
-            rules.Children.Add(toggles);
-            rules.Children.Add(_layoutSummary);
-            rules.Children.Add(new Border
-            {
-                Height = 1,
-                Background = HubTheme.EdgeBrush,
-                Margin = new Thickness(0, 7, 0, 5)
-            });
-            rules.Children.Add(administration);
+            // Match rules are deliberately settings-only. Four compact rows of
+            // toggles plus the two numeric limits fit in the panel without
+            // scrolling, leaving owner administration in the roster column.
+            _ownerControls.Children.Add(limits);
+            _ownerControls.Children.Add(toggles);
+            _ownerControls.Children.Add(_layoutSummary);
 
             var arenaPanel = LobbyPanel("ARENA", arena, HubTheme.Accent);
-            var rulesPanel = LobbyPanel("MATCH RULES", rules, HubTheme.Warm);
-            var matchColumns = new Grid
-            {
-                ColumnDefinitions = new ColumnDefinitions("1.02*,0.98*"),
-                ColumnSpacing = 10
-            };
-            matchColumns.Children.Add(arenaPanel);
-            Grid.SetColumn(rulesPanel, 1);
-            matchColumns.Children.Add(rulesPanel);
-            _ownerControls.Children.Add(matchColumns);
+            var rulesPanel = LobbyPanel("MATCH RULES", _ownerControls, HubTheme.Warm);
 
             var rosterContent = new StackPanel { Spacing = 4 };
             var playerScroll = new ScrollViewer
             {
                 Content = _players,
-                MaxHeight = 250,
+                MaxHeight = 152,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto
             };
@@ -255,28 +246,40 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 Height = 1,
                 Background = HubTheme.EdgeBrush,
-                Margin = new Thickness(0, 6, 0, 4)
+                Margin = new Thickness(0, 5, 0, 3)
             });
             rosterContent.Children.Add(LobbySubhead("YOUR HUNTER"));
             rosterContent.Children.Add(_hunter);
             rosterContent.Children.Add(_suit);
             rosterContent.Children.Add(_team);
+            rosterContent.Children.Add(new Border
+            {
+                Height = 1,
+                Background = HubTheme.EdgeBrush,
+                Margin = new Thickness(0, 5, 0, 3)
+            });
+            rosterContent.Children.Add(administration);
             var rosterPanel = LobbyPanel("ROSTER", rosterContent, HubTheme.Good);
 
+            // A real three-column lobby on desktop: roster, arena and rules.
+            // The previous nested two-column arrangement made the right panel
+            // tall enough to scroll even with acres of unused roster space.
             var columns = new Grid
             {
-                ColumnDefinitions = new ColumnDefinitions("0.72*,1.78*"),
-                ColumnSpacing = 12
+                ColumnDefinitions = new ColumnDefinitions("0.82*,1.10*,1.08*"),
+                ColumnSpacing = 10
             };
             columns.Children.Add(rosterPanel);
-            Grid.SetColumn(_ownerControls, 1);
-            columns.Children.Add(_ownerControls);
+            Grid.SetColumn(arenaPanel, 1);
+            columns.Children.Add(arenaPanel);
+            Grid.SetColumn(rulesPanel, 2);
+            columns.Children.Add(rulesPanel);
 
             _chatHistory = new ScrollViewer
             {
                 Content = _chat,
-                Height = 64,
-                MinHeight = 64,
+                Height = 46,
+                MinHeight = 46,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto
             };
@@ -284,7 +287,7 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 ColumnDefinitions = new ColumnDefinitions("*,Auto"),
                 ColumnSpacing = 6,
-                Height = 32
+                Height = 30
             };
             chatInput.Children.Add(_chatEntry);
             var send = new HubNavButton("SEND", compact: true);
@@ -301,8 +304,8 @@ namespace MphRead.Mods.Launcher.Gui
             };
             var chatBody = new Grid
             {
-                RowDefinitions = new RowDefinitions("64,32"),
-                RowSpacing = 5
+                RowDefinitions = new RowDefinitions("46,30"),
+                RowSpacing = 4
             };
             chatBody.Children.Add(_chatHistory);
             Grid.SetRow(chatInput, 1);
@@ -353,7 +356,9 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 Content = columns,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+                // Desktop rules are designed to fit. Scrolling is reserved for
+                // the genuinely compact stacked layout.
+                VerticalScrollBarVisibility = ScrollBarVisibility.Disabled
             };
             var body = new Grid
             {
@@ -368,8 +373,8 @@ namespace MphRead.Mods.Launcher.Gui
 
             var frame = new Grid
             {
-                MaxWidth = 1180,
-                Margin = new Thickness(20, 16, 20, 24),
+                MaxWidth = 1320,
+                Margin = new Thickness(18, 14, 18, 22),
                 RowDefinitions = new RowDefinitions("Auto,*"),
                 RowSpacing = 12
             };
@@ -414,43 +419,40 @@ namespace MphRead.Mods.Launcher.Gui
             Grid.SetRow(body, 1);
             frame.Children.Add(body);
 
-            // Narrow windows/phones stack the roster over the match panels and
-            // the Arena over Rules. The containing scroller keeps every action
-            // reachable rather than compressing dense controls into slivers.
+            // Narrow windows/phones stack the same three panels and enable
+            // scrolling for that compact case only. Desktop keeps the full
+            // settings surface visible at once.
             frame.SizeChanged += (_, e) =>
             {
-                bool compact = e.NewSize.Width < 820;
+                bool compact = e.NewSize.Width < 900 || e.NewSize.Height < 560;
                 if (compact)
                 {
                     columns.ColumnDefinitions = new ColumnDefinitions("*");
-                    columns.RowDefinitions = new RowDefinitions("Auto,Auto");
+                    columns.RowDefinitions = new RowDefinitions("Auto,Auto,Auto");
                     Grid.SetColumn(rosterPanel, 0);
                     Grid.SetRow(rosterPanel, 0);
-                    Grid.SetColumn(_ownerControls, 0);
-                    Grid.SetRow(_ownerControls, 1);
-
-                    matchColumns.ColumnDefinitions = new ColumnDefinitions("*");
-                    matchColumns.RowDefinitions = new RowDefinitions("Auto,Auto");
                     Grid.SetColumn(arenaPanel, 0);
-                    Grid.SetRow(arenaPanel, 0);
+                    Grid.SetRow(arenaPanel, 1);
                     Grid.SetColumn(rulesPanel, 0);
-                    Grid.SetRow(rulesPanel, 1);
+                    Grid.SetRow(rulesPanel, 2);
+                    columns.RowSpacing = 10;
+                    mainScroll.VerticalScrollBarVisibility =
+                        ScrollBarVisibility.Auto;
                 }
                 else
                 {
-                    columns.ColumnDefinitions = new ColumnDefinitions("0.72*,1.78*");
+                    columns.ColumnDefinitions =
+                        new ColumnDefinitions("0.82*,1.10*,1.08*");
                     columns.RowDefinitions = new RowDefinitions("*");
                     Grid.SetColumn(rosterPanel, 0);
                     Grid.SetRow(rosterPanel, 0);
-                    Grid.SetColumn(_ownerControls, 1);
-                    Grid.SetRow(_ownerControls, 0);
-
-                    matchColumns.ColumnDefinitions = new ColumnDefinitions("1.02*,0.98*");
-                    matchColumns.RowDefinitions = new RowDefinitions("*");
-                    Grid.SetColumn(arenaPanel, 0);
+                    Grid.SetColumn(arenaPanel, 1);
                     Grid.SetRow(arenaPanel, 0);
-                    Grid.SetColumn(rulesPanel, 1);
+                    Grid.SetColumn(rulesPanel, 2);
                     Grid.SetRow(rulesPanel, 0);
+                    columns.RowSpacing = 0;
+                    mainScroll.VerticalScrollBarVisibility =
+                        ScrollBarVisibility.Disabled;
                 }
             };
 
@@ -465,14 +467,18 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 Tick();
                 administration.IsVisible = NetSession.LocalIsLobbyOwner;
+                administration.IsEnabled = NetSession.CanEditLobby
+                    && !NetSession.LobbyCommandPending;
             };
             administration.IsVisible = NetSession.LocalIsLobbyOwner;
+            administration.IsEnabled = NetSession.CanEditLobby
+                && !NetSession.LobbyCommandPending;
             Refresh();
         }
 
         private static ButtonToggleRow Toggle(string label, bool on = false)
         {
-            var row = new ButtonToggleRow(label, on);
+            var row = new ButtonToggleRow(label, on, compact: true);
             row.Changed += (_, _) => { };
             return row;
         }
