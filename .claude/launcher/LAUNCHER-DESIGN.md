@@ -5,26 +5,36 @@ the windows.
 
 One toolkit
 
-The launcher is Avalonia everywhere. It used to be two: a WinForms front screen
-for Windows and an Avalonia one for everything else, over shared logic. That
-split cost a second implementation of every screen, and the two halves were not
-equal -- the settings window, the map grid and the pause menu existed only in
-WinForms, so a Linux player was told to go and use the console menu instead.
-Everything is now in `Mods/Launcher/Gui/`:
+The launcher is Avalonia everywhere and is rendered into the same game window as
+the match on desktop. Android hosts the same shared controls over its GL surface.
+The modern FPS hub is a presentation layer over portable launcher/network state;
+it does not own a second copy of match or lobby truth.
 
 | File | What |
 |---|---|
-| `GuiLauncher.cs` | setup, the launcher-then-match loop, and `Pump` |
-| `HomeWindow.cs` | the front screen and its cards |
-| `SettingsWindow.cs` | the rail of sections and every setting |
-| `MapPickerWindow.cs` | every map at once, as pictures |
-| `PauseMenuWindow.cs` | what Escape shows during a match |
-| `SplashView.cs`, `MenuEntry.cs`, `Rows.cs`, `SliderRow.cs`, `KeyRow.cs`, `ProgressRow.cs`, `UpdateBadge.cs`, `TrackedText.cs`, `GuiTheme.cs` | the painted controls and the palette |
+| `Shell.cs`, `UiSurface.cs` | one-window lifecycle, off-screen UI composition and input |
+| `HubHomeView.cs` | persistent command hub |
+| `HubPlayView.cs`, `HubQuickPlayView.cs` | deployment choices and Quick Play progress |
+| `HubServerBrowserView.cs` | modern public-server presentation |
+| `ServerBrowserService.cs` | renderer-neutral discovery, best-server policy and joining |
+| `LobbyScreen.cs` | authoritative lobby state presented as Roster / Arena / Match Rules |
+| `HubSettingsView.cs`, `SettingsView.cs` | category landing and transactional settings |
+| `PauseMenuView.cs`, `InGameMenu.cs` | in-match menu stack over the live match |
+| `HubTheme.cs`, `HubNavButton.cs`, `GuiTheme.cs` | FPS palette, typography and shared controls |
+
+The old deck controls remain only as transitional building blocks inside dense
+screens that have not yet been structurally replaced. Detailed notes below about
+deck springs/cards document those controls and past performance failures; they
+are not the target visual language for new hub surfaces.
 
 Painting and controls
 
-- The launcher draws its own controls for a consistent dark theme; only the text
-  boxes and scroll bars are stock, under Fluent dark.
+- Player-facing UI text uses **Inter**. JetBrains Mono is limited to technical
+  metadata/status. Pixelify and Hey November are retained legacy assets, not the
+  current display system.
+- New hub surfaces use flat `HubNavButton` controls and cold dark/cyan tokens.
+  Dense legacy controls consume the same palette/type roles while their layouts
+  migrate.
 - **An animation has to invalidate the surface, not just the control.**
   `InvalidateVisual` marks a visual dirty inside Avalonia and says nothing to
   `UiSurface`, which decides whether the screens are rasterised at all: an

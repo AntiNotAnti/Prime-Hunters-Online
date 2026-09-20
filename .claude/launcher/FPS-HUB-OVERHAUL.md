@@ -85,8 +85,11 @@ Current implementation:
 - Populated desktop/phone browser captures use deterministic sample data, never the live
   directory.
 
-Still to add: Quick Play policy, server filtering/sorting/favorites/recent history, and
-the final Offline/Story hub-native presentations.
+- `Quick Play` now chooses the lowest-latency compatible open server through the
+  same portable discovery service and joins through the same shared join path.
+
+Still to add: server filtering/sorting/favorites/recent history, and the final
+Offline/Story hub-native presentations.
 
 ## P1 — Lobby
 
@@ -104,6 +107,14 @@ Still to add: make owner actions a selected-player contextual surface rather tha
 permanent owner section, and add deterministic rendered-lobby coverage.
 
 ## P2 — Settings, clips and pause
+
+In progress:
+
+- `HubSettingsView` provides a modern Display / Audio / Controls / Replays /
+  Profile / Credits landing surface while `SettingsView` remains the single
+  transactional save/apply implementation.
+- `PauseMenuView` now uses the hub action language and explicitly says when a
+  live network session continues behind the menu.
 
 ### Settings
 

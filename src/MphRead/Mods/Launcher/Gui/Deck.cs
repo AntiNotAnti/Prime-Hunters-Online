@@ -7,7 +7,7 @@ using Avalonia.Media;
 namespace MphRead.Mods.Launcher.Gui
 {
     /// <summary>
-    /// The deck theme's unit, its faces, and the two type faces it sets.
+    /// Responsive sizing and transitional face colours used by the shared launcher controls.
     ///
     /// <para>
     /// Everything in these screens is sized in <b>ems</b>, and the em is not a
@@ -27,12 +27,9 @@ namespace MphRead.Mods.Launcher.Gui
     /// </para>
     ///
     /// <para>
-    /// Two faces, and they are not interchangeable. Pixelify Sans is the
-    /// display face -- anything that is a <i>label</i>: a button, a tab, a
-    /// server's name, a map's name. JetBrains Mono is the body face --
-    /// anything that is <i>read</i>: a mode, a ping, a count, the note under
-    /// the foot. Setting the second in the first is what a pixel font at
-    /// eleven points costs: the difference between an "e" and an "o".
+    /// Two typography roles are kept deliberately separate. Inter is the
+    /// player-facing label/heading face; JetBrains Mono is reserved for
+    /// technical values such as ping, build, counts and status metadata.
     /// </para>
     /// </summary>
     internal sealed class Deck
@@ -111,7 +108,7 @@ namespace MphRead.Mods.Launcher.Gui
             new(bold ? MonoBold : Mono, FontStyle.Normal, FontWeight.Normal);
 
         /// <summary>
-        /// The display face: labels, names, headings, the wordmark.
+        /// The interface face: labels, names and headings.
         ///
         /// Two weights, and which one is not decoration. A <c>.btn</c> is
         /// <c>font-weight: 600</c> and a server row is a bare

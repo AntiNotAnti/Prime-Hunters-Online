@@ -15,7 +15,7 @@ whole program, matches loaded into it and unloaded again. See
 
 | Entry | What it does |
 |---|---|
-| Play | opens `HubPlayView`: Online, Custom Match, Offline or Adventure |
+| Play | opens `HubPlayView`: Quick Play, Online, Custom Match, Offline or Adventure |
 | Servers | opens `HubServerBrowserView`, backed by shared `ServerBrowserService` discovery/join logic |
 | Custom | opens create-server directly |
 | Clips | opens the replay/clip library |
