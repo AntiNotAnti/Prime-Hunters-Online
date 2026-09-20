@@ -1081,7 +1081,7 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 var menu = new StackPanel { Spacing = 13 };
                 foreach (string entry in new[]
-                    { "Resume", "Vote map", "Spectate", "Fullscreen", "Record demo" })
+                    { "Resume", "Vote map", "Spectate", "Fullscreen", "Record replay" })
                 {
                     menu.Children.Add(Word(entry));
                 }
@@ -1275,7 +1275,7 @@ namespace MphRead.Mods.Launcher.Gui
         private static readonly string[] _pause =
         {
             "Resume", "Vote map", "Spectate", "Fullscreen",
-            "Record demo", "Settings", "Leave match", "Quit"
+            "Record replay", "Settings", "Leave match", "Quit"
         };
 
         private const string _match = "online match -- MP3 PROVING GROUND";

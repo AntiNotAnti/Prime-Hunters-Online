@@ -132,7 +132,8 @@ namespace MphRead.Mods.Input
                     && PlayerEntity.Players[PlayerEntity.MainPlayerIndex] is { Health: 0 })) AimInputSourceTracker.Reset();
             if (!GamepadContexts.Focused) { _frame = default; _pressed = 0; return; }
             if (!_frame.Connected) { Actions.Reset(); return; }
-            Actions.Update(_frame.Buttons);
+            Actions.Update(_frame.Buttons,
+                replayContext: MphRead.Mods.Network.DemoPlayback.IsActive);
             if (context != GamepadContext.Gameplay || WheelHeld) return;
             var (x, y) = AimStick;
             AimDeltaX = -GamepadAnalog.ApplyResponseCurve(x, GamepadOptions.Curve) * TurnRate * GamepadOptions.LookX
@@ -180,6 +181,15 @@ namespace MphRead.Mods.Input
         /// taken rather than read for the reason <see cref="TakeMenuPress"/>
         /// is: a frame drawn twice must not step the choice twice.
         /// </summary>
+        public static bool TakeActionPress(PadAction action)
+        {
+            if (_context != GamepadContext.Gameplay)
+            {
+                return false;
+            }
+            return Actions.Take(action);
+        }
+
         public static bool TakePress(GamepadButtons buttons)
         {
             if ((_pressed & buttons) == 0)

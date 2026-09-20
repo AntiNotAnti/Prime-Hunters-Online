@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using MphRead.Mods.Input;
 
 namespace MphRead.Mods.Network
 {
@@ -67,6 +69,44 @@ namespace MphRead.Mods.Network
                     h => h.Kind == Replay.ReplayHighlightKind.Objective && h.ActorSlot == 1),
                     "objective highlight");
                 Console.WriteLine("[replaycheck] studio: analytics and highlight derivation passed");
+
+                var bindings = new PadBindingState();
+                bindings.SetSlot(PadAction.ReplayPlayPause, 0, GamepadButtons.A,
+                    GamepadButtons.LeftBumper);
+                ulong liveButtons = bindings.Evaluate(
+                    GamepadButtons.LeftBumper | GamepadButtons.A, replayContext: false);
+                Require((liveButtons & (1UL << (int)PadAction.ReplayPlayPause)) == 0,
+                    "replay controller chord leaked into live gameplay");
+                Require((liveButtons & (1UL << (int)PadAction.Jump)) != 0,
+                    "replay controller chord suppressed live jump");
+                ulong replayButtons = bindings.Evaluate(
+                    GamepadButtons.LeftBumper | GamepadButtons.A, replayContext: true);
+                Require((replayButtons & (1UL << (int)PadAction.ReplayPlayPause)) != 0,
+                    "replay controller chord did not activate in replay context");
+                Console.WriteLine("[replaycheck] input: replay controller context isolation passed");
+
+                string annotationReplay = Path.Combine(Path.GetTempPath(),
+                    "replay-annotations-" + Guid.NewGuid().ToString("N") + DemoFile.Extension);
+                try
+                {
+                    File.WriteAllBytes(annotationReplay, new byte[] { 1 });
+                    var named = Replay.ReplayAnnotations.AddHighlight(
+                        annotationReplay, 60, 180, "Final push");
+                    var stored = Replay.ReplayAnnotations.Highlights(annotationReplay);
+                    Require(stored.Count == 1 && stored[0].Id == named.Id
+                        && stored[0].Name == "Final push"
+                        && stored[0].StartFrame == 60 && stored[0].EndFrame == 180,
+                        "named replay highlight did not round-trip");
+                    Replay.ReplayAnnotations.RemoveHighlight(annotationReplay, named.Id);
+                    Require(Replay.ReplayAnnotations.Highlights(annotationReplay).Count == 0,
+                        "named replay highlight did not remove");
+                }
+                finally
+                {
+                    Replay.ReplayAnnotations.DeleteFor(annotationReplay);
+                    File.Delete(annotationReplay);
+                }
+                Console.WriteLine("[replaycheck] studio: annotation sidecar round-trip passed");
                 return 0;
             }
             catch (Exception ex) { Console.WriteLine($"[replaycheck] FAIL: {ex.Message}"); return 1; }

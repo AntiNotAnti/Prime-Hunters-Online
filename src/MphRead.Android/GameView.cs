@@ -360,6 +360,10 @@ namespace MphRead.Droid
             private bool _menuWasHeld;
             private bool _spectateCycleHeld;
             private bool _spectateViewHeld;
+            private bool _replayPlayHeld;
+            private bool _replayBackHeld;
+            private bool _replayForwardHeld;
+            private bool _replayPausedShown;
             private bool _missileWasHeld;
             private bool _chatWasHeld;
             private bool _keyboardShown;
@@ -1123,6 +1127,48 @@ namespace MphRead.Droid
                     else Mods.SpectatorMode.ToggleView();
                 }
                 _spectateViewHeld = view;
+
+                // Replay transport is available directly on the touch HUD.
+                // These reuse buttons that are otherwise hidden while spectating,
+                // so normal live-spectator controls stay exactly as they were.
+                if (Mods.Network.DemoPlayback.IsActive)
+                {
+                    bool paused = Mods.Network.ReplayController.IsPaused
+                        || Mods.Network.ReplayController.AtEnd;
+                    if (paused != _replayPausedShown)
+                    {
+                        _replayPausedShown = paused;
+                        _controls.ReloadSettings();
+                    }
+
+                    bool play = _controls.IsHeld(TouchAction.Missile);
+                    if (play && !_replayPlayHeld)
+                        Mods.Network.ReplayController.TogglePause();
+                    _replayPlayHeld = play;
+
+                    bool back = _controls.IsHeld(TouchAction.WeaponMenu);
+                    if (back && !_replayBackHeld)
+                    {
+                        uint frame = Mods.Network.ReplayController.CurrentFrame;
+                        Mods.Network.ReplayController.Seek(frame > 300 ? frame - 300 : 0);
+                    }
+                    _replayBackHeld = back;
+
+                    bool forward = _controls.IsHeld(TouchAction.Zoom);
+                    if (forward && !_replayForwardHeld)
+                    {
+                        Mods.Network.ReplayController.Seek((uint)Math.Min(
+                            (ulong)Mods.Network.ReplayController.CurrentFrame + 300,
+                            Mods.Network.ReplayController.DurationFrames));
+                    }
+                    _replayForwardHeld = forward;
+                }
+                else
+                {
+                    _replayPlayHeld = _replayBackHeld = _replayForwardHeld = false;
+                    _replayPausedShown = false;
+                }
+
                 bool menuHeld = _controls.IsHeld(TouchAction.Pause);
                 if (menuHeld && !_menuWasHeld)
                 {
@@ -1243,6 +1289,8 @@ namespace MphRead.Droid
                 _controls.SetSpectator(spectating: false, freeCamera: false);
                 _spectateCycleHeld = false;
                 _spectateViewHeld = false;
+                _replayPlayHeld = _replayBackHeld = _replayForwardHeld = false;
+                _replayPausedShown = false;
                 PlayerControls controls = main.Controls;
                 TouchControls.Dir dir = _controls.Direction;
                 bool up = (dir & TouchControls.Dir.Up) != 0;

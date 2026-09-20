@@ -102,6 +102,31 @@ namespace MphRead.Mods
 
         private static Keys _clipKey = Keys.F10;
 
+        // Replay transport keys live outside PlayerControls for the same
+        // reason chat does: they control the replay host, not a hunter.
+        public static Keys ReplayPlayPauseKey { get; set; } = Keys.Space;
+        public static Keys ReplayStepBackKey { get; set; } = Keys.Comma;
+        public static Keys ReplayStepForwardKey { get; set; } = Keys.Period;
+        public static Keys ReplaySeekBackKey { get; set; } = Keys.Left;
+        public static Keys ReplaySeekForwardKey { get; set; } = Keys.Right;
+        public static Keys ReplaySlowerKey { get; set; } = Keys.LeftBracket;
+        public static Keys ReplayFasterKey { get; set; } = Keys.RightBracket;
+        public static Keys ReplayRestartKey { get; set; } = Keys.Home;
+
+        public static void ResetReplayBindings()
+        {
+            ReplayPlayPauseKey = Keys.Space;
+            ReplayStepBackKey = Keys.Comma;
+            ReplayStepForwardKey = Keys.Period;
+            ReplaySeekBackKey = Keys.Left;
+            ReplaySeekForwardKey = Keys.Right;
+            ReplaySlowerKey = Keys.LeftBracket;
+            ReplayFasterKey = Keys.RightBracket;
+            ReplayRestartKey = Keys.Home;
+            foreach (Input.PadAction action in Input.PadBindings.ReplayActions)
+                Input.PadBindings.Set(action, Input.PadBindings.Default(action));
+        }
+
         /// <summary>
         /// How far a stick must move before it counts, 0 to 0.9.
         ///
@@ -439,6 +464,10 @@ namespace MphRead.Mods
                             : Enum.TryParse(value, out Keys parsedClip) ? parsedClip : _clipKey;
                         continue;
                     }
+                    if (TryReplayKey(key, value))
+                    {
+                        continue;
+                    }
                     if (key == "clip_postroll" && Int32.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int postRoll))
                     {
                         Network.DemoClip.PostRollSeconds = postRoll;
@@ -515,6 +544,28 @@ namespace MphRead.Mods
             }
         }
 
+        private static bool TryReplayKey(string key, string value)
+        {
+            Keys parsed = value.Equals("none", StringComparison.OrdinalIgnoreCase)
+                ? Keys.Unknown
+                : Enum.TryParse(value, out Keys replayKey) ? replayKey : Keys.Unknown;
+            switch (key)
+            {
+                case "replay_play_pause": ReplayPlayPauseKey = parsed; return true;
+                case "replay_step_back": ReplayStepBackKey = parsed; return true;
+                case "replay_step_forward": ReplayStepForwardKey = parsed; return true;
+                case "replay_seek_back": ReplaySeekBackKey = parsed; return true;
+                case "replay_seek_forward": ReplaySeekForwardKey = parsed; return true;
+                case "replay_slower": ReplaySlowerKey = parsed; return true;
+                case "replay_faster": ReplayFasterKey = parsed; return true;
+                case "replay_restart": ReplayRestartKey = parsed; return true;
+                default: return false;
+            }
+        }
+
+        private static string SaveKey(Keys key)
+            => key == Keys.Unknown ? "none" : key.ToString();
+
         private static void ParseBind(PropertyInfo property, string value)
         {
             string[] parts = value.Split(':', 2);
@@ -562,6 +613,14 @@ namespace MphRead.Mods
                         + Input.StylusZone.Width.ToString("0.####", CultureInfo.InvariantCulture),
                     $"chat_key={(ChatKey == Keys.Unknown ? "none" : ChatKey.ToString())}",
                     $"clip_key={(ClipKey == Keys.Unknown ? "none" : ClipKey.ToString())}",
+                    $"replay_play_pause={SaveKey(ReplayPlayPauseKey)}",
+                    $"replay_step_back={SaveKey(ReplayStepBackKey)}",
+                    $"replay_step_forward={SaveKey(ReplayStepForwardKey)}",
+                    $"replay_seek_back={SaveKey(ReplaySeekBackKey)}",
+                    $"replay_seek_forward={SaveKey(ReplaySeekForwardKey)}",
+                    $"replay_slower={SaveKey(ReplaySlowerKey)}",
+                    $"replay_faster={SaveKey(ReplayFasterKey)}",
+                    $"replay_restart={SaveKey(ReplayRestartKey)}",
                     $"clip_seconds={Network.DemoClip.Seconds.ToString(CultureInfo.InvariantCulture)}",
                     $"clip_postroll={Network.DemoClip.PostRollSeconds.ToString(CultureInfo.InvariantCulture)}",
                     "gamepad_deadzone=" + GamepadDeadZone.ToString(CultureInfo.InvariantCulture),
@@ -615,6 +674,14 @@ namespace MphRead.Mods
             ScrollAllWeapons = true;
             ChatKey = Keys.T;
             ClipKey = Keys.F10;
+            ReplayPlayPauseKey = Keys.Space;
+            ReplayStepBackKey = Keys.Comma;
+            ReplayStepForwardKey = Keys.Period;
+            ReplaySeekBackKey = Keys.Left;
+            ReplaySeekForwardKey = Keys.Right;
+            ReplaySlowerKey = Keys.LeftBracket;
+            ReplayFasterKey = Keys.RightBracket;
+            ReplayRestartKey = Keys.Home;
             Network.DemoClip.Seconds = 30;
             Network.DemoClip.PostRollSeconds = 3;
             Input.PadBindings.Reset();

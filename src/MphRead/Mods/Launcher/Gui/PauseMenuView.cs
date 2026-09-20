@@ -78,7 +78,7 @@ namespace MphRead.Mods.Launcher.Gui
                 Deck.Face.Moss);
             if (DemoPlayback.IsActive)
             {
-                Add(menu, "Replay controls",
+                Add(menu, "Replay Studio",
                     () => ReplayControlsRequested?.Invoke(this, EventArgs.Empty),
                     Deck.Face.Blue);
             }
@@ -120,7 +120,7 @@ namespace MphRead.Mods.Launcher.Gui
             }
             if (!DemoPlayback.IsActive && NetSession.Active)
             {
-                Add(menu, DemoRecorder.IsRecording ? "Stop recording" : "Record demo",
+                Add(menu, DemoRecorder.IsRecording ? "Stop replay recording" : "Record replay",
                     () => RecordToggleRequested?.Invoke(this, EventArgs.Empty));
             }
             Add(menu, "Settings", () => SettingsRequested?.Invoke(this, EventArgs.Empty));

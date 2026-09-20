@@ -486,7 +486,7 @@ Pause menu
 
 - `Escape` in a match opens it on every platform now (`Mods/PauseMenu.cs` +
   `Gui/PauseMenuWindow.cs`): Resume, Fullscreen/Windowed, Settings, Spectate or
-  Rejoin, Record demo, Leave match, Quit.
+  Rejoin, Record replay, Leave match, Quit.
 - **It scales itself down rather than being cut off.** The panel's natural
   height is worked out from the entries put in it (each states its own
   `Height`), and `PauseMenuView.FitToHost` puts a `ScaleTransform` on a

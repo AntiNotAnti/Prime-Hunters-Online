@@ -5892,6 +5892,13 @@ namespace MphRead
 
         public void OnKeyDown(KeyboardKeyEventArgs e)
         {
+            // Replay transport belongs to the replay itself, not the pause menu.
+            // Take these keys before debug/viewer shortcuts so the same controls
+            // work on desktop that Android already exposes through ReplayInput.
+            if (Mods.Replay.ReplayInput.HandleKey(e.Key))
+            {
+                return;
+            }
 #if DEBUG
             if (Selection.OnKeyDown(e, this))
             {

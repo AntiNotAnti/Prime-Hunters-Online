@@ -3,6 +3,7 @@ using System.Linq;
 using MphRead.Entities;
 using MphRead.Hud;
 using MphRead.Mods.Chat;
+using MphRead.Mods.Input;
 using MphRead.Mods.Network;
 using OpenTK.Mathematics;
 
@@ -68,7 +69,7 @@ namespace MphRead.Mods.Replay
             float alpha = ReplayController.State == ReplayState.Playing
                 && Environment.TickCount64 - ReplayController.LastInteraction > 4000
                     ? 0.45f : 1;
-            scene.DrawHudFlatBox(46, 159, 210, 188,
+            scene.DrawHudFlatBox(46, 159, 210, 191,
                 new Vector4(0, 0, 0, alpha * 0.7f));
             if (Environment.TickCount64 - _textAt >= 100
                 || _state != ReplayController.State)
@@ -106,8 +107,54 @@ namespace MphRead.Mods.Replay
                 }
             }
             Text(scene, 49, 178, _watching, alpha, 207);
-            if (ReplayController.AtEnd || ReplayController.State == ReplayState.Error)
-                Text(scene, 49, 184, "Home: restart   Esc: exit replay", alpha, 207);
+
+            // The essential transport stays discoverable while watching. The
+            // full Replay Studio remains in the pause menu for editing, camera
+            // and export work, but play/pause, seek and speed do not require it.
+            float controlsAlpha = Math.Max(alpha, 0.72f);
+            if (ReplayController.AtEnd)
+            {
+                string restart = InputSourceTracker.Current switch
+                {
+                    InputSource.Gamepad => Pad(PadAction.ReplayPlayPause),
+                    InputSource.Touch => "PLAY",
+                    _ => Key(InputSettings.ReplayPlayPauseKey)
+                };
+                Text(scene, 49, 183, $"{restart}: restart replay", controlsAlpha, 207);
+                Text(scene, 49, 188, "Esc/Menu: Replay Studio", controlsAlpha, 207);
+            }
+            else if (ReplayController.State == ReplayState.Error)
+            {
+                Text(scene, 49, 183, "Replay playback error", controlsAlpha, 207);
+                Text(scene, 49, 188, "Esc: menu, then Replay Studio", controlsAlpha, 207);
+            }
+            else if (InputSourceTracker.Current == InputSource.Gamepad)
+            {
+                string play = Pad(PadAction.ReplayPlayPause);
+                string back = Pad(PadAction.ReplaySeekBack);
+                string forward = Pad(PadAction.ReplaySeekForward);
+                string slower = Pad(PadAction.ReplaySlower);
+                string faster = Pad(PadAction.ReplayFaster);
+                string step = Pad(PadAction.ReplayStep);
+                Text(scene, 49, 183, $"{play}: play/pause   {back}/{forward}: seek", controlsAlpha, 207);
+                Text(scene, 49, 188, $"{slower}/{faster}: speed   {step}: step", controlsAlpha, 207);
+            }
+            else if (InputSourceTracker.Current == InputSource.Touch)
+            {
+                Text(scene, 49, 183, "PLAY/PAUSE   -5S / +5S", controlsAlpha, 207);
+                Text(scene, 49, 188, "MENU: full Replay Studio", controlsAlpha, 207);
+            }
+            else
+            {
+                string play = Key(InputSettings.ReplayPlayPauseKey);
+                string back = Key(InputSettings.ReplaySeekBackKey);
+                string forward = Key(InputSettings.ReplaySeekForwardKey);
+                string slower = Key(InputSettings.ReplaySlowerKey);
+                string faster = Key(InputSettings.ReplayFasterKey);
+                string step = Key(InputSettings.ReplayStepForwardKey);
+                Text(scene, 49, 183, $"{play}: play/pause   {back}/{forward}: seek", controlsAlpha, 207);
+                Text(scene, 49, 188, $"{slower}/{faster}: speed   {step}: step", controlsAlpha, 207);
+            }
 
             if (ShowAnalytics || ShowNetworkDebug)
                 RefreshDiagnostics();
@@ -144,6 +191,20 @@ namespace MphRead.Mods.Replay
                     new Vector4(0, 0, 0, 0.72f));
                 Text(scene, 49, 151, ReplayVideoExporter.Status, 1, 207);
             }
+        }
+
+        private static string Key(OpenTK.Windowing.GraphicsLibraryFramework.Keys key)
+            => key == OpenTK.Windowing.GraphicsLibraryFramework.Keys.Unknown
+                ? "--" : InputSettings.KeyName(key);
+
+        private static string Pad(PadAction action)
+        {
+            for (int slot = 0; slot < 2; slot++)
+            {
+                if (PadBindings.Slot(action, slot) != GamepadButtons.None)
+                    return PadBindings.DescribeSlot(action, slot).ToUpperInvariant();
+            }
+            return "UNBOUND";
         }
 
         private static void RefreshDiagnostics()

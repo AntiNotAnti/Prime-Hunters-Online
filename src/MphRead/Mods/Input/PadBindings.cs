@@ -7,6 +7,8 @@ namespace MphRead.Mods.Input
         public static string Preset { get => State.Preset; internal set => State.Preset = value; }
         public static long Revision => State.Revision;
         public static IReadOnlyList<PadAction> Actions => State.Actions;
+        public static IReadOnlyList<PadAction> GameplayActions => State.GameplayActions;
+        public static IReadOnlyList<PadAction> ReplayActions => State.ReplayActions;
         public static GamepadButtons Get(PadAction action) => State.Get(action);
         public static void Set(PadAction action, GamepadButtons buttons) => State.Set(action, buttons);
         public static GamepadButtons Default(PadAction action) => State.Default(action);
@@ -15,8 +17,10 @@ namespace MphRead.Mods.Input
         public static bool Single(GamepadButtons button) => State.Single(button);
         public static GamepadButtons Modifier(PadAction action, int slot) => State.Modifier(action, slot);
         public static string DescribeSlot(PadAction action, int slot) => State.DescribeSlot(action, slot);
-        public static ulong Evaluate(GamepadButtons buttons, GamepadButtons suppressed = 0) => State.Evaluate(buttons, suppressed);
-        public static GamepadButtons ChordButtons(GamepadButtons buttons) => State.ChordButtons(buttons);
+        public static ulong Evaluate(GamepadButtons buttons, GamepadButtons suppressed = 0,
+            bool replayContext = false) => State.Evaluate(buttons, suppressed, replayContext);
+        public static GamepadButtons ChordButtons(GamepadButtons buttons,
+            bool replayContext = false) => State.ChordButtons(buttons, replayContext);
         public static void Write(List<string> lines) => State.Write(lines);
         public static void LoadSlots(IEnumerable<string> lines) => State.LoadSlots(lines);
         public static IReadOnlyList<PadAction> Conflicts(PadAction action, GamepadButtons button, GamepadButtons modifier = 0) => State.Conflicts(action, button, modifier);
