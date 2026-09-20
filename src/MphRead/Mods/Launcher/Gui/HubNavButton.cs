@@ -27,12 +27,15 @@ namespace MphRead.Mods.Launcher.Gui
         private bool _pressed;
 
         public event EventHandler? Click;
-        public string Label { get; }
+        public string Label
+        {
+            get => _label.Text;
+            set => _label.Text = value;
+        }
 
         public HubNavButton(string label, string detail = "", bool primary = false,
             bool compact = false, Color? accent = null)
         {
-            Label = label;
             _primary = primary;
             _accent = new SolidColorBrush(accent ?? HubTheme.Accent);
 
