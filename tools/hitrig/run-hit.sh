@@ -25,7 +25,7 @@ ROSTER="${HITRIG_ROSTER:-ALPHA:Samus BRAVO:Trace}"
 OUT="${HITRIG_OUT:-/tmp/hitrig}/$LABEL"
 mkdir -p "$OUT"
 cd "$BUILD" || exit 1
-[ -f paths.txt ] || { echo "paths.txt missing beside $BUILD/FruityPrime.dll"; exit 1; }
+[ -f paths.txt ] || { echo "paths.txt missing beside $BUILD/ProjectPrime.dll"; exit 1; }
 
 pids=()
 i=0
@@ -36,7 +36,7 @@ for spec in $ROSTER; do
   # HITRIG_CLIENT_EXTRA carries the arm's client-side flag (-clientpin, say).
   # Unquoted on purpose: it is a list of flags, not one argument.
   # shellcheck disable=SC2086
-  "$DN" FruityPrime.dll -netcheck "$HOST" -port "$PORT" -name "$name" \
+  "$DN" ProjectPrime.dll -netcheck "$HOST" -port "$PORT" -name "$name" \
       -hunter "$hunter" -seconds "$(( SECS - i * 3 ))" -size 320x180 \
       ${HITRIG_CLIENT_EXTRA:-} "$@" \
       > "$OUT/$name.log" 2>&1 &

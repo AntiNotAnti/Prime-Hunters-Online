@@ -20,7 +20,7 @@ param(
     [switch] $Slow,
     [switch] $Free,
     [string] $Shot = "",
-    [string] $Exe = "C:\GIT\Fruity-Prime\src\MphRead\bin\Release\net9.0\FruityPrime.dll"
+    [string] $Exe = "C:\GIT\Fruity-Prime\src\MphRead\bin\Release\net9.0\ProjectPrime.dll"
 )
 
 $env:PATH = "$env:USERPROFILE\.dotnet;$env:PATH"

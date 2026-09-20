@@ -6,7 +6,7 @@ only from inside the room, one viewpoint at a time. Neither of those helps with
 the question that actually comes up, which is "what is the collision *shaped*
 like here, and what is the geometry it is supposed to match": that wants two
 meshes side by side in something you can orbit, and the game exports a model
-(`FruityPrime -export NAME`, Collada) but nothing at all of its collision.
+(`ProjectPrime -export NAME`, Collada) but nothing at all of its collision.
 
 So this reads `<room>_Collision.bin` and writes the faces out as they are. It
 converts nothing and infers nothing -- the numbers in the OBJ are the numbers
@@ -249,7 +249,7 @@ def find_room(name: str, files_root: Path) -> Path:
     if not matches:
         raise SystemExit(
             f"No {name}_Collision.bin under {files_root}. A custom map's is "
-            "generated on first build -- run `FruityPrime -mapgen` if it is "
+            "generated on first build -- run `ProjectPrime -mapgen` if it is "
             "not there yet."
         )
     if len(matches) > 1:
