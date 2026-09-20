@@ -19,6 +19,14 @@ namespace MphRead.Mods.Launcher
         Quit
     }
 
+    public enum HubPlayDestination
+    {
+        Online,
+        Custom,
+        Offline,
+        Adventure
+    }
+
     /// <summary>
     /// Read-only launcher state the home hub needs to present.
     ///
