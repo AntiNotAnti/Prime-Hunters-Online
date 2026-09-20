@@ -132,7 +132,8 @@ namespace MphRead.Mods.Input
                     && PlayerEntity.Players[PlayerEntity.MainPlayerIndex] is { Health: 0 })) AimInputSourceTracker.Reset();
             if (!GamepadContexts.Focused) { _frame = default; _pressed = 0; return; }
             if (!_frame.Connected) { Actions.Reset(); return; }
-            Actions.Update(_frame.Buttons);
+            Actions.Update(_frame.Buttons,
+                includeReplay: MphRead.Mods.Network.DemoPlayback.IsActive);
             if (context != GamepadContext.Gameplay || WheelHeld) return;
             var (x, y) = AimStick;
             AimDeltaX = -GamepadAnalog.ApplyResponseCurve(x, GamepadOptions.Curve) * TurnRate * GamepadOptions.LookX
