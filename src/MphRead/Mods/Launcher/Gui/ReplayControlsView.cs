@@ -83,7 +83,7 @@ namespace MphRead.Mods.Launcher.Gui
             BuildHighlights();
             body.Children.Add(_highlightPanel);
 
-            body.Children.Add(new Caption("Playback & clip editing"));
+            body.Children.Add(new Caption("Playback"));
             body.Children.Add(new Note(
                 "Basic playback stays available while watching. Use the on-screen replay HUD "
                 + "shortcuts for play/pause, seek, speed and frame stepping without opening this menu."));
@@ -123,6 +123,14 @@ namespace MphRead.Mods.Launcher.Gui
                 return button;
             }
 
+            void BeginActionGroup(string caption)
+            {
+                body.Children.Add(new Caption(caption));
+                grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*") };
+                body.Children.Add(grid);
+                index = 0;
+            }
+
             _playPause = AddAction("PAUSE", ReplayController.TogglePause, resume: true,
                 face: Deck.Face.Moss);
             _first = _playPause;
@@ -135,6 +143,10 @@ namespace MphRead.Mods.Launcher.Gui
                     ReplayController.DurationFrames), resume: false), resume: true);
             AddAction("SLOWER", () => ReplayController.ChangeRate(-1));
             AddAction("FASTER", () => ReplayController.ChangeRate(1));
+            AddAction("NORMAL SPEED", () => ReplayController.SetPlaybackRate(1));
+            AddAction("RESTART", ReplayController.Restart, resume: true);
+
+            BeginActionGroup("Navigate replay");
             AddAction("PREV EVENT", () => ReplayController.JumpEvent(false), resume: true);
             AddAction("NEXT EVENT", () => ReplayController.JumpEvent(true), resume: true);
             AddAction("PREV PLAYER", () =>
@@ -148,7 +160,8 @@ namespace MphRead.Mods.Launcher.Gui
                 ReplayController.NoteInput();
             }, resume: true);
             AddAction("CAMERA MODE", CycleCamera, resume: true);
-            AddAction("RESTART", ReplayController.Restart, resume: true);
+
+            BeginActionGroup("Clip editing");
             AddAction("MARK IN", ReplayController.MarkIn, face: Deck.Face.Brass);
             AddAction("MARK OUT", ReplayController.MarkOut, face: Deck.Face.Brass);
             AddAction("SAVE REPLAY CLIP", SaveSelection, face: Deck.Face.Moss);
