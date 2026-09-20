@@ -632,15 +632,46 @@ namespace MphRead
         private bool _depthTextureRefused = false;
         private int _celFrameBuffer = 0;
         private int _celFrameBufferColor = 0;
+        private int _maxRenderTargetSize;
 
         /// <summary>
-        /// The size the 3D scene is actually drawn at, which the resolution
-        /// scale may make smaller than the window. The quad that puts it on
-        /// screen stretches it back, and the HUD is drawn after that at full
-        /// size, so nothing readable is ever scaled.
+        /// The size the 3D scene is actually drawn at. Supersampling may ask
+        /// for a target larger than the window, but never larger than both the
+        /// GPU's maximum texture and renderbuffer dimensions. Aspect ratio is
+        /// preserved when an extreme scale has to be capped.
         /// </summary>
-        public Vector2i RenderSize => new Vector2i(
-            Mods.RenderOptions.Scaled(Size.X), Mods.RenderOptions.Scaled(Size.Y));
+        public Vector2i RenderSize
+        {
+            get
+            {
+                var requested = new Vector2i(
+                    Mods.RenderOptions.Scaled(Size.X), Mods.RenderOptions.Scaled(Size.Y));
+                int limit = MaxRenderTargetSize();
+                if (requested.X <= limit && requested.Y <= limit)
+                {
+                    return requested;
+                }
+                double fit = Math.Min(limit / (double)Math.Max(1, requested.X),
+                    limit / (double)Math.Max(1, requested.Y));
+                return new Vector2i(
+                    Math.Max(1, (int)Math.Floor(requested.X * fit)),
+                    Math.Max(1, (int)Math.Floor(requested.Y * fit)));
+            }
+        }
+
+        private int MaxRenderTargetSize()
+        {
+            if (_maxRenderTargetSize > 0)
+            {
+                return _maxRenderTargetSize;
+            }
+            int texture = GL.GetInteger(GetPName.MaxTextureSize);
+            int renderbuffer = GL.GetInteger(GetPName.MaxRenderbufferSize);
+            int limit = Math.Min(texture > 0 ? texture : Int32.MaxValue,
+                renderbuffer > 0 ? renderbuffer : Int32.MaxValue);
+            _maxRenderTargetSize = limit == Int32.MaxValue ? 4096 : Math.Max(1, limit);
+            return _maxRenderTargetSize;
+        }
 
         private Vector2i _targetSize;
 
@@ -1381,11 +1412,10 @@ namespace MphRead
             GL.BindTexture(TextureTarget.Texture2D, _textureCount);
             GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba, texture.Width, texture.Height, 0,
                 PixelFormat.Rgba, PixelType.UnsignedByte, pixels.ToArray());
-            // Always build the tiny DS texture's mip chain once. Whether it is
-            // sampled is a runtime setting, so enabling trilinear filtering in
-            // the pause menu does not require unloading/reloading the room.
-            GL.GenerateMipmap(GenerateMipmapTarget.Texture2D);
-            _mipmappedTextures.Add(_textureCount);
+            // Mipmaps are generated lazily if/when the player enables them.
+            // The default DS/competitive path therefore pays no extra upload
+            // time or GPU memory simply because the option exists.
+            _mipmappedTextures.Remove(_textureCount);
             GL.BindTexture(TextureTarget.Texture2D, 0);
             _flatColors[_textureCount] = average.Result;
             return onlyOpaque;
@@ -1459,6 +1489,7 @@ namespace MphRead
             GL.BindTexture(TextureTarget.Texture2D, _textureCount);
             GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba, width, height, 0,
                 PixelFormat.Rgba, PixelType.UnsignedByte, data.ToArray());
+            _mipmappedTextures.Remove(_textureCount);
             GL.BindTexture(TextureTarget.Texture2D, 0);
             _flatColors[_textureCount] = AverageOf(data);
             return _textureCount;
@@ -1469,6 +1500,7 @@ namespace MphRead
             GL.BindTexture(TextureTarget.Texture2D, bindingId);
             GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba, width, height, 0,
                 PixelFormat.Rgba, PixelType.UnsignedByte, data.ToArray());
+            _mipmappedTextures.Remove(bindingId);
             GL.BindTexture(TextureTarget.Texture2D, 0);
             // this binding may already have had a different picture in it
             _flatColors[bindingId] = AverageOf(data);
@@ -5698,8 +5730,11 @@ namespace MphRead
             if (item.HasTexture)
             {
                 GL.BindTexture(TextureTarget.Texture2D, item.TextureBindingId);
-                bool mipmapped = FilteringOn && Mods.RenderOptions.TextureMipmaps
-                    && _mipmappedTextures.Contains(item.TextureBindingId);
+                bool mipmapped = FilteringOn && Mods.RenderOptions.TextureMipmaps;
+                if (mipmapped && _mipmappedTextures.Add(item.TextureBindingId))
+                {
+                    GL.GenerateMipmap(GenerateMipmapTarget.Texture2D);
+                }
                 int minParameter = !FilteringOn
                     ? (int)TextureMinFilter.Nearest
                     : mipmapped

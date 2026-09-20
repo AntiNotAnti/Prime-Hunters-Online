@@ -181,7 +181,7 @@ namespace MphRead.Mods.Launcher.Gui
         private int _controlPageIndex;
         private ToggleRow? _repositionFilter;
         private StackPanel? _stylusAdvanced;
-        private DeckButton? _stylusAdvancedButton;
+        private HubNavButton? _stylusAdvancedButton;
         private bool _stylusAdvancedOpen;
         private FieldRow _playerName = null!;
         private ChoiceRow _hunterRow = null!;
@@ -570,11 +570,11 @@ namespace MphRead.Mods.Launcher.Gui
             return control;
         }
 
-        private static DeckButton AddAdvancedToggle(StackPanel page, StackPanel advanced, string navId)
+        private static HubNavButton AddAdvancedToggle(StackPanel page, StackPanel advanced, string navId)
         {
-            var button = new DeckButton("Advanced", Deck.Face.Slate,
-                sizeEms: .9, padXEms: .8, padYEms: .38, lip: 3)
+            var button = new HubNavButton("ADVANCED", compact: true)
             {
+                Width = 170,
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Margin = new Thickness(0, 8, 0, 4)
             };
@@ -1028,12 +1028,14 @@ namespace MphRead.Mods.Launcher.Gui
             foreach (Mods.Input.PadAction action in Mods.Input.PadBindings.ReplayActions)
                 _replayPadRows.Add(Add(page, new PadRow(action)));
 
-            var resetReplay = new DeckButton("Reset replay controls", Deck.Face.Brass,
-                sizeEms: .9, padXEms: .8, padYEms: .38, lip: 3)
+            var resetReplay = new HubNavButton("RESET REPLAY CONTROLS",
+                compact: true, accent: HubTheme.Warm)
             {
+                Width = 230,
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Margin = new Thickness(0, 10, 0, 0)
             };
+            ControllerNav.Identify(resetReplay, "replay.controls.reset");
             resetReplay.Click += (_, _) =>
             {
                 InputSettings.ResetReplayBindings();
@@ -1069,9 +1071,10 @@ namespace MphRead.Mods.Launcher.Gui
                 padRows.Add(Add(page, new PadRow(action)));
             }
 
-            var reset = new DeckButton("Reset to defaults", Deck.Face.Brass,
-                sizeEms: .9, padXEms: .8, padYEms: .38, lip: 3)
+            var reset = new HubNavButton("RESET TO DEFAULTS",
+                compact: true, accent: HubTheme.Warm)
             {
+                Width = 200,
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Margin = new Thickness(0, 10, 0, 0)
             };
@@ -1132,9 +1135,10 @@ namespace MphRead.Mods.Launcher.Gui
             _stylusZone = Add(page, new ToggleRow("DS touch-screen zone", Mods.Input.StylusZone.Wanted));
             _stylusRows.Add(_stylusZone);
 
-            var place = new DeckButton("Configure stylus zone", Deck.Face.Slate,
-                sizeEms: .9, padXEms: .8, padYEms: .38, lip: 3)
+            var place = new HubNavButton("CONFIGURE STYLUS ZONE",
+                compact: true, accent: HubTheme.Accent)
             {
+                Width = 220,
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Margin = new Thickness(0, 8, 0, 0)
             };
@@ -1161,9 +1165,9 @@ namespace MphRead.Mods.Launcher.Gui
                 v => $"{v}%", min: 0, max: 100, keyStep: 5));
             _stylusAdvanced.Children.Add(new Note(
                 "Reposition filtering ignores tablet jumps after lift/re-contact. Cursor, rectangle, and circular button opacity are independent; 0% hides that element during play. Zone placement stays visible while you configure it."));
-            _stylusAdvancedButton = new DeckButton("Advanced", Deck.Face.Slate,
-                sizeEms: .9, padXEms: .8, padYEms: .38, lip: 3)
+            _stylusAdvancedButton = new HubNavButton("ADVANCED", compact: true)
             {
+                Width = 170,
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Margin = new Thickness(0, 8, 0, 4)
             };

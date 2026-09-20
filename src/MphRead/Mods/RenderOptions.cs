@@ -147,8 +147,8 @@ namespace MphRead.Mods
         /// the renderer then leaves the depth in the cheaper buffer that
         /// cannot be read back.
         ///
-        /// Locked at 0.5 (50%) -- steps and outline strength are no longer
-        /// player-configurable, only the on/off switch above is.
+        /// Exposed on the Graphics page so the outline can range from disabled
+        /// to a heavy ink pass without changing the underlying cel algorithm.
         /// </summary>
         public static float CelEdge
         {
