@@ -49,7 +49,8 @@ namespace MphRead.Mods.Launcher.Gui
                 RowSpacing = 14
             };
 
-            var header = BuildHeader(out _headerState);
+            var header = BuildHeader(out StackPanel headerState);
+            _headerState = headerState;
             root.Children.Add(header);
 
             _main = new Grid
@@ -68,11 +69,17 @@ namespace MphRead.Mods.Launcher.Gui
             _compactNav.IsVisible = false;
             _main.Children.Add(_compactNav);
 
-            _hero = BuildHero(out _stand, out _heroBody);
+            _hero = BuildHero(out HunterStand stand, out Grid heroBody);
+            _stand = stand;
+            _heroBody = heroBody;
             Grid.SetColumn(_hero, 1);
             _main.Children.Add(_hero);
 
-            _profile = BuildProfile(out _player, out _hunter, out _data);
+            _profile = BuildProfile(out TextBlock player, out TextBlock hunter,
+                out TextBlock data);
+            _player = player;
+            _hunter = hunter;
+            _data = data;
             Grid.SetColumn(_profile, 2);
             _main.Children.Add(_profile);
 
@@ -386,6 +393,8 @@ namespace MphRead.Mods.Launcher.Gui
                 _hero.Margin = new Thickness(0);
                 _heroBody.ColumnDefinitions = new ColumnDefinitions("*");
                 _heroBody.RowDefinitions = new RowDefinitions("*");
+                Grid.SetColumn(_stand, 0);
+                Grid.SetRow(_stand, 0);
                 _stand.IsVisible = false;
             }
             else
