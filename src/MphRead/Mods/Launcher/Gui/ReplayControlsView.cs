@@ -83,7 +83,10 @@ namespace MphRead.Mods.Launcher.Gui
             BuildHighlights();
             body.Children.Add(_highlightPanel);
 
-            body.Children.Add(new Caption("Transport & editing"));
+            body.Children.Add(new Caption("Playback & clip editing"));
+            body.Children.Add(new Note(
+                "Basic playback stays available while watching. Use the on-screen replay HUD "
+                + "shortcuts for play/pause, seek, speed and frame stepping without opening this menu."));
             var grid = new Grid
             {
                 ColumnDefinitions = new ColumnDefinitions("*,*")
@@ -267,7 +270,8 @@ namespace MphRead.Mods.Launcher.Gui
             var shortcuts = new TextBlock
             {
                 Text = "Keyboard: Space play/pause · ,/. step · [/] speed · ←/→ seek · "
-                    + "1-8 player · F/C/O camera · B/N camera keys",
+                    + "1-8 player · F/C/O camera · B/N camera keys\n"
+                    + "Gamepad: A play/pause · X step · D-pad seek/speed · LB/RB player",
                 FontFamily = GuiTheme.Display,
                 FontSize = 11,
                 Foreground = GuiTheme.TextDimBrush,
