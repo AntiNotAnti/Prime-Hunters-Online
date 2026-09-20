@@ -30,13 +30,7 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly TextBlock _data;
         private bool _compact;
 
-        public event EventHandler? PlayRequested;
-        public event EventHandler? ServersRequested;
-        public event EventHandler? CustomRequested;
-        public event EventHandler? ClipsRequested;
-        public event EventHandler? SettingsRequested;
-        public event EventHandler? SupportRequested;
-        public event EventHandler? QuitRequested;
+        public event Action<HubDestination>? NavigateRequested;
 
         public HubHomeView()
         {
@@ -95,19 +89,16 @@ namespace MphRead.Mods.Launcher.Gui
 
         public void RefreshProfile()
         {
-            string player = LauncherPrefs.PlayerName.Trim();
-            _player.Text = player.Length == 0 ? "PLAYER" : player.ToUpperInvariant();
+            HubSnapshot snapshot = HubState.Capture();
+            _player.Text = snapshot.PlayerName.ToUpperInvariant();
+            _stand.Name2 = snapshot.DisplayHunter.ToString();
+            _stand.Suit = snapshot.Suit;
+            _hunter.Text = snapshot.PreferredHunter == Hunter.Random
+                ? $"RANDOM // {snapshot.DisplayHunter}".ToUpperInvariant()
+                : snapshot.DisplayHunter.ToString().ToUpperInvariant();
 
-            Hunter chosen = LauncherPrefs.LastHunter;
-            Hunter resolved = Hunters.Resolve(chosen);
-            _stand.Name2 = resolved.ToString();
-            _stand.Suit = Math.Clamp(LauncherPrefs.LastColor, 0, 3);
-            _hunter.Text = chosen == Hunter.Random
-                ? $"RANDOM // {resolved}".ToUpperInvariant()
-                : resolved.ToString().ToUpperInvariant();
-
-            _data.Text = GameFiles.Ready ? "READY" : "SETUP REQUIRED";
-            _data.Foreground = GameFiles.Ready
+            _data.Text = snapshot.GameFilesReady ? "READY" : "SETUP REQUIRED";
+            _data.Foreground = snapshot.GameFilesReady
                 ? HubTheme.GoodBrush
                 : HubTheme.WarmBrush;
         }
@@ -162,20 +153,20 @@ namespace MphRead.Mods.Launcher.Gui
             HubNavButton[] buttons =
             {
                 Action("PLAY", "Choose multiplayer, offline or story",
-                    () => PlayRequested?.Invoke(this, EventArgs.Empty), primary: true),
+                    () => Navigate(HubDestination.Play), primary: true),
                 Action("SERVERS", "Browse live public sessions",
-                    () => ServersRequested?.Invoke(this, EventArgs.Empty)),
+                    () => Navigate(HubDestination.Servers)),
                 Action("CUSTOM", "Create and configure a lobby",
-                    () => CustomRequested?.Invoke(this, EventArgs.Empty)),
+                    () => Navigate(HubDestination.Custom)),
                 Action("CLIPS", "Replay studio and saved moments",
-                    () => ClipsRequested?.Invoke(this, EventArgs.Empty)),
+                    () => Navigate(HubDestination.Clips)),
                 Action("SETTINGS", "Video, audio, input and player",
-                    () => SettingsRequested?.Invoke(this, EventArgs.Empty)),
+                    () => Navigate(HubDestination.Settings)),
                 Action("SUPPORT", "Project links",
-                    () => SupportRequested?.Invoke(this, EventArgs.Empty),
+                    () => Navigate(HubDestination.Support),
                     accent: HubTheme.Warm),
                 Action("QUIT", "Close Prime Hunters Online",
-                    () => QuitRequested?.Invoke(this, EventArgs.Empty),
+                    () => Navigate(HubDestination.Quit),
                     accent: HubTheme.Danger)
             };
             for (int i = 0; i < buttons.Length; i++)
@@ -201,19 +192,19 @@ namespace MphRead.Mods.Launcher.Gui
                 RowSpacing = 5
             };
             HubNavButton play = AddCompact(grid, 0, 0, "PLAY",
-                () => PlayRequested?.Invoke(this, EventArgs.Empty), true);
+                () => Navigate(HubDestination.Play), true);
             HubNavButton servers = AddCompact(grid, 1, 0, "SERVERS",
-                () => ServersRequested?.Invoke(this, EventArgs.Empty));
+                () => Navigate(HubDestination.Servers));
             HubNavButton custom = AddCompact(grid, 2, 0, "CUSTOM",
-                () => CustomRequested?.Invoke(this, EventArgs.Empty));
+                () => Navigate(HubDestination.Custom));
             HubNavButton clips = AddCompact(grid, 3, 0, "CLIPS",
-                () => ClipsRequested?.Invoke(this, EventArgs.Empty));
+                () => Navigate(HubDestination.Clips));
             HubNavButton settings = AddCompact(grid, 0, 1, "SETTINGS",
-                () => SettingsRequested?.Invoke(this, EventArgs.Empty));
+                () => Navigate(HubDestination.Settings));
             HubNavButton support = AddCompact(grid, 1, 1, "SUPPORT",
-                () => SupportRequested?.Invoke(this, EventArgs.Empty), accent: HubTheme.Warm);
+                () => Navigate(HubDestination.Support), accent: HubTheme.Warm);
             HubNavButton quit = AddCompact(grid, 2, 1, "QUIT",
-                () => QuitRequested?.Invoke(this, EventArgs.Empty), accent: HubTheme.Danger);
+                () => Navigate(HubDestination.Quit), accent: HubTheme.Danger);
 
             WireCompact(play, "play", up: "settings", down: "settings",
                 left: "clips", right: "servers", initial: true);
@@ -271,7 +262,7 @@ namespace MphRead.Mods.Launcher.Gui
             });
 
             var launch = Action("FIND A GAME", "Open deployment options",
-                () => PlayRequested?.Invoke(this, EventArgs.Empty), primary: true);
+                () => Navigate(HubDestination.Play), primary: true);
             launch.Width = 250;
             launch.HorizontalAlignment = HorizontalAlignment.Left;
             launch.Margin = new Thickness(0, 8, 0, 3);
@@ -337,7 +328,7 @@ namespace MphRead.Mods.Launcher.Gui
             stack.Children.Add(Value("AUTO DETECT"));
 
             stack.Children.Add(Key("PLATFORM"));
-            stack.Children.Add(Value(OperatingSystem.IsAndroid() ? "ANDROID" : "DESKTOP"));
+            stack.Children.Add(Value(HubState.Capture().Platform.ToUpperInvariant()));
 
             var divider = new Border
             {
@@ -452,6 +443,9 @@ namespace MphRead.Mods.Launcher.Gui
                 _stand.Height = 310;
             }
         }
+
+        private void Navigate(HubDestination destination) =>
+            NavigateRequested?.Invoke(destination);
 
         private HubNavButton Action(string label, string detail, Action action,
             bool primary = false, Color? accent = null)
