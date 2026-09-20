@@ -717,7 +717,8 @@ namespace MphRead.Mods.Launcher.Gui
 
         private void Refresh()
         {
-            _playPause.Text = ReplayController.IsPaused ? "PLAY" : "PAUSE";
+            _playPause.Text = ReplayController.AtEnd ? "RESTART"
+                : ReplayController.IsPaused ? "PLAY" : "PAUSE";
             _director.Text = ReplayCamera.Director ? "DIRECTOR: ON" : "DIRECTOR: OFF";
             _track.Text = ReplayCamera.PlayTrack ? "CAMERA TRACK: ON" : "CAMERA TRACK: OFF";
             _collision.Text = ReplayCamera.TrackCollisionAvoidance
