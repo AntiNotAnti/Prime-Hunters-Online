@@ -208,7 +208,7 @@ namespace MphRead.Mods.Launcher.Gui
             else
             {
                 _cards.ColumnDefinitions = new ColumnDefinitions("*,*");
-                _cards.RowDefinitions = new RowDefinitions("*,*,*");
+                _cards.RowDefinitions = new RowDefinitions("*,*,*,*");
                 for (int i = 0; i < _cards.Children.Count; i++)
                 {
                     Grid.SetColumnSpan(_cards.Children[i], 1);

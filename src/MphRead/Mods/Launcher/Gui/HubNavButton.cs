@@ -28,6 +28,7 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly bool _primary;
         private bool _pointer;
         private bool _pressed;
+        private bool _selected;
         private readonly Tap _tap = new();
 
         public event EventHandler? Click;
@@ -35,6 +36,25 @@ namespace MphRead.Mods.Launcher.Gui
         {
             get => _label.Text ?? "";
             set => _label.Text = value;
+        }
+
+        /// <summary>
+        /// Persistently emphasize this destination while its page is active.
+        /// Hover/focus remain separate so selection does not make the control
+        /// look permanently pressed or shifted.
+        /// </summary>
+        public bool Selected
+        {
+            get => _selected;
+            set
+            {
+                if (_selected == value)
+                {
+                    return;
+                }
+                _selected = value;
+                RefreshVisual();
+            }
         }
 
         public HubNavButton(string label, string detail = "", bool primary = false,
@@ -203,12 +223,13 @@ namespace MphRead.Mods.Launcher.Gui
 
         private void RefreshVisual()
         {
-            bool hot = _pointer || IsFocused;
-            _frame.Background = hot ? _hotBackground : _restBackground;
-            _frame.BorderBrush = hot || _primary ? _accent : HubTheme.EdgeBrush;
-            _rail.Opacity = hot || _primary ? 1 : 0.35;
-            _label.Foreground = hot || _primary ? _accent : HubTheme.TextBrush;
-            _shift.X = hot && IsEffectivelyEnabled ? 2 : 0;
+            bool interactive = _pointer || IsFocused;
+            bool emphasized = interactive || _selected;
+            _frame.Background = emphasized ? _hotBackground : _restBackground;
+            _frame.BorderBrush = emphasized || _primary ? _accent : HubTheme.EdgeBrush;
+            _rail.Opacity = emphasized || _primary ? 1 : 0.35;
+            _label.Foreground = emphasized || _primary ? _accent : HubTheme.TextBrush;
+            _shift.X = interactive && IsEffectivelyEnabled ? 2 : 0;
             _frame.Opacity = _pressed ? 0.76 : IsEffectivelyEnabled ? 1 : 0.48;
         }
     }

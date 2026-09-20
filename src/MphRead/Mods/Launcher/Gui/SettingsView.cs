@@ -23,7 +23,7 @@ namespace MphRead.Mods.Launcher.Gui
     /// the same strip of names across the top, the same two marks in the
     /// bottom corners.
     ///
-    /// Six pages: Display, Audio, Controls, Replays, Profile, Credits. There is no
+    /// Seven pages: Display, Graphics, Audio, Controls, Replays, Profile, Credits. There is no
     /// "Match rules" page -- point goal, time limit, damage, team play,
     /// friendly fire, hunter radar, affinity weapons and shadow freeze are
     /// not exposed here at all any more, and stay at whatever
@@ -45,6 +45,15 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly Panel _pages = new();
         private readonly List<(string Name, Control Page)> _sections = new();
         private UiTabs _tabs = null!;
+        private readonly List<HubNavButton> _sectionNav = new();
+        private StackPanel _sectionNavStack = null!;
+        private ScrollViewer _sectionNavScroll = null!;
+        private Border _sectionNavHost = null!;
+        private Border _sectionContentHost = null!;
+        private Grid _settingsBody = null!;
+        private TextBlock _sectionTitle = null!;
+        private TextBlock _sectionDetail = null!;
+        private bool _compactShell;
 
         /// <summary>Raised when this view is finished with, saved or not.</summary>
         public event EventHandler? Closed;
@@ -176,37 +185,125 @@ namespace MphRead.Mods.Launcher.Gui
 
             BuildPages();
 
+            // Keep UiTabs only as the tiny state object used by ShowSection and
+            // existing screenshot automation. The player-facing navigation is
+            // the same hub rail used everywhere else in Project Prime.
             _tabs = new UiTabs(_sections.ConvertAll(s => s.Name));
             _tabs.Changed += (_, _) => ShowPage(_tabs.Index);
 
-            var cancel = new UiMark(UiMark.Shape.Cancel, "cancel");
-            cancel.Click += (_, _) => Close();
-            var save = new UiMark(UiMark.Shape.Accept, inGame ? "apply" : "save");
-            save.Click += (_, _) => TryCommit();
+            var contentRoot = new Grid
+            {
+                Margin = new Thickness(28, 24, 28, 30),
+                RowDefinitions = new RowDefinitions("Auto,*,Auto"),
+                RowSpacing = 14
+            };
+            contentRoot.Children.Add(HubChrome.Header(
+                inGame ? "MATCH  /  SETTINGS" : "HOME  /  SETTINGS",
+                "SETTINGS",
+                "Tune Project Prime without leaving the command hub.",
+                inGame ? "LIVE MATCH" : "CONFIGURATION",
+                inGame ? HubTheme.WarmBrush : HubTheme.AccentBrush));
 
-            // Over a match the backdrop is the scrim alone, so the game shows
-            // through; away from one it is the same picture every other screen
-            // uses, so Settings never reads as a different program.
-            //
-            // The well is narrower than the window on purpose -- see
-            // UiLayout's note. A settings row is a label on the left and its
-            // control on the right, and a row as wide as a monitor is one
-            // whose two ends have to be read in two glances.
-            Panel root = UiLayout.Page(inGame, UiLayout.WellSettings, "settings",
-                _tabs, _pages, cancel, save);
-            _saveError = new Note("", GuiTheme.Warm)
+            _settingsBody = new Grid
+            {
+                ColumnDefinitions = new ColumnDefinitions("190,*"),
+                ColumnSpacing = 12
+            };
+            Grid.SetRow(_settingsBody, 1);
+            contentRoot.Children.Add(_settingsBody);
+
+            _sectionNavStack = BuildSectionNavigation();
+            _sectionNavScroll = new ScrollViewer
+            {
+                Content = _sectionNavStack,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+            };
+            _sectionNavHost = new Border
+            {
+                Background = HubTheme.PanelStrongBrush,
+                BorderBrush = HubTheme.EdgeBrush,
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(7),
+                Child = _sectionNavScroll
+            };
+            _settingsBody.Children.Add(_sectionNavHost);
+
+            var sectionHeader = new StackPanel
+            {
+                Spacing = 2,
+                Margin = new Thickness(2, 0, 2, 8)
+            };
+            _sectionTitle = new TextBlock
+            {
+                FontFamily = HubTheme.Ui,
+                FontWeight = FontWeight.Bold,
+                FontSize = 20,
+                Foreground = HubTheme.TextBrush
+            };
+            _sectionDetail = new TextBlock
+            {
+                FontFamily = HubTheme.Ui,
+                FontSize = 9.5,
+                Foreground = HubTheme.TextDimBrush,
+                TextWrapping = TextWrapping.Wrap
+            };
+            sectionHeader.Children.Add(_sectionTitle);
+            sectionHeader.Children.Add(_sectionDetail);
+            sectionHeader.Children.Add(HubChrome.Divider());
+
+            var contentGrid = new Grid
+            {
+                RowDefinitions = new RowDefinitions("Auto,*")
+            };
+            contentGrid.Children.Add(sectionHeader);
+            Grid.SetRow(_pages, 1);
+            contentGrid.Children.Add(_pages);
+            _sectionContentHost = new Border
+            {
+                Background = HubTheme.PanelStrongBrush,
+                BorderBrush = HubTheme.EdgeBrush,
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(14, 11),
+                Child = contentGrid
+            };
+            Grid.SetColumn(_sectionContentHost, 1);
+            _settingsBody.Children.Add(_sectionContentHost);
+
+            var footer = new Grid
+            {
+                ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
+                ColumnSpacing = 10
+            };
+            var back = new HubNavButton("BACK", compact: true);
+            ControllerNav.Identify(back, "settings.detail.back");
+            back.Click += (_, _) => Close();
+            footer.Children.Add(back);
+
+            _saveError = new Note("", HubTheme.Warm)
             {
                 IsVisible = false,
                 HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Bottom,
-                // Above the marks rather than behind them, which is where a
-                // bottom-anchored line lands now that the marks are down the
-                // middle too.
-                Margin = new Thickness(0, 0, 0, UiLayout.MarksBottom + 38)
+                VerticalAlignment = VerticalAlignment.Center
             };
-            root.Children.Add(_saveError);
-            Content = root;
+            Grid.SetColumn(_saveError, 1);
+            footer.Children.Add(_saveError);
+
+            var save = new HubNavButton(inGame ? "APPLY" : "SAVE",
+                primary: true, compact: true);
+            ControllerNav.Identify(save, "settings.detail.save");
+            save.Click += (_, _) => TryCommit();
+            Grid.SetColumn(save, 2);
+            footer.Children.Add(save);
+            Grid.SetRow(footer, 2);
+            contentRoot.Children.Add(footer);
+
+            Panel backdrop = UiLayout.Backdrop(inGame);
+            backdrop.Children.Add(contentRoot);
+            Content = backdrop;
+            SizeChanged += (_, e) => ApplyShellResponsive(e.NewSize);
             ShowPage(0);
+            ApplyShellResponsive(new Size(960, 600));
         }
 
         /// <summary>
@@ -221,7 +318,13 @@ namespace MphRead.Mods.Launcher.Gui
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
             base.OnAttachedToVisualTree(e);
-            Dispatcher.UIThread.Post(() => _tabs.FocusSelected(), DispatcherPriority.Background);
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (_sectionNav.Count > 0)
+                {
+                    _sectionNav[Math.Clamp(_tabs.Index, 0, _sectionNav.Count - 1)].Focus();
+                }
+            }, DispatcherPriority.Background);
         }
 
         protected override void OnKeyDown(KeyEventArgs e)
@@ -302,9 +405,124 @@ namespace MphRead.Mods.Launcher.Gui
 
         private void ShowPage(int index)
         {
+            if (_sections.Count == 0)
+            {
+                return;
+            }
+            index = Math.Clamp(index, 0, _sections.Count - 1);
             for (int i = 0; i < _sections.Count; i++)
             {
                 _sections[i].Page.IsVisible = i == index;
+                if (i < _sectionNav.Count)
+                {
+                    _sectionNav[i].Selected = i == index;
+                }
+            }
+            if (_sectionTitle != null)
+            {
+                string name = _sections[index].Name;
+                _sectionTitle.Text = name.ToUpperInvariant();
+                _sectionDetail.Text = SectionDescription(name);
+            }
+        }
+
+        private StackPanel BuildSectionNavigation()
+        {
+            var nav = new StackPanel { Spacing = 5 };
+            for (int i = 0; i < _sections.Count; i++)
+            {
+                int at = i;
+                string name = _sections[i].Name;
+                var button = new HubNavButton(name.ToUpperInvariant(),
+                    compact: true, accent: SectionAccent(name));
+                string id = $"settings.detail.{name.ToLowerInvariant()}";
+                ControllerNav.Identify(button, id, initial: i == 0);
+                button.Click += (_, _) =>
+                {
+                    _tabs.Index = at;
+                    ShowPage(at);
+                };
+                _sectionNav.Add(button);
+                nav.Children.Add(button);
+            }
+            for (int i = 0; i < _sectionNav.Count; i++)
+            {
+                string prev = _sections[(i + _sections.Count - 1) % _sections.Count].Name.ToLowerInvariant();
+                string next = _sections[(i + 1) % _sections.Count].Name.ToLowerInvariant();
+                _sectionNav[i].SetValue(ControllerNav.NavUpProperty, $"settings.detail.{prev}");
+                _sectionNav[i].SetValue(ControllerNav.NavDownProperty, $"settings.detail.{next}");
+            }
+            return nav;
+        }
+
+        private static Color SectionAccent(string name) => name switch
+        {
+            "Graphics" => Color.FromRgb(0x55, 0xe0, 0xd2),
+            "Audio" => HubTheme.Good,
+            "Controls" => Color.FromRgb(0x86, 0xb8, 0xff),
+            "Replays" => Color.FromRgb(0xa7, 0x9b, 0xf5),
+            "Profile" => HubTheme.Warm,
+            "Credits" => HubTheme.TextDim,
+            _ => HubTheme.Accent
+        };
+
+        private static string SectionDescription(string name) => name switch
+        {
+            "Display" => "Window, view, frame pacing, HUD and accessibility.",
+            "Graphics" => "Render resolution, supersampling and scene-quality controls.",
+            "Audio" => "Sound, music and language.",
+            "Controls" => "Keyboard, mouse, controller, touch and stylus.",
+            "Replays" => "Instant clips, replay storage and playback controls.",
+            "Profile" => "Player identity, hunter, servers, updates and game files.",
+            "Credits" => "Project attribution, technology and support.",
+            _ => ""
+        };
+
+        private void ApplyShellResponsive(Size size)
+        {
+            bool compact = size.Width < 760 || size.Height < 500;
+            if (compact == _compactShell)
+            {
+                return;
+            }
+            _compactShell = compact;
+            if (compact)
+            {
+                _settingsBody.ColumnDefinitions = new ColumnDefinitions("*");
+                _settingsBody.RowDefinitions = new RowDefinitions("Auto,*");
+                _settingsBody.ColumnSpacing = 0;
+                _settingsBody.RowSpacing = 8;
+                Grid.SetColumn(_sectionNavHost, 0);
+                Grid.SetRow(_sectionNavHost, 0);
+                Grid.SetColumn(_sectionContentHost, 0);
+                Grid.SetRow(_sectionContentHost, 1);
+                _sectionNavStack.Orientation = Orientation.Horizontal;
+                _sectionNavScroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
+                _sectionNavScroll.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
+                foreach (HubNavButton button in _sectionNav)
+                {
+                    button.Width = 118;
+                    button.MinHeight = 40;
+                }
+            }
+            else
+            {
+                _settingsBody.ColumnDefinitions = new ColumnDefinitions("190,*");
+                _settingsBody.RowDefinitions = new RowDefinitions("*");
+                _settingsBody.ColumnSpacing = 12;
+                _settingsBody.RowSpacing = 0;
+                Grid.SetColumn(_sectionNavHost, 0);
+                Grid.SetRow(_sectionNavHost, 0);
+                Grid.SetColumn(_sectionContentHost, 1);
+                Grid.SetRow(_sectionContentHost, 0);
+                _sectionNavStack.Orientation = Orientation.Vertical;
+                _sectionNavScroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
+                _sectionNavScroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
+                foreach (HubNavButton button in _sectionNav)
+                {
+                    button.Width = Double.NaN;
+                    button.MinHeight = 42;
+                }
             }
         }
 
