@@ -363,6 +363,7 @@ namespace MphRead.Droid
             private bool _replayPlayHeld;
             private bool _replayBackHeld;
             private bool _replayForwardHeld;
+            private bool _replayPausedShown;
             private bool _missileWasHeld;
             private bool _chatWasHeld;
             private bool _keyboardShown;
@@ -1132,6 +1133,14 @@ namespace MphRead.Droid
                 // so normal live-spectator controls stay exactly as they were.
                 if (Mods.Network.DemoPlayback.IsActive)
                 {
+                    bool paused = Mods.Network.ReplayController.IsPaused
+                        || Mods.Network.ReplayController.AtEnd;
+                    if (paused != _replayPausedShown)
+                    {
+                        _replayPausedShown = paused;
+                        _controls.ReloadSettings();
+                    }
+
                     bool play = _controls.IsHeld(TouchAction.Missile);
                     if (play && !_replayPlayHeld)
                         Mods.Network.ReplayController.TogglePause();
@@ -1157,6 +1166,7 @@ namespace MphRead.Droid
                 else
                 {
                     _replayPlayHeld = _replayBackHeld = _replayForwardHeld = false;
+                    _replayPausedShown = false;
                 }
 
                 bool menuHeld = _controls.IsHeld(TouchAction.Pause);
@@ -1280,6 +1290,7 @@ namespace MphRead.Droid
                 _spectateCycleHeld = false;
                 _spectateViewHeld = false;
                 _replayPlayHeld = _replayBackHeld = _replayForwardHeld = false;
+                _replayPausedShown = false;
                 PlayerControls controls = main.Controls;
                 TouchControls.Dir dir = _controls.Direction;
                 bool up = (dir & TouchControls.Dir.Up) != 0;
