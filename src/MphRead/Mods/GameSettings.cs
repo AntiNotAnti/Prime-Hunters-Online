@@ -75,6 +75,11 @@ namespace MphRead.Mods
             RenderOptions.Fog = RenderOptions.ParseOnOff(settings.Fog, RenderOptions.Fog);
             RenderOptions.TextureFiltering = RenderOptions.ParseOnOff(settings.TextureFiltering,
                 RenderOptions.TextureFiltering);
+            RenderOptions.TextureMipmaps = RenderOptions.ParseOnOff(settings.TextureMipmaps,
+                RenderOptions.TextureMipmaps);
+            RenderOptions.TextureAnisotropy = Math.Clamp(
+                RenderOptions.ParseInt(settings.TextureAnisotropy,
+                    RenderOptions.TextureAnisotropy), 1, 16);
             RenderOptions.ShowFps = RenderOptions.ParseOnOff(settings.ShowFps, RenderOptions.ShowFps);
             // How often the picture is drawn. It does not touch the
             // simulation, which runs at 60 Hz whatever this says -- see

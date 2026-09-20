@@ -77,6 +77,8 @@ namespace MphRead.Mods.Launcher.Gui
         private ToggleRow _lightingRow = null!;
         private ToggleRow _fogRow = null!;
         private ToggleRow _filteringRow = null!;
+        private ToggleRow _mipmapRow = null!;
+        private ChoiceRow _anisotropyRow = null!;
         private ToggleRow _celRow = null!;
         private SliderRow _celBandsRow = null!;
         private SliderRow _celEdgeRow = null!;
@@ -99,6 +101,26 @@ namespace MphRead.Mods.Launcher.Gui
         /// None of them move the simulation, which runs at 60 Hz on every
         /// setting -- see Mods/Render/FrameTiming.cs.
         /// </summary>
+        private static readonly int[] _anisotropyStops = { 1, 2, 4, 8, 16 };
+
+        private static int AnisotropyIndex(int value)
+        {
+            int index = Array.IndexOf(_anisotropyStops, value);
+            if (index >= 0)
+            {
+                return index;
+            }
+            int best = 0;
+            for (int i = 1; i < _anisotropyStops.Length; i++)
+            {
+                if (_anisotropyStops[i] <= value)
+                {
+                    best = i;
+                }
+            }
+            return best;
+        }
+
         private static readonly (string Label, int Cap)[] _fpsLimitStops = new[]
         {
             ("Display (VSync)", FrameTiming.DisplayRate),
@@ -744,6 +766,14 @@ namespace MphRead.Mods.Launcher.Gui
             _fogRow = Add(page, new ToggleRow("Fog", RenderOptions.Fog));
             _filteringRow = Add(page, new ToggleRow("Bilinear texture filtering",
                 RenderOptions.TextureFiltering));
+            _mipmapRow = Add(page, new ToggleRow("Trilinear mipmaps",
+                RenderOptions.TextureMipmaps));
+            _anisotropyRow = Add(page, new ChoiceRow("Anisotropic filtering",
+                new[] { "Off", "2x", "4x", "8x", "16x" },
+                AnisotropyIndex(RenderOptions.TextureAnisotropy)));
+            Explain(page, "Mipmaps reduce distant texture shimmer. Anisotropic filtering sharpens oblique surfaces and is capped to what the active GPU reports.");
+            _filteringRow.Changed += (_, _) => ShowTextureQualityRows();
+            ShowTextureQualityRows();
 
             Heading(page, "Cel shading");
             _celRow = Add(page, new ToggleRow("Cel shading", RenderOptions.CelShading));
@@ -754,6 +784,12 @@ namespace MphRead.Mods.Launcher.Gui
                 v => $"{v}%", min: 0, max: 100, keyStep: 5));
             _celRow.Changed += (_, _) => ShowCelRows();
             ShowCelRows();
+        }
+
+        private void ShowTextureQualityRows()
+        {
+            _mipmapRow.IsVisible = _filteringRow.On;
+            _anisotropyRow.IsVisible = _filteringRow.On;
         }
 
         private void ShowCelRows()
@@ -1453,6 +1489,10 @@ namespace MphRead.Mods.Launcher.Gui
             _settings.Lighting = RenderOptions.OnOff(_lightingRow.On);
             _settings.Fog = RenderOptions.OnOff(_fogRow.On);
             _settings.TextureFiltering = RenderOptions.OnOff(_filteringRow.On);
+            _settings.TextureMipmaps = RenderOptions.OnOff(_mipmapRow.On);
+            _settings.TextureAnisotropy = _anisotropyStops[
+                Math.Clamp(_anisotropyRow.Index, 0, _anisotropyStops.Length - 1)]
+                .ToString(CultureInfo.InvariantCulture);
             _settings.ShowFps = RenderOptions.OnOff(_fpsRow.On);
             int cap = _fpsLimitStops[Math.Clamp(_fpsLimitRow.Value, 0,
                 _fpsLimitStops.Length - 1)].Cap;

@@ -856,6 +856,11 @@ namespace MphRead.Mods.Render
             ES.GL.TexParameter((ES.TextureTarget)(int)target, (ES.TextureParameterName)(int)pname, param);
         }
 
+        public static void GenerateMipmap(GenerateMipmapTarget target)
+        {
+            ES.GL.GenerateMipmap((ES.GenerateMipmapTarget)(int)target);
+        }
+
         public static void TexImage2D(TextureTarget target, int level, PixelInternalFormat internalFormat,
             int width, int height, int border, PixelFormat format, PixelType type, IntPtr pixels)
         {
