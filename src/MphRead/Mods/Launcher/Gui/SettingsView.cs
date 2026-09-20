@@ -642,7 +642,7 @@ namespace MphRead.Mods.Launcher.Gui
 
             Heading(page, "Replay library");
             Explain(page, "Full recordings, instant clips and recovered sessions appear under "
-                + "REPLAYS on the main screen. Files are stored in:\n"
+                + "REPLAY STUDIO on the main screen. Files are stored in:\n"
                 + Mods.Network.DemoLibrary.Directory);
 
             int storageIndex = Array.FindIndex(_replayStorageStops,

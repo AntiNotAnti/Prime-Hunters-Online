@@ -5,9 +5,10 @@ This file summarises the launcher features and where its code lives.
 Basics
 
 `MphRead -launcher` opens a responsive FPS-style command hub inside the game
-window. The home surface exposes **Play, Servers, Custom, Clips, Settings,
-Support and Quit**. Play opens a deployment chooser for Online, Custom Match,
-Offline and Adventure; Servers is a direct shortcut to the modern browser.
+window. The home surface exposes **Play, Map Editor, Replay Studio, Settings and Quit**.
+Play opens Multiplayer, Offline and Adventure; Multiplayer then owns Quick Play,
+Server Browser and Custom Match. Map Editor is intentionally a placeholder while
+the workshop UI is designed.
 
 The front screen is **drawn inside the game window** -- one window for the
 whole program, matches loaded into it and unloaded again. See
@@ -15,12 +16,11 @@ whole program, matches loaded into it and unloaded again. See
 
 | Entry | What it does |
 |---|---|
-| Play | opens `HubPlayView`: Quick Play, Online, Custom Match, Offline or Adventure |
-| Servers | opens `HubServerBrowserView`, backed by shared `ServerBrowserService` discovery/join logic |
-| Custom | opens create-server directly |
-| Clips | opens the replay/clip library |
+| Play | opens `HubPlayView`: Multiplayer, Offline or Adventure |
+| Multiplayer | Quick Play, Server Browser or Custom Match |
+| Map Editor | placeholder for the future visual custom-map workshop |
+| Replay Studio | opens the replay library/editor directly |
 | Settings | display, audio, controls, player/profile and launcher preferences |
-| Support | opens the project support link |
 | Game files | first-run cartridge setup; normal hub actions stay behind it until setup completes |
 
 Key implementation notes

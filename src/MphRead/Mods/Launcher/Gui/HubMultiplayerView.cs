@@ -8,12 +8,12 @@ using Avalonia.Media;
 
 namespace MphRead.Mods.Launcher.Gui
 {
-    internal sealed class HubPlayView : UserControl
+    internal sealed class HubMultiplayerView : UserControl
     {
-        public event Action<HubPlayDestination>? Selected;
+        public event Action<HubMultiplayerDestination>? Selected;
         public event EventHandler? Closed;
 
-        public HubPlayView()
+        public HubMultiplayerView()
         {
             Focusable = true;
             Background = Brushes.Transparent;
@@ -27,7 +27,7 @@ namespace MphRead.Mods.Launcher.Gui
             var heading = new StackPanel { Spacing = 4 };
             heading.Children.Add(new TextBlock
             {
-                Text = "PLAY",
+                Text = "MULTIPLAYER",
                 FontFamily = HubTheme.Ui,
                 FontWeight = FontWeight.Bold,
                 FontSize = 28,
@@ -35,7 +35,7 @@ namespace MphRead.Mods.Launcher.Gui
             });
             heading.Children.Add(new TextBlock
             {
-                Text = "Choose the kind of session you want to enter.",
+                Text = "Find a session, inspect the server list or create your own lobby.",
                 FontFamily = HubTheme.Ui,
                 FontSize = 11,
                 Foreground = HubTheme.TextDimBrush
@@ -47,31 +47,31 @@ namespace MphRead.Mods.Launcher.Gui
                 ColumnDefinitions = new ColumnDefinitions("*,*,*"),
                 ColumnSpacing = 12
             };
-            HubNavButton multiplayer = Card("MULTIPLAYER",
-                "Quick Play, public servers and custom lobbies.",
-                HubTheme.Accent, HubPlayDestination.Multiplayer, initial: true);
-            HubNavButton offline = Card("OFFLINE",
-                "Local combat with map, mode, bots and training options.",
-                HubTheme.Good, HubPlayDestination.Offline);
-            HubNavButton adventure = Card("ADVENTURE",
-                "Continue a save slot or begin a new single-player run.",
-                Color.FromRgb(0xa7, 0x9b, 0xf5), HubPlayDestination.Adventure);
-            cards.Children.Add(multiplayer);
-            Grid.SetColumn(offline, 1); cards.Children.Add(offline);
-            Grid.SetColumn(adventure, 2); cards.Children.Add(adventure);
+            HubNavButton quick = Card("QUICK PLAY",
+                "Automatically choose the lowest-latency compatible open server.",
+                HubTheme.Accent, HubMultiplayerDestination.QuickPlay, initial: true);
+            HubNavButton browser = Card("SERVER BROWSER",
+                "Browse public sessions by latency, map, mode and population.",
+                HubTheme.Good, HubMultiplayerDestination.ServerBrowser);
+            HubNavButton custom = Card("CUSTOM MATCH",
+                "Create a lobby, map rotation and rules for your own session.",
+                HubTheme.Warm, HubMultiplayerDestination.CustomMatch);
+            cards.Children.Add(quick);
+            Grid.SetColumn(browser, 1); cards.Children.Add(browser);
+            Grid.SetColumn(custom, 2); cards.Children.Add(custom);
 
-            multiplayer.SetValue(ControllerNav.NavLeftProperty, "play.adventure");
-            multiplayer.SetValue(ControllerNav.NavRightProperty, "play.offline");
-            offline.SetValue(ControllerNav.NavLeftProperty, "play.multiplayer");
-            offline.SetValue(ControllerNav.NavRightProperty, "play.adventure");
-            adventure.SetValue(ControllerNav.NavLeftProperty, "play.offline");
-            adventure.SetValue(ControllerNav.NavRightProperty, "play.multiplayer");
+            quick.SetValue(ControllerNav.NavLeftProperty, "multiplayer.custommatch");
+            quick.SetValue(ControllerNav.NavRightProperty, "multiplayer.serverbrowser");
+            browser.SetValue(ControllerNav.NavLeftProperty, "multiplayer.quickplay");
+            browser.SetValue(ControllerNav.NavRightProperty, "multiplayer.custommatch");
+            custom.SetValue(ControllerNav.NavLeftProperty, "multiplayer.serverbrowser");
+            custom.SetValue(ControllerNav.NavRightProperty, "multiplayer.quickplay");
 
             Grid.SetRow(cards, 1);
             root.Children.Add(cards);
 
             var back = new HubNavButton("BACK", compact: true);
-            ControllerNav.Identify(back, "play.back");
+            ControllerNav.Identify(back, "multiplayer.back");
             back.Click += (_, _) => Closed?.Invoke(this, EventArgs.Empty);
             Grid.SetRow(back, 2);
             root.Children.Add(back);
@@ -91,12 +91,12 @@ namespace MphRead.Mods.Launcher.Gui
                 }
                 if (compact)
                 {
-                    multiplayer.SetValue(ControllerNav.NavUpProperty, "play.adventure");
-                    multiplayer.SetValue(ControllerNav.NavDownProperty, "play.offline");
-                    offline.SetValue(ControllerNav.NavUpProperty, "play.multiplayer");
-                    offline.SetValue(ControllerNav.NavDownProperty, "play.adventure");
-                    adventure.SetValue(ControllerNav.NavUpProperty, "play.offline");
-                    adventure.SetValue(ControllerNav.NavDownProperty, "play.multiplayer");
+                    quick.SetValue(ControllerNav.NavUpProperty, "multiplayer.custommatch");
+                    quick.SetValue(ControllerNav.NavDownProperty, "multiplayer.serverbrowser");
+                    browser.SetValue(ControllerNav.NavUpProperty, "multiplayer.quickplay");
+                    browser.SetValue(ControllerNav.NavDownProperty, "multiplayer.custommatch");
+                    custom.SetValue(ControllerNav.NavUpProperty, "multiplayer.serverbrowser");
+                    custom.SetValue(ControllerNav.NavDownProperty, "multiplayer.quickplay");
                 }
             };
         }
@@ -113,14 +113,19 @@ namespace MphRead.Mods.Launcher.Gui
         }
 
         private HubNavButton Card(string label, string detail, Color accent,
-            HubPlayDestination destination, bool initial = false)
+            HubMultiplayerDestination destination, bool initial = false)
         {
             var button = new HubNavButton(label, detail, primary: initial, accent: accent)
             {
                 MinHeight = 150
             };
-            ControllerNav.Identify(button,
-                $"play.{destination.ToString().ToLowerInvariant()}", initial);
+            string id = destination switch
+            {
+                HubMultiplayerDestination.QuickPlay => "quickplay",
+                HubMultiplayerDestination.ServerBrowser => "serverbrowser",
+                _ => "custommatch"
+            };
+            ControllerNav.Identify(button, $"multiplayer.{id}", initial);
             button.Click += (_, _) => Selected?.Invoke(destination);
             return button;
         }

@@ -161,9 +161,16 @@ namespace MphRead.Mods.Launcher.Gui
             yield return ("hub-home", new HubHomeView(), _windowSize);
             yield return ("hub-home-phone-portrait", new HubHomeView(), _phonePortrait);
             yield return ("hub-home-phone-landscape", new HubHomeView(), _phoneLandscape);
-            yield return ("deploy", new HubPlayView(), _windowSize);
-            yield return ("deploy-phone-portrait", new HubPlayView(), _phonePortrait);
-            yield return ("deploy-phone-landscape", new HubPlayView(), _phoneLandscape);
+            yield return ("play", new HubPlayView(), _windowSize);
+            yield return ("play-phone-portrait", new HubPlayView(), _phonePortrait);
+            yield return ("play-phone-landscape", new HubPlayView(), _phoneLandscape);
+            yield return ("multiplayer", new HubMultiplayerView(), _windowSize);
+            yield return ("multiplayer-phone-landscape",
+                new HubMultiplayerView(), _phoneLandscape);
+            yield return ("map-editor-placeholder",
+                new HubPlaceholderView("MAP EDITOR", "WORKSHOP PLACEHOLDER",
+                    "A visual custom-map editor is planned for this hub."),
+                _windowSize);
             yield return ("quick-play", new HubQuickPlayView(preview: true), _windowSize);
             yield return ("hub-servers",
                 new HubServerBrowserView(HubBrowserSample()), _windowSize);
@@ -188,8 +195,9 @@ namespace MphRead.Mods.Launcher.Gui
                 new PlayScreen(settings, rooms, PlayScreen.Face.Offline), _windowSize);
             yield return ("play-story",
                 new PlayScreen(settings, rooms, PlayScreen.Face.Story), _windowSize);
-            yield return ("play-clips",
-                new PlayScreen(settings, rooms, PlayScreen.Face.Clips), _windowSize);
+            yield return ("replay-studio",
+                new PlayScreen(settings, rooms, PlayScreen.Face.Clips,
+                    singleFace: true), _windowSize);
             yield return ("play-vote",
                 new PlayScreen(settings, rooms, PlayScreen.Face.Vote, overGame: true),
                 _windowSize);

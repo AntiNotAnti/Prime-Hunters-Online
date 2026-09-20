@@ -50,11 +50,9 @@ namespace MphRead.Mods.Launcher.Gui
             (string Id, HubDestination Destination)[] desktopActions =
             {
                 ("hub.desktop.play", HubDestination.Play),
-                ("hub.desktop.servers", HubDestination.Servers),
-                ("hub.desktop.custom", HubDestination.Custom),
-                ("hub.desktop.clips", HubDestination.Clips),
+                ("hub.desktop.map-editor", HubDestination.MapEditor),
+                ("hub.desktop.replay-studio", HubDestination.ReplayStudio),
                 ("hub.desktop.settings", HubDestination.Settings),
-                ("hub.desktop.support", HubDestination.Support),
                 ("hub.desktop.quit", HubDestination.Quit)
             };
             foreach ((string id, HubDestination destination) in desktopActions)
@@ -83,11 +81,9 @@ namespace MphRead.Mods.Launcher.Gui
             (string Id, HubDestination Destination)[] compactActions =
             {
                 ("hub.compact.play", HubDestination.Play),
-                ("hub.compact.servers", HubDestination.Servers),
-                ("hub.compact.custom", HubDestination.Custom),
-                ("hub.compact.clips", HubDestination.Clips),
+                ("hub.compact.map-editor", HubDestination.MapEditor),
+                ("hub.compact.replay-studio", HubDestination.ReplayStudio),
                 ("hub.compact.settings", HubDestination.Settings),
-                ("hub.compact.support", HubDestination.Support),
                 ("hub.compact.quit", HubDestination.Quit)
             };
             foreach ((string id, HubDestination destination) in compactActions)
@@ -102,26 +98,15 @@ namespace MphRead.Mods.Launcher.Gui
             var deployment = new HubPlayView();
             window.Width = 960; window.Height = 660; window.Content = deployment;
             window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
-            var quickDeploy = ControllerNav.Find(deployment, "deploy.quickplay");
-            var onlineDeploy = ControllerNav.Find(deployment, "deploy.online");
-            GamepadChecks.Check(quickDeploy is { IsEffectivelyVisible: true }
-                && onlineDeploy is { IsEffectivelyVisible: true },
-                "deployment screen exposes Quick Play and Online");
+            var multiplayerDeploy = ControllerNav.Find(deployment, "play.multiplayer");
+            GamepadChecks.Check(multiplayerDeploy is { IsEffectivelyVisible: true },
+                "Play exposes Multiplayer");
             FocusNavigator.Ensure(deployment);
-            GamepadChecks.Check(quickDeploy!.IsFocused,
-                "deployment screen defaults controller focus to Quick Play");
-            FocusNavigator.Move(deployment, UiAction.Down);
-            GamepadChecks.Check(onlineDeploy!.IsFocused,
-                "Quick Play moves explicitly into deployment choices");
+            GamepadChecks.Check(multiplayerDeploy!.IsFocused,
+                "Play defaults controller focus to Multiplayer");
             FocusNavigator.Move(deployment, UiAction.Right);
-            GamepadChecks.Check(ControllerNav.Find(deployment, "deploy.custom")!.IsFocused,
-                "deployment uses explicit controller neighbours");
-            window.Width = 650; window.Height = 470;
-            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
-            FocusNavigator.Focus(ControllerNav.Find(deployment, "deploy.quickplay"));
-            FocusNavigator.Move(deployment, UiAction.Down);
-            GamepadChecks.Check(ControllerNav.Find(deployment, "deploy.online")!.IsFocused,
-                "compact deployment follows visual order");
+            GamepadChecks.Check(ControllerNav.Find(deployment, "play.offline")!.IsFocused,
+                "Play uses explicit controller neighbours");
 
             HubPlayDestination? selectedDeployment = null;
             int deploymentClosed = 0;
@@ -129,21 +114,57 @@ namespace MphRead.Mods.Launcher.Gui
             deployment.Closed += (_, _) => deploymentClosed++;
             foreach ((string id, HubPlayDestination destination) in new[]
             {
-                ("deploy.quickplay", HubPlayDestination.QuickPlay),
-                ("deploy.online", HubPlayDestination.Online),
-                ("deploy.custom", HubPlayDestination.Custom),
-                ("deploy.offline", HubPlayDestination.Offline),
-                ("deploy.adventure", HubPlayDestination.Adventure)
+                ("play.multiplayer", HubPlayDestination.Multiplayer),
+                ("play.offline", HubPlayDestination.Offline),
+                ("play.adventure", HubPlayDestination.Adventure)
             })
             {
                 selectedDeployment = null;
                 Click(window, ControllerNav.Find(deployment, id)!);
                 GamepadChecks.Check(selectedDeployment == destination,
-                    $"deployment pointer click activates {destination}");
+                    $"Play pointer click activates {destination}");
             }
-            Click(window, ControllerNav.Find(deployment, "deploy.back")!);
+            Click(window, ControllerNav.Find(deployment, "play.back")!);
             GamepadChecks.Check(deploymentClosed == 1,
-                "deployment Back accepts a pointer click");
+                "Play Back accepts a pointer click");
+
+            var multiplayer = new HubMultiplayerView();
+            window.Width = 960; window.Height = 660; window.Content = multiplayer;
+            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            var quickMultiplayer = ControllerNav.Find(multiplayer, "multiplayer.quickplay");
+            GamepadChecks.Check(quickMultiplayer is { IsEffectivelyVisible: true },
+                "Multiplayer exposes Quick Play");
+            FocusNavigator.Ensure(multiplayer);
+            GamepadChecks.Check(quickMultiplayer!.IsFocused,
+                "Multiplayer defaults controller focus to Quick Play");
+            HubMultiplayerDestination? multiplayerDestination = null;
+            int multiplayerClosed = 0;
+            multiplayer.Selected += destination => multiplayerDestination = destination;
+            multiplayer.Closed += (_, _) => multiplayerClosed++;
+            foreach ((string id, HubMultiplayerDestination destination) in new[]
+            {
+                ("multiplayer.quickplay", HubMultiplayerDestination.QuickPlay),
+                ("multiplayer.serverbrowser", HubMultiplayerDestination.ServerBrowser),
+                ("multiplayer.custommatch", HubMultiplayerDestination.CustomMatch)
+            })
+            {
+                multiplayerDestination = null;
+                Click(window, ControllerNav.Find(multiplayer, id)!);
+                GamepadChecks.Check(multiplayerDestination == destination,
+                    $"Multiplayer pointer click activates {destination}");
+            }
+            Click(window, ControllerNav.Find(multiplayer, "multiplayer.back")!);
+            GamepadChecks.Check(multiplayerClosed == 1,
+                "Multiplayer Back accepts a pointer click");
+
+            var placeholder = new HubPlaceholderView(
+                "MAP EDITOR", "WORKSHOP PLACEHOLDER", "Coming soon.");
+            int placeholderClosed = 0;
+            placeholder.Closed += (_, _) => placeholderClosed++;
+            window.Content = placeholder; window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            Click(window, ControllerNav.Find(placeholder, "placeholder.back")!);
+            GamepadChecks.Check(placeholderClosed == 1,
+                "Map Editor placeholder Back accepts a pointer click");
 
             var quickPlay = new HubQuickPlayView(preview: true);
             int quickClosed = 0, quickBrowse = 0;

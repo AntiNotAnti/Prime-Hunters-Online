@@ -154,31 +154,26 @@ namespace MphRead.Mods.Launcher.Gui
             var nav = new StackPanel { Spacing = 6 };
             HubNavButton[] buttons =
             {
-                Action("PLAY", "Choose multiplayer, offline or story",
+                Action("PLAY", "Multiplayer, offline combat or adventure",
                     () => Navigate(HubDestination.Play), primary: true),
-                Action("SERVERS", "Browse live public sessions",
-                    () => Navigate(HubDestination.Servers)),
-                Action("CUSTOM", "Create and configure a lobby",
-                    () => Navigate(HubDestination.Custom)),
-                Action("CLIPS", "Replay studio and saved moments",
-                    () => Navigate(HubDestination.Clips)),
+                Action("MAP EDITOR", "Custom-map workshop (coming soon)",
+                    () => Navigate(HubDestination.MapEditor), accent: HubTheme.Warm),
+                Action("REPLAY STUDIO", "Recordings, clips and cinematic replay tools",
+                    () => Navigate(HubDestination.ReplayStudio)),
                 Action("SETTINGS", "Video, audio, input and player",
                     () => Navigate(HubDestination.Settings)),
-                Action("SUPPORT", "Project links",
-                    () => Navigate(HubDestination.Support),
-                    accent: HubTheme.Warm),
                 Action("QUIT", "Close Prime Hunters Online",
                     () => Navigate(HubDestination.Quit),
                     accent: HubTheme.Danger)
             };
             for (int i = 0; i < buttons.Length; i++)
             {
-                string id = $"hub.desktop.{buttons[i].Label.ToLowerInvariant()}";
+                string id = $"hub.desktop.{NavKey(buttons[i].Label)}";
                 ControllerNav.Identify(buttons[i], id, initial: i == 0);
                 buttons[i].SetValue(ControllerNav.NavUpProperty,
-                    $"hub.desktop.{buttons[(i + buttons.Length - 1) % buttons.Length].Label.ToLowerInvariant()}");
+                    $"hub.desktop.{NavKey(buttons[(i + buttons.Length - 1) % buttons.Length].Label)}");
                 buttons[i].SetValue(ControllerNav.NavDownProperty,
-                    $"hub.desktop.{buttons[(i + 1) % buttons.Length].Label.ToLowerInvariant()}");
+                    $"hub.desktop.{NavKey(buttons[(i + 1) % buttons.Length].Label)}");
                 nav.Children.Add(buttons[i]);
             }
             return nav;
@@ -188,40 +183,32 @@ namespace MphRead.Mods.Launcher.Gui
         {
             var grid = new Grid
             {
-                ColumnDefinitions = new ColumnDefinitions("*,*,*,*"),
+                ColumnDefinitions = new ColumnDefinitions("*,*,*"),
                 RowDefinitions = new RowDefinitions("Auto,Auto"),
                 ColumnSpacing = 5,
                 RowSpacing = 5
             };
             HubNavButton play = AddCompact(grid, 0, 0, "PLAY",
                 () => Navigate(HubDestination.Play), true);
-            HubNavButton servers = AddCompact(grid, 1, 0, "SERVERS",
-                () => Navigate(HubDestination.Servers));
-            HubNavButton custom = AddCompact(grid, 2, 0, "CUSTOM",
-                () => Navigate(HubDestination.Custom));
-            HubNavButton clips = AddCompact(grid, 3, 0, "CLIPS",
-                () => Navigate(HubDestination.Clips));
+            HubNavButton editor = AddCompact(grid, 1, 0, "MAP EDITOR",
+                () => Navigate(HubDestination.MapEditor), accent: HubTheme.Warm);
+            HubNavButton replays = AddCompact(grid, 2, 0, "REPLAY STUDIO",
+                () => Navigate(HubDestination.ReplayStudio));
             HubNavButton settings = AddCompact(grid, 0, 1, "SETTINGS",
                 () => Navigate(HubDestination.Settings));
-            HubNavButton support = AddCompact(grid, 1, 1, "SUPPORT",
-                () => Navigate(HubDestination.Support), accent: HubTheme.Warm);
-            HubNavButton quit = AddCompact(grid, 2, 1, "QUIT",
+            HubNavButton quit = AddCompact(grid, 1, 1, "QUIT",
                 () => Navigate(HubDestination.Quit), accent: HubTheme.Danger);
 
             WireCompact(play, "play", up: "settings", down: "settings",
-                left: "clips", right: "servers", initial: true);
-            WireCompact(servers, "servers", up: "support", down: "support",
-                left: "play", right: "custom");
-            WireCompact(custom, "custom", up: "quit", down: "quit",
-                left: "servers", right: "clips");
-            WireCompact(clips, "clips", up: "quit", down: "quit",
-                left: "custom", right: "play");
+                left: "replay-studio", right: "map-editor", initial: true);
+            WireCompact(editor, "map-editor", up: "quit", down: "quit",
+                left: "play", right: "replay-studio");
+            WireCompact(replays, "replay-studio", up: "quit", down: "quit",
+                left: "map-editor", right: "play");
             WireCompact(settings, "settings", up: "play", down: "play",
-                left: "quit", right: "support");
-            WireCompact(support, "support", up: "servers", down: "servers",
-                left: "settings", right: "quit");
-            WireCompact(quit, "quit", up: "custom", down: "custom",
-                left: "support", right: "settings");
+                left: "quit", right: "quit");
+            WireCompact(quit, "quit", up: "map-editor", down: "map-editor",
+                left: "settings", right: "settings");
             return grid;
         }
 
@@ -257,7 +244,7 @@ namespace MphRead.Mods.Launcher.Gui
             });
             copy.Children.Add(new TextBlock
             {
-                Text = "Public multiplayer, custom lobbies, offline combat, story and replay studio from one command surface.",
+                Text = "Play, sketch custom-map ideas, review matches and configure the game from one focused command surface.",
                 FontFamily = HubTheme.Ui,
                 FontSize = 11,
                 Foreground = HubTheme.TextDimBrush,
@@ -469,6 +456,9 @@ namespace MphRead.Mods.Launcher.Gui
             grid.Children.Add(button);
             return button;
         }
+
+        private static string NavKey(string label) =>
+            label.ToLowerInvariant().Replace(" ", "-");
 
         private static void WireCompact(HubNavButton button, string id,
             string up, string down, string left, string right, bool initial = false)

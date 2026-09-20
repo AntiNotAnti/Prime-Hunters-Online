@@ -11,21 +11,24 @@ namespace MphRead.Mods.Launcher
     public enum HubDestination
     {
         Play,
-        Servers,
-        Custom,
-        Clips,
+        MapEditor,
+        ReplayStudio,
         Settings,
-        Support,
         Quit
     }
 
     public enum HubPlayDestination
     {
-        QuickPlay,
-        Online,
-        Custom,
+        Multiplayer,
         Offline,
         Adventure
+    }
+
+    public enum HubMultiplayerDestination
+    {
+        QuickPlay,
+        ServerBrowser,
+        CustomMatch
     }
 
     /// <summary>

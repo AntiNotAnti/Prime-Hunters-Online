@@ -273,7 +273,7 @@ namespace MphRead.Mods.Launcher.Gui
         }
 
         public PlayScreen(MenuSettings settings, IReadOnlyList<string> rooms,
-            Face face = Face.Online, bool overGame = false)
+            Face face = Face.Online, bool overGame = false, bool singleFace = false)
         {
             _settings = settings;
             _rooms = new List<string>(rooms);
@@ -394,14 +394,17 @@ namespace MphRead.Mods.Launcher.Gui
             // is whatever the list is currently about. Nothing picked, and it
             // creates; a row picked, and it joins that row.
 
-            if (face != Face.Vote)
+            if (face != Face.Vote && !singleFace)
             {
                 _tabs = new UiTabs(new[] { "Online", "Offline", "Story", "Replays" },
                     (int)face);
                 _tabs.Changed += (_, _) => Rebuild();
             }
+            string heading = face == Face.Vote ? "vote"
+                : singleFace && face == Face.Clips ? "replay studio"
+                : "play";
             Panel page = UiLayout.Page(overGame, UiLayout.WellPlay,
-                face == Face.Vote ? "vote" : "play", _tabs, body, _back, _go,
+                heading, _tabs, body, _back, _go,
                 extra: _createLobby, note: _note);
             // Over the sheet, not inside the panel: the reference's `.side` is
             // a sibling of the sheet and slides in past its right edge, which

@@ -26,11 +26,9 @@ Implemented:
 - New controller-focusable `HubNavButton` with no idle animation.
 - New responsive `HubHomeView`:
   - Play
-  - Servers
-  - Custom
-  - Clips
+  - Map Editor (placeholder)
+  - Replay Studio
   - Settings
-  - Support
   - Quit
 - Live local profile/hunter/game-data status.
 - Existing `HunterStand` reused rather than introducing another preview path.
@@ -77,7 +75,8 @@ Turn Play from a multipurpose form into hub destinations backed by shared state:
 
 Current implementation:
 
-- `HubPlayView` is the deployment chooser for Online / Custom / Offline / Adventure.
+- `HubPlayView` now separates Multiplayer / Offline / Adventure.
+- `HubMultiplayerView` owns Quick Play / Server Browser / Custom Match, removing redundant multiplayer actions from Home.
 - `ServerBrowserService` owns renderer-neutral discovery, probing, endpoint parsing and
   joining; both the transitional Play face and the new browser share its join path.
 - `HubServerBrowserView` is the modern server browser with direct-connect, operative
@@ -88,8 +87,9 @@ Current implementation:
 - `Quick Play` now chooses the lowest-latency compatible open server through the
   same portable discovery service and joins through the same shared join path.
 
+Map Editor intentionally remains a placeholder while the UI shell is stabilized.
 Still to add: server filtering/sorting/favorites/recent history, and the final
-Offline/Story hub-native presentations.
+Offline/Adventure hub-native match configuration surfaces.
 
 ## P1 — Lobby
 

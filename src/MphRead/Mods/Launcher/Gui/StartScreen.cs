@@ -14,7 +14,7 @@ namespace MphRead.Mods.Launcher.Gui
 {
     /// <summary>
     /// The front door to the game: a responsive FPS-style hub with direct
-    /// routes to play, servers, custom matches, clips and settings.
+    /// routes to Play, Map Editor, Replay Studio, Settings and Quit.
     ///
     /// The hub is intentionally a presentation layer over the existing launch
     /// stack. Play, lobby, replay, setup and settings still own their existing
@@ -354,21 +354,14 @@ namespace MphRead.Mods.Launcher.Gui
                 case HubDestination.Play:
                     OpenDeployment();
                     break;
-                case HubDestination.Servers:
-                    OpenServerBrowser();
+                case HubDestination.MapEditor:
+                    OpenMapEditorPlaceholder();
                     break;
-                case HubDestination.Custom:
-                    if (!GameFiles.Ready) OpenSetup();
-                    else OpenCreateServer();
-                    break;
-                case HubDestination.Clips:
-                    _ = OpenClips();
+                case HubDestination.ReplayStudio:
+                    _ = OpenReplayStudio();
                     break;
                 case HubDestination.Settings:
                     _ = OpenSettings();
-                    break;
-                case HubDestination.Support:
-                    Updater.OpenLink(Mods.Credits.SupportUrl);
                     break;
                 case HubDestination.Quit:
                     AskToQuit();
@@ -389,17 +382,8 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 switch (destination)
                 {
-                    case HubPlayDestination.QuickPlay:
-                        Pop();
-                        OpenQuickPlay();
-                        break;
-                    case HubPlayDestination.Online:
-                        Pop();
-                        OpenServerBrowser();
-                        break;
-                    case HubPlayDestination.Custom:
-                        Pop();
-                        OpenCreateServer();
+                    case HubPlayDestination.Multiplayer:
+                        OpenMultiplayer();
                         break;
                     case HubPlayDestination.Offline:
                         Pop();
@@ -408,6 +392,28 @@ namespace MphRead.Mods.Launcher.Gui
                     case HubPlayDestination.Adventure:
                         Pop();
                         _ = OpenPlay(PlayScreen.Face.Story);
+                        break;
+                }
+            };
+            Push(view);
+        }
+
+        private void OpenMultiplayer()
+        {
+            var view = new HubMultiplayerView();
+            view.Closed += (_, _) => Pop();
+            view.Selected += destination =>
+            {
+                switch (destination)
+                {
+                    case HubMultiplayerDestination.QuickPlay:
+                        OpenQuickPlay();
+                        break;
+                    case HubMultiplayerDestination.ServerBrowser:
+                        OpenServerBrowser();
+                        break;
+                    case HubMultiplayerDestination.CustomMatch:
+                        OpenCreateServer();
                         break;
                 }
             };
@@ -460,9 +466,10 @@ namespace MphRead.Mods.Launcher.Gui
             return Task.CompletedTask;
         }
 
-        private Task OpenClips()
+        private Task OpenReplayStudio()
         {
-            var view = new PlayScreen(_settings, _rooms, PlayScreen.Face.Clips);
+            var view = new PlayScreen(_settings, _rooms, PlayScreen.Face.Clips,
+                singleFace: true);
             view.Closed += (_, _) => Pop();
             view.Launched += (_, plan) => Finish(plan);
             Push(view);
@@ -521,6 +528,16 @@ namespace MphRead.Mods.Launcher.Gui
                 Pop();
                 OpenSetup();
             };
+            Push(view);
+        }
+
+        private void OpenMapEditorPlaceholder()
+        {
+            var view = new HubPlaceholderView(
+                "MAP EDITOR",
+                "WORKSHOP PLACEHOLDER",
+                "A visual custom-map editor is planned for this hub. This button is intentionally a placeholder for now.");
+            view.Closed += (_, _) => Pop();
             Push(view);
         }
 
