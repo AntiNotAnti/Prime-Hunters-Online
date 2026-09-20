@@ -124,8 +124,14 @@ namespace MphRead.Mods.Replay
             }
             else if (InputSourceTracker.Current == InputSource.Gamepad)
             {
-                Text(scene, 49, 183, "A: play/pause   D-pad L/R: seek", controlsAlpha, 207);
-                Text(scene, 49, 188, "D-pad U/D: speed   X: step", controlsAlpha, 207);
+                string play = Pad(PadAction.ReplayPlayPause);
+                string back = Pad(PadAction.ReplaySeekBack);
+                string forward = Pad(PadAction.ReplaySeekForward);
+                string slower = Pad(PadAction.ReplaySlower);
+                string faster = Pad(PadAction.ReplayFaster);
+                string step = Pad(PadAction.ReplayStep);
+                Text(scene, 49, 183, $"{play}: play/pause   {back}/{forward}: seek", controlsAlpha, 207);
+                Text(scene, 49, 188, $"{slower}/{faster}: speed   {step}: step", controlsAlpha, 207);
             }
             else if (InputSourceTracker.Current == InputSource.Touch)
             {
@@ -134,8 +140,14 @@ namespace MphRead.Mods.Replay
             }
             else
             {
-                Text(scene, 49, 183, "Space: play/pause   Left/Right: seek", controlsAlpha, 207);
-                Text(scene, 49, 188, "[/]: speed   .: step   Home: restart", controlsAlpha, 207);
+                string play = Key(InputSettings.ReplayPlayPauseKey);
+                string back = Key(InputSettings.ReplaySeekBackKey);
+                string forward = Key(InputSettings.ReplaySeekForwardKey);
+                string slower = Key(InputSettings.ReplaySlowerKey);
+                string faster = Key(InputSettings.ReplayFasterKey);
+                string step = Key(InputSettings.ReplayStepForwardKey);
+                Text(scene, 49, 183, $"{play}: play/pause   {back}/{forward}: seek", controlsAlpha, 207);
+                Text(scene, 49, 188, $"{slower}/{faster}: speed   {step}: step", controlsAlpha, 207);
             }
 
             if (ShowAnalytics || ShowNetworkDebug)
@@ -174,6 +186,13 @@ namespace MphRead.Mods.Replay
                 Text(scene, 49, 151, ReplayVideoExporter.Status, 1, 207);
             }
         }
+
+        private static string Key(OpenTK.Windowing.GraphicsLibraryFramework.Keys key)
+            => key == OpenTK.Windowing.GraphicsLibraryFramework.Keys.Unknown
+                ? "--" : InputSettings.KeyName(key);
+
+        private static string Pad(PadAction action)
+            => PadBindings.Describe(PadBindings.Get(action)).ToUpperInvariant();
 
         private static void RefreshDiagnostics()
         {
