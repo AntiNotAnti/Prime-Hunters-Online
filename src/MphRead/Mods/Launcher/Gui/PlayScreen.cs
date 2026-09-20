@@ -134,6 +134,11 @@ namespace MphRead.Mods.Launcher.Gui
         private CancellationTokenSource? _statusCancel;
         private DispatcherTimer? _replayPreviewTimer;
         private int _replayPreviewIndex;
+        private string? _replaySelectedPath;
+        private string _replaySearchText = "";
+        private int _replayFilterIndex;
+        private int _replaySortIndex;
+        private int _replayViewIndex; // 0 grid, 1 list
         private bool _finished;
 
         private ChoiceRow? _hunter;
@@ -214,6 +219,12 @@ namespace MphRead.Mods.Launcher.Gui
                 Grid.SetRow(_list, 0);
                 Grid.SetRowSpan(_list, 2);
                 Grid.SetColumnSpan(_list, 1);
+                if (_replayGridScroll != null)
+                {
+                    Grid.SetRow(_replayGridScroll, 0);
+                    Grid.SetRowSpan(_replayGridScroll, 2);
+                    Grid.SetColumnSpan(_replayGridScroll, 1);
+                }
             }
             else
             {
@@ -233,6 +244,12 @@ namespace MphRead.Mods.Launcher.Gui
                 Grid.SetRow(_list, 1);
                 Grid.SetRowSpan(_list, 1);
                 Grid.SetColumnSpan(_list, 2);
+                if (_replayGridScroll != null)
+                {
+                    Grid.SetRow(_replayGridScroll, 1);
+                    Grid.SetRowSpan(_replayGridScroll, 1);
+                    Grid.SetColumnSpan(_replayGridScroll, 2);
+                }
             }
         }
 
@@ -381,6 +398,20 @@ namespace MphRead.Mods.Launcher.Gui
             Grid.SetRow(_gridScroll, 1);
             body.Children.Add(_gridScroll);
 
+            _replayGrid = new DeckGrid { Ratio = 16d / 9d };
+            _replayGridScroll = new ScrollViewer
+            {
+                Content = _replayGrid,
+                IsVisible = false,
+                ClipToBounds = true,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+            };
+            Grid.SetColumn(_replayGridScroll, 0);
+            Grid.SetColumnSpan(_replayGridScroll, 2);
+            Grid.SetRow(_replayGridScroll, 1);
+            body.Children.Add(_replayGridScroll);
+
             _back = new UiMark(UiMark.Shape.Cancel, "back");
             _back.Click += (_, _) => Leave();
             _go = new UiMark(UiMark.Shape.Accept, "play");
@@ -433,6 +464,8 @@ namespace MphRead.Mods.Launcher.Gui
 
         private DeckGrid? _grid;
         private ScrollViewer? _gridScroll;
+        private DeckGrid? _replayGrid;
+        private ScrollViewer? _replayGridScroll;
         private DeckSide? _sidePanel;
         private StackPanel? _sideFacts;
         private TextBlock? _sideNameText;
@@ -897,6 +930,11 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 _gridScroll.IsVisible = offline;
             }
+            if (_replayGridScroll != null)
+            {
+                _replayGridScroll.IsVisible = false;
+                _replayGrid?.Children.Clear();
+            }
             _list.IsVisible = !offline;
             if (_sidePanel != null && !offline)
             {
@@ -931,7 +969,13 @@ namespace MphRead.Mods.Launcher.Gui
             // arrow keys. The browser does not: selecting a row is what turns
             // the commit into JOIN, and a screen that picks a server for you
             // the moment it opens has answered the question it is asking.
-            if (Current != Face.Online)
+            if (Current == Face.Clips && _replayViewIndex == 0
+                && _replayGrid is { Children.Count: > 0 })
+            {
+                Dispatcher.UIThread.Post(() => _replayGrid.Children[0].Focus(),
+                    DispatcherPriority.Background);
+            }
+            else if (Current != Face.Online)
             {
                 _list.FocusFirst();
             }
