@@ -1386,7 +1386,7 @@ namespace MphRead.Mods.Launcher.Gui
             stack.Children.Add(new FieldRow("Name", "Livetek", boxWidth: 150));
             stack.Children.Add(new ChoiceRow("Hunter",
                 new[] { "Samus", "Kanden", "Trace", "Sylux", "Noxus", "Spire", "Weavel" }, 3));
-            stack.Children.Add(new FieldRow("Address", "89.160.162.50:27888", boxWidth: 170));
+            stack.Children.Add(new FieldRow("Address", "51.161.113.128:27888", boxWidth: 170));
             return stack;
         }
 
