@@ -27,6 +27,27 @@ namespace MphRead.Mods.Network
                 matchBytes[0] = (byte)PacketType.MatchState; match.Write(matchBytes.AsSpan(1));
                 var metadata = new ReplayMetadata { RoomKey = match.RoomKey, Mode = GameMode.Battle,
                     Bootstrap = new ReplayBootstrap { Packets = new[] { matchBytes } } };
+
+                // Current snapshots append match-time and health-sync state after
+                // the player array. The replay validator must accept the same wire
+                // packet the live session accepts.
+                int timeOffset = SnapshotHeader.Size;
+                int healthOffset = timeOffset + NetMatchTimeSync.Size;
+                byte[] snapshotPayload = new byte[healthOffset + NetHealthSync.HeaderSize];
+                new SnapshotHeader { MatchId = match.MatchId, AuthorityEpoch = match.AuthorityEpoch,
+                    PlayerCount = 0 }.Write(snapshotPayload);
+                NetMatchTimeSync.Write(snapshotPayload.AsSpan(timeOffset, NetMatchTimeSync.Size));
+                BinaryPrimitives.WriteUInt16LittleEndian(snapshotPayload.AsSpan(healthOffset), match.MatchId);
+                snapshotPayload[healthOffset + 2] = 0;
+                byte[] snapshotBytes = new byte[1 + snapshotPayload.Length];
+                snapshotBytes[0] = (byte)PacketType.Snapshot;
+                snapshotPayload.CopyTo(snapshotBytes.AsSpan(1));
+                var currentSnapshotMetadata = new ReplayMetadata { RoomKey = match.RoomKey, Mode = GameMode.Battle,
+                    Bootstrap = new ReplayBootstrap { Packets = new[] { matchBytes, snapshotBytes } } };
+                string currentSnapshot = Path.Combine(directory, "current-snapshot.fpdemo");
+                using (var snapshotWriter = new ReplayWriterV3(currentSnapshot, currentSnapshotMetadata)) { }
+                Require(File.Exists(currentSnapshot), "current snapshot tails accepted in bootstrap");
+
                 byte[] packet = { (byte)PacketType.Ping, 17, 42 };
                 string clean = Path.Combine(directory, "clean.fpdemo");
                 using (var writer = new ReplayWriterV3(clean, metadata))

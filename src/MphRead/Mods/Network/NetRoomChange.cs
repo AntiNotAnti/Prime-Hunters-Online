@@ -243,6 +243,11 @@ namespace MphRead.Mods.Network
                 scene.InitEntity(player.Halfturret);
                 NetLog.Event($"slot {slot} re-inserted into the new room");
             }
+            // Initial MatchStart calls this after LoadScene, but a map/rematch
+            // transition never goes through MatchStart. Without this ack the server
+            // sits in Starting until its timeout and the client discards snapshots
+            // behind FreezeGameplay, which presents as a new round that will not spawn.
+            NetSession.MarkMatchLoaded();
         }
 
         /// <summary>

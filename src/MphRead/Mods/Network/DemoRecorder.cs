@@ -50,7 +50,9 @@ namespace MphRead.Mods.Network
                 if (metadata.MapHash == 0) throw new IOException("The match map could not be identified.");
                 _writer = new ReplayWriterV3(path, metadata);
             }
-            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException
+                || ex is InvalidDataException || ex is ArgumentException
+                || ex is System.Collections.Generic.KeyNotFoundException)
             {
                 LastError = ex.Message;
                 Console.WriteLine($"[demo] could not start recording: {ex.Message}");

@@ -157,12 +157,24 @@ namespace MphRead.Mods.Network
             {
                 PacketType.MatchState => payload.Length == MatchStatePacket.Size,
                 PacketType.Roster => payload.Length == RosterPacket.Size,
-                PacketType.Snapshot => payload.Length >= SnapshotHeader.Size
-                    && payload[12] <= RosterPacket.MaxSlots
-                    && payload.Length == SnapshotHeader.Size + payload[12] * PlayerState.Size,
+                PacketType.Snapshot => ValidSnapshotBootstrap(payload),
                 PacketType.SlotIntent => payload.Length == 1 + IntentPacket.FullSize && payload[0] < RosterPacket.MaxSlots,
                 _ => false
             };
+        }
+
+        private static bool ValidSnapshotBootstrap(ReadOnlySpan<byte> payload)
+        {
+            if (payload.Length < SnapshotHeader.Size) return false;
+            SnapshotHeader header = SnapshotHeader.Read(payload);
+            if (header.PlayerCount > RosterPacket.MaxSlots) return false;
+            int timeOffset = SnapshotHeader.Size + header.PlayerCount * PlayerState.Size;
+            int healthOffset = timeOffset + NetMatchTimeSync.Size;
+            if (healthOffset > payload.Length) return false;
+            ReadOnlySpan<byte> health = payload[healthOffset..];
+            return NetMatchTimeSync.Validate(payload.Slice(timeOffset, NetMatchTimeSync.Size))
+                && NetHealthSync.Validate(health)
+                && System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(health) == header.MatchId;
         }
 
         internal static ReplayOpenResult Failure(Exception ex) => ex switch
