@@ -40,7 +40,8 @@ namespace MphRead.Droid
         public bool Prepare(UpdateInfo update, Action<float>? progress, out string error)
         {
             _staged = ApkInstaller.StagingPath(Activity);
-            if (!UpdateDownload.Fetch(update.AssetUrl, _staged, update.AssetSize, progress))
+            if (!UpdateDownload.Fetch(update.AssetUrl, _staged, update.AssetSize, progress,
+                expectedDigest: update.AssetDigest))
             {
                 error = UpdateDownload.LastError ?? "the download failed";
                 return false;
