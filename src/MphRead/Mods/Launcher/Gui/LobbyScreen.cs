@@ -62,15 +62,20 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly FieldRow _time, _goal;
         private readonly TextBox _chatEntry = new()
         {
-            Watermark = "Message",
+            PlaceholderText = "Message",
             MaxLength = ChatPacket.MaxTextBytes,
-            Height = 30,
-            MinHeight = 30,
+            Height = 32,
+            MinHeight = 32,
+            FontFamily = HubTheme.Ui,
+            FontSize = 11,
+            Foreground = HubTheme.TextBrush,
+            Background = HubTheme.PanelBrush,
+            BorderBrush = HubTheme.EdgeBrush,
             VerticalContentAlignment = VerticalAlignment.Center
         };
-        private readonly UiMark _ready, _start;
-        private readonly DeckButton _moveButton, _closeLobby;
-        private readonly Image _preview = new() { Height = 104, Stretch = Stretch.UniformToFill };
+        private readonly HubNavButton _ready, _start;
+        private readonly HubNavButton _moveButton, _closeLobby;
+        private readonly Image _preview = new() { Height = 156, Stretch = Stretch.UniformToFill };
         private readonly string[] _rooms;
         private readonly List<byte> _targetSlots = new();
 
@@ -132,27 +137,37 @@ namespace MphRead.Mods.Launcher.Gui
                 _fire, _affinity, _freeze, _opponentHealth, _requireReady, _join, _lockTeams
             })
                 toggle.Changed += (_, _) => DraftChanged();
-            _ownerControls.Children.Add(_preview);
-            _ownerControls.Children.Add(_map);
-            _ownerControls.Children.Add(_mode);
-            _ownerControls.Children.Add(_format);
-            _ownerControls.Children.Add(_customTeams);
+            // Three visual regions over the existing authoritative lobby
+            // controls: roster, arena, and match/rule administration.
+            var arena = new StackPanel { Spacing = 4 };
+            arena.Children.Add(new Border
+            {
+                Background = HubTheme.InkBrush,
+                BorderBrush = HubTheme.EdgeBrush,
+                BorderThickness = new Thickness(1),
+                ClipToBounds = true,
+                Child = _preview,
+                MinHeight = 156
+            });
+            arena.Children.Add(_map);
+            arena.Children.Add(_mode);
+            arena.Children.Add(_format);
+            arena.Children.Add(_customTeams);
 
             var limits = new Grid
             {
                 ColumnDefinitions = new ColumnDefinitions("*,*"),
-                ColumnSpacing = 12
+                ColumnSpacing = 8
             };
             limits.Children.Add(_time);
             Grid.SetColumn(_goal, 1);
             limits.Children.Add(_goal);
-            _ownerControls.Children.Add(limits);
 
             var toggles = new Grid
             {
                 ColumnDefinitions = new ColumnDefinitions("*,*"),
                 RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto"),
-                ColumnSpacing = 12,
+                ColumnSpacing = 8,
                 RowSpacing = 2
             };
             Control[] toggleRows =
@@ -166,94 +181,116 @@ namespace MphRead.Mods.Launcher.Gui
                 Grid.SetRow(toggleRows[i], i / 2);
                 toggles.Children.Add(toggleRows[i]);
             }
-            _ownerControls.Children.Add(toggles);
-            _ownerControls.Children.Add(_layoutSummary);
-
-            var left = new StackPanel { Spacing = 2, Margin = new Thickness(0, 0, 18, 0) };
-            left.Children.Add(new Caption("Players"));
-            left.Children.Add(_players);
-            left.Children.Add(new Caption("Your player"));
-            left.Children.Add(_hunter);
-            left.Children.Add(_suit);
-            left.Children.Add(_team);
 
             _target = new ChoiceRow("Manage player", Array.Empty<string>());
             _moveTeam = new ChoiceRow("Move to team", new[] { "Auto", "Team A", "Team B" });
-            var administration = new StackPanel { Spacing = 2 };
-            administration.Children.Add(new Caption("Owner actions"));
+            var administration = new StackPanel { Spacing = 5 };
+            administration.Children.Add(LobbySubhead("OWNER ACTIONS"));
             administration.Children.Add(_target);
             administration.Children.Add(_moveTeam);
-            var adminButtons = new StackPanel
+
+            var adminButtons = new Grid
             {
-                Orientation = Orientation.Horizontal,
-                Spacing = 7,
-                HorizontalAlignment = HorizontalAlignment.Center
+                ColumnDefinitions = new ColumnDefinitions("*,*,*"),
+                ColumnSpacing = 5
             };
-            _moveButton = SmallButton("Move", Deck.Face.Blue,
-                () => Admin(LobbyCommandType.SetTeam));
+            _moveButton = SmallButton("MOVE",
+                () => Admin(LobbyCommandType.SetTeam), HubTheme.Accent);
             adminButtons.Children.Add(_moveButton);
-            adminButtons.Children.Add(SmallButton("Transfer", Deck.Face.Brass,
-                () => Admin(LobbyCommandType.TransferOwner)));
-            adminButtons.Children.Add(SmallButton("Kick", Deck.Face.Rust,
-                () => Admin(LobbyCommandType.KickPlayer)));
+            var transfer = SmallButton("TRANSFER",
+                () => Admin(LobbyCommandType.TransferOwner), HubTheme.Warm);
+            Grid.SetColumn(transfer, 1);
+            adminButtons.Children.Add(transfer);
+            var kick = SmallButton("KICK",
+                () => Admin(LobbyCommandType.KickPlayer), HubTheme.Danger);
+            Grid.SetColumn(kick, 2);
+            adminButtons.Children.Add(kick);
             administration.Children.Add(adminButtons);
-            _closeLobby = SmallButton("Close lobby", Deck.Face.Rust, () =>
+
+            _closeLobby = SmallButton("CLOSE LOBBY", () =>
             {
                 if (NetSession.SendLobbyCommand(LobbyCommandType.CloseLobby))
                 {
                     _closingLobby = true;
                     _status.Text = "Closing lobby...";
                 }
-            });
-            _closeLobby.HorizontalAlignment = HorizontalAlignment.Center;
+            }, HubTheme.Danger);
+            _closeLobby.HorizontalAlignment = HorizontalAlignment.Stretch;
             administration.Children.Add(_closeLobby);
-            left.Children.Add(administration);
+
+            var rules = new StackPanel { Spacing = 4 };
+            rules.Children.Add(limits);
+            rules.Children.Add(toggles);
+            rules.Children.Add(_layoutSummary);
+            rules.Children.Add(new Border
+            {
+                Height = 1,
+                Background = HubTheme.EdgeBrush,
+                Margin = new Thickness(0, 7, 0, 5)
+            });
+            rules.Children.Add(administration);
+
+            var arenaPanel = LobbyPanel("ARENA", arena, HubTheme.Accent);
+            var rulesPanel = LobbyPanel("MATCH RULES", rules, HubTheme.Warm);
+            var matchColumns = new Grid
+            {
+                ColumnDefinitions = new ColumnDefinitions("1.02*,0.98*"),
+                ColumnSpacing = 10
+            };
+            matchColumns.Children.Add(arenaPanel);
+            Grid.SetColumn(rulesPanel, 1);
+            matchColumns.Children.Add(rulesPanel);
+            _ownerControls.Children.Add(matchColumns);
+
+            var rosterContent = new StackPanel { Spacing = 4 };
+            var playerScroll = new ScrollViewer
+            {
+                Content = _players,
+                MaxHeight = 250,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+            };
+            rosterContent.Children.Add(playerScroll);
+            rosterContent.Children.Add(new Border
+            {
+                Height = 1,
+                Background = HubTheme.EdgeBrush,
+                Margin = new Thickness(0, 6, 0, 4)
+            });
+            rosterContent.Children.Add(LobbySubhead("YOUR HUNTER"));
+            rosterContent.Children.Add(_hunter);
+            rosterContent.Children.Add(_suit);
+            rosterContent.Children.Add(_team);
+            var rosterPanel = LobbyPanel("ROSTER", rosterContent, HubTheme.Good);
 
             var columns = new Grid
             {
-                ColumnDefinitions = new ColumnDefinitions("0.82*,1.18*"),
+                ColumnDefinitions = new ColumnDefinitions("0.72*,1.78*"),
                 ColumnSpacing = 12
             };
-            columns.Children.Add(left);
+            columns.Children.Add(rosterPanel);
             Grid.SetColumn(_ownerControls, 1);
             columns.Children.Add(_ownerControls);
 
             _chatHistory = new ScrollViewer
             {
                 Content = _chat,
-                Height = 58,
-                MinHeight = 58,
+                Height = 64,
+                MinHeight = 64,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto
             };
-            var chatPanel = new Grid
-            {
-                RowDefinitions = new RowDefinitions("Auto,58,32"),
-                RowSpacing = 3,
-                Margin = new Thickness(0, 4, 0, 2)
-            };
-            chatPanel.Children.Add(new TextBlock
-            {
-                Text = "CHAT",
-                FontFamily = GuiTheme.Display,
-                FontSize = 11,
-                Foreground = GuiTheme.TextDimBrush,
-                Margin = new Thickness(0, 0, 0, 2)
-            });
-            Grid.SetRow(_chatHistory, 1);
-            chatPanel.Children.Add(_chatHistory);
             var chatInput = new Grid
             {
                 ColumnDefinitions = new ColumnDefinitions("*,Auto"),
-                ColumnSpacing = 8,
+                ColumnSpacing = 6,
                 Height = 32
             };
             chatInput.Children.Add(_chatEntry);
-            var send = SmallButton("Send", Deck.Face.Blue, SendChat);
+            var send = new HubNavButton("SEND", compact: true);
+            send.Click += (_, _) => SendChat();
             Grid.SetColumn(send, 1);
             chatInput.Children.Add(send);
-            Grid.SetRow(chatInput, 2);
-            chatPanel.Children.Add(chatInput);
             _chatEntry.KeyDown += (_, e) =>
             {
                 if (e.Key == Key.Enter)
@@ -262,54 +299,160 @@ namespace MphRead.Mods.Launcher.Gui
                     e.Handled = true;
                 }
             };
+            var chatBody = new Grid
+            {
+                RowDefinitions = new RowDefinitions("64,32"),
+                RowSpacing = 5
+            };
+            chatBody.Children.Add(_chatHistory);
+            Grid.SetRow(chatInput, 1);
+            chatBody.Children.Add(chatInput);
+            var chatPanel = LobbyPanel("LOBBY CHAT", chatBody, HubTheme.Accent);
 
-            var footer = new StackPanel
+            var actions = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
-                Spacing = 16,
-                HorizontalAlignment = HorizontalAlignment.Center
+                Spacing = 6,
+                HorizontalAlignment = HorizontalAlignment.Right
             };
-            footer.Children.Add(ActionButton("Leave", () => Leave("")));
-            _ready = ActionButton("Ready", () =>
+            var leave = ActionButton("LEAVE", () => Leave(""), accent: HubTheme.Danger);
+            ControllerNav.Identify(leave, "lobby.leave");
+            actions.Children.Add(leave);
+
+            _ready = ActionButton("READY", () =>
             {
                 if (NetSession.LocalSlot >= 0)
                     NetSession.SendLobbyCommand(LobbyCommandType.SetReady,
                         ready: !NetSession.SlotLobbyReady[NetSession.LocalSlot]);
-            });
-            _start = ActionButton("Start match", () => NetSession.SendLobbyCommand(LobbyCommandType.StartMatch));
-            footer.Children.Add(_ready);
-            footer.Children.Add(_start);
+            }, accent: HubTheme.Accent);
+            ControllerNav.Identify(_ready, "lobby.ready", initial: true);
+            actions.Children.Add(_ready);
 
+            _start = ActionButton("START MATCH",
+                () => NetSession.SendLobbyCommand(LobbyCommandType.StartMatch),
+                primary: true);
+            ControllerNav.Identify(_start, "lobby.start");
+            actions.Children.Add(_start);
+
+            leave.SetValue(ControllerNav.NavRightProperty, "lobby.ready");
+            _ready.SetValue(ControllerNav.NavLeftProperty, "lobby.leave");
+            _ready.SetValue(ControllerNav.NavRightProperty, "lobby.start");
+            _start.SetValue(ControllerNav.NavLeftProperty, "lobby.ready");
+
+            var footer = new Grid
+            {
+                ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+                ColumnSpacing = 10
+            };
+            _status.VerticalAlignment = VerticalAlignment.Center;
+            footer.Children.Add(_status);
+            Grid.SetColumn(actions, 1);
+            footer.Children.Add(actions);
+
+            var mainScroll = new ScrollViewer
+            {
+                Content = columns,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+            };
             var body = new Grid
             {
-                RowDefinitions = new RowDefinitions("*,Auto,Auto,Auto"),
-                RowSpacing = 3
+                RowDefinitions = new RowDefinitions("*,Auto,Auto"),
+                RowSpacing = 8
             };
-            body.Children.Add(columns);
+            body.Children.Add(mainScroll);
             Grid.SetRow(chatPanel, 1);
             body.Children.Add(chatPanel);
-            Grid.SetRow(_status, 2);
-            body.Children.Add(_status);
-            Grid.SetRow(footer, 3);
+            Grid.SetRow(footer, 2);
             body.Children.Add(footer);
 
             var frame = new Grid
             {
-                MaxWidth = 1100,
-                Margin = new Thickness(UiLayout.WellGutter),
-                RowDefinitions = new RowDefinitions("Auto,*")
+                MaxWidth = 1180,
+                Margin = new Thickness(20, 16, 20, 24),
+                RowDefinitions = new RowDefinitions("Auto,*"),
+                RowSpacing = 12
             };
             string lobbyTitle = context?.ServerName is { Length: > 0 } serverName
-                ? $"{serverName} LOBBY".ToUpperInvariant()
-                : "LOBBY";
-            frame.Children.Add(new Note(lobbyTitle)
+                ? serverName.ToUpperInvariant()
+                : "CUSTOM MATCH";
+            var header = new Grid
             {
-                FontSize = UiLayout.HeadingSize,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                Margin = new Thickness(0, 0, 0, 8)
+                ColumnDefinitions = new ColumnDefinitions("*,Auto")
+            };
+            var heading = new StackPanel { Spacing = 1 };
+            heading.Children.Add(new TextBlock
+            {
+                Text = lobbyTitle,
+                FontFamily = HubTheme.Ui,
+                FontWeight = FontWeight.Bold,
+                FontSize = 24,
+                Foreground = HubTheme.TextBrush
             });
+            heading.Children.Add(new TextBlock
+            {
+                Text = context?.Endpoint is { Length: > 0 } endpoint
+                    ? $"LOBBY  /  {endpoint}"
+                    : "LOBBY  /  LIVE SESSION",
+                FontFamily = HubTheme.Data,
+                FontSize = 8.5,
+                Foreground = HubTheme.AccentBrush
+            });
+            header.Children.Add(heading);
+            var live = new TextBlock
+            {
+                Text = "● CONNECTED",
+                FontFamily = HubTheme.DataBold,
+                FontSize = 8.5,
+                Foreground = HubTheme.GoodBrush,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(live, 1);
+            header.Children.Add(live);
+            frame.Children.Add(header);
+
             Grid.SetRow(body, 1);
             frame.Children.Add(body);
+
+            // Narrow windows/phones stack the roster over the match panels and
+            // the Arena over Rules. The containing scroller keeps every action
+            // reachable rather than compressing dense controls into slivers.
+            frame.SizeChanged += (_, e) =>
+            {
+                bool compact = e.NewSize.Width < 820;
+                if (compact)
+                {
+                    columns.ColumnDefinitions = new ColumnDefinitions("*");
+                    columns.RowDefinitions = new RowDefinitions("Auto,Auto");
+                    Grid.SetColumn(rosterPanel, 0);
+                    Grid.SetRow(rosterPanel, 0);
+                    Grid.SetColumn(_ownerControls, 0);
+                    Grid.SetRow(_ownerControls, 1);
+
+                    matchColumns.ColumnDefinitions = new ColumnDefinitions("*");
+                    matchColumns.RowDefinitions = new RowDefinitions("Auto,Auto");
+                    Grid.SetColumn(arenaPanel, 0);
+                    Grid.SetRow(arenaPanel, 0);
+                    Grid.SetColumn(rulesPanel, 0);
+                    Grid.SetRow(rulesPanel, 1);
+                }
+                else
+                {
+                    columns.ColumnDefinitions = new ColumnDefinitions("0.72*,1.78*");
+                    columns.RowDefinitions = new RowDefinitions("*");
+                    Grid.SetColumn(rosterPanel, 0);
+                    Grid.SetRow(rosterPanel, 0);
+                    Grid.SetColumn(_ownerControls, 1);
+                    Grid.SetRow(_ownerControls, 0);
+
+                    matchColumns.ColumnDefinitions = new ColumnDefinitions("1.02*,0.98*");
+                    matchColumns.RowDefinitions = new RowDefinitions("*");
+                    Grid.SetColumn(arenaPanel, 0);
+                    Grid.SetRow(arenaPanel, 0);
+                    Grid.SetColumn(rulesPanel, 1);
+                    Grid.SetRow(rulesPanel, 0);
+                }
+            };
 
             Panel backdrop = UiLayout.Backdrop(wash: UiLayout.BackdropWash.Standard);
             backdrop.Children.Add(frame);
@@ -333,22 +476,59 @@ namespace MphRead.Mods.Launcher.Gui
             return row;
         }
 
-        private static UiMark ActionButton(string label, Action action)
+        private static HubNavButton ActionButton(string label, Action action,
+            bool primary = false, Color? accent = null)
         {
-            var button = new UiMark(
-                label == "Leave" ? UiMark.Shape.Cancel : UiMark.Shape.Accept,
-                label) { Margin = new Thickness(2) };
+            var button = new HubNavButton(label, primary: primary, compact: true,
+                accent: accent)
+            {
+                MinWidth = 92
+            };
             button.Click += (_, _) => action();
             return button;
         }
 
-        private static DeckButton SmallButton(string label, Deck.Face face, Action action)
+        private static HubNavButton SmallButton(string label, Action action, Color accent)
         {
-            var button = new DeckButton(label, face,
-                sizeEms: 0.82, padXEms: 0.8, padYEms: 0.34, lip: 4);
+            var button = new HubNavButton(label, compact: true, accent: accent);
             button.Click += (_, _) => action();
             return button;
         }
+
+        private static Border LobbyPanel(string title, Control content, Color accent)
+        {
+            var stack = new Grid
+            {
+                RowDefinitions = new RowDefinitions("Auto,*"),
+                RowSpacing = 8,
+                Margin = new Thickness(12)
+            };
+            stack.Children.Add(new TextBlock
+            {
+                Text = title,
+                FontFamily = HubTheme.Ui,
+                FontWeight = FontWeight.SemiBold,
+                FontSize = 11,
+                Foreground = new SolidColorBrush(accent)
+            });
+            Grid.SetRow(content, 1);
+            stack.Children.Add(content);
+            return new Border
+            {
+                Background = HubTheme.PanelStrongBrush,
+                BorderBrush = HubTheme.EdgeBrush,
+                BorderThickness = new Thickness(1),
+                Child = stack
+            };
+        }
+
+        private static TextBlock LobbySubhead(string text) => new()
+        {
+            Text = text,
+            FontFamily = HubTheme.DataBold,
+            FontSize = 8,
+            Foreground = HubTheme.TextDimBrush
+        };
 
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
@@ -505,7 +685,7 @@ namespace MphRead.Mods.Launcher.Gui
             _moveButton.IsVisible = chooseTeams;
             _ready.IsEnabled = NetSession.IsInLobby && !NetSession.LobbyCommandPending;
             _ready.Label = NetSession.LocalSlot >= 0 && NetSession.SlotLobbyReady[NetSession.LocalSlot]
-                ? "Unready" : "Ready";
+                ? "UNREADY" : "READY";
 
             LobbyResultCode valid = LobbyRules.Validate(session.Match, roster,
                 session.RequireReady, out string reason);
