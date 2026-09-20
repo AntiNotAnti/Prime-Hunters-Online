@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 namespace MphRead.Mods.Input
 {
     public sealed class PadBindingState
@@ -25,7 +26,18 @@ namespace MphRead.Mods.Input
             /* Chat       */ GamepadButtons.LeftThumb,
             /* WeaponWheel */ GamepadButtons.RightThumb,
             /* Direct weapons and last weapon are opt-in. */
-            0, 0, 0, 0, 0, 0, 0, 0, 0
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+            // Replay controls occupy a different input context, so sharing
+            // physical buttons with gameplay is intentional and conflict-free.
+            /* ReplayPlayPause */ GamepadButtons.A,
+            /* ReplayStep      */ GamepadButtons.X,
+            /* ReplaySeekBack  */ GamepadButtons.DpadLeft,
+            /* ReplaySeekForward */ GamepadButtons.DpadRight,
+            /* ReplaySlower    */ GamepadButtons.DpadDown,
+            /* ReplayFaster    */ GamepadButtons.DpadUp,
+            /* ReplayPrevPlayer */ GamepadButtons.LeftBumper,
+            /* ReplayNextPlayer */ GamepadButtons.RightBumper,
+            /* ReplayCameraMode */ GamepadButtons.Y
         };
 
         public string Preset { get; internal set; } = "Default";
@@ -38,8 +50,10 @@ namespace MphRead.Mods.Input
         public PadBindingState() { Reset(); }
 
         /// <summary>Every action, in the order a settings screen should list them.</summary>
-        public IReadOnlyList<PadAction> Actions => ActionOrder;
-        private readonly PadAction[] ActionOrder = new[]
+        public IReadOnlyList<PadAction> Actions => GameplayActionOrder;
+        public IReadOnlyList<PadAction> ReplayActions => ReplayActionOrder;
+
+        private static readonly PadAction[] GameplayActionOrder = new[]
         {
             PadAction.Shoot, PadAction.Jump, PadAction.Morph, PadAction.Zoom,
             PadAction.ScanVisor, PadAction.Scan, PadAction.NextWeapon,
@@ -48,6 +62,18 @@ namespace MphRead.Mods.Input
             PadAction.VoltDriver, PadAction.Battlehammer, PadAction.Imperialist, PadAction.Judicator,
             PadAction.Magmaul, PadAction.ShockCoil, PadAction.OmegaCannon, PadAction.AffinitySlot, PadAction.LastWeapon
         };
+
+        private static readonly PadAction[] ReplayActionOrder = new[]
+        {
+            PadAction.ReplayPlayPause, PadAction.ReplayStep,
+            PadAction.ReplaySeekBack, PadAction.ReplaySeekForward,
+            PadAction.ReplaySlower, PadAction.ReplayFaster,
+            PadAction.ReplayPrevPlayer, PadAction.ReplayNextPlayer,
+            PadAction.ReplayCameraMode
+        };
+
+        private static readonly PadAction[] ActionOrder = GameplayActionOrder
+            .Concat(ReplayActionOrder).ToArray();
 
         public GamepadButtons Get(PadAction action)
         {
@@ -168,12 +194,20 @@ namespace MphRead.Mods.Input
         public IReadOnlyList<PadAction> Conflicts(PadAction action, GamepadButtons button, GamepadButtons modifier = 0)
         {
             var result = new List<PadAction>();
-            if (button != 0) foreach (var other in Actions)
-                if (other != action && ((Slot(other, 0) == button && Modifier(other, 0) == modifier)
+            if (button != 0) foreach (var other in ActionOrder)
+                if (other != action && SameContext(action, other)
+                    && ((Slot(other, 0) == button && Modifier(other, 0) == modifier)
                     || (Slot(other, 1) == button && Modifier(other, 1) == modifier)
                     || (modifier == 0 && (Get(other) & ~(Slot(other, 0) | Slot(other, 1)) & button) != 0))) result.Add(other);
             return result;
         }
+
+        private static bool SameContext(PadAction first, PadAction second)
+            => IsReplay(first) == IsReplay(second);
+
+        private static bool IsReplay(PadAction action)
+            => action >= PadAction.ReplayPlayPause;
+
         public void Assign(PadAction action, int slot, GamepadButtons button, string resolution, GamepadButtons modifier = 0)
         {
             if (resolution == "Cancel") return;
@@ -249,6 +283,15 @@ namespace MphRead.Mods.Input
                 PadAction.PowerBeam => "Power beam",
                 PadAction.Menu => "Menu",
                 PadAction.WeaponWheel => "Weapon wheel",
+                PadAction.ReplayPlayPause => "Replay: play / pause",
+                PadAction.ReplayStep => "Replay: step frame",
+                PadAction.ReplaySeekBack => "Replay: seek back",
+                PadAction.ReplaySeekForward => "Replay: seek forward",
+                PadAction.ReplaySlower => "Replay: slower",
+                PadAction.ReplayFaster => "Replay: faster",
+                PadAction.ReplayPrevPlayer => "Replay: previous player",
+                PadAction.ReplayNextPlayer => "Replay: next player",
+                PadAction.ReplayCameraMode => "Replay: camera mode",
                 _ => action.ToString()
             };
         }
