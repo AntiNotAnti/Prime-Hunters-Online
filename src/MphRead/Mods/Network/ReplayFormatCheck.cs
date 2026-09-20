@@ -30,6 +30,7 @@ namespace MphRead.Mods.Network
                 {
                     Phase = SessionPhase.InMatch, Policy = ServerSessionPolicy.Lobby,
                     OwnerSlot = byte.MaxValue, MaxPlayers = 8, MatchId = match.MatchId,
+                    AuthorityEpoch = match.AuthorityEpoch,
                     WorldProfile = MatchWorldProfile.Resolve(8),
                     Match = new MatchDefinition
                     {
