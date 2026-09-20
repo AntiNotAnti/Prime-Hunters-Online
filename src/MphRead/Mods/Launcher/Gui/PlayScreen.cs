@@ -970,7 +970,7 @@ namespace MphRead.Mods.Launcher.Gui
             // the commit into JOIN, and a screen that picks a server for you
             // the moment it opens has answered the question it is asking.
             if (Current == Face.Clips && _replayViewIndex == 0
-                && _replayGrid is { Children.Count: > 0 })
+                && _replayGrid != null && _replayGrid.Children.Count > 0)
             {
                 Dispatcher.UIThread.Post(() => _replayGrid.Children[0].Focus(),
                     DispatcherPriority.Background);
