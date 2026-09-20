@@ -100,6 +100,11 @@ namespace MphRead.Mods.Update
                 LastError = "this release has no package for this platform";
                 return false;
             }
+            if (!UpdateDownload.SupportsDigest(update.AssetDigest))
+            {
+                LastError = "this release asset has no supported SHA-256 digest";
+                return false;
+            }
             try
             {
                 Clean();
@@ -107,7 +112,7 @@ namespace MphRead.Mods.Update
                 bool zip = update.AssetName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
                 string archive = Path.Combine(Staging, zip ? "package.zip" : "package.tar.gz");
                 if (!UpdateDownload.Fetch(update.AssetUrl, archive, update.AssetSize,
-                    progress, cancel))
+                    progress, cancel, expectedDigest: update.AssetDigest))
                 {
                     LastError = UpdateDownload.LastError ?? "the download failed";
                     return false;
