@@ -48,6 +48,11 @@ namespace MphRead.Entities
             {
                 Active = data.Enabled != 0;
             }
+            if (Mods.Network.NetSession.ActiveMatchDefinition?.DisablePowerups == true
+                && Mods.Multiplayer.MapResourceRules.IsPowerup(data.ItemType))
+            {
+                Active = false;
+            }
             _spawnCooldown = (ushort)(data.SpawnDelay * 2); // todo: FPS stuff
             if (data.HasBase != 0)
             {
@@ -234,6 +239,11 @@ namespace MphRead.Entities
         private static ItemInstanceEntity? SpawnItem(ItemType type, Vector3 position, NodeRef nodeRef,
             Scene scene, uint? chance = null, int despawnTime = 0)
         {
+            if (Mods.Network.NetSession.ActiveMatchDefinition?.DisablePowerups == true
+                && Mods.Multiplayer.MapResourceRules.IsPowerup(type))
+            {
+                return null;
+            }
             ItemInstanceEntity? item = null;
             if (type != ItemType.None && (!chance.HasValue || Rng.GetRandomInt2(100) < chance.Value))
             {

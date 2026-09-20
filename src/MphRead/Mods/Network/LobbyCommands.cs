@@ -9,7 +9,7 @@ namespace MphRead.Mods.Network
     {
         public ServerSessionPolicy SessionPolicy { get; init; } = ServerSessionPolicy.Continuous;
         public MatchFormat Format { get; init; } = MatchFormat.Auto;
-        public bool RequireReady { get; private set; } = true;
+        public bool RequireReady { get; private set; } = false;
         public bool AllowJoinInProgress { get; private set; } = true;
         public Guid OwnerToken { get; set; }
         public void SetSessionOptions(bool requireReady, bool allowJoinInProgress)
@@ -36,7 +36,8 @@ namespace MphRead.Mods.Network
             RoomKey = entry.RoomKey, Mode = entry.Mode, Format = Format,
             TimeLimitSeconds = (ushort)Math.Clamp(entry.TimeLimit, 0, ushort.MaxValue),
             PointGoal = (ushort)Math.Clamp(entry.PointGoal, 0, ushort.MaxValue),
-            FriendlyFire = FriendlyFire, AffinityWeapons = AffinityWeapons, ShadowFreeze = ShadowFreeze
+            FriendlyFire = FriendlyFire, AffinityWeapons = AffinityWeapons, ShadowFreeze = ShadowFreeze,
+            HideOpponentHealth = true, DisablePowerups = true
         };
 
         private void InvalidateLobbyReady()

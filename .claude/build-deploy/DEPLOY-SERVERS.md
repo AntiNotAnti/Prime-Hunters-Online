@@ -27,7 +27,7 @@ dotnet publish src/MphRead/MphRead.csproj -c Release -r win-x64 \
 Notes
 
 - A running binary may be locked. Stage a new file and atomically rename/swap it; use the actual current binary name (`FruityPrime` / `FruityPrimeServer.exe`).
-- Any incompatible protocol change requires server and clients to match. Do **not** copy the protocol number into this runbook; read `NetConfig.ProtocolVersion` from `NetProtocol.cs` (14 at this audit). A mismatch is refused during Hello. Deploy authoritative servers before distributing a client that requires a new protocol.
+- Any incompatible protocol change requires server and clients to match. Do **not** copy the protocol number into this runbook; read `NetConfig.ProtocolVersion` from `NetProtocol.cs` (15 at this audit). A mismatch is refused during Hello. Deploy authoritative servers before distributing a client that requires a new protocol.
 
 Standalone authoritative servers record canonical replays by default. Retention defaults to **25 GiB / 14 days / keep newest 100**. Override with `-serverreplays on|off`, `-serverreplaystoragegb N`, `-serverreplayretentiondays N`, and `-serverreplaykeeplast N`; `0` disables the corresponding size/age limit.
 

@@ -1,6 +1,6 @@
 # Hit claims, and who decides a kill
 
-Code: `Mods/Network/NetHitClaims.cs`. Hit claims were introduced in protocol 7; the current protocol is defined by `NetConfig.ProtocolVersion` (14 at this audit). The third piece of the same
+Code: `Mods/Network/NetHitClaims.cs`. Hit claims were introduced in protocol 7; the current protocol is defined by `NetConfig.ProtocolVersion` (15 at this audit). The third piece of the same
 machine as [lag compensation](NETWORK-UNLAGGED.md) and
 [instant hit registration](NETWORK-PREDICTION.md), and the one that answers the
 complaint those two leave standing.

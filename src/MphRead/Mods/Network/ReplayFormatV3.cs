@@ -155,6 +155,8 @@ namespace MphRead.Mods.Network
             ReadOnlySpan<byte> payload = packet.AsSpan(1);
             return (PacketType)packet[0] switch
             {
+                PacketType.SessionState => payload.Length == SessionStatePacket.Size
+                    && SessionStatePacket.TryRead(payload, out _),
                 PacketType.MatchState => payload.Length == MatchStatePacket.Size,
                 PacketType.Roster => payload.Length == RosterPacket.Size,
                 PacketType.Snapshot => ValidSnapshotBootstrap(payload),

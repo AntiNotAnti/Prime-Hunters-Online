@@ -44,6 +44,9 @@ namespace MphRead.Mods.Multiplayer
         public static bool IsHealth(ItemType type) => type is ItemType.HealthSmall
             or ItemType.HealthMedium or ItemType.HealthBig;
 
+        public static bool IsPowerup(ItemType type) => type is ItemType.DoubleDamage
+            or ItemType.Cloak or ItemType.Deathalt;
+
         public static IReadOnlyList<Entity> Resolve(RoomMetadata room, ResourceSpawnProfile profile,
             IReadOnlyList<Entity> original)
         {

@@ -41,6 +41,12 @@ namespace MphRead.Mods.Network
                 _room = room;
                 _mapHash = hash;
             }
+            if (NetSession.ServerSession is { } session)
+            {
+                byte[] packet = new byte[1 + SessionStatePacket.Size];
+                packet[0] = (byte)PacketType.SessionState; session.Write(packet.AsSpan(1));
+                packets.Add(packet);
+            }
             if (match is { } state)
             {
                 byte[] packet = new byte[1 + MatchStatePacket.Size];

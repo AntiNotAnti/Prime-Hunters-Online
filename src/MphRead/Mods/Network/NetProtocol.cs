@@ -190,7 +190,7 @@ namespace MphRead.Mods.Network
         /// <summary>How many bytes this request takes, tail included.</summary>
         public ServerSessionPolicy Policy;
         public bool AllowJoinInProgress = true;
-        public bool RequireReady = true;
+        public bool RequireReady = false;
         public MatchFormat Format;
         public HostRequestPacket() { RoomKey = ""; ServerName = ""; }
         public int Length => Size + 1 + Math.Min(Rotation?.Count ?? 0, MaxRotation) * RotationEntrySize + 4;
@@ -2022,8 +2022,11 @@ namespace MphRead.Mods.Network
         /// the slot that consumed a pickup, so replicas can play local pickup
         /// feedback only after authority confirmation. Entry size is unchanged,
         /// but v13 readers reject those bits, so mixed peers must be refused.
+        /// Version 15 uses SessionState rule bit 7 for the DisablePowerups match
+        /// rule. Packet size is unchanged, but v14 readers reject that bit, so
+        /// mixed peers must be refused.
         /// </summary>
-        public const int ProtocolVersion = 14;
+        public const int ProtocolVersion = 15;
         /// <summary>
         /// Frames between intent packets. One, so every frame.
         ///

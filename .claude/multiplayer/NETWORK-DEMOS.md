@@ -57,9 +57,10 @@ and audio is muted/stopped during fast-forward seek batches.
 The uncompressed dispatch prefix remains `FPDM`, format byte, protocol byte.
 It is followed by length/CRC-protected metadata: tick rate, build identity,
 UTC date, full-match/clip type, room, mode, content hash, roster, and bootstrap.
-Bootstrap packets reuse the current MatchState, Roster and Snapshot wire
-structs. The initial scene therefore needs no lobby-only protocol dependency,
-forward packet search or reopen/rewind.
+Bootstrap packets reuse the current SessionState, MatchState, Roster and
+Snapshot wire structs. SessionState is applied before the room is built so
+match rules that affect map entities (for example disabled powerups) are
+faithful in playback without forward packet search or reopen/rewind.
 V2 retains its old bounded match/roster search and duration scan/cache.
 
 Packet chunks normally cover 120 simulation frames and are independently

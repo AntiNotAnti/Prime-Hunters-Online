@@ -1222,7 +1222,7 @@ namespace MphRead.Mods.Network
                     PointGoal = (ushort)Math.Clamp(pointGoal, 0, UInt16.MaxValue),
                     RoomKey = roomKey,
                     ServerName = serverName,
-                    Policy = policy, AllowJoinInProgress = true, RequireReady = true,
+                    Policy = policy, AllowJoinInProgress = true, RequireReady = false,
                     Rotation = rotation
                 };
                 var datagram = new byte[1 + request.Length];
