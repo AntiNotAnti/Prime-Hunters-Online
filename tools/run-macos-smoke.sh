@@ -18,7 +18,7 @@ else
     graphics=false
     echo '::warning::No accelerated macOS OpenGL renderer: rendered launcher/thumbnail checks NOT RUN. Native library/startup checks still required; hardware acceptance remains pending.'
 fi
-python3 - "$root/FruityPrime" "$graphics" <<'PY'
+python3 - "$root/ProjectPrime" "$graphics" <<'PY'
 import os
 import subprocess
 import sys

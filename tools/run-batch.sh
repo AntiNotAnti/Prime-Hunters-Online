@@ -42,8 +42,8 @@ LAGS=(0 15 30 60 100 150 250)
 LOSSES=(0 0 0 1 2 3)
 
 BUILD=~/MphRead-dev/src/MphRead/bin/Release/net10.0
-cp "$BUILD"/FruityPrime.dll "$BUILD"/FruityPrime.deps.json "$BUILD"/FruityPrime.runtimeconfig.json bin/ || exit 1
-GAME=bin/FruityPrime.dll
+cp "$BUILD"/ProjectPrime.dll "$BUILD"/ProjectPrime.deps.json "$BUILD"/ProjectPrime.runtimeconfig.json bin/ || exit 1
+GAME=bin/ProjectPrime.dll
 
 cleanup() {
   for q in $(pgrep -f "[u]dp-lag.py" 2>/dev/null); do kill -9 "$q" 2>/dev/null; done
