@@ -2,7 +2,7 @@
 
 ## What ships: one file
 
-**A map is handed out as a `.fpmap` bundle** -- the recipe, the level and the
+**A map is handed out as a `.ppmap` bundle** -- the recipe, the level and the
 baked texture pack in one zip, with the level trimmed to the lumps the importer
 reads (`Q3Bsp.UsedLumps`: entities, textures, planes, models, brushes,
 brushsides, vertexes, meshverts, faces). Everything else a compiler writes --
@@ -699,7 +699,7 @@ listed and crashing. With nothing shipping, the APK now logs
 
 `PacketType` 32-35 are reserved for it -- `MapOffer` (the server names the map,
 its hash and its size), `MapWant` (the client asks for the bytes from offset N),
-`MapChunk` (one piece of the `.fpmap`), `MapDone` (the client has it and it
+`MapChunk` (one piece of the `.ppmap`), `MapDone` (the client has it and it
 hashes right). Nothing in this build sends or answers any of them.
 
 They were reserved early so future map-transfer work cannot collide with
@@ -711,7 +711,7 @@ from the historical protocol-7 reservation.
 What is settled about the shape, so that the numbers mean something:
 
 - **the bundle is the unit.** `-mapbundle` already cooks a map into one
-  `.fpmap` -- recipe, level and baked textures, level trimmed to the lumps the
+  `.ppmap` -- recipe, level and baked textures, level trimmed to the lumps the
   importer reads, 376 KB for de_dust2 against 2.8 MB for the folder. That file
   is what would travel, and its hash is what identifies it.
 - **the offer comes before the load, not during it.** A client that is told

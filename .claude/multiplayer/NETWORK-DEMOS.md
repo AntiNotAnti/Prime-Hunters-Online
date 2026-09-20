@@ -54,7 +54,7 @@ and audio is muted/stopped during fast-forward seek batches.
 ## V3 storage and safety
 
 `ReplayFormatV3.cs` contains a bounded binary reader/writer with no new package.
-The uncompressed dispatch prefix remains `FPDM`, format byte, protocol byte.
+The uncompressed dispatch prefix remains `PPDM`, format byte, protocol byte.
 It is followed by length/CRC-protected metadata: tick rate, build identity,
 UTC date, full-match/clip type, room, mode, content hash, roster, and bootstrap.
 Bootstrap packets reuse the current SessionState, MatchState, Roster and
@@ -330,7 +330,7 @@ exactly one snapshot with no frame taking two.
 ## The file
 
 ```
-"FPDM" | version (2) | protocol      <- 6 bytes, never compressed
+"PPDM" | version (2) | protocol      <- 6 bytes, never compressed
 --- deflate ---
 [frame delta: 1 byte, 0xFF = escape + uint32] [length: uint16] [packet bytes]
 ...

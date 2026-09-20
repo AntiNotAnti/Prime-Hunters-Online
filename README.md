@@ -66,7 +66,7 @@ Want a machine of your own that is always up? [`SERVER.md`](SERVER.md).
 
 ## Custom maps
 
-A map is one file: `something.fpmap`. Put it in the `maps` folder beside the game and it is in the
+A map is one file: `something.ppmap`. Put it in the `maps` folder beside the game and it is in the
 map list next time you open the launcher, picture and all. **de_dust2** comes with it.
 
 > The adventure/story mode remains single-player. Online multiplayer is the recreated multiplayer game, not story co-op.

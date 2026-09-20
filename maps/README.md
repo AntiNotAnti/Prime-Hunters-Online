@@ -35,7 +35,7 @@ the level when it is missing, exactly like the room binaries.
 
 ## Bundles
 
-What ships, and what you hand somebody, is a **`.fpmap` bundle**: the recipe,
+What ships, and what you hand somebody, is a **`.ppmap` bundle**: the recipe,
 the level and the baked textures in one file, with the level trimmed to the
 lumps the importer actually reads. de_dust2 comes out at 376 KB against the
 2.8 MB its folder weighs, and it is one file rather than three — which is what

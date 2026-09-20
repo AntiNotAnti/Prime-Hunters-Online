@@ -627,7 +627,7 @@ having exactly one surface.
 
 ## Custom maps
 
-They reach the phone as **`.fpmap` bundles** and could not reach it any other
+They reach the phone as **`.ppmap` bundles** and could not reach it any other
 way: `AndroidAsset` was globbed as `maps\*.json` and `AssetManager.List` does
 not recurse, so a map that keeps its level in a folder of its own -- which is
 how every converted map is worked on -- matched neither side and the phone

@@ -51,7 +51,7 @@ namespace MphRead.Droid
                 {
                     // The map files, and the levels that travel with them:
                     // see maps/README.md for whose they are and under what
-                    // terms. A .fpmap is all of it in one file, which is the
+                    // terms. A .ppmap is all of it in one file, which is the
                     // shape a map reaches this platform in -- an asset listing
                     // does not recurse, so a map that keeps its level in a
                     // folder of its own never arrives at all.
