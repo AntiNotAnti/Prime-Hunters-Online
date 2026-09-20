@@ -68,6 +68,7 @@ namespace MphRead.Mods.Launcher.Gui
             GamepadChecks.Check(ControllerNav.Find(deployment, "deploy.custom")!.IsFocused,
                 "deployment uses explicit controller neighbours");
 
+            panel = new StackPanel();
             window.Width = 600; window.Height = 400; window.Content = panel;
             window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
             var choice = new ChoiceRow("Option", new[] { "One", "Two" }, 0);
