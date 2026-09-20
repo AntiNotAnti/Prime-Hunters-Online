@@ -183,7 +183,8 @@ namespace MphRead.Mods.Network
         /// Run this process's simulation as the match's authority, with no
         /// socket and no local player.
         ///
-        /// The one caller is <see cref="DedicatedServer"/> in simulate mode.
+        /// Called by the dedicated server's authoritative simulation. Server
+        /// authority is the normal online architecture, not an opt-in mode.
         /// Everything the authority already did as a client -- driving every
         /// slot from relayed intent, rewinding for lag compensation,
         /// resolving damage, publishing a snapshot a frame -- is unchanged and
@@ -197,8 +198,9 @@ namespace MphRead.Mods.Network
         /// itself.
         /// </summary>
         /// <param name="sink">
-        /// Where a finished snapshot goes. The relay is in this same process,
-        /// so it is handed the bytes rather than sent a datagram.
+        /// Where a finished authoritative snapshot goes. The server's relay/
+        /// fan-out lives in this same process, so the bytes are handed directly
+        /// to it rather than looped through a UDP socket.
         /// </param>
         public static void StartServerAuthority(SnapshotSink sink, Action matchEnded)
         {
@@ -900,22 +902,11 @@ namespace MphRead.Mods.Network
                         || !MatchesStream(BinaryPrimitives.ReadUInt16LittleEndian(packet.Payload[1..]),
                             BinaryPrimitives.ReadUInt64LittleEndian(packet.Payload[3..]))
                         || BinaryPrimitives.ReadUInt16LittleEndian(packet.Payload[11..]) != NetPlayerLifecycle.Generation(LocalSlot)) break;
-                    // Still accepted, and it has to be.
-                    //
-                    // A *dedicated* server never sends this any more: it runs
-                    // the match itself and refuses to start if it cannot. But
-                    // the same DedicatedServer class also runs inside somebody
-                    // else's game ("Host -> This computer") and several at a
-                    // time inside the directory's process ("Host -> Online"),
-                    // and neither of those can simulate: ServerSim.Start takes
-                    // over the whole static NetSession, of which a process has
-                    // exactly one. For those two, a client running the match
-                    // is not a fallback -- it is the arrangement.
-                    //
-                    // So this is what a hosted game looks like on the wire,
-                    // and refusing it would delete hosting rather than the
-                    // relay. Removing it for good needs an instance-based
-                    // NetSession; see .claude/multiplayer/NETWORK-SERVERAUTH.md.
+                    // Kept for compatibility/tests of the old client-authority
+                    // protocol. Normal dedicated, local-hosted and directory-hosted
+                    // matches run in server processes and do not send Authority to a
+                    // player. Do not use reception of this packet as evidence that a
+                    // normal hosted match should promote a client.
                     if (!IsAuthority)
                     {
                         IsAuthority = true;
@@ -1387,11 +1378,10 @@ namespace MphRead.Mods.Network
         /// <summary>
         /// Whether this process runs the match.
         ///
-        /// True for <see cref="NetRole.Server"/>, set once by
-        /// <see cref="StartServerAuthority"/> -- and still settable on a
-        /// client, by a <c>PacketType.Authority</c> from a server running
-        /// inside somebody's game or inside the directory. A dedicated server
-        /// never sends one: it runs the match itself.
+        /// True for <see cref="NetRole.Server"/>, set by
+        /// <see cref="StartServerAuthority"/>. It is still settable on a client
+        /// when exercising the legacy PacketType.Authority compatibility path;
+        /// normal hosting does not promote a player.
         /// </summary>
         public static bool IsAuthority { get; private set; }
 

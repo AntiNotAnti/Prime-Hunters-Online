@@ -348,7 +348,7 @@ one by accident.
 ```bash
 MphRead -demoinfo "path/to/x.fpdemo"            # what is in it
 MphRead -demoinfo "path/to/x.fpdemo" -replay    # and how it lands, frame by frame
-~/mph-net-test/run-demo.sh 30 authority         # record one, then do both
+# Optional private wrapper, when available: run-demo.sh 30 authority
 ```
 
 `-demoinfo` needs no game files, no window and no server. Read it in this

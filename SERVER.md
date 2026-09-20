@@ -1,4 +1,4 @@
-# Running a Fruity Prime server
+# Running a Prime Hunters Online server
 
 You do not need any of this to play online. **Host → Where: Online** in the launcher asks a public
 machine to run the match and joins you to it, with nothing to open on your router. This page is for
@@ -39,8 +39,7 @@ A server without them **will not start**. It says so and exits:
          binary -- see SERVER.md
 ```
 
-That is deliberate. The alternative was to fall back to relaying, and relaying
-is the thing being removed: it put the match on a player's machine, where that
+That is deliberate. The old alternative was to fall back to client-authority relaying: it put the match on a player's machine, where that
 player's own shots resolved instantly while everybody else's took a round trip,
 and where a disconnection took the match with it.
 

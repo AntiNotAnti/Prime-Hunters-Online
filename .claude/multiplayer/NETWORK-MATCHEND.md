@@ -156,7 +156,7 @@ Offline the same list is offered and the answer starts the next match --
 "Leave match" and the front screen's "Start" sent on one frame, so the launcher
 is rebuilt and hidden again without being drawn. One player is the whole room.
 
-Measured with `~/mph-net-test/run-mapvote.sh` (a copy of `run-rotate.sh` with
+Historical measurement used the private `run-mapvote.sh` wrapper (a copy of `run-rotate.sh` with
 `-mapvote`): three clients, four 30-second matches, **every vote cast carried
 by the server** (9/9 and 11/11 across two runs), three rotations followed by
 every client, zero crashes, zero node refs outliving their room, zero feature

@@ -1,6 +1,6 @@
 # Opponents that move instead of teleporting
 
-Code: `Mods/Network/NetSmoothing.cs`. Protocol 7.
+Code: `Mods/Network/NetSmoothing.cs`. Introduced in protocol 7; current compatibility is defined by `NetConfig.ProtocolVersion`.
 
 ## The fault
 

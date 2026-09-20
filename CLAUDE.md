@@ -1,12 +1,11 @@
-# Fruity Prime — tools, design, and the mechanics catalogue
+# Prime Hunters Online — tools, design, and mechanics catalogue
 
-**The project is Fruity Prime. The code is still `namespace MphRead`, and stays
-that way.** Upstream is NoneGiven/MphRead and every pull from it is a
-fast-forward only while the 221 files that declare that namespace and the 271
-that import it are untouched; renaming it would put a conflict in all of them
-for a string only a developer ever reads. The rename is the product, the
-binaries, the window title and the release artifacts. `Mods/Branding.cs` is
-where the name lives — nothing else should spell it out.
+**Read `ARCHITECTURE-INVARIANTS.md` before changing architecture. Current code
+and tests outrank prose.** The public project/repository is Prime Hunters
+Online. The C# namespace remains `MphRead` for upstream mergeability, while
+existing runtime compatibility identifiers still include `FruityPrime`,
+`FruityPrimeServer` and the legacy Android package id. Do not rename those as
+part of unrelated work; updater/package identity needs a deliberate migration.
 
 | Build | Binary |
 |---|---|
@@ -14,24 +13,23 @@ where the name lives — nothing else should spell it out.
 | Windows server | `FruityPrimeServer.exe` |
 | Linux game, Linux and ARM64 server | `FruityPrime` |
 
-This file exists so a fresh session can pick the work up without rediscovering
-the environment or the failure modes. Everything below has been used; nothing
-is aspirational. It stays short on purpose: depth for a given area lives in
-`.claude/` (indexed in `.claude/CLAUDE-INDEX.md`) and is loaded only when that
-area is the one being touched.
+This file exists so a fresh session can pick work up without rediscovering the
+architecture and failure modes. Dated measurements below are historical
+records, not declarations that their old protocol/profile is still current.
+Depth for a given area lives in `.claude/` (indexed in
+`.claude/CLAUDE-INDEX.md`).
 
 ## Where things are
 
 | Path | What |
 |---|---|
-| `~/GIT/Fruity-Prime` | the source. Upstream is NoneGiven/MphRead; everything added lives under `src/MphRead/Mods/` so pulling upstream stays a fast-forward. (It was `~/MphRead-dev` before the rename, and that path is gone) |
+| Repository root | the checked-out source. New project code is concentrated under `src/MphRead/Mods/`; do not assume a particular clone path |
 | `src/MphRead.Android/` | the Android head: the same sources, an APK, a front screen and a match, over GL ES and touch controls |
-| `src/MphRead/Mods/Network/` | the whole multiplayer feature |
-| `src/MphRead/Mods/Launcher/` | the launcher: `Gui/` is every window (Avalonia, all platforms), `Portable/` is the logic and the text screen |
-| `~/mph-test/` | the extracted game files and `paths.txt`. **`paths.txt` has to sit next to the DLL** you are running, so copy it into `src/MphRead/bin/Release/net10.0/` and run `dotnet FruityPrime.dll` from there |
-| `~/mph-net-test/` | the test rig -- `bin/` (with its own `paths.txt`, game files and thumbnail cache), `run-check.sh`, `compare-reports.py`, `hard/`, and every `run-*.sh` named in the table below. It **does** exist on this box, whatever an older copy of this file said. A two-client run against a real server needs nothing more than two `-netcheck` processes and the game files |
-| `C:\Users\livetek\Desktop\MPH\MphRead-develop\` | the Windows deliverable |
-| `net.livetek.fr:27888` | the dedicated server on the user's Pi (systemd unit `mphread-server`) |
+| `src/MphRead/Mods/Network/` | the multiplayer feature |
+| `src/MphRead/Mods/Launcher/` | the launcher: `Gui/` is Avalonia UI, `Portable/` is shared logic/text UI |
+| Local extracted-data directory | operator/developer supplied game files and `paths.txt`; its absolute location is machine-specific |
+| External network harness | optional private/local scripts may exist outside the repo, but they are not source of truth. Repo-owned checks live under `tools/` |
+| `tools/systemd/`, `deploy-server.sh` | server deployment/service assets. Hostnames and live deployment state are operational configuration, not architecture |
 
 ## Environment recipe (WSL)
 
@@ -51,7 +49,7 @@ export ALSOFT_DRIVERS=null PULSE_SERVER=   # else ALSA retries stall frames
   from the same directory works. Either export it or run through `dotnet`.
 
 - If `~/.dotnet` is empty, the SDK is not installed at all:
-  `curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 9.0`
+  `curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 10.0`
   puts it there.
 - The launcher used to need `libICE` and `libSM`, and no longer does: it opens
   no window of its own, so it binds no X11 client libraries. `fontconfig` is
@@ -93,8 +91,8 @@ export ALSOFT_DRIVERS=null PULSE_SERVER=   # else ALSA retries stall frames
 | `MphRead -server ... -noshadowfreeze` | run the room with the Judicator's ice wave as a cone rather than as a column of infinite height. A rule, broadcast to every client in the match state, because the machine resolving a shot decides who it hit |
 | `MphRead -server -port N -players 8` | dedicated **authoritative** server: it runs the match itself, so it needs the game files and `paths.txt` beside the binary, and it refuses to start without them. `-simulate`/`-authority` are accepted and do nothing. `-servername "NAME"` is what a browser shows; it announces itself to `net.livetek.fr` unless `-nomaster` is passed, and `-master HOST -masterport N` points it elsewhere. `-affinityweapons` is a **match rule broadcast to every client**, not a local preference: the affinity weapons are a different row of the damage table, so a client playing by its own settings ran a victim's health down at a different rate from the machine keeping score. The **damage level is pinned to medium (x1) everywhere** and has no flag -- it multiplied every weapon's damage and was the one rule each machine read out of its own file |
 | `MphRead -simcheck "ROOM" [-players N] [-seconds N]` | what a room costs a server: peak memory, milliseconds a simulation step, and whether every slot spawned. Runs the headless engine with nobody connected. The measurement that decides whether a given box can be the authority for a given map |
-| `MphReadServer.exe -server ...` | the same server on Windows, as its own console binary. `MphRead.exe` can also do it, but it is a GUI binary: a shell will not wait for it and its exit code never reaches `%ERRORLEVEL%`. Run with no arguments it prints what it is for |
-| `MphRead -masterserver [-port N] [-public HOST] [-hostports A-B]` | the server directory the launcher's browser asks, and the machine that runs matches for players who cannot open a port. Same binary, no game files, keeps nothing on disk. `-public` is the address to publish for servers registering from this same machine, whose heartbeats arrive over the loopback |
+| `FruityPrimeServer.exe -server ...` | the authoritative server on Windows, as its own console binary. `FruityPrime.exe` also contains the command path, but it is a GUI binary: a shell will not wait for it and its exit code never reaches `%ERRORLEVEL%`. Run with no arguments it prints what it is for |
+| `MphRead -masterserver [-port N] [-public HOST] [-hostports A-B]` | the directory the launcher/browser asks. Directory-only listing/query work needs no game files. If `-hostports` is enabled, it may also start isolated authoritative game-server children, and **that hosting capability does require access to the operator's extracted game files**. `-public` is the address published for servers registering from the same machine |
 | `MphRead -hostgame "ROOM" [-mode M] [-maprotation "A,B,C"] [-master HOST]` | ask the directory to run a match and join it. No port forwarding anywhere; the only way to host from a machine with no launcher. `-maprotation` is the rest of the cycle, comma separated -- the map named by `-hostgame` is always first, so the two cannot disagree about what starts |
 | `MphRead -hostlocal "A,B,C" [-mode M] [-servername N] [-seconds N]` | the launcher's create-server screen, **Dedicated** half, with no launcher: start a server on this machine, on the first free port from 27888, and report where it landed. The one path in that feature a rendered screen cannot check -- it spawns a process, writes a rotation, copies `paths.txt` and waits for a socket, and each of those fails differently on a headless box |
 | `MphRead -installserver` | fetch and unpack the dedicated-server package for this platform into `server/`, which is what the create-server screen's **install** mark does. "The button did nothing" is otherwise unanswerable from a machine with no display: the two halves that can fail -- finding the asset and unpacking it -- both land on one sentence on screen. Prints the tag it installed, which is the **latest release** and not necessarily this build -- a protocol mismatch there is a server this client cannot join |
@@ -104,18 +102,18 @@ export ALSOFT_DRIVERS=null PULSE_SERVER=   # else ALSA retries stall frames
 | `MphRead -netcheck HOST -port N -name X -hunter H -seconds N [-shots DIR] [-size WxH]` | a real client driven by a script, which reports what it saw. Exit code 0 = pass. `-spectate [SEC]` makes it stop playing and watch, `-rejoin SEC` puts it back in -- the one player state the tour cannot reach on its own. `-mapvote N` votes on the results screen's map list -- agreeing with whatever is in front, proposing row N when nothing is -- and is **off** unless asked, since a scripted client that votes changes what a real server plays next and the hard-case batch runs against the public one. `-hudshots` opens a real window and photographs *it*, which is the only capture that carries the HUD: a results screen is HUD and nothing else |
 | `MphRead -netlag MS[:JITTER]` / `-netloss PCT` | play, or run any check, over a line this client makes up: `-netlag 200` adds 200 ms to the round trip (half each way), `-netlag 200:40` gives it jitter, `-netloss 5` eats one datagram in twenty. Works against the real server, on any platform, with no proxy and no `sudo` -- and unlike `hard/run-latency.sh`'s netem it can be given to **one** client while the others stay fast, which is the case a player with a bad line actually is. Every report says so when it is on |
 | `MphRead -nounlagged` | resolve shots against the present, the way every build before lag compensation did. The control for measuring it; on by default. `.claude/multiplayer/NETWORK-UNLAGGED.md` |
-| `MphRead -nohitprediction` / `-nohitmarker` / `-nodeathprediction` | wait for the authority before a hit lands, the way every build before instant hit registration did; drop the mark over the crosshair that says one has; and stop a prediction killing **somebody else**, which since protocol 7 it does by default -- the claim below is what made that safe again. All three are on by default, and a **self**-kill is predicted whatever any of them say. `.claude/multiplayer/NETWORK-PREDICTION.md` |
+| `FruityPrime -nohitprediction` / `-nohitmarker` | disable local outgoing-hit prediction; or disable only the confirmation marker. Prediction is on by default. Remote lethal hits are always held at 1 HP until authority confirmation; `-deathprediction` and `-nodeathprediction` are accepted compatibility no-ops. Self-damage/self-death remains locally predictable. `.claude/multiplayer/NETWORK-PREDICTION.md` |
 | `MphRead -noclaims` | stop a client telling the authority which of its own shots landed. On by default: a hit the authority's own rewind cannot find -- because the rewind hit its ceiling, because the trigger pull was recovered from a press history, or because **the shooter was killed during the round trip and the authority never ran the shot at all** -- is declared, checked against the authority's own history, and either applied or refused with a reason. That last case is the one a player calls unfair rather than laggy, and the rule it is answered by is: a shot counts unless its shooter had already been put down by a hit aimed at a strictly earlier world, and two shots aimed at the same world both count. Every weapon, not just the Imperialist. `.claude/multiplayer/NETWORK-HITCLAIMS.md` |
 | `MphRead -nointerp` / `-relayedpuppets` | draw remote players by snapping them to whichever snapshot arrived last, the way every build before protocol 7 did, instead of reading them off a playout clock held a few frames behind. Interpolation is on by default and is why opponents on a bad line move instead of stuttering; it costs a few frames of extra rewind and gives nothing up in hit registration, because the read point travels in the intent as a sub-frame ack and the authority rewinds to exactly it. `-relayedpuppets` also hands puppet positions back to the owner's relayed intent, which is the full protocol-6 arm. `.claude/multiplayer/NETWORK-SMOOTHING.md` |
 | `MphRead -maxrewind N` | the furthest back a shot may be resolved, in frames. **45 (750 ms)** by default since protocol 7, against 24 (400 ms) before it: at a 320 ms round trip with jitter the old ceiling was clamping **89% of shots**, with the requested-depth distribution's mode two frames past it. `.claude/multiplayer/NETWORK-UNLAGGED.md` |
 | `MphRead -debuglog` | write the file the launcher's corner switch writes, for one run. `.claude/DEBUG-LOGS.md` |
-| `~/mph-net-test/probe-chat.py [HOST] [PORT]` | what the server does with chat, asked the way no real client can: a spoofed sender, and a flood. `.claude/multiplayer/NETWORK-CHAT.md` |
-| `~/mph-net-test/run-remote.sh HOST PORT SECONDS hunter...` | the same check against a server that is not on this machine -- which is the one that matters, since eight clients on one box measure the box |
-| `~/mph-net-test/run-demo.sh SEC [authority\|client]` | record a demo from a scripted client and print what landed in the file. The authority is the case that matters: it is whichever client joined first, so it is normally whoever set the match up, and the server sends it no snapshots at all |
-| `~/mph-net-test/run-rejoin.sh SEC LEAVE REJOIN [host] [port]` | the rejoin scenario, with a control: A hosts and leaves, the authority moves, then one client takes the vacated slot and another takes a fresh one. Prints what each took. `.claude/multiplayer/NETWORK-DIAGNOSTICS.md` |
-| `~/mph-net-test/run-mapvote.sh SEC hunter...` | `run-rotate.sh` with the clients voting: four 30-second matches, and it reports votes cast against votes the server carried. What proves the results screen's map vote end to end |
-| `~/mph-net-test/hard/run-all.sh` / `run-all2.sh` | the hard-case batch against the Pi: a ninth player, a line that goes away, 100-300 ms, packet loss, everybody spectating, everybody recording, a match boundary, an authority leaving, and a ramp to twenty-odd matches at once. `.claude/testing/TEST-HARD-CASES.md` |
-| `~/mph-net-test/run-lag.sh MS SECONDS hunter...` | the same check against a loopback server behind `udp-lag.py`, which holds every datagram for `MS` before passing it on. A latency bug reproduced at a number you chose, rather than at whatever the internet is doing -- and the Pi answers in 7-17 ms, so it is the *worse* instrument for one |
+| External `probe-chat.py` (when available) | historical/private harness for spoof/flood chat tests that a real client cannot emit. The packet/server rules live in code and `.claude/multiplayer/NETWORK-CHAT.md` |
+| Multiple direct `-netcheck` clients against a remote current server | the durable form of the remote test. Private `run-remote.sh` wrappers may orchestrate it when available |
+| External `run-demo.sh` harness (when available) | historical harness for comparing recordings. In the normal architecture the dedicated server is authority; client-authority demo behavior is only a legacy compatibility test |
+| External `run-rejoin.sh` harness (when available) | reconnect/slot-reuse scenario. Normal server-authority matches do not hand authority between players; any handover arm is explicitly legacy compatibility coverage. `.claude/multiplayer/NETWORK-DIAGNOSTICS.md` |
+| External `run-mapvote.sh` (when available) | historical/private wrapper for multi-client post-match map-vote validation. Current behavior must still be checked against the real `-netcheck -mapvote` path |
+| External hard-case batch (when available) | historical/private orchestration for capacity, blackout, latency/loss, spectators, demos and match boundaries. Legacy player-authority cases are compatibility-only; `.claude/testing/TEST-HARD-CASES.md` |
+| `-netlag MS[:JITTER]` / `-netloss PCT` | preferred in-process latency/loss control for current client tests. `tools/udp-lag.py` remains a weaker external relay instrument when a proxy-shaped line is specifically needed |
 | `MphRead -maptest "ROOM" -players 8 -seconds 22` | load one room with a full house, drive every player, and report what the map holds and whether it survived |
 | `MphRead -maptest "ROOM" -players 8 -bots` | the same, but AI bots instead of the scripted tour -- a different code path, the only one that finds what only `PlayerAi` touches |
 | `MphRead -maptest "ROOM" -hunter H -hudshots` | put that hunter in slot 0, whose eyes and whose HUD every capture is taken through. Each of the eight lays its readouts out differently, so a HUD picture with no hunter named is a picture of Samus's and of nobody else's |
@@ -821,10 +819,16 @@ records what it *did* and what it *saw*; `compare-reports.py` cross-checks
 that what one claims to have done shows up as what every other client says it
 saw.
 
+Run the current executable directly for durable reproduction:
+
 ```bash
-cd ~/mph-net-test
-./run-check.sh 150 Samus Weavel Sylux Trace Samus Noxus   # seconds, then hunters
+./FruityPrime -netcheck HOST -port N -name ALPHA -hunter Samus -seconds 150
+./FruityPrime -netcheck HOST -port N -name BRAVO -hunter Sylux -seconds 150
 ```
+
+Private/external wrappers such as `run-check.sh` may orchestrate more clients
+when present, but they are not part of this repository and must not define the
+expected architecture.
 
 Read the output in this order: per-feature `MISMATCH` lines, then
 `scoreboards agree`, then `damage pipeline`, then `remote position snaps`.
@@ -890,18 +894,17 @@ MPH_SERVER_HOST=net.livetek.fr MPH_SERVER_USER=livetek \
 
 The exe is often locked by a running game: write `MphRead.new.exe`, then `mv`.
 
-**`NetConfig.ProtocolVersion` is 8.** Version 8 changes continuous-weapon
-phase timing without changing packet layout, so mixed builds must be refused.
-Server **and** every client must use the same protocol — a mismatched client is
-refused at Hello even though version 8's wire format is unchanged. An older
-build would read the packets but simulate different continuous-weapon events.
-Deploy the server
-before handing out a client built against a new protocol. Publish commands and
+**The current protocol is `NetConfig.ProtocolVersion = 14`.** Never duplicate
+that number as a design constant elsewhere: read it from `NetProtocol.cs` when
+validating a deployment. Server and clients must match; incompatible builds are
+refused during Hello. Versions 7/8 in the measurement sections below are dated
+historical profiles, not the current wire. Deploy the authoritative server
+before distributing a client with a new protocol. Publish commands and
 the deploy script's env vars: `.claude/build-deploy/DEPLOY-SERVERS.md`.
 
-`-simulate` is the one server option that needs game files on the server box.
-It changes nothing on the wire, so it can be turned on and off between
-restarts without touching a single client.
+A dedicated game server always needs the operator's extracted game files and
+`paths.txt`. `-simulate` and `-authority` are accepted only for compatibility
+and do nothing; server authority is the normal path.
 
 ## Multiplayer: bugs found and fixed
 
@@ -1019,26 +1022,19 @@ Shapes worth keeping without opening anything else:
   real-world one, and must not be reported as one** — it has none of the
   reordering, jitter or CPU load the bugs above were found under.
 
-**The server can be the simulation authority** -- `-simulate`. The authority
-was never a property of being a player: it is the property of being the
-machine every other player's intent is pointed at, and until now that was
-whichever client joined first. The engine's simulation needs no GL context at
-all (the frame split had already put every GL call in `OnDrawFrame`), so the
-server runs the *real* engine rather than a model of it -- which is what
-answers the old objection that a reimplementation would be a second answer
-free to disagree with the first. What it buys is fairness and resilience:
-nobody is at zero latency any more, no handover when the authority leaves, and
-`HandleSnapshot` refuses every client's world outright. What it does **not**
-buy is a shorter wait for your own hit to register -- that is a round trip
-wherever the authority sits, and shortening it is client-side prediction,
-which is not implemented. The wire does not move: a client is told it is the
-authority by receiving `PacketType.Authority` and in no other way, so a
-simulating server simply never sends it. Measured at **110 MB and 0.31 ms a
-step** for an 8-player room, against 337 MB for a full client, by dropping
-work whose only output was a picture. `.claude/multiplayer/NETWORK-SERVERAUTH.md`.
+**The server is the simulation authority in normal online play.** Standalone,
+local-hosted and directory/overflow-hosted matches all run the match in a
+server process. Local/hosted paths use isolated child processes because
+`NetSession` is static and each process can own one simulation. No normal
+player receives `PacketType.Authority`; the old client-authority path remains
+only for compatibility/tests. This removes the historical slot-0/host advantage
+and authority handover. Clients still supply their own movement position, while
+combat/health/score/match state are authoritative on the server. Outgoing-hit
+responsiveness comes from `NetHitPrediction`, not from giving a player
+simulation authority. `.claude/multiplayer/NETWORK-SERVERAUTH.md`.
 
 **A shot the authority cannot find is declared, checked and arbitrated**
-(protocol 7, `Mods/Network/NetHitClaims.cs`). The rewind below and the
+(`Mods/Network/NetHitClaims.cs`; introduced in protocol 7 and expanded since). The rewind below and the
 prediction under it are the authority and the shooter running the *same* test
 on the *same* positions, which is why they agree -- and there are three cases
 where they cannot run the same test at all: the rewind hit its ceiling
@@ -1058,8 +1054,10 @@ stops the damage landing twice. **The arbitration**: a shot counts even when its
 shooter is dead by the time it arrives, unless they were put down by a hit aimed
 at a *strictly earlier* world; two shots aimed at the same world both count, a
 trade. Claims are settled in fire-frame order so a mutual kill comes out the
-same way whichever datagram won the race. Predicted kills on other players came
-back on with it -- the authority no longer disagrees silently. Every weapon.
+same way whichever datagram won the race. Remote-player deaths are not predicted now: the local hit is clamped to one
+health and the authority owns the actual death. Claims still rescue validated
+hits and reconcile the shooter's immediate presentation without giving the
+client durable score/match authority. Every supported weapon participates.
 `-noclaims`. `.claude/multiplayer/NETWORK-HITCLAIMS.md`.
 
 **Remote players are read off a playout clock, not snapped to the last snapshot

@@ -1,6 +1,6 @@
 # Hit claims, and who decides a kill
 
-Code: `Mods/Network/NetHitClaims.cs`. Protocol 7. The third piece of the same
+Code: `Mods/Network/NetHitClaims.cs`. Hit claims were introduced in protocol 7; the current protocol is defined by `NetConfig.ProtocolVersion` (14 at this audit). The third piece of the same
 machine as [lag compensation](NETWORK-UNLAGGED.md) and
 [instant hit registration](NETWORK-PREDICTION.md), and the one that answers the
 complaint those two leave standing.
@@ -17,19 +17,25 @@ the authority are not running the same test at all:
 | **the trigger pull was recovered from a press history** | so the packet carrying it acks a newer world than the one the finger moved in |
 | **the shooter was killed during the round trip** | the authority never runs the shot: its copy of that player was already dead when the intent arrived, and a dead player's presses do nothing |
 
-The third is the one players call unfair rather than laggy. You shoot, the body
-drops on your screen, and then it stands back up — because the person you shot
-had already killed you on the machine keeping score.
+The third is the one players call unfair rather than merely laggy: the shooter
+can resolve a legitimate hit in the world they saw while the authority never
+runs that shot at all because its copy of the shooter is already dead. Current
+prediction does **not** drop a remote body locally; it preserves immediate hit
+feedback and holds lethal damage at one health until the authority decides.
 
 ## What a claim is
 
-`PacketType.HitClaim`, client → authority, 27 bytes: the claim id, the shooter's
-own frame, **the authority frame whose world it was resolved against**, the
-victim slot, the beam, the damage, a flags byte (headshot / lethal / frozen),
-and where the shooter's copy of the victim was standing.
+`PacketType.HitClaim`, client → authority, is currently 49 bytes. It carries
+claim id; shooter frame; authority `AckFrame`; projectile `LaunchFrame`; victim
+slot; beam; damage; flags (headshot, lethal, frozen, burning, disrupted); hit
+point; match/authority identity; and shooter/victim generation + life IDs. The
+stream/lifecycle identities prevent a delayed claim from crossing a match,
+authority epoch, slot occupant or respawn boundary.
 
-`PacketType.HitVerdict` comes back: applied, already resolved, void because the
-shooter was dead, void because the victim was down, refused, or too old.
+`PacketType.HitVerdict` comes back with explicit outcomes including applied,
+already resolved, dead shooter/victim, too old, wrong lifecycle, geometry,
+damage limit, invalid launch and no-damage. Refusals are diagnostic, not one
+undifferentiated "miss".
 
 Claims are declared from `NetHitPrediction.NoteHit` — every hit this machine
 resolves for its own player on somebody else, **every weapon**, not only the
@@ -39,17 +45,16 @@ nothing to do with which gun fired.
 
 ## What the authority checks
 
-`Judge`, in the order that costs least:
+Before `Judge`, the receiver validates match/authority stream identity and
+shooter/victim lifecycle identity. `Judge` then performs the cheap checks first:
 
-1. the slots are real, and nobody claims a hit on themselves — your own splash
-   is arithmetic both machines run identically from the same inputs;
-2. the frame named is inside the rewind history;
-3. the damage is no more than that weapon can deal with **every** multiplier
-   in the game stacked at once (charged headshot × double damage × Double
-   effectiveness × the high damage level);
-4. the victim was in play at that frame, and is worth damaging now;
-5. **the victim's body, as the authority's own history holds it at that frame,
-   is within 2.0 units of where the claim says the hit landed.**
+1. the slots are real, and nobody claims a hit on themselves;
+2. the acknowledged frame exists inside rewind history;
+3. `LaunchFrame` does not follow the frame in which the hit resolved;
+4. claimed damage is within the weapon's bounded maximum;
+5. the victim existed in the claimed generation/life and is worth damaging;
+6. **the victim's body, as the authority's own history holds it at that frame,
+   is within the reconciliation radius of the claimed hit point.**
 
 Five is the one that makes the rest safe, and it is worth being precise about
 what it compares. It is *not* a tolerance on aim. The claim carries where the
@@ -68,30 +73,29 @@ scythe, spin or trail, a bomb — which land at arm's length or in a blast.
 
 ## The grace window, and why a claim is not applied when it arrives
 
-The authority is simulating the same shot from the same intent. Its own answer
-arrives around the same time as the claim: earlier for a hitscan weapon, later
-for anything that travels. Applying a claim on arrival would double the damage
-of every shot the authority was going to resolve anyway, which is almost all of
-them.
+The authority may independently resolve the same projectile before or after the
+claim arrives. Applying a validated claim immediately would therefore double a
+real hit. Claims wait in a bounded grace window and are paired with the
+authority's own hit by shooter/victim and, for beams, the exact
+`LaunchFrame`.
 
-So a validated claim **waits 18 frames** and is dropped the moment the authority
-resolves a hit from that shooter on that victim — in the window before it
-arrived as well as the window after. What survives the window is a hit the
-authority was never going to find, and that is the only kind applied.
-
-The shooter does not wait: the prediction already showed them the hit on the
-frame they fired it. What the window costs is 300 ms before the *victim* learns
-about a rescued hit — against the alternative, which is not learning at all.
-`NetHitPrediction.HoldFrames` carries the same 18 frames so that the shooter's
-hold on the victim's health does not expire before the answer arrives.
+The grace is **dynamic**, not the old fixed 18 frames. `GraceFor` is based on
+the measured round trip plus margin, bounded by `MinGraceFrames = 24` and
+`MaxGraceFrames = 72`. The client's prediction hold uses the same authority
+latency model so presentation does not expire before a rescue/verdict can
+arrive. A duplicate authority resolution retires the claim without applying
+its damage again; only a validated claim the authority did not resolve is
+rescued.
 
 ## The arbitration
 
 > *Si client A fait un headshot sur client B, malgré la latence le kill doit
 > toujours être pris en compte. Sauf si client B a tué client A avant.*
 
-A claim carries the world-frame its shooter was looking at. That is the clock
-two people who killed each other are separated by:
+A beam claim carries both the acknowledged world in which the hit resolved and
+the **launch frame of the shot**. Kill arbitration orders travelling shots by
+launch world, not packet arrival and not the later impact ack. That is the
+clock two people who killed each other are separated by:
 
 - **dead now is not the test.** A player killed during the round trip still
   gets the shot they took before it happened. That is the whole point.
@@ -112,17 +116,21 @@ frame it goes down. A death with nothing behind it (the void, a crusher, the
 clock) is stamped with the present, which is the truth for something nobody
 aimed.
 
-## What this changed elsewhere
+## Current interaction with prediction and Imperialist headshots
 
-**Predicted kills on other players are back on** (`DeathEnabled`). They were
-turned off because a client could kill the same opponent twice for one kill on
-the scoreboard: the authority disagreed silently and the next snapshot stood the
-body up. The authority no longer disagrees silently — a kill this machine shows
-is one it has told the authority about, which comes back applied, already
-resolved, or refused *with a reason*, inside one round trip. `-nodeathprediction`
-is the control.
+**Remote-player deaths remain authority-owned.** A local predicted lethal hit
+is clamped to one health; the hit/feedback is immediate, but the body falls only
+when authoritative state confirms it. `DeathEnabled` and the historical death
+prediction flags are compatibility no-ops.
 
-**The rewind ceiling moved from 24 frames to 45** (400 ms → 750 ms). A claim is
+**Imperialist headshot classification has an authoritative reconciliation
+exception.** If a validated shooter claim says Imperialist headshot and the
+authority paired the same `LaunchFrame` to a body hit, the authority applies
+only the missing damage difference exactly once. This preserves the validated
+headshot without double-applying the body damage. Speculative HEADSHOT HUD text
+is suppressed until the authoritative classification agrees.
+
+**Historical note:** the rewind ceiling moved from 24 frames to 45 (400 ms → 750 ms) during the protocol-7 work. A claim is
 a backstop, not a substitute: the cheapest hit registration is still the one the
 authority finds itself, and the histogram above says the old ceiling was
 refusing nine shots in ten at the latencies this work is about.
@@ -155,14 +163,14 @@ sim: hit claims (as authority): 28 received, 2 applied (13 damage, 0 kills,
 Each is a shot that landed on the shooter's screen and would have counted for
 nothing.
 
-## Verified 2026-09-14 (WSL, loopback with latency injected)
+## Historical measurements: 2026-09-14 (WSL, loopback with latency injected)
 
 | Check | Result |
 |---|---|
 | `run-check.sh 70 Samus Weavel Sylux`, **no lag** | **0 mismatches**; 56 claims received, **54 already resolved**, 0 applied, 0 refused, 0 unanswered. This is what a clean line is supposed to look like: the rewind does the whole job and the claim rescues nothing |
 | the same with `-noclaims -nointerp -relayedpuppets -nodeathprediction` | the one pre-existing `damage-taken` mismatch reproduces identically (26 against 13/15), so it is not this |
 | `-hitrig duel`, **350 ms ± 80 with 2% loss**, 150 s, `TEST PADS` | **26 received, 12 applied — 1338 damage, 12 kills, 12 headshots rescued — against 3 already resolved.** The authority's own simulation found three of the fifteen real hits in that duel |
-| the same run, client side | **`headshots: 14 predicted, 12 agreed by the authority (100.0%), 0 downgraded to body shots`**, and `14 kills predicted, 1 undone`. The protocol-6 arms of the same rig read 63.6% and 75%, with 2-4 downgraded each |
+| the same run, client side | **`headshots: 14 predicted, 12 agreed by the authority (100.0%), 0 downgraded to body shots`**. The contemporaneous `kills predicted / undone` counters describe the historical lethal-prediction experiment and are not current behavior. The protocol-6 arms of the same rig read 63.6% and 75%, with 2-4 downgraded each |
 | rewind, all protocol-7 arms | **clamped 0**, worst asked 40-43 against the 45-frame ceiling, 0 history misses |
 
 **The duel is the run that matters and it is worth saying why.** In a duel at
@@ -309,9 +317,10 @@ headshots corrected.
   `Receive` answers what it can refuse on sight, `Tick` answers what waited out
   its grace — and a client repeating six claims in one packet would otherwise
   be answered with six datagrams.
-- **A server that does not simulate drops claims.** It has no history to check
-  one against. The client repeats a few times, gives up, and plays the game
-  every build before protocol 7 played.
+- **The legacy `RunsTheMatch=false` compatibility path cannot authoritatively
+  judge claims** because it has no server simulation history. Normal hosting
+  never selects that path; normal hosted matches use isolated authoritative
+  server processes.
 - **Repeats are counted separately on both ends** or the outcomes do not add up
   to what was received, and a line reading `8 received, 1 applied, 2 already
   resolved` looks like five lost claims rather than five repeated ones.

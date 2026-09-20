@@ -24,8 +24,9 @@ fired. That asymmetry is the whole of what is removed here: everybody who is
 not the authority resolves their own shots locally, immediately, and the
 authority's answer arrives afterwards to confirm or overrule it.
 
-With a **simulating server** (`-simulate`) nobody is the authority, so this is
-the only thing that gives anyone an instant hit at all.
+With the normal server-authority architecture no player is the authority, so
+this is what makes a shooter's own hit feedback immediate without giving that
+player authoritative control.
 
 ## Why it is sound here
 
@@ -97,90 +98,36 @@ the same table, so anything short of 100% agreement means one of them is
 reading a quantity the other was never sent -- and the weapon it happens on
 says which.
 
-## Two rules, and the one that came back
+## Current rules
 
-0. **A prediction does not kill somebody else.** This was rule one, it was
-   taken out on the strength of loopback measurements, a real line put it
-   straight back -- see *The rule that came back* below -- and **protocol 7
-   turned it back on by removing the cause rather than tolerating it**. See
-   *And it came back on* below. `DeathEnabled` is now **on**;
-   `-nodeathprediction` is the control. It never touched a **self**-kill, which
-   is predicted whatever the switch says.
-1. **A prediction never scores and never ends a match.** The death path awards
-   the kill, and on a predicting machine that award is transient: the
-   scoreboard is assigned from the snapshot for every slot on every
-   `ApplyState`, so the authority's `Points`, `Kills` and `Deaths` overwrite it
-   within a snapshot. What could not be undone is the *match ending* on a
-   score that turned out not to have been reached, and that is already refused
-   -- `EndIfPointGoalReached` returns immediately unless
-   `NetMatchEnd.MayEndOnScore`, which is false on any machine that is not
-   keeping the score. This is why there is still no
-   `SaveScores`/`RestoreScores` here as there is in `NetDamage.Replay`: the
-   replay runs *after* the authority has already counted the kill, so its
-   award would be a second one; a prediction's is a first one that is
-   corrected.
-2. **A prediction is only your own shot on somebody else.** Incoming damage is
-   never predicted. Whether *you* were hit is a question about a shot fired on
-   another machine and aimed at a copy of you that machine is holding; this
-   one has no better answer to it than the authority's, it has a worse one.
-   The single exception is the health your own Shock Coil drains out of
-   somebody -- the arithmetic of a hit this machine has already resolved, not
-   a guess about anybody else's input. See *The drain* below.
+1. **Only the local player's own outgoing hit is predicted.** Incoming damage
+   from another player waits for authority. Local self-damage and environmental
+   self-death are special because source, target and input are local.
+2. **Remote lethal prediction is clamped to 1 HP.** Flinch, hit marker and
+   nonlethal damage can appear immediately, but the authority owns the actual
+   remote death. `DeathEnabled` is now a compatibility no-op;
+   `-deathprediction` and `-nodeathprediction` are accepted so old scripts keep
+   running, but do not change this rule.
+3. **Prediction never owns durable score or match outcome.** Authoritative
+   snapshots/state settle health/score and only authoritative state may end the
+   match.
+4. **Every remote prediction is reconciled.** Hit claims/verdicts identify the
+   exact prediction and retire its hold whether the authority resolved it,
+   rescued it, or refused it.
+5. **Headshot presentation waits for authority confirmation.** The client may
+   locally classify a headshot for reconciliation, but speculative HEADSHOT HUD
+   text is suppressed until the authoritative result agrees.
 
-### The rule that came back
+### Historical lethal-prediction experiment
 
-**A prediction never kills** was rule one. It was clamped at the last moment to
-leave the victim standing on one point of health, and it went because it was
-visible: the prediction stopped exactly one point short of the thing it was
-predicting, and a player emptying a clip watched the bar stick at 1 and the
-body stay up until the authority answered. Everything the rule was protecting
-looked like it was either corrected by the snapshot (the score) or already
-refused (the match end).
-
-**What that reasoning missed is the body.** Played against Japan rather than
-measured on a loopback, a client could kill the same opponent *twice* for one
-kill on the scoreboard: the body dropped here, the authority disagreed, the
-next snapshot stood it back up, and the second kill was the only one anybody
-else ever saw. The score was corrected exactly as designed -- and the thing a
-player was actually looking at was a corpse getting up. A hit shown and taken
-away is worse than a hit shown late; a *death* shown and taken away is the
-worst case of it, and no amount of scoreboard arithmetic is the answer to it.
-
-So `DeathEnabled` went off, `LethalHeld` counted what it held, and
-`-deathprediction` turned it back on for measuring. The killing shot still felt
-instant, because the flinch and the mark run on the frame it lands; only the
-body falling was owed a round trip.
-
-### And it came back on, in protocol 7
-
-The reasoning above is entirely about **the authority disagreeing silently**.
-That was the only thing that could stand a body back up, and it is what
-`NETWORK-HITCLAIMS.md` removes. A kill this machine shows is now one the
-authority is told about explicitly — `PacketType.HitClaim` — checked against its
-own rewind history and answered inside one round trip with *applied*, *already
-resolved*, or a refusal that says why.
-
-The two outcomes that used to be indistinguishable are now different things:
-
-- **"the authority resolved it too"** — the ordinary case, and nothing to undo;
-- **"somebody killed you first"** — `ResultDeadShooter`, the arbitration doing
-  its job, and a death the player is about to watch happen anyway. A body
-  getting up in that half-second is no longer a surprise.
-
-A refusal also arrives as a *verdict* rather than as a two-second timeout:
-`NetHitPrediction.DropPrediction` releases the hold the moment it lands, so the
-wrong health bar rights itself in about the time the authority takes to answer.
-
-`DeathEnabled` is on by default and follows the claims. `-nodeathprediction` is
-the control; `-deathprediction` is still accepted and is what the default
-already does.
-
-**A self-kill is the exception and is not this switch's to refuse.** A rocket
-jump at low health, a recoil, a crusher, and above all a fall into the void:
-source, target and input are all on this machine, there is no rewind to bet on
-and no other machine's opinion of where anybody was. The authority says the
-same thing a round trip later because it is running the same arithmetic on the
-same inputs. See *Your own splash, on you* below.
+Protocol-7-era builds briefly allowed a predicted hit to kill another player
+locally. Real-line testing exposed the worst failure mode: a local body could
+fall, the authority could disagree, and a later snapshot could stand it back
+up. Current code deliberately leaves remote victims at one health until the
+authority confirms death while preserving immediate nonlethal feedback. Dated
+tables below that mention `DeathsPredicted`, `DeathsUndone`,
+`-deathprediction` or `-nodeathprediction` describe that historical A/B, not
+current behavior.
 
 ## What is held
 
@@ -197,7 +144,7 @@ So three things are held against the snapshot until the authority catches up:
 |---|---|---|
 | the victim's health | the authority's number less the damage of every prediction still outstanding for that slot | `HealthFor`, called from `ApplyState` |
 | the victim's health, again | never above what was last drawn, while this machine is still predicting hits on that slot | `_shownHealth`, in `HealthFor` |
-| a player predicted dead | the snapshot is not allowed to spawn them. Somebody else only under `-deathprediction`; **this machine's own player always**, since a self-kill is predicted either way | `HeldDead`, checked in the `!wasInPlay` branch |
+| this machine's own player after a predicted self-death | the snapshot is not allowed to resurrect that local self-death until lifecycle catches up. Remote victims are not predicted dead in the current build; remote lethal damage is held at 1 HP for authority | `HeldDead`, checked in the `!wasInPlay` branch |
 | this machine's own drained health | the authority's number plus every drain credit still outstanding | `LocalHealthFor` |
 
 ### The floor, and why the debit is not enough
@@ -230,9 +177,9 @@ the same hits on both machines is a separate piece of work -- see
 
 `HealthFor` never returns zero on its own account: assigning zero health is
 not a death -- it skips the whole death path -- so a hold that ran the bar to
-the bottom would produce a player who is neither alive nor dead. A predicted
-kill goes through `TakeDamage` like every other hit, and `HeldDead` is what
-keeps it down.
+the bottom would produce a player who is neither alive nor dead. A local predicted self-kill goes through `TakeDamage` like every other hit,
+and `HeldDead` is what keeps that local player down until authoritative
+lifecycle catches up. Remote victims never enter this state from prediction.
 
 **The hold window is not the pending window.** `PendingFrames` is 120 -- two
 seconds, deliberately generous, because a confirmation that arrives late is
@@ -563,24 +510,20 @@ hit prediction: 26 predicted, 24 confirmed (92.3%), 2 denied, 0 unpredicted,
   shown when it arrives, which is what every hit used to do. Weavel's
   halfturret produces these on purpose -- it picks its own targets on every
   machine, so its shots are not the same shots.
-- **kills left to the authority** -- lethal predictions clamped to one point of
-  health, which is `LethalHeld` and is what the default reads. Under
-  `-deathprediction` the line reads **kills predicted / undone** instead:
-  lethal predictions made here and the ones the authority never confirmed,
-  counted as they expire. `undone` is the number that took the switch back
-  out -- a wrongly killed player is the most visible thing this file can get
-  wrong.
-- **self-kills predicted** -- appended whenever the run has any: deaths this
-  machine's own player died on the frame it died them. Present under either
-  switch, because `DeathEnabled` does not gate them.
+- **kills left to the authority** -- remote lethal hits clamped to one point of
+  health (`LethalHeld`). This is the current behavior. Older report formats may
+  also expose predicted/undone kill counters from the historical lethal A/B;
+  current normal runs keep those legacy counters at zero.
+- **self-kills predicted** -- appended whenever the local player dies from a
+  locally resolved self/environment event. This remains separate from remote
+  lethal handling.
 - **health drained ahead** -- points of Shock Coil drain credited before the
   authority reported them. Absent when the run never fired one.
 
 `-nohitprediction` is the control and `-nohitmarker` turns off only the mark;
-both are on by default, as `-nounlagged` is off by default. **Predicted kills on
-other players are on by default since protocol 7** and `-nodeathprediction`
-turns them off; `-deathprediction` is still accepted and is what the default
-already does. Neither of them reaches a self-kill.
+prediction and lag compensation are enabled by default. Remote-player deaths
+are authority-owned. The legacy death-prediction switches are accepted no-ops
+and do not affect self-damage/self-death.
 
 `hit claims:` is the line to read beside this one. A prediction and a claim are
 the same event seen from two ends -- the prediction is what this machine showed,
@@ -588,7 +531,7 @@ the claim is what it asked the authority to make real -- so `denied` climbing
 while `refused` stays at zero means the two machines disagree about a hit
 neither of them is arguing about, which is a different fault.
 
-### Verified 2026-09-08/09 (WSL, loopback)
+### Historical measurements: 2026-09-08/09 (WSL, loopback)
 
 | Check | Result |
 |---|---|
@@ -617,7 +560,7 @@ history from before any of this, `damage-taken` with the identical numbers
 clients' `Replayed`, which reproduces exactly with `-nohitprediction`. None of
 the three is this feature; all three are worth someone's time on their own.
 
-### Verified 2026-09-09 against Japan (`13.78.14.98:27890`, simulating, 267-274 ms)
+### Historical measurements: 2026-09-09 against Japan (`13.78.14.98:27890`, simulating, 267-274 ms)
 
 The held prediction, predicted death and the drain credit were written and
 measured against a real line rather than a loopback with lag injected into it.

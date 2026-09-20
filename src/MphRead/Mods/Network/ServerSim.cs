@@ -7,15 +7,14 @@ using OpenTK.Mathematics;
 namespace MphRead.Mods.Network
 {
     /// <summary>
-    /// The match, simulated by the server that relays it.
+    /// The match, simulated by the authoritative server.
     ///
-    /// The authority was never a property of being a player. It is a property
-    /// of being the machine everyone else's intent is pointed at, and until
-    /// now that machine was whichever client joined first -- because a server
-    /// with no game files cannot run the engine, and a server that ran a
-    /// *reimplementation* of the engine would be a second answer free to
-    /// disagree with the first. Both of those are still true. What changed is
-    /// that the engine's simulation turns out to need no GL context at all:
+    /// The authority is not a property of being a player. It is the machine
+    /// every player's intent is resolved by. Normal online matches run that
+    /// authority here, on the server, rather than on whichever client happened
+    /// to join first. The server uses the same engine code as the clients, not
+    /// a second reimplementation: the engine's simulation needs no GL context:
+    ///
     /// <c>Scene.OnSimulationFrame</c> and everything under it -- input, the
     /// entity step, collision, beams, damage -- contains no GL call anywhere,
     /// the split having already put every one of them in
@@ -37,12 +36,12 @@ namespace MphRead.Mods.Network
     /// - **The scoreboard has one author.** Kills, points and the end of the
     ///   match are decided where the clock already lived.
     ///
-    /// What it does **not** buy, and must not be sold as: a player still does
-    /// not see their own hit register any sooner. Damage is felt when the
-    /// snapshot carrying it arrives, which is a round trip after the trigger,
-    /// wherever the authority sits -- moving it to the server equalises that
-    /// wait, it does not shorten it. Shortening it is client-side hit
-    /// prediction and is a separate piece of work.
+    /// Server authority by itself does not shorten the network round trip.
+    /// Responsiveness for a client's own outgoing hits comes from
+    /// <see cref="NetHitPrediction"/>: the client presents its local result
+    /// immediately and later reconciles it with the authority. Remote lethal
+    /// damage is deliberately held for the authority, while self-damage and
+    /// self-death can resolve locally.
     ///
     /// Nor does it make the server authoritative over *movement*:
     /// <see cref="IntentPacket.Position"/> is still where its sender says they
@@ -176,11 +175,10 @@ namespace MphRead.Mods.Network
         /// Whether this machine could simulate at all, asked before a socket
         /// is opened rather than discovered on the first join.
         ///
-        /// A dedicated server has always been the one build that needs no game
-        /// files, and that stays true: without them this returns false and the
-        /// server runs as the relay it has always been, pointing the authority
-        /// at a client. Simulating is an upgrade a server operator opts into
-        /// by having a dump on the box, not a new requirement.
+        /// A normal dedicated game server must be able to build the authoritative
+        /// world. That requires the user's extracted game files and a valid
+        /// paths.txt. Returning false here is a startup failure for the normal
+        /// server path; it must not silently fall back to client authority.
         /// </summary>
         public static bool Available(out string reason)
         {

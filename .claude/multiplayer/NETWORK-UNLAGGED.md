@@ -6,9 +6,11 @@ addition on top. Code: `Mods/Network/NetUnlagged.cs`.
 
 ## The fault
 
-Not Doom's fault, because the topology is not Doom's. Nobody here is a neutral
-server: the first client to join simulates the match and everyone else feeds it
-intent through the relay. So for a client **B** shooting at **C**:
+Not Doom's fault, because the topology is not Doom's. In the current
+architecture the gameplay server runs the simulation and every client feeds it
+intent. Historical measurements below also include the former
+first-client-authority relay; those are control data, not current production
+topology. For a client **B** shooting at **C**:
 
 - B's screen shows C where the last snapshot put them — composed by the
   authority one downstream trip ago, from an intent C sent one upstream trip
@@ -172,14 +174,15 @@ the `Spawn` call: the pool is picked from by exactly that test
 
 ## Measuring it
 
-```bash
-~/mph-net-test/run-unlagged.sh <seconds> <lag-ms> [on|off]
-```
+In the current server-authoritative topology the **server** is the machine that
+rewinds shots, so its lag-compensation/claim diagnostics are the authoritative
+measurement. Clients may be given different synthetic lines with
+`-netlag MS[:JITTER]` / `-netloss PCT`; no client becomes authority because
+it joined first.
 
-ALPHA joins first and is therefore the authority, on a clean line; BRAVO and
-CHARLIE get the bad line. **ALPHA's report is the only one that counts** — it
-is the only machine that rewinds anything, and the other two correctly say
-"nothing to compensate". Every `-netcheck` report carries the line:
+Older tables below used a private `run-unlagged.sh` wrapper and a
+client-authority topology. Keep them as historical A/B evidence, not as current
+instructions. Current server logs report the same core line:
 
 ```
 lag compensation: 420 shots rewound, mean 9.3 frames (156 ms), worst 15,

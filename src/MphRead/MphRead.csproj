@@ -2,9 +2,10 @@
 
   <PropertyGroup>
     <!-- MphReadServer=true builds the dedicated-server package: no launcher of
-         either kind, no UI toolkit, and a bare invocation that says what the
-         binary is for instead of asking for game files it will never use. It is
-         what the Pi and the Windows server download are published with.
+         either kind and no UI toolkit. A bare invocation prints server usage;
+         actually running a game server requires the user's extracted game data
+         and paths.txt because the server simulates the authoritative world. It
+         is what the Pi and the Windows server downloads are published with.
 
          One framework for every target. The launcher is Avalonia on all four
          desktop platforms, so nothing here needs the Windows desktop TFM any
@@ -29,32 +30,32 @@
          that it can sit next to the game's in one folder.
 
            dotnet publish -r win-x64 -p:MphReadServer=true
-             produces MphReadServer.exe
+             produces FruityPrimeServer.exe
 
          Only on Windows. Elsewhere the subsystem does not exist, the server
          package holds exactly one binary, and renaming it would mean a Pi that
          has been running MphRead under systemd since before this change gets a
          second binary beside the one its unit still points at. -->
-    <!-- The project is Fruity Prime. The assembly, the namespace and this
-         file keep the name MphRead: upstream is NoneGiven/MphRead and every
-         pull from it stays a fast-forward only while the 221 files that
-         declare that namespace are untouched. What a player sees is the
-         product name, the binary name and the window title, and those are
-         here and in Mods/Branding.cs. -->
+    <!-- The public project/repository is Prime Hunters Online. The C#
+         namespace remains MphRead for upstream compatibility, while the
+         FruityPrime assembly/binary and Fruity Prime product metadata are
+         legacy installation identities. Rename those only as an explicit
+         package/updater migration, not as documentation cleanup. -->
     <AssemblyName>FruityPrime</AssemblyName>
     <AssemblyName Condition="'$(MphReadServer)' == 'true' and $(RuntimeIdentifier.StartsWith('win'))">FruityPrimeServer</AssemblyName>
     <Product>Fruity Prime</Product>
     <!-- A local build must not masquerade as the SDK's default 1.0.0 release. -->
     <InformationalVersion Condition="'$(InformationalVersion)' == ''">local</InformationalVersion>
     <RootNamespace>MphRead</RootNamespace>
-    <!-- Not the same question as "has no launcher": a server build is shipped
-         with no game files and no way to get any, which is why it answers a
-         bare invocation differently. -->
+    <!-- Not the same question as "has no launcher": server packages never
+         contain Nintendo game data, but an operator supplies extracted files
+         through paths.txt. A bare invocation therefore prints server-specific
+         setup/usage instead of opening the client setup flow. -->
     <DefineConstants Condition="'$(MphReadServer)' == 'true'">$(DefineConstants);MPHREAD_SERVER</DefineConstants>
     <!-- The graphical launcher, in Avalonia, on every platform a person plays
-         on. Server builds do not get it, because a headless relay has no use
-         for a UI toolkit and every megabyte of one is a megabyte in the Pi's
-         download. -->
+         on. Server builds do not get it because the authoritative headless
+         simulation has no use for a UI toolkit and every megabyte of one is a
+         megabyte in the server download. -->
     <MphReadAvalonia Condition="'$(MphReadServer)' != 'true'">true</MphReadAvalonia>
     <DefineConstants Condition="'$(MphReadAvalonia)' == 'true'">$(DefineConstants);MPHREAD_AVALONIA</DefineConstants>
     <!-- The one-window shell: the launcher and the pause menu rendered into

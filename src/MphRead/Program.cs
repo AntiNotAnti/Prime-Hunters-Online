@@ -44,9 +44,11 @@ namespace MphRead
             {
                 Mods.ConsoleWindow.Prepare(args);
             }
-            // Before CheckSetup: the dedicated server relays packets and never
-            // loads a room, so it must not require paths.txt or extracted game
-            // files on the machine it runs on.
+            // Before the ordinary client setup check: metadata-only replay tools,
+            // the directory/master server and other headless diagnostics can run
+            // without extracted game data. A dedicated *game* server is also
+            // dispatched here, but its own authoritative startup explicitly
+            // validates paths.txt/game files and refuses to run without them.
             if (Mods.ModEntry.TryHandleHeadless(args))
             {
                 return;
