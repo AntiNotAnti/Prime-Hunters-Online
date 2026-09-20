@@ -7597,7 +7597,8 @@ namespace MphRead
             // the way down to 0%. Placement and UI screens keep the platform
             // cursor so they are never made unusable by that setting.
             bool gameplayPointer = (Scene.CameraMode == CameraMode.Player || Scene.IsFreeCam)
-                && !Scene.FrameAdvance && !Mods.PauseMenu.Open && !Mods.EndScreen.Available
+                && !Scene.FrameAdvance && !Mods.Network.DemoPlayback.IsActive
+                && !Mods.PauseMenu.Open && !Mods.EndScreen.Available
                 && !Mods.Input.StylusZone.Placing && !GameState.DialogPause && !GameState.MenuPause;
             if (gameplayPointer && Mods.Input.PointerInput.StylusMode)
             {
