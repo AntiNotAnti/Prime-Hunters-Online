@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -54,6 +55,15 @@ namespace MphRead.Mods.Launcher.Gui
         public string RoomKey { get; }
 
         public string Code { get; }
+
+        /// <summary>
+        /// Optional image supplied by non-map cards, such as Replay Studio.
+        /// The room render remains the fallback when this is null or missing.
+        /// </summary>
+        public string? ImagePath { get; set; }
+
+        /// <summary>Optional payload for a card owned by a higher-level picker.</summary>
+        public object? Choice { get; set; }
 
         /// <summary>The line along the bottom. Empty on a map, used by a clip.</summary>
         public string Blurb { get; set; } = "";
@@ -316,6 +326,8 @@ namespace MphRead.Mods.Launcher.Gui
         }
 
         private Avalonia.Media.Imaging.RenderTargetBitmap? _ground;
+        private Bitmap? _customShot;
+        private string? _customShotPath;
         private int _groundWidth, _groundHeight;
 
         /// <summary>
@@ -492,7 +504,7 @@ namespace MphRead.Mods.Launcher.Gui
                     new PixelSize(width, height), new Vector(96, 96));
                 using (DrawingContext into = cut.CreateDrawingContext())
                 {
-                    Bitmap? shot = MapShot.For(RoomKey);
+                    Bitmap? shot = SourceShot();
                     if (shot != null)
                     {
                         // `object-fit: cover`: fill the square, losing whatever
@@ -523,10 +535,34 @@ namespace MphRead.Mods.Launcher.Gui
             }
         }
 
+        private Bitmap? SourceShot()
+        {
+            if (!String.IsNullOrWhiteSpace(ImagePath) && File.Exists(ImagePath))
+            {
+                if (!String.Equals(_customShotPath, ImagePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    _customShot?.Dispose();
+                    _customShot = null;
+                    _customShotPath = ImagePath;
+                    try { _customShot = new Bitmap(ImagePath); }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                        or ArgumentException)
+                    {
+                        _customShotPath = null;
+                    }
+                }
+                if (_customShot != null) return _customShot;
+            }
+            return MapShot.For(RoomKey);
+        }
+
         protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
         {
             _ground?.Dispose();
             _ground = null;
+            _customShot?.Dispose();
+            _customShot = null;
+            _customShotPath = null;
             _groundWidth = _groundHeight = 0;
             base.OnDetachedFromVisualTree(e);
         }
