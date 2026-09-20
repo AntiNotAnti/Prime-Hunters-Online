@@ -42,6 +42,7 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly TextBlock _summary;
         private HubNavButton _join = null!;
         private HubNavButton _refresh = null!;
+        private readonly IReadOnlyList<ServerBrowserEntry>? _sample;
         private CancellationTokenSource? _discover;
         private bool _joining;
         private int _replied, _live;
@@ -50,8 +51,9 @@ namespace MphRead.Mods.Launcher.Gui
         public event EventHandler? CreateRequested;
         public event EventHandler<LaunchPlan>? Launched;
 
-        public HubServerBrowserView()
+        public HubServerBrowserView(IReadOnlyList<ServerBrowserEntry>? sample = null)
         {
+            _sample = sample;
             Focusable = true;
             Background = Brushes.Transparent;
 
@@ -315,6 +317,17 @@ namespace MphRead.Mods.Launcher.Gui
             _servers.Clear();
             _replied = 0;
             _live = 0;
+
+            if (_sample != null)
+            {
+                foreach (ServerBrowserEntry entry in _sample)
+                    AddEntry(entry);
+                _summary.Text = $"{_live} LIVE  /  {_replied} CHECKED";
+                _summary.Foreground = _live > 0
+                    ? HubTheme.GoodBrush : HubTheme.WarmBrush;
+                return;
+            }
+
             _summary.Text = "CONTACTING DIRECTORY";
             _summary.Foreground = HubTheme.TextDimBrush;
             _detailName.Text = "SELECT A SERVER";
