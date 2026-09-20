@@ -48,6 +48,12 @@ namespace MphRead.Mods
         /// <summary>Multiplier on mouse movement. 1.0 is the original feel.</summary>
         public static float MouseSensitivity { get; set; } = 1;
 
+        /// <summary>
+        /// Additional multiplier applied only while aiming through a weapon zoom.
+        /// 1.0 preserves the existing scoped turn rate.
+        /// </summary>
+        public static float MouseZoomSensitivity { get; set; } = 1;
+
         public static bool InvertMouseY { get; set; }
         public static bool InvertMouseX { get; set; }
 
@@ -361,6 +367,15 @@ namespace MphRead.Mods
                         }
                         continue;
                     }
+                    if (key == "zoom_sensitivity")
+                    {
+                        if (Single.TryParse(value, NumberStyles.Float,
+                            CultureInfo.InvariantCulture, out float parsed))
+                        {
+                            MouseZoomSensitivity = Math.Clamp(parsed, 0.01f, 10f);
+                        }
+                        continue;
+                    }
                     if (key == "invert_y" && Boolean.TryParse(value, out bool invertY))
                     {
                         InvertMouseY = invertY;
@@ -546,6 +561,7 @@ namespace MphRead.Mods
                 {
                     $"# {Branding.Name} controls. Delete a line to go back to the default.",
                     $"sensitivity={MouseSensitivity.ToString("0.###", CultureInfo.InvariantCulture)}",
+                    $"zoom_sensitivity={MouseZoomSensitivity.ToString("0.###", CultureInfo.InvariantCulture)}",
                     $"invert_y={InvertMouseY.ToString().ToLowerInvariant()}",
                     $"invert_x={InvertMouseX.ToString().ToLowerInvariant()}",
                     $"scroll_all_weapons={ScrollAllWeapons.ToString().ToLowerInvariant()}",
@@ -610,6 +626,7 @@ namespace MphRead.Mods
             _current = PlayerControls.GetDefault();
             _creating = false;
             MouseSensitivity = 1;
+            MouseZoomSensitivity = 1;
             InvertMouseY = false;
             InvertMouseX = false;
             ScrollAllWeapons = true;
