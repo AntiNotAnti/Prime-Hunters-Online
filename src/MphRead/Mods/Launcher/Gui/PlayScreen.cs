@@ -2142,16 +2142,15 @@ namespace MphRead.Mods.Launcher.Gui
 
         private async Task PlayDemo()
         {
-            if ((_list.Selected as UiListRow)?.Choice is not object choice)
-            {
-                return;
-            }
-            if (ReferenceEquals(choice, _import))
+            if (_replayViewIndex == 1
+                && (_list.Selected as UiListRow)?.Choice is object choice
+                && ReferenceEquals(choice, _import))
             {
                 await ImportDemo();
                 return;
             }
-            await Watch((string)choice);
+            if (SelectedReplayPath() is string path)
+                await Watch(path);
         }
 
         /// <summary>Load a demo file and, if it reads, start playing it.</summary>
@@ -2430,8 +2429,7 @@ namespace MphRead.Mods.Launcher.Gui
             try
             {
                 string? path = null;
-                if (Current == Face.Clips
-                    && (_list.Selected as UiListRow)?.Choice is string replay)
+                if (Current == Face.Clips && SelectedReplayPath() is string replay)
                 {
                     if (replay.EndsWith(ReplayVirtualClips.Extension, StringComparison.OrdinalIgnoreCase)
                         && ReplayVirtualClips.TryLoad(replay, out ReplayVirtualClipDocument? virtualClip)
