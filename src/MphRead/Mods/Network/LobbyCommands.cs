@@ -199,7 +199,20 @@ namespace MphRead.Mods.Network
                 case LobbyCommandType.TransferOwner:
                     Peer? selected = _peers.Find(p => p.SlotIndex == command.TargetSlot);
                     if (selected == null || selected == peer) { reason = "Choose another connected player."; return LobbyResultCode.TargetNotFound; }
-                    if (command.Type == LobbyCommandType.TransferOwner) _lobbyOwnerClientId = selected.ClientId;
+                    if (command.Type == LobbyCommandType.TransferOwner)
+                    {
+                        bool transfersProcess = _processOwnerClientId != 0
+                            && _processOwnerClientId == peer.ClientId;
+                        _lobbyOwnerClientId = selected.ClientId;
+                        if (transfersProcess)
+                        {
+                            // A launcher-created lobby belongs to the session, not
+                            // permanently to the first player. Hand the process
+                            // lifetime to the new owner too, or Close Lobby would
+                            // leave an ownerless child server behind.
+                            _processOwnerClientId = selected.ClientId;
+                        }
+                    }
                     else
                     {
                         SendRefusal(selected.EndPoint, RefusedPacket.ReasonKicked);
@@ -212,17 +225,29 @@ namespace MphRead.Mods.Network
         }
 
         /// <summary>
+        /// Stop every piece of per-match server state before the persistent
+        /// session becomes a lobby again. ServerSim.Stop owns the static
+        /// NetSession teardown; the replay writer and verdict callback live
+        /// outside it and have to be finalized explicitly.
+        /// </summary>
+        private void StopLobbyMatchRuntime(bool matchEnded)
+        {
+            ServerReplayRecorder.Stop(matchEnded);
+            _sim?.Stop();
+            _sim = null;
+            _lastSnapshot = null;
+            NetHitClaims.VerdictSink = null;
+        }
+
+        /// <summary>
         /// Build and publish a new match while retaining the lobby session/socket.
-        /// Used both by the owner's initial Start Match and by the automatic
-        /// post-match continuation. The latter deliberately bypasses lobby Ready:
-        /// the results ballot is already the between-match decision point.
+        /// Only the lobby owner's Start Match enters here; completed lobby matches
+        /// return to the lobby and wait for another explicit start.
         /// </summary>
         private bool BeginLobbyMatch(MatchDefinition match, double now, out string reason)
         {
             reason = "";
-            _sim?.Stop();
-            _sim = null;
-            _lastSnapshot = null;
+            StopLobbyMatchRuntime(matchEnded: false);
             _frozenMatch = match;
             _frozenWorldProfile = LobbyRules.ResolveWorldProfile(_frozenMatch, _maxPlayers);
 
@@ -260,40 +285,11 @@ namespace MphRead.Mods.Network
             return true;
         }
 
-        /// <summary>
-        /// Start another match directly from the post-match ballot. Settings come
-        /// from the frozen match, not rotation defaults; only the selected room
-        /// changes. That keeps mode, limits and every rules toggle stable across
-        /// rounds.
-        /// </summary>
-        private void ContinueLobbyMatch(double now)
-        {
-            if (_phase != SessionPhase.PostMatch)
-                return;
-            if (_peers.Count == 0)
-            {
-                // Do not spin up a new world for an empty persistent lobby.
-                ReturnToLobby();
-                return;
-            }
-
-            RotationEntry next = _rotation.Advance();
-            _lobbyMatch = _frozenMatch with { RoomKey = next.RoomKey };
-            CloseBallot();
-            BroadcastMapChoices();
-
-            if (!BeginLobbyMatch(_lobbyMatch, now, out string reason))
-            {
-                Log($"[lobby] next match could not start: {reason}; returning to lobby");
-                EnterLobby(_lobbyMatch);
-            }
-        }
-
         private void EnterLobby(MatchDefinition match)
         {
-            _sim?.Stop();
-            _sim = null;
-            _lastSnapshot = null;
+            bool matchEnded = _matchEndedAt >= 0;
+            StopLobbyMatchRuntime(matchEnded);
+            CancelMapVote(_now);
             _lobbyMatch = match;
             _matchEndedAt = -1;
             _expectedLoadedSlots = 0;
@@ -327,9 +323,8 @@ namespace MphRead.Mods.Network
             foreach (Peer connected in _peers)
                 _transport?.Send(connected.EndPoint, PacketType.Bye, ReadOnlySpan<byte>.Empty);
 
-            _sim?.Stop();
-            _sim = null;
-            _lastSnapshot = null;
+            StopLobbyMatchRuntime(matchEnded: _matchEndedAt >= 0);
+            CancelMapVote(_now);
             CloseBallot();
             _rotation.ClearPending();
             _peers.Clear();
@@ -405,16 +400,66 @@ namespace MphRead.Mods.Network
         {
             _expectedLoadedSlots &= (byte)~(1 << peer.SlotIndex);
             _loadedSlots &= (byte)~(1 << peer.SlotIndex);
+
+            bool processOwned = _processOwnerClientId != 0;
+            bool processOwnerLeft = peer.ClientId != 0
+                && _processOwnerClientId == peer.ClientId;
+
             if (_lobbyOwnerClientId == peer.ClientId)
                 _lobbyOwnerClientId = _peers.Count > 0 ? _peers[0].ClientId : 0;
+
+            if (processOwnerLeft)
+            {
+                // The oldest remaining peer becomes both kinds of owner. Without
+                // this, a hosted lobby survives its creator but nobody can ever
+                // close the child process that created it.
+                _processOwnerClientId = _lobbyOwnerClientId;
+            }
+
+            if (SessionPolicy == ServerSessionPolicy.Lobby && _peers.Count == 0)
+            {
+                _lobbyOwnerClientId = 0;
+                _processOwnerClientId = 0;
+
+                if (processOwned)
+                {
+                    // Launcher/directory-hosted lobby: there is no useful empty
+                    // session to preserve. Stop immediately so Shutdown sends the
+                    // directory Farewell and the parent can reclaim its port.
+                    Log("[lobby] last player left hosted lobby; stopping server");
+                    StopLobbyMatchRuntime(matchEnded: _matchEndedAt >= 0);
+                    CancelMapVote(_now);
+                    CloseBallot();
+                    _rotation.ClearPending();
+                    _expectedLoadedSlots = 0;
+                    _loadedSlots = 0;
+                    _startDeadline = 0;
+                    _matchEndedAt = -1;
+                    _snapshotSeen = false;
+                    Array.Clear(_slotLives);
+                    _running = false;
+                    return;
+                }
+
+                if (_phase != SessionPhase.Lobby)
+                {
+                    // A standalone persistent lobby stays available, but an
+                    // abandoned Starting/InMatch/PostMatch world must not wait
+                    // for the next player. Reset it now so a future Hello lands
+                    // in a clean lobby rather than somebody else's dead match.
+                    Log("[lobby] last player left; resetting abandoned match");
+                    EnterLobby(_frozenMatch);
+                    return;
+                }
+            }
+
             TouchLobbyRevision($"slot {peer.SlotIndex} left; owner {_lobbyOwnerClientId}");
             if (_phase == SessionPhase.Starting)
             {
                 if (LobbyRules.Validate(_frozenMatch, BuildRoster(), false, out string why) != LobbyResultCode.Ok)
                 {
                     Log($"[lobby] start cancelled: {why}");
-                    _sim?.Stop(); _sim = null; _lastSnapshot = null;
-                    InvalidateLobbyReady(); SetPhase(SessionPhase.Lobby);
+                    EnterLobby(_frozenMatch);
                 }
                 else CheckLoadBarrier(_now);
             }

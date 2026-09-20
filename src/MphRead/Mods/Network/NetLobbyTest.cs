@@ -30,13 +30,16 @@ namespace MphRead.Mods.Network
                 LayoutChecks();
                 ClientStateChecks();
                 Scenario();
+                AbandonedLobbyScenario();
+                HostedOwnerDepartureScenario();
+                HostedOwnerTransferScenario();
                 TeamScenario();
                 CustomScenario();
                 FourTeamScenario();
                 ContinuousScenario();
                 ClientSessionScenario();
                 TeamGameplayTest.Run(Check);
-                Console.WriteLine($"[netlobbytest] PASS: {_checks} assertions; protocol, UDP lifecycle, two rounds, owner migration, teams, rebind and continuous rotation.");
+                Console.WriteLine($"[netlobbytest] PASS: {_checks} assertions; protocol, UDP lifecycle, direct post-match lobby return, abandoned-session cleanup, hosted ownership, teams, rebind and continuous rotation.");
                 return 0;
             }
             catch (Exception ex)
@@ -211,6 +214,7 @@ namespace MphRead.Mods.Network
             public SessionStatePacket? State;
             public RosterPacket Roster = RosterPacket.Create();
             public MatchStatePacket Match;
+            public int OpenMapChoices;
             public bool Authority, Refused;
             public readonly List<ChatPacket> Chats = new();
             public readonly Dictionary<uint, LobbyCommandResultPacket> Results = new();
@@ -263,6 +267,8 @@ namespace MphRead.Mods.Network
                         && (roster.Revision == Roster.Revision || NetLifecycleTracker.Newer(roster.Revision, Roster.Revision))) Roster = roster;
                     if (packet.Type == PacketType.LobbyCommandResult && LobbyCommandResultPacket.TryRead(packet.Payload, out var result)) Results[result.CommandId] = result;
                     if (packet.Type == PacketType.MatchState && packet.Payload.Length == MatchStatePacket.Size) Match = MatchStatePacket.Read(packet.Payload);
+                    if (packet.Type == PacketType.MapChoices && packet.Payload.Length >= MapChoicesPacket.Size
+                        && MapChoicesPacket.Read(packet.Payload).Open != 0) OpenMapChoices++;
                 }
             }
             public void Rebind() { Transport.Dispose(); Transport = new NetTransport(0); Transport.AnswerPingsImmediately(); Hello(); }
@@ -358,8 +364,12 @@ namespace MphRead.Mods.Network
             b.Loaded(); rig.Wait(() => a.State.Value.Phase == SessionPhase.InMatch, "barrier released");
             b.EndMatch();
             rig.Wait(() => a.State.Value.Phase == SessionPhase.PostMatch, "results entered");
-            foreach (var client in rig.Clients) client.ReadyResults();
-            rig.Wait(() => a.State.Value.Phase == SessionPhase.Lobby, "results return to lobby", 18000);
+            Check(rig.Clients.All(c => c.OpenMapChoices == 0),
+                "persistent lobby does not open a post-match map ballot");
+            Check(a.Match.NextRoomKey.Length == 0,
+                "persistent lobby results do not promise a next map");
+            rig.Wait(() => a.State.Value.Phase == SessionPhase.Lobby,
+                "results return directly to lobby without ready/vote input", 18000);
             rig.Stable();
             Check(ReferenceEquals(originalA, a.Transport) && ReferenceEquals(originalB, b.Transport)
                 && a.Slot == slotA && b.Slot == slotB, "same UDP transports and slots across rounds");
@@ -372,6 +382,69 @@ namespace MphRead.Mods.Network
             a.Dispose(); rig.Clients.Remove(a);
             rig.Wait(() => b.State!.Value.OwnerSlot == b.Slot, "oldest peer becomes owner");
             b.Rebind(); rig.Stable(); Check(b.Slot == slotB && b.State.Value.OwnerSlot == slotB, "owner rebind keeps identity and slot");
+        }
+
+        private static void AbandonedLobbyScenario()
+        {
+            using var rig = new Rig();
+            Client owner = rig.Add(100);
+            Client other = rig.Add(101);
+            rig.ReadyAll();
+            rig.Expect(owner, owner.Command(LobbyCommandType.StartMatch), LobbyResultCode.Ok);
+            foreach (Client client in rig.Clients) client.Loaded();
+            rig.Wait(() => owner.State!.Value.Phase == SessionPhase.InMatch,
+                "abandonment scenario enters match");
+
+            owner.Dispose();
+            other.Dispose();
+            rig.Clients.Clear();
+            rig.Wait(() => rig.Server.PeerCount == 0,
+                "all abandoned-match peers removed");
+
+            Client fresh = rig.Add(102);
+            Check(fresh.State!.Value.Phase == SessionPhase.Lobby,
+                "first player after abandonment lands in a clean lobby");
+            Check(fresh.State.Value.ExpectedParticipants == 0
+                && fresh.State.Value.LoadedParticipants == 0,
+                "abandoned load barrier state is cleared");
+        }
+
+        private static void HostedOwnerDepartureScenario()
+        {
+            Guid token = Guid.NewGuid();
+            using var rig = new Rig(token: token);
+            Client owner = rig.Add(110, token);
+            Client successor = rig.Add(111);
+            owner.Dispose();
+            rig.Clients.Remove(owner);
+            rig.Wait(() => successor.State!.Value.OwnerSlot == successor.Slot,
+                "hosted owner departure promotes successor");
+
+            LobbyCommandPacket close = successor.Command(LobbyCommandType.CloseLobby);
+            rig.Wait(() => successor.Results.TryGetValue(close.CommandId, out var result)
+                && result.ResultCode == LobbyResultCode.Ok,
+                "successor can close inherited hosted lobby");
+            rig.Wait(() => !rig.Server.Listening,
+                "inherited hosted lobby process stops on close");
+        }
+
+        private static void HostedOwnerTransferScenario()
+        {
+            Guid token = Guid.NewGuid();
+            using var rig = new Rig(token: token);
+            Client owner = rig.Add(120, token);
+            Client successor = rig.Add(121);
+            rig.Expect(owner, owner.Command(LobbyCommandType.TransferOwner,
+                target: (byte)successor.Slot), LobbyResultCode.Ok);
+            Check(successor.State!.Value.OwnerSlot == successor.Slot,
+                "explicit transfer moves lobby ownership");
+
+            LobbyCommandPacket close = successor.Command(LobbyCommandType.CloseLobby);
+            rig.Wait(() => successor.Results.TryGetValue(close.CommandId, out var result)
+                && result.ResultCode == LobbyResultCode.Ok,
+                "transferred owner can close hosted lobby");
+            rig.Wait(() => !rig.Server.Listening,
+                "transferred hosted lobby process stops on close");
         }
 
         private static void TeamScenario()
@@ -513,12 +586,8 @@ namespace MphRead.Mods.Network
             Check(!NetSession.FreezeGameplay, "gameplay released after barrier");
             NetSession.SendMatchEnd();
             PumpUntil(() => NetSession.IsPostMatch, "real client results");
-            uint frame = 100;
-            PumpUntil(() =>
-            {
-                NetSession.SendIntent(new IntentPacket { Frame = frame++, Buttons = IntentButtons.ReadyState });
-                return NetSession.IsInLobby;
-            }, "real client returns to lobby", 18000);
+            PumpUntil(() => NetSession.IsInLobby,
+                "real client returns to lobby without post-match input", 18000);
             NetSession.ResetMatchState();
             Check(NetSession.Active && NetSession.ConnectionPort == port && NetSession.LocalSlot == slot
                 && NetSession.ClientId == clientId && NetSession.LocalIsLobbyOwner, "real client socket/slot/id/owner survive match teardown");
