@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Net.Http;
+using System.Security.Cryptography;
 using System.Threading;
 
 namespace MphRead.Mods.Update
@@ -42,7 +43,8 @@ namespace MphRead.Mods.Update
         /// </summary>
         /// <param name="progress">0 to 1, or -1 while the length is unknown.</param>
         public static bool Fetch(string url, string path, long expectedBytes = 0,
-            Action<float>? progress = null, CancellationToken cancel = default)
+            Action<float>? progress = null, CancellationToken cancel = default,
+            string expectedDigest = "")
         {
             LastError = null;
             if (!IsAllowed(url))
@@ -97,6 +99,11 @@ namespace MphRead.Mods.Update
                         return false;
                     }
                 }
+                if (expectedDigest.Length > 0 && !VerifyDigest(partial, expectedDigest))
+                {
+                    LastError = "the download checksum did not match GitHub's release digest";
+                    return false;
+                }
                 if (File.Exists(path))
                 {
                     File.Delete(path);
@@ -139,6 +146,37 @@ namespace MphRead.Mods.Update
         /// having: the one thing that would make it fail is a response that
         /// did not come from where it claimed to.
         /// </summary>
+        internal static bool SupportsDigest(string digest)
+        {
+            if (!digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase)
+                || digest.Length != 7 + 64)
+            {
+                return false;
+            }
+            for (int i = 7; i < digest.Length; i++)
+            {
+                char value = digest[i];
+                if (!((value >= '0' && value <= '9')
+                    || (value >= 'a' && value <= 'f')
+                    || (value >= 'A' && value <= 'F')))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static bool VerifyDigest(string path, string digest)
+        {
+            if (!SupportsDigest(digest))
+            {
+                return false;
+            }
+            using FileStream stream = File.OpenRead(path);
+            string actual = Convert.ToHexString(SHA256.HashData(stream));
+            return actual.Equals(digest[7..], StringComparison.OrdinalIgnoreCase);
+        }
+
         private static bool IsAllowed(string url)
         {
             if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? parsed)
