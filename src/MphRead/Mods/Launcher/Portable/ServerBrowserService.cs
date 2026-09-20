@@ -57,8 +57,16 @@ namespace MphRead.Mods.Launcher
         {
             string host = LauncherPrefs.MasterHost;
             int port = LauncherPrefs.MasterPort;
-            MasterListResult result = await Task.Run(
-                () => NetMasterClient.Query(host, port), cancellationToken);
+            MasterListResult result;
+            try
+            {
+                result = await Task.Run(
+                    () => NetMasterClient.Query(host, port), cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                return new(false, 0, 0, "Cancelled.");
+            }
 
             if (cancellationToken.IsCancellationRequested)
                 return new(false, 0, 0, "Cancelled.");

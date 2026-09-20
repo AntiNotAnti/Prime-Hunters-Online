@@ -24,13 +24,6 @@ namespace MphRead.Mods.Launcher
         Adventure
     }
 
-    public enum HubMultiplayerDestination
-    {
-        QuickPlay,
-        ServerBrowser,
-        CustomMatch
-    }
-
     /// <summary>
     /// Read-only launcher state the home hub needs to present.
     ///

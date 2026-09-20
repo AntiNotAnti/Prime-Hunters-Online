@@ -36,7 +36,7 @@ namespace MphRead.Mods.Launcher.Gui
                 ColumnSpacing = 12
             };
             HubNavButton multiplayer = Card("MULTIPLAYER",
-                "Quick Play, public servers and custom lobbies.",
+                "Quick Play, live servers and lobby creation in one workspace.",
                 HubTheme.Accent, HubPlayDestination.Multiplayer, initial: true);
             HubNavButton offline = Card("OFFLINE",
                 "Local combat with map, mode, bots and training options.",

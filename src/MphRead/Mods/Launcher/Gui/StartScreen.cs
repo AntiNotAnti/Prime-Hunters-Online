@@ -307,6 +307,7 @@ namespace MphRead.Mods.Launcher.Gui
             _overlay.IsVisible = true;
             _menu.IsVisible = false;
             _versionBox.IsVisible = false;
+            HubMotion.Enter(view);
             Dispatcher.UIThread.Post(() => view.Focus(), DispatcherPriority.Background);
         }
 
@@ -321,6 +322,7 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 Control top = _stack[^1];
                 _overlay.Children.Add(top);
+                HubMotion.Enter(top, lift: -6);
                 Dispatcher.UIThread.Post(() => top.Focus(), DispatcherPriority.Background);
                 return;
             }
@@ -330,6 +332,7 @@ namespace MphRead.Mods.Launcher.Gui
             ShowGround(true);
             _hub.RefreshProfile();
             RefreshVersionLine();
+            HubMotion.Enter(_hub, lift: -6);
             Dispatcher.UIThread.Post(() => Focus(), DispatcherPriority.Background);
         }
 
@@ -416,51 +419,7 @@ namespace MphRead.Mods.Launcher.Gui
         {
             var view = new HubMultiplayerView();
             view.Closed += (_, _) => Pop();
-            view.Selected += destination =>
-            {
-                switch (destination)
-                {
-                    case HubMultiplayerDestination.QuickPlay:
-                        OpenQuickPlay();
-                        break;
-                    case HubMultiplayerDestination.ServerBrowser:
-                        OpenServerBrowser();
-                        break;
-                    case HubMultiplayerDestination.CustomMatch:
-                        OpenCreateServer();
-                        break;
-                }
-            };
-            Push(view);
-        }
-
-        private void OpenQuickPlay()
-        {
-            var view = new HubQuickPlayView();
-            view.Closed += (_, _) => Pop();
-            view.BrowseRequested += (_, _) =>
-            {
-                Pop();
-                OpenServerBrowser();
-            };
-            view.Launched += (_, plan) =>
-            {
-                Pop();
-                ConnectedOrFinished(plan);
-            };
-            Push(view);
-        }
-
-        private void OpenServerBrowser()
-        {
-            if (!GameFiles.Ready)
-            {
-                OpenSetup();
-                return;
-            }
-            var view = new HubServerBrowserView();
-            view.Closed += (_, _) => Pop();
-            view.CreateRequested += (_, _) => OpenCreateServer();
+            view.CreateLobbyRequested += (_, _) => OpenCreateServer();
             view.Launched += (_, plan) => ConnectedOrFinished(plan);
             Push(view);
         }
@@ -516,7 +475,8 @@ namespace MphRead.Mods.Launcher.Gui
                     if (_stack.Count > 0)
                     {
                         if (_stack[^1] is PlayScreen play) play.SessionEnded(reason);
-                        else if (_stack[^1] is HubServerBrowserView browser) browser.SessionEnded(reason);
+                        else if (_stack[^1] is HubMultiplayerView multiplayer)
+                            multiplayer.SessionEnded(reason);
                     }
                 };
                 Push(_lobby);
@@ -569,7 +529,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         private void AskToQuit()
         {
-            var view = new ConfirmScreen($"Quit {Mods.Branding.Name}?");
+            var view = new ConfirmScreen("Quit Prime Hunters Online?");
             view.Answered += (_, yes) =>
             {
                 Pop();

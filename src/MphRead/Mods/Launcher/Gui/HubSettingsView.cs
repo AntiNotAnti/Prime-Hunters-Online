@@ -88,7 +88,7 @@ namespace MphRead.Mods.Launcher.Gui
             footer.Children.Add(back);
             var note = new TextBlock
             {
-                Text = "CHANGES ARE STILL APPLIED BY THE EXISTING SETTINGS TRANSACTION",
+                Text = "OPEN A CATEGORY TO REVIEW AND APPLY CHANGES",
                 FontFamily = HubTheme.Data,
                 FontSize = 8,
                 Foreground = HubTheme.TextDimBrush,

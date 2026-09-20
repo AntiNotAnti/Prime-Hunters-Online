@@ -19,7 +19,7 @@ using MphRead.Mods.Update;
 namespace MphRead.Mods.Launcher.Gui
 {
     /// <summary>
-    /// Create a multiplayer lobby from Play → Multiplayer → Custom Match.
+    /// Create a multiplayer lobby from Play → Multiplayer → Create Lobby.
     ///
     /// Hosting used to be a row on the *offline* face -- "Where: Local or
     /// Online" -- which is the wrong screen twice over: offline is the one
@@ -252,8 +252,8 @@ namespace MphRead.Mods.Launcher.Gui
                 RowSpacing = 12
             };
             page.Children.Add(HubChrome.Header(
-                "PLAY  /  MULTIPLAYER  /  CUSTOM MATCH",
-                "CUSTOM MATCH",
+                "PLAY  /  MULTIPLAYER  /  CREATE LOBBY",
+                "CREATE LOBBY",
                 "Create the lobby, choose its rotation and decide where the server runs.",
                 "LOBBY SETUP",
                 HubTheme.WarmBrush));
@@ -1037,7 +1037,7 @@ namespace MphRead.Mods.Launcher.Gui
                 RowSpacing = 12
             };
             root.Children.Add(HubChrome.Header(
-                "PLAY  /  MULTIPLAYER  /  CUSTOM MATCH  /  HOSTING",
+                "PLAY  /  MULTIPLAYER  /  CREATE LOBBY  /  HOSTING",
                 "HOST ON",
                 "Choose the machine that will run this lobby.",
                 "HOST POOL",
@@ -1225,7 +1225,7 @@ namespace MphRead.Mods.Launcher.Gui
             root.Children.Add(HubChrome.Header(
                 single
                     ? "PLAY  /  MAP SELECT"
-                    : "PLAY  /  MULTIPLAYER  /  CUSTOM MATCH  /  MAP ROTATION",
+                    : "PLAY  /  MULTIPLAYER  /  CREATE LOBBY  /  MAP ROTATION",
                 single ? "CHOOSE MAP" : "MAP ROTATION",
                 single
                     ? "Choose the map for this action."

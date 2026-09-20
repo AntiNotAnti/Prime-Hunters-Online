@@ -273,14 +273,31 @@ namespace MphRead.Mods.Launcher.Gui
             stand = new HunterStand
             {
                 Width = 190,
-                Height = 310,
+                Height = 282,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Bottom,
                 IsHitTestVisible = false,
                 Name2 = Hunter.Samus.ToString()
             };
-            Grid.SetColumn(stand, 1);
-            body.Children.Add(stand);
+            var art = new Grid
+            {
+                RowDefinitions = new RowDefinitions("Auto,*"),
+                RowSpacing = 5,
+                Margin = new Thickness(8)
+            };
+            art.Children.Add(HubChrome.Kicker("HUNTER PREVIEW"));
+            Grid.SetRow(stand, 1);
+            art.Children.Add(stand);
+            var artFrame = new Border
+            {
+                Margin = new Thickness(0, 18, 10, 18),
+                Background = HubTheme.AccentPanel(HubTheme.Accent, 24),
+                BorderBrush = HubTheme.EdgeBrush,
+                BorderThickness = new Thickness(1),
+                Child = art
+            };
+            Grid.SetColumn(artFrame, 1);
+            body.Children.Add(artFrame);
 
             return new Border
             {

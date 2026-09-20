@@ -6,9 +6,10 @@ Basics
 
 `MphRead -launcher` opens a responsive FPS-style command hub inside the game
 window. The home surface exposes **Play, Map Editor, Replay Studio, Settings and Quit**.
-Play opens Multiplayer, Offline and Adventure; Multiplayer then owns Quick Play,
-Server Browser and Custom Match. Map Editor is intentionally a placeholder while
-the workshop UI is designed.
+Play opens Multiplayer, Offline and Adventure. Multiplayer is one integrated
+workspace: live server browser in the body, Quick Play as a primary action, and
+Create Lobby for hosting. Map Editor is intentionally a placeholder while the
+editor itself remains out of scope.
 
 The front screen is **drawn inside the game window** -- one window for the
 whole program, matches loaded into it and unloaded again. See
@@ -17,8 +18,8 @@ whole program, matches loaded into it and unloaded again. See
 | Entry | What it does |
 |---|---|
 | Play | opens `HubPlayView`: Multiplayer, hub-native Offline setup or hub-native Adventure saves |
-| Multiplayer | Quick Play, Server Browser or Custom Match; Custom Match owns lobby identity, map rotation and hosting location under one hub-native flow |
-| Map Editor | placeholder for the future visual custom-map workshop |
+| Multiplayer | one workspace with live servers, Quick Play, direct Join, Refresh and Create Lobby; selected-server map artwork and hunter/suit setup stay visible in the same screen |
+| Map Editor | placeholder for the future visual custom-map editor |
 | Replay Studio | opens `HubReplayStudioView`: recordings/virtual clips, map and metadata detail, watch/import/rename/favorite/integrity/recovery/export/delete, then the existing in-match Replay Studio editor during playback |
 | Settings | display, audio, controls, player/profile and launcher preferences |
 | Game files | first-run cartridge setup; normal hub actions stay behind it until setup completes |

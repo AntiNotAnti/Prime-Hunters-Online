@@ -22,6 +22,9 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly Border _rail;
         private readonly TextBlock _label;
         private readonly IBrush _accent;
+        private readonly IBrush _restBackground;
+        private readonly IBrush _hotBackground;
+        private readonly TranslateTransform _shift = new();
         private readonly bool _primary;
         private bool _pointer;
         private bool _pressed;
@@ -38,7 +41,12 @@ namespace MphRead.Mods.Launcher.Gui
             bool compact = false, Color? accent = null)
         {
             _primary = primary;
-            _accent = new SolidColorBrush(accent ?? HubTheme.Accent);
+            Color tint = accent ?? HubTheme.Accent;
+            _accent = new SolidColorBrush(tint);
+            _restBackground = primary
+                ? HubTheme.AccentPanel(tint, 34)
+                : HubTheme.PanelBrush;
+            _hotBackground = HubTheme.AccentPanel(tint, 70);
 
             Focusable = true;
             Cursor = new Cursor(StandardCursorType.Hand);
@@ -92,10 +100,11 @@ namespace MphRead.Mods.Launcher.Gui
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 VerticalAlignment = VerticalAlignment.Stretch,
                 Padding = compact ? new Thickness(8, 7) : new Thickness(12, 9),
-                Background = primary ? HubTheme.PanelStrongBrush : HubTheme.PanelBrush,
+                Background = _restBackground,
                 BorderBrush = primary ? _accent : HubTheme.EdgeBrush,
                 BorderThickness = new Thickness(1),
-                Child = body
+                Child = body,
+                RenderTransform = _shift
             };
             Content = _frame;
         }
@@ -195,13 +204,12 @@ namespace MphRead.Mods.Launcher.Gui
         private void RefreshVisual()
         {
             bool hot = _pointer || IsFocused;
-            _frame.Background = hot
-                ? HubTheme.PanelHotBrush
-                : _primary ? HubTheme.PanelStrongBrush : HubTheme.PanelBrush;
+            _frame.Background = hot ? _hotBackground : _restBackground;
             _frame.BorderBrush = hot || _primary ? _accent : HubTheme.EdgeBrush;
             _rail.Opacity = hot || _primary ? 1 : 0.35;
             _label.Foreground = hot || _primary ? _accent : HubTheme.TextBrush;
-            _frame.Opacity = _pressed ? 0.78 : IsEffectivelyEnabled ? 1 : 0.48;
+            _shift.X = hot && IsEffectivelyEnabled ? 2 : 0;
+            _frame.Opacity = _pressed ? 0.76 : IsEffectivelyEnabled ? 1 : 0.48;
         }
     }
 }

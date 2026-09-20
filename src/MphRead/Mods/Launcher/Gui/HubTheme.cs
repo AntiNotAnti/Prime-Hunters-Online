@@ -1,4 +1,5 @@
 #if MPHREAD_AVALONIA
+using Avalonia;
 using Avalonia.Media;
 
 namespace MphRead.Mods.Launcher.Gui
@@ -27,12 +28,18 @@ namespace MphRead.Mods.Launcher.Gui
 
         public static readonly IBrush InkBrush =
             new SolidColorBrush(Color.FromArgb(0xe8, Ink.R, Ink.G, Ink.B));
-        public static readonly IBrush PanelBrush =
-            new SolidColorBrush(Color.FromArgb(0xd8, Panel.R, Panel.G, Panel.B));
-        public static readonly IBrush PanelStrongBrush =
-            new SolidColorBrush(Color.FromArgb(0xee, Panel.R, Panel.G, Panel.B));
-        public static readonly IBrush PanelHotBrush =
-            new SolidColorBrush(Color.FromArgb(0xee, PanelHot.R, PanelHot.G, PanelHot.B));
+
+        // A slight directional tint gives the glass panels depth without adding
+        // another animated layer to the CPU-rasterised launcher.
+        public static readonly IBrush PanelBrush = PanelGradient(
+            Color.FromArgb(0xd8, PanelHot.R, PanelHot.G, PanelHot.B),
+            Color.FromArgb(0xe2, Panel.R, Panel.G, Panel.B));
+        public static readonly IBrush PanelStrongBrush = PanelGradient(
+            Color.FromArgb(0xf2, 0x12, 0x22, 0x31),
+            Color.FromArgb(0xf2, Panel.R, Panel.G, Panel.B));
+        public static readonly IBrush PanelHotBrush = PanelGradient(
+            Color.FromArgb(0xf4, 0x18, 0x31, 0x43),
+            Color.FromArgb(0xf2, PanelHot.R, PanelHot.G, PanelHot.B));
         public static readonly IBrush EdgeBrush = new SolidColorBrush(Edge);
         public static readonly IBrush AccentBrush = new SolidColorBrush(Accent);
         public static readonly IBrush AccentSoftBrush = new SolidColorBrush(AccentSoft);
@@ -56,6 +63,38 @@ namespace MphRead.Mods.Launcher.Gui
         /// terminal text. Ping, build, platform and packet-ish metadata use it.
         /// </summary>
         public static readonly FontFamily Data = Deck.Mono;
+
+        public static IBrush AccentPanel(Color accent, byte alpha = 42)
+        {
+            return new LinearGradientBrush
+            {
+                StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+                EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
+                GradientStops =
+                {
+                    new GradientStop(
+                        Color.FromArgb(alpha, accent.R, accent.G, accent.B), 0),
+                    new GradientStop(
+                        Color.FromArgb(0xe8, Panel.R, Panel.G, Panel.B), 0.46),
+                    new GradientStop(
+                        Color.FromArgb(0xf0, Ink.R, Ink.G, Ink.B), 1)
+                }
+            };
+        }
+
+        private static IBrush PanelGradient(Color from, Color to)
+        {
+            return new LinearGradientBrush
+            {
+                StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+                EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
+                GradientStops =
+                {
+                    new GradientStop(from, 0),
+                    new GradientStop(to, 1)
+                }
+            };
+        }
 
         public static readonly FontFamily DataBold = Deck.MonoBold;
     }

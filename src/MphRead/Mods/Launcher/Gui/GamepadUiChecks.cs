@@ -128,31 +128,60 @@ namespace MphRead.Mods.Launcher.Gui
             GamepadChecks.Check(deploymentClosed == 1,
                 "Play Back accepts a pointer click");
 
-            var multiplayer = new HubMultiplayerView();
+            var browserSample = new[]
+            {
+                new ServerBrowserEntry(
+                    new Network.MasterListing
+                    {
+                        Address = "127.0.0.1",
+                        Port = Network.NetConfig.DefaultPort,
+                        ServerName = "Test Arena",
+                        RoomKey = "MP3 PROVING GROUND",
+                        Mode = GameMode.Battle,
+                        Players = 2,
+                        MaxPlayers = 8,
+                        Protocol = Network.NetConfig.ProtocolVersion
+                    },
+                    new Network.ServerStatus
+                    {
+                        Online = true,
+                        RoomKey = "MP3 PROVING GROUND",
+                        ServerName = "Test Arena",
+                        Mode = GameMode.Battle,
+                        Players = 2,
+                        MaxPlayers = 8,
+                        Protocol = Network.NetConfig.ProtocolVersion,
+                        Latency = 31
+                    })
+            };
+            var multiplayer = new HubMultiplayerView(browserSample);
+            int multiplayerClosed = 0, lobbyRequested = 0;
+            multiplayer.Closed += (_, _) => multiplayerClosed++;
+            multiplayer.CreateLobbyRequested += (_, _) => lobbyRequested++;
             window.Width = 960; window.Height = 660; window.Content = multiplayer;
             window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
-            var quickMultiplayer = ControllerNav.Find(multiplayer, "multiplayer.quickplay");
-            GamepadChecks.Check(quickMultiplayer is { IsEffectivelyVisible: true },
-                "Multiplayer exposes Quick Play");
+
+            var quickMultiplayer = ControllerNav.Find(multiplayer, "multiplayer.quick");
+            var refreshMultiplayer = ControllerNav.Find(multiplayer, "multiplayer.refresh");
+            var joinMultiplayer = ControllerNav.Find(multiplayer, "multiplayer.join");
+            GamepadChecks.Check(quickMultiplayer is { IsEffectivelyVisible: true }
+                && refreshMultiplayer is { IsEffectivelyVisible: true }
+                && joinMultiplayer is { IsEffectivelyVisible: true },
+                "Multiplayer exposes Quick Play, browser refresh and Join");
+
             FocusNavigator.Ensure(multiplayer);
             GamepadChecks.Check(quickMultiplayer!.IsFocused,
                 "Multiplayer defaults controller focus to Quick Play");
-            HubMultiplayerDestination? multiplayerDestination = null;
-            int multiplayerClosed = 0;
-            multiplayer.Selected += destination => multiplayerDestination = destination;
-            multiplayer.Closed += (_, _) => multiplayerClosed++;
-            foreach ((string id, HubMultiplayerDestination destination) in new[]
-            {
-                ("multiplayer.quickplay", HubMultiplayerDestination.QuickPlay),
-                ("multiplayer.serverbrowser", HubMultiplayerDestination.ServerBrowser),
-                ("multiplayer.custommatch", HubMultiplayerDestination.CustomMatch)
-            })
-            {
-                multiplayerDestination = null;
-                Click(window, ControllerNav.Find(multiplayer, id)!);
-                GamepadChecks.Check(multiplayerDestination == destination,
-                    $"Multiplayer pointer click activates {destination}");
-            }
+
+            Click(window, quickMultiplayer);
+            GamepadChecks.Check(joinMultiplayer!.IsEnabled,
+                "sample Quick Play selects a compatible server without networking");
+
+            Click(window, ControllerNav.Find(multiplayer, "multiplayer.create")!);
+            GamepadChecks.Check(lobbyRequested == 1,
+                "Multiplayer Create Lobby accepts a pointer click");
+
+            Click(window, refreshMultiplayer!);
             Click(window, ControllerNav.Find(multiplayer, "multiplayer.back")!);
             GamepadChecks.Check(multiplayerClosed == 1,
                 "Multiplayer Back accepts a pointer click");
@@ -240,71 +269,6 @@ namespace MphRead.Mods.Launcher.Gui
             Click(window, ControllerNav.Find(hostPicker, "host.back")!);
             GamepadChecks.Check(hostCancelled == 1,
                 "Custom Match host selection Back accepts a pointer click");
-
-            var quickPlay = new HubQuickPlayView(preview: true);
-            int quickClosed = 0, quickBrowse = 0;
-            quickPlay.Closed += (_, _) => quickClosed++;
-            quickPlay.BrowseRequested += (_, _) => quickBrowse++;
-            window.Width = 960; window.Height = 660; window.Content = quickPlay;
-            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
-            Click(window, ControllerNav.Find(quickPlay, "quick.browse")!);
-            GamepadChecks.Check(quickBrowse == 1,
-                "Quick Play Browse Servers accepts a pointer click");
-            Click(window, ControllerNav.Find(quickPlay, "quick.back")!);
-            GamepadChecks.Check(quickClosed == 1,
-                "Quick Play Back accepts a pointer click");
-
-            var browserSample = new[]
-            {
-                new ServerBrowserEntry(
-                    new Network.MasterListing
-                    {
-                        Address = "127.0.0.1",
-                        Port = Network.NetConfig.DefaultPort,
-                        ServerName = "Test Arena",
-                        RoomKey = "MP3 PROVING GROUND",
-                        Mode = GameMode.Battle,
-                        Players = 2,
-                        MaxPlayers = 8,
-                        Protocol = Network.NetConfig.ProtocolVersion
-                    },
-                    new Network.ServerStatus
-                    {
-                        Online = true,
-                        RoomKey = "MP3 PROVING GROUND",
-                        ServerName = "Test Arena",
-                        Mode = GameMode.Battle,
-                        Players = 2,
-                        MaxPlayers = 8,
-                        Protocol = Network.NetConfig.ProtocolVersion,
-                        Latency = 31
-                    })
-            };
-            var browser = new HubServerBrowserView(browserSample);
-            window.Width = 960; window.Height = 660; window.Content = browser;
-            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
-            var refresh = ControllerNav.Find(browser, "browser.refresh");
-            var join = ControllerNav.Find(browser, "browser.join");
-            GamepadChecks.Check(refresh is { IsEffectivelyVisible: true }
-                && join is { IsEffectivelyVisible: true },
-                "modern server browser exposes controller actions");
-            FocusNavigator.Ensure(browser);
-            GamepadChecks.Check(refresh!.IsFocused,
-                "modern server browser defaults focus to Refresh");
-            FocusNavigator.Move(browser, UiAction.Right);
-            GamepadChecks.Check(join!.IsFocused,
-                "modern server browser uses explicit Refresh-to-Join navigation");
-
-            int browserClosed = 0, browserCreate = 0;
-            browser.Closed += (_, _) => browserClosed++;
-            browser.CreateRequested += (_, _) => browserCreate++;
-            Click(window, ControllerNav.Find(browser, "browser.create")!);
-            GamepadChecks.Check(browserCreate == 1,
-                "server browser Create Match accepts a pointer click");
-            Click(window, ControllerNav.Find(browser, "browser.refresh")!);
-            Click(window, ControllerNav.Find(browser, "browser.back")!);
-            GamepadChecks.Check(browserClosed == 1,
-                "server browser Back accepts a pointer click");
 
             var replayStudio = new HubReplayStudioView();
             int replayStudioClosed = 0;

@@ -70,6 +70,7 @@ namespace MphRead.Mods.Launcher.Gui
         private ToggleRow _filteringRow = null!;
         private ToggleRow _celRow = null!;
         private ToggleRow _fpsRow = null!;
+        private ToggleRow _reduceMotion = null!;
 
         /// <summary>
         /// The stops the FPS limit slides over, and the cap each one means.
@@ -514,6 +515,10 @@ namespace MphRead.Mods.Launcher.Gui
                 Radar.ShowOutlines));
             _radarRow.Changed += (_, _) => ShowRadarRows();
             ShowRadarRows();
+
+            Heading(page, "Accessibility");
+            _reduceMotion = Add(page, new ToggleRow(
+                "Reduce menu motion", LauncherPrefs.ReduceMotion));
         }
 
         private void ShowCrosshairRows()
@@ -1233,6 +1238,7 @@ namespace MphRead.Mods.Launcher.Gui
                 LauncherPrefs.MasterPort = masterPort;
             }
             LauncherPrefs.AutoUpdate = _autoUpdate.On;
+            LauncherPrefs.ReduceMotion = _reduceMotion.On;
             if (_replayStorageRow != null)
             {
                 LauncherPrefs.ReplayStorageLimitGb = _replayStorageStops[

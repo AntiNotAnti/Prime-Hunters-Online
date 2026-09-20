@@ -164,18 +164,16 @@ namespace MphRead.Mods.Launcher.Gui
             yield return ("play", new HubPlayView(), _windowSize);
             yield return ("play-phone-portrait", new HubPlayView(), _phonePortrait);
             yield return ("play-phone-landscape", new HubPlayView(), _phoneLandscape);
-            yield return ("multiplayer", new HubMultiplayerView(), _windowSize);
+            yield return ("multiplayer",
+                new HubMultiplayerView(HubBrowserSample()), _windowSize);
+            yield return ("multiplayer-phone-portrait",
+                new HubMultiplayerView(HubBrowserSample()), _phonePortrait);
             yield return ("multiplayer-phone-landscape",
-                new HubMultiplayerView(), _phoneLandscape);
+                new HubMultiplayerView(HubBrowserSample()), _phoneLandscape);
             yield return ("map-editor-placeholder",
                 new HubPlaceholderView("MAP EDITOR", "WORKSHOP PLACEHOLDER",
                     "A visual custom-map editor is planned for this hub."),
                 _windowSize);
-            yield return ("quick-play", new HubQuickPlayView(preview: true), _windowSize);
-            yield return ("hub-servers",
-                new HubServerBrowserView(HubBrowserSample()), _windowSize);
-            yield return ("hub-servers-phone-landscape",
-                new HubServerBrowserView(HubBrowserSample()), _phoneLandscape);
             yield return ("hub-settings", new HubSettingsView(), _windowSize);
             yield return ("hub-settings-phone-portrait", new HubSettingsView(), _phonePortrait);
             // Every face of the one screen that replaced seven. They share a
@@ -207,16 +205,16 @@ namespace MphRead.Mods.Launcher.Gui
             // The dedicated one is a separate picture because the rows it
             // hides and the warning it raises are the whole difference between
             // the two, and neither shows on the other.
-            yield return ("custom-match",
+            yield return ("create-lobby",
                 new CreateServerScreen(rooms, discoverHosts: false), _windowSize);
-            yield return ("custom-match-phone-landscape",
+            yield return ("create-lobby-phone-landscape",
                 new CreateServerScreen(rooms, discoverHosts: false), _phoneLandscape);
             var dedicated = new CreateServerScreen(rooms, discoverHosts: false);
             dedicated.ShowDedicated();
-            yield return ("custom-match-dedicated", dedicated, _windowSize);
-            yield return ("custom-match-rotation",
+            yield return ("create-lobby-dedicated", dedicated, _windowSize);
+            yield return ("create-lobby-rotation",
                 new MapRotationPicker(rooms, Array.Empty<string>()), _windowSize);
-            yield return ("custom-match-hosts", new HostPicker(Fleet(), asking: false),
+            yield return ("create-lobby-hosts", new HostPicker(Fleet(), asking: false),
                 _windowSize);
             yield return ("settings", new SettingsView(settings), _windowSize);
             var credits = new SettingsView(settings);
@@ -241,7 +239,7 @@ namespace MphRead.Mods.Launcher.Gui
             yield return ("end-panel-hunter", endHunter, _windowSize);
             yield return ("setup", new SetupScreen(), _windowSize);
             yield return ("confirm",
-                new ConfirmScreen($"Quit {Mods.Branding.Name}?"), _windowSize);
+                new ConfirmScreen("Quit Prime Hunters Online?"), _windowSize);
             yield return ("pausemenu", new PauseMenuView(offerWindowMode: true), _windowSize);
             // Deliberately shorter than the menu's own content, and shorter
             // than the game window is now allowed to be. The pause menu is

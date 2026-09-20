@@ -106,6 +106,11 @@ namespace MphRead.Mods.Launcher
         public static bool AutoUpdate { get; set; } = true;
 
         /// <summary>
+        /// Suppress launcher transition motion while keeping hover/focus state changes.
+        /// </summary>
+        public static bool ReduceMotion { get; set; }
+
+        /// <summary>
         /// How the game window opens. Kept here rather than in MenuSettings
         /// for the same reason as everything else in this file, and read by
         /// Mods.WindowMode, which is where the window itself lives.
@@ -306,6 +311,12 @@ namespace MphRead.Mods.Launcher
                                 DebugLogs = debugLogs;
                             }
                             break;
+                        case "reduce_motion":
+                            if (Boolean.TryParse(value, out bool reduceMotion))
+                            {
+                                ReduceMotion = reduceMotion;
+                            }
+                            break;
                         case "replay_storage_gb":
                             if (Int32.TryParse(value, NumberStyles.Integer,
                                 CultureInfo.InvariantCulture, out int replayStorage)
@@ -391,6 +402,7 @@ namespace MphRead.Mods.Launcher
                     $"last_kind={LastKind.ToString(CultureInfo.InvariantCulture)}",
                     $"auto_update={AutoUpdate.ToString().ToLowerInvariant()}",
                     $"debug_logs={DebugLogs.ToString().ToLowerInvariant()}",
+                    $"reduce_motion={ReduceMotion.ToString().ToLowerInvariant()}",
                     $"replay_storage_gb={ReplayStorageLimitGb.ToString(CultureInfo.InvariantCulture)}",
                     $"replay_auto_prune={ReplayAutoPrune.ToString().ToLowerInvariant()}",
                     $"replay_delete_clips={ReplayDeleteClips.ToString().ToLowerInvariant()}",

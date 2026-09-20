@@ -9,59 +9,108 @@ using Avalonia.Threading;
 namespace MphRead.Mods.Launcher.Gui
 {
     /// <summary>
-    /// One question and the two marks that answer it.
-    ///
-    /// Quitting, leaving a match, forgetting every keybind and wiping a save
-    /// slot are four different consequences and one screen: what changes
-    /// between them is a sentence. Built the way OpenQuake3/defrag's own
-    /// confirm screen is -- there is one of those too, and everything
-    /// irreversible goes through it.
+    /// Modal confirmation in the same visual language as the FPS hub.
+    /// Cancel is always the initial action so an accidental Accept can never
+    /// walk straight through a destructive prompt.
     /// </summary>
     internal sealed class ConfirmScreen : UserControl
     {
-        /// <summary>Raised with what was answered. False is also what Escape means.</summary>
         public event EventHandler<bool>? Answered;
 
-        private readonly UiMark _no;
+        private readonly HubNavButton _no;
 
         public ConfirmScreen(string question, string yes = "yes", string no = "no",
             bool overGame = false)
         {
             this.SetValue(ControllerNav.NavScopeProperty, "confirmation");
             this.SetValue(ControllerNav.ModalProperty, true);
-            Background = Brushes.Transparent;
             Focusable = true;
 
-            var prompt = new TextBlock
+            var root = new Grid
             {
-                Text = question,
-                FontFamily = GuiTheme.Display,
-                FontSize = 26,
-                Foreground = GuiTheme.TextBrush,
-                TextWrapping = TextWrapping.Wrap,
-                TextAlignment = TextAlignment.Center,
-                HorizontalAlignment = HorizontalAlignment.Center
+                Background = new SolidColorBrush(Color.FromArgb(
+                    overGame ? (byte)0xb8 : (byte)0xcc, 0x02, 0x07, 0x0d))
             };
 
-            _no = new UiMark(UiMark.Shape.Cancel, no);
-            ControllerNav.Identify(_no, "confirmation.cancel", initial: true);
-            _no.Click += (_, _) => Answered?.Invoke(this, false);
-            var ok = new UiMark(UiMark.Shape.Accept, yes);
-            ok.Click += (_, _) => Answered?.Invoke(this, true);
+            var cardBody = new StackPanel
+            {
+                Margin = new Thickness(22),
+                Spacing = 12
+            };
+            cardBody.Children.Add(new TextBlock
+            {
+                Text = "CONFIRM ACTION",
+                FontFamily = HubTheme.DataBold,
+                FontSize = 8.5,
+                Foreground = HubTheme.WarmBrush
+            });
+            cardBody.Children.Add(new TextBlock
+            {
+                Text = question.ToUpperInvariant(),
+                FontFamily = HubTheme.Ui,
+                FontWeight = FontWeight.Bold,
+                FontSize = 24,
+                Foreground = HubTheme.TextBrush,
+                TextWrapping = TextWrapping.Wrap,
+                TextAlignment = TextAlignment.Left
+            });
+            cardBody.Children.Add(new Border
+            {
+                Height = 1,
+                Background = HubTheme.EdgeBrush,
+                Margin = new Thickness(0, 1, 0, 2)
+            });
 
-            // The one screen the pair of marks was always right for, and now
-            // the question sits directly above the two answers to it instead
-            // of between them.
-            Content = UiLayout.Page(overGame, UiLayout.WellShort, "",
-                strip: null, body: prompt, no: _no, yes: ok, centreBody: true);
+            var actions = new Grid
+            {
+                ColumnDefinitions = new ColumnDefinitions("*,*"),
+                ColumnSpacing = 8
+            };
+            _no = new HubNavButton(no.ToUpperInvariant(),
+                "Return without applying this action",
+                compact: true, primary: true);
+            ControllerNav.Identify(_no, "confirmation.cancel", initial: true);
+            _no.SetValue(ControllerNav.NavRightProperty, "confirmation.accept");
+            _no.Click += (_, _) => Answered?.Invoke(this, false);
+            actions.Children.Add(_no);
+
+            var ok = new HubNavButton(yes.ToUpperInvariant(),
+                compact: true, accent: HubTheme.Danger);
+            ControllerNav.Identify(ok, "confirmation.accept");
+            ok.SetValue(ControllerNav.NavLeftProperty, "confirmation.cancel");
+            ok.Click += (_, _) => Answered?.Invoke(this, true);
+            Grid.SetColumn(ok, 1);
+            actions.Children.Add(ok);
+            cardBody.Children.Add(actions);
+
+            cardBody.Children.Add(new TextBlock
+            {
+                Text = "ESC / BACK  CANCEL",
+                FontFamily = HubTheme.Data,
+                FontSize = 8,
+                Foreground = HubTheme.TextDimBrush
+            });
+
+            var card = new Border
+            {
+                MaxWidth = 460,
+                Margin = new Thickness(24),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Background = HubTheme.PanelStrongBrush,
+                BorderBrush = HubTheme.WarmBrush,
+                BorderThickness = new Thickness(1, 1, 1, 2),
+                Child = cardBody
+            };
+            root.Children.Add(card);
+            Content = root;
         }
 
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
             base.OnAttachedToVisualTree(e);
-            // On "no", every time. A confirm screen that opens on the
-            // destructive answer is one an accidental Enter goes through.
-            Dispatcher.UIThread.Post(() => _no.Focus(), DispatcherPriority.Background);
+            Dispatcher.UIThread.Post(() => _no.Focus(),
+                DispatcherPriority.Background);
         }
 
         protected override void OnKeyDown(KeyEventArgs e)

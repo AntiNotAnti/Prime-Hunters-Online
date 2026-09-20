@@ -52,53 +52,50 @@ Remaining P0/performance work:
 
 ## P1 — Play and multiplayer
 
-Turn Play from a multipurpose form into hub destinations backed by shared state:
+Play now has three product-level destinations:
 
-1. **Quick Play**
-   - matchmaking policy / preferred mode
-   - region/ping preference
-   - one primary action
-2. **Server Browser**
-   - filters, sort, favorites and recent servers
-   - rich detail drawer
-   - compatibility and latency badges
-3. **Custom Match**
-   - create/join split
-   - lobby discovery
-   - map rotation summary
-4. **Offline / Training**
-   - map cards
-   - bot count/skill
-   - fast rematch
-5. **Story**
-   - save cards and progression summary
+1. **Multiplayer**
+   - one integrated workspace rather than a chooser followed by another screen
+   - live server directory is the main body
+   - **Quick Play** is one primary action that selects/joins the best compatible open server
+   - **Create Lobby** opens lobby creation; there is no separate player-facing "Custom Match" concept
+   - direct address, Refresh, Join Server, hunter/suit and selected-map artwork remain in the same workspace
+   - selected-server map thumbnails provide contextual game artwork instead of decorative filler
+2. **Offline / Training**
+   - hub-native map browser and selected-map preview
+   - mode, hunter/suit, bot count and bot skill
+   - direct Start Match
+3. **Adventure**
+   - hub-native save cards and progression summary
+   - hunter selection
+   - Continue / New Game
 
 Current implementation:
 
-- `HubPlayView` now separates Multiplayer / Offline / Adventure.
-- `HubMultiplayerView` owns Quick Play / Server Browser / Custom Match, removing redundant multiplayer actions from Home.
-- Custom Match is hub-native end to end: lobby setup, map rotation and host selection keep the existing hosting/network implementation but use the same FPS shell and action bars.
-- `ServerBrowserService` owns renderer-neutral discovery, probing, endpoint parsing and
-  joining; both the transitional Play face and the new browser share its join path.
-- `HubServerBrowserView` is the modern server browser with direct-connect, operative
-  identity, selected-session detail, Refresh/Create/Join actions and lobby handoff.
-- Populated desktop/phone browser captures use deterministic sample data, never the live
-  directory.
+- `HubPlayView` separates Multiplayer / Offline / Adventure.
+- `HubMultiplayerView` is the full multiplayer workspace and uses
+  `ServerBrowserService` for discovery, Quick Play and joins.
+- `CreateServerScreen` is presented to the player as **Create Lobby**. Its
+  hosted-vs-dedicated behavior, map rotation, host discovery and server package
+  installation remain shared with the existing network implementation.
+- `ServerBrowserService` owns renderer-neutral discovery, probing, endpoint
+  parsing and joining; refresh/Quick Play cancellation is contained inside the
+  service instead of escaping into the UI.
+- Deterministic desktop/phone Multiplayer captures use sample directory data,
+  including selected-map artwork, without touching the live network.
+- Map Editor intentionally remains a placeholder while the editor itself is out
+  of scope for this UI overhaul.
+- Adventure uses the portable `AdventureSave` / `AdventureLaunch` contract.
+- Offline uses the shared `OfflineLaunch` contract.
 
-- `Quick Play` now chooses the lowest-latency compatible open server through the
-  same portable discovery service and joins through the same shared join path.
+Visual polish now includes subtle static panel gradients, contextual map/hunter
+artwork and short one-shot page-entry transitions. The transition is disabled by
+`Deck.Still` for deterministic captures and by the user's **Reduce menu motion**
+setting. No perpetual Avalonia animation was added to the CPU-rasterised desktop
+surface.
 
-Map Editor intentionally remains a placeholder while the UI shell is stabilized.
-Adventure is now hub-native: save-slot status, hunter preview, Continue/New Game,
-responsive layout and pointer/controller coverage all use the portable
-`AdventureSave` / `AdventureLaunch` contract.
-
-Offline is now hub-native too: map browser, selected-map preview, hunter/suit,
-mode, bots, skill and Start Match all use the shared `OfflineLaunch` contract.
-
-The Play branch is now structurally hub-native end to end. Still to add:
-server filtering/sorting/favorites/recent history and deeper Replay Studio
-filtering/timeline/analytics refinement.
+Still to add: server filtering/sorting/favorites/recent history and deeper Replay
+Studio filtering/timeline/analytics refinement.
 
 ## P1 — Lobby
 
