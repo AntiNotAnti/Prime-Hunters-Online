@@ -26,7 +26,9 @@ Key implementation notes
 
 - **One launcher, in Avalonia, on every platform.** Windows, Linux and macOS run
   the same screens; there is no second toolkit and no per-platform launcher any
-  more. `Mods/Launcher/Gui/` is the whole of it.
+  more. `Mods/Launcher/Gui/` is the whole of it. The home surface is now
+  `HubHomeView`; the existing Play/Lobby/Settings/Replay views remain shared
+  underneath it while the FPS-hub migration proceeds.
 - Every control is painted by this code (`GuiTheme`, `MenuEntry`, `ChoiceRow`,
   `SliderRow`, `KeyRow`, `SplashView`); only the text boxes and scroll bars are
   stock, under Fluent dark.

@@ -686,7 +686,7 @@ namespace MphRead.Mods.Launcher.Gui
             // picking a map is two presses now -- one to select the row, one
             // on the tick -- and the picture after the first of them has to be
             // the play screen and not a match.
-            _ => { ClickIfReady(c => c is DeckButton button && button.Text == "PLAY"); Wait(20); },
+            _ => { ClickIfReady(c => FrontAction(c, "PLAY")); Wait(20); },
             // A server that answered, and the drawer it opens beside the list.
             // The browser is the one face where the picture after the click is
             // not the same screen plus a highlight.
@@ -808,7 +808,7 @@ namespace MphRead.Mods.Launcher.Gui
         {
             if (GameFiles.Ready)
             {
-                Click(c => c is DeckButton button && button.Text == "SETTINGS");
+                Click(c => FrontAction(c, "SETTINGS"));
                 return;
             }
             // The setup screen's tick, which is the only thing on it that can
@@ -826,7 +826,7 @@ namespace MphRead.Mods.Launcher.Gui
         {
             if (GameFiles.Ready)
             {
-                Hover(c => c is DeckButton button && button.Text == "SETTINGS");
+                Hover(c => FrontAction(c, "SETTINGS"));
                 return;
             }
             Hover(c => c is UiMark mark && mark.Label == "choose your .nds file");
@@ -838,6 +838,10 @@ namespace MphRead.Mods.Launcher.Gui
         /// row to select and no tick to press, and that is the machine CI is,
         /// not a fault.
         /// </summary>
+        private static bool FrontAction(Control control, string label) =>
+            control is HubNavButton hub && hub.Label == label
+            || control is DeckButton deck && deck.Text == label;
+
         private static void ClickIfReady(Func<Control, bool> match)
         {
             if (GameFiles.Ready)
