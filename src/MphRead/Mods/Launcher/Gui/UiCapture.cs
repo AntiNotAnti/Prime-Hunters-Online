@@ -197,9 +197,9 @@ namespace MphRead.Mods.Launcher.Gui
             yield return ("adventure", new HubAdventureView(), _windowSize);
             yield return ("adventure-phone-portrait",
                 new HubAdventureView(), _phonePortrait);
-            yield return ("replay-studio",
-                new PlayScreen(settings, rooms, PlayScreen.Face.Clips,
-                    singleFace: true), _windowSize);
+            yield return ("replay-studio", new HubReplayStudioView(), _windowSize);
+            yield return ("replay-studio-phone-landscape",
+                new HubReplayStudioView(), _phoneLandscape);
             yield return ("play-vote",
                 new PlayScreen(settings, rooms, PlayScreen.Face.Vote, overGame: true),
                 _windowSize);

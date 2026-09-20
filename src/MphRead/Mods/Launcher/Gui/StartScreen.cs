@@ -484,8 +484,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         private Task OpenReplayStudio()
         {
-            var view = new PlayScreen(_settings, _rooms, PlayScreen.Face.Clips,
-                singleFace: true);
+            var view = new HubReplayStudioView();
             view.Closed += (_, _) => Pop();
             view.Launched += (_, plan) => Finish(plan);
             Push(view);

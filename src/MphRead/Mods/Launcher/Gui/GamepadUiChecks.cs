@@ -265,6 +265,18 @@ namespace MphRead.Mods.Launcher.Gui
             GamepadChecks.Check(browserClosed == 1,
                 "server browser Back accepts a pointer click");
 
+            var replayStudio = new HubReplayStudioView();
+            int replayStudioClosed = 0;
+            replayStudio.Closed += (_, _) => replayStudioClosed++;
+            window.Width = 960; window.Height = 660; window.Content = replayStudio;
+            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            GamepadChecks.Check(ControllerNav.Find(replayStudio, "studio.import")
+                is { IsEffectivelyVisible: true },
+                "Replay Studio exposes Import");
+            Click(window, ControllerNav.Find(replayStudio, "studio.back")!);
+            GamepadChecks.Check(replayStudioClosed == 1,
+                "Replay Studio Back accepts a pointer click");
+
             var settingsHub = new HubSettingsView();
             window.Content = settingsHub; window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
             var displaySettings = ControllerNav.Find(settingsHub, "settings.display");

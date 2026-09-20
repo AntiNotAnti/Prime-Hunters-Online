@@ -19,7 +19,7 @@ whole program, matches loaded into it and unloaded again. See
 | Play | opens `HubPlayView`: Multiplayer, hub-native Offline setup or hub-native Adventure saves |
 | Multiplayer | Quick Play, Server Browser or Custom Match |
 | Map Editor | placeholder for the future visual custom-map workshop |
-| Replay Studio | opens the replay library/editor directly |
+| Replay Studio | opens `HubReplayStudioView`: recordings/virtual clips, map and metadata detail, watch/import/rename/favorite/integrity/recovery/export/delete, then the existing in-match Replay Studio editor during playback |
 | Settings | display, audio, controls, player/profile and launcher preferences |
 | Game files | first-run cartridge setup; normal hub actions stay behind it until setup completes |
 

@@ -96,8 +96,8 @@ Offline is now hub-native too: map browser, selected-map preview, hunter/suit,
 mode, bots, skill and Start Match all use the shared `OfflineLaunch` contract.
 
 The Play branch is now structurally hub-native end to end. Still to add:
-server filtering/sorting/favorites/recent history and deeper visual refinement
-of Replay Studio / match setup surfaces.
+server filtering/sorting/favorites/recent history and deeper Replay Studio
+filtering/timeline/analytics refinement.
 
 ## P1 — Lobby
 
@@ -142,13 +142,20 @@ New information architecture:
 Add search, per-setting descriptions, Basic/Advanced grouping, category reset, dirty
 state and restart-required markers.
 
-### Clips / replay studio
+### Replay Studio
 
-- thumbnail timeline cards
-- duration/date/map/player metadata
-- favorite/filter/search
-- record/clip health diagnostics
-- direct playback and export actions
+Implemented as a first-class Home destination in `HubReplayStudioView`:
+
+- recording + virtual-clip library
+- selected replay/map preview and metadata
+- watch/import/rename/favorite/delete
+- integrity checks and interrupted-recording recovery
+- export and desktop folder reveal
+- responsive desktop/phone layout
+- direct playback into the existing Replay Studio in-match controls
+
+Still to add: richer filtering/search, thumbnail timeline cards, batch operations,
+and library-level highlight/analytics summaries.
 
 ### Pause/results
 
