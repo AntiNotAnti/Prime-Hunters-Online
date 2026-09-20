@@ -1727,6 +1727,9 @@ namespace MphRead.Mods.Launcher.Gui
                 string people = demo.Metadata == null ? ""
                     : String.Join(" ", demo.Metadata.Players.Select(player => player.Name));
                 string mode = demo.Metadata?.Mode.ToString() ?? "";
+                string annotations = String.Join(" ",
+                    ReplayAnnotations.Bookmarks(demo.Path).Select(bookmark => bookmark.Name)
+                    .Concat(ReplayAnnotations.Highlights(demo.Path).Select(highlight => highlight.Name)));
                 entries.Add(new ReplayLibraryEntry(
                     demo.Path,
                     demo.Path,
@@ -1738,7 +1741,7 @@ namespace MphRead.Mods.Launcher.Gui
                     demo.Favorite,
                     recoverable,
                     demo.Room,
-                    $"{demo.DisplayName} {demo.Room} {mode} {people} {demo.FileName}"));
+                    $"{demo.DisplayName} {demo.Room} {mode} {people} {annotations} {demo.FileName}"));
             }
             foreach ((string path, ReplayVirtualClipDocument clip) in virtualClips)
             {
@@ -1758,7 +1761,10 @@ namespace MphRead.Mods.Launcher.Gui
                     ReplayVirtualClips.IsFavorite(path),
                     Recoverable: false,
                     room,
-                    $"{clip.Name} {room} {Path.GetFileName(clip.SourceReplay)}"));
+                    $"{clip.Name} {room} "
+                        + String.Join(" ", ReplayAnnotations.Bookmarks(path).Select(bookmark => bookmark.Name)
+                            .Concat(ReplayAnnotations.Highlights(path).Select(highlight => highlight.Name)))
+                        + $" {Path.GetFileName(clip.SourceReplay)}"));
             }
 
             var search = new FieldRow("Search", _replaySearchText, boxWidth: 210);
