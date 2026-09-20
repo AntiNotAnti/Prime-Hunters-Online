@@ -19,7 +19,7 @@ Workflows
 | Workflow | When | What |
 |---|---|---|
 | `.github/workflows/build.yml` | every push and PR | publishes Windows/Linux targets on Ubuntu and signed macOS application archives on matching ARM64/Intel Mac runners, plus a Windows-runner job that builds and starts the Windows dedicated server |
-| `.github/workflows/release.yml` | a `v*` tag, or by hand -- naming a tag or picking a bump that creates one | resolves one tag, builds desktop/Android and macOS packages in parallel, then publishes them to the public binary-only release repository. Tag pushes publish; a manual run may set `publish=false` to leave a draft |
+| `.github/workflows/release.yml` | a `v*` tag, or by hand -- naming a tag or picking a bump that creates one | resolves one tag, builds desktop/Android and macOS packages in parallel, then publishes a GitHub Release directly in this public repository. Tag pushes publish; a manual run may set `publish=false` to leave a draft |
 
 Tagging
 
@@ -128,7 +128,7 @@ tools/check-no-game-assets.sh publish/win-x64    # a build
 
 Notes
 
-- The private source repository is `AntiNotAnti/Prime-Hunters-Online`; updater assets are published to the public `AntiNotAnti/Prime-Hunters-Online-Releases` repository. `Mods/Branding.cs` contains both repository identifiers.
+- `AntiNotAnti/Prime-Hunters-Online` is public and is the single source, tag, release and updater repository. The release workflow uses its built-in `GITHUB_TOKEN`; no cross-repository release PAT is required. `Mods/Branding.cs` keeps `ReleaseRepository` as a semantic alias of `Repository`.
 - `MPHREAD_SERVER` (defined on server builds) is a different question from "has no launcher": it is what makes a bare invocation print what the binary is for, instead of falling through to upstream's setup check.
 
 ## Updating in place
