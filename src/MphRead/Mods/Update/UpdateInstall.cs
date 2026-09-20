@@ -77,7 +77,8 @@ namespace MphRead.Mods.Update
         /// actually published a file for it.
         /// </summary>
         public static bool CanInstall(UpdateInfo update) =>
-            Current != null && update.AssetUrl.Length > 0;
+            Current != null && update.AssetUrl.Length > 0
+            && UpdateDownload.SupportsDigest(update.AssetDigest);
 
         /// <summary>
         /// Install the desktop one if this build can use it.

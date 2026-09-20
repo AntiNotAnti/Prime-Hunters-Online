@@ -11,8 +11,10 @@
 # nothing else: the game's own files are unpacked from the player's cartridge
 # dump by the launcher, on their machine, and are never part of a release.
 #
-# What it leaves is a *draft*. The packages are built, checked and uploaded,
-# and publishing them is a person pressing the button.
+# Finished packages are published to a public binary-only release repository
+# so clients can discover them without access to this private source repo.
+# A manual run may leave a draft; tag pushes publish after all build and
+# verification jobs succeed.
 name: release
 
 on:
@@ -32,6 +34,11 @@ on:
         default: none
         type: choice
         options: [none, patch, minor, major]
+      publish:
+        description: Publish to clients after successful builds (off leaves a draft)
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: write
@@ -563,62 +570,81 @@ jobs:
           pattern: release-*
           merge-multiple: true
           path: dist
-      # A draft: everything is built and uploaded, and a person presses the
-      # button. This is the one workflow whose output people download, and a
-      # tag can be pushed by accident; a draft is the step where somebody reads
-      # the notes and looks at the file list before any of it is public.
+      # The source repository is private. The updater must be able to reach
+      # releases anonymously, so packages are published to a separate public,
+      # binary-only repository. RELEASE_REPO_TOKEN is a fine-grained token with
+      # Contents: write on that one repository only.
       #
-      # Not flagged a prerelease, though the notes say beta. GitHub's
-      # releases/latest -- which is exactly what the in-app update check asks
-      # for (Mods/Update/UpdateCheck.cs) -- skips prereleases, so flagging one
-      # would quietly turn the updater off for every player.
-      #
-      # Rerunning the same tag updates the draft rather than failing: the
-      # create/upload arms are chosen by whether the release is already there,
-      # instead of running create and treating any error at all as "it exists".
+      # Tag pushes publish automatically. A manual run can turn "publish" off
+      # to leave a draft for inspection. Releases are stable, not prereleases,
+      # because releases/latest intentionally skips prereleases.
       - name: release
         env:
-          GH_TOKEN: ${{ github.token }}
+          SOURCE_TOKEN: ${{ github.token }}
+          RELEASE_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          RELEASE_REPOSITORY: AntiNotAnti/Prime-Hunters-Online-Releases
           TAG: ${{ needs.resolve.outputs.tag }}
+          PUBLISH_NOW: ${{ github.event_name == 'push' || github.event.inputs.publish == 'true' }}
         run: |
           set -euo pipefail
+          if [ -z "${RELEASE_TOKEN:-}" ]; then
+            echo "::error::RELEASE_REPO_TOKEN is not configured. Create a fine-grained token with Contents: write for $RELEASE_REPOSITORY and add it as a repository secret."
+            exit 1
+          fi
+          if ! GH_TOKEN="$RELEASE_TOKEN" gh repo view "$RELEASE_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Cannot access $RELEASE_REPOSITORY with RELEASE_REPO_TOKEN."
+            exit 1
+          fi
+          visibility=$(GH_TOKEN="$RELEASE_TOKEN" gh repo view "$RELEASE_REPOSITORY" --json visibility --jq .visibility)
+          if [ "$visibility" != "PUBLIC" ]; then
+            echo "::error::$RELEASE_REPOSITORY must be public so clients can check releases without a GitHub credential."
+            exit 1
+          fi
+
           cat > notes.md <<'NOTE'
-          **Beta.** It plays, it is not finished -- expect rough edges, and please say what you
-          hit in [Issues](https://github.com/liveteklol/Fruity-Prime/issues).
+          **Prime Hunters Online**
 
           You bring your own Metroid Prime Hunters cartridge dump. No game data is included here
           and none is downloaded.
 
           - **Windows** -- the `win-x64` zip, run `FruityPrime.exe`
           - **Linux** -- the `.tar.gz`, run `./FruityPrime -launcher`
-          - **macOS** -- the matching `.tar.gz`, open `Fruity Prime.app`
+          - **macOS** -- the matching `.tar.gz`
           - **Android** -- the `.apk`
-          - **Running a server** -- the `server-` packages, which need no game files
+          - **Dedicated server** -- the `server-` package for the server OS/architecture
 
-          Setup and everything else is in the [README](https://github.com/liveteklol/Fruity-Prime#readme).
+          The launcher checks this release channel on startup. Windows/Linux desktop builds
+          and Android can install a matching package in-app; macOS opens this release page.
           NOTE
 
-          # What actually changed, from GitHub's own generator: every commit
-          # and merged PR since the previous release tag, which it works out
-          # itself from the tag name. Without this the notes are the same
-          # words every time and say nothing about the build being downloaded.
-          #
-          # Appended rather than substituted, and never fatal: a rate limit or
-          # a tag with no predecessor leaves the standing block, which is the
-          # part that has to be there. The changelog is the part that is nice
-          # to have.
-          CHANGES=$(gh api -X POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+          # Generate release notes from the private source repository. The token
+          # used for public releases never needs access to source.
+          CHANGES=$(GH_TOKEN="$SOURCE_TOKEN" gh api -X POST \
+            "repos/$SOURCE_REPOSITORY/releases/generate-notes" \
             -f tag_name="$TAG" --jq .body 2>/dev/null || true)
           if [ -n "$CHANGES" ]; then
             printf '\n---\n\n%s\n' "$CHANGES" >> notes.md
           else
-            echo "::warning::No changelog could be generated for $TAG; the notes are the standing block alone."
+            echo "::warning::No changelog could be generated for $TAG."
           fi
 
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/* --clobber
-            gh release edit "$TAG" --title "Fruity Prime $TAG" --notes-file notes.md
+          if GH_TOKEN="$RELEASE_TOKEN" gh release view "$TAG" \
+              --repo "$RELEASE_REPOSITORY" >/dev/null 2>&1; then
+            GH_TOKEN="$RELEASE_TOKEN" gh release upload "$TAG" dist/* --clobber \
+              --repo "$RELEASE_REPOSITORY"
+            GH_TOKEN="$RELEASE_TOKEN" gh release edit "$TAG" \
+              --repo "$RELEASE_REPOSITORY" \
+              --title "Prime Hunters Online $TAG" --notes-file notes.md
+            if [ "$PUBLISH_NOW" = "true" ]; then
+              GH_TOKEN="$RELEASE_TOKEN" gh release edit "$TAG" \
+                --repo "$RELEASE_REPOSITORY" --draft=false
+            fi
           else
-            gh release create "$TAG" dist/* --draft --verify-tag \
-              --title "Fruity Prime $TAG" --notes-file notes.md
+            args=(release create "$TAG" dist/* --repo "$RELEASE_REPOSITORY" \
+              --target main --title "Prime Hunters Online $TAG" --notes-file notes.md)
+            if [ "$PUBLISH_NOW" != "true" ]; then
+              args+=(--draft)
+            fi
+            GH_TOKEN="$RELEASE_TOKEN" gh "${args[@]}"
           fi

@@ -6,22 +6,16 @@ using System.Threading.Tasks;
 namespace MphRead.Mods.Update
 {
     /// <summary>
-    /// Notice that a new release exists, and open its page when asked to.
+    /// Discover a newer release from the public GitHub release channel.
     ///
-    /// The program does not install anything. It checks by itself, says so, and
-    /// the button sends the person to GitHub to fetch the package and unpack it
-    /// themselves.
+    /// The launcher checks in the background. Platforms with an installer use
+    /// the exact asset URL and SHA-256 digest GitHub returned; other platforms
+    /// fall back to the release page. No GitHub credential is stored in or
+    /// shipped with the client.
     ///
-    /// That is a deliberate trade. Installing automatically means downloading a
-    /// file and executing it, and no amount of care around that is as good as
-    /// not doing it: there is no signing here, so the guarantee would only ever
-    /// have been "TLS, and GitHub was not compromised". Checking is a read of
-    /// one JSON document and cannot alter anything on disk. What is lost is
-    /// convenience, and the reason it is affordable is that the check still
-    /// happens on its own -- nobody has to wonder whether they are out of date,
-    /// which was the actual problem. A server refuses a client on a different
-    /// build at Hello, so being out of date is not a small thing to be left to
-    /// notice on your own.
+    /// A server refuses incompatible protocol versions at Hello, so getting a
+    /// player onto the same published build is part of multiplayer reliability,
+    /// not merely a convenience feature.
     /// </summary>
     public static class Updater
     {

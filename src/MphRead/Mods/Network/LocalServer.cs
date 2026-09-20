@@ -186,6 +186,11 @@ namespace MphRead.Mods.Network
                 return false;
             }
             UpdateInfo package = found.Value;
+            if (!UpdateDownload.SupportsDigest(package.AssetDigest))
+            {
+                LastError = "the server release asset has no supported SHA-256 digest";
+                return false;
+            }
             try
             {
                 System.IO.Directory.CreateDirectory(Directory);
@@ -194,7 +199,7 @@ namespace MphRead.Mods.Network
                 string archive = Path.Combine(Directory,
                     zip ? "package.zip" : "package.tar.gz");
                 if (!UpdateDownload.Fetch(package.AssetUrl, archive, package.AssetSize,
-                    progress, cancel))
+                    progress, cancel, expectedDigest: package.AssetDigest))
                 {
                     LastError = UpdateDownload.LastError ?? "the download failed";
                     return false;

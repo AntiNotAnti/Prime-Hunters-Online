@@ -30,6 +30,14 @@ namespace MphRead.Mods.Update
 
         /// <summary>Its size in bytes, for a progress figure. 0 when unknown.</summary>
         public long AssetSize { get; init; }
+
+        /// <summary>
+        /// GitHub's content digest for the asset, currently "sha256:&lt;hex&gt;".
+        /// Empty means the release did not provide a digest and therefore is
+        /// not eligible for one-click installation.
+        /// </summary>
+        public string AssetDigest { get; init; }
+
         /// <summary>The release's page on GitHub. Where "Update now" goes.</summary>
         public string PageUrl { get; init; }
         public string Notes { get; init; }
@@ -50,7 +58,7 @@ namespace MphRead.Mods.Update
     {
         /// <summary>The only host this asks, and only ever for metadata.</summary>
         private const string _api =
-            "https://api.github.com/repos/" + Mods.Branding.Repository + "/releases/latest";
+            "https://api.github.com/repos/" + Mods.Branding.ReleaseRepository + "/releases/latest";
 
         /// <summary>Never silently, and never for long.</summary>
         private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(20);
@@ -170,7 +178,7 @@ namespace MphRead.Mods.Update
         {
             string tag;
             string page;
-            var assets = new List<(string Name, string Url, long Size)>();
+            var assets = new List<(string Name, string Url, long Size, string Digest)>();
             try
             {
                 using JsonDocument document = JsonDocument.Parse(json);
@@ -191,7 +199,9 @@ namespace MphRead.Mods.Update
                             && z.TryGetInt64(out long parsedSize) ? parsedSize : 0;
                         if (name.Length > 0)
                         {
-                            assets.Add((name, url, size));
+                            string digest = asset.TryGetProperty("digest", out JsonElement d)
+                                ? d.GetString() ?? "" : "";
+                            assets.Add((name, url, size, digest));
                         }
                     }
                 }
@@ -201,7 +211,7 @@ namespace MphRead.Mods.Update
                 LastReason = "GitHub's answer could not be read";
                 return null;
             }
-            (string Name, string Url, long Size)? package =
+            (string Name, string Url, long Size, string Digest)? package =
                 PickAsset(assets, ServerRid(), server: true);
             if (package == null)
             {
@@ -217,6 +227,7 @@ namespace MphRead.Mods.Update
                 AssetName = package.Value.Name,
                 AssetUrl = package.Value.Url,
                 AssetSize = package.Value.Size,
+                AssetDigest = package.Value.Digest,
                 PageUrl = page.Length > 0 ? page : ReleasesPage,
                 Notes = ""
             };
@@ -277,7 +288,7 @@ namespace MphRead.Mods.Update
             string tag;
             string notes;
             string page;
-            var assets = new List<(string Name, string Url, long Size)>();
+            var assets = new List<(string Name, string Url, long Size, string Digest)>();
             try
             {
                 using JsonDocument document = JsonDocument.Parse(json);
@@ -300,7 +311,9 @@ namespace MphRead.Mods.Update
                             && z.TryGetInt64(out long parsedSize) ? parsedSize : 0;
                         if (name.Length > 0)
                         {
-                            assets.Add((name, url, size));
+                            string digest = asset.TryGetProperty("digest", out JsonElement d)
+                                ? d.GetString() ?? "" : "";
+                            assets.Add((name, url, size, digest));
                         }
                     }
                 }
@@ -328,7 +341,7 @@ namespace MphRead.Mods.Update
             // Nothing is fetched from here any more, so there is no reason to
             // hide a release because its file names were not what was expected
             // -- the person going to the page can see what is actually on it.
-            (string Name, string Url, long Size)? package = PickAsset(assets);
+            (string Name, string Url, long Size, string Digest)? package = PickAsset(assets);
             return new UpdateInfo
             {
                 Tag = tag,
@@ -340,6 +353,7 @@ namespace MphRead.Mods.Update
                 // ends up with no download rather than with a guess.
                 AssetUrl = package?.Url ?? "",
                 AssetSize = package?.Size ?? 0,
+                AssetDigest = package?.Digest ?? "",
                 PageUrl = page.Length > 0 ? page : ReleasesPage,
                 Notes = notes
             };
@@ -351,20 +365,20 @@ namespace MphRead.Mods.Update
         /// is a server build; null when nothing matches, which is not a reason
         /// to withhold the release.
         /// </summary>
-        private static (string Name, string Url, long Size)? PickAsset(
-            List<(string Name, string Url, long Size)> assets)
+        private static (string Name, string Url, long Size, string Digest)? PickAsset(
+            List<(string Name, string Url, long Size, string Digest)> assets)
         {
             return PickAsset(assets, Rid(), IsServerBuild);
         }
 
-        private static (string Name, string Url, long Size)? PickAsset(
-            List<(string Name, string Url, long Size)> assets, string rid, bool server)
+        private static (string Name, string Url, long Size, string Digest)? PickAsset(
+            List<(string Name, string Url, long Size, string Digest)> assets, string rid, bool server)
         {
             if (rid.Length == 0)
             {
                 return null;
             }
-            foreach ((string Name, string Url, long Size) asset in assets)
+            foreach ((string Name, string Url, long Size, string Digest) asset in assets)
             {
                 string name = asset.Name.ToLowerInvariant();
                 if (!name.Contains(rid))
@@ -385,7 +399,7 @@ namespace MphRead.Mods.Update
 
         /// <summary>Where the releases live, when a specific one has no page.</summary>
         public const string ReleasesPage =
-            "https://github.com/" + Mods.Branding.Repository + "/releases";
+            "https://github.com/" + Mods.Branding.ReleaseRepository + "/releases";
 
         public static bool IsServerBuild =>
 #if MPHREAD_SERVER
