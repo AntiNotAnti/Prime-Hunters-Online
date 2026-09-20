@@ -180,6 +180,15 @@ namespace MphRead.Mods.Input
         /// taken rather than read for the reason <see cref="TakeMenuPress"/>
         /// is: a frame drawn twice must not step the choice twice.
         /// </summary>
+        public static bool TakeActionPress(PadAction action)
+        {
+            if (_context != GamepadContext.Gameplay)
+            {
+                return false;
+            }
+            return Actions.Take(action);
+        }
+
         public static bool TakePress(GamepadButtons buttons)
         {
             if ((_pressed & buttons) == 0)
