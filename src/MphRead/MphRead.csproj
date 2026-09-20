@@ -64,9 +64,12 @@
          stack gives for nothing. The Android head defines MPHREAD_AVALONIA
          without this one and leaves those two files out. -->
     <DefineConstants Condition="'$(MphReadAvalonia)' == 'true'">$(DefineConstants);MPHREAD_SHELL</DefineConstants>
-    <!-- The runtime game window uses the embedded Project Prime mark below.
-         Legacy shell icons were intentionally removed as part of
-         the product migration rather than being silently carried forward. -->
+    <!-- Project Prime shell identity for Explorer, the taskbar and pinned
+         shortcuts. The dedicated server keeps a small badge so it is visually
+         distinct from the game client. Runtime GL windows still use the
+         embedded PNG mark below. -->
+    <ApplicationIcon Condition="$(RuntimeIdentifier.StartsWith('win')) and '$(MphReadServer)' != 'true'">Assets\project-prime.ico</ApplicationIcon>
+    <ApplicationIcon Condition="$(RuntimeIdentifier.StartsWith('win')) and '$(MphReadServer)' == 'true'">Assets\project-prime-server.ico</ApplicationIcon>
     <PublishSingleFile>true</PublishSingleFile>
     <DebugType>embedded</DebugType>
     <Nullable>enable</Nullable>
