@@ -20,7 +20,7 @@ namespace MphRead.Mods.Launcher.Gui
                 .Append(Hunter.Random.ToString()).ToArray();
 
         private readonly MenuSettings _settings;
-        private readonly UiList _maps = new();
+        private readonly UiList _maps = new() { AutoSelectFirst = false };
         private readonly Image _preview = new() { Stretch = Stretch.UniformToFill };
         private readonly TextBlock _mapName;
         private readonly TextBlock _mapCode;
@@ -57,8 +57,6 @@ namespace MphRead.Mods.Launcher.Gui
                 "LOCAL COMBAT",
                 HubTheme.GoodBrush));
 
-            _maps.SelectionChanged += (_, row) => SelectRow(row);
-            _maps.Activated += (_, row) => SelectRow(row);
             foreach (string room in rooms)
             {
                 string display = room;
@@ -210,6 +208,12 @@ namespace MphRead.Mods.Launcher.Gui
             Grid.SetRow(footer, 2);
             root.Children.Add(footer);
             Content = root;
+
+            // Subscribe only after the preview/detail controls exist. UiList may
+            // select a row while it is being populated, and doing this earlier
+            // let that callback race construction of _mapName/_mapCode.
+            _maps.SelectionChanged += (_, row) => SelectRow(row);
+            _maps.Activated += (_, row) => SelectRow(row);
 
             SizeChanged += (_, e) => ApplyResponsive(e.NewSize, mapPanel, setupPanel);
             if (rooms.Count > 0)
