@@ -39,15 +39,6 @@ namespace MphRead
 
         private void BeginWorldPass()
         {
-            // Render scale is a live setting. Rebuild the offscreen attachments
-            // on the render thread the first frame after it changes instead of
-            // waiting for a window resize or the next match.
-            Vector2i desired = RenderSize;
-            if (_screenTexture != 0
-                && (desired.X != _targetSize.X || desired.Y != _targetSize.Y))
-            {
-                OnResize();
-            }
             GL.BindFramebuffer(FramebufferTarget.Framebuffer, _frameBuffer);
             GL.Viewport(0, 0, _targetSize.X, _targetSize.Y);
             GL.UseProgram(_shaderProgramId);
