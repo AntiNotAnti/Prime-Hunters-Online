@@ -777,6 +777,27 @@ namespace MphRead.Mods.Launcher.Gui
             _filteringRow.Changed += (_, _) => ShowTextureQualityRows();
             ShowTextureQualityRows();
 
+            var maxQuality = new HubNavButton("MAX QUALITY",
+                "200% supersampling + trilinear mipmaps + 16x anisotropic filtering",
+                primary: true)
+            {
+                MinHeight = 50,
+                Margin = new Thickness(0, 10, 0, 4)
+            };
+            ControllerNav.Identify(maxQuality, "settings.graphics.max");
+            maxQuality.Click += (_, _) =>
+            {
+                _resolutionScale.Value = RenderOptions.MaxScale;
+                _lightingRow.On = true;
+                _fogRow.On = true;
+                _filteringRow.On = true;
+                _mipmapRow.On = true;
+                _anisotropyRow.Index = _anisotropyStops.Length - 1;
+                ShowTextureQualityRows();
+            };
+            page.Children.Add(maxQuality);
+            Explain(page, "MAX QUALITY can be extremely expensive at 4K: 200% renders the world at 8K before resolving it back to the display.");
+
             Heading(page, "Cel shading");
             _celRow = Add(page, new ToggleRow("Cel shading", RenderOptions.CelShading));
             _celBandsRow = Add(page, new SliderRow("Shading bands", RenderOptions.CelBands,
