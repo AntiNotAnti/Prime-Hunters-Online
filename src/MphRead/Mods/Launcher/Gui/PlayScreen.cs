@@ -1663,8 +1663,9 @@ namespace MphRead.Mods.Launcher.Gui
                 // no file manager on a modern Android can open it, so a player
                 // who wants to copy a recording off the device needs the path
                 // itself -- and this is the only place it is ever written down.
-                _note.Text = "Nothing recorded yet. Clips are made from the pause menu "
-                    + $"during an online match, and are written to:\n{DemoLibrary.Directory}";
+                _note.Text = "Nothing recorded yet. Record a replay from the pause menu, "
+                    + "or save an instant clip during an online match. Files are written to:\n"
+                    + DemoLibrary.Directory;
             }
             UiWord? recover = null;
             var replayDetails = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = GuiTheme.TextDimBrush, FontSize = 12, Margin = new Thickness(0, 0, 0, 10) };
@@ -1842,7 +1843,7 @@ namespace MphRead.Mods.Launcher.Gui
             // The system picker last rather than first: on Android it cannot
             // reach the folder the recordings are in at all.
             _list.Add(new UiListRow("Open a file...",
-                "a demo from somewhere else on this device")
+                "a replay from somewhere else on this device")
             { Choice = _import });
         }
 
@@ -1909,7 +1910,7 @@ namespace MphRead.Mods.Launcher.Gui
             if (!joined)
             {
                 _note.Text = DemoPlayback.LastError
-                    ?? "That file could not be read as a demo.";
+                    ?? "That file could not be read as a replay.";
                 _note.Foreground = GuiTheme.BadBrush;
                 return;
             }
@@ -1944,7 +1945,7 @@ namespace MphRead.Mods.Launcher.Gui
                     return;
                 }
                 string? chosen = await NativeFilePicker.OpenFile("Replays",
-                    $"{Branding.Name} demo", DemoFile.Extension.TrimStart('.'));
+                    $"{Branding.Name} replay", DemoFile.Extension.TrimStart('.'));
                 if (chosen != null)
                 {
                     await Watch(chosen);
@@ -1959,7 +1960,7 @@ namespace MphRead.Mods.Launcher.Gui
                 // refused.
                 options.FileTypeFilter = new[]
                 {
-                    new FilePickerFileType($"{Branding.Name} demo")
+                    new FilePickerFileType($"{Branding.Name} replay")
                     {
                         Patterns = new[] { $"*{DemoFile.Extension}" }
                     },
