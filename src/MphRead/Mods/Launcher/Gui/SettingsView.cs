@@ -659,10 +659,50 @@ namespace MphRead.Mods.Launcher.Gui
             Explain(page, "When the limit is reached, the oldest full-match recordings are "
                 + "removed first. Favorites are always protected. Clips remain protected unless "
                 + "you explicitly allow them to be pruned.");
+
+            Heading(page, "Replay keyboard");
+            Explain(page, "These keys control replay playback directly while the match is on screen.");
+            _keyRows.Add(Add(page, new KeyRow("Play / pause",
+                () => InputSettings.ReplayPlayPauseKey, k => InputSettings.ReplayPlayPauseKey = k)));
+            _keyRows.Add(Add(page, new KeyRow("Step backward",
+                () => InputSettings.ReplayStepBackKey, k => InputSettings.ReplayStepBackKey = k)));
+            _keyRows.Add(Add(page, new KeyRow("Step forward",
+                () => InputSettings.ReplayStepForwardKey, k => InputSettings.ReplayStepForwardKey = k)));
+            _keyRows.Add(Add(page, new KeyRow("Seek back 5 seconds",
+                () => InputSettings.ReplaySeekBackKey, k => InputSettings.ReplaySeekBackKey = k)));
+            _keyRows.Add(Add(page, new KeyRow("Seek forward 5 seconds",
+                () => InputSettings.ReplaySeekForwardKey, k => InputSettings.ReplaySeekForwardKey = k)));
+            _keyRows.Add(Add(page, new KeyRow("Slower",
+                () => InputSettings.ReplaySlowerKey, k => InputSettings.ReplaySlowerKey = k)));
+            _keyRows.Add(Add(page, new KeyRow("Faster",
+                () => InputSettings.ReplayFasterKey, k => InputSettings.ReplayFasterKey = k)));
+            _keyRows.Add(Add(page, new KeyRow("Restart replay",
+                () => InputSettings.ReplayRestartKey, k => InputSettings.ReplayRestartKey = k)));
+
+            Heading(page, "Replay controller");
+            Explain(page, "Replay controller bindings are separate from gameplay bindings, so A can "
+                + "play/pause here while still being Jump during a match.");
+            foreach (Mods.Input.PadAction action in Mods.Input.PadBindings.ReplayActions)
+                _replayPadRows.Add(Add(page, new PadRow(action)));
+
+            var resetReplay = new DeckButton("Reset replay controls", Deck.Face.Brass,
+                sizeEms: .9, padXEms: .8, padYEms: .38, lip: 3)
+            {
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Margin = new Thickness(0, 10, 0, 0)
+            };
+            resetReplay.Click += (_, _) =>
+            {
+                InputSettings.ResetReplayBindings();
+                foreach (KeyRow row in _keyRows) row.InvalidateVisual();
+                foreach (PadRow row in _replayPadRows) row.InvalidateVisual();
+            };
+            page.Children.Add(resetReplay);
         }
 
         /// <summary>Every key row, so Reset can redraw them from whichever page it is on.</summary>
         private List<KeyRow> _keyRows = new();
+        private readonly List<PadRow> _replayPadRows = new();
 
         /// <summary>The pen tablet page keeps common setup visible and hides tuning.</summary>
         private void BuildStylus(StackPanel page)
@@ -710,6 +750,7 @@ namespace MphRead.Mods.Launcher.Gui
                 _scrollAllWeapons.On = InputSettings.ScrollAllWeapons;
                 _gamepadSettings.Reload();
                 foreach (PadRow row in padRows) row.InvalidateVisual();
+                foreach (PadRow row in _replayPadRows) row.InvalidateVisual();
                 foreach (KeyRow row in _keyRows) row.InvalidateVisual();
                 if (_touchButtonsRow != null) _touchButtonsRow.On = Mods.Input.TouchSettings.ButtonsVisible;
                 foreach ((Mods.Input.TouchControl control, ToggleRow row) in _touchRows)
