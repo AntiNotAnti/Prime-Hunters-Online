@@ -22,8 +22,8 @@ HERE="$ROOT/tools/hitrig"
 HOST="${HITRIG_JP_HOST:-13.78.14.98}"
 USER="${HITRIG_JP_USER:-livetek}"
 PORT="${HITRIG_JP_PORT:-27891}"
-SERVICE=fruityprime-bench
-REMOTE=/opt/fruityprime-bench
+SERVICE=projectprime-bench
+REMOTE=/opt/projectprime-bench
 SSH="$HERE/ssh-pw.py"
 
 LABEL="${1:?label}"; MODE="${2:?jump|sniper}"; SECS="${3:?seconds}"

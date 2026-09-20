@@ -8,7 +8,7 @@
 #       tools/systemd/mphread-server.service | sudo tee /etc/systemd/system/mphread-server.service
 #   sudo systemctl enable --now mphread-server
 [Unit]
-Description=Fruity Prime dedicated server
+Description=Project Prime dedicated server
 After=network-online.target
 Wants=network-online.target
 
@@ -17,9 +17,9 @@ Type=simple
 User=__USER__
 WorkingDirectory=__DIR__
 # -servername is what players see in the launcher's server browser. The server
-# lists itself on net.livetek.fr so that it can be found there; add -nomaster
+# lists itself on 51.161.113.128 so that it can be found there; add -nomaster
 # to keep it private, or -master HOST to use a different directory.
-ExecStart=__DIR__/FruityPrime -server -port 27888 -players 8 -servername "Fruity Prime"
+ExecStart=__DIR__/ProjectPrime -server -port 27888 -players 8 -servername "Project Prime"
 Restart=always
 RestartSec=5
 NoNewPrivileges=true

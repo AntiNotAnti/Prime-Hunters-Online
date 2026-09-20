@@ -34,9 +34,9 @@ plutil -lint "$contents/Info.plist"
 iconset="$stage/ProjectPrime.iconset"
 mkdir -p "$iconset"
 for size in 16 32 128 256 512; do
-    sips -z "$size" "$size" "$repo/src/MphRead/Assets/fruity-prime-mark.png" --out "$iconset/icon_${size}x${size}.png" >/dev/null
+    sips -z "$size" "$size" "$repo/src/MphRead/Assets/project-prime-mark.png" --out "$iconset/icon_${size}x${size}.png" >/dev/null
     double=$((size * 2))
-    sips -z "$double" "$double" "$repo/src/MphRead/Assets/fruity-prime-mark.png" --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
+    sips -z "$double" "$double" "$repo/src/MphRead/Assets/project-prime-mark.png" --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
 done
 iconutil -c icns "$iconset" -o "$contents/Resources/ProjectPrime.icns"
 cp "$repo/LICENSE" "$stage/package/LICENSE"
