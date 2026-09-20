@@ -70,7 +70,9 @@ namespace MphRead.Mods.Network
                 _tail.Used += data.Length;
                 Trim(frame);
             }
-            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException
+                || ex is InvalidDataException || ex is ArgumentException
+                || ex is KeyNotFoundException)
             {
                 LastError = "Replay buffer unavailable: " + ex.Message;
             }
