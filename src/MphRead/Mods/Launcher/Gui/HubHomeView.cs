@@ -21,7 +21,9 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly StackPanel _desktopNav;
         private readonly Grid _compactNav;
         private readonly Border _hero;
+        private readonly Grid _heroBody;
         private readonly Border _profile;
+        private readonly StackPanel _headerState;
         private readonly HunterStand _stand;
         private readonly TextBlock _player;
         private readonly TextBlock _hunter;
@@ -47,7 +49,7 @@ namespace MphRead.Mods.Launcher.Gui
                 RowSpacing = 14
             };
 
-            var header = BuildHeader();
+            var header = BuildHeader(out _headerState);
             root.Children.Add(header);
 
             _main = new Grid
@@ -66,7 +68,7 @@ namespace MphRead.Mods.Launcher.Gui
             _compactNav.IsVisible = false;
             _main.Children.Add(_compactNav);
 
-            _hero = BuildHero(out _stand);
+            _hero = BuildHero(out _stand, out _heroBody);
             Grid.SetColumn(_hero, 1);
             _main.Children.Add(_hero);
 
@@ -103,7 +105,7 @@ namespace MphRead.Mods.Launcher.Gui
                 : HubTheme.WarmBrush;
         }
 
-        private Grid BuildHeader()
+        private Grid BuildHeader(out StackPanel headerState)
         {
             var header = new Grid
             {
@@ -126,15 +128,15 @@ namespace MphRead.Mods.Launcher.Gui
             });
             header.Children.Add(title);
 
-            var state = new StackPanel
+            headerState = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
                 Spacing = 8,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 125, 0)
             };
-            state.Children.Add(StatusDot(HubTheme.GoodBrush));
-            state.Children.Add(new TextBlock
+            headerState.Children.Add(StatusDot(HubTheme.GoodBrush));
+            headerState.Children.Add(new TextBlock
             {
                 Text = "LOCAL SYSTEM ONLINE",
                 FontFamily = Deck.Mono,
@@ -142,8 +144,8 @@ namespace MphRead.Mods.Launcher.Gui
                 Foreground = HubTheme.TextDimBrush,
                 VerticalAlignment = VerticalAlignment.Center
             });
-            Grid.SetColumn(state, 1);
-            header.Children.Add(state);
+            Grid.SetColumn(headerState, 1);
+            header.Children.Add(headerState);
             return header;
         }
 
@@ -190,12 +192,13 @@ namespace MphRead.Mods.Launcher.Gui
             return grid;
         }
 
-        private Border BuildHero(out HunterStand stand)
+        private Border BuildHero(out HunterStand stand, out Grid heroBody)
         {
-            var body = new Grid
+            heroBody = new Grid
             {
                 ColumnDefinitions = new ColumnDefinitions("*,220")
             };
+            Grid body = heroBody;
 
             var copy = new StackPanel
             {
@@ -365,6 +368,7 @@ namespace MphRead.Mods.Launcher.Gui
             _desktopNav.IsVisible = !compact;
             _compactNav.IsVisible = compact;
             _profile.IsVisible = !compact;
+            _headerState.IsVisible = !compact;
 
             if (compact)
             {
@@ -377,9 +381,12 @@ namespace MphRead.Mods.Launcher.Gui
                 Grid.SetRow(_compactNav, 0);
                 Grid.SetColumn(_hero, 0);
                 Grid.SetRow(_hero, 1);
+                Grid.SetColumn(_profile, 0);
+                Grid.SetRow(_profile, 0);
                 _hero.Margin = new Thickness(0);
-                _stand.Width = 130;
-                _stand.Height = 205;
+                _heroBody.ColumnDefinitions = new ColumnDefinitions("*");
+                _heroBody.RowDefinitions = new RowDefinitions("*");
+                _stand.IsVisible = false;
             }
             else
             {
@@ -394,6 +401,11 @@ namespace MphRead.Mods.Launcher.Gui
                 Grid.SetRow(_hero, 0);
                 Grid.SetColumn(_profile, 2);
                 Grid.SetRow(_profile, 0);
+                _heroBody.ColumnDefinitions = new ColumnDefinitions("*,220");
+                _heroBody.RowDefinitions = new RowDefinitions("*");
+                Grid.SetColumn(_stand, 1);
+                Grid.SetRow(_stand, 0);
+                _stand.IsVisible = true;
                 _stand.Width = 190;
                 _stand.Height = 310;
             }
@@ -402,7 +414,7 @@ namespace MphRead.Mods.Launcher.Gui
         private HubNavButton Action(string label, string detail, Action action,
             bool primary = false, Color? accent = null)
         {
-            var button = new HubNavButton(label, detail, primary, compact: false, accent);
+            var button = new HubNavButton(label, detail, primary, compact: false, accent: accent);
             button.Click += (_, _) => action();
             return button;
         }
