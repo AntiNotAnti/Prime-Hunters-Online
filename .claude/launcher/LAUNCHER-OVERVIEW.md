@@ -4,10 +4,10 @@ This file summarises the launcher features and where its code lives.
 
 Basics
 
-`MphRead -launcher` opens a front screen, not a settings dialog: a map picture
-on the left, the things you can do on the right. Everything that is not a
-per-session choice lives in the settings page, which is one of the entries and
-is also what the pause menu opens mid-match.
+`MphRead -launcher` opens a responsive FPS-style command hub inside the game
+window. The home surface exposes **Play, Servers, Custom, Clips, Settings,
+Support and Quit**. Play opens a deployment chooser for Online, Custom Match,
+Offline and Adventure; Servers is a direct shortcut to the modern browser.
 
 The front screen is **drawn inside the game window** -- one window for the
 whole program, matches loaded into it and unloaded again. See
@@ -15,12 +15,13 @@ whole program, matches loaded into it and unloaded again. See
 
 | Entry | What it does |
 |---|---|
-| Adventure | save slot, hunter, continue or start over |
-| Play online | name, hunter, `host` or `host:port`, and a live line saying what that server is running. **Find a server** opens the browser below. |
-| Play offline | map, mode, 0-7 bots and their skill, hunter, and straight into the match. **See every map** opens the picture grid |
-| Host a game | the same choices plus a port. **Runs the dedicated server in this process** and joins it over the loopback |
-| Settings | display, audio, controls, match rules, launcher preferences, features, cheats, bugfixes |
-| Game files | where the .nds goes. Shown first, and everything else greyed out, when there is nothing set up yet |
+| Play | opens `HubPlayView`: Online, Custom Match, Offline or Adventure |
+| Servers | opens `HubServerBrowserView`, backed by shared `ServerBrowserService` discovery/join logic |
+| Custom | opens create-server directly |
+| Clips | opens the replay/clip library |
+| Settings | display, audio, controls, player/profile and launcher preferences |
+| Support | opens the project support link |
+| Game files | first-run cartridge setup; normal hub actions stay behind it until setup completes |
 
 Key implementation notes
 
@@ -29,9 +30,12 @@ Key implementation notes
   more. `Mods/Launcher/Gui/` is the whole of it. The home surface is now
   `HubHomeView`; the existing Play/Lobby/Settings/Replay views remain shared
   underneath it while the FPS-hub migration proceeds.
-- Every control is painted by this code (`GuiTheme`, `MenuEntry`, `ChoiceRow`,
-  `SliderRow`, `KeyRow`, `SplashView`); only the text boxes and scroll bars are
-  stock, under Fluent dark.
+- The FPS shell uses **Inter** for player-facing headings/labels and JetBrains Mono
+  only for technical/status data. The old Pixelify display role is no longer the
+  launcher default.
+- Shared controls are still painted by this code (`GuiTheme`, `ChoiceRow`,
+  `SliderRow`, `KeyRow`, `HubNavButton`); text boxes and scroll bars use the
+  toolkit surface under the same palette.
 - The picture is a map preview out of `thumbnails/`, rendered from the user's own
   files -- no art is shipped. A `splash.png` beside the exe replaces the home
   picture.
