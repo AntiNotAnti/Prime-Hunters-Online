@@ -31,27 +31,25 @@ Rows come from the directory and are then **confirmed by this machine**: one
 failing for exactly the servers this player couldn't have joined anyway. Rows
 appear as they answer, sorted by players then latency.
 
-**A hosted game can be listed too.** *Host a game* runs the dedicated server
-in the player's own process, so it can be found the same way — but it's
-somebody's home machine, and listing publishes its address. `ListHostedGame`
-is a switch on the card, on by default (a game nobody can find is a game
-nobody joins), and the server is named after the host, not their PC.
+**A hosted game can be listed too.** Local hosting starts an isolated dedicated
+server process; online hosting asks a reachable directory/server host to start
+one. The requesting player then joins as an ordinary client. Listing a server
+publishes the address players must dial, so local dedicated hosting keeps an
+explicit listing choice.
 
 ## Hosting without opening a port
 
 Being listed isn't being reachable — most people can't or won't forward UDP
 from their router, which made *Host a game* work on a LAN and nowhere else.
 
-The fix (same one Age of Empires II: DE uses, and it isn't NAT traversal):
-**the match runs somewhere reachable and the host joins it by connecting
-out**, like everybody else. This engine's netcode is already "everyone
-connects to one relay," so putting the relay somewhere with an open port is
-the whole of the work — no relay framing, no punching, no new transport path,
-**no client change at all**.
+The fix is not NAT traversal: **the authoritative match runs somewhere
+reachable and the requester joins it by connecting out**, like everybody else.
+The game already uses one server endpoint, so this needs no peer-to-peer
+punching or alternate gameplay transport.
 
 | Piece | What |
 |---|---|
-| `HostRequest`/`HostReply` | launcher → directory: room, mode, time limit, point goal, cap, name. Directory starts an ordinary `DedicatedServer` on a port from its range and answers with the port |
+| `HostRequest`/`HostReply` | launcher → host service: requested lobby/match rules and rotation. The host starts an isolated authoritative server process on a port from its range and returns the port plus owner token when applicable |
 | `-hostports 27900-27919` on the directory | the range it may use, one port per game. Default on — a feature that has to be configured to work is a feature nobody has. `-hostports none` disables it |
 | **Create server** (launcher, Online face) | the screen this is reached from now: name, game type, hunter, map rotation, **Host on**, and Hosted vs Dedicated. See the launcher table in CLAUDE.md |
 | `MphRead -hostgame "ROOM" [-mode M] [-maprotation "A,B,C"]` | same thing from a command line — the only way to host with no launcher |
@@ -69,10 +67,10 @@ which is the thing to check first when either looks broken.
 | The asker's whole map cycle — `[count][count × (40-byte room key + 1-byte mode)]` after `HostRequestPacket.Size` | `HostRequest`, launcher → directory | length-checks against `Size`, reads exactly that, and plays `RoomKey` on a loop — the behaviour it always had. Entry 0 **is** `RoomKey`, so the two halves can never disagree about what starts |
 | One flags byte after the entries, bit 0 = "this directory starts games" (`MasterFlags.CanHost`) | `MasterList`, directory → launcher | a launcher from before stops reading once it has taken `count` entries and never sees it. A launcher that reads it and finds **nothing** treats that as a *third* state, not as a no — see below |
 
-`EntriesPerPacket` is `(1024 − 1 − 2) / 82` = 12, so a full reply is 987 bytes
-and the flags byte fits with room to spare. A sixteen-map request is 737 bytes
-including the type byte, against `MaxPacketSize` 1024 — which is where
-`HostRequestPacket.MaxRotation` comes from; it is the datagram, not a policy.
+`NetMasterConfig.EntriesPerPacket` is derived from
+`NetConfig.MaxPacketSize` and `MasterEntryPacket.Size`; do not copy a packet
+budget into this document. `HostRequestPacket.MaxRotation` is likewise bounded
+so its fixed block, rotation entries and session-policy tail fit one datagram.
 
 **Silence is not a no**, and getting that backwards made the whole feature
 dead on arrival. `MasterListResult.CanHost` is `bool?`: true or false when the
@@ -91,11 +89,10 @@ that is down from one that is up and does not host from one that is simply
 old — the first needs looking at, the second is a setting, the third is a
 deploy.
 
-Measured against the live directory on 2026-09-14, **with no redeploy**:
-`-hostgame "MP6 HEADSHOT" -maprotation "MP1 SANCTORUS,MP4 HIGHGROUND"` was
-answered with port 27900, joined, and became authority. The rotation tail was
-ignored by the old build, which is exactly the documented degradation — one
-map instead of three, and nothing broken.
+**Historical compatibility measurement (2026-09-14):** an older directory
+accepted the fixed HostRequest block but ignored the then-new rotation tail.
+That result is useful evidence for additive parsing, not a description of the
+current hosting topology.
 
 ### Who can host: the servers themselves
 
@@ -122,18 +119,15 @@ both run the same code.
 | `-hostports A-B` on a **server** | the range it may open extra matches on. **Off** by default, unlike the directory's: it is an admin's bandwidth and their ports, and a game server has a match of its own to protect |
 | `ServerStatusPacket.Flags` bit 0 | "I will open new games". Appended past `Size`, so an older server is read exactly as before and an older launcher never looks — no protocol bump |
 | Silence = **no** here | the opposite of the directory's flag, and right both times: hosting on a server is off unless asked for, so not saying and saying no are the same answer; hosting on a directory is on unless turned off, so not saying means "too old to ask" |
-| `NetMasterClient.Merge` | one row per **machine**, not per port. The Pi arrives as the directory on 27889 and as a relay on 27888; the row that can actually open a game wins. Shared with `-hosts` so the diagnostic cannot drift from the picture |
-| Hosted matches are `RunsTheMatch = false` | a process has one static `NetSession` and can simulate one match; that one is the server's own. A hosted match is run by whichever client joins first, exactly as when the directory started them |
-| `Hosts.Count` counts toward auto-update | hosted games live in this process, so a restart ends them — a server with one is not empty |
+| `NetMasterClient.Merge` | one row per machine rather than one per port; a host-capable endpoint wins when the same machine appears through multiple services |
+| Hosted matches | each gets an isolated `HostedServerProcess` with `RunsTheMatch=true`; no normal player is promoted to authority |
+| `Hosts.Count` counts toward auto-update | hosted child processes are active sessions; the parent must not update/restart while one is in use |
 
 Verified 2026-09-14 on loopback: a `-server ... -hostports 28900-28903` was
 asked for a 3-map rotation on its own port and opened it on 28900, which was
 then joined.
 
-**The fleet.** NSGs are open 27888-28999/UDP inbound on the three Azure VMs and
-each relay now carries `-hostports 27900-27919`, inert until a release carrying
-`HostPool` reaches them. `-hosts` reads `1 of 4` until then: the Pi's directory
-hosts today, the relays will. See [[azure-server-fleet]].
+**Deployment note:** specific VM counts, NSG/firewall state and currently deployed host-port ranges are operational state, not architecture. Verify them live instead of preserving them here.
 
 ## A server on the player's own machine
 
@@ -200,9 +194,9 @@ Hole punching was the other candidate and wasn't worth it: needs a rendezvous
 protocol, needs a relay fallback anyway, and has a failure mode for every
 symmetric NAT. This has none.
 
-Measured end to end: `-hostgame "MP6 HEADSHOT"` asked the directory, got port
-27900, joined it, became authority, loaded the room; the directory listed it
-correctly; a second client joined as slot 1 with no special handling.
+Current end-to-end expectation: `-hostgame` asks a host service for an isolated
+server process, joins the returned port as an ordinary client, and never receives
+simulation authority. A second client joins through the same ordinary path.
 
 ## The directory (master server)
 
@@ -224,13 +218,10 @@ Two decisions worth keeping:
   the master could only ever report its own round trip to each server, not
   the number the person reading the screen cares about.
 
-`net.livetek.fr:27889` is the configured default (`NetMasterConfig`) — a
-hostname, deliberately unlike the *game* server default (an address on
-purpose), because a directory has to be able to move without a new build
-reaching every operator. **That name does not currently resolve.** Both ends
-are pointed at the Pi's other name instead: launcher via
-`master_host=net.livetek.fr` in `launcher.txt`, server via
-`-master 127.0.0.1` (shares the directory's box).
+`NetMasterConfig` owns the configured default directory endpoint. DNS,
+firewall and whether that deployment is currently online are operational facts
+and must be checked live; do not record a temporary outage or alternate host as
+architecture.
 
 `tools/systemd/mphread-master.service` is the unit; `deploy-server.sh`
 installs both it and the game server's, filling in user/directory, and
