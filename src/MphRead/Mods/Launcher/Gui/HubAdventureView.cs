@@ -12,7 +12,7 @@ namespace MphRead.Mods.Launcher.Gui
     internal sealed class HubAdventureView : UserControl
     {
         private static readonly string[] HunterNames =
-            Enumerable.Range(0, MphRead.Hunters.Playable)
+            Enumerable.Range(0, Hunters.Playable)
                 .Select(i => ((Hunter)i).ToString())
                 .Append(Hunter.Random.ToString()).ToArray();
 
