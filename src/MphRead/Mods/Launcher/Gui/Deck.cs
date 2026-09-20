@@ -46,13 +46,13 @@ namespace MphRead.Mods.Launcher.Gui
         /// <summary>A face colour and the solid edge under it, two stops down.</summary>
         internal readonly record struct Face(Color Fill, Color Lip)
         {
-            public static Face Blue => new(Rgb(0x2b4e6b), Rgb(0x16293a));
-            public static Face Brass => new(Rgb(0x7a6130), Rgb(0x3f3118));
-            public static Face Rust => new(Rgb(0x6b3636), Rgb(0x381b1b));
-            public static Face Moss => new(Rgb(0x2c5a4e), Rgb(0x15302a));
-            public static Face Slate => new(Rgb(0x232a36), Rgb(0x12161e));
-            /// <summary>The stepper and the tab strip's own grey, a shade up from Slate.</summary>
-            public static Face Step => new(Rgb(0x2a3140), Rgb(0x151a23));
+            public static Face Blue => new(Rgb(0x12354a), Rgb(0x071c29));
+            public static Face Brass => new(Rgb(0x5a4528), Rgb(0x2c2114));
+            public static Face Rust => new(Rgb(0x563038), Rgb(0x29171c));
+            public static Face Moss => new(Rgb(0x21483b), Rgb(0x10251f));
+            public static Face Slate => new(Rgb(0x14212e), Rgb(0x09121b));
+            /// <summary>The stepper and tab strip neutral, one shade above Slate.</summary>
+            public static Face Step => new(Rgb(0x1b2b3a), Rgb(0x0b1722));
         }
 
         public static Color Rgb(int hex) => Color.FromRgb(
