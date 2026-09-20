@@ -534,10 +534,23 @@ namespace MphRead.Droid
                         label = "NEXT";
                         break;
                     case TouchAction.ScanVisor:
-                        // The desktop's Space: the map, or the player you were
-                        // watching.
+                        // The desktop's camera/view switch.
                         visible = true;
                         label = "VIEW";
+                        break;
+                    case TouchAction.Missile:
+                        visible = MphRead.Mods.Network.DemoPlayback.IsActive;
+                        label = MphRead.Mods.Network.ReplayController.IsPaused
+                            || MphRead.Mods.Network.ReplayController.AtEnd
+                            ? "PLAY" : "PAUSE";
+                        break;
+                    case TouchAction.WeaponMenu:
+                        visible = MphRead.Mods.Network.DemoPlayback.IsActive;
+                        label = "-5S";
+                        break;
+                    case TouchAction.Zoom:
+                        visible = MphRead.Mods.Network.DemoPlayback.IsActive;
+                        label = "+5S";
                         break;
                     case TouchAction.Jump:
                     case TouchAction.Morph:
