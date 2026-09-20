@@ -293,6 +293,20 @@ namespace MphRead.Mods.Replay
         {
             if (startFrame >= endFrame) throw new ArgumentOutOfRangeException(nameof(endFrame));
             string source = Path.GetFullPath(sourceReplay);
+
+            // Watching a virtual clip uses a materialized .fpdemo cache. A clip
+            // cut from that should not depend on the cache surviving: flatten it
+            // back onto the original replay and rebase the selected frame range.
+            string logical = LogicalPath(source);
+            if (logical.EndsWith(Extension, StringComparison.OrdinalIgnoreCase)
+                && TryLoad(logical, out ReplayVirtualClipDocument? parent)
+                && parent != null)
+            {
+                startFrame = checked(parent.StartFrame + startFrame);
+                endFrame = checked(parent.StartFrame + endFrame);
+                source = Path.GetFullPath(parent.SourceReplay);
+            }
+
             if (!File.Exists(source)) throw new FileNotFoundException("The source replay does not exist.", source);
             Directory.CreateDirectory(DemoLibrary.Directory);
             string title = string.IsNullOrWhiteSpace(name)
@@ -402,6 +416,23 @@ namespace MphRead.Mods.Replay
             {
                 return null;
             }
+        }
+
+        public static string LogicalPath(string playbackPath)
+        {
+            string full = Path.GetFullPath(playbackPath);
+            string cacheDirectory = Path.GetFullPath(
+                Path.Combine(DemoLibrary.Directory, ".virtual-cache"));
+            string? directory = Path.GetDirectoryName(full);
+            if (directory != null
+                && String.Equals(Path.GetFullPath(directory), cacheDirectory,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                string descriptor = Path.Combine(DemoLibrary.Directory,
+                    Path.GetFileNameWithoutExtension(full) + Extension);
+                if (File.Exists(descriptor)) return Path.GetFullPath(descriptor);
+            }
+            return full;
         }
 
         private static string CachePath(string path)
