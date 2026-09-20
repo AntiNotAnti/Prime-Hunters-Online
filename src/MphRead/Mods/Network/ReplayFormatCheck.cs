@@ -3,6 +3,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using MphRead.Mods.Multiplayer;
 
 namespace MphRead.Mods.Network
 {
