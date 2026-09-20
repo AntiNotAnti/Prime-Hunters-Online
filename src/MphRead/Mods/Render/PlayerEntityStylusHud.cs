@@ -42,6 +42,8 @@ namespace MphRead.Entities
             // this HUD cursor takes its place. Menus, results and placement
             // keep the normal platform cursor instead.
             bool drawCursor = PointerInput.StylusMode && !StylusZone.Placing
+                && (_scene.CameraMode == CameraMode.Player || _scene.IsFreeCam)
+                && !_scene.FrameAdvance && !Mods.Network.DemoPlayback.IsActive
                 && !Mods.PauseMenu.Open && !Mods.EndScreen.Available
                 && !GameState.DialogPause && !GameState.MenuPause;
 
