@@ -264,11 +264,19 @@ namespace MphRead.NetTest
             NetDamage.ResolvedSession[1] = 3;
             NetDamage.ReplayedSession[1] = 2;
 
+            NetDamage.ResetForRoomChange();
+            Check(NetDamage.Resolved[1] == 0 && NetDamage.Replayed[1] == 0,
+                "room reset clears match damage pipeline");
+            Check(NetDamage.ResolvedSession[1] == 3 && NetDamage.ReplayedSession[1] == 2,
+                "room reset preserves session damage pipeline");
+
+            NetDamage.Resolved[1] = 4;
+            NetDamage.Replayed[1] = 4;
             NetDamage.Reset(resetSessionTotals: false);
             Check(NetDamage.Resolved[1] == 0 && NetDamage.Replayed[1] == 0,
-                "match reset clears match damage pipeline");
+                "persistent match reset clears match damage pipeline");
             Check(NetDamage.ResolvedSession[1] == 3 && NetDamage.ReplayedSession[1] == 2,
-                "match reset preserves session damage pipeline");
+                "persistent match reset preserves session damage pipeline");
 
             NetDamage.Reset();
             Check(NetDamage.ResolvedSession[1] == 0 && NetDamage.ReplayedSession[1] == 0,
