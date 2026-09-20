@@ -169,6 +169,13 @@ namespace MphRead.Mods.Launcher.Gui
             base.OnLostFocus(e);
         }
 
+        protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+        {
+            base.OnPropertyChanged(change);
+            if (change.Property == IsEnabledProperty)
+                RefreshVisual();
+        }
+
         private void RefreshVisual()
         {
             bool hot = _pointer || IsFocused;
