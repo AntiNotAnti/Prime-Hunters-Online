@@ -11,11 +11,8 @@ namespace MphRead.Mods.Launcher.Gui
     /// The name, set rather than drawn.
     ///
     /// <see cref="UiLayout.Wordmark"/> hands back the shipped PNG, which is
-    /// the cherry and "Fruity PRIME" beside it. That mark is the program's,
-    /// and it stays the program's -- the window icon and the release art are
-    /// still it. What this is for is the front screen under the deck theme,
-    /// where a smooth-edged bitmap sitting over a row of pixel-type buttons is
-    /// the one thing on the screen from a different drawing.
+    /// the Project Prime name in the deck pixel face.
+    /// This keeps the front-door identity renderer-native instead of depending on a baked legacy wordmark.
     ///
     /// <para>
     /// Two lines, because the name is two words and stacking them is what
@@ -82,7 +79,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         protected override Size MeasureOverride(Size availableSize)
         {
-            FormattedText top = Line("FRUITY", GuiTheme.TextBrush);
+            FormattedText top = Line("PROJECT", GuiTheme.TextBrush);
             FormattedText bottom = Line("PRIME", GuiTheme.AccentBrush);
             return new Size(
                 Math.Max(top.Width, bottom.Width) + Outline * 2,
@@ -91,7 +88,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         public override void Render(DrawingContext context)
         {
-            FormattedText top = Line("FRUITY", new SolidColorBrush(Color.FromRgb(0xf2, 0xed, 0xe2)));
+            FormattedText top = Line("PROJECT", new SolidColorBrush(Color.FromRgb(0xf2, 0xed, 0xe2)));
             FormattedText bottom = Line("PRIME", GuiTheme.AccentBrush);
             double w = Bounds.Width;
 
@@ -102,7 +99,7 @@ namespace MphRead.Mods.Launcher.Gui
             double bottomY = Math.Round(topY + top.Height * 0.88);
 
             double size = Size;
-            Draw(context, "FRUITY", top, topX, topY, size);
+            Draw(context, "PROJECT", top, topX, topY, size);
             Draw(context, "PRIME", bottom, bottomX, bottomY, size);
         }
 

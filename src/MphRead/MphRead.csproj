@@ -128,9 +128,7 @@
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.2" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.2" />
     <!-- Loaded at runtime through avares://, Avalonia's own asset scheme: a
-         plain EmbeddedResource is not visible to AssetLoader. The wordmark is
-         the corner of every launcher screen; the mark is the window icon. -->
-    <AvaloniaResource Include="Assets\project-prime-logo.png" />
+         plain EmbeddedResource is not visible to AssetLoader. The launcher wordmark is rendered in code; the mark is the window icon. -->
     <AvaloniaResource Include="Assets\project-prime-mark.png" />
     <!-- The same file again, as a plain embedded resource: the *window's*
          icon is set on the GL window, which knows nothing about avares:// and

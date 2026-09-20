@@ -940,7 +940,7 @@ namespace MphRead.Mods.Launcher.Gui
                     Width = RailWidth,
                     Margin = new Thickness(38, 44, 0, 0)
                 };
-                Image mark = UiLayout.Wordmark();
+                Control mark = new DeckWordmark(1.75);
                 mark.Width = 132;
                 mark.HorizontalAlignment = HorizontalAlignment.Left;
                 mark.VerticalAlignment = VerticalAlignment.Top;

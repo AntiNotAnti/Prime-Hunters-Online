@@ -8,7 +8,6 @@
 # The Project Prime logo: the wordmark, the cherry mark alone (padded square,
 # for icons), and the same mark with a small server badge. Sources for the
 # .ico files below and for what the launchers and the README show.
-src/MphRead/Assets/project-prime-logo.png
 src/MphRead/Assets/project-prime-mark.png
 src/MphRead/Assets/project-prime-mark-server.png
 
@@ -16,7 +15,6 @@ src/MphRead/Assets/project-prime-mark-server.png
 # larger than the guard's size limit for a good reason: it is the wide artwork
 # at the top of the page, not a source file. Being listed here exempts it from
 # that limit as well as from the picture-format rule.
-src/MphRead/Assets/project-prime-intro.png
 
 # The same mark again, scaled into an Android launcher icon: five densities of
 # the flat one and five of the adaptive foreground. Generated from

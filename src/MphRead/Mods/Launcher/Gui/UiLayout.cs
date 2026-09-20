@@ -623,9 +623,6 @@ namespace MphRead.Mods.Launcher.Gui
         private static readonly Lazy<Bitmap?> _background =
             new(() => Load("Backgrounds/launcher-bg.jpg"));
 
-        private static readonly Lazy<Bitmap?> _wordmark =
-            new(() => Load("project-prime-logo.png"));
-
         private static Bitmap? Load(string asset)
         {
             try
@@ -870,21 +867,6 @@ namespace MphRead.Mods.Launcher.Gui
                 HorizontalAlignment = HorizontalAlignment.Left,
                 VerticalAlignment = VerticalAlignment.Bottom,
                 Margin = new Thickness(ColumnLeft - 50, 0, 0, FooterBottom)
-            };
-        }
-
-        /// <summary>The mark in the opposite corner, at the size the front screen uses.</summary>
-        public static Image Wordmark()
-        {
-            return new Image
-            {
-                Source = _wordmark.Value,
-                Stretch = Stretch.Uniform,
-                Width = 220,
-                HorizontalAlignment = HorizontalAlignment.Right,
-                VerticalAlignment = VerticalAlignment.Bottom,
-                Margin = new Thickness(0, 0, 32, 28),
-                Opacity = 0.92
             };
         }
 
