@@ -168,6 +168,18 @@ jobs:
       # launcher could not be opened at all. It needs a display and no game
       # files, which is what Xvfb and this runner are. Linux only: it is the
       # same shared launcher on every desktop target.
+      - name: the headless UI layouts render
+        if: matrix.id == 'linux-x64'
+        run: publish/${{ matrix.id }}/FruityPrime -uishot "$RUNNER_TEMP/uishot"
+
+      - name: the headless UI layouts
+        if: matrix.id == 'linux-x64' && always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: launcher-layouts
+          path: ${{ runner.temp }}/uishot
+          if-no-files-found: warn
+
       - name: the launcher opens
         if: matrix.id == 'linux-x64'
         run: |
