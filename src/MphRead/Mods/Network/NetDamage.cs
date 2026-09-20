@@ -815,18 +815,12 @@ namespace MphRead.Mods.Network
             // itself. Only the health is still owed, and ApplyState assigns
             // that from this same snapshot immediately after.
             //
-            // A lethal confirmation still replays, even when the hit itself
-            // was predicted: reaching here with a lethal snapshot means this
-            // machine's prediction did *not* kill them -- either it was
-            // clamped (-nodeathprediction) or the killing blow was somebody
-            // else's -- and returning early would leave a player alive here
-            // and dead on every other screen. A kill this machine did predict
-            // never reaches this line; it is the "already down" return above.
-            //
-            // Not for a hit on this machine's own player, even one it dealt
-            // itself: nothing is ever predicted onto the local player, so
-            // asking would only report every splash from one's own bomb as a
-            // hit the prediction had missed.
+            // A lethal confirmation still replays even when the nonlethal part
+            // of the hit was predicted. Remote lethal prediction is always
+            // clamped to one health now, so the authority owns the body falling;
+            // returning early here would leave this client alive while the
+            // authoritative state says dead. Self-damage is handled by the exact
+            // confirmation path above and is not double-applied.
             if (predicted && !lethal)
             {
                 if (authorityHeadshot && attacker == PlayerEntity.Main)
