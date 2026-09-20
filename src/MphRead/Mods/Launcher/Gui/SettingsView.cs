@@ -756,7 +756,7 @@ namespace MphRead.Mods.Launcher.Gui
         private void BuildGraphics(StackPanel page)
         {
             Heading(page, "Rendering");
-            Explain(page, "100% is native framebuffer resolution. Above 100% renders the 3D world larger and downsamples it for supersampling; 200% shades four times as many pixels.");
+            Explain(page, "100% is native framebuffer resolution. Above 100% supersamples the 3D world before resolving it to the display; 300% is an extreme 3x-per-axis mode that shades nine times as many scene pixels.");
             _resolutionScale = Add(page, new SliderRow("Render scale",
                 RenderOptions.ResolutionScale,
                 v => v == 100 ? "100% (native)"

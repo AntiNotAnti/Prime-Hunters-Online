@@ -30,7 +30,7 @@ Sections
 | Section | What is on it |
 |---|---|
 | Display | window mode; field of view; FPS limit/counter; **Pro mode HUD**, crosshair/weapon presentation, radar and reduced menu motion |
-| Graphics | internal render scale **25–200%** (101–200% is supersampling); lighting; fog; bilinear filtering; optional **trilinear mipmaps**; **1x/2x/4x/8x/16x anisotropic filtering** capped to GPU support; cel shading with 2–8 bands and 0–100% outline strength |
+| Graphics | internal render scale **25–300%** (101–300% is supersampling); lighting; fog; bilinear filtering; optional **trilinear mipmaps**; **1x/2x/4x/8x/16x anisotropic filtering** capped to GPU support; cel shading with 2–8 bands and 0–100% outline strength |
 | Audio | sound-effect and music volume; the game's text language |
 | Controls | mouse sensitivity, invert either axis, and every key binding, plus reset to defaults; and a **Gamepad** section -- on/off, look sensitivity, stick dead zone, invert the stick's vertical aim. Its own section rather than more rows under Mouse, because a pad has its own sensitivity and a great many people invert one of the two and not the other. `.claude/GAMEPAD.md` |
 | Match rules | point goal, time limit, damage level, team play, friendly fire, hunter radar, affinity weapons, **shadow freeze**. The last is the Judicator ice wave's cone: on is the cartridge, glitch and all, and off makes it a cone rather than a column of infinite height. Server-decided in a networked match, like friendly fire, and broadcast in the match state -- what is set here is what a *hosted* game hands its own server |

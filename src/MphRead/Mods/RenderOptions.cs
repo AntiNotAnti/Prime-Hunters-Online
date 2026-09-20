@@ -23,7 +23,7 @@ namespace MphRead.Mods
     public static class RenderOptions
     {
         /// <summary>
-        /// Percent of the window the 3D scene is rendered at, 25 to 200.
+        /// Percent of the window the 3D scene is rendered at, 25 to 300.
         /// Halving it quarters the pixels; values above 100 supersample the
         /// world before it is downsampled to the display.
         /// </summary>
@@ -36,8 +36,8 @@ namespace MphRead.Mods
         private static int _resolutionScale = 100;
 
         public const int MinScale = 25;
-        /// <summary>200% is 2x per axis / 4x the shaded pixels.</summary>
-        public const int MaxScale = 200;
+        /// <summary>300% is 3x per axis / 9x the shaded pixels. This is intentionally an extreme ceiling.</summary>
+        public const int MaxScale = 300;
 
         /// <summary>
         /// How wide the view is, in degrees, measured the way the game
@@ -166,6 +166,25 @@ namespace MphRead.Mods
         /// what the game looked like.
         /// </summary>
         public static bool TextureFiltering { get; set; }
+
+        /// <summary>
+        /// Build and use mip chains for world textures while filtering is on.
+        /// This is independent from bilinear filtering so players can choose
+        /// the cheaper single-level path or full trilinear minification.
+        /// </summary>
+        public static bool TextureMipmaps { get; set; }
+
+        /// <summary>
+        /// Requested anisotropic filtering level for world textures. The
+        /// renderer clamps this again to what the active GPU reports.
+        /// </summary>
+        public static int TextureAnisotropy
+        {
+            get => _textureAnisotropy;
+            set => _textureAnisotropy = Math.Clamp(value, 1, 16);
+        }
+
+        private static int _textureAnisotropy = 1;
 
         /// <summary>Apply a scale to one dimension, never below one pixel.</summary>
         public static int Scaled(int pixels)
