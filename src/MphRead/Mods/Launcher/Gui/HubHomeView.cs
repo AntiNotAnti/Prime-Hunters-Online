@@ -8,7 +8,7 @@ using Avalonia.Media;
 namespace MphRead.Mods.Launcher.Gui
 {
     /// <summary>
-    /// The persistent front-door concept for Prime Hunters Online.
+    /// The persistent front-door concept for Project Prime.
     ///
     /// This first slice owns only the home surface. Existing Play, lobby,
     /// settings and replay views still open through StartScreen's stack so no
@@ -115,7 +115,7 @@ namespace MphRead.Mods.Launcher.Gui
             var title = new StackPanel { Spacing = 1 };
             title.Children.Add(new TextBlock
             {
-                Text = "PRIME HUNTERS // ONLINE",
+                Text = "PROJECT PRIME",
                 FontFamily = HubTheme.Ui,
                 FontWeight = FontWeight.Bold,
                 FontSize = 18,
@@ -165,7 +165,7 @@ namespace MphRead.Mods.Launcher.Gui
                     () => Navigate(HubDestination.ReplayStudio)),
                 Action("SETTINGS", "Video, audio, input and player",
                     () => Navigate(HubDestination.Settings)),
-                Action("QUIT", "Close Prime Hunters Online",
+                Action("QUIT", "Close Project Prime",
                     () => Navigate(HubDestination.Quit),
                     accent: HubTheme.Danger)
             };

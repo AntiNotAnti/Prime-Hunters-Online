@@ -35,7 +35,7 @@ namespace MphRead.Mods.Network
         /// pointing it somewhere else has to be possible without shipping a
         /// new build to every server operator.
         /// </summary>
-        public const string DefaultHost = "net.livetek.fr";
+        public const string DefaultHost = "51.161.113.128";
 
         /// <summary>
         /// Beside the game port rather than on it: a machine can then run

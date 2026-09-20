@@ -42,10 +42,11 @@ namespace MphRead.Mods.Launcher
         public static int ServerPort { get; set; } = Network.NetConfig.DefaultPort;
 
         /// <summary>
-        /// The directory the server browser asks. A hostname on purpose --
-        /// unlike the default server address, this one is a service that has
-        /// to be able to move without a new build reaching every player.
+        /// The directory the server browser asks. Project Prime currently runs
+        /// the public directory on the same host as the default game server.
+        /// Existing installs using the former hostname are migrated on load.
         /// </summary>
+        private const string LegacyDefaultMasterHost = "net.livetek.fr";
         public static string MasterHost { get; set; } = Network.NetMasterConfig.DefaultHost;
         public static int MasterPort { get; set; } = Network.NetMasterConfig.DefaultPort;
         public static int LastRole { get; set; }
@@ -206,7 +207,10 @@ namespace MphRead.Mods.Launcher
                         case "master_host":
                             if (value.Length > 0)
                             {
-                                MasterHost = value;
+                                MasterHost = value.Equals(LegacyDefaultMasterHost,
+                                    StringComparison.OrdinalIgnoreCase)
+                                    ? Network.NetMasterConfig.DefaultHost
+                                    : value;
                             }
                             break;
                         case "master_port":
