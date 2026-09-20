@@ -47,16 +47,24 @@ namespace MphRead.Mods.Launcher.Gui
 
             HubDestination? clickedHubDestination = null;
             hub.NavigateRequested += destination => clickedHubDestination = destination;
-            Point? desktopPlayOrigin = desktopPlay.TranslatePoint(new Point(), window);
-            GamepadChecks.Check(desktopPlayOrigin.HasValue,
-                "FPS hub Play has a window-space pointer target");
-            Point clickPoint = desktopPlayOrigin!.Value
-                + new Vector(desktopPlay.Bounds.Width / 2, desktopPlay.Bounds.Height / 2);
-            window.MouseMove(clickPoint);
-            window.MouseDown(clickPoint, Avalonia.Input.MouseButton.Left);
-            window.MouseUp(clickPoint, Avalonia.Input.MouseButton.Left);
-            GamepadChecks.Check(clickedHubDestination == HubDestination.Play,
-                "FPS hub pointer click activates Play");
+            (string Id, HubDestination Destination)[] desktopActions =
+            {
+                ("hub.desktop.play", HubDestination.Play),
+                ("hub.desktop.servers", HubDestination.Servers),
+                ("hub.desktop.custom", HubDestination.Custom),
+                ("hub.desktop.clips", HubDestination.Clips),
+                ("hub.desktop.settings", HubDestination.Settings),
+                ("hub.desktop.support", HubDestination.Support),
+                ("hub.desktop.quit", HubDestination.Quit)
+            };
+            foreach ((string id, HubDestination destination) in desktopActions)
+            {
+                Control action = ControllerNav.Find(hub, id)!;
+                clickedHubDestination = null;
+                Click(window, action);
+                GamepadChecks.Check(clickedHubDestination == destination,
+                    $"FPS hub pointer click activates {destination}");
+            }
 
             window.Width = 700; window.Height = 480;
             window.UpdateLayout(); Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
@@ -68,17 +76,24 @@ namespace MphRead.Mods.Launcher.Gui
             GamepadChecks.Check(compactPlay!.IsFocused,
                 "FPS hub compact navigation restores a semantic default");
 
-            clickedHubDestination = null;
-            Point? compactPlayOrigin = compactPlay.TranslatePoint(new Point(), window);
-            GamepadChecks.Check(compactPlayOrigin.HasValue,
-                "FPS hub compact Play has a window-space pointer target");
-            Point compactClickPoint = compactPlayOrigin!.Value
-                + new Vector(compactPlay.Bounds.Width / 2, compactPlay.Bounds.Height / 2);
-            window.MouseMove(compactClickPoint);
-            window.MouseDown(compactClickPoint, Avalonia.Input.MouseButton.Left);
-            window.MouseUp(compactClickPoint, Avalonia.Input.MouseButton.Left);
-            GamepadChecks.Check(clickedHubDestination == HubDestination.Play,
-                "FPS hub compact pointer click activates Play");
+            (string Id, HubDestination Destination)[] compactActions =
+            {
+                ("hub.compact.play", HubDestination.Play),
+                ("hub.compact.servers", HubDestination.Servers),
+                ("hub.compact.custom", HubDestination.Custom),
+                ("hub.compact.clips", HubDestination.Clips),
+                ("hub.compact.settings", HubDestination.Settings),
+                ("hub.compact.support", HubDestination.Support),
+                ("hub.compact.quit", HubDestination.Quit)
+            };
+            foreach ((string id, HubDestination destination) in compactActions)
+            {
+                Control action = ControllerNav.Find(hub, id)!;
+                clickedHubDestination = null;
+                Click(window, action);
+                GamepadChecks.Check(clickedHubDestination == destination,
+                    $"FPS hub compact pointer click activates {destination}");
+            }
 
             var deployment = new HubPlayView();
             window.Width = 960; window.Height = 660; window.Content = deployment;
@@ -285,6 +300,18 @@ namespace MphRead.Mods.Launcher.Gui
             GamepadManager.RemoveDevice("ui-test"); binding.Check();
             GamepadChecks.Check(!GamepadContexts.Capturing, "disconnect exits binding capture");
             window.Close();
+        }
+
+        private static void Click(Window window, Control control)
+        {
+            Point? origin = control.TranslatePoint(new Point(), window);
+            GamepadChecks.Check(origin.HasValue,
+                $"{control.GetType().Name} has a window-space pointer target");
+            Point point = origin!.Value
+                + new Vector(control.Bounds.Width / 2, control.Bounds.Height / 2);
+            window.MouseMove(point);
+            window.MouseDown(point, Avalonia.Input.MouseButton.Left);
+            window.MouseUp(point, Avalonia.Input.MouseButton.Left);
         }
 
         private static void CheckControllerSettings(Window window, SettingsView settings, string? shots)
