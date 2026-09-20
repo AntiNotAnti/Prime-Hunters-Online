@@ -107,13 +107,13 @@ export ALSOFT_DRIVERS=null PULSE_SERVER=   # else ALSA retries stall frames
 | `MphRead -nointerp` / `-relayedpuppets` | draw remote players by snapping them to whichever snapshot arrived last, the way every build before protocol 7 did, instead of reading them off a playout clock held a few frames behind. Interpolation is on by default and is why opponents on a bad line move instead of stuttering; it costs a few frames of extra rewind and gives nothing up in hit registration, because the read point travels in the intent as a sub-frame ack and the authority rewinds to exactly it. `-relayedpuppets` also hands puppet positions back to the owner's relayed intent, which is the full protocol-6 arm. `.claude/multiplayer/NETWORK-SMOOTHING.md` |
 | `MphRead -maxrewind N` | the furthest back a shot may be resolved, in frames. **45 (750 ms)** by default since protocol 7, against 24 (400 ms) before it: at a 320 ms round trip with jitter the old ceiling was clamping **89% of shots**, with the requested-depth distribution's mode two frames past it. `.claude/multiplayer/NETWORK-UNLAGGED.md` |
 | `MphRead -debuglog` | write the file the launcher's corner switch writes, for one run. `.claude/DEBUG-LOGS.md` |
-| `~/mph-net-test/probe-chat.py [HOST] [PORT]` | what the server does with chat, asked the way no real client can: a spoofed sender, and a flood. `.claude/multiplayer/NETWORK-CHAT.md` |
-| `~/mph-net-test/run-remote.sh HOST PORT SECONDS hunter...` | the same check against a server that is not on this machine -- which is the one that matters, since eight clients on one box measure the box |
+| External `probe-chat.py` (when available) | historical/private harness for spoof/flood chat tests that a real client cannot emit. The packet/server rules live in code and `.claude/multiplayer/NETWORK-CHAT.md` |
+| Multiple direct `-netcheck` clients against a remote current server | the durable form of the remote test. Private `run-remote.sh` wrappers may orchestrate it when available |
 | External `run-demo.sh` harness (when available) | historical harness for comparing recordings. In the normal architecture the dedicated server is authority; client-authority demo behavior is only a legacy compatibility test |
 | External `run-rejoin.sh` harness (when available) | reconnect/slot-reuse scenario. Normal server-authority matches do not hand authority between players; any handover arm is explicitly legacy compatibility coverage. `.claude/multiplayer/NETWORK-DIAGNOSTICS.md` |
-| `~/mph-net-test/run-mapvote.sh SEC hunter...` | `run-rotate.sh` with the clients voting: four 30-second matches, and it reports votes cast against votes the server carried. What proves the results screen's map vote end to end |
-| `~/mph-net-test/hard/run-all.sh` / `run-all2.sh` | the hard-case batch against the Pi: a ninth player, a line that goes away, 100-300 ms, packet loss, everybody spectating, everybody recording, a match boundary, an authority leaving, and a ramp to twenty-odd matches at once. `.claude/testing/TEST-HARD-CASES.md` |
-| `~/mph-net-test/run-lag.sh MS SECONDS hunter...` | the same check against a loopback server behind `udp-lag.py`, which holds every datagram for `MS` before passing it on. A latency bug reproduced at a number you chose, rather than at whatever the internet is doing -- and the Pi answers in 7-17 ms, so it is the *worse* instrument for one |
+| External `run-mapvote.sh` (when available) | historical/private wrapper for multi-client post-match map-vote validation. Current behavior must still be checked against the real `-netcheck -mapvote` path |
+| External hard-case batch (when available) | historical/private orchestration for capacity, blackout, latency/loss, spectators, demos and match boundaries. Legacy player-authority cases are compatibility-only; `.claude/testing/TEST-HARD-CASES.md` |
+| `-netlag MS[:JITTER]` / `-netloss PCT` | preferred in-process latency/loss control for current client tests. `tools/udp-lag.py` remains a weaker external relay instrument when a proxy-shaped line is specifically needed |
 | `MphRead -maptest "ROOM" -players 8 -seconds 22` | load one room with a full house, drive every player, and report what the map holds and whether it survived |
 | `MphRead -maptest "ROOM" -players 8 -bots` | the same, but AI bots instead of the scripted tour -- a different code path, the only one that finds what only `PlayerAi` touches |
 | `MphRead -maptest "ROOM" -hunter H -hudshots` | put that hunter in slot 0, whose eyes and whose HUD every capture is taken through. Each of the eight lays its readouts out differently, so a HUD picture with no hunter named is a picture of Samus's and of nobody else's |
@@ -819,10 +819,16 @@ records what it *did* and what it *saw*; `compare-reports.py` cross-checks
 that what one claims to have done shows up as what every other client says it
 saw.
 
+Run the current executable directly for durable reproduction:
+
 ```bash
-cd ~/mph-net-test
-./run-check.sh 150 Samus Weavel Sylux Trace Samus Noxus   # seconds, then hunters
+./FruityPrime -netcheck HOST -port N -name ALPHA -hunter Samus -seconds 150
+./FruityPrime -netcheck HOST -port N -name BRAVO -hunter Sylux -seconds 150
 ```
+
+Private/external wrappers such as `run-check.sh` may orchestrate more clients
+when present, but they are not part of this repository and must not define the
+expected architecture.
 
 Read the output in this order: per-feature `MISMATCH` lines, then
 `scoreboards agree`, then `damage pipeline`, then `remote position snaps`.

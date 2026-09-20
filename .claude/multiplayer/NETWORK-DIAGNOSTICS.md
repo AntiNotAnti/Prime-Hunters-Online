@@ -1,5 +1,13 @@
 # Multiplayer — diagnostics, and the damage bug (resolved 2026-08-23)
 
+> **Historical postmortem.** This file intentionally preserves observations
+> from older protocol/topology eras, including client authority and relay
+> behavior. Use it to understand why a fix exists, not to infer current
+> production architecture. For current invariants read
+> `ARCHITECTURE-INVARIANTS.md`; for current server authority read
+> `NETWORK-SERVERAUTH.md`.
+
+
 The long-running "one remote slot receives zero damage for the whole match" bug
 was two faults, both from commit `bbb13b8`, and **neither was latency**. Full
 account in `CLAUDE.md`, "The damage bug, and what it actually was".

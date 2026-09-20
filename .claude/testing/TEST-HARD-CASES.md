@@ -10,10 +10,11 @@ Normal production matches are server authoritative. Client-authority/handover
 scenarios below are retained as historical regressions or explicit
 `RunsTheMatch=false` compatibility tests, not current production topology.
 
-Everything here runs **against the Pi** (`net.livetek.fr`), never a loopback
-server. A loopback server has none of the reordering, none of the jitter and
-none of the Pi's processor; a result from one must not be reported as a
-result about the real thing.
+The dated results below were taken against specific remote hosts, often the
+Pi. **Do not assume that host, address, private harness directory or deployment
+still exists.** For a current hard-case run, record the exact server build,
+host/region and shaping used. Loopback is valid for deterministic reproduction,
+but it is not evidence about real Internet jitter or server hardware capacity.
 
 ## The two instruments
 
@@ -28,7 +29,10 @@ who is not the authority, a hundred and sixty players from one box. It
 mirrors `NetProtocol.cs`, so **a layout change there must be mirrored in
 `netproto.py`** or every probe reports a dead server.
 
-## The rig
+## Historical external rig
+
+The following layout documents the private harness used for the dated runs. It
+is not shipped by this repository:
 
 ```
 ~/mph-net-test/

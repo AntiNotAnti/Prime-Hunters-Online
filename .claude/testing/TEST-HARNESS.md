@@ -1,15 +1,20 @@
 # Testing — test harness
 
-This document explains the netcheck, maptest and the harness scripts used in `~/mph-net-test`.
+This document explains the repo-owned `-netcheck`, `-maptest` and related
+diagnostics. Older sections also mention a private/external shell harness
+formerly kept under `~/mph-net-test`; that path and those scripts are **not
+part of this repository and are not source of truth**. Use them only when they
+actually exist on the machine doing the test.
 
-> **`~/mph-net-test` is not on this box any more.** Every `run-*.sh` and
-> `compare-reports.py` named below is gone with it; what survives is the
-> extracted game files in `~/mph-test/`. Rebuild what you need rather than
-> assuming a missing script means a broken setup. A two-client run against a
-> real server needs nothing else: copy `~/mph-test/paths.txt` next to
-> `src/MphRead/bin/Release/net10.0/FruityPrime.dll`, then start two
-> `dotnet FruityPrime.dll -netcheck HOST -port N -name X -hunter H -seconds N`
-> processes a few seconds apart and read the two reports against each other.
+A basic multi-client test needs only a current build, operator-supplied game
+files and a reachable current server. Start separate clients with, for example,
+
+```bash
+./FruityPrime -netcheck HOST -port N -name ALPHA -hunter Samus -seconds 120
+./FruityPrime -netcheck HOST -port N -name BRAVO -hunter Sylux -seconds 120
+```
+
+and compare what each client says it did with what the others observed.
 
 The runs where something is deliberately wrong -- a line that goes away, a
 ninth player, everybody spectating, twenty matches at once -- are in
@@ -24,10 +29,9 @@ Philosophy
 
 How to run
 
-```bash
-cd ~/mph-net-test
-./run-check.sh 150 Samus Weavel Sylux Trace Samus Noxus   # seconds, then hunters
-```
+Prefer the executable's diagnostics directly. If a private wrapper such as
+`run-check.sh` exists locally, treat it as orchestration around the same
+commands, not as the definition of the protocol or expected result.
 
 What the harness records
 
