@@ -50,7 +50,8 @@ namespace MphRead.Mods.Input
         public PadBindingState() { Reset(); }
 
         /// <summary>Every action, in the order a settings screen should list them.</summary>
-        public IReadOnlyList<PadAction> Actions => GameplayActionOrder;
+        public IReadOnlyList<PadAction> Actions => ActionOrder;
+        public IReadOnlyList<PadAction> GameplayActions => GameplayActionOrder;
         public IReadOnlyList<PadAction> ReplayActions => ReplayActionOrder;
 
         private static readonly PadAction[] GameplayActionOrder = new[]
