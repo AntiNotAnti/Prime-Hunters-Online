@@ -1,9 +1,7 @@
 # Testing — test harness
 
 This document explains the repo-owned `-netcheck`, `-maptest` and related
-diagnostics. Older sections also mention a private/external shell harness
-formerly kept under `~/mph-net-test`; that path and those scripts are **not
-part of this repository and are not source of truth**. Use them only when they
+diagnostics. Older sections also mention a private/external shell harness. Those scripts are **not part of this repository and are not source of truth**. Use them only when they
 actually exist on the machine doing the test.
 
 A basic multi-client test needs only a current build, operator-supplied game
@@ -52,8 +50,7 @@ Map sweeps and probes
 - `-maptest "ROOM" -players 8 -seconds 22` loads a room with eight players (a
   different hunter per slot), drives them through the tour, and prints an
   inventory: spawns, jump pads, teleporters, doors, afflictions, deaths.
-  `./run-maps.sh 8 22` in `~/mph-net-test` sweeps every room (~15 min for 33);
-  `grep MAPCRASH` / `grep MAPFAIL` the log.
+  A private `run-maps.sh` wrapper can sweep every room when available; the durable operation is invoking `-maptest` for each room and checking `MAPCRASH` / `MAPFAIL`.
 - `-maptest "ROOM" -drawrate N` draws every simulation step N times, which is
   what a 144 Hz screen does to a 60 Hz game. It is how the decoupled frame loop
   is checked from a box with no monitor. One assertion, `MAPFAIL` when it

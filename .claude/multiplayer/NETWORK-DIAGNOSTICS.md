@@ -72,7 +72,7 @@ for the first time (601 frames, observers 600 and 617).
 
 ## The randomised sweep
 
-`~/mph-net-test/run-batch.sh <runs> [seed]` draws map, roster, player count,
+The historical private `run-batch.sh <runs> [seed]` harness drew map, roster, player count,
 match length, point goal, latency (0-250 ms each way) and packet loss (0-3%) at
 random, keeps every run's logs under `batch-<seed>/NN/`, and prints only the runs
 that reported something. Short matches and low point goals are deliberate: a
@@ -735,8 +735,8 @@ completely. Any measurement of a scoreboard needs a match longer than the run.
 The report: A creates the game, B joins, A quits, B stays, A rejoins the
 same match. B sees A but cannot hit them; A can hit B.
 
-`~/mph-net-test/run-rejoin.sh [seconds] [leave_at] [rejoin_at] [host] [port]`
-builds exactly that topology and adds a control:
+The historical private `run-rejoin.sh [seconds] [leave_at] [rejoin_at] [host] [port]`
+built exactly that former client-authority topology and added a control:
 
 - A joins first, so it takes slot 0 and becomes the authority.
 - B joins (slot 1).

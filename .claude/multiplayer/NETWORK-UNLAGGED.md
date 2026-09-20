@@ -174,14 +174,15 @@ the `Spawn` call: the pool is picked from by exactly that test
 
 ## Measuring it
 
-```bash
-~/mph-net-test/run-unlagged.sh <seconds> <lag-ms> [on|off]
-```
+In the current server-authoritative topology the **server** is the machine that
+rewinds shots, so its lag-compensation/claim diagnostics are the authoritative
+measurement. Clients may be given different synthetic lines with
+`-netlag MS[:JITTER]` / `-netloss PCT`; no client becomes authority because
+it joined first.
 
-ALPHA joins first and is therefore the authority, on a clean line; BRAVO and
-CHARLIE get the bad line. **ALPHA's report is the only one that counts** — it
-is the only machine that rewinds anything, and the other two correctly say
-"nothing to compensate". Every `-netcheck` report carries the line:
+Older tables below used a private `run-unlagged.sh` wrapper and a
+client-authority topology. Keep them as historical A/B evidence, not as current
+instructions. Current server logs report the same core line:
 
 ```
 lag compensation: 420 shots rewound, mean 9.3 frames (156 ms), worst 15,

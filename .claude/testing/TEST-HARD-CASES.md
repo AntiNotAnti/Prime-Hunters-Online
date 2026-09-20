@@ -35,7 +35,7 @@ The following layout documents the private harness used for the dated runs. It
 is not shipped by this repository:
 
 ```
-~/mph-net-test/
+<external-harness>/
   netproto.py        the wire format: packets, a virtual client, a status query
   netprobe.py        the edge-case suite -- one subcommand per question
   netload.py         synthetic players, for capacity: one process per game
