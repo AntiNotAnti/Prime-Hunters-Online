@@ -203,7 +203,7 @@ position.
 
 ## Measured against the relay, on the Pi
 
-Three scripted clients, 150 s, MP1 SANCTORUS on `net.livetek.fr`, with 150 ms
+Three scripted clients, 150 s, MP1 SANCTORUS on `51.161.113.128`, with 150 ms
 injected on two of the three (`run-remote-lag.sh`). The same scenario twice,
 the only difference being where the simulation lives.
 

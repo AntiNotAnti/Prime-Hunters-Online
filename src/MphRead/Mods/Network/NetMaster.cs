@@ -954,7 +954,7 @@ namespace MphRead.Mods.Network
         /// obvious box to also be running a directory -- so each listed
         /// address is asked on the directory port as well, and whatever
         /// answers goes on the list under that server's own name. A player
-        /// picking "Fruity Prime - Japan" to host on is then picking a place
+        /// picking "Project Prime - Japan" to host on is then picking a place
         /// they can already see and have already pinged.
         ///
         /// Nothing here needs deploying to *this* build. The moment a box in
