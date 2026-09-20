@@ -760,7 +760,7 @@ namespace MphRead.Mods.Launcher.Gui
             // The settings, in a match and in the smallest window the
             // sequence uses: the page that has to fit is this one, and the
             // in-game screens are drawn larger than the launcher's.
-            w => { Shot(w, "shell-pause"); Click(c => c is DeckButton button && button.Text == "Settings"); Wait(20); },
+            w => { Shot(w, "shell-pause"); Click(c => FrontAction(c, "SETTINGS")); Wait(20); },
             w => { Shot(w, "shell-settings-ingame"); Escape(); Wait(15); },
             // The match *ending*, in fullscreen, rather than being left: a
             // different path out (the engine fades and quits the scene itself)
@@ -839,8 +839,10 @@ namespace MphRead.Mods.Launcher.Gui
         /// not a fault.
         /// </summary>
         private static bool FrontAction(Control control, string label) =>
-            control is HubNavButton hub && hub.Label == label
-            || control is DeckButton deck && deck.Text == label;
+            control is HubNavButton hub
+                && String.Equals(hub.Label, label, StringComparison.OrdinalIgnoreCase)
+            || control is DeckButton deck
+                && String.Equals(deck.Text, label, StringComparison.OrdinalIgnoreCase);
 
         private static void ClickIfReady(Func<Control, bool> match)
         {

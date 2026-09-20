@@ -188,7 +188,8 @@ namespace MphRead.Mods.Launcher.Gui
                 State = Network.VoteStatePacket.StateRunning, RoomKey = "test", Proposer = "Player", Seconds = 30
             });
             pause.RefreshVote(); window.UpdateLayout();
-            var vote = pause.GetVisualDescendants().OfType<DeckButton>().First(w => w.Text == "Accept map vote");
+            var vote = pause.GetVisualDescendants().OfType<HubNavButton>()
+                .First(w => w.Label == "ACCEPT MAP VOTE");
             FocusNavigator.Focus(vote);
             GamepadChecks.Check(vote.IsVisible && vote.IsFocused, "active map vote can be reached with controller focus");
             Network.MapVote.Reset(); pause.RefreshVote(); window.UpdateLayout();
