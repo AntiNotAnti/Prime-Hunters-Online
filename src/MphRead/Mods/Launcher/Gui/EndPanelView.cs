@@ -44,6 +44,7 @@ namespace MphRead.Mods.Launcher.Gui
     internal sealed class EndPanelView : UserControl
     {
         private readonly UiTabs _tabs;
+        private readonly bool _hasBallot;
         private readonly DeckGrid _ballot = new() { FixedColumns = 2, Ratio = 16 / 9.0 };
         private readonly ScrollViewer _ballotScroll;
         private readonly StackPanel _hunterPane = new() { Spacing = 8 };
@@ -71,7 +72,13 @@ namespace MphRead.Mods.Launcher.Gui
             IsHitTestVisible = true;
 
             _hunters = HunterStand.Names;
-            _tabs = new UiTabs(new[] { "Next match", "Change hunter" });
+            // Persistent online sessions return to their lobby after the report,
+            // so the lobby is where the next map is chosen. Continuous/offline
+            // flows keep the existing results ballot.
+            _hasBallot = !NetSession.PersistentLobby;
+            _tabs = new UiTabs(_hasBallot
+                ? new[] { "Next match", "Change hunter" }
+                : new[] { "Change hunter" });
             _tabs.Changed += (_, _) => ShowFace();
 
             _ballotScroll = new ScrollViewer
@@ -156,7 +163,7 @@ namespace MphRead.Mods.Launcher.Gui
         }
 
         /// <summary>Open on the hunter face, for -uishot.</summary>
-        internal void ShowHunter() => _tabs.Index = 1;
+        internal void ShowHunter() => _tabs.Index = _hasBallot ? 1 : 0;
 
         private int HunterIndex() =>
             Math.Max(0, Array.IndexOf(_hunters, Mods.EndScreen.Hunter.ToString()));
@@ -177,15 +184,16 @@ namespace MphRead.Mods.Launcher.Gui
 
         private void ShowFace()
         {
-            _ballotScroll.IsVisible = _tabs.Index == 0;
-            _hunterPane.IsVisible = _tabs.Index == 1;
+            bool ballot = _hasBallot && _tabs.Index == 0;
+            _ballotScroll.IsVisible = ballot;
+            _hunterPane.IsVisible = !ballot;
             // The stand as well as the pane it is in. A hidden pane keeps the
             // bounds its children were last arranged at, and the head that
             // has the engine draw the real model into the stand's rectangle
             // reads those bounds -- so on the ballot face the model's own
             // dark ground was painted over the scoreboard's deaths column.
-            _stand.IsVisible = _tabs.Index == 1;
-            _empty.IsVisible = _tabs.Index == 0 && MapPick.Order.Count == 0;
+            _stand.IsVisible = !ballot;
+            _empty.IsVisible = ballot && MapPick.Order.Count == 0;
         }
 
         /// <summary>
@@ -216,7 +224,9 @@ namespace MphRead.Mods.Launcher.Gui
             // A copy, because the list is the network thread's: it is rebuilt
             // whenever a vote arrives, and enumerating it from here while that
             // happens took the process down with "collection was modified".
-            string[] order = System.Linq.Enumerable.ToArray(MapPick.Order);
+            string[] order = _hasBallot
+                ? System.Linq.Enumerable.ToArray(MapPick.Order)
+                : Array.Empty<string>();
             string key = String.Join('|', order);
             if (key != _order)
             {
@@ -245,7 +255,7 @@ namespace MphRead.Mods.Launcher.Gui
                     _ballot.Children.Add(tile);
                 }
             }
-            _empty.IsVisible = order.Length == 0 && _tabs.Index == 0;
+            _empty.IsVisible = _hasBallot && order.Length == 0 && _tabs.Index == 0;
             int best = 0;
             foreach (string room in order)
             {
@@ -285,7 +295,7 @@ namespace MphRead.Mods.Launcher.Gui
             _stand.Name2 = _hunter.Value;
             _stand.Suit = wantSuit;
 
-            _count.Text = MapPick.Eligible > 1
+            _count.Text = _hasBallot && MapPick.Eligible > 1
                 ? $"{MapPick.Eligible} in the room"
                 : "";
         }
