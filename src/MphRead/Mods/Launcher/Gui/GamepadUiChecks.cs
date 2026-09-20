@@ -224,7 +224,7 @@ namespace MphRead.Mods.Launcher.Gui
 
             var hostPicker = new HostPicker(new[]
             {
-                new HostCandidate
+                new Network.HostCandidate
                 {
                     Label = "Test host",
                     Host = "127.0.0.1",
