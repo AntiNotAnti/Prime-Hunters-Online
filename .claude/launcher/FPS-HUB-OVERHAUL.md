@@ -77,6 +77,7 @@ Current implementation:
 
 - `HubPlayView` now separates Multiplayer / Offline / Adventure.
 - `HubMultiplayerView` owns Quick Play / Server Browser / Custom Match, removing redundant multiplayer actions from Home.
+- Custom Match is hub-native end to end: lobby setup, map rotation and host selection keep the existing hosting/network implementation but use the same FPS shell and action bars.
 - `ServerBrowserService` owns renderer-neutral discovery, probing, endpoint parsing and
   joining; both the transitional Play face and the new browser share its join path.
 - `HubServerBrowserView` is the modern server browser with direct-connect, operative

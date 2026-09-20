@@ -492,9 +492,9 @@ namespace MphRead.Mods.Launcher.Gui
         }
 
         /// <summary>
-        /// Run a server rather than join one -- pushed over the browser rather
-        /// than replacing it, so backing out lands on the list of servers,
-        /// which is where somebody who changed their mind was going anyway.
+        /// Create a custom multiplayer lobby. The screen is pushed over
+        /// whichever Multiplayer surface opened it, so Back returns to the
+        /// player's previous context without duplicating hosting state.
         /// </summary>
         private void OpenCreateServer()
         {

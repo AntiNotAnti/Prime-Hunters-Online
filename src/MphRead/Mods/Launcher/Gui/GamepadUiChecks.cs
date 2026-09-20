@@ -200,6 +200,47 @@ namespace MphRead.Mods.Launcher.Gui
             GamepadChecks.Check(offlineClosed == 1,
                 "Offline Back accepts a pointer click");
 
+            var customMatch = new CreateServerScreen(
+                Array.Empty<string>(), discoverHosts: false);
+            int customClosed = 0;
+            customMatch.Closed += (_, _) => customClosed++;
+            window.Width = 960; window.Height = 660; window.Content = customMatch;
+            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            GamepadChecks.Check(ControllerNav.Find(customMatch, "custom.create")
+                is { IsEffectivelyVisible: true },
+                "Custom Match exposes Create Lobby");
+            Click(window, ControllerNav.Find(customMatch, "custom.back")!);
+            GamepadChecks.Check(customClosed == 1,
+                "Custom Match Back accepts a pointer click");
+
+            var rotationPicker = new MapRotationPicker(
+                Array.Empty<string>(), Array.Empty<string>());
+            int rotationCancelled = 0;
+            rotationPicker.Cancelled += (_, _) => rotationCancelled++;
+            window.Content = rotationPicker; window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            Click(window, ControllerNav.Find(rotationPicker, "rotation.back")!);
+            GamepadChecks.Check(rotationCancelled == 1,
+                "Custom Match map rotation Back accepts a pointer click");
+
+            var hostPicker = new HostPicker(new[]
+            {
+                new HostCandidate
+                {
+                    Label = "Test host",
+                    Host = "127.0.0.1",
+                    Port = Network.NetConfig.DefaultPort,
+                    Answered = true,
+                    CanHost = true,
+                    Latency = 1
+                }
+            }, asking: false);
+            int hostCancelled = 0;
+            hostPicker.Cancelled += (_, _) => hostCancelled++;
+            window.Content = hostPicker; window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            Click(window, ControllerNav.Find(hostPicker, "host.back")!);
+            GamepadChecks.Check(hostCancelled == 1,
+                "Custom Match host selection Back accepts a pointer click");
+
             var quickPlay = new HubQuickPlayView(preview: true);
             int quickClosed = 0, quickBrowse = 0;
             quickPlay.Closed += (_, _) => quickClosed++;

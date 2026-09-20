@@ -207,13 +207,16 @@ namespace MphRead.Mods.Launcher.Gui
             // The dedicated one is a separate picture because the rows it
             // hides and the warning it raises are the whole difference between
             // the two, and neither shows on the other.
-            yield return ("create-server", new CreateServerScreen(rooms), _windowSize);
-            var dedicated = new CreateServerScreen(rooms);
+            yield return ("custom-match",
+                new CreateServerScreen(rooms, discoverHosts: false), _windowSize);
+            yield return ("custom-match-phone-landscape",
+                new CreateServerScreen(rooms, discoverHosts: false), _phoneLandscape);
+            var dedicated = new CreateServerScreen(rooms, discoverHosts: false);
             dedicated.ShowDedicated();
-            yield return ("create-server-dedicated", dedicated, _windowSize);
-            yield return ("create-server-maps",
+            yield return ("custom-match-dedicated", dedicated, _windowSize);
+            yield return ("custom-match-rotation",
                 new MapRotationPicker(rooms, Array.Empty<string>()), _windowSize);
-            yield return ("create-server-hosts", new HostPicker(Fleet(), asking: false),
+            yield return ("custom-match-hosts", new HostPicker(Fleet(), asking: false),
                 _windowSize);
             yield return ("settings", new SettingsView(settings), _windowSize);
             var credits = new SettingsView(settings);
