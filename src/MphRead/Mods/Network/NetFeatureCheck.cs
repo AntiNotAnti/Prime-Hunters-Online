@@ -633,16 +633,24 @@ namespace MphRead.Mods.Network
                 phases.Append($" {pair.Key}={pair.Value}");
             }
             Console.WriteLine(phases.ToString());
+            // The final report describes the whole netcheck session, not
+            // whichever match happened to be active when the window closed.
+            // Per-match NetDamage tallies reset at room/lobby boundaries, so
+            // using them here produced impossible reports such as a confirmed
+            // prediction beside Replayed=0 after a rematch.
             var pipeline = new StringBuilder("    damage pipeline (resolved here / replayed here):");
+            var currentPipeline = new StringBuilder("    damage pipeline current match:");
             for (int slot = 0; slot < PlayerEntity.SlotCapacity; slot++)
             {
                 if (_records[slot].SpawnedFrames == 0)
                 {
                     continue;
                 }
-                pipeline.Append($" [{slot}] {NetDamage.Resolved[slot]}/{NetDamage.Replayed[slot]}");
+                pipeline.Append($" [{slot}] {NetDamage.ResolvedSession[slot]}/{NetDamage.ReplayedSession[slot]}");
+                currentPipeline.Append($" [{slot}] {NetDamage.Resolved[slot]}/{NetDamage.Replayed[slot]}");
             }
-            Console.WriteLine(pipeline.ToString());
+            Console.WriteLine(pipeline.ToString() + " (session total)");
+            Console.WriteLine(currentPipeline.ToString());
             var fired = new StringBuilder("    shots spawned here (per slot):");
             for (int slot = 0; slot < PlayerEntity.SlotCapacity; slot++)
             {
