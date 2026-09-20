@@ -9,6 +9,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using MphRead.Entities;
 
 namespace MphRead.Mods.Launcher.Gui
 {
