@@ -198,7 +198,14 @@ namespace MphRead.Mods.Replay
                 ? "--" : InputSettings.KeyName(key);
 
         private static string Pad(PadAction action)
-            => PadBindings.Describe(PadBindings.Get(action)).ToUpperInvariant();
+        {
+            for (int slot = 0; slot < 2; slot++)
+            {
+                if (PadBindings.Slot(action, slot) != GamepadButtons.None)
+                    return PadBindings.DescribeSlot(action, slot).ToUpperInvariant();
+            }
+            return "UNBOUND";
+        }
 
         private static void RefreshDiagnostics()
         {
