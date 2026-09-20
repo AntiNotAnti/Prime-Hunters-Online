@@ -158,6 +158,9 @@ namespace MphRead.Mods.Launcher.Gui
                 new StartScreen(settings, rooms), _phonePortrait);
             yield return ("start-phone-landscape",
                 new StartScreen(settings, rooms), _phoneLandscape);
+            yield return ("hub-home", new HubHomeView(), _windowSize);
+            yield return ("hub-home-phone-portrait", new HubHomeView(), _phonePortrait);
+            yield return ("hub-home-phone-landscape", new HubHomeView(), _phoneLandscape);
             yield return ("deploy", new HubPlayView(), _windowSize);
             yield return ("deploy-phone-portrait", new HubPlayView(), _phonePortrait);
             yield return ("deploy-phone-landscape", new HubPlayView(), _phoneLandscape);
