@@ -94,25 +94,6 @@ claiming coverage that isn't there.
   step to `worst`. Both are only meaningful compared between two arms of the
   same scenario.
 
-- **The authority spawns beams for a dead player that the player's own machine
-  never spawned, and the reason is not established.** Fell out of the arm that
-  closed the gap above: in the same 70 s run, slot 1 -- the runner, which
-  presses fire only while dead, since holding fire is what asks for an early
-  respawn -- read **0** beams on its own machine, **15** on the observer and
-  **29** on the authority. Three machines, three answers, for a slot that
-  fired nothing it meant to fire.
-
-  The shape that fits is the revive boundary: the trigger is still held when
-  the authority's copy comes back, and it empties into the floor there, while
-  the owner's copy comes back later with the trigger already released. That is
-  a guess. What is measured is the disagreement.
-
-  It does not touch the headshot numbers -- those shots are aimed at the floor
-  by design (`HitRig.Drive`) and land on nobody -- but it does inflate the
-  authority's shot count, so quote per-slot counts rather than a total. Follow
-  it with `NetDamage.Fired` around a death, on all three machines.
-
-
 - **Live validation of snapshot-based form reconciliation remains.** The
   authority now reconciles from the owner's intent and each client from the
   authority's snapshot, with a transition-aware guard for stale state. The
