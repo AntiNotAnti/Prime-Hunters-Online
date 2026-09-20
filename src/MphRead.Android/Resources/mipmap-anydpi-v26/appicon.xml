@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 8 and up mask every icon to whatever shape the launcher uses, and
+     do it to the *foreground* layer only, cropping to the inner 72 of 108 dp.
+     appicon_foreground.png is drawn with exactly that margin, so the mark
+     survives a circle, a squircle and a rounded square alike. Older launchers
+     ignore this file and take the flat mipmap-*/appicon.png beside it. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+  <background android:drawable="@color/appicon_background" />
+  <foreground android:drawable="@mipmap/appicon_foreground" />
+</adaptive-icon>

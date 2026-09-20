@@ -1,0 +1,35 @@
+{
+  "//": "Rename to q3dm17.json and put your own pak0.pk3 in the maps folder beside it, then run: FruityPrime -mapgen Q3DM17",
+  "name": "Q3DM17",
+  "inGameName": "The Longest Yard",
+  "textureSource": "MP3 PROVING GROUND",
+  "scaleFactor": 5,
+  "killHeight": -60,
+  "farClip": 400,
+  "fogEnabled": true,
+  "fogColor": [3, 4, 8],
+  "fogSlope": 3,
+  "fogOffset": 65200,
+  "pointLimit": 7,
+  "preview": { "position": [60, 45, 70], "target": [0, 0, 0] },
+  "import": {
+    "source": "pak0.pk3",
+    "mapName": "q3dm17",
+    "unitsPerUnit": 28,
+    "defaultMaterial": 0,
+    "shaderMaterials": {
+      "textures/base_floor": 1,
+      "textures/base_wall": 0,
+      "textures/base_trim": 2,
+      "textures/base_support": 2,
+      "textures/gothic_floor": 1,
+      "textures/gothic_trim": 2,
+      "textures/sfx": 2
+    }
+  },
+  "materials": [
+    { "name": "wall",  "sourceMaterial": 12 },
+    { "name": "floor", "sourceMaterial": 2 },
+    { "name": "trim",  "sourceMaterial": 20 }
+  ]
+}

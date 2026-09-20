@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Kept because nothing calls them.
+
+     AndroidInput builds a KeyboardState and a MouseState and drives them by
+     reflection: OpenTK keeps their constructors and setters internal, and
+     handing the scene an input state of our own is what lets the touch
+     controls go through the engine's ordinary input path instead of a fork of
+     it. Every use of these two is through a MethodInfo, and a Release publish
+     really does run the trimmer over this assembly, so without this file the
+     touch controls work in Debug and throw on the first frame of a release
+     APK. -->
+<linker>
+  <!-- The custom maps, for the same reason one step removed.
+
+       A map file is read with JsonSerializer.Deserialize, which finds the
+       properties by reflection; the trimmer cannot see that and is entitled to
+       remove every one of them. What that produces is not a crash but
+       something worse to diagnose: a map that loads into an object of
+       defaults, so a release APK would list rooms with no name, no geometry
+       and no spawns while the debug build was perfect. -->
+  <assembly fullname="FruityPrime">
+    <type fullname="MphRead.Mods.MapGen.MapDefinition" preserve="all" />
+    <type fullname="MphRead.Mods.MapGen.MapPreview" preserve="all" />
+    <type fullname="MphRead.Mods.MapGen.MapImport" preserve="all" />
+    <type fullname="MphRead.Mods.MapGen.MapMaterial" preserve="all" />
+    <type fullname="MphRead.Mods.MapGen.MapBrush" preserve="all" />
+    <type fullname="MphRead.Mods.MapGen.MapSpawn" preserve="all" />
+    <type fullname="MphRead.Mods.MapGen.MapJumpPad" preserve="all" />
+    <type fullname="MphRead.Mods.MapGen.MapItem" preserve="all" />
+  </assembly>
+  <assembly fullname="OpenTK.Windowing.GraphicsLibraryFramework">
+    <type fullname="OpenTK.Windowing.GraphicsLibraryFramework.KeyboardState" preserve="all" />
+    <type fullname="OpenTK.Windowing.GraphicsLibraryFramework.MouseState" preserve="all" />
+  </assembly>
+</linker>

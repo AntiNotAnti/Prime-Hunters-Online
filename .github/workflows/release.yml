@@ -1,0 +1,624 @@
+# Package a tagged commit for people who just want to play.
+#
+#   git tag v0.9.0 && git push origin v0.9.0
+#
+# Or, from the Actions tab, with nothing typed and nothing cloned: pick a
+# `bump` and this workflow creates the tag itself before building it. That is
+# the whole of the auto-tagging here -- there is deliberately none on a push
+# to master, because every push would then be a release.
+#
+# Produces one archive per target, each holding binaries and a note, and
+# nothing else: the game's own files are unpacked from the player's cartridge
+# dump by the launcher, on their machine, and are never part of a release.
+#
+# What it leaves is a *draft*. The packages are built, checked and uploaded,
+# and publishing them is a person pressing the button.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      # Neither is required: give a tag to rebuild one that exists, or leave it
+      # empty and pick a bump to have the next one created here. Both empty is
+      # the one combination that fails, and it says so.
+      tag:
+        description: Existing tag to build (leave empty to bump instead)
+        required: false
+      bump:
+        description: Create the next tag from the newest one, when no tag is given
+        required: false
+        default: none
+        type: choice
+        options: [none, patch, minor, major]
+
+permissions:
+  contents: write
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.name.outputs.tag }}
+      version: ${{ steps.name.outputs.version }}
+      android_version_code: ${{ steps.name.outputs.android_version_code }}
+    steps:
+      # Resolved before anything is checked out, because gh api needs no local
+      # repo and this is what turns "typed without its v" or "that tag was
+      # never pushed" into one clear line instead of actions/checkout quietly
+      # retrying a fetch for a ref that was never going to exist -- which is
+      # exactly the failure a workflow_dispatch run with a typo produces.
+      #
+      # It is also where a tag gets *created*, for a dispatch run that asked
+      # for a bump. Doing it here rather than in a workflow of its own is not
+      # tidiness: a tag pushed with the default GITHUB_TOKEN does not trigger
+      # another workflow (GitHub's anti-recursion rule), so a separate tag.yml
+      # would need a PAT or a GitHub App to make this one run. One workflow
+      # that can mint its own tag needs no second credential at all.
+      - name: resolve the tag
+        id: name
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Evaluated by the expressions engine, not by bash, and kept in two
+          # separate variables on purpose. GITHUB_REF_NAME is *always* set --
+          # for workflow_dispatch it is whichever branch was picked to run the
+          # workflow from, "master" more often than not -- so any fallback that
+          # can reach it from a dispatch run silently rebuilds that branch
+          # instead of failing. PUSHED_TAG is empty unless a tag push is what
+          # started this, which is the only event where ref_name is a tag.
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          BUMP: ${{ github.event.inputs.bump }}
+          PUSHED_TAG: ${{ github.event_name == 'push' && github.ref_name || '' }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          TAG="${INPUT_TAG:-$PUSHED_TAG}"
+          CREATE_TAG=false
+          # Bound each component before doing Bash arithmetic (which can wrap).
+          RELEASE_TAG='^v(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})$'
+
+          if [ -n "$TAG" ]; then
+            # This project's tags are always v-prefixed (push: tags: ["v*"]);
+            # a bare version number typed into workflow_dispatch is that tag,
+            # not a different one worth failing over.
+            if [[ "$TAG" != v* ]]; then
+              TAG="v$TAG"
+            fi
+            if ! gh api "repos/$REPO/git/ref/tags/$TAG" >/dev/null 2>&1; then
+              echo "::error::No tag '$TAG' exists in $REPO. Push one first:"
+              echo "::error::  git tag $TAG && git push origin $TAG"
+              exit 1
+            fi
+            echo "Building the existing tag $TAG."
+          elif [ "${BUMP:-none}" != none ]; then
+            # The newest release tag, sorted as versions rather than as text --
+            # the refs API returns them in ref order, where v0.10.0 sorts
+            # before v0.9.0. Anything not vX.Y.Z is not a release of this
+            # project and does not get a vote.
+            LATEST=$(gh api "repos/$REPO/git/refs/tags" --paginate --jq '.[].ref' 2>/dev/null \
+              | sed 's#^refs/tags/##' \
+              | grep -E "$RELEASE_TAG" \
+              | sort -V | tail -1 || true)
+            if [ -z "$LATEST" ]; then
+              # Nothing to bump from. Releases here are numbered from v0.1.0
+              # (CLAUDE.md), so that is the first tag whichever bump was asked
+              # for -- a "patch" off an imagined v0.0.0 would give v0.0.1.
+              TAG=v0.1.0
+              echo "No release tag exists yet; starting at $TAG."
+            else
+              IFS=. read -r MAJOR MINOR PATCH <<< "${LATEST#v}"
+              case "$BUMP" in
+                major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+                minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+                patch) PATCH=$((PATCH + 1)) ;;
+              esac
+              TAG="v$MAJOR.$MINOR.$PATCH"
+              echo "Newest release tag is $LATEST; $BUMP bump gives $TAG."
+            fi
+            CREATE_TAG=true
+          else
+            echo "::error::Give a tag to build, or pick a bump to create the next one."
+            exit 1
+          fi
+
+          if [[ ! "$TAG" =~ $RELEASE_TAG ]]; then
+            echo "::error::Release tag '$TAG' must use vMAJOR.MINOR.PATCH, with components 0-999 and no leading zeroes."
+            exit 1
+          fi
+          VERSION="${TAG#v}"
+          IFS=. read -r MAJOR MINOR PATCH <<< "$VERSION"
+          if (( 10#$MAJOR > 999 || 10#$MINOR > 999 || 10#$PATCH > 999 )); then
+            echo "::error::Release tag '$TAG' cannot be represented by Android's versionCode."
+            exit 1
+          fi
+          ANDROID_VERSION_CODE=$((10#$MAJOR * 1000000 + 10#$MINOR * 1000 + 10#$PATCH))
+          if (( ANDROID_VERSION_CODE < 1 )); then
+            echo "::error::Release tag '$TAG' produces an invalid Android versionCode."
+            exit 1
+          fi
+
+          # Validate before creating a ref: a failed bump must not leave a tag
+          # that cannot be packaged, and that the next bump will build upon.
+          if [ "$CREATE_TAG" = true ]; then
+            if gh api "repos/$REPO/git/ref/tags/$TAG" >/dev/null 2>&1; then
+              echo "::error::$TAG already exists. Build it by name, or bump past it."
+              exit 1
+            fi
+            gh api -X POST "repos/$REPO/git/refs" \
+              -f ref="refs/tags/$TAG" -f sha="$SHA" >/dev/null
+            echo "Created $TAG at ${SHA:0:7}."
+            echo "created=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          # All published packages consume this one release number. The
+          # updater compares it against the tag on GitHub, so a build that is
+          # not stamped here can never know it is out of date.
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          # Android also needs a monotonically increasing integer versionCode;
+          # encode the same semver as MAJOR.MINOR.PATCH without losing order.
+          echo "android_version_code=$ANDROID_VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "### Fruity Prime $TAG" >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    needs: resolve
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ needs.resolve.outputs.tag }}
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      # For the Android package. The workload brings the .NET side of that
+      # toolchain and not a JDK, and the Android SDK's build tools are Java.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: install the android workload
+        run: dotnet workload install android
+
+      - name: nothing from the game is tracked
+        run: tools/check-no-game-assets.sh
+
+      - name: every custom map has the level it converts
+        run: tools/check-maps-shipped.sh
+
+      # Cook every custom map into the one file it ships as. The recipe, the
+      # level it converts and the textures baked from it go into a .fpmap,
+      # with the level trimmed to the lumps the importer actually reads: 376 KB
+      # for de_dust2 against the 2.8 MB its folder weighs. That bundle is what
+      # the packages carry, and it is what somebody can be handed on its own --
+      # the .pk3 it was cooked from is a source and is kept out of the output
+      # by CopyToPublishDirectory. It is not committed, so it is cooked here.
+      - name: cook the map bundles
+        run: dotnet run --project src/MphRead/MphRead.csproj -c Release -- -mapdir maps -mapbundle
+
+      - name: publish every target
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          stamp="-p:Version=$VERSION -p:InformationalVersion=$VERSION"
+          for rid in win-x64 linux-x64; do
+            dotnet publish src/MphRead/MphRead.csproj -c Release -r "$rid" $stamp \
+              --self-contained true -p:PublishSingleFile=true -o "publish/$rid"
+          done
+          # The three server packages: Windows, plain x64 Linux (a VPS, a
+          # spare desktop -- anything that is not the Pi) and ARM64 (the Pi).
+          # Same project each time, launcher left out, no UI toolkit: none of
+          # these machines has anybody sitting at it.
+          #
+          # Only the Windows one gets a name of its own (FruityPrimeServer,
+          # from a console-subsystem header) so that it can sit in a folder
+          # beside the game's exe. Off Windows the subsystem split does not
+          # exist and every server package holds exactly one binary, so both
+          # keep the plain name FruityPrime.
+          dotnet publish src/MphRead/MphRead.csproj -c Release -r win-x64 \
+            -p:MphReadServer=true $stamp --self-contained true \
+            -p:PublishSingleFile=true -o publish/win-x64-server
+          dotnet publish src/MphRead/MphRead.csproj -c Release -r linux-x64 \
+            -p:MphReadServer=true $stamp --self-contained true \
+            -p:PublishSingleFile=true -o publish/linux-x64-server
+          dotnet publish src/MphRead/MphRead.csproj -c Release -r linux-arm64 \
+            -p:MphReadServer=true $stamp --self-contained true \
+            -p:PublishSingleFile=true -o publish/linux-arm64
+
+      # The phone, from the same tag and stamped with the same version -- the
+      # updater compares that against the tag on GitHub, and an APK that is not
+      # stamped is one that can never know it is out of date.
+      #
+      # InstallAndroidDependencies rather than named sdkmanager packages: it
+      # asks for whatever the project's TargetFramework declares, so bumping
+      # net10.0-android36.0 does not silently leave this behind.
+      # The signing key, when there is one.
+      #
+      # This is what makes the in-app updater possible and it is not a
+      # nicety: Android refuses an update whose signing certificate differs
+      # from the installed app's, and the SDK's debug key is generated on the
+      # machine doing the build -- so every release from a fresh runner used
+      # to carry a *different* certificate and none of them could replace
+      # another. See .claude/build-deploy/BUILD-WORKFLOW.md.
+      #
+      # Absent secrets fall back to the debug key rather than failing the
+      # release: a fork with no keystore still gets an installable APK, it
+      # simply cannot be updated in place.
+      - name: unlock the android keystore
+        id: keystore
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KEYSTORE:-}" ]; then
+            echo "have=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::no ANDROID_KEYSTORE secret; the APK gets a throwaway debug key and cannot update an existing install"
+            exit 0
+          fi
+          # Outside the workspace, so no later step can archive it by accident.
+          printf '%s' "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/android.jks"
+          echo "have=true" >> "$GITHUB_OUTPUT"
+
+      - name: publish the APK
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          ANDROID_VERSION_CODE: ${{ needs.resolve.outputs.android_version_code }}
+          HAVE_KEYSTORE: ${{ steps.keystore.outputs.have }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          proj=src/MphRead.Android/MphRead.Android.csproj
+          sdk=( -p:AndroidSdkDirectory="$ANDROID_HOME" -p:JavaSdkDirectory="$JAVA_HOME" )
+          signing=()
+          if [ "$HAVE_KEYSTORE" = "true" ]; then
+            # env: rather than the passwords themselves. .NET for Android
+            # reads that prefix as "the variable named this", which keeps
+            # both out of the process table and out of the MSBuild log.
+            signing=(
+              -p:AndroidKeyStore=true
+              -p:AndroidSigningKeyStore="$RUNNER_TEMP/android.jks"
+              -p:AndroidSigningStorePass=env:KEYSTORE_PASSWORD
+              -p:AndroidSigningKeyAlias="$KEY_ALIAS"
+              -p:AndroidSigningKeyPass=env:KEY_PASSWORD
+            )
+          fi
+          dotnet build "$proj" -t:InstallAndroidDependencies "${sdk[@]}" \
+            -p:AcceptAndroidSDKLicenses=True
+          dotnet publish "$proj" -c Release -p:AndroidPackageFormat=apk "${sdk[@]}" \
+            "${signing[@]}" \
+            -p:Version="$VERSION" -p:InformationalVersion="$VERSION" \
+            -p:ApplicationDisplayVersion="$VERSION" \
+            -p:ApplicationVersion="$ANDROID_VERSION_CODE" \
+            -o publish/android
+
+      # What the updater will compare against on every phone. Printed, not
+      # checked: nothing here knows what the previous release was signed with,
+      # and a fingerprint in the log is what turns "App not installed" into a
+      # two-minute diff against the last release's run.
+      - name: report the APK's signer
+        run: |
+          set -euo pipefail
+          apk=$(ls publish/android/*-Signed.apk | head -1)
+          # apksigner rather than keytool: a package signed only with the v2
+          # or v3 scheme has no jar signature for keytool to print, and .NET
+          # for Android decides which schemes to use on its own.
+          signer=$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | tail -1 || true)
+          if [ -n "$signer" ]; then
+            "$signer" verify --print-certs "$apk" | grep -Ei "SHA-256 digest|Signer" || true
+          else
+            "$JAVA_HOME/bin/keytool" -printcert -jarfile "$apk" \
+              | grep -E "SHA256:|Owner:" || true
+          fi
+
+      - name: nothing from the game is in the output
+        run: >
+          tools/check-no-game-assets.sh publish/win-x64 publish/linux-x64
+          publish/linux-arm64 publish/win-x64-server publish/linux-x64-server
+
+      # What a downloaded release is judged on: the maps are there and ready.
+      - name: the custom maps reached every package
+        run: >
+          for d in publish/win-x64 publish/linux-x64 publish/linux-arm64; do
+          tools/check-maps-shipped.sh "$d" || exit 1; done
+
+      # A GUI game and a console server, which is what makes one
+      # double-clickable and the other scriptable. Checked before a tag exists,
+      # because a release is where getting it wrong reaches players.
+      - name: each Windows binary is what it claims to be
+        run: |
+          set -euo pipefail
+          tools/check-subsystem.sh gui publish/win-x64/FruityPrime.exe
+          tools/check-subsystem.sh console publish/win-x64-server/FruityPrimeServer.exe
+
+      # Nothing gets tagged as a release until a server out of it has actually
+      # started, registered with a directory and answered a query. This runner
+      # is x64 Linux, so both x64 builds can be started here -- the game
+      # build's server capability and the standalone server package, which is
+      # otherwise the one server target nothing runs on a real machine before
+      # it reaches a player. The Windows server gets the same check on a
+      # Windows runner in build.yml; the ARM64 one cannot run on this runner
+      # at all, being cross-compiled for a different processor.
+      - name: the dedicated server runs
+        run: |
+          set -euo pipefail
+          tools/check-dedicated-server.sh publish/linux-x64
+          tools/check-dedicated-server.sh publish/linux-x64-server
+
+      - name: package
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp LICENSE publish/win-x64/ 2>/dev/null || true
+          cat > publish/win-x64/README.txt <<'NOTE'
+          Fruity Prime -- Metroid Prime Hunters, on a PC, with multiplayer.
+
+          Double-click FruityPrime.exe. The first thing it asks for is your own
+          Metroid Prime Hunters cartridge dump (.nds); it unpacks what it needs
+          next to this program and leaves the file alone. No game data is
+          included in this download, and none is downloaded.
+
+          Play online joins a server. Play offline is a match against bots.
+          Host a game has a public machine run the match and puts you in it,
+          so there is nothing to open on your router.
+          F11 or Alt+Enter switches to fullscreen, Escape leaves it.
+
+          To run a server for other people without playing on it yourself,
+          download the server package instead -- it is a separate, smaller
+          download that needs no game files at all.
+          NOTE
+          ( cd publish/win-x64 && zip -qr "../../dist/FruityPrime-$TAG-win-x64.zip" . )
+
+          cp LICENSE publish/linux-x64/ 2>/dev/null || true
+          cat > publish/linux-x64/README.txt <<'NOTE'
+          Fruity Prime -- Metroid Prime Hunters, on a PC, with multiplayer.
+
+          Set up with your own Metroid Prime Hunters cartridge dump (.nds).
+          It is unpacked next to this program and the file is left alone. No
+          game data is included in this download, and none is downloaded.
+
+            ./FruityPrime -launcher
+
+          opens the front screen: play online, play offline against bots, host
+          a game, settings, and the game-files setup.
+
+          Over SSH, or on a machine with no desktop, the same command gives you
+          the same five entries as text instead. -launcher -text asks for that
+          anywhere.
+
+          Everything it does also has a command of its own:
+
+            ./FruityPrime <path to rom.nds>     set up the game files
+            ./FruityPrime -servers              list the servers that are up
+            ./FruityPrime -connect HOST         join one
+            ./FruityPrime -hostgame "ROOM"      have a server run a match for you
+            ./FruityPrime -menu                 volumes, controls, match rules
+
+          This build can also run a dedicated server, with -server; it needs no
+          game files to do it. If that is all a machine is for, the server
+          package is a smaller download with no launcher in it -- there is one
+          for plain x64 Linux and one for a Raspberry Pi.
+
+          F11 or Alt+Enter switches to fullscreen, Escape opens the pause menu.
+          NOTE
+          ( cd publish/linux-x64 && tar czf "../../dist/FruityPrime-$TAG-linux-x64.tar.gz" . )
+
+          cat > publish/linux-arm64/SERVER.txt <<'NOTE'
+          Fruity Prime dedicated server.
+
+            ./FruityPrime -server -port 27888 -players 8 -servername "My server"
+
+          It needs no game files. Maps come from maprotation.txt, written
+          beside the binary on first run.
+
+          The server lists itself on net.livetek.fr so that players can find it
+          in the launcher's server browser. Pass -nomaster to stay private, or
+          -master HOST to use a different directory.
+
+          To run a directory of your own:
+
+            ./FruityPrime -masterserver -port 27889
+          NOTE
+          ( cd publish/linux-arm64 && tar czf "../../dist/FruityPrime-$TAG-server-linux-arm64.tar.gz" . )
+
+          cp LICENSE publish/linux-x64-server/ 2>/dev/null || true
+          cat > publish/linux-x64-server/SERVER.txt <<'NOTE'
+          Fruity Prime dedicated server, for a plain x64 Linux machine -- a
+          VPS, a spare desktop, anything that is not a Raspberry Pi (see the
+          ARM64 package for that) and that nobody is playing on.
+
+            ./FruityPrime -server -port 27888 -players 8 -servername "My server"
+
+          It needs no game files. Maps come from maprotation.txt, written
+          beside the binary on first run.
+
+          The server lists itself on net.livetek.fr so that players can find it
+          in the launcher's server browser. Pass -nomaster to stay private, or
+          -master HOST to use a different directory.
+
+          To run a directory of your own:
+
+            ./FruityPrime -masterserver -port 27889
+
+          tools/systemd/ in the source has unit files to run this under
+          systemd; deploy-server.sh automates that end to end for the ARM64
+          build, and the same units work here with the RID changed.
+          NOTE
+          ( cd publish/linux-x64-server && tar czf "../../dist/FruityPrime-$TAG-server-linux-x64.tar.gz" . )
+
+          cp LICENSE publish/win-x64-server/ 2>/dev/null || true
+          cat > publish/win-x64-server/SERVER.txt <<'NOTE'
+          Fruity Prime dedicated server, for Windows.
+
+          From a Command Prompt or PowerShell, in this folder:
+
+            FruityPrimeServer.exe -server -port 27888 -players 8 -servername "My server"
+
+          It needs no game files, and no copy of the game on this machine.
+          Maps come from maprotation.txt, written beside the binary on first
+          run.
+
+          This is a console program, unlike FruityPrime.exe: the window stays until
+          the server stops, Ctrl+C shuts it down cleanly, and its exit code is
+          reported, so it can be run under a service supervisor (NSSM, or
+          sc.exe with a wrapper) the way the Linux build runs under systemd.
+          Double-clicking it works too and opens a window of its own.
+
+          Windows will ask once whether to allow it through the firewall.
+          Nobody outside this machine can reach the server until that is
+          allowed for UDP on the port above, and until the router forwards it.
+
+          The server lists itself on net.livetek.fr so that players can find it
+          in the launcher's server browser. Pass -nomaster to stay private, or
+          -master HOST to use a different directory.
+
+          To run a directory of your own:
+
+            FruityPrimeServer.exe -masterserver -port 27889
+
+          To see what is up right now:
+
+            FruityPrimeServer.exe -servers
+          NOTE
+          ( cd publish/win-x64-server && zip -qr "../../dist/FruityPrime-$TAG-server-win-x64.zip" . )
+
+          # The APK goes out on its own rather than in an archive: what a phone
+          # wants is a file it can be handed. Signed with the release keystore
+          # when the secrets are set, and with a throwaway debug key when they
+          # are not -- the second installs, and can never be updated in place.
+          cp publish/android/*-Signed.apk "dist/FruityPrime-$TAG-android.apk"
+          ls -la dist
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-desktop-android
+          path: dist/*
+          if-no-files-found: error
+
+  macos-release:
+    needs: resolve
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: osx-arm64
+            runner: macos-latest
+          - rid: osx-x64
+            runner: macos-15-intel
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ needs.resolve.outputs.tag }}
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: check sources and cook maps
+        run: |
+          set -euo pipefail
+          tools/check-no-game-assets.sh
+          tools/check-maps-shipped.sh
+          dotnet run --project src/MphRead/MphRead.csproj -c Release -- -mapdir maps -mapbundle
+      - name: publish and verify macOS release
+        env:
+          RID: ${{ matrix.rid }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          dotnet publish src/MphRead/MphRead.csproj -c Release -r "$RID" \
+            -p:Version="$VERSION" -p:InformationalVersion="$VERSION" \
+            --self-contained true -p:PublishSingleFile=true -o "publish/$RID"
+          chmod +x "publish/$RID/FruityPrime"
+          tools/sign-macos.sh "publish/$RID"
+          tools/check-macos-build.sh "publish/$RID" "$RID"
+          tools/run-macos-smoke.sh "publish/$RID" "$RID"
+          python3 tools/test-compatibility-smoke.py "publish/$RID/FruityPrime"
+          tools/check-no-game-assets.sh "publish/$RID"
+          tools/check-maps-shipped.sh "publish/$RID"
+          tools/package-macos.sh "publish/$RID" dist "$RID" "$VERSION"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.rid }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    needs: [resolve, release, macos-release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ needs.resolve.outputs.tag }}
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+      # A draft: everything is built and uploaded, and a person presses the
+      # button. This is the one workflow whose output people download, and a
+      # tag can be pushed by accident; a draft is the step where somebody reads
+      # the notes and looks at the file list before any of it is public.
+      #
+      # Not flagged a prerelease, though the notes say beta. GitHub's
+      # releases/latest -- which is exactly what the in-app update check asks
+      # for (Mods/Update/UpdateCheck.cs) -- skips prereleases, so flagging one
+      # would quietly turn the updater off for every player.
+      #
+      # Rerunning the same tag updates the draft rather than failing: the
+      # create/upload arms are chosen by whether the release is already there,
+      # instead of running create and treating any error at all as "it exists".
+      - name: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          cat > notes.md <<'NOTE'
+          **Beta.** It plays, it is not finished -- expect rough edges, and please say what you
+          hit in [Issues](https://github.com/liveteklol/Fruity-Prime/issues).
+
+          You bring your own Metroid Prime Hunters cartridge dump. No game data is included here
+          and none is downloaded.
+
+          - **Windows** -- the `win-x64` zip, run `FruityPrime.exe`
+          - **Linux** -- the `.tar.gz`, run `./FruityPrime -launcher`
+          - **macOS** -- the matching `.tar.gz`, open `Fruity Prime.app`
+          - **Android** -- the `.apk`
+          - **Running a server** -- the `server-` packages, which need no game files
+
+          Setup and everything else is in the [README](https://github.com/liveteklol/Fruity-Prime#readme).
+          NOTE
+
+          # What actually changed, from GitHub's own generator: every commit
+          # and merged PR since the previous release tag, which it works out
+          # itself from the tag name. Without this the notes are the same
+          # words every time and say nothing about the build being downloaded.
+          #
+          # Appended rather than substituted, and never fatal: a rate limit or
+          # a tag with no predecessor leaves the standing block, which is the
+          # part that has to be there. The changelog is the part that is nice
+          # to have.
+          CHANGES=$(gh api -X POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+            -f tag_name="$TAG" --jq .body 2>/dev/null || true)
+          if [ -n "$CHANGES" ]; then
+            printf '\n---\n\n%s\n' "$CHANGES" >> notes.md
+          else
+            echo "::warning::No changelog could be generated for $TAG; the notes are the standing block alone."
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+            gh release edit "$TAG" --title "Fruity Prime $TAG" --notes-file notes.md
+          else
+            gh release create "$TAG" dist/* --draft --verify-tag \
+              --title "Fruity Prime $TAG" --notes-file notes.md
+          fi

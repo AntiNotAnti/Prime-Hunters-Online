@@ -1,0 +1,26 @@
+# The server directory: what the launcher's server browser asks.
+#
+# It keeps a list of the servers that have announced themselves in the last
+# minute and hands it out. It relays no gameplay and stores nothing on disk,
+# so it can share a box with the game server it lists -- which is the
+# arrangement it was written for.
+#
+# Point net.livetek.fr at this machine and open UDP 27889 to it.
+#
+# __USER__ and __DIR__ are placeholders; see mphread-server.service.
+[Unit]
+Description=Fruity Prime server directory
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__DIR__
+ExecStart=__DIR__/FruityPrime -masterserver -port 27889
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

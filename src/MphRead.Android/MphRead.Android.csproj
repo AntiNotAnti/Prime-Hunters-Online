@@ -1,0 +1,208 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Android head.
+
+       It compiles the same sources as the desktop project rather than
+       referencing it: the desktop project is net10.0 and produces an
+       executable, and an Android application is a different target framework
+       and a different kind of output. Nothing here is a copy: the glob below
+       is the same files, compiled a second time with ANDROID defined.
+
+       WHAT THIS BUILDS TODAY: the whole codebase, a front screen, and a match.
+       The engine's window and input come from GLFW through OpenTK, which is
+       desktop-only, so this head supplies both: Mods/Render/GlEs.cs stands in
+       for the desktop GL bindings (see the Using alias below) and the touch
+       controls beside this file stand in for the keyboard and mouse.
+
+       It is deliberately NOT in MphRead.sln: building it needs the Android
+       workload and an SDK, and a solution that will not build without them is
+       a solution that stops everybody who is not working on this.
+
+       It is also a compile check on the shared sources: every time they grow
+       something desktop-only (a System.Drawing type, a Windows API, a process
+       they expect to be able to start) this stops building, at the commit that
+       did it. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-android36.0</TargetFramework>
+    <SupportedOSPlatformVersion>24</SupportedOSPlatformVersion>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>MphRead</RootNamespace>
+    <AssemblyName>FruityPrime</AssemblyName>
+    <ApplicationId>fr.livetek.fruityprime</ApplicationId>
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <!-- Release builds replace this local fallback with the versionCode
+         derived from the vMAJOR.MINOR.PATCH release tag. -->
+    <ApplicationVersion>1</ApplicationVersion>
+    <!-- release.yml supplies the release stamp explicitly on every target. -->
+    <InformationalVersion Condition="'$(InformationalVersion)' == ''">local</InformationalVersion>
+    <!-- The launcher's own define, the same one the desktop game builds with:
+         the shared sources gate the Avalonia screens on it. -->
+    <DefineConstants>$(DefineConstants);MPHREAD_AVALONIA</DefineConstants>
+    <!-- The shared sources are globbed in by hand below, so the SDK must not
+         also add this directory's .cs files twice. -->
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- CA1416: upstream's console menu, extractor and memory viewer call
+         Console.ReadKey/ReadLine/Clear, which Android does not support. They
+         are compiled here because this head compiles the whole codebase, and
+         none of them is reachable: the entry point is an activity, not Main.
+         The one exception is Extract.Setup's "update this path?" prompt, which
+         GameFiles.RunSetupHere calls with the console redirected and a catch
+         around it. Fixing them properly means editing upstream files, which is
+         what keeps a pull from NoneGiven/MphRead a fast-forward. -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <!-- XA0141: Android 16 will want 16 KB page sizes and libSkiaSharp.so did
+         not have them while Avalonia 11.3 bound against SkiaSharp 2.88.
+         Avalonia 12 binds 3.119, whose natives are aligned, so this is
+         expected to be dead and should be dropped the next time this head is
+         built with the Android workload installed and the warning does not
+         come back. -->
+    <NoWarn>$(NoWarn);XA0141</NoWarn>
+    <!-- The results panel is drawn into the game's own frame through an
+         ITopLevelImpl of ours (Mods/Launcher/Gui/UiTopLevel.cs, shared with
+         the desktop), because a second Avalonia surface z-ordered over the GL
+         one costs the frame rate. Avalonia's reference assemblies hide the
+         platform interfaces, so implementing one needs this switch, which is
+         Avalonia's own, and it pins this project to the exact Avalonia
+         version above for the reason the desktop project gives. AVA3001 is
+         the notice it prints on every build. -->
+    <AvaloniaAccessUnstablePrivateApis>true</AvaloniaAccessUnstablePrivateApis>
+    <NoWarn>$(NoWarn);AVA3001</NoWarn>
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <!-- There is no XAML in this project: every screen here is written in C#.
+         The compiler still runs when AvaloniaResource items are present, and on
+         Android it and the Android SDK disagree about where the compiled
+         assembly went (obj/.../Avalonia/Avalonia/), which fails the build after
+         a clean compile. Turning it off costs nothing while there is no XAML to
+         compile; the avares:// assets are embedded by a separate target and are
+         unaffected, which the build check below verifies. -->
+    <EnableAvaloniaXamlCompilation>false</EnableAvaloniaXamlCompilation>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- This head's own files. -->
+    <Compile Include="*.cs" />
+    <!-- The game, the launcher's logic and its Avalonia controls. -->
+    <!-- The desktop's one-window shell is left out (Shell.cs, UiSurface.cs):
+         it renders the launcher's screens into a buffer and composites them
+         into the GL window, which is what a platform with one window and no
+         view stack has to do. Here the activity stacks a real Avalonia view
+         over the GL surface, which is the same arrangement for free, and
+         those files would pull in Avalonia.Headless, the desktop's
+         RenderWindow and its fixed-function GL for nothing. MPHREAD_SHELL is the define that gates
+         every call into them.
+
+         UiTopLevel.cs is the exception and is compiled: it is the offscreen
+         top level itself, which is toolkit-level and knows nothing about
+         either window. AndroidUiSurface.cs uses it to do exactly what the
+         desktop does for the results panel (render the screens into a buffer
+         and draw that buffer in the game's own frame), because an Avalonia
+         surface z-ordered over the game's costs the frame rate. -->
+    <Compile Include="..\MphRead\**\*.cs"
+             Exclude="..\MphRead\bin\**;..\MphRead\obj\**;..\MphRead\Mods\Launcher\Gui\Shell.cs;..\MphRead\Mods\Launcher\Gui\UiSurface.cs;..\MphRead\Mods\Launcher\Gui\UiBench.cs;..\MphRead\Mods\Render\UiOverlay.cs;..\MphRead\Mods\Render\LauncherPhoto.cs;..\MphRead\Mods\Render\LauncherNoise.cs;..\MphRead\Mods\Render\LauncherHunter.cs" />
+    <AndroidResource Include="Resources\**\*.xml" />
+    <!-- The launcher icon: the cherry mark out of src/MphRead/Assets, scaled
+         to the five densities plus an adaptive foreground. Committed rather
+         than generated at build time so that a build needs no image tooling,
+         and allowed past the asset guard in tools/asset-guard-allow.txt,
+         being our logo rather than anything out of the cartridge. -->
+    <AndroidResource Include="Resources\**\*.png" />
+    <!-- See the file: the two types the touch controls reach by reflection. -->
+    <TrimmerRootDescriptor Include="Properties\TrimmerRoots.xml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Android" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.2" />
+    <PackageReference Include="OpenTK" Version="4.9.4" />
+    <!-- The managed binding only. The package's natives are built for Linux and
+         Windows, so they are dead weight in an APK and the only thing they do
+         there is make the build warn that they are not 16 KB page aligned.
+         Nothing on this head calls STB: exporting images and movies is a
+         desktop feature, and preview capture goes through AndroidPng. -->
+    <PackageReference Include="ReFuel.StbImage" Version="2.1.1" ExcludeAssets="native" />
+    <!-- The custom maps. The room binaries they describe are built on the
+         device from the player's own extracted files and never travel in the
+         package. AndroidAsset rather than a content file because nothing in an
+         APK is a file the runtime can enumerate: see AndroidMaps.cs, which
+         unpacks these into the external directory the game files already use.
+
+         Bundles as well as loose recipes, and that is what actually put the
+         custom maps on this platform: a map that keeps its level in a folder
+         of its own, which is how they are worked on, matched neither this
+         glob nor the non-recursive asset listing on the other side, so the
+         phone shipped a recipe with no level, or nothing at all, and listed 27
+         rooms. A bundle is one file at the top of maps/, which both halves
+         can see. -->
+    <AndroidAsset Include="..\..\maps\*.json;..\..\maps\*.bsp;..\..\maps\*.tex;..\..\maps\*.fpmap"
+                  Link="Assets\maps\%(Filename)%(Extension)" />
+    <!-- Everything the launcher's screens name by avares:// URI, and none of
+         it is optional here: Avalonia does not fall back when a font behind
+         one of those cannot be resolved. It throws `Could not create
+         glyphTypeface` out of the measure pass, which on this head is a crash
+         on the front screen before anything is drawn. The pictures are
+         guarded (UiLayout.Load catches and draws nothing); the fonts are not.
+         The Link paths have to match the desktop's Assets\... layout exactly,
+         since the URI is the same string in the same file on both platforms.
+
+         **Globbed rather than listed, and that is the point.** This was five
+         named files, and it is the same screens drawn from the same sources
+         as the desktop, so the deck theme added three weights of Pixelify
+         Sans and two of JetBrains Mono to the desktop project, every label on
+         every screen started naming one of them, this list was not touched,
+         and the app died on its first layout pass on a device while all six
+         desktop targets and the APK build itself stayed green. A list that
+         has to be kept in step by hand with a file it is not next to will
+         drift, and the drift is not a warning, it is a phone that no longer
+         starts. ~1.9 MB in the package. -->
+    <AvaloniaResource Include="..\MphRead\Assets\*.png"
+                      Link="Assets\%(Filename)%(Extension)" />
+    <AvaloniaResource Include="..\MphRead\Assets\Fonts\*.ttf"
+                      Link="Assets\Fonts\%(Filename)%(Extension)" />
+    <AvaloniaResource Include="..\MphRead\Assets\Backgrounds\*.jpg"
+                      Link="Assets\Backgrounds\%(Filename)%(Extension)" />
+    <!-- The IP-to-country ranges the server browser puts a flag with. Not a
+         font, and a missing one here is only a browser with no flags in it,
+         but it is named by the same kind of URI from the same shared file, so
+         it is shipped by the same rule rather than by remembering. -->
+    <AvaloniaResource Include="..\MphRead\Assets\Geo\*.gz"
+                      Link="Assets\Geo\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The whole of the ES port, in one line.
+
+         The engine calls OpenTK's desktop `GL` from 200-odd places in files
+         that are upstream's, and a compatibility profile is not something
+         Android has. This alias points the name at `Mods/Render/GlEs.cs`
+         instead, for every file in this compilation: a using alias is resolved
+         before the `using OpenTK.Graphics.OpenGL;` at the top of those files,
+         so the call sites do not change and the desktop build does not see
+         any of it. The enum types they pass are still the desktop ones:
+         the same GL constants, which GlEs casts across. -->
+    <Using Include="MphRead.Mods.Render.GlEs" Alias="GL" />
+    <!-- And the whole of the sound effects, in two more.
+
+         Same problem, same shape of answer. Every sound effect the engine
+         plays goes through OpenAL, OpenTK ships the bindings only, and the
+         package the desktop gets the native from has runtimes for Windows,
+         Linux and macOS and none for a phone, so Sfx.Load caught the missing
+         library, installed its silent stub, and the game played its music with
+         nothing else. These point `AL` and `ALC` at Mods/Sound/AlEs.cs, which
+         mixes the voices itself and hands them to miniaudio: SoundFlow's, the
+         one already in the APK playing the music. Not one call site in
+         Sound/Sfx.cs or Formats/Movie.cs changes, and the desktop keeps
+         OpenAL Soft. -->
+    <Using Include="MphRead.Mods.Sound.AlEs" Alias="AL" />
+    <Using Include="MphRead.Mods.Sound.AlcEs" Alias="ALC" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NcsfPlay\NcsfPlay.csproj" />
+  </ItemGroup>
+
+</Project>

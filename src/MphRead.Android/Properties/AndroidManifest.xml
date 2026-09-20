@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The server list is UDP to the directory and to each server, so the app
+     needs the network. Nothing else is asked for: this build has no files to
+     read off the device and nothing to write outside its own data directory. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+  <!-- The front screen fetches the release APK from GitHub and hands it to
+       Android's own installer, so a player never has to find a browser, a
+       download and a file manager to take an update (ApkInstaller.cs). This
+       permission does not let the app install anything: it lets it *ask*, and
+       only after the player has turned this app on as an install source in
+       Settings, which is a screen and not a dialog. Every install still goes
+       through the system's own confirmation. -->
+  <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+  <!-- The renderer is ES 3.0: vertex array objects, unsigned int indices and
+       the 300 es shaders in Mods/Render/EsShaders.cs. A device without it
+       cannot run the match half at all, so it should not see the app. -->
+  <uses-feature android:glEsVersion="0x00030000" android:required="true" />
+  <!-- A game, said out loud. It is what the launcher and the store sort on,
+       and on a phone with a game mode of its own (Samsung's is the common
+       one) it is the flag that puts this app in it rather than leaving it
+       treated as an ordinary one. -->
+  <application android:label="Fruity Prime" android:appCategory="game"
+               android:allowBackup="true"
+               android:supportsRtl="true" android:hardwareAccelerated="true"
+               android:icon="@mipmap/appicon" android:roundIcon="@mipmap/appicon">
+    <!-- How the zipped debug logs reach another app. Handing out a file://
+         URI has thrown FileUriExposedException since Android 7, so the file
+         goes through a provider; @xml/file_paths limits it to the one cache
+         folder AndroidLogShare writes its zip into, and nothing else in this
+         app is reachable through it. Not exported: only the intents this app
+         itself starts carry the read grant. -->
+    <provider android:name="androidx.core.content.FileProvider"
+              android:authorities="${applicationId}.logs"
+              android:exported="false"
+              android:grantUriPermissions="true">
+      <meta-data android:name="android.support.FILE_PROVIDER_PATHS"
+                 android:resource="@xml/file_paths" />
+    </provider>
+  </application>
+</manifest>

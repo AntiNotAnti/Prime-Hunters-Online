@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <InformationalVersion Condition="'$(InformationalVersion)' == ''">local</InformationalVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/MphRead/Mods/Update/BuildVersion.cs" Link="BuildVersion.cs" />
+    <Compile Include="../../src/MphRead/Mods/Update/UpdateCheck.cs" Link="UpdateCheck.cs" />
+    <Compile Include="../../src/MphRead/Mods/Update/SyncHttp.cs" Link="SyncHttp.cs" />
+    <Compile Include="../../src/MphRead/Mods/Branding.cs" Link="Branding.cs" />
+  </ItemGroup>
+</Project>

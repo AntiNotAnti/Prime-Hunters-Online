@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- Avalonia's activity is an AndroidX AppCompatActivity, and AppCompat
+       refuses to start under a theme that is not one of its own: it throws
+       "You need to use a Theme.AppCompat theme (or descendant) with this
+       activity" out of onCreate, which is the whole app, every time. The
+       framework theme this used to name looked right and could never work.
+
+       Theme.AppCompat is the dark one (Theme.AppCompat.Light is the other), so
+       the launcher's palette needs no fighting. The window background is set
+       so that starting the app does not flash a default colour before Avalonia
+       has drawn, and the match hides the system bars from code rather than
+       from here, since the front screen wants them. -->
+  <style name="FruityPrime" parent="Theme.AppCompat.NoActionBar">
+    <item name="android:windowBackground">@color/window_background</item>
+    <item name="android:windowActionBar">false</item>
+    <item name="android:windowNoTitle">true</item>
+  </style>
+</resources>

@@ -1,0 +1,26 @@
+ipcountry.bin.gz
+
+IP-to-country ranges, built from the DB-IP Lite country database.
+
+    <a href="https://db-ip.com">IP Geolocation by DB-IP</a>
+
+DB-IP Lite is published under the Creative Commons Attribution 4.0
+International Licence (CC BY 4.0). The attribution above is required and is
+carried in the program's Credits page (Mods/Credits.cs), not only in this
+file.
+
+    https://creativecommons.org/licenses/by/4.0/
+    https://db-ip.com/db/download/ip-to-country-lite
+
+Format, which is this project's and not DB-IP's: the CSV filtered to IPv4,
+sorted, and packed as
+
+    "FPGEO1"                     6 bytes
+    country count                uint16, little-endian
+    country codes                2 ASCII bytes each
+    range count                  uint32, little-endian
+    ranges                       uint32 first address + uint8 country index
+
+Ranges are sorted and contiguous: the country of an address is the country of
+the last range whose first address is at or below it, which is one binary
+search and no allocation. Rebuild it with tools/build-ipcountry.py.

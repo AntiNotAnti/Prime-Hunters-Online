@@ -1,0 +1,416 @@
+# Build every target on every push, and refuse to publish anything that came
+# out of the cartridge.
+#
+# The guard runs twice on purpose: once over what git is tracking, and once
+# over what the build produced. The first catches a map preview committed by
+# accident, the second catches one that got swept into an artifact.
+name: build
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  assets:
+    name: no game assets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: nothing from the game is tracked
+        run: tools/check-no-game-assets.sh
+
+      - name: every custom map has the level it converts
+        run: tools/check-maps-shipped.sh
+
+  controller-checks:
+    name: input regressions (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, macos-15-intel]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '9.0.x'
+      - name: deterministic controller and headless UI checks
+        run: dotnet run --project src/MphRead/MphRead.csproj -c Release -- -gamepadcheck
+      - name: deterministic pointer and stylus checks
+        run: dotnet run --project src/MphRead/MphRead.csproj -c Release -- -pointercheck
+
+  build:
+    name: ${{ matrix.id }}
+    needs: assets
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: win-x64
+            rid: win-x64
+            summary: the game and the launcher, for Windows
+            extra: ""
+          - id: linux-x64
+            rid: linux-x64
+            summary: the game, the launcher and the dedicated server, for Linux
+            extra: ""
+          # Every platform gets a server package alongside its game build, so
+          # this is the same RID a second time with the launcher and the UI
+          # toolkit left out -- a plain x64 box (a VPS, a spare desktop) that
+          # nobody is playing on, same as the two below it.
+          - id: linux-x64-server
+            rid: linux-x64
+            summary: the dedicated server and the directory, for a plain x64 Linux machine
+            extra: "-p:MphReadServer=true"
+          # Nobody plays on the Pi: this box runs the dedicated server and the
+          # directory and nothing else, so it is published as the server
+          # package. That drops the launcher and, with it, a desktop UI toolkit
+          # the machine would never open.
+          - id: linux-arm64
+            rid: linux-arm64
+            summary: the dedicated server and the directory, for a Raspberry Pi
+            extra: "-p:MphReadServer=true"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      # Cook every custom map into the one file it ships as. The recipe, the
+      # level it converts and the textures baked from it go into a .fpmap,
+      # with the level trimmed to the lumps the importer actually reads: 376 KB
+      # for de_dust2 against the 2.8 MB its folder weighs. That bundle is what
+      # the packages carry, and it is what somebody can be handed on its own --
+      # the .pk3 it was cooked from is a source and is kept out of the output
+      # by CopyToPublishDirectory. It is not committed, so it is cooked here.
+      - name: cook the map bundles
+        run: dotnet run --project src/MphRead/MphRead.csproj -c Release -- -mapdir maps -mapbundle
+
+      - name: netcode lifecycle and health/shot regressions
+        if: matrix.id == 'linux-x64'
+        run: |
+          dotnet run --project tools/nettest/nettest.csproj -c Release -- --lifecycle
+          dotnet run --project tools/nettest/nettest.csproj -c Release -- --health-shots
+
+      # Windows and Linux targets remain cross-published on Ubuntu.
+      - name: publish ${{ matrix.summary }}
+        run: >
+          dotnet publish src/MphRead/MphRead.csproj
+          -c Release -r ${{ matrix.rid }} ${{ matrix.extra }}
+          --self-contained true -p:PublishSingleFile=true
+          -o publish/${{ matrix.id }}
+
+      - name: replay format and server-retention regressions
+        if: matrix.id == 'linux-x64'
+        run: publish/linux-x64/FruityPrime -replayformatcheck
+
+      - name: bounded thumbnail worker regression
+        if: matrix.id == 'linux-x64'
+        run: dotnet run --project tools/thumbnail-batch-check/thumbnail-batch-check.csproj -c Release
+
+      - name: legacy thumbnail diagnostics without KHR_debug
+        if: matrix.id == 'linux-x64'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y xvfb xauth libgl1-mesa-dri libglx-mesa0 libxinerama1 libxcursor1 libxi6
+          chmod +x publish/linux-x64/FruityPrime
+          xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe \
+            MESA_GL_VERSION_OVERRIDE=2.1 MESA_EXTENSION_OVERRIDE=-GL_KHR_debug \
+            publish/linux-x64/FruityPrime -thumbnailwindowcheck -legacyglcheck
+
+      - name: nothing from the game is in the output
+        run: tools/check-no-game-assets.sh publish/${{ matrix.id }}
+
+      # A release has to arrive with its maps ready. The room binaries are
+      # still built on the player's machine, because they land where that
+      # machine's extracted files are, but everything needed to build them
+      # travels -- and a map file that reached the package without its level
+      # would register a room the game then declines to build.
+      - name: the custom maps reached the package
+        run: tools/check-maps-shipped.sh publish/${{ matrix.id }}
+
+      # Double-clicking the game must not put a terminal behind it. That is one
+      # field in the PE header, it comes out of a csproj condition, and nothing
+      # else in this workflow would notice it changing.
+      - name: the game is a GUI binary
+        if: matrix.id == 'win-x64'
+        run: tools/check-subsystem.sh gui publish/${{ matrix.id }}/FruityPrime.exe
+
+      # Every avares:// asset the screens name has to be in the package.
+      # Avalonia does not fall back for a font behind one of those: it throws
+      # out of the measure pass, which is a crash on the first screen. Cheap,
+      # and it reads the project rather than the picture, so it holds for the
+      # targets nothing here can start.
+      - name: the launcher's assets are in the package
+        if: matrix.extra == ''
+        run: >
+          tools/check-avares.py src/MphRead/MphRead.csproj
+          -p:RuntimeIdentifier=${{ matrix.rid }}
+
+      # The launcher has to actually come up.
+      #
+      # Nothing else here opens a window: every check above reads the files a
+      # publish produced. So a fault that only exists once the toolkit is
+      # drawing -- a control invalidating itself inside the render pass, which
+      # Avalonia throws on -- passed six green jobs and shipped, and what a
+      # player saw was a program that starts and shows nothing. On Windows
+      # there is not even a console for it to say so in.
+      #
+      # -shellshot opens the real shell window, photographs the front screen,
+      # walks into the browser and presses Escape, and exits non-zero if the
+      # launcher could not be opened at all. It needs a display and no game
+      # files, which is what Xvfb and this runner are. Linux only: it is the
+      # same shared launcher on every desktop target.
+      - name: the launcher opens
+        if: matrix.id == 'linux-x64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1 libglx-mesa0
+          xvfb-run -a --server-args="-screen 0 1280x800x24" \
+            publish/${{ matrix.id }}/FruityPrime -shellshot "$RUNNER_TEMP/shellshot"
+
+      - name: the screens it drew
+        if: matrix.id == 'linux-x64' && always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: launcher-screens
+          path: ${{ runner.temp }}/shellshot
+          if-no-files-found: warn
+
+      # Both x64 Linux builds contain a dedicated server -- one with a launcher
+      # attached, one without. CI cannot contain the proprietary game files an
+      # authoritative server needs, so it verifies the safe startup contract:
+      # a clear, non-zero refusal and a working directory, rather than the old
+      # relay behaviour. Keyed on rid because the ARM64 build cannot run on
+      # this x64 runner.
+      - name: the dedicated-server startup contract holds
+        if: matrix.rid == 'linux-x64'
+        run: tools/check-dedicated-server.sh publish/${{ matrix.id }}
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: FruityPrime-${{ matrix.id }}
+          path: publish/${{ matrix.id }}
+          if-no-files-found: error
+
+  macos:
+    name: macOS ${{ matrix.rid }}
+    needs: assets
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: osx-arm64
+            runner: macos-latest
+          - rid: osx-x64
+            runner: macos-15-intel
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: bounded thumbnail worker regression
+        run: dotnet run --project tools/thumbnail-batch-check/thumbnail-batch-check.csproj -c Release
+
+      - name: signing gate regressions
+        run: tools/test-macos-tools.sh
+      - name: cook the map bundles
+        run: dotnet run --project src/MphRead/MphRead.csproj -c Release -- -mapdir maps -mapbundle
+      - name: publish, sign and validate
+        env:
+          RID: ${{ matrix.rid }}
+        run: |
+          set -euo pipefail
+          dotnet publish src/MphRead/MphRead.csproj -c Release -r "$RID" \
+            --self-contained true -p:PublishSingleFile=true -o "publish/$RID"
+          chmod +x "publish/$RID/FruityPrime"
+          tools/sign-macos.sh "publish/$RID"
+          tools/check-macos-build.sh "publish/$RID" "$RID"
+          tools/run-macos-smoke.sh "publish/$RID" "$RID"
+          python3 tools/test-compatibility-smoke.py "publish/$RID/FruityPrime"
+          tools/check-no-game-assets.sh "publish/$RID"
+          tools/check-maps-shipped.sh "publish/$RID"
+          VERSION=$(dotnet msbuild src/MphRead/MphRead.csproj -getProperty:Version)
+          tools/package-macos.sh "publish/$RID" dist "$RID" "$VERSION"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: FruityPrime-${{ matrix.rid }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  # The Android head, and the APK a phone can install.
+  #
+  # Its own job rather than a row in the matrix above, because nothing about it
+  # matches: a different target framework (net10.0-android36.0, not net10.0), a
+  # JDK and an Android SDK the other six targets do not need, and an APK rather
+  # than a folder of binaries. It is also the only job whose failure is usually
+  # about *shared* code -- the head compiles the same sources with ANDROID
+  # defined, so it stops building the moment they grow something desktop-only,
+  # which is the whole reason it was in the tree before it could play anything.
+  #
+  # No asset guard on the output: an APK is a zip this script cannot see into,
+  # and pointing it at a directory holding one would prove nothing. What
+  # actually rules game data out is the `assets` job above -- the APK is built
+  # from tracked sources and NuGet packages and nothing else.
+  android:
+    name: android
+    needs: assets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      # The Android workload brings the .NET side of the toolchain. It does not
+      # bring a JDK, and the Android SDK's build tools are Java.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: install the android workload
+        run: dotnet workload install android
+
+      # Cook every custom map into the one file it ships as. The recipe, the
+      # level it converts and the textures baked from it go into a .fpmap,
+      # with the level trimmed to the lumps the importer actually reads: 376 KB
+      # for de_dust2 against the 2.8 MB its folder weighs. That bundle is what
+      # the packages carry, and it is what somebody can be handed on its own --
+      # the .pk3 it was cooked from is a source and is kept out of the output
+      # by CopyToPublishDirectory. It is not committed, so it is cooked here.
+      - name: cook the map bundles
+        run: dotnet run --project src/MphRead/MphRead.csproj -c Release -- -mapdir maps -mapbundle
+
+      # net10.0-android36.0 wants platform 36 and its build tools, which a
+      # runner image does not necessarily carry. This target asks for exactly
+      # what the project declares and accepts the licences, instead of naming
+      # sdkmanager packages here that would then have to be kept in step with
+      # the TargetFramework.
+      - name: install what the Android SDK is missing
+        run: >
+          dotnet build src/MphRead.Android/MphRead.Android.csproj
+          -t:InstallAndroidDependencies
+          -p:AndroidSdkDirectory="$ANDROID_HOME"
+          -p:JavaSdkDirectory="$JAVA_HOME"
+          -p:AcceptAndroidSDKLicenses=True
+
+      # The same check, on the head it was written for: this is the project
+      # whose asset list drifted from the desktop's, and the APK builds and
+      # signs perfectly well without the fonts its every label asks for.
+      - name: the launcher's assets are in the APK
+        run: >
+          tools/check-avares.py src/MphRead.Android/MphRead.Android.csproj
+          -p:AndroidSdkDirectory="$ANDROID_HOME"
+          -p:JavaSdkDirectory="$JAVA_HOME"
+
+      # The one a player would install. Release runs the IL trimmer over this
+      # app, which matters here more than usual: the touch controls reach
+      # OpenTK's KeyboardState and MouseState by reflection, so
+      # Properties/TrimmerRoots.xml is what keeps them from being linked away
+      # and turning into a first-frame crash that Debug would never show.
+      - name: publish the APK
+        run: >
+          dotnet publish src/MphRead.Android/MphRead.Android.csproj
+          -c Release -p:AndroidPackageFormat=apk
+          -p:AndroidSdkDirectory="$ANDROID_HOME"
+          -p:JavaSdkDirectory="$JAVA_HOME"
+          -o publish/android
+
+      # One APK, the one people install. An untrimmed Debug build was
+      # collected beside it, as a way of telling a crash on a device apart
+      # from the trimmer having removed something -- which is a thing to build
+      # when that question is actually being asked, not to hand out with every
+      # push: it is much bigger, much slower, and two APKs in one folder is an
+      # invitation to install the wrong one. Building one by hand needs
+      # `-p:EmbedAssembliesIntoApk=true`, or it holds no managed code at all
+      # (see .claude/android/ANDROID-PORT.md).
+      - name: collect the APK
+        run: |
+          set -euo pipefail
+          mkdir -p artifact
+          cp publish/android/*-Signed.apk artifact/FruityPrime-release.apk
+          cat > artifact/INSTALL.txt <<'NOTE'
+          Fruity Prime for Android.
+
+            adb install -r FruityPrime-release.apk
+
+          It is signed with the SDK's debug key, which is enough to install and
+          not enough for a store.
+
+          The game's own files are yours and are not in here. Extract them on a
+          desktop, then copy paths.txt and the extracted folders into
+
+            Android/data/fr.livetek.fruityprime/files
+
+          which shows up over USB with no storage permission asked for. The
+          front screen says so while they are missing, and has a
+          "Check for game files" entry for when they arrive.
+
+          The front screen has been run, on an emulator. A match has not: that
+          needs the game files above, which are nobody's to ship. If it
+          misbehaves, .claude/android/ANDROID-PORT.md lists what to look at, in
+          order, and `adb logcat` is where the renderer says so.
+          NOTE
+          ls -la artifact
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: FruityPrime-android
+          path: artifact
+          if-no-files-found: error
+
+  # The dedicated server for Windows.
+  #
+  # Its own job on a Windows runner, rather than another row in the matrix
+  # above, for the same reason the binary exists at all: what is worth proving
+  # is that a console-subsystem build really does hold a terminal and run a
+  # server on Windows, and cross-compiling it on Linux would demonstrate
+  # neither. The publish is the same project with the launcher left out.
+  windows-server:
+    name: win-x64 dedicated server
+    needs: assets
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: publish the dedicated server, for Windows
+        run: >
+          dotnet publish src/MphRead/MphRead.csproj
+          -c Release -r win-x64 -p:MphReadServer=true
+          --self-contained true -p:PublishSingleFile=true
+          -o publish/win-x64-server
+
+      # The whole difference between this binary and the game's, and the one
+      # thing that makes it usable from a terminal or a service supervisor.
+      - name: the server is a console binary
+        shell: bash
+        run: tools/check-subsystem.sh console publish/win-x64-server/FruityPrimeServer.exe
+
+      - name: nothing from the game is in the output
+        shell: bash
+        run: tools/check-no-game-assets.sh publish/win-x64-server
+
+      # The same startup-contract script the Linux job runs, on Windows.
+      - name: the dedicated-server startup contract holds
+        shell: bash
+        run: tools/check-dedicated-server.sh publish/win-x64-server
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: FruityPrime-win-x64-server
+          path: publish/win-x64-server
+          if-no-files-found: error

@@ -1,0 +1,323 @@
+using System;
+using MphRead.Hud;
+using MphRead.Mods;
+using OpenTK.Mathematics;
+
+namespace MphRead.Entities
+{
+    /// <summary>
+    /// The results screen's own corner: who you come back as, in what suit,
+    /// and where everybody is going next.
+    ///
+    /// A partial of PlayerEntity for the same reason the pro HUD and the chat
+    /// box are -- the text and box drawing are private to the HUD, and this
+    /// needs both. <see cref="EndScreen"/> owns the state and the input; this
+    /// draws it and decides nothing.
+    ///
+    /// Top right, because the two things already on this screen are the
+    /// winner's camera behind everything and the scoreboard down the middle,
+    /// and the corner opposite the match clock is the one piece of the frame
+    /// neither of them uses.
+    /// </summary>
+    public partial class PlayerEntity
+    {
+        private static readonly Vector4 _endPanel = new Vector4(0, 0, 0, 0.62f);
+        private static readonly Vector4 _endPanelEdge = new Vector4(1, 1, 1, 0.16f);
+        private static readonly Vector4 _endSwatchEdge = new Vector4(1, 1, 1, 0.9f);
+        private static readonly Vector4 _endSwatchWell = new Vector4(0, 0, 0, 0.45f);
+        private static readonly ColorRgba _endInk = new ColorRgba(235, 238, 245, 255);
+        private static readonly ColorRgba _endDim = new ColorRgba(165, 174, 190, 255);
+        private static readonly ColorRgba _endArrow = new ColorRgba(255, 215, 90, 255);
+        private static readonly Vector4 _endSwatchHover = new Vector4(1, 1, 1, 0.28f);
+
+        /// <summary>
+        /// How much bigger the picker is drawn than the size it was designed
+        /// at.
+        ///
+        /// One number for the whole panel, because the panel is a picture
+        /// with a shape and scaling half of it would break the shape. It is
+        /// larger on a touchscreen for the two reasons a touchscreen is
+        /// different from a mouse: a fingertip is about nine millimetres and
+        /// the arrows and the four suit swatches were laid out for a pointer
+        /// a pixel wide, and a phone is held far closer to the eye but has
+        /// far fewer of them to spend on a panel this size. Not a setting --
+        /// nobody wants to tune the size of a screen they see for thirty
+        /// seconds between matches.
+        /// </summary>
+        private static float EndScale => OperatingSystem.IsAndroid() ? 1.3f : 1f;
+
+        /// <summary>Panel geometry, in HUD units measured off the screen's height.</summary>
+        private static float EndPanelWidth => 74 * EndScale;
+        private const float EndPanelTop = 4;
+
+        /// <summary>
+        /// How tall the panel is, worked out from what goes in it rather than
+        /// stated on its own.
+        ///
+        /// It was a constant 92, and the stack inside it did not fit: READY
+        /// alone ran to 98 and hung out of the bottom edge, and the NEXT line
+        /// -- placed by measuring *up* from that same bottom edge -- was drawn
+        /// straight through the middle of it. At 1x that was two readouts
+        /// sharing six units; at the size the picker is drawn on a phone it
+        /// was the whole button. Deriving the height is what stops the two
+        /// from ever disagreeing again: everything below is placed by
+        /// <see cref="EndRow"/> from one running cursor, and the panel is
+        /// however tall that cursor ended up.
+        /// </summary>
+        private static float EndPanelHeight => EndStackHeight * EndScale;
+
+        /// <summary>
+        /// The vertical stack, in design units before <see cref="EndScale"/>,
+        /// as offsets from <see cref="EndPanelTop"/>. One list, read top to
+        /// bottom, so a change to any row moves everything under it and the
+        /// panel with it.
+        /// </summary>
+        private const float EndRowTitle = 3;        // "CHOOSE HUNTER", 8 tall
+        private const float EndRowPreview = 13;     // the 3D window, EndPreview tall
+        private const float EndRowName = 53.5f;     // the hunter's name, 9.6 tall
+        private const float EndRowSuits = 67.5f;    // the four swatches, 8 tall + a 1.5 ring
+        private const float EndRowSuitName = 79.5f; // "SUIT: ORANGE", 7.2 tall
+        private const float EndRowNext = 90;        // "NEXT: ROOM", 7.2 tall
+        private const float EndStackHeight = 101;   // and four units of floor under it
+
+        /// <summary>One row's top edge, in HUD units.</summary>
+        private static float EndRow(float offset) => EndPanelTop + offset * EndScale;
+
+        private static float EndPortrait => 26 * EndScale;
+
+        /// <summary>
+        /// Side of the 3D preview window. Square, because the camera behind it
+        /// is square and a hunter standing up fits a square better than the
+        /// panel's own shape does.
+        /// </summary>
+        private static float EndPreview => 38 * EndScale;
+
+        internal void ModDrawEndScreen()
+        {
+            if (!EndScreen.Available)
+            {
+                return;
+            }
+            // The deck panel is up over this: it asks the same two questions
+            // -- where next, and who you are coming back as -- with the rest
+            // of the program's own controls rather than with arrows and
+            // swatches beside a 32x32 sprite. The scoreboard to the left of
+            // here is untouched either way; it is the engine's screen and a
+            // scoreboard is not a place to put a theme.
+            if (EndScreen.PanelUp)
+            {
+                return;
+            }
+            float aspect = HudAspectFix;
+            float scale = EndScale;
+            float right = 254;
+            float left = right - EndPanelWidth * aspect;
+            float centre = left + EndPanelWidth / 2 * aspect;
+            float bottom = EndPanelTop + EndPanelHeight;
+            // Where the 3D preview goes, asked for before the panel is drawn
+            // so the hole and the model agree even on the first frame.
+            float previewTop = EndRow(EndRowPreview);
+            float previewBottom = previewTop + EndPreview;
+            float previewLeft = centre - EndPreview / 2 * aspect;
+            float previewRight = centre + EndPreview / 2 * aspect;
+            Scene.PreviewWanted = true;
+            Scene.PreviewLeft = previewLeft / 256f;
+            Scene.PreviewTop = previewTop / 192f;
+            Scene.PreviewRight = previewRight / 256f;
+            Scene.PreviewBottom = previewBottom / 192f;
+            bool preview = _scene.ModPreviewDrawn;
+            // The panel, in two pieces when the preview is up: the model is
+            // drawn into the frame *before* the HUD is, so a panel drawn
+            // across it would simply cover it. Leaving the slot empty is also
+            // the better picture -- the hunter stands in a window of its own
+            // rather than on a black rectangle.
+            if (preview)
+            {
+                _scene.DrawHudFlatBox(left, EndPanelTop, right, previewTop, _endPanel);
+                _scene.DrawHudFlatBox(left, previewTop, previewLeft, previewBottom, _endPanel);
+                _scene.DrawHudFlatBox(previewRight, previewTop, right, previewBottom, _endPanel);
+                _scene.DrawHudFlatBox(left, previewBottom, right, bottom, _endPanel);
+                // A frame around the window, so it reads as a viewport rather
+                // than as a hole somebody forgot to fill.
+                DrawEndFrame(previewLeft, previewTop, previewRight, previewBottom, aspect);
+            }
+            else
+            {
+                _scene.DrawHudFlatBox(left, EndPanelTop, right, bottom, _endPanel);
+            }
+            // A hairline down the inside edge. What is behind this is a lit
+            // room and a scoreboard, and a panel with no edge on it reads as
+            // a dark patch of the map rather than as something to look at.
+            _scene.DrawHudFlatBox(left, EndPanelTop, left + 0.6f * aspect, bottom, _endPanelEdge);
+
+            DrawText2D(centre, EndRow(EndRowTitle), Align.Center, palette: 0, "CHOOSE HUNTER",
+                color: _endDim, fontSpacing: 8, scale: 0.5f * scale);
+
+            int hunter = Math.Clamp((int)EndScreen.Hunter, 0, Mods.Launcher.Hunters.Playable - 1);
+            // The sprite portrait, only when the model could not be drawn --
+            // a hunter whose model will not load, or a frame before the
+            // preview has built its first items. It answers less than the
+            // model does (there is one per hunter and it does not know what a
+            // suit is) but it is never nothing.
+            if (!preview)
+            {
+                HudObjectInstance? portrait = hunter < _hunterInsts.Length
+                    ? _hunterInsts[hunter]
+                    : null;
+                if (portrait != null)
+                {
+                    // Mode 1 and a scale off the frame's own 32 units, so the
+                    // picture keeps its shape on any window -- the same
+                    // reasoning as the weapon list and the target-info
+                    // portrait, see DrawOpponent.
+                    portrait.Alpha = 1;
+                    portrait.PositionX = (centre - EndPortrait / 2 * aspect) / 256f;
+                    portrait.PositionY = (previewTop + (EndPreview - EndPortrait) / 2) / 192f;
+                    _scene.DrawHudObject(portrait, mode: 1, scale: EndPortrait / 32f);
+                }
+            }
+
+            // The arrows are the whole instruction. There is no line of text
+            // saying which key to press, because there is no room for one and
+            // because a left arrow beside a picture has never needed one.
+            //
+            // Drawn on a box each rather than as bare glyphs: they are
+            // clickable now, and a target you can hit has to look like one.
+            // The box is also the hit area, published below.
+            float arrowY = previewTop + EndPreview / 2 - 6 * scale;
+            EndScreen.Hit prev = DrawEndArrow(left + 2 * aspect, arrowY, "<",
+                EndScreen.HoveredPrev, aspect);
+            EndScreen.Hit forward = DrawEndArrow(right - (2 + EndArrowBox) * aspect, arrowY, ">",
+                EndScreen.HoveredNext, aspect);
+
+            DrawText2D(centre, EndRow(EndRowName), Align.Center, palette: 0,
+                ((Hunter)hunter).ToString().ToUpperInvariant(),
+                color: _endInk, fontSpacing: 8, scale: 0.6f * scale);
+
+            int suit = EndScreen.Suit;
+            DrawEndSuits((Hunter)hunter, suit, left, EndRow(EndRowSuits), aspect);
+            // One line where there were two. "SUIT" on its own row above the
+            // swatches and the colour's name on its own row below them cost
+            // ten units to say one thing, on the panel that had the least room
+            // to spare; said together they still label the row and the row
+            // above them gets to breathe.
+            DrawText2D(centre, EndRow(EndRowSuitName), Align.Center, palette: 0,
+                $"SUIT: {Mods.HunterSuits.Name(Mods.HunterSuits.Color((Hunter)hunter, suit))}",
+                color: _endInk, fontSpacing: 8, scale: 0.45f * scale);
+
+            // Publish only the controls that still exist. Map selection below is
+            // the post-match action; there is no separate Ready gate anymore.
+            EndScreen.NoteLayout(prev, forward, _endSuitHits);
+
+            string next = EndScreen.NextRoomName;
+            if (next.Length > 0)
+            {
+                DrawText2D(centre, EndRow(EndRowNext), Align.Center, palette: 0,
+                    $"NEXT: {next.ToUpperInvariant()}",
+                    color: _endDim, fontSpacing: 8, scale: 0.45f * scale);
+            }
+            // The ballot, under the picker and in the same column. Given the
+            // panel's floor rather than working it out again, because the
+            // panel's height is derived from what went in it and there is no
+            // second copy of that arithmetic to be wrong.
+            ModDrawMapPick(bottom);
+        }
+
+        /// <summary>A hairline box around the preview window.</summary>
+        private void DrawEndFrame(float left, float top, float right, float bottom, float aspect)
+        {
+            const float line = 0.7f;
+            _scene.DrawHudFlatBox(left - line * aspect, top - line, right + line * aspect, top, _endPanelEdge);
+            _scene.DrawHudFlatBox(left - line * aspect, bottom, right + line * aspect, bottom + line, _endPanelEdge);
+            _scene.DrawHudFlatBox(left - line * aspect, top, left, bottom, _endPanelEdge);
+            _scene.DrawHudFlatBox(right, top, right + line * aspect, bottom, _endPanelEdge);
+        }
+
+        /// <summary>Side of an arrow's clickable box, in HUD height units.</summary>
+        private static float EndArrowBox => 12 * EndScale;
+
+        /// <summary>
+        /// One arrow on its own box, lit while the pointer is over it, and the
+        /// box handed back so it can be clicked.
+        /// </summary>
+        private EndScreen.Hit DrawEndArrow(float x, float y, string glyph, bool hovered, float aspect)
+        {
+            float rightEdge = x + EndArrowBox * aspect;
+            float bottomEdge = y + EndArrowBox;
+            _scene.DrawHudFlatBox(x, y, rightEdge, bottomEdge,
+                hovered ? _endArrowHover : _endArrowWell);
+            DrawText2D(x + EndArrowBox / 2 * aspect, y + 2 * EndScale, Align.Center, palette: 0,
+                glyph, color: _endArrow, fontSpacing: 8, scale: 0.9f * EndScale);
+            return ModHudHit(x, y, rightEdge, bottomEdge);
+        }
+
+        /// <summary>
+        /// A box in HUD units turned into one in window fractions, which is
+        /// what a mouse position arrives in.
+        ///
+        /// The HUD's horizontal unit is 1/256 of the window and its vertical
+        /// unit 1/192 of it, whatever shape the window is -- the aspect
+        /// correction every measurement above carries is already baked into
+        /// the numbers by the time they reach here, so this is a plain
+        /// division and not a second correction.
+        /// </summary>
+        private static EndScreen.Hit ModHudHit(float left, float top, float right, float bottom)
+        {
+            return new EndScreen.Hit(left / 256f, top / 192f, right / 256f, bottom / 192f);
+        }
+
+        private static readonly Vector4 _endArrowWell = new Vector4(1, 1, 1, 0.10f);
+        private static readonly Vector4 _endArrowHover = new Vector4(1, 0.84f, 0.35f, 0.32f);
+
+        private readonly EndScreen.Hit[] _endSuitHits =
+            new EndScreen.Hit[Mods.Network.PlayerColors.Count];
+
+        /// <summary>
+        /// The four suits as four blocks of their own colour, the chosen one
+        /// ringed.
+        ///
+        /// Colours read out of the hunter's own model rather than named here
+        /// -- see <see cref="Mods.HunterSuits"/> -- because the four are not
+        /// the same four for every hunter, and a row of boxes labelled 1 to 4
+        /// answers nothing anybody is asking.
+        /// </summary>
+        private void DrawEndSuits(Hunter hunter, int chosen, float left, float top, float aspect)
+        {
+            float slot = 16 * EndScale;
+            float box = 11 * EndScale;
+            float height = 8 * EndScale;
+            int hoveredSuit = EndScreen.HoveredSuit();
+            float startX = left + (EndPanelWidth - slot * Mods.Network.PlayerColors.Count) / 2 * aspect;
+            for (int i = 0; i < Mods.Network.PlayerColors.Count; i++)
+            {
+                float x = startX + (i * slot + (slot - box) / 2) * aspect;
+                ColorRgba color = Mods.HunterSuits.Color(hunter, i);
+                if (i == chosen)
+                {
+                    _scene.DrawHudFlatBox(x - 1.5f * aspect, top - 1.5f,
+                        x + (box + 1.5f) * aspect, top + height + 1.5f, _endSwatchEdge);
+                }
+                else
+                {
+                    _scene.DrawHudFlatBox(x - 1 * aspect, top - 1,
+                        x + (box + 1) * aspect, top + height + 1, _endSwatchWell);
+                }
+                _scene.DrawHudFlatBox(x, top, x + box * aspect, top + height,
+                    new Vector4(color.Red / 255f, color.Green / 255f, color.Blue / 255f, 1));
+                if (i == hoveredSuit && i != chosen)
+                {
+                    // A wash over the swatch rather than a ring around it: the
+                    // chosen one already wears the ring, and two kinds of
+                    // outline on one row is two things to tell apart.
+                    _scene.DrawHudFlatBox(x, top, x + box * aspect, top + height,
+                        _endSwatchHover);
+                }
+                // A slot's worth, not a swatch's: the gaps between four
+                // squares are dead pixels in the middle of the one row people
+                // will aim at, and there is nothing else to hit there.
+                _endSuitHits[i] = ModHudHit(startX + i * slot * aspect, top - 1.5f,
+                    startX + (i + 1) * slot * aspect, top + height + 1.5f);
+            }
+        }
+    }
+}

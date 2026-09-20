@@ -1,0 +1,8277 @@
+using System;
+using System.Buffers;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Linq;
+using System.Runtime;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using MphRead.Effects;
+using MphRead.Entities;
+using MphRead.Export;
+using MphRead.Formats;
+using MphRead.Formats.Collision;
+using MphRead.Formats.Culling;
+using MphRead.Hud;
+using OpenTK.Graphics.OpenGL;
+using OpenTK.Mathematics;
+using OpenTK.Windowing.Common;
+using OpenTK.Windowing.Desktop;
+using OpenTK.Windowing.GraphicsLibraryFramework;
+
+namespace MphRead
+{
+    public enum VolumeDisplay
+    {
+        None,
+        LightColor1,
+        LightColor2,
+        TriggerParent,
+        TriggerChild,
+        AreaInside,
+        AreaExit,
+        MorphCamera,
+        JumpPad,
+        Teleporter,
+        EnemyHurt,
+        Object,
+        FlagBase,
+        DefenseNode,
+        KillPlane,
+        PlayerLimit,
+        CameraLimit,
+        NodeBounds,
+        NodeData,
+        Portal
+    }
+
+    public enum CollisionType
+    {
+        Any,
+        Player,
+        Beam,
+        Both
+    }
+
+    public enum CollisionColor
+    {
+        None,
+        Entity,
+        Terrain,
+        Type
+    }
+
+    public enum CameraMode
+    {
+        Pivot,
+        Roam,
+        Player
+    }
+
+    public enum AfterFade
+    {
+        None,
+        Exit,
+        LoadRoom,
+        PlayMovie,
+        StopMovie,
+        EnterShip
+    }
+
+    public partial class Scene
+    {
+        public Vector2i Size { get; set; }
+        private Matrix4 _viewMatrix = Matrix4.Identity;
+        private Matrix4 _viewInvRotMatrix = Matrix4.Identity;
+        private Matrix4 _viewInvRotYMatrix = Matrix4.Identity;
+        private Matrix4 _perspectiveMatrix = Matrix4.Identity;
+        private Matrix4 _viewModelPerspectiveMatrix = Matrix4.Identity;
+        public Matrix4 PerspectiveMatrix => _perspectiveMatrix;
+
+        private CameraMode _cameraMode = CameraMode.Pivot;
+        public CameraMode CameraMode => _cameraMode;
+        /// <summary>
+        /// Let go of the pointer, because something on screen is being pointed
+        /// at. The weapon wheel was that, and on a mouse it no longer is: it
+        /// is answered by dragging, with the pointer still grabbed and no
+        /// cursor drawn (see <see cref="Mods.Input.WeaponWheel"/>). Releasing
+        /// it there did real harm -- the cursor reappeared wherever the
+        /// windowing system had left it, which on the wheel's own arc is
+        /// already a weapon chosen, and a grabbed pointer is the only kind
+        /// that keeps producing movement once it reaches the edge of the
+        /// screen.
+        /// </summary>
+        public bool ShowCursor => Mods.Input.WeaponWheel.Absolute
+            && PlayerEntity.Main?.Flags1.TestFlag(PlayerFlags1.WeaponMenuOpen) == true;
+        private float _pivotAngleY = 0.0f;
+        private float _pivotAngleX = 0.0f;
+        private float _pivotDistance = 5.0f;
+        private Vector3 _cameraPosition = Vector3.Zero;
+        private Vector3 _cameraFacing = -Vector3.UnitZ;
+        private Vector3 _cameraUp = Vector3.UnitY;
+        private Vector3 _cameraRight = Vector3.UnitX;
+        private float _cameraFov = MathHelper.DegreesToRadians(78);
+        // Camera-authored FOV before the player's world-FOV preference is
+        // applied. First-person geometry uses this so a wider room view does
+        // not stretch the arm cannon into a fisheye viewmodel.
+        private float _viewModelFov = MathHelper.DegreesToRadians(78);
+        private bool _leftMouse = false;
+        private int _activeCutscene = -1;
+        private Vector3 _priorCameraPos = Vector3.Zero;
+        private Vector3 _priorCameraFacing = -Vector3.UnitZ;
+        private float _priorCameraFov = MathHelper.DegreesToRadians(78);
+        public FrustumInfo FrustumInfo { get; } = new FrustumInfo();
+
+        private bool _showTextures = true;
+        private bool _showColors = true;
+        // 0 is fill; 1..MaxWireframeLevel is wireframe, line width = level
+        private int _wireframeLevel = 0;
+        private const int MaxWireframeLevel = 5;
+        // 0 - lines + fill, 1 - lines only, 2 - fill only
+        private int _volumeEdges = 0;
+        private bool _faceCulling = true;
+        // The three the settings own. Read out of RenderOptions every time
+        // rather than copied into a field when the scene was built: the
+        // settings window opens from the pause menu *during* a match, so a
+        // copy is a fog switch that does nothing until the next room -- which
+        // is exactly how it behaved. The debug keys write to the same place,
+        // so F, L and G still flip them and now agree with what the settings
+        // page says.
+        private bool FilteringOn
+        {
+            get => Mods.RenderOptions.TextureFiltering;
+            set => Mods.RenderOptions.TextureFiltering = value;
+        }
+
+        private bool LightingOn
+        {
+            get => Mods.RenderOptions.Lighting;
+            set => Mods.RenderOptions.Lighting = value;
+        }
+
+        private bool FogOn
+        {
+            get => Mods.RenderOptions.Fog;
+            set => Mods.RenderOptions.Fog = value;
+        }
+        private bool _scanVisor = false;
+        private int _showInvisible = 0;
+        private bool _showNodeData = false;
+        private VolumeDisplay _showVolumes = VolumeDisplay.None;
+        private int _showBotAiSlot = -1;
+        private bool _showCollision = false;
+        private bool _showAllNodes = false;
+        private bool _transformRoomNodes = false;
+        private bool _outputCameraPos = false;
+
+        // map each model's texture ID/palette ID combinations to the bound OpenGL texture ID and "onlyOpaque" boolean
+        private int _textureCount = 0;
+        private readonly Dictionary<int, TextureMap> _texPalMap = new Dictionary<int, TextureMap>();
+
+        private int _shaderProgramId = 0;
+        private int _rttShaderProgramId = 0;
+        private int _shiftShaderProgramId = 0;
+        private int _celShaderProgramId = 0;
+        private readonly ShaderLocations _shaderLocations = new ShaderLocations();
+
+        private Vector3 _light1Vector = Vector3.Zero;
+        private Vector3 _light1Color = Vector3.Zero;
+        private Vector3 _light2Vector = Vector3.Zero;
+        private Vector3 _light2Color = Vector3.Zero;
+        private bool _hasFog = false;
+        private Vector4 _fogColor = Vector4.Zero;
+        private int _fogOffset = 0;
+        private int _fogSlope = 0;
+        private Color4 _clearColor = new Color4(0f, 0f, 0f, 1f);
+        private readonly float _nearClip = 0.0625f;
+        private float _farClip = 0;
+        private bool _useClip = false;
+        private float _killHeight = 0f;
+
+        private float _frameTime = 0;
+        private float _elapsedTime = 0;
+        private float _globalElapsedTime = 0;
+        private ulong _frameCount = 0;
+        private ulong _liveFrames = 0;
+        private bool _frameAdvanceOn = false;
+        private bool _frameAdvanceLastFrame = false;
+        public bool FrameAdvance => _frameAdvanceOn;
+        public bool FrameAdvanceLastFrame => _frameAdvanceLastFrame;
+        private bool _advanceOneFrame = false;
+        private bool _recording = false;
+        private int _framesRecorded = 0;
+        public bool ProcessFrame => (_frameCount == 0 || !_frameAdvanceOn || _advanceOneFrame) && !_exiting;
+        private bool _exiting = false;
+        public bool Exiting => _exiting;
+        private bool _roomLoaded = false;
+        private RoomEntity? _room = null;
+        public int RoomId { get; set; } = -1;
+        public int AreaId { get; set; } = -1;
+
+        private static Language _language = Language.English;
+        public static Language Language
+        {
+            get
+            {
+                if (Paths.IsMphKorea)
+                {
+                    return Language.Japanese;
+                }
+                return _language;
+            }
+            set
+            {
+                _language = value;
+            }
+        }
+
+        public Matrix4 ViewMatrix => _viewMatrix;
+        public Matrix4 ViewInvRotMatrix => _viewInvRotMatrix;
+        public Matrix4 ViewInvRotYMatrix => _viewInvRotYMatrix;
+        public Vector3 CameraPosition => _cameraPosition;
+        public bool ShowNodeData => _showNodeData;
+        public bool ShowInvisibleEntities => _showInvisible != 0;
+        public bool ShowAllEntities => _showInvisible == 2;
+        public bool TransformRoomNodes => _transformRoomNodes;
+        public bool ShowAllNodes { get => _showAllNodes; set => _showAllNodes = value; }
+        public float FrameTime => _frameTime;
+        public ulong FrameCount => _frameCount;
+        public ulong LiveFrames => _liveFrames;
+        public float ElapsedTime => _elapsedTime;
+        public float GlobalElapsedTime => _globalElapsedTime;
+        public VolumeDisplay ShowVolumes => _showVolumes;
+        public bool ShowForceFields => _showVolumes != VolumeDisplay.Portal;
+        public float KillHeight => _killHeight;
+        public bool ScanVisor => _cameraMode == CameraMode.Player ? PlayerEntity.Main.ScanVisor : _scanVisor;
+        public Vector3 Light1Vector => _light1Vector;
+        public Vector3 Light1Color => _light1Color;
+        public Vector3 Light2Vector => _light2Vector;
+        public Vector3 Light2Color => _light2Color;
+        public RoomEntity? Room => _room;
+        public int ActiveCutscene => _activeCutscene;
+        // todo: disallow if camera roll is not zero?
+        public bool AllowCameraMovement => _activeCutscene == -1 || (_frameAdvanceOn && !_advanceOneFrame);
+
+        public const int DisplaySphereStacks = 16;
+        public const int DisplaySphereSectors = 24;
+
+        private readonly KeyboardState _keyboardState;
+        private readonly MouseState _mouseState;
+        private readonly Action<string> _setTitle;
+        private readonly Action _close;
+
+        public Scene(Vector2i size, KeyboardState keyboardState, MouseState mouseState,
+            Action<string> setTitle, Action close)
+        {
+            Size = size;
+            _keyboardState = keyboardState;
+            _mouseState = mouseState;
+            _setTitle = setTitle;
+            _close = close;
+            Read.ClearCache();
+            Text.Strings.ClearCache();
+            GameState.Reset();
+            PlayerEntity.Construct(this);
+            Music.Init();
+        }
+
+        // called before load
+        public void AddRoom(string name, GameMode mode = GameMode.None, int playerCount = 0,
+            BossFlags bossFlags = BossFlags.Unspecified, int nodeLayerMask = 0, int entityLayerId = -1)
+        {
+            if (_roomLoaded)
+            {
+                throw new ProgramException("Cannot load more than one room in a scene.");
+            }
+            _roomLoaded = true;
+            GameState.Mode = mode;
+            // The report this is here for is "it crashes when the map loads",
+            // from a machine with no console window: a log that says which
+            // room, and which of the load's steps it reached, is the whole
+            // difference between that report and a fixable one.
+            Mods.DebugLog.Line("room", $"loading \"{name}\" mode={mode} "
+                + $"players={playerCount} layers={nodeLayerMask}/{entityLayerId}");
+            using IDisposable? loadStep = Mods.DebugLog.Step("room", $"load \"{name}\"");
+            (RoomEntity room, RoomMetadata meta, CollisionInstance collision, IReadOnlyList<EntityBase> entities)
+                = SceneSetup.LoadGame(name, this, playerCount, bossFlags, nodeLayerMask, entityLayerId);
+            Mods.DebugLog.Line("room", $"\"{name}\" read: {entities.Count} entit(ies), "
+                + $"id={RoomId}, area={AreaId}");
+            GameState.StorySave.SetVisitedRoom(RoomId);
+            GameState.StorySave.Areas |= (ushort)(1 << AreaId);
+            if (GameState.Mode == GameMode.None)
+            {
+                GameState.Mode = meta.Multiplayer ? GameMode.Battle : GameMode.SinglePlayer;
+            }
+            _entities.AddFirst(room);
+            InitEntity(room);
+            _room = room;
+            if (meta.InGameName != null)
+            {
+                _setTitle.Invoke(meta.InGameName);
+            }
+            foreach (EntityBase entity in entities)
+            {
+                InsertEntityByType(entity);
+                Debug.Assert(entity.Id != -1);
+                _entityMap.Add(entity.Id, entity);
+                InitEntity(entity);
+                entity.Initialized = false;
+            }
+            SceneSetup.LoadItemResources(this);
+            SceneSetup.LoadObjectResources(this);
+            SceneSetup.LoadPlatformResources(this);
+            SceneSetup.LoadEnemyResources(this);
+            GameState.Setup(this);
+            PlayerEntity.PlayerAiData.InitializeGlobals();
+            if (GameState.Multiplayer)
+            {
+                Menu.ApplyMultiplayerSettings();
+                // The same job for the launcher's path, which never runs the
+                // console menu and so never had a set of rules to apply.
+                Mods.GameSettings.ApplyMatchRules();
+            }
+            SetRoomValues(meta);
+            for (int i = 0; i < PlayerEntity.Players.Count; i++)
+            {
+                PlayerEntity player = PlayerEntity.Players[i];
+                if (player.LoadFlags.TestFlag(LoadFlags.SlotActive))
+                {
+                    InsertEntityByType(player);
+                }
+            }
+            for (int i = 0; i < PlayerEntity.Players.Count; i++)
+            {
+                PlayerEntity player = PlayerEntity.Players[i];
+                if (player.IsBot)
+                {
+                    player.AiData.InitializeAtLoad();
+                }
+            }
+            // the game has a redundant/early call for playing room track 0 in bounty/nodes
+            // Roam on a headless simulation, always, and this is load-bearing
+            // rather than cosmetic. IsMainPlayer is `this == Main && camera
+            // mode is Player`, and PlayerEntity.Main on a server is slot 0 --
+            // an arbitrary remote player, since there is no local one. Leaving
+            // the camera in Player mode would therefore make one slot in eight
+            // "the main player" and send it down 35 branches in PlayerProcess
+            // alone that no other slot takes, including one that skips
+            // UpdateNodeRefVolume. Roam makes IsMainPlayer false everywhere,
+            // so the server treats all eight slots identically -- which is
+            // exactly what a machine playing none of them should do.
+            _cameraMode = Mods.Headless.Active ? CameraMode.Roam
+                : PlayerEntity.Main.LoadFlags.TestFlag(LoadFlags.Active) ? CameraMode.Player : CameraMode.Roam;
+            _inputMode = _cameraMode == CameraMode.Player ? InputMode.All : InputMode.CameraOnly;
+            if (GameState.SinglePlayer && !meta.FirstHunt && PlayerEntity.PlayerCount > 0 && !Cheats.SkipPlanetIntros)
+            {
+                Movie movieId = _room.RoomId switch
+                {
+                    27 => Movie.AlinosLanding,
+                    45 => Movie.CALanding,
+                    65 => Movie.VDOLanding,
+                    77 => Movie.ArcterraLanding,
+                    89 => Movie.OublietteLanding,
+                    _ => Movie.None
+                };
+                if (movieId != Movie.None)
+                {
+                    _playingLandingMovie = true;
+                    Music.Pause(); // set the room music to be resumed (unless a cam seq plays to overwrite it)
+                    StartMovie(movieId, FadeType.FadeOutInBlack, 0, FadeType.FadeOutWhite, 5 / 30f, afterMovieAction: AfterMovie.StartGame);
+                }
+            }
+        }
+
+        public void SetRoomValues(RoomMetadata meta)
+        {
+            _light1Vector = meta.Light1Vector;
+            _light1Color = new Vector3(
+                meta.Light1Color.Red / 31.0f,
+                meta.Light1Color.Green / 31.0f,
+                meta.Light1Color.Blue / 31.0f
+            );
+            _light2Vector = meta.Light2Vector;
+            _light2Color = new Vector3(
+                meta.Light2Color.Red / 31.0f,
+                meta.Light2Color.Green / 31.0f,
+                meta.Light2Color.Blue / 31.0f
+            );
+            _hasFog = meta.FogEnabled;
+            _fogColor = new Vector4(
+                meta.FogColor.Red / 31f,
+                meta.FogColor.Green / 31f,
+                meta.FogColor.Blue / 31f,
+                1.0f
+            );
+            _fogOffset = meta.FogOffset;
+            _fogSlope = meta.FogSlope;
+            if (meta.ClearFog && meta.FirstHunt)
+            {
+                _clearColor = new Color4(_fogColor.X, _fogColor.Y, _fogColor.Z, _fogColor.W);
+            }
+            _killHeight = meta.KillHeight;
+            _farClip = meta.FarClip;
+
+            if (_shaderProgramId != 0)
+            {
+                SetShaderFog();
+            }
+        }
+
+        private void SetShaderFog()
+        {
+            float fogMin = _fogOffset / (float)0x7FFF;
+            float fogMax = (_fogOffset + 32 * (0x400 >> _fogSlope)) / (float)0x7FFF;
+            GL.Uniform4(_shaderLocations.FogColor, _fogColor);
+            GL.Uniform1(_shaderLocations.FogMinDistance, fogMin);
+            GL.Uniform1(_shaderLocations.FogMaxDistance, fogMax);
+        }
+
+        // called before load
+        public EntityBase AddModel(string name, int recolor = 0, bool firstHunt = false, MetaDir dir = MetaDir.Models, Vector3? pos = null)
+        {
+            ModelInstance model = Read.GetModelInstance(name, firstHunt, dir);
+            var entity = new ModelEntity(model, this, recolor);
+            InsertEntityByType(entity);
+            if (entity.Id != -1)
+            {
+                _entityMap.Add(entity.Id, entity);
+            }
+            InitEntity(entity);
+            if (pos.HasValue)
+            {
+                entity.Position = pos.Value;
+            }
+            return entity;
+        }
+
+        public void AddPlayer(Hunter hunter, int recolor = 0, int team = -1, Vector3? position = null)
+        {
+            if (!_roomLoaded)
+            {
+                var player = PlayerEntity.Create(hunter, recolor);
+                if (player != null)
+                {
+                    player.ForcedSpawnPos = position;
+                    // todo: revisit flags
+                    player.LoadFlags |= LoadFlags.SlotActive;
+                    player.LoadFlags |= LoadFlags.Active;
+                    player.LoadFlags |= LoadFlags.Initial;
+                    if (team != -1)
+                    {
+                        Debug.Assert((uint)team < 4);
+                        player.TeamIndex = team;
+                    }
+                    player.IsBot = PlayerEntity.PlayerCount >= 1;
+                    PlayerEntity.PlayerCount++;
+                }
+            }
+        }
+
+        public NodeRef UpdateNodeRef(NodeRef current, Vector3 prevPos, Vector3 curPos)
+        {
+            return Room?.UpdateNodeRef(current, prevPos, curPos) ?? NodeRef.None;
+        }
+
+        public NodeRef GetNodeRefByName(string nodeName)
+        {
+            return Room?.GetNodeRefByName(nodeName) ?? NodeRef.None;
+        }
+
+        /// <summary>
+        /// Whether a room part could hold this position at all -- false only
+        /// when the part's own geometry is nowhere near it. See
+        /// <c>RoomEntity.PartCouldContain</c>.
+        /// </summary>
+        public bool PartCouldContain(int partIndex, Vector3 position)
+        {
+            return Room?.PartCouldContain(partIndex, position, margin: 4) ?? true;
+        }
+
+        public NodeRef GetNodeRefByPosition(Vector3 position)
+        {
+            return Room?.GetNodeRefByPosition(position) ?? NodeRef.None;
+        }
+
+
+        public bool IsNodeRefVisible(NodeRef nodeRef)
+        {
+            return Room?.IsNodeRefVisible(nodeRef) ?? false;
+        }
+
+        public bool IsNodeRefAudible(NodeRef nodeRef)
+        {
+            return Room?.IsNodeRefAudible(nodeRef) ?? false;
+        }
+
+        public void OnLoad()
+        {
+            // What the driver calls itself, once, at the only moment there is
+            // certainly a context current. Everything about a picture being
+            // wrong on somebody else's machine starts with these three lines,
+            // and asking for them by hand means asking somebody to run a
+            // second program.
+            if (Mods.DebugLog.Active && !Mods.Headless.Active)
+            {
+                Mods.DebugLog.Line("gl", $"vendor={GL.GetString(StringName.Vendor)}");
+                Mods.DebugLog.Line("gl", $"renderer={GL.GetString(StringName.Renderer)}");
+                Mods.DebugLog.Line("gl", $"version={GL.GetString(StringName.Version)}");
+                Mods.DebugLog.Line("gl", "shading language="
+                    + GL.GetString(StringName.ShadingLanguageVersion));
+            }
+            // Everything from here to InitShaders needs a GL context, and a
+            // headless simulation has none. It also never draws, so the
+            // effect pools, the collision tables and the entity Initialize
+            // pass below -- which are the simulation's, not the picture's --
+            // are the only part of this method it wants.
+            if (!Mods.Headless.Active)
+            {
+                GL.ClearColor(_clearColor);
+                GL.Enable(EnableCap.DepthTest);
+                GL.Enable(EnableCap.Texture2D);
+                GL.DepthFunc(DepthFunction.Lequal);
+            }
+            if (!Mods.Headless.Active)
+            {
+                // One line a scene, because the machine that has to be asked
+                // about this is always somebody else's: what the render
+                // options actually came out as is the first thing worth
+                // knowing when a picture is wrong on a device nobody here can
+                // plug in.
+                Console.WriteLine($"[render] field of view "
+                    + $"{Mods.RenderOptions.FieldOfView} degrees"
+                    + $"{(Mods.RenderOptions.FieldOfView == Mods.RenderOptions.DefaultFov ? " (the DS's own)" : "")}");
+                Console.WriteLine($"[render] cel shading "
+                    + $"{(Mods.RenderOptions.CelShading ? "on" : "off")}, "
+                    + $"{Mods.RenderOptions.CelBands} bands, "
+                    + $"outline {Mods.RenderOptions.CelEdge.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}, "
+                    + $"fog {Mods.RenderOptions.OnOff(Mods.RenderOptions.Fog)}");
+                InitShaders();
+            }
+            AllocateEffects();
+            CollisionDetection.Init();
+            for (int i = 0; i < _renderItemAlloc; i++)
+            {
+                _freeRenderItems.Enqueue(new RenderItem());
+            }
+            foreach (EntityBase entity in Entities)
+            {
+                // entities added during initialization of other entities will already be initialized
+                if (!entity.Initialized)
+                {
+                    entity.Initialize();
+                    entity.Initialized = true;
+                }
+            }
+            // todo: probably revisit this
+            //
+            // Not on a side scene: that one has no room and no world, and the
+            // roster it would be initialising against is *static*. On a head
+            // that renders map previews in the game's own process there is a
+            // slot-active player left over from the last one, so standing the
+            // launcher's preview scene up ran PlayerEntity.Initialize with no
+            // sound loaded under it and took the thread down.
+            if (!SideScene)
+            {
+                foreach (PlayerEntity player in PlayerEntity.Players)
+                {
+                    if (player.LoadFlags.TestFlag(LoadFlags.SlotActive))
+                    {
+                        player.Initialize();
+                        InitEntity(player);
+                        InitEntity(player.Halfturret);
+                    }
+                }
+            }
+            if (!Mods.Headless.Active && !SideScene && !Mods.ThumbnailMode.Active
+                && !Console.IsOutputRedirected && !Console.IsInputRedirected && ConsoleOutputEnabled)
+            {
+                // The console prompt, which is a question put to a person.
+                //
+                // Not on a side scene. That one belongs to the launcher's
+                // hunter preview, and the launcher's Windows build is a GUI
+                // binary with no console at all -- so the first Console.Clear
+                // this loop reaches throws "The handle is invalid" on a task
+                // nobody is awaiting, and the finalizer rethrows it. There is
+                // also nobody to prompt: the scene has no room to load into
+                // and no camera to move.
+                //
+                // Nor on a thumbnail worker, and nor when the streams are
+                // pipes: a capture is a child process whose output the parent
+                // reads, so ConsoleWindow.Show stands down and there is no
+                // console buffer for Console.Clear to find -- the same
+                // exception, from the same line, with nobody to prompt again.
+                OutputStart();
+            }
+            GC.Collect(generation: 2, GCCollectionMode.Forced, blocking: true, compacting: true);
+            // Android's runtime throws PlatformNotSupported for this, which took
+            // every match on that head down before a room had finished loading.
+            // It is a hint to the collector, so going without it costs nothing.
+            if (!OperatingSystem.IsAndroid())
+            {
+                GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
+            }
+        }
+
+        private int _frameBuffer = 0;
+        private int _screenTexture = 0;
+        private int _renderBuffer = 0;
+        // What the ink pass reads. A pass cannot sample the target it is
+        // drawing into, so the finished scene is copied here first.
+        private int _celTexture = 0;
+        // The scene's depth, as a texture rather than as _renderBuffer, which
+        // nothing can read. Only allocated while cel shading is drawing its
+        // outline, and zero when the driver would not take one.
+        private int _depthTexture = 0;
+        private bool _depthTextureRefused = false;
+        private int _celFrameBuffer = 0;
+        private int _celFrameBufferColor = 0;
+
+        /// <summary>
+        /// The size the 3D scene is actually drawn at, which the resolution
+        /// scale may make smaller than the window. The quad that puts it on
+        /// screen stretches it back, and the HUD is drawn after that at full
+        /// size, so nothing readable is ever scaled.
+        /// </summary>
+        public Vector2i RenderSize => new Vector2i(
+            Mods.RenderOptions.Scaled(Size.X), Mods.RenderOptions.Scaled(Size.Y));
+
+        private Vector2i _targetSize;
+
+        /// <summary>
+        /// Whether this scene is somebody's private one rather than the
+        /// window's match.
+        ///
+        /// Set by <see cref="RenderWindow.NewSideScene"/>. It turns off the
+        /// things that only make sense for a match somebody is playing -- see
+        /// where it is read.
+        /// </summary>
+        public bool SideScene { get; set; }
+
+        public void OnResize()
+        {
+            if (_screenTexture != 0 && Size.X > 0 && Size.Y > 0)
+            {
+                Vector2i target = RenderSize;
+                int previousFramebuffer = GL.GetInteger(GetPName.DrawFramebufferBinding);
+                int previousReadFramebuffer = GL.GetInteger(GetPName.ReadFramebufferBinding);
+                GL.ActiveTexture(TextureUnit.Texture0);
+                try
+                {
+                    GL.BindTexture(TextureTarget.Texture2D, _screenTexture);
+                    GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgb, target.X, target.Y, 0,
+                        PixelFormat.Rgb, PixelType.UnsignedByte, IntPtr.Zero);
+                    // Nearest is the DS look; stretched targets need linear.
+                    bool upscaling = Mods.RenderOptions.ResolutionScale < 100;
+                    GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter,
+                        (int)(upscaling ? TextureMinFilter.Linear : TextureMinFilter.Nearest));
+                    GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter,
+                        (int)(upscaling ? TextureMagFilter.Linear : TextureMagFilter.Nearest));
+                    GL.BindTexture(TextureTarget.Texture2D, 0);
+                    if (_celTexture != 0)
+                    {
+                        GL.BindTexture(TextureTarget.Texture2D, _celTexture);
+                        GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgb, target.X, target.Y, 0,
+                            PixelFormat.Rgb, PixelType.UnsignedByte, IntPtr.Zero);
+                        GL.BindTexture(TextureTarget.Texture2D, 0);
+                    }
+                    Debug.Assert(_renderBuffer != 0);
+                    GL.BindRenderbuffer(RenderbufferTarget.Renderbuffer, _renderBuffer);
+                    GL.RenderbufferStorage(RenderbufferTarget.Renderbuffer, RenderbufferStorage.Depth24Stencil8, target.X, target.Y);
+                    GL.BindRenderbuffer(RenderbufferTarget.Renderbuffer, 0);
+                    if (_depthTexture != 0)
+                    {
+                        GL.BindTexture(TextureTarget.Texture2D, _depthTexture);
+                        GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Depth24Stencil8,
+                            target.X, target.Y, 0, PixelFormat.DepthStencil, PixelType.UnsignedInt248, IntPtr.Zero);
+                        GL.BindTexture(TextureTarget.Texture2D, 0);
+                    }
+                    GL.BindFramebuffer(FramebufferTarget.Framebuffer, _frameBuffer);
+                    ValidateFramebuffer("Scene after resize");
+                    if (_celFrameBuffer != 0)
+                    {
+                        GL.BindFramebuffer(FramebufferTarget.Framebuffer, _celFrameBuffer);
+                        ValidateFramebuffer("Cel after resize");
+                    }
+                    // Publish only after all attachments agree on the new size.
+                    _targetSize = target;
+                }
+                finally
+                {
+                    GL.BindTexture(TextureTarget.Texture2D, 0);
+                    GL.BindRenderbuffer(RenderbufferTarget.Renderbuffer, 0);
+                    GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, previousFramebuffer);
+                    GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, previousReadFramebuffer);
+                }
+            }
+        }
+
+        private void InitShaders()
+        {
+            string fragmentLog;
+            string vertexLog;
+            int vertexShader = GL.CreateShader(ShaderType.VertexShader);
+            GL.ShaderSource(vertexShader, Shaders.VertexShader);
+            GL.CompileShader(vertexShader);
+            int fragmentShader = GL.CreateShader(ShaderType.FragmentShader);
+            GL.ShaderSource(fragmentShader, Shaders.FragmentShader);
+            GL.CompileShader(fragmentShader);
+            GL.GetShader(vertexShader, ShaderParameter.CompileStatus, out int vertexStatus);
+            GL.GetShader(fragmentShader, ShaderParameter.CompileStatus, out int fragmentStatus);
+            if (Debugger.IsAttached)
+            {
+                vertexLog = GL.GetShaderInfoLog(vertexShader);
+                fragmentLog = GL.GetShaderInfoLog(fragmentShader);
+                if (vertexLog != "" || fragmentLog != "")
+                {
+                    Debugger.Break();
+                }
+            }
+            if (vertexStatus == 0 || fragmentStatus == 0)
+            {
+                // The driver's own message. Without it a shader that will not
+                // compile is one sentence with nothing in it to act on.
+                throw new ProgramException("Failed to compile main shaders."
+                    + $" vertex: {GL.GetShaderInfoLog(vertexShader)}"
+                    + $" fragment: {GL.GetShaderInfoLog(fragmentShader)}");
+            }
+
+            _shaderProgramId = GL.CreateProgram();
+            GL.AttachShader(_shaderProgramId, vertexShader);
+            GL.AttachShader(_shaderProgramId, fragmentShader);
+            GL.LinkProgram(_shaderProgramId);
+            GL.DetachShader(_shaderProgramId, vertexShader);
+            GL.DetachShader(_shaderProgramId, fragmentShader);
+            GL.DeleteShader(fragmentShader);
+            GL.DeleteShader(vertexShader);
+
+            vertexShader = GL.CreateShader(ShaderType.VertexShader);
+            GL.ShaderSource(vertexShader, Shaders.RttVertexShader);
+            GL.CompileShader(vertexShader);
+            fragmentShader = GL.CreateShader(ShaderType.FragmentShader);
+            GL.ShaderSource(fragmentShader, Shaders.RttFragmentShader);
+            GL.CompileShader(fragmentShader);
+            GL.GetShader(vertexShader, ShaderParameter.CompileStatus, out vertexStatus);
+            GL.GetShader(fragmentShader, ShaderParameter.CompileStatus, out fragmentStatus);
+            if (Debugger.IsAttached)
+            {
+                vertexLog = GL.GetShaderInfoLog(vertexShader);
+                fragmentLog = GL.GetShaderInfoLog(fragmentShader);
+                if (vertexLog != "" || fragmentLog != "")
+                {
+                    Debugger.Break();
+                }
+            }
+            if (vertexStatus == 0 || fragmentStatus == 0)
+            {
+                throw new ProgramException("Failed to compile RTT shaders.");
+            }
+            _rttShaderProgramId = GL.CreateProgram();
+            GL.AttachShader(_rttShaderProgramId, vertexShader);
+            GL.AttachShader(_rttShaderProgramId, fragmentShader);
+            GL.LinkProgram(_rttShaderProgramId);
+            GL.DetachShader(_rttShaderProgramId, vertexShader);
+            GL.DetachShader(_rttShaderProgramId, fragmentShader);
+            GL.DeleteShader(fragmentShader);
+
+            // use same vertex shader
+            fragmentShader = GL.CreateShader(ShaderType.FragmentShader);
+            GL.ShaderSource(fragmentShader, Shaders.ShiftFragmentShader);
+            GL.CompileShader(fragmentShader);
+            GL.GetShader(fragmentShader, ShaderParameter.CompileStatus, out fragmentStatus);
+            if (Debugger.IsAttached)
+            {
+                fragmentLog = GL.GetShaderInfoLog(fragmentShader);
+                if (fragmentLog != "")
+                {
+                    Debugger.Break();
+                }
+            }
+            if (fragmentStatus == 0)
+            {
+                throw new ProgramException("Failed to compile shift shader.");
+            }
+            _shiftShaderProgramId = GL.CreateProgram();
+            GL.AttachShader(_shiftShaderProgramId, vertexShader);
+            GL.AttachShader(_shiftShaderProgramId, fragmentShader);
+            GL.LinkProgram(_shiftShaderProgramId);
+            GL.DetachShader(_shiftShaderProgramId, vertexShader);
+            GL.DetachShader(_shiftShaderProgramId, fragmentShader);
+            GL.DeleteShader(fragmentShader);
+
+            // use same vertex shader
+            fragmentShader = GL.CreateShader(ShaderType.FragmentShader);
+            GL.ShaderSource(fragmentShader, Shaders.CelFragmentShader);
+            GL.CompileShader(fragmentShader);
+            GL.GetShader(fragmentShader, ShaderParameter.CompileStatus, out fragmentStatus);
+            if (fragmentStatus == 0)
+            {
+                throw new ProgramException("Failed to compile the cel shading shader."
+                    + $" {GL.GetShaderInfoLog(fragmentShader)}");
+            }
+            _celShaderProgramId = GL.CreateProgram();
+            GL.AttachShader(_celShaderProgramId, vertexShader);
+            GL.AttachShader(_celShaderProgramId, fragmentShader);
+            GL.LinkProgram(_celShaderProgramId);
+            GL.DetachShader(_celShaderProgramId, vertexShader);
+            GL.DetachShader(_celShaderProgramId, fragmentShader);
+            GL.DeleteShader(fragmentShader);
+            GL.DeleteShader(vertexShader);
+
+            _frameBuffer = GL.GenFramebuffer();
+            GL.BindFramebuffer(FramebufferTarget.Framebuffer, _frameBuffer);
+            _screenTexture = GL.GenTexture();
+            _textureCount++;
+            Vector2i renderTarget = RenderSize;
+            GL.ActiveTexture(TextureUnit.Texture0);
+            GL.BindTexture(TextureTarget.Texture2D, _screenTexture);
+            GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgb, renderTarget.X, renderTarget.Y, 0,
+                PixelFormat.Rgb, PixelType.UnsignedByte, IntPtr.Zero);
+            // Nearest at full size, which is what the DS looked like; linear
+            // once the scene is being stretched, where nearest is a mess of
+            // stair-stepped edges rather than a soft picture.
+            bool upscaling = Mods.RenderOptions.ResolutionScale < 100;
+            int minParameter = (int)(upscaling ? TextureMinFilter.Linear : TextureMinFilter.Nearest);
+            int magParameter = (int)(upscaling ? TextureMagFilter.Linear : TextureMagFilter.Nearest);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, minParameter);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, magParameter);
+            GL.BindTexture(TextureTarget.Texture2D, 0);
+            GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0,
+                TextureTarget.Texture2D, _screenTexture, 0);
+
+            // The ink pass's copy of the scene. Same size and same filtering;
+            // it is only ever sampled texel for texel.
+            _celTexture = GL.GenTexture();
+            _textureCount++;
+            GL.BindTexture(TextureTarget.Texture2D, _celTexture);
+            GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgb, renderTarget.X, renderTarget.Y, 0,
+                PixelFormat.Rgb, PixelType.UnsignedByte, IntPtr.Zero);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+            GL.BindTexture(TextureTarget.Texture2D, 0);
+
+            _renderBuffer = GL.GenRenderbuffer();
+            GL.BindRenderbuffer(RenderbufferTarget.Renderbuffer, _renderBuffer);
+            GL.RenderbufferStorage(RenderbufferTarget.Renderbuffer, RenderbufferStorage.Depth24Stencil8, renderTarget.X, renderTarget.Y);
+            GL.BindRenderbuffer(RenderbufferTarget.Renderbuffer, 0);
+            GL.FramebufferRenderbuffer(FramebufferTarget.Framebuffer, FramebufferAttachment.DepthStencilAttachment,
+                RenderbufferTarget.Renderbuffer, _renderBuffer);
+
+            FramebufferErrorCode status = GL.CheckFramebufferStatus(FramebufferTarget.Framebuffer);
+            FramebufferStatus = status;
+            ValidateFramebuffer("Scene initialization");
+            _targetSize = renderTarget;
+
+            GL.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
+
+            _shaderLocations.UseLight = GL.GetUniformLocation(_shaderProgramId, "use_light");
+            _shaderLocations.ShowColors = GL.GetUniformLocation(_shaderProgramId, "show_colors");
+            _shaderLocations.UseTexture = GL.GetUniformLocation(_shaderProgramId, "use_texture");
+            _shaderLocations.Light1Color = GL.GetUniformLocation(_shaderProgramId, "light1col");
+            _shaderLocations.Light1Vector = GL.GetUniformLocation(_shaderProgramId, "light1vec");
+            _shaderLocations.Light2Color = GL.GetUniformLocation(_shaderProgramId, "light2col");
+            _shaderLocations.Light2Vector = GL.GetUniformLocation(_shaderProgramId, "light2vec");
+            _shaderLocations.Diffuse = GL.GetUniformLocation(_shaderProgramId, "diffuse");
+            _shaderLocations.Ambient = GL.GetUniformLocation(_shaderProgramId, "ambient");
+            _shaderLocations.Specular = GL.GetUniformLocation(_shaderProgramId, "specular");
+            _shaderLocations.Emission = GL.GetUniformLocation(_shaderProgramId, "emission");
+            _shaderLocations.UseFog = GL.GetUniformLocation(_shaderProgramId, "fog_enable");
+            _shaderLocations.CelBands = GL.GetUniformLocation(_shaderProgramId, "cel_bands");
+            _shaderLocations.UseFlat = GL.GetUniformLocation(_shaderProgramId, "use_flat");
+            _shaderLocations.FlatColor = GL.GetUniformLocation(_shaderProgramId, "flat_color");
+            _shaderLocations.FogColor = GL.GetUniformLocation(_shaderProgramId, "fog_color");
+            _shaderLocations.FogMinDistance = GL.GetUniformLocation(_shaderProgramId, "fog_min");
+            _shaderLocations.FogMaxDistance = GL.GetUniformLocation(_shaderProgramId, "fog_max");
+            _shaderLocations.UseOverride = GL.GetUniformLocation(_shaderProgramId, "use_override");
+            _shaderLocations.OverrideColor = GL.GetUniformLocation(_shaderProgramId, "override_color");
+            _shaderLocations.UsePaletteOverride = GL.GetUniformLocation(_shaderProgramId, "use_pal_override");
+            _shaderLocations.PaletteOverrideColor = GL.GetUniformLocation(_shaderProgramId, "pal_override_color");
+            _shaderLocations.MaterialAlpha = GL.GetUniformLocation(_shaderProgramId, "mat_alpha");
+            _shaderLocations.MaterialMode = GL.GetUniformLocation(_shaderProgramId, "mat_mode");
+            _shaderLocations.ViewMatrix = GL.GetUniformLocation(_shaderProgramId, "view_mtx");
+            _shaderLocations.ViewInvMatrix = GL.GetUniformLocation(_shaderProgramId, "view_inv_mtx");
+            _shaderLocations.ProjectionMatrix = GL.GetUniformLocation(_shaderProgramId, "proj_mtx");
+            _shaderLocations.TextureMatrix = GL.GetUniformLocation(_shaderProgramId, "tex_mtx");
+            _shaderLocations.TexgenMode = GL.GetUniformLocation(_shaderProgramId, "texgen_mode");
+            _shaderLocations.MatrixStack = GL.GetUniformLocation(_shaderProgramId, "mtx_stack");
+            _shaderLocations.ToonTable = GL.GetUniformLocation(_shaderProgramId, "toon_table");
+
+            _shaderLocations.CelOutline = GL.GetUniformLocation(_celShaderProgramId, "outline");
+            _shaderLocations.CelTexelWidth = GL.GetUniformLocation(_celShaderProgramId, "texel_w");
+            _shaderLocations.CelTexelHeight = GL.GetUniformLocation(_celShaderProgramId, "texel_h");
+            _shaderLocations.CelNearPlane = GL.GetUniformLocation(_celShaderProgramId, "near_plane");
+            _shaderLocations.CelFarPlane = GL.GetUniformLocation(_celShaderProgramId, "far_plane");
+            _shaderLocations.CelDepthQuantum = GL.GetUniformLocation(_celShaderProgramId, "depth_quantum");
+            _shaderLocations.CelProbe = GL.GetUniformLocation(_celShaderProgramId, "probe");
+
+            _shaderLocations.FadeColor = GL.GetUniformLocation(_rttShaderProgramId, "fade_color");
+            _shaderLocations.LayerAlpha = GL.GetUniformLocation(_rttShaderProgramId, "alpha");
+            _shaderLocations.UseMask = GL.GetUniformLocation(_rttShaderProgramId, "use_mask");
+            _shaderLocations.ViewWidth = GL.GetUniformLocation(_rttShaderProgramId, "view_width");
+            _shaderLocations.ViewHeight = GL.GetUniformLocation(_rttShaderProgramId, "view_height");
+            int texLocation = GL.GetUniformLocation(_rttShaderProgramId, "tex");
+            int maskLocation = GL.GetUniformLocation(_rttShaderProgramId, "mask");
+            GL.UseProgram(_rttShaderProgramId);
+            GL.Uniform1(texLocation, 0);
+            GL.Uniform1(maskLocation, 1);
+
+            GL.UseProgram(_celShaderProgramId);
+            GL.Uniform1(GL.GetUniformLocation(_celShaderProgramId, "tex"), 0);
+            GL.Uniform1(GL.GetUniformLocation(_celShaderProgramId, "depth_tex"), 1);
+
+            _shaderLocations.ShiftTable = GL.GetUniformLocation(_shiftShaderProgramId, "shift_table");
+            _shaderLocations.ShiftIndex = GL.GetUniformLocation(_shiftShaderProgramId, "shift_idx");
+            _shaderLocations.ShiftFactor = GL.GetUniformLocation(_shiftShaderProgramId, "shift_fac");
+            _shaderLocations.LerpFactor = GL.GetUniformLocation(_shiftShaderProgramId, "lerp_fac");
+            _shaderLocations.WhiteoutTable = GL.GetUniformLocation(_shiftShaderProgramId, "white_table");
+            _shaderLocations.WhiteoutFactor = GL.GetUniformLocation(_shiftShaderProgramId, "white_fac");
+            InitRenderPassState();
+
+            GL.UseProgram(_shiftShaderProgramId);
+
+            float[] shifts = new float[64];
+            for (int i = 0; i < 64; i++)
+            {
+                int val;
+                if ((i & 32) != 0)
+                {
+                    val = 31 - (i & 31);
+                }
+                else
+                {
+                    val = i & 31;
+                }
+                shifts[i] = -((val - 16) << 12) / 4096f / 256f;
+            }
+            GL.Uniform1(_shaderLocations.ShiftTable, 64, shifts);
+
+            GL.UseProgram(_shaderProgramId);
+
+            var floats = new List<float>(Metadata.ToonTable.Count * 3);
+            foreach (Vector3 vector in Metadata.ToonTable)
+            {
+                floats.Add(vector.X);
+                floats.Add(vector.Y);
+                floats.Add(vector.Z);
+            }
+            GL.Uniform3(_shaderLocations.ToonTable, Metadata.ToonTable.Count, floats.ToArray());
+            SetShaderFog();
+        }
+
+        public void InitEntity(EntityBase entity)
+        {
+            foreach (ModelInstance inst in entity.GetModels())
+            {
+                InitTextures(inst.Model);
+                GenerateLists(inst.Model, isRoom: entity.Type == EntityType.Room);
+            }
+        }
+
+        private void GenerateLists(Model model, bool isRoom)
+        {
+            if (Mods.Headless.Active)
+            {
+                return;
+            }
+            var tempListIds = new Dictionary<int, int>();
+            foreach (Mesh mesh in model.Meshes)
+            {
+                if (mesh.ListId != 0)
+                {
+                    continue;
+                }
+                if (!tempListIds.TryGetValue(mesh.DlistId, out int listId))
+                {
+                    int textureWidth = 0;
+                    int textureHeight = 0;
+                    Material material = model.Materials[mesh.MaterialId];
+                    if (material.TextureId != -1)
+                    {
+                        Texture texture = model.Recolors[0].Textures[material.TextureId];
+                        textureWidth = texture.Width;
+                        textureHeight = texture.Height;
+                    }
+                    listId = GL.GenLists(1);
+                    GL.NewList(listId, ListMode.Compile);
+                    bool texgen = material.TexgenMode == TexgenMode.Normal;
+                    DoDlist(model, mesh, textureWidth, textureHeight, texgen, isRoom);
+                    GL.EndList();
+                }
+                mesh.ListId = listId;
+            }
+        }
+
+        private void DoDlist(Model model, Mesh mesh, int textureWidth, int textureHeight, bool texgen, bool isRoom)
+        {
+            IReadOnlyList<RenderInstruction> list = model.RenderInstructionLists[mesh.DlistId];
+            float vtxX = 0;
+            float vtxY = 0;
+            float vtxZ = 0;
+            float texX = texgen ? 0.5f : 0f;
+            float texY = texgen ? 0.5f : 0f;
+            uint matrixId = 0;
+            GL.TexCoord3(texX, texY, 0f);
+            for (int i = 0; i < list.Count; i++)
+            {
+                RenderInstruction instruction = list[i];
+                switch (instruction.Code)
+                {
+                case InstructionCode.BEGIN_VTXS:
+                    if (instruction.Arguments[0] == 0)
+                    {
+                        GL.Begin(PrimitiveType.Triangles);
+                    }
+                    else if (instruction.Arguments[0] == 1)
+                    {
+                        GL.Begin(PrimitiveType.Quads);
+                    }
+                    else if (instruction.Arguments[0] == 2)
+                    {
+                        GL.Begin(PrimitiveType.TriangleStrip);
+                    }
+                    else if (instruction.Arguments[0] == 3)
+                    {
+                        GL.Begin(PrimitiveType.QuadStrip);
+                    }
+                    else
+                    {
+                        throw new ProgramException("Invalid geometry type");
+                    }
+                    break;
+                case InstructionCode.COLOR:
+                    {
+                        uint rgb = instruction.Arguments[0];
+                        uint r = (rgb >> 0) & 0x1F;
+                        uint g = (rgb >> 5) & 0x1F;
+                        uint b = (rgb >> 10) & 0x1F;
+                        GL.Color3(r / 31.0f, g / 31.0f, b / 31.0f);
+                    }
+                    break;
+                case InstructionCode.DIF_AMB:
+                    {
+                        uint rgb = instruction.Arguments[0];
+                        uint dr = (rgb >> 0) & 0x1F;
+                        uint dg = (rgb >> 5) & 0x1F;
+                        uint db = (rgb >> 10) & 0x1F;
+                        uint set = (rgb >> 15) & 1;
+                        uint ar = (rgb >> 16) & 0x1F;
+                        uint ag = (rgb >> 21) & 0x1F;
+                        uint ab = (rgb >> 26) & 0x1F;
+                        var diffuse = new Vector4(dr / 31.0f, dg / 31.0f, db / 31.0f, 1.0f);
+                        var ambient = new Vector4(ar / 31.0f, ag / 31.0f, ab / 31.0f, 1.0f);
+                        // shader - if (LightingOn)
+                        // MPH only calls this with zero ambient, and we need to rely on that in order to
+                        // use GL.Color to smuggle in the diffuse, since setting uniforms here doesn't work
+                        Debug.Assert(ambient.X == 0 && ambient.Y == 0 && ambient.Z == 0);
+                        GL.Color4(diffuse.X, diffuse.Y, diffuse.Z, 0.0f);
+                        if (set != 0) // shader - && _showColors
+                        {
+                            // MPH never does this in a dlist
+                            Debug.Assert(false);
+                            GL.Color3(dr / 31.0f, dg / 31.0f, db / 31.0f);
+                        }
+                    }
+                    break;
+                case InstructionCode.NORMAL:
+                    {
+                        uint xyz = instruction.Arguments[0];
+                        int x = (int)((xyz >> 0) & 0x3FF);
+                        if ((x & 0x200) > 0)
+                        {
+                            x = (int)(x | 0xFFFFFC00);
+                        }
+                        int y = (int)((xyz >> 10) & 0x3FF);
+                        if ((y & 0x200) > 0)
+                        {
+                            y = (int)(y | 0xFFFFFC00);
+                        }
+                        int z = (int)((xyz >> 20) & 0x3FF);
+                        if ((z & 0x200) > 0)
+                        {
+                            z = (int)(z | 0xFFFFFC00);
+                        }
+                        GL.Normal3(x / 512.0f, y / 512.0f, z / 512.0f);
+                    }
+                    break;
+                case InstructionCode.TEXCOORD:
+                    {
+                        Debug.Assert(textureWidth > 0 && textureHeight > 0);
+                        uint st = instruction.Arguments[0];
+                        int s = (int)((st >> 0) & 0xFFFF);
+                        if ((s & 0x8000) > 0)
+                        {
+                            s = (int)(s | 0xFFFF0000);
+                        }
+                        int t = (int)((st >> 16) & 0xFFFF);
+                        if ((t & 0x8000) > 0)
+                        {
+                            t = (int)(t | 0xFFFF0000);
+                        }
+                        texX = s / 16.0f / textureWidth;
+                        texY = t / 16.0f / textureHeight;
+                        GL.TexCoord3(texX, texY, matrixId);
+                    }
+                    break;
+                case InstructionCode.VTX_16:
+                    {
+                        uint xy = instruction.Arguments[0];
+                        int x = (int)((xy >> 0) & 0xFFFF);
+                        if ((x & 0x8000) > 0)
+                        {
+                            x = (int)(x | 0xFFFF0000);
+                        }
+                        int y = (int)((xy >> 16) & 0xFFFF);
+                        if ((y & 0x8000) > 0)
+                        {
+                            y = (int)(y | 0xFFFF0000);
+                        }
+                        int z = (int)(instruction.Arguments[1] & 0xFFFF);
+                        if ((z & 0x8000) > 0)
+                        {
+                            z = (int)(z | 0xFFFF0000);
+                        }
+                        vtxX = Fixed.ToFloat(x);
+                        vtxY = Fixed.ToFloat(y);
+                        vtxZ = Fixed.ToFloat(z);
+                        GL.Vertex3(vtxX, vtxY, vtxZ);
+                    }
+                    break;
+                case InstructionCode.VTX_10:
+                    {
+                        uint xyz = instruction.Arguments[0];
+                        int x = (int)((xyz >> 0) & 0x3FF);
+                        if ((x & 0x200) > 0)
+                        {
+                            x = (int)(x | 0xFFFFFC00);
+                        }
+                        int y = (int)((xyz >> 10) & 0x3FF);
+                        if ((y & 0x200) > 0)
+                        {
+                            y = (int)(y | 0xFFFFFC00);
+                        }
+                        int z = (int)((xyz >> 20) & 0x3FF);
+                        if ((z & 0x200) > 0)
+                        {
+                            z = (int)(z | 0xFFFFFC00);
+                        }
+                        vtxX = x / 64.0f;
+                        vtxY = y / 64.0f;
+                        vtxZ = z / 64.0f;
+                        GL.Vertex3(vtxX, vtxY, vtxZ);
+                    }
+                    break;
+                case InstructionCode.VTX_XY:
+                    {
+                        uint xy = instruction.Arguments[0];
+                        int x = (int)((xy >> 0) & 0xFFFF);
+                        if ((x & 0x8000) > 0)
+                        {
+                            x = (int)(x | 0xFFFF0000);
+                        }
+                        int y = (int)((xy >> 16) & 0xFFFF);
+                        if ((y & 0x8000) > 0)
+                        {
+                            y = (int)(y | 0xFFFF0000);
+                        }
+                        vtxX = Fixed.ToFloat(x);
+                        vtxY = Fixed.ToFloat(y);
+                        GL.Vertex3(vtxX, vtxY, vtxZ);
+                    }
+                    break;
+                case InstructionCode.VTX_XZ:
+                    {
+                        uint xz = instruction.Arguments[0];
+                        int x = (int)((xz >> 0) & 0xFFFF);
+                        if ((x & 0x8000) > 0)
+                        {
+                            x = (int)(x | 0xFFFF0000);
+                        }
+                        int z = (int)((xz >> 16) & 0xFFFF);
+                        if ((z & 0x8000) > 0)
+                        {
+                            z = (int)(z | 0xFFFF0000);
+                        }
+                        vtxX = Fixed.ToFloat(x);
+                        vtxZ = Fixed.ToFloat(z);
+                        GL.Vertex3(vtxX, vtxY, vtxZ);
+                    }
+                    break;
+                case InstructionCode.VTX_YZ:
+                    {
+                        uint yz = instruction.Arguments[0];
+                        int y = (int)((yz >> 0) & 0xFFFF);
+                        if ((y & 0x8000) > 0)
+                        {
+                            y = (int)(y | 0xFFFF0000);
+                        }
+                        int z = (int)((yz >> 16) & 0xFFFF);
+                        if ((z & 0x8000) > 0)
+                        {
+                            z = (int)(z | 0xFFFF0000);
+                        }
+                        vtxY = Fixed.ToFloat(y);
+                        vtxZ = Fixed.ToFloat(z);
+                        GL.Vertex3(vtxX, vtxY, vtxZ);
+                    }
+                    break;
+                case InstructionCode.VTX_DIFF:
+                    {
+                        uint xyz = instruction.Arguments[0];
+                        int x = (int)((xyz >> 0) & 0x3FF);
+                        if ((x & 0x200) > 0)
+                        {
+                            x = (int)(x | 0xFFFFFC00);
+                        }
+                        int y = (int)((xyz >> 10) & 0x3FF);
+                        if ((y & 0x200) > 0)
+                        {
+                            y = (int)(y | 0xFFFFFC00);
+                        }
+                        int z = (int)((xyz >> 20) & 0x3FF);
+                        if ((z & 0x200) > 0)
+                        {
+                            z = (int)(z | 0xFFFFFC00);
+                        }
+                        vtxX += Fixed.ToFloat(x);
+                        vtxY += Fixed.ToFloat(y);
+                        vtxZ += Fixed.ToFloat(z);
+                        GL.Vertex3(vtxX, vtxY, vtxZ);
+                    }
+                    break;
+                case InstructionCode.END_VTXS:
+                    GL.End();
+                    break;
+                case InstructionCode.MTX_RESTORE:
+                    // in order to allow toggling room node transforms, keep the matrix ID at 0
+                    if (!isRoom)
+                    {
+                        matrixId = instruction.Arguments[0];
+                    }
+                    GL.TexCoord3(texX, texY, matrixId);
+                    break;
+                case InstructionCode.NOP:
+                    break;
+                default:
+                    throw new ProgramException("Unknown opcode");
+                }
+            }
+            // leave the ID at 0 in case the next thing we draw doesn't use the stack
+            GL.TexCoord3(0f, 0f, 0f);
+        }
+
+        public void LoadModel(string name, bool firstHunt = false)
+        {
+            LoadModel(Read.GetModelInstance(name, firstHunt).Model);
+        }
+
+        public void LoadModel(Model model, bool isRoom = false)
+        {
+            InitTextures(model);
+            GenerateLists(model, isRoom);
+        }
+
+        private void InitTextures(Model model)
+        {
+            // Nothing to upload to and nothing that would read it. This and
+            // GenerateLists below are the picture's half of loading a model:
+            // this one decodes every texel of every recolour and hands it to
+            // the GPU, that one compiles the geometry into display lists, and
+            // what they produce -- the texture map and mesh.ListId -- is read
+            // from GetDrawItems and from nowhere else.
+            //
+            // Guarded here rather than at the two call sites because there
+            // are two: an entity being initialised, and a resource the room
+            // loader pulls in by name (bombs, items, effects). The second is
+            // the one that gets forgotten.
+            //
+            // This is the largest single saving of running without a window.
+            if (Mods.Headless.Active)
+            {
+                return;
+            }
+            if (_texPalMap.ContainsKey(model.Id))
+            {
+                return;
+            }
+            var combos = new HashSet<(int, int, int)>();
+            foreach (Material material in model.Materials)
+            {
+                if (material.TextureId == -1)
+                {
+                    continue;
+                }
+                if (material.RenderMode == RenderMode.Unknown3 || material.RenderMode == RenderMode.Unknown4)
+                {
+                    material.RenderMode = RenderMode.Normal;
+                }
+                for (int i = 0; i < model.Recolors.Count; i++)
+                {
+                    combos.Add((material.TextureId, material.PaletteId, i));
+                }
+            }
+            foreach (TextureAnimationGroup group in model.AnimationGroups.Texture)
+            {
+                foreach (TextureAnimation animation in group.Animations.Values)
+                {
+                    for (int i = animation.StartIndex; i < animation.StartIndex + animation.Count; i++)
+                    {
+                        for (int j = 0; j < model.Recolors.Count; j++)
+                        {
+                            combos.Add((group.TextureIds[i], group.PaletteIds[i], j));
+                        }
+                    }
+                }
+            }
+            if (combos.Count == 0 && model.Recolors.Count > 0
+                && model.Recolors[0].Textures.Count > 0 && model.Recolors[0].Palettes.Count > 0)
+            {
+                combos.Add((0, 0, 0));
+            }
+            if (combos.Count > 0)
+            {
+                var map = new TextureMap();
+                foreach ((int textureId, int paletteId, int recolorId) in combos)
+                {
+                    bool onlyOpaque = BindTexture(model, textureId, paletteId, recolorId);
+                    map.Add(textureId, paletteId, recolorId, _textureCount, onlyOpaque);
+                }
+                _texPalMap.Add(model.Id, map);
+            }
+        }
+
+        public int BindGetTexture(Model model, int textureId, int paletteId, int recolorId)
+        {
+            // No texture was uploaded and none will be read: what callers do
+            // with this is hand it back to a draw. See InitTextures.
+            if (Mods.Headless.Active)
+            {
+                return 0;
+            }
+            if (_texPalMap.TryGetValue(model.Id, out TextureMap? value))
+            {
+                return value.Get(textureId, paletteId, recolorId).BindingId;
+            }
+            BindTexture(model, textureId, paletteId, recolorId);
+            return _textureCount;
+        }
+
+        private bool BindTexture(Model model, int textureId, int paletteId, int recolorId)
+        {
+            _textureCount++;
+            bool onlyOpaque = true;
+            var pixels = new List<uint>();
+            var average = new FlatColor();
+            foreach (ColorRgba pixel in model.GetPixels(textureId, paletteId, recolorId))
+            {
+                pixels.Add(pixel.ToUint());
+                onlyOpaque &= pixel.Alpha == 255;
+                average.Add(pixel);
+            }
+            Texture texture = model.Recolors[recolorId].Textures[textureId];
+            GL.BindTexture(TextureTarget.Texture2D, _textureCount);
+            GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba, texture.Width, texture.Height, 0,
+                PixelFormat.Rgba, PixelType.UnsignedByte, pixels.ToArray());
+            GL.BindTexture(TextureTarget.Texture2D, 0);
+            _flatColors[_textureCount] = average.Result;
+            return onlyOpaque;
+        }
+
+        /// <summary>
+        /// The one colour each bound texture averages to, by binding ID.
+        ///
+        /// Cel shading paints surfaces in a flat colour instead of in their
+        /// texture, and this is the colour it uses. Worked out once, as the
+        /// texels go to the card, because it is a property of the texture and
+        /// not of the frame -- and there is no other moment when this code has
+        /// the pixels in hand.
+        /// </summary>
+        private readonly Dictionary<int, Vector3> _flatColors = new Dictionary<int, Vector3>();
+
+        /// <summary>
+        /// A texture's average colour, weighted by alpha.
+        ///
+        /// Weighted because a cut-out texture -- a grate, a decal, a sprite --
+        /// is mostly transparent, and the transparent texels usually carry
+        /// black or whatever happened to be in that corner of the sheet.
+        /// Averaging those in drags every such surface towards black, which is
+        /// the one colour an outline pass needs to keep for itself.
+        /// </summary>
+        private struct FlatColor
+        {
+            private float _red;
+            private float _green;
+            private float _blue;
+            private float _weight;
+            private float _count;
+            private float _plainRed;
+            private float _plainGreen;
+            private float _plainBlue;
+
+            public void Add(ColorRgba pixel)
+            {
+                float alpha = pixel.Alpha / 255f;
+                _red += pixel.Red * alpha;
+                _green += pixel.Green * alpha;
+                _blue += pixel.Blue * alpha;
+                _weight += alpha;
+                _plainRed += pixel.Red;
+                _plainGreen += pixel.Green;
+                _plainBlue += pixel.Blue;
+                _count++;
+            }
+
+            public Vector3 Result
+            {
+                get
+                {
+                    if (_weight > 0.01f)
+                    {
+                        return new Vector3(_red, _green, _blue) / _weight / 255f;
+                    }
+                    // fully transparent: nothing is drawn with it anyway
+                    if (_count > 0)
+                    {
+                        return new Vector3(_plainRed, _plainGreen, _plainBlue) / _count / 255f;
+                    }
+                    return Vector3.One;
+                }
+            }
+        }
+
+        public int BindGetTexture(IReadOnlyList<ColorRgba> data, int width, int height)
+        {
+            _textureCount++;
+            GL.BindTexture(TextureTarget.Texture2D, _textureCount);
+            GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba, width, height, 0,
+                PixelFormat.Rgba, PixelType.UnsignedByte, data.ToArray());
+            GL.BindTexture(TextureTarget.Texture2D, 0);
+            _flatColors[_textureCount] = AverageOf(data);
+            return _textureCount;
+        }
+
+        public void BindTexture(IReadOnlyList<ColorRgba> data, int width, int height, int bindingId)
+        {
+            GL.BindTexture(TextureTarget.Texture2D, bindingId);
+            GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba, width, height, 0,
+                PixelFormat.Rgba, PixelType.UnsignedByte, data.ToArray());
+            GL.BindTexture(TextureTarget.Texture2D, 0);
+            // this binding may already have had a different picture in it
+            _flatColors[bindingId] = AverageOf(data);
+        }
+
+        private static Vector3 AverageOf(IReadOnlyList<ColorRgba> data)
+        {
+            var average = new FlatColor();
+            for (int i = 0; i < data.Count; i++)
+            {
+                average.Add(data[i]);
+            }
+            return average.Result;
+        }
+
+        public void UpdateMaterials(Model model, int recolorId)
+        {
+            // Nothing was bound, so there is no binding id to look up and
+            // nothing that would draw with one. See InitTextures.
+            if (Mods.Headless.Active)
+            {
+                return;
+            }
+            for (int i = 0; i < model.Materials.Count; i++)
+            {
+                Material material = model.Materials[i];
+                int textureId = material.CurrentTextureId;
+                if (textureId == -1)
+                {
+                    continue;
+                }
+                int paletteId = material.CurrentPaletteId;
+                (int bindingId, bool onlyOpaque) = _texPalMap[model.Id].Get(textureId, paletteId, recolorId);
+                material.TextureBindingId = bindingId;
+                material.CurrentTextureId = textureId;
+                material.CurrentPaletteId = paletteId;
+                UpdateMaterial(material, onlyOpaque);
+            }
+        }
+
+        private void UpdateMaterial(Material material, bool onlyOpaque)
+        {
+            if (material.CurrentAlpha < 1.0f)
+            {
+                material.RenderMode = RenderMode.Translucent;
+            }
+            else if (material.RenderMode != RenderMode.Normal && onlyOpaque)
+            {
+                material.RenderMode = RenderMode.Normal;
+            }
+            else if (material.RenderMode == RenderMode.Normal && !onlyOpaque)
+            {
+                material.RenderMode = RenderMode.Translucent;
+            }
+        }
+
+        public static bool BreakNextFrame { get; set; } // skdebug
+
+        /// <summary>
+        /// One simulation step and the frame drawn from it, the way this has
+        /// always worked. Every harness client -- <c>NetCheckClient</c>,
+        /// <c>MapAudit</c>, <c>WeaponDps</c>, <c>ThumbnailCapture</c> -- calls
+        /// this once per frame of its own loop and is therefore completely
+        /// unaffected by the decoupling below: same steps, same order, same
+        /// packets on the same frame numbers.
+        /// </summary>
+        public void OnUpdateFrame()
+        {
+            OnSimulationFrame();
+            OnDrawFrame();
+        }
+
+        /// <summary>
+        /// Advance the game by exactly one 60 Hz step.
+        ///
+        /// Everything that decides what the game *is* lives here and nowhere
+        /// else: input, the network session, the world, the clock, the frame
+        /// counter. <see cref="RenderWindow"/> runs this on a fixed-step
+        /// accumulator so it happens 60 times a second whatever the picture is
+        /// doing -- which is what lets the drawing run at 144 without the
+        /// 800-odd frame-counted timers in the entity code, the per-frame
+        /// intent stream or the demo format noticing anything.
+        /// </summary>
+        public void OnSimulationFrame()
+        {
+            // A lobby/start barrier must remain authoritative even during playback.
+            // Do not advance replay presentation time while the network session is
+            // deliberately holding the simulation at a transition boundary.
+            if (Mods.Network.NetSession.FreezeGameplay)
+            {
+                RunSimulationFrame();
+                return;
+            }
+            if (!Mods.Network.DemoPlayback.IsActive)
+            {
+                RunSimulationFrame();
+                return;
+            }
+
+            // Replay controls are presentation-time input. They remain responsive
+            // while the recorded simulation is paused or seeking, but are sampled
+            // only once per rendered frame rather than once per replay simulation step.
+            _frameTime = 1 / 60f;
+            if (!Mods.Headless.Active)
+            {
+                Mods.Input.GamepadDesktop.Poll();
+            }
+            // The replay may contain its own results screen, but that is part of
+            // the recording, not an interactive local Results UI. Keep replay camera
+            // aiming in Gameplay context while still honoring actual shell menus and
+            // binding capture through Resolve().
+            Mods.Input.GamepadContexts.Current = Mods.Input.GamepadContexts.Resolve(
+                textEntry: false, results: false);
+            Mods.Input.GamepadInput.BeginFrame();
+            Mods.Replay.ReplayInput.PollGamepad();
+            Mods.SpectatorMode.NoteScoreboard(_keyboardState.IsKeyDown(Keys.Tab)
+                || Mods.Input.GamepadInput.State.Down(Mods.Input.GamepadButtons.Back));
+
+            bool? camera = Mods.SpectatorMode.TakeCameraRequest();
+            if (camera.HasValue)
+            {
+                SetFreeCamera(camera.Value);
+            }
+            if (!Mods.PauseMenu.Open)
+            {
+                OnKeyHeld();
+                if (_freeCam && Mods.Input.GamepadInput.Active)
+                {
+                    var pad = Mods.Input.GamepadInput.State;
+                    if (Math.Abs(pad.LeftY) > 0.2f)
+                    {
+                        _cameraPosition += _cameraFacing * pad.LeftY * 0.15f;
+                    }
+                    if (Math.Abs(pad.LeftX) > 0.2f)
+                    {
+                        _cameraPosition += _cameraRight * pad.LeftX * 0.15f;
+                    }
+                    UpdateCameraRotation(
+                        MathHelper.DegreesToRadians(Mods.Input.GamepadInput.AimDeltaX),
+                        MathHelper.DegreesToRadians(Mods.Input.GamepadInput.AimDeltaY));
+                }
+            }
+
+            int frames = Mods.Network.ReplayController.FramesDue();
+            float volume = Sound.Sfx.Volume;
+            float musicVolume = Music.UserVolume;
+            bool mute = Mods.Network.ReplayController.IsSeeking && !Mods.Headless.Active;
+            if (mute)
+            {
+                Sound.Sfx.Volume = 0;
+                Music.SetUserVolume(0);
+            }
+            try
+            {
+                for (int i = 0; i < frames && !Mods.Network.DemoPlayback.AtEnd; i++)
+                {
+                    bool seeking = Mods.Network.ReplayController.IsSeeking;
+                    RunSimulationFrame();
+                    // A transition barrier may become active while replay packets are
+                    // being consumed. Do not count that blocked step as replay progress.
+                    if (Mods.Network.NetSession.FreezeGameplay)
+                    {
+                        break;
+                    }
+                    Mods.Network.ReplayVerification.AfterFrame(this);
+                    Mods.Network.ReplayController.AfterFrame();
+                    if (seeking && !Mods.Network.ReplayController.IsSeeking)
+                    {
+                        break;
+                    }
+                }
+            }
+            finally
+            {
+                if (mute)
+                {
+                    Sound.Sfx.Instance.StopAllSound();
+                    Sound.Sfx.Volume = volume;
+                    Music.SetUserVolume(musicVolume);
+                }
+            }
+        }
+
+        private void RunSimulationFrame()
+        {
+            if (Mods.Network.NetSession.FreezeGameplay)
+            {
+                if (Mods.Network.NetSession.IsStarting) Mods.Network.NetSession.MarkMatchLoaded();
+                Mods.Network.NetSession.Pump();
+                return;
+            }
+            // The effect clock, before anything can spawn an effect. See
+            // _effectFrame: it has to be the same value for the spawn and for
+            // the ProcessEffects call that belongs to this step, and the
+            // game's own _frameCount stopped being that when the step and the
+            // picture became two calls.
+            _effectFrame++;
+            // todo: FPS stuff
+            _frameTime = 1 / 60f;
+            if (BreakNextFrame)
+            {
+                _frameAdvanceOn = true;
+                BreakNextFrame = false;
+            }
+            if (ProcessFrame)
+            {
+                _globalElapsedTime += _frameTime;
+                if (GameState.MatchState == MatchState.InProgress && !GameState.DialogPause && !GameState.MenuPause)
+                {
+                    _elapsedTime += _frameTime;
+                }
+                if (_inputMode == InputMode.CameraOnly || Mods.Chat.ChatBox.Composing)
+                {
+                    // Every frame the prompt is up, not once when it opens: a
+                    // key held at the moment somebody pressed T stays held in
+                    // the binding until something clears it, and a player who
+                    // opened chat mid-stride would otherwise walk into the
+                    // nearest wall for as long as they were typing.
+                    PlayerEntity.Main.Controls.ClearAll();
+                }
+                else if (Mods.Chat.ChatBox.ConsumeJustClosed())
+                {
+                    PlayerEntity.Main.ModForgetInputDeltas();
+                }
+                Mods.Network.DemoPlayback.PumpFrame();
+                Mods.Network.NetSession.Update(_globalElapsedTime);
+                if (Mods.Network.NetSession.FreezeGameplay) return;
+                if (Mods.Network.DemoPlayback.IsActive && !Mods.Headless.Active
+                    && !Mods.SpectatorMode.IsSpectating)
+                {
+                    // No local player to spawn as during playback -- watch
+                    // as soon as anyone recorded becomes available, rather
+                    // than sitting on an empty room waiting for Escape. And
+                    // out of somebody's eyes straight away, unlike spectating
+                    // a live match: there is no "your own view" to have just
+                    // left, so an empty overview would be the whole of what
+                    // opening a demo did.
+                    Mods.SpectatorMode.Start(watchSomeone: true);
+                }
+                // Spectating is asked for from the pause menu, which runs on
+                // this thread but has no scene to hand; it leaves the camera
+                // it wants here and this picks it up between frames.
+                bool? freeCamera = Mods.SpectatorMode.TakeCameraRequest();
+                if (freeCamera.HasValue)
+                {
+                    SetFreeCamera(freeCamera.Value);
+                }
+                // Read the pad before the keyboard is turned into binds, and
+                // add it after: BeginFrame works out this frame's rising
+                // edges and stick aim, and Apply ors the result onto the same
+                // binds ProcessInput has just filled in. Suppressed by exactly
+                // the things that suppress a keyboard, and by spectating,
+                // where PlayerEntity.Main is somebody else's hunter.
+                if (!Mods.Network.DemoPlayback.IsActive)
+                {
+                    Mods.Input.GamepadDesktop.Poll();
+                    Mods.Input.GamepadContexts.Current = Mods.Input.GamepadContexts.Resolve(
+                        Mods.Chat.ChatBox.Composing, Mods.EndScreen.Available);
+                    Mods.Input.GamepadInput.BeginFrame();
+                }
+                if (!Mods.Network.DemoPlayback.IsActive
+                    && Mods.SpectatorMode.IsSpectating && !Mods.PauseMenu.Open)
+                {
+                    var spectator = Mods.Input.SpectatorInput.ReadController();
+                    spectator.ApplyView();
+                    Mods.SpectatorMode.NoteScoreboard(
+                        _keyboardState.IsKeyDown(Keys.Tab) || spectator.Scoreboard);
+                    if (_freeCam)
+                    {
+                        _cameraPosition += _cameraFacing * spectator.MoveY * .15f
+                            + _cameraRight * spectator.MoveX * .15f;
+                        _cameraPosition.Y += (spectator.Ascend - spectator.Descend) * .15f;
+                        UpdateCameraRotation(
+                            MathHelper.DegreesToRadians(spectator.LookX),
+                            MathHelper.DegreesToRadians(spectator.LookY));
+                    }
+                }
+                // Straight after the edges are worked out and before anything
+                // consumes them. A pad has no key events to hook, so the
+                // results screen's picker has to be polled, and it takes the
+                // d-pad presses it acts on so nothing downstream sees them.
+                if (!Mods.Network.DemoPlayback.IsActive)
+                {
+                    Mods.EndScreen.PollGamepad();
+                }
+                bool noPlayerInput = _inputMode == InputMode.CameraOnly
+                    || Mods.PauseMenu.Open || Mods.Chat.ChatBox.Composing;
+                PlayerEntity.ProcessInput(_keyboardState, _mouseState, noPlayerInput);
+                if (!noPlayerInput && !Mods.SpectatorMode.IsSpectating)
+                {
+                    Mods.Input.GamepadInput.Apply(PlayerEntity.Main);
+                }
+                Mods.Network.NetHooks.AfterInput(this);
+                _room?.UpdateTransition();
+            }
+            if (!Mods.Network.DemoPlayback.IsActive)
+            {
+                OnKeyHeld();
+            }
+            if (ProcessFrame && _room != null)
+            {
+                GameState.ProcessFrame(this);
+                // Turned once a step, never in a draw: a picture with no step
+                // behind it must not advance anything, or the hunter spins at
+                // the frame rate rather than at 45 degrees a second.
+                ModStepPreview();
+                if (GameState.MatchState == MatchState.InProgress && !GameState.MenuPause)
+                {
+                    UpdateScene();
+                }
+                // Before the snapshot rather than after it: this is where the
+                // authority applies the hits its clients said they landed and
+                // it never found, and a hit applied after BroadcastSnapshot
+                // would sit a whole frame waiting for the next one. The claim
+                // outbox is aged on the same call, for the reason everything
+                // here is counted in frames. Mods.Network.NetHitClaims.
+                Mods.Network.NetHitClaims.Tick();
+                Mods.Network.NetHooks.AfterSimulation();
+                // Ages the predictions the authority has not answered yet and
+                // counts the hit mark down. Outside the network hooks because
+                // the mark is drawn in an offline match too, where there is
+                // nothing to predict and every hit is already the answer.
+                Mods.Network.NetHitPrediction.Tick();
+                if (!Mods.Headless.Active)
+                {
+                    if (!GameState.MenuPause)
+                    {
+                        Sound.Sfx.Update(_frameTime);
+                    }
+                    Music.UpdateMusic();
+                }
+            }
+            // Not on a headless simulation. The HUD belongs to whoever is
+            // looking at it, and on a server that owns the match there is
+            // nobody: PlayerEntity.Main falls back to slot 0, which is a
+            // remote player whose readouts are drawn on their own machine
+            // from their own snapshot. Running it here would be the server
+            // maintaining one arbitrary player's visor for no reader.
+            if (ProcessFrame && !Mods.Headless.Active
+                && PlayerEntity.Main.LoadFlags.TestFlag(LoadFlags.Active))
+            {
+                PlayerEntity.Main.UpdateHud();
+            }
+            if (ProcessFrame)
+            {
+                if (GameState.MatchState == MatchState.InProgress && !GameState.DialogPause && !GameState.MenuPause)
+                {
+                    ProcessMessageQueue();
+                    _liveFrames++;
+                }
+                if (!GameState.DialogPause && !GameState.MenuPause)
+                {
+                    _frameCount++;
+                }
+                GameState.UpdateTime(this);
+                if (_movieFrameIndex != -1)
+                {
+                    UpdateMovie();
+                }
+            }
+            _frameAdvanceLastFrame = _frameAdvanceOn;
+            // Effects are advanced inside GetDrawItems, where their ordering
+            // against the entity draw pass is what it has always been. This is
+            // how many times it owes when the next frame gets there.
+            _pendingEffectSteps = Math.Min(_pendingEffectSteps + 1,
+                Mods.Render.FrameTiming.MaxCatchUpSteps);
+            _pendingFadeSteps = Math.Min(_pendingFadeSteps + 1,
+                Mods.Render.FrameTiming.MaxCatchUpSteps);
+            if (Mods.Headless.Active || Mods.Network.DemoPlayback.IsActive)
+            {
+                ModStepDrawPassTimers();
+            }
+        }
+
+        /// <summary>
+        /// The two simulation timers that live in the draw pass, run from the
+        /// step because there is no draw pass.
+        ///
+        /// Both are counted in frames and both were already careful to consume
+        /// *steps owed* rather than pictures drawn (see
+        /// <see cref="_pendingFadeSteps"/>). What nobody had to think about
+        /// until now is a caller that draws no pictures at all, which is a
+        /// dedicated server running the simulation: the owed counts simply
+        /// climbed and neither timer ever ran.
+        ///
+        /// Two things broke, both silently:
+        ///
+        /// - **The fade never ended, so the server never changed room.**
+        ///   A rotation is <c>SetFade(..., AfterFade.LoadRoom)</c> and the load
+        ///   happens in <see cref="EndFade"/>, which only
+        ///   <see cref="UpdateFade"/> reaches. The server therefore went on
+        ///   simulating the first map of the session for ever while every
+        ///   client rotated correctly -- and it did not look broken, because a
+        ///   live player's position is their own report rather than the
+        ///   server's, so the players still saw each other. What was wrong was
+        ///   invisible and total: every shot resolved against the collision of
+        ///   a room nobody was standing in.
+        /// - **Effects spawned and never advanced**, so they never expired
+        ///   either: the pool drains once and stays drained.
+        ///
+        /// Run at the end of the step rather than the start, so the snapshot
+        /// that was just published describes the world before the room
+        /// changes under it.
+        /// </summary>
+        private void ModStepDrawPassTimers()
+        {
+            if (ProcessFrame && GameState.MatchState == MatchState.InProgress
+                && !GameState.DialogPause)
+            {
+                for (int i = 0; i < _pendingEffectSteps; i++)
+                {
+                    ulong owed = (ulong)(_pendingEffectSteps - 1 - i);
+                    ProcessEffects(_effectFrame >= owed ? _effectFrame - owed : _effectFrame);
+                }
+            }
+            _pendingEffectSteps = 0;
+            if (ProcessFrame)
+            {
+                UpdateFade();
+            }
+        }
+
+        /// <summary>
+        /// Build and submit one picture of wherever the simulation has got to.
+        ///
+        /// Nothing here may change the game. It reads the world and turns it
+        /// into render items; a bug that let a draw write back to an entity
+        /// would make the game run differently on a fast monitor, which is the
+        /// one failure this split must not have.
+        /// </summary>
+        public void OnDrawFrame()
+        {
+            if (Size.X <= 0 || Size.Y <= 0)
+            {
+                return;
+            }
+            BeginRenderDiagnostics();
+            // The results screen coming up and going away, which the map
+            // ballot and the previews on it hang off. In the scene's own draw
+            // rather than in the window's frame: every harness client drives
+            // Scene.OnUpdateFrame directly and none of them goes near
+            // RenderWindow, so bookkeeping put there runs for a player and for
+            // nobody else -- which is how the previews came out blank under
+            // -netcheck while the ballot beside them was correct.
+            Mods.EndScreen.Tick(_room?.Meta.Name ?? "", _globalElapsedTime);
+            Mods.Render.MapThumbnail.BeginFrame();
+            GL.ActiveTexture(TextureUnit.Texture0);
+            GL.BindFramebuffer(FramebufferTarget.Framebuffer, _frameBuffer);
+            // The scene's own target, which the resolution scale may have made
+            // smaller than the window. Reallocated here rather than only on a
+            // window resize, so moving the slider during a match is seen.
+            Vector2i target = RenderSize;
+            if (target != _targetSize)
+            {
+                OnResize();
+                target = _targetSize;
+            }
+            // Before the frame is drawn into it, since this swaps what the
+            // depth is drawn into.
+            UpdateDepthAttachment(target);
+            GL.Viewport(0, 0, target.X, target.Y);
+            GL.UseProgram(_shaderProgramId);
+            LoadAndUnload();
+            _decalItems.Clear();
+            _nonDecalItems.Clear();
+            _translucentItems.Clear();
+            while (_usedRenderItems.Count > 0)
+            {
+                RenderItem item = _usedRenderItems.Dequeue();
+                if (item.Type != RenderItemType.Mesh)
+                {
+                    ArrayPool<Vector3>.Shared.Return(item.Points);
+                }
+                _freeRenderItems.Enqueue(item);
+            }
+            _nextPolygonId = 1;
+            // Singles are filled in by the entity draws below and drawn at
+            // the end of the same pass, so they are cleared here and not in
+            // the simulation step: the picture can run faster than the
+            // simulation, and a frame with no step behind it would otherwise
+            // draw the previous frame's particles a second time, at the
+            // positions they had then, until the 200-entry table filled up and
+            // started dropping the new ones.
+            _singleParticleCount = 0;
+            if (ProcessFrame || CameraMode != CameraMode.Player)
+            {
+                ModReplayCamera();
+                TransformCamera();
+                UpdateCameraPosition();
+            }
+            UpdateProjection();
+            GetDrawItems();
+        }
+
+        public Matrix4 GetPerspectiveMatrix(float fov)
+        {
+            float aspect = Size.X / (float)Size.Y;
+            return Matrix4.CreatePerspectiveFieldOfView(fov, aspect, _nearClip, _useClip ? _farClip : 10000f);
+        }
+
+        private void UpdateProjection()
+        {
+            // todo: update this only when the viewport or camera values change
+            _perspectiveMatrix = GetPerspectiveMatrix(_cameraFov);
+            _viewModelPerspectiveMatrix = GetPerspectiveMatrix(_viewModelFov);
+            GL.UniformMatrix4(_shaderLocations.ProjectionMatrix, transpose: false, ref _perspectiveMatrix);
+            // update frustum info
+            Vector3 camPos = PlayerEntity.Main.CameraInfo.Position;
+            var camRight = new Vector3(_viewMatrix.Row0.X, _viewMatrix.Row0.Y, -_viewMatrix.Row0.Z);
+            var camUp = new Vector3(_viewMatrix.Row1.X, _viewMatrix.Row1.Y, -_viewMatrix.Row1.Z);
+            var camFacing = new Vector3(_viewMatrix.Row2.X, _viewMatrix.Row2.Y, -_viewMatrix.Row2.Z);
+
+            Vector4 ComputePlane(Vector3 input)
+            {
+                var normal = new Vector3(
+                    Vector3.Dot(input, camRight),
+                    Vector3.Dot(input, camUp),
+                    Vector3.Dot(input, camFacing)
+                );
+                float w = Vector3.Dot(normal, camPos);
+                return new Vector4(normal, w);
+            }
+
+            float aspect = Size.X / (float)Size.Y;
+            float cosFov = MathF.Cos(_cameraFov / 2);
+            float cosFovDiv = cosFov / aspect;
+            float sinFov = MathF.Sin(_cameraFov / 2);
+
+            FrustumInfo.Index = 1;
+            FrustumInfo.Count = 5;
+            // near plane
+            FrustumInfo.Planes[0] = SetBoundsIndices(ComputePlane(Vector3.UnitZ).AddW(_nearClip));
+            // right plane
+            Vector3 temp = new Vector3(cosFovDiv, 0, sinFov).Normalized();
+            FrustumInfo.Planes[1] = SetBoundsIndices(ComputePlane(temp));
+            // left plane
+            temp = new Vector3(-cosFovDiv, 0, sinFov).Normalized();
+            FrustumInfo.Planes[2] = SetBoundsIndices(ComputePlane(temp));
+            // bottom plane
+            temp = new Vector3(0, -cosFov, sinFov).Normalized();
+            FrustumInfo.Planes[3] = SetBoundsIndices(ComputePlane(temp));
+            // top plane
+            temp = new Vector3(0, cosFov, sinFov).Normalized();
+            FrustumInfo.Planes[4] = SetBoundsIndices(ComputePlane(temp));
+        }
+
+        public static FrustumPlane SetBoundsIndices(Vector4 plane)
+        {
+            int xIndex1 = 0; // min.x
+            int xIndex2 = 3; // max.x
+            if (plane.X < 0)
+            {
+                xIndex1 = 3;
+                xIndex2 = 0;
+            }
+            int yIndex1 = 1; // min.y
+            int yIndex2 = 4; // max.y
+            if (plane.Y < 0)
+            {
+                yIndex1 = 4;
+                yIndex2 = 1;
+            }
+            int zIndex1 = 2; // min.z
+            int zIndex2 = 5; // max.z
+            if (plane.Z < 0)
+            {
+                zIndex1 = 5;
+                zIndex2 = 2;
+            }
+            return new FrustumPlane()
+            {
+                Plane = plane,
+                XIndex1 = xIndex1,
+                XIndex2 = xIndex2,
+                YIndex1 = yIndex1,
+                YIndex2 = yIndex2,
+                ZIndex1 = zIndex1,
+                ZIndex2 = zIndex2
+            };
+        }
+
+        /// <summary>
+        /// Read back the offscreen target the 3D passes render into.
+        ///
+        /// Not the window's back buffer: a window that is never shown has no
+        /// usable one under Mesa, which is why every headless capture came
+        /// out black on Linux while the same code worked on Windows. This
+        /// target is a texture the scene owns, so it holds the frame whether
+        /// or not anything is on screen. It carries the world but not the HUD,
+        /// which is drawn straight to the window afterwards.
+        /// </summary>
+        /// <summary>
+        /// Whether the offscreen target this scene draws into is usable.
+        /// Reported rather than asserted: a release build has no debugger to
+        /// break into, and an incomplete framebuffer is silent otherwise.
+        /// </summary>
+        public FramebufferErrorCode FramebufferStatus { get; private set; }
+            = FramebufferErrorCode.FramebufferComplete;
+
+        /// <summary>
+        /// The first GL error since the last time this was asked, drained.
+        /// A driver that refuses immediate-mode calls raises InvalidOperation
+        /// on every one of them and renders nothing, with no other symptom.
+        /// </summary>
+        public OpenTK.Graphics.OpenGL.ErrorCode DrainGlError()
+        {
+            var first = OpenTK.Graphics.OpenGL.ErrorCode.NoError;
+            for (int i = 0; i < 64; i++)
+            {
+                OpenTK.Graphics.OpenGL.ErrorCode code = GL.GetError();
+                if (code == OpenTK.Graphics.OpenGL.ErrorCode.NoError)
+                {
+                    break;
+                }
+                if (first == OpenTK.Graphics.OpenGL.ErrorCode.NoError)
+                {
+                    first = code;
+                }
+            }
+            return first;
+        }
+
+        /// <summary>
+        /// Read the window's own buffer, HUD and all.
+        ///
+        /// <see cref="ReadSceneTarget"/> reads the offscreen target, which the
+        /// HUD is deliberately not drawn into -- it goes to the default
+        /// framebuffer after the target is unbound (see OnRenderFrame), which
+        /// is what lets every thumbnail and map preview come out without one.
+        /// So no screenshot could ever show the HUD, and HUD work could not be
+        /// checked by looking at it, only by playing.
+        ///
+        /// Called between the draw and SwapBuffers, and **only on a window
+        /// that is actually visible**: a hidden window has no usable back
+        /// buffer under Mesa, which is the whole reason the offscreen target
+        /// is what everything else reads.
+        /// </summary>
+        public byte[]? ReadWindowBuffer(out int width, out int height)
+        {
+            width = Size.X;
+            height = Size.Y;
+            if (width <= 0 || height <= 0)
+            {
+                return null;
+            }
+            byte[] buffer = new byte[width * height * 3];
+            GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, 0);
+            GL.ReadBuffer(ReadBufferMode.Back);
+            GL.PixelStore(PixelStoreParameter.PackAlignment, 1);
+            GL.ReadPixels(0, 0, width, height, PixelFormat.Rgb, PixelType.UnsignedByte, buffer);
+            return buffer;
+        }
+
+        public byte[]? ReadSceneTarget(out int width, out int height)
+        {
+            Vector2i target = _targetSize;
+            width = target.X;
+            height = target.Y;
+            if (_frameBuffer == 0)
+            {
+                return null;
+            }
+            byte[] buffer = new byte[width * height * 3];
+            GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, _frameBuffer);
+            GL.ReadBuffer(ReadBufferMode.ColorAttachment0);
+            GL.PixelStore(PixelStoreParameter.PackAlignment, 1);
+            GL.ReadPixels(0, 0, width, height, PixelFormat.Rgb, PixelType.UnsignedByte, buffer);
+            GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, 0);
+            return buffer;
+        }
+
+        public void AfterRenderFrame()
+        {
+            if (_recording)
+            {
+                Images.Record(Size.X, Size.Y, $"frame{_framesRecorded:0000}");
+                _framesRecorded++;
+            }
+            _advanceOneFrame = false;
+        }
+
+        /// <summary>
+        /// Give the offscreen target a depth buffer the ink pass can read, or
+        /// take it away again.
+        ///
+        /// A renderbuffer is the cheaper attachment and is what the target has
+        /// whenever nothing needs to read the depth back -- which is every
+        /// frame that is not cel shaded, and matters most on a phone, where a
+        /// depth *texture* has to be written out to memory that a tiler would
+        /// otherwise never touch. So the swap follows the setting rather than
+        /// being made once at startup, and turning cel shading on from the
+        /// pause menu grows outlines on the next frame instead of the next
+        /// match.
+        ///
+        /// A driver that will not complete the framebuffer with a depth
+        /// texture gets the renderbuffer back and is not asked again; the
+        /// banding still works, and the alternative is a target that draws
+        /// nothing at all.
+        /// </summary>
+        private void UpdateDepthAttachment(Vector2i target)
+        {
+            bool want = !_depthTextureRefused && Mods.RenderOptions.CelShading
+                && Mods.RenderOptions.CelEdge > 0;
+            if (want == (_depthTexture != 0))
+            {
+                return;
+            }
+            if (!want)
+            {
+                GL.FramebufferRenderbuffer(FramebufferTarget.Framebuffer,
+                    FramebufferAttachment.DepthStencilAttachment, RenderbufferTarget.Renderbuffer,
+                    _renderBuffer);
+                GL.DeleteTexture(_depthTexture);
+                _textureCount--;
+                _depthTexture = 0;
+                ValidateFramebuffer("Scene renderbuffer depth");
+                return;
+            }
+            _depthTexture = GL.GenTexture();
+            _textureCount++;
+            GL.BindTexture(TextureTarget.Texture2D, _depthTexture);
+            GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Depth24Stencil8,
+                target.X, target.Y, 0, PixelFormat.DepthStencil, PixelType.UnsignedInt248, IntPtr.Zero);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+            GL.BindTexture(TextureTarget.Texture2D, 0);
+            GL.FramebufferTexture2D(FramebufferTarget.Framebuffer,
+                FramebufferAttachment.DepthStencilAttachment, TextureTarget.Texture2D, _depthTexture, 0);
+            FramebufferErrorCode status = GL.CheckFramebufferStatus(FramebufferTarget.Framebuffer);
+            if (status != FramebufferErrorCode.FramebufferComplete)
+            {
+                Console.WriteLine($"[render] this driver will not read the scene's depth back ({status}); "
+                    + "cel shading keeps its banding and goes without the outline.");
+                _depthTextureRefused = true;
+                GL.FramebufferRenderbuffer(FramebufferTarget.Framebuffer,
+                    FramebufferAttachment.DepthStencilAttachment, RenderbufferTarget.Renderbuffer,
+                    _renderBuffer);
+                GL.DeleteTexture(_depthTexture);
+                _textureCount--;
+                _depthTexture = 0;
+            }
+            ValidateFramebuffer("Scene depth attachment");
+            CheckGlError("Scene depth attachment");
+            _claimedQuantum = MeasureDepthQuantum();
+            _depthQuantum = _claimedQuantum;
+        }
+
+        /// <summary>
+        /// One step of the depth buffer, as the ink pass has to treat it.
+        ///
+        /// Asked for rather than assumed. `Depth24Stencil8` is what this code
+        /// requests, but a driver is free to satisfy it with less, and the ink
+        /// pass is looking for a second difference around a millionth of the
+        /// stored value -- so being wrong about this by a factor of two
+        /// hundred is the difference between an outline and straight black
+        /// lines drawn along every step of the buffer, on every flat wall.
+        ///
+        /// The depth *half* of the attachment is what gets asked: both GL and
+        /// ES answer `INVALID_OPERATION` for a component size of
+        /// `DEPTH_STENCIL_ATTACHMENT` itself. Anything unexpected falls back
+        /// to the 24 bits that were requested, which is what this assumed
+        /// before it asked at all.
+        /// </summary>
+        private float MeasureDepthQuantum()
+        {
+            const int requested = 24;
+            int bits = requested;
+            bool answered = false;
+            try
+            {
+                while (GL.GetError() != OpenTK.Graphics.OpenGL.ErrorCode.NoError)
+                {
+                }
+                GL.GetFramebufferAttachmentParameter(FramebufferTarget.Framebuffer,
+                    FramebufferAttachment.DepthAttachment,
+                    FramebufferParameterName.FramebufferAttachmentDepthSize, out int answer);
+                if (GL.GetError() == OpenTK.Graphics.OpenGL.ErrorCode.NoError
+                    && answer >= 8 && answer <= 32)
+                {
+                    bits = answer;
+                    answered = true;
+                }
+            }
+            catch (Exception)
+            {
+                // A driver that will not answer is not a reason to stop drawing.
+            }
+            if (!_saidDepthSize)
+            {
+                // Once a process, and always rather than only when it
+                // surprises: this is the one number that says whether the ink
+                // pass has anything to work with, and the machine that needs
+                // to be asked is the one nobody here can plug in.
+                _saidDepthSize = true;
+                Console.WriteLine(answered
+                    ? $"[render] cel outline: the depth buffer is {bits} bits"
+                    : $"[render] cel outline: the driver would not say how deep the depth "
+                        + $"buffer is; assuming the {requested} that were asked for");
+            }
+            return 1f / (MathF.Pow(2, bits) - 1);
+        }
+
+        private static bool _saidDepthSize;
+
+        /// <summary>
+        /// One step of the depth buffer as the driver reports it, and the same
+        /// thing as a frame of the ink pass found it to be. They are not the
+        /// same number: a driver reports the bits it stores and says nothing
+        /// about what its rasteriser's interpolation was worth on the way in,
+        /// and the second is the one the threshold has to clear.
+        /// </summary>
+        private float _claimedQuantum = 1f / (MathF.Pow(2, 24) - 1);
+
+        private float _depthQuantum = 1f / (MathF.Pow(2, 24) - 1);
+
+        /// <summary>
+        /// Draw the ink line over the finished scene, inside the offscreen
+        /// target.
+        ///
+        /// A silhouette is not visible to the fragment that is on it: it is a
+        /// place where this surface and the one behind it differ, which only a
+        /// pass that can look at its neighbours can find. So the scene is
+        /// copied to a texture of its own -- on the GPU, with no round trip
+        /// through the CPU -- and read back a texel at a time by
+        /// <see cref="Shaders.CelFragmentShader"/>.
+        ///
+        /// Inside the target rather than over the window because the helmet,
+        /// the HUD and the fade are drawn after it and must not be outlined,
+        /// and because <see cref="ReadSceneTarget"/> is where every screenshot
+        /// and every map preview comes from: a line drawn later would be in
+        /// the game and missing from all of them.
+        /// </summary>
+        private void DrawCelOutline()
+        {
+            if (!Mods.RenderOptions.CelShading || Mods.RenderOptions.CelEdge <= 0
+                || _celTexture == 0 || _celShaderProgramId == 0 || _depthTexture == 0)
+            {
+                return;
+            }
+            Vector2i target = _targetSize;
+            BeginPostProcessPass();
+            // The scene, kept where the pass can read it. First, because
+            // everything below draws over the target -- including the probe,
+            // which is why it can afford to.
+            GL.BindTexture(TextureTarget.Texture2D, _celTexture);
+            GL.CopyTexSubImage2D(TextureTarget.Texture2D, 0, 0, 0, 0, 0, target.X, target.Y);
+            if (_calibrateInk)
+            {
+                _calibrateInk = false;
+                CalibrateInk(target);
+            }
+            DrawCelQuad(target, probe: false);
+            RenderPostProcessCount++;
+            CheckGlError("EndPostProcessPass");
+        }
+
+        /// <summary>
+        /// The ink pass's own target: the scene's colour texture and nothing
+        /// else.
+        ///
+        /// Built once and kept. The colour attachment is refreshed only if the
+        /// texture it names ever changes -- a resize does not change it, since
+        /// <see cref="OnResize"/> re-specifies the same texture name rather
+        /// than making a new one, so in practice this is one attachment call
+        /// for the life of the renderer.
+        /// </summary>
+        private int CelFrameBuffer()
+        {
+            if (_celFrameBuffer == 0)
+            {
+                _celFrameBuffer = GL.GenFramebuffer();
+            }
+            if (_celFrameBufferColor != _screenTexture)
+            {
+                GL.BindFramebuffer(FramebufferTarget.Framebuffer, _celFrameBuffer);
+                GL.FramebufferTexture2D(FramebufferTarget.Framebuffer,
+                    FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D,
+                    _screenTexture, 0);
+                ValidateFramebuffer("Cel color attachment");
+                _celFrameBufferColor = _screenTexture;
+            }
+            return _celFrameBuffer;
+        }
+
+        /// <summary>
+        /// The pass itself: the finished scene out of <c>_celTexture</c>, the
+        /// depth the scene left behind, and a quad over the whole target.
+        /// </summary>
+        private void DrawCelQuad(Vector2i target, bool probe)
+        {
+            GL.ActiveTexture(TextureUnit.Texture1);
+            GL.BindTexture(TextureTarget.Texture2D, _depthTexture);
+            GL.ActiveTexture(TextureUnit.Texture0);
+            GL.BindTexture(TextureTarget.Texture2D, _celTexture);
+            GL.UseProgram(_celShaderProgramId);
+            GL.Uniform1(_celSampler, 0);
+            GL.Uniform1(_celDepthSampler, 1);
+            GL.Uniform1(_shaderLocations.CelTexelWidth, 1f / target.X);
+            GL.Uniform1(_shaderLocations.CelTexelHeight, 1f / target.Y);
+            GL.Uniform1(_shaderLocations.CelOutline, Mods.RenderOptions.CelEdge);
+            GL.Uniform1(_shaderLocations.CelNearPlane, _nearClip);
+            GL.Uniform1(_shaderLocations.CelFarPlane, _useClip ? _farClip : 10000f);
+            GL.Uniform1(_shaderLocations.CelDepthQuantum, _depthQuantum);
+            GL.Uniform1(_shaderLocations.CelProbe, probe ? 1 : 0);
+            // Off the framebuffer for the length of the pass. Sampling a
+            // texture that is attached to the framebuffer being drawn into is
+            // undefined in OpenGL ES whether or not anything writes to it --
+            // desktop GL forgives the read-only case and ES does not -- and
+            // this reads the depth while drawing colour into the same target.
+            // Two calls a frame; the depth is already in memory as a texture,
+            // so there is nothing here for a tiler to resolve that it was not
+            // resolving anyway.
+            // Draw through a target that does not have the depth attached,
+            // rather than taking the depth off the one that does.
+            //
+            // Sampling a texture attached to the framebuffer being drawn into
+            // is undefined in OpenGL ES whether or not anything writes to it,
+            // and this reads the depth while drawing colour -- so the two had
+            // to be separated somehow. Detaching and reattaching was the first
+            // way and it is the expensive one: changing an attachment on a
+            // bound framebuffer makes a tile-based GPU flush the tile buffer
+            // and load it back, twice a frame, over the whole screen. Measured
+            // on a Mali-G78 at 2400x1080 that alone was 32 ms a frame -- cel
+            // shading cost 58 ms a frame against 25 ms without it, and 26 ms
+            // once this replaced it. Practically the entire cost of the
+            // feature was the two calls, not the pass.
+            //
+            // An ordinary framebuffer switch is a path every driver expects.
+            // The colour attachment is the same texture, so the pass still
+            // paints the scene the rest of the frame is drawing into.
+            GL.BindFramebuffer(FramebufferTarget.Framebuffer, CelFrameBuffer());
+            GL.Disable(EnableCap.DepthTest);
+            GL.Disable(EnableCap.Blend);
+            GL.Disable(EnableCap.CullFace);
+            GL.Begin(PrimitiveType.TriangleStrip);
+            // top right
+            GL.TexCoord3(1f, 1f, 0f);
+            GL.Vertex3(1f, 1f, 0f);
+            // top left
+            GL.TexCoord3(0f, 1f, 0f);
+            GL.Vertex3(-1f, 1f, 0f);
+            // bottom right
+            GL.TexCoord3(1f, 0f, 0f);
+            GL.Vertex3(1f, -1f, 0f);
+            // bottom left
+            GL.TexCoord3(0f, 0f, 0f);
+            GL.Vertex3(-1f, -1f, 0f);
+            GL.End();
+            GL.BindTexture(TextureTarget.Texture2D, 0);
+            GL.ActiveTexture(TextureUnit.Texture1);
+            GL.BindTexture(TextureTarget.Texture2D, 0);
+            GL.ActiveTexture(TextureUnit.Texture0);
+            // Back to the target the rest of the frame is drawn into, before
+            // anything else can find the wrong one bound.
+            GL.BindFramebuffer(FramebufferTarget.Framebuffer, _frameBuffer);
+            GL.Enable(EnableCap.DepthTest);
+        }
+
+        /// <summary>
+        /// What the ink has to clear before it is believed, in the pass's own
+        /// units, measured on this machine. Zero until a frame has been looked
+        /// at; the shader's fixed threshold applies until then.
+        /// </summary>
+        private bool _calibrateInk = true;
+
+        /// <summary>
+        /// Find out what a flat surface's kink really measures here, and put
+        /// the ink threshold above it.
+        ///
+        /// The pass is looking for a second difference around a millionth of
+        /// the stored depth, so it is only as good as the depth it is handed,
+        /// and how good that is cannot be asked. A driver reports the bits it
+        /// stores; it does not report what its rasteriser's interpolation was
+        /// worth on the way in, and no arithmetic in the shader recovers what
+        /// never arrived. That is the difference between this machine, where a
+        /// flat wall measures 0.004 to 0.009 against a threshold of 1.1, and a
+        /// phone drawing regular lines across every surface in the room.
+        ///
+        /// So it is measured. One frame of this pass in probe mode paints
+        /// log2 of the kink instead of the picture, that frame is read back,
+        /// and the median over what was drawn stands for the flat surfaces:
+        /// most of any frame is flat surface, and an edge measures hundreds,
+        /// so edges sit in the tail where they cannot move a median. Six times
+        /// that becomes the floor.
+        ///
+        /// Once a scene, in the same frame as the real pass and before it, so
+        /// nobody ever sees the probe -- the scene has already been copied out
+        /// to <c>_celTexture</c> by then, and the real pass paints every pixel
+        /// back from it. Colour is read rather than depth because colour is
+        /// what a GL ES driver is required to hand back.
+        /// </summary>
+        private void CalibrateInk(Vector2i target)
+        {
+            // A centred patch: the middle of a frame is the room, and the
+            // edges of one are often sky, or the weapon. Big enough to be a
+            // sample, small enough not to be a stall.
+            int side = Math.Min(384, Math.Min(target.X, target.Y));
+            if (side < 32)
+            {
+                return;
+            }
+            int x = (target.X - side) / 2;
+            int y = (target.Y - side) / 2;
+            var pixels = new byte[side * side * 4];
+            try
+            {
+                DrawCelQuad(target, probe: true);
+                GL.ReadPixels(x, y, side, side, PixelFormat.Rgba, PixelType.UnsignedByte, pixels);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[render] cel outline: could not measure the depth ({ex.Message}); "
+                    + "keeping the fixed threshold");
+                return;
+            }
+            var drawn = new List<byte>(side * side / 4);
+            for (int i = 0; i < pixels.Length; i += 4)
+            {
+                // Zero is "nothing was drawn here", which is not a measurement.
+                if (pixels[i] != 0)
+                {
+                    drawn.Add(pixels[i]);
+                }
+            }
+            if (drawn.Count < side * side / 8)
+            {
+                // Almost nothing in the middle of the frame: a fade, or a wall
+                // in the camera. Leave it for the next scene rather than
+                // calibrate against that.
+                _calibrateInk = true;
+                return;
+            }
+            // Only the pixels that measured *something*.
+            //
+            // This is the part that has to be got right, and the median over
+            // everything gets it wrong: a depth error is a step, so it shows
+            // up only where a step boundary falls, and on this phone that is
+            // about one pixel in thirty. The other twenty-nine measure exactly
+            // zero -- two neighbours rounded to the same value as the middle
+            // one -- so a median over all of them is zero however coarse the
+            // buffer is, and reports a perfect machine on the one that is not.
+            //
+            // Among the pixels that did measure something, the typical value
+            // is the step itself. Measured on a Mali-G78 it came out at
+            // 2.4e-4 over the walls, the middle distance and the floor alike,
+            // against the 6e-8 the same driver says it stores: the same number
+            // wherever the camera pointed, which is what a property of the
+            // machine should look like and what the median of everything
+            // never showed.
+            var kinks = new List<byte>(drawn.Count / 8);
+            foreach (byte value in drawn)
+            {
+                // 1 is the shader's clamp floor, which means "no kink here".
+                if (value > 1)
+                {
+                    kinks.Add(value);
+                }
+            }
+            if (kinks.Count < 64)
+            {
+                // A machine whose depth arrives intact, or a frame with no
+                // surface in it to judge by. Either way the driver's own
+                // answer is the best there is.
+                Console.WriteLine("[render] cel outline: the depth arrives intact here; "
+                    + "keeping the buffer's own step.");
+                return;
+            }
+            kinks.Sort();
+            byte median = kinks[kinks.Count / 2];
+            // The probe paints log2 of the kink in the depth buffer's own
+            // units, -32..0 over the byte. Most of a frame is flat surface and
+            // a real edge measures orders of magnitude more, so the median is
+            // what a flat surface costs here -- which is the depth error
+            // itself, and the number the shader wants.
+            float measured = MathF.Pow(2, (median / 255f - 1f) * 32f);
+            // Never below what the buffer stores: the median can land under
+            // one step of it on a frame of surfaces that happen to face the
+            // camera, and a floor under the truth protects nothing.
+            _depthQuantum = MathF.Max(_claimedQuantum, measured);
+            float ratio = measured / _claimedQuantum;
+            string howBad = ratio < 2f ? "which is what the buffer stores"
+                : ratio < 64f ? "which is coarser than it stores, and the ink threshold rises to match"
+                : "which is far coarser than it stores; only strong creases and silhouettes will ink";
+            Console.WriteLine($"[render] cel outline: a flat surface's depth is off by "
+                + $"{measured.ToString("0.#######e+0", System.Globalization.CultureInfo.InvariantCulture)} "
+                + $"here, {ratio.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)}x "
+                + $"the {_claimedQuantum.ToString("0.#######e+0", System.Globalization.CultureInfo.InvariantCulture)} "
+                + $"the driver stores -- {howBad}.");
+        }
+
+        /// <summary>
+        /// Frames a second, over the half second just gone.
+        ///
+        /// Measured here rather than in either head because both heads drive
+        /// the same method: the desktop from its window's render callback and
+        /// Android from the render thread's own loop. One number, measured the
+        /// same way, so the two are worth comparing with each other -- which
+        /// is most of what a counter is for.
+        ///
+        /// Wall clock, not the frame the engine thinks it is on: the point is
+        /// to catch the frames that took too long, and a fixed-step counter
+        /// cannot.
+        /// </summary>
+        public float FramesPerSecond { get; private set; }
+
+        private readonly Stopwatch _fpsClock = Stopwatch.StartNew();
+        private int _fpsFrames;
+
+        private void CountFrame()
+        {
+            _fpsFrames++;
+            double elapsed = _fpsClock.Elapsed.TotalSeconds;
+            // Long enough to be steady, short enough to answer "is it this
+            // corridor?" while you are still standing in it.
+            if (elapsed >= 0.5)
+            {
+                FramesPerSecond = (float)(_fpsFrames / elapsed);
+                _fpsFrames = 0;
+                _fpsClock.Restart();
+            }
+        }
+
+        public bool OnRenderFrame()
+        {
+            if (Size.X <= 0 || Size.Y <= 0)
+            {
+                return !_exiting;
+            }
+            BeginWorldPass();
+            try
+            {
+                return RenderFrameContent();
+            }
+            finally
+            {
+                EndHudPass();
+                EndRenderDiagnostics();
+            }
+        }
+
+        private bool RenderFrameContent()
+        {
+            CountFrame();
+            GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit | ClearBufferMask.StencilBufferBit);
+            GL.ClearStencil(0);
+
+            UpdateUniforms();
+            SetPauseMenuUniforms();
+            if (_exiting)
+            {
+                return false;
+            }
+            // pass 1: opaque
+            GL.ColorMask(true, true, true, true);
+            GL.Enable(EnableCap.AlphaTest);
+            GL.AlphaFunc(AlphaFunction.Equal, 1.0f);
+            GL.DepthFunc(DepthFunction.Less);
+            GL.DepthMask(true);
+            GL.Enable(EnableCap.StencilTest);
+            GL.StencilMask(0xFF);
+            GL.StencilOp(StencilOp.Zero, StencilOp.Zero, StencilOp.Zero);
+            GL.StencilFunc(StencilFunction.Always, 0, 0xFF);
+            for (int i = 0; i < _nonDecalItems.Count; i++)
+            {
+                RenderItem item = _nonDecalItems[i];
+                RenderItem(item);
+            }
+            GL.Disable(EnableCap.AlphaTest);
+            // pass 2: decal
+            GL.Enable(EnableCap.PolygonOffsetFill);
+            GL.PolygonOffset(-1, -1);
+            // todo?: decals shouldn't render unless they have ~equal depth to the previous polygon,
+            // which means the rendering order here needs to be the same as it is in-game
+            GL.DepthFunc(DepthFunction.Lequal);
+            GL.Enable(EnableCap.Blend);
+            GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
+            for (int i = 0; i < _decalItems.Count; i++)
+            {
+                RenderItem item = _decalItems[i];
+                RenderItem(item);
+            }
+            GL.PolygonOffset(0, 0);
+            GL.Disable(EnableCap.PolygonOffsetFill);
+            // pass 3: mark transparent faces in stencil
+            GL.Enable(EnableCap.AlphaTest);
+            GL.AlphaFunc(AlphaFunction.Less, 1.0f);
+            GL.ColorMask(false, false, false, false);
+            GL.StencilOp(StencilOp.Keep, StencilOp.Keep, StencilOp.Replace);
+            for (int i = 0; i < _translucentItems.Count; i++)
+            {
+                RenderItem item = _translucentItems[i];
+                GL.StencilFunc(StencilFunction.Greater, item.PolygonId, 0xFF);
+                RenderItem(item);
+            }
+            // pass 4: rebuild depth buffer
+            GL.Clear(ClearBufferMask.DepthBufferBit);
+            GL.StencilOp(StencilOp.Keep, StencilOp.Keep, StencilOp.Keep);
+            GL.StencilFunc(StencilFunction.Always, 0, 0xFF);
+            GL.AlphaFunc(AlphaFunction.Equal, 1.0f);
+            for (int i = 0; i < _nonDecalItems.Count; i++)
+            {
+                RenderItem item = _nonDecalItems[i];
+                RenderItem(item);
+            }
+            // pass 5: translucent (behind)
+            GL.AlphaFunc(AlphaFunction.Less, 1.0f);
+            GL.ColorMask(true, true, true, true);
+            GL.DepthMask(false);
+            GL.DepthFunc(DepthFunction.Lequal);
+            GL.StencilOp(StencilOp.Keep, StencilOp.Keep, StencilOp.Keep);
+            for (int i = 0; i < _translucentItems.Count; i++)
+            {
+                RenderItem item = _translucentItems[i];
+                GL.StencilFunc(StencilFunction.Notequal, item.PolygonId, 0xFF);
+                RenderItem(item);
+            }
+            // pass 6: translucent (before)
+            GL.StencilOp(StencilOp.Keep, StencilOp.Keep, StencilOp.Keep);
+            for (int i = 0; i < _translucentItems.Count; i++)
+            {
+                RenderItem item = _translucentItems[i];
+                GL.StencilFunc(StencilFunction.Equal, item.PolygonId, 0xFF);
+                RenderItem(item);
+            }
+            GL.DepthMask(true);
+            GL.Disable(EnableCap.AlphaTest);
+            GL.Disable(EnableCap.StencilTest);
+            GL.PolygonMode(TriangleFace.FrontAndBack, OpenTK.Graphics.OpenGL.PolygonMode.Fill);
+
+            // After the world and before the window: the preview is a corner
+            // of the scene target with its own camera in it, so the HUD's own
+            // panel is drawn over it afterwards with a hole where this lands.
+            ModDrawPreview();
+            if (PlayerEntity.Main.LoadFlags.TestFlag(LoadFlags.Active) && CameraMode == CameraMode.Player)
+            {
+                SetHudLayerUniforms();
+                PlayerEntity.Main.DrawHudModels();
+                UnsetHudLayerUniforms();
+            }
+            else if (ScoreboardOverFreeCamera)
+            {
+                // Only the filter that dims the scene behind the scoreboard;
+                // PlayerHud draws nothing else on the free camera.
+                SetHudLayerUniforms();
+                PlayerEntity.Main.DrawHudModels();
+                UnsetHudLayerUniforms();
+            }
+
+            // After the weapon, so it is drawn around too, and before the
+            // target is put on screen, so the helmet and the HUD are not.
+            CheckGlError("EndWorldPass");
+            DrawCelOutline();
+
+            BeginCompositePass();
+            // Back to the window: everything from here down -- the quad, the
+            // helmet, the HUD and the fade -- is drawn at full size through
+            // the RTT program, not the one the scene was drawn with, so cel
+            // shading is already behind us and there is nothing to turn off.
+            GL.Clear(ClearBufferMask.ColorBufferBit);
+
+            GL.Begin(PrimitiveType.TriangleStrip);
+            // top right
+            GL.TexCoord3(1f, 1f, 0f);
+            GL.Vertex3(1f, 1f, 0f);
+            // top left
+            GL.TexCoord3(0f, 1f, 0f);
+            GL.Vertex3(-1f, 1f, 0f);
+            // bottom right
+            GL.TexCoord3(1f, 0f, 0f);
+            GL.Vertex3(1f, -1f, 0f);
+            // bottom left
+            GL.TexCoord3(0f, 0f, 0f);
+            GL.Vertex3(-1f, -1f, 0f);
+            GL.End();
+
+            GL.BindTexture(TextureTarget.Texture2D, 0);
+
+            BeginHudPass();
+            GL.Uniform4(_shaderLocations.FadeColor, _fadeColor, _fadeColor, _fadeColor, 0);
+            if (PlayerEntity.Main.LoadFlags.TestFlag(LoadFlags.Active) && CameraMode == CameraMode.Player)
+            {
+                if (GameState.MenuPause)
+                {
+                    PlayerEntity.Main.DrawPauseMenuBackground();
+                }
+                DrawHudLayer(Layer4Info); // ice layer
+                DrawHudLayer(Layer3Info); // helmet back
+                DrawHudLayer(Layer1Info); // visor
+                DrawHudLayer(Layer2Info); // helmet front
+                DrawHudLayer(Layer5Info); // dialog overlay
+                BeginHudMask(Layer1Info.MaskId);
+                try
+                {
+                    PlayerEntity.Main.DrawHudObjects();
+                }
+                finally
+                {
+                    EndHudMask();
+                }
+                if (GameState.MenuPause)
+                {
+                    PlayerEntity.Main.DrawPauseMenuForeground();
+                }
+            }
+            else if (ScoreboardOverFreeCamera)
+            {
+                // The scoreboard, and nothing else: none of the helmet and
+                // visor layers above belong to a view that is not out of
+                // anybody's eyes. PlayerHud decides that; this only lets it
+                // be asked, since the HUD is otherwise not drawn at all while
+                // the camera is not a player's.
+                PlayerEntity.Main.DrawHudObjects();
+            }
+            // Replay controls and timeline belong to the presentation, not to
+            // a particular hunter's visor. Keep them visible in chase, orbit
+            // and free-camera modes as well as first-person playback.
+            Mods.Replay.ReplayHud.Draw(this);
+            Mods.Input.AimAssist.AimAssistDebug.Draw(this);
+            if (_movieFrameIndex != -1)
+            {
+                DrawMovieFrame();
+            }
+            if (PlayerEntity.Main.LoadFlags.TestFlag(LoadFlags.Active) && CameraMode == CameraMode.Player && _fadeType != FadeType.None)
+            {
+                float percent = _fadePercent;
+                if (_fadeIn)
+                {
+                    percent = 1 - percent;
+                }
+                if (percent > 0)
+                {
+                    GL.Uniform4(_shaderLocations.FadeColor, _fadeColor, _fadeColor, _fadeColor, percent);
+                    GL.Begin(PrimitiveType.TriangleStrip);
+                    // top right
+                    GL.TexCoord3(1f, 1f, 0f);
+                    GL.Vertex3(1f, 1f, 0f);
+                    // top left
+                    GL.TexCoord3(0f, 1f, 0f);
+                    GL.Vertex3(-1f, 1f, 0f);
+                    // bottom right
+                    GL.TexCoord3(1f, 0f, 0f);
+                    GL.Vertex3(1f, -1f, 0f);
+                    // bottom left
+                    GL.TexCoord3(0f, 0f, 0f);
+                    GL.Vertex3(-1f, -1f, 0f);
+                    GL.End();
+                }
+            }
+            return true;
+        }
+
+        private void LoadAndUnload()
+        {
+            if (_loadQueue.Count > 0)
+            {
+                while (_loadQueue.TryDequeue(out (string Name, int Recolor, bool FirstHunt) item))
+                {
+                    try
+                    {
+                        // called after load -- entity needs init
+                        EntityBase entity = AddModel(item.Name, item.Recolor, item.FirstHunt);
+                        entity.Initialize();
+                    }
+                    catch (ProgramException) { }
+                }
+            }
+            if (_unloadQueue.Count > 0)
+            {
+                Selection.Clear();
+                while (_unloadQueue.TryDequeue(out EntityBase? entity))
+                {
+                    UnloadEntity(entity);
+                }
+            }
+        }
+
+        private void UnloadEntity(EntityBase entity)
+        {
+            if (entity.Type == EntityType.Room)
+            {
+                return;
+            }
+            entity.Destroy();
+            RemoveEntity(entity);
+            foreach (ModelInstance inst in entity.GetModels())
+            {
+                Model model = inst.Model;
+                if (Metadata.PreloadResources.ContainsKey(model.Name))
+                {
+                    continue;
+                }
+                if (!_entities.Any(e => e.GetModels().Any(m => m.Model == model)))
+                {
+                    UnloadModel(model);
+                }
+            }
+        }
+
+        public void UnloadModel(Model model)
+        {
+            // The GL half only. Nothing was uploaded headless (see
+            // InitTextures) so there is nothing to delete, and asking OpenTK
+            // to delete it throws -- which killed the room *transition* a
+            // rotation is made of, on the one frame it runs, leaving the fade
+            // half-ended and every subsequent step throwing in the same place.
+            //
+            // Read.RemoveModel below is not the picture's, and is the whole
+            // reason a rotating server's memory reaches a plateau instead of
+            // holding every map it has ever played.
+            if (!Mods.Headless.Active)
+            {
+                if (_texPalMap.TryGetValue(model.Id, out TextureMap? map))
+                {
+                    foreach (KeyValuePair<int, (int BindingId, bool OnlyOpaque)> kvp in map)
+                    {
+                        GL.DeleteTexture(kvp.Value.BindingId);
+                    }
+                    _texPalMap.Remove(model.Id);
+                }
+                foreach (Mesh mesh in model.Meshes)
+                {
+                    GL.DeleteLists(mesh.ListId, 1);
+                }
+            }
+            Read.RemoveModel(model.Name, model.FirstHunt);
+        }
+
+        private void TransformCamera()
+        {
+            // todo: only update this when the camera values change
+            _viewMatrix = Matrix4.Identity;
+            _viewInvRotMatrix = Matrix4.Identity;
+            _viewInvRotYMatrix = Matrix4.Identity;
+            if (_cameraMode == CameraMode.Pivot)
+            {
+                _viewMatrix.Row3.Xyz = new Vector3(0, 0, _pivotDistance * -1);
+                _viewMatrix = Matrix4.CreateRotationX(MathHelper.DegreesToRadians(_pivotAngleX)) * _viewMatrix;
+                _viewMatrix = Matrix4.CreateRotationY(MathHelper.DegreesToRadians(_pivotAngleY)) * _viewMatrix;
+                _viewInvRotMatrix = _viewInvRotYMatrix = Matrix4.CreateRotationY(MathHelper.DegreesToRadians(-1 * _pivotAngleY));
+                _viewInvRotMatrix = Matrix4.CreateRotationX(MathHelper.DegreesToRadians(-1 * _pivotAngleX)) * _viewInvRotMatrix;
+            }
+            else if (_cameraMode == CameraMode.Roam || _cameraMode == CameraMode.Player)
+            {
+                if (_cameraMode == CameraMode.Player)
+                {
+                    _viewMatrix = PlayerEntity.Main.CameraInfo.ViewMatrix;
+                    float fov = PlayerEntity.Main.CameraInfo.Fov > 0
+                        ? PlayerEntity.Main.CameraInfo.Fov
+                        : Mods.RenderOptions.DefaultFov;
+                    // Keep the camera-authored projection for first-person
+                    // geometry. The player's FOV widens the world, not the arm
+                    // cannon attached to the camera.
+                    _viewModelFov = MathHelper.DegreesToRadians(Math.Clamp(fov, 1f, 175f));
+                    // Preserve zoom/scope magnification in projection space,
+                    // where tan(FOV / 2) is the quantity that scales linearly.
+                    fov = Mods.RenderOptions.ScaleCameraFov(fov);
+                    _cameraFov = MathHelper.DegreesToRadians(fov);
+                }
+                else
+                {
+                    _viewMatrix = Matrix4.LookAt(_cameraPosition, _cameraPosition + _cameraFacing, _cameraUp);
+                }
+                _viewInvRotMatrix = Matrix4.Transpose(_viewMatrix.ClearTranslation());
+                if (_viewInvRotMatrix.Row0.X != 0 || _viewInvRotMatrix.Row0.Z != 0)
+                {
+                    _viewInvRotYMatrix.Row0.Xyz = new Vector3(_viewInvRotMatrix.Row0.X, 0, _viewInvRotMatrix.Row0.Z).Normalized();
+                    _viewInvRotYMatrix.Row2.Xyz = new Vector3(_viewInvRotMatrix.Row2.X, 0, _viewInvRotMatrix.Row2.Z).Normalized();
+                }
+            }
+            GL.UniformMatrix4(_shaderLocations.ViewMatrix, transpose: false, ref _viewMatrix);
+        }
+
+        private void UpdateCameraPosition()
+        {
+            if (_cameraMode == CameraMode.Pivot)
+            {
+                float angleY = _pivotAngleY + 90;
+                if (angleY > 360)
+                {
+                    angleY -= 360;
+                }
+                float angleX = _pivotAngleX + 90;
+                if (angleX > 360)
+                {
+                    angleX -= 360;
+                }
+                float theta = MathHelper.DegreesToRadians(angleY);
+                float phi = MathHelper.DegreesToRadians(angleX);
+                float x = MathF.Round(_pivotDistance * MathF.Cos(theta), 4);
+                float y = MathF.Round(_pivotDistance * MathF.Sin(theta) * MathF.Cos(phi), 4) * -1;
+                float z = MathF.Round(_pivotDistance * MathF.Sin(theta) * MathF.Sin(phi), 4);
+                _cameraPosition = new Vector3(x, y, z);
+            }
+            else if (_cameraMode == CameraMode.Player)
+            {
+                _cameraPosition = PlayerEntity.Main.CameraInfo.Position;
+            }
+        }
+
+        private void ResetCamera()
+        {
+            if (_cameraMode == CameraMode.Roam)
+            {
+                _cameraPosition = Vector3.Zero;
+                _cameraFacing = -Vector3.UnitZ;
+                _cameraUp = Vector3.UnitY;
+                _cameraRight = Vector3.UnitX;
+            }
+            else if (_cameraMode == CameraMode.Pivot)
+            {
+                _pivotAngleX = 0;
+                _pivotAngleY = 0;
+                _pivotDistance = 5.0f;
+            }
+        }
+
+        private const float _almostHalfPi = MathF.PI / 2 - 0.000001f;
+
+        private void UpdateCameraRotation(float stepH, float stepV)
+        {
+            float angleH = MathF.Atan2(_cameraFacing.X, -_cameraFacing.Z) + stepH;
+            float angleV = MathF.Asin(_cameraFacing.Y) + stepV;
+            angleV = Math.Clamp(angleV, -_almostHalfPi, _almostHalfPi);
+            _cameraFacing = new Vector3(
+                MathF.Cos(angleV) * MathF.Sin(angleH),
+                MathF.Sin(angleV),
+                -(MathF.Cos(angleV) * MathF.Cos(angleH))
+            ).Normalized();
+            _cameraRight = Vector3.Cross(_cameraFacing, Vector3.UnitY);
+            _cameraUp = Vector3.Cross(_cameraRight, _cameraFacing);
+        }
+
+        public void StartCutscene(int id)
+        {
+            if (_activeCutscene == -1)
+            {
+                _activeCutscene = id;
+                _priorCameraPos = _cameraPosition;
+                _priorCameraFacing = _cameraFacing;
+                _priorCameraFov = _cameraFov;
+            }
+        }
+
+        public void EndCutscene(bool resetFade = false)
+        {
+            if (_activeCutscene != -1)
+            {
+                _activeCutscene = -1;
+                _cameraPosition = _priorCameraPos;
+                _cameraFacing = _priorCameraFacing;
+                _cameraRight = Vector3.Cross(_cameraFacing, Vector3.UnitY);
+                _cameraUp = Vector3.Cross(_cameraRight, _cameraFacing);
+                _cameraFov = _priorCameraFov;
+            }
+            if (resetFade)
+            {
+                SetFade(FadeType.None, length: 0, overwrite: true);
+            }
+        }
+
+        public void ResetFrameCount()
+        {
+            _frameCount = 0;
+        }
+
+        // in-game: 64 effects, 96 elements, 200 particles
+        private static readonly int _effectEntryMax = 64;
+        private static readonly int _effectElementMax = 96;
+        private static readonly int _effectParticleMax = 200;
+        private static readonly int _singleParticleMax = 200;
+        private static readonly int _beamEffectMax = 100;
+        private static readonly int _bombMax = 32;
+
+        private readonly Queue<EffectEntry> _inactiveEffects = new Queue<EffectEntry>(_effectEntryMax);
+        private readonly Queue<EffectElementEntry> _inactiveElements = new Queue<EffectElementEntry>(_effectElementMax);
+        private readonly List<EffectElementEntry> _activeElements = new List<EffectElementEntry>(_effectElementMax);
+        private readonly Queue<EffectParticle> _inactiveParticles = new Queue<EffectParticle>(_effectParticleMax);
+        private int _singleParticleCount = 0;
+        private readonly List<SingleParticle> _singleParticles = new List<SingleParticle>(_singleParticleMax);
+        private readonly Queue<BeamEffectEntity> _inactiveBeamEffects = new Queue<BeamEffectEntity>(_beamEffectMax);
+        private readonly List<BeamEffectEntity> _activeBeamEffects = new List<BeamEffectEntity>(_beamEffectMax);
+        private readonly Queue<BombEntity> _inactiveBombs = new Queue<BombEntity>(_bombMax);
+        private readonly List<BombEntity> _activeBombs = new List<BombEntity>(_bombMax);
+
+        private void AllocateEffects()
+        {
+            for (int i = 0; i < _effectEntryMax; i++)
+            {
+                _inactiveEffects.Enqueue(new EffectEntry());
+            }
+            for (int i = 0; i < _effectElementMax; i++)
+            {
+                _inactiveElements.Enqueue(new EffectElementEntry());
+            }
+            for (int i = 0; i < _effectParticleMax; i++)
+            {
+                _inactiveParticles.Enqueue(new EffectParticle());
+            }
+            for (int i = 0; i < _singleParticleMax; i++)
+            {
+                _singleParticles.Add(new SingleParticle());
+            }
+            for (int i = 0; i < _beamEffectMax; i++)
+            {
+                _inactiveBeamEffects.Enqueue(new BeamEffectEntity(this));
+            }
+            for (int i = 0; i < _bombMax; i++)
+            {
+                _inactiveBombs.Enqueue(new BombEntity(this));
+            }
+        }
+
+        public BeamEffectEntity? InitBeamEffect(BeamEffectEntityData data)
+        {
+            if (_inactiveBeamEffects.Count == 0)
+            {
+                return null;
+            }
+            BeamEffectEntity entry = _inactiveBeamEffects.Dequeue();
+            entry.Spawn(data);
+            return entry;
+        }
+
+        public void UnlinkBeamEffect(BeamEffectEntity entry)
+        {
+            _activeBeamEffects.Remove(entry);
+            _inactiveBeamEffects.Enqueue(entry);
+        }
+
+        public BombEntity? InitBomb()
+        {
+            if (_inactiveBombs.Count == 0)
+            {
+                return null;
+            }
+            return _inactiveBombs.Dequeue();
+        }
+
+        public void UnlinkBomb(BombEntity entry)
+        {
+            _activeBombs.Remove(entry);
+            _inactiveBombs.Enqueue(entry);
+        }
+
+        public void AddSingleParticle(SingleType type, Vector3 position, Vector3 color, float alpha, float scale)
+        {
+            // note: skipping the room size limit check; singles get cleared every frame anyway
+            if (_singleParticleCount < _singleParticleMax)
+            {
+                SingleParticle entry = _singleParticles[_singleParticleCount++];
+                entry.ParticleDefinition = Read.GetSingleParticle(type);
+                entry.Position = position;
+                entry.Color = color;
+                entry.Alpha = alpha;
+                entry.Scale = scale;
+                if (!_texPalMap.ContainsKey(entry.ParticleDefinition.Model.Id))
+                {
+                    InitTextures(entry.ParticleDefinition.Model);
+                }
+            }
+        }
+
+        private EffectEntry? InitEffectEntry()
+        {
+            if (_inactiveEffects.Count == 0)
+            {
+                return null;
+            }
+            EffectEntry entry = _inactiveEffects.Dequeue();
+            entry.EffectId = 0;
+            Debug.Assert(entry.Elements.Count == 0);
+            return entry;
+        }
+
+        public void UnlinkEffectEntry(EffectEntry entry)
+        {
+            for (int i = 0; i < entry.Elements.Count; i++)
+            {
+                EffectElementEntry element = entry.Elements[i];
+                UnlinkEffectElement(element);
+            }
+            entry.Elements.Clear();
+            _inactiveEffects.Enqueue(entry);
+        }
+
+        public void DetachEffectEntry(EffectEntry entry, bool setExpired)
+        {
+            for (int i = 0; i < entry.Elements.Count; i++)
+            {
+                EffectElementEntry element = entry.Elements[i];
+                if (element.Flags.TestFlag(EffElemFlags.DestroyOnDetach))
+                {
+                    UnlinkEffectElement(element);
+                }
+                else
+                {
+                    element.Flags &= ~EffElemFlags.ElementExtension;
+                    element.Flags |= EffElemFlags.KeepAlive; // keep alive until particles expire
+                    element.EffectEntry = null;
+                    if (setExpired)
+                    {
+                        element.Expired = true;
+                    }
+                }
+            }
+            entry.Elements.Clear();
+            UnlinkEffectEntry(entry);
+        }
+
+        private EffectElementEntry? InitEffectElement(Effect effect, EffectElement element, EntityCollision? entCol, bool child)
+        {
+            if (_inactiveElements.Count == 0)
+            {
+                return null;
+            }
+            EffectElementEntry entry = _inactiveElements.Dequeue();
+            entry.EffectId = effect.Id;
+            entry.EffectName = effect.Name;
+            entry.ElementName = element.Name;
+            entry.BufferTime = element.BufferTime;
+            // todo: FPS stuff
+            entry.CreationTime = _elapsedTime + (child ? (1 / 60f) : 0);
+            entry.DrainTime = element.DrainTime;
+            entry.DrawType = element.DrawType;
+            entry.Lifespan = element.Lifespan;
+            entry.ExpirationTime = entry.CreationTime + entry.Lifespan;
+            entry.Flags = element.Flags;
+            entry.Flags |= EffElemFlags.DrawEnabled;
+            entry.Func39Called = false;
+            entry.Funcs = element.Funcs;
+            entry.Actions = element.Actions;
+            entry.OwnTransform = Matrix4.Identity;
+            entry.Transform = Matrix4.Identity;
+            entry.ParticleAmount = 0;
+            entry.Expired = false;
+            entry.ChildEffectId = (int)element.ChildEffectId;
+            entry.Acceleration = element.Acceleration;
+            entry.ParticleDefinitions.AddRange(element.Particles);
+            entry.Parity = (int)(_effectFrame % 2);
+            entry.EffectEntry = null;
+            entry.EntityCollision = entCol;
+            entry.Definition = element;
+            entry.RoField1 = 0;
+            entry.RoField2 = 0;
+            entry.RoField3 = 0;
+            entry.RoField4 = 0;
+            _activeElements.Add(entry);
+            return entry;
+        }
+
+        private void UnlinkEffectElement(EffectElementEntry element)
+        {
+            while (element.Particles.Count > 0)
+            {
+                EffectParticle particle = element.Particles[0];
+                element.Particles.Remove(particle);
+                UnlinkEffectParticle(particle);
+            }
+            _activeElements.Remove(element);
+            element.EntityCollision = null;
+            element.Definition = null;
+            element.Model = null!;
+            element.Nodes.Clear();
+            element.EffectName = "";
+            element.ElementName = "";
+            element.ParticleDefinitions.Clear();
+            element.TextureBindingIds.Clear();
+            Debug.Assert(element.Particles.Count == 0);
+            _inactiveElements.Enqueue(element);
+        }
+
+        private EffectParticle? InitEffectParticle()
+        {
+            if (_inactiveParticles.Count == 0)
+            {
+                return null;
+            }
+            EffectParticle particle = _inactiveParticles.Dequeue();
+            particle.Position = Vector3.Zero;
+            particle.Speed = Vector3.Zero;
+            particle.ParticleId = 0;
+            particle.RoField1 = 0;
+            particle.RoField2 = 0;
+            particle.RoField3 = 0;
+            particle.RoField4 = 0;
+            particle.RwField1 = 0;
+            particle.RwField2 = 0;
+            particle.RwField3 = 0;
+            particle.RwField4 = 0;
+            particle.CreationTime = _elapsedTime;
+            return particle;
+        }
+
+        private void UnlinkEffectParticle(EffectParticle particle)
+        {
+            _inactiveParticles.Enqueue(particle);
+        }
+
+        public void LoadEffect(int effectId, bool persistent)
+        {
+            Effect effect = Read.LoadEffect(effectId, persistent);
+            foreach (EffectElement element in effect.Elements)
+            {
+                // the model may already be loaded; meshes with a ListId will be skipped
+                Model model = Read.GetModelInstance(element.ModelName).Model;
+                InitTextures(model);
+                GenerateLists(model, isRoom: false);
+            }
+        }
+
+        public EffectEntry? SpawnEffectGetEntry(int effectId, Vector3 facing, Vector3 up, Vector3 position, EntityCollision? entCol = null)
+        {
+            Matrix4 transform = EntityBase.GetTransformMatrix(facing, up, position);
+            return SpawnEffectGetEntry(effectId, transform, entCol);
+        }
+
+        public EffectEntry? SpawnEffectGetEntry(int effectId, Matrix4 transform, EntityCollision? entCol = null)
+        {
+            EffectEntry? entry = InitEffectEntry();
+            if (entry == null)
+            {
+                return null;
+            }
+            entry.EffectId = effectId;
+            SpawnEffect(effectId, transform, child: false, entry, entCol);
+            return entry;
+        }
+
+        public void SpawnEffect(int effectId, Vector3 facing, Vector3 up, Vector3 position, bool child = false, EntityCollision? entCol = null)
+        {
+            Matrix4 transform = EntityBase.GetTransformMatrix(facing, up, position);
+            SpawnEffect(effectId, transform, child, entry: null, entCol);
+        }
+
+        public void SpawnEffect(int effectId, Matrix4 transform, bool child = false, EntityCollision? entCol = null)
+        {
+            SpawnEffect(effectId, transform, child, entry: null, entCol);
+        }
+
+        private void SpawnEffect(int effectId, Matrix4 transform, bool child, EffectEntry? entry, EntityCollision? entCol)
+        {
+            Effect? effect = Read.GetEffect(effectId);
+            if (effect == null)
+            {
+                Debug.Assert(effectId == 162); // skdebug - unintended Omega Cannon damage effect
+                return;
+            }
+            for (int i = 0; i < effect.Elements.Count; i++)
+            {
+                EffectElement elementDef = effect.Elements[i];
+                EffectElementEntry? element = InitEffectElement(effect, elementDef, entCol, child);
+                if (element == null)
+                {
+                    return;
+                }
+                if (entry != null)
+                {
+                    element.EffectEntry = entry;
+                    entry.Elements.Add(element);
+                }
+                if (element.Flags.TestFlag(EffElemFlags.SpawnUnitVecs))
+                {
+                    Vector3 vec1 = Vector3.UnitY;
+                    Vector3 vec2 = Vector3.UnitX;
+                    transform = Matrix.GetTransform4(vec2, vec1, transform.Row3.Xyz);
+                }
+                element.Transform = element.OwnTransform = transform;
+                for (int j = 0; j < elementDef.Particles.Count; j++)
+                {
+                    Particle particleDef = elementDef.Particles[j];
+                    if (j == 0)
+                    {
+                        if (!_texPalMap.ContainsKey(particleDef.Model.Id))
+                        {
+                            InitTextures(particleDef.Model);
+                        }
+                        element.Model = particleDef.Model;
+                    }
+                    element.Nodes.Add(particleDef.Node);
+                    Material material = particleDef.Model.Materials[particleDef.MaterialId];
+                    // Zero when there is no GL to have bound one. The effect
+                    // itself is still spawned and still advanced: an effect is
+                    // visual, but *whether* one is running is simulation state
+                    // that entities read, so suppressing them here would be a
+                    // server playing a slightly different game from its
+                    // clients -- which is the one thing running the real
+                    // engine on the server exists to avoid.
+                    material.TextureBindingId = Mods.Headless.Active ? 0
+                        : _texPalMap[particleDef.Model.Id].Get(material.TextureId, material.PaletteId, 0).BindingId;
+                    element.TextureBindingIds.Add(material.TextureBindingId);
+                }
+            }
+        }
+
+        public int CountElements(int effectId)
+        {
+            Effect? effect = Read.GetEffect(effectId);
+            if (effect == null)
+            {
+                return 0;
+            }
+            int count = 0;
+            for (int i = 0; i < effect.Elements.Count; i++)
+            {
+                EffectElement element = effect.Elements[i];
+                for (int j = 0; j < _activeElements.Count; j++)
+                {
+                    if (_activeElements[j].Definition == element)
+                    {
+                        count++;
+                    }
+                }
+            }
+            return count;
+        }
+
+        public void ClearEffects()
+        {
+            for (int i = 0; i < _activeElements.Count; i++)
+            {
+                EffectElementEntry element = _activeElements[i];
+                UnlinkEffectElement(element);
+                i--;
+            }
+        }
+
+        public void ClearNonPersistentEffects()
+        {
+            for (int i = 0; i < _activeElements.Count; i++)
+            {
+                EffectElementEntry element = _activeElements[i];
+                Effect? effect = Read.GetEffect(element.EffectId);
+                if (effect == null || !effect.Persistent)
+                {
+                    UnlinkEffectElement(element);
+                    i--;
+                }
+            }
+        }
+
+        private void ProcessEffects(ulong effectFrame)
+        {
+            for (int i = 0; i < _activeElements.Count; i++)
+            {
+                EffectElementEntry element = _activeElements[i];
+                if (!element.Expired && _elapsedTime > element.ExpirationTime)
+                {
+                    if (element.EffectEntry == null && !element.Flags.TestFlag(EffElemFlags.KeepAlive))
+                    {
+                        UnlinkEffectElement(element);
+                        i--;
+                        continue;
+                    }
+                    element.Expired = true;
+                }
+                if (element.Expired)
+                {
+                    // if EffectEntry is non-null, keep the element alive indefinitely;
+                    // else (if bit 4 of Flags is set), keep the element alive until its particles have all expired
+                    if (element.EffectEntry == null && element.Particles.Count == 0)
+                    {
+                        UnlinkEffectElement(element);
+                        i--;
+                        continue;
+                    }
+                    element.Transform = element.OwnTransform;
+                }
+                else
+                {
+                    if (element.Flags.TestFlag(EffElemFlags.ElementExtension))
+                    {
+                        if (_elapsedTime - element.CreationTime > element.BufferTime)
+                        {
+                            element.CreationTime += element.BufferTime - element.DrainTime;
+                            element.ExpirationTime += element.BufferTime - element.DrainTime;
+                        }
+                    }
+                    if (element.EntityCollision != null)
+                    {
+                        element.Transform = element.OwnTransform * element.EntityCollision.Transform;
+                    }
+                    else
+                    {
+                        element.Transform = element.OwnTransform;
+                    }
+                    var times = new TimeValues(_elapsedTime, _elapsedTime - element.CreationTime, element.Lifespan);
+                    if (effectFrame % 2 == (ulong)element.Parity
+                        && element.Actions.TryGetValue(FuncAction.IncreaseParticleAmount, out FxFuncInfo? info))
+                    {
+                        // todo: maybe revisit this frame time hack
+                        // --> halving the amount doesn't work because it breaks one-time return values of 1.0
+                        float amount = element.InvokeFloatFunc(info, times);
+                        element.ParticleAmount += amount;
+                    }
+                    int spawnCount = (int)MathF.Floor(element.ParticleAmount);
+                    element.ParticleAmount -= spawnCount;
+                    float portionTotal = 0;
+                    for (int j = 0; j < spawnCount; j++)
+                    {
+                        Vector3 temp = Vector3.Zero;
+                        EffectParticle? particle = InitEffectParticle();
+                        if (particle == null)
+                        {
+                            break;
+                        }
+                        element.Particles.Add(particle);
+                        ModEffectParticles++;
+                        particle.Owner = element;
+                        particle.SetFuncIds();
+                        particle.PortionTotal = portionTotal;
+                        particle.MaterialId = element.ParticleDefinitions[0].MaterialId;
+                        if (element.Actions.TryGetValue(FuncAction.SetNewParticlePosition, out info))
+                        {
+                            particle.InvokeVecFunc(info, times, ref temp);
+                            particle.Position = temp;
+                        }
+                        if (element.Actions.TryGetValue(FuncAction.SetNewParticleSpeed, out info))
+                        {
+                            particle.InvokeVecFunc(info, times, ref temp);
+                            particle.Speed = temp;
+                        }
+                        if (!element.Flags.TestFlag(EffElemFlags.UseTransform))
+                        {
+                            particle.Position = Matrix.Vec3MultMtx4(particle.Position, element.Transform);
+                            particle.Speed = Matrix.Vec3MultMtx3(particle.Speed, element.Transform);
+                        }
+                        // todo: these should really just be FxFuncInfo properties instead of a dictionary
+                        // --> still need the dictionary for the offset lookups, though
+                        if (element.Actions.TryGetValue(FuncAction.SetParticleRoField1, out info))
+                        {
+                            particle.RoField1 = particle.InvokeFloatFunc(info, times);
+                        }
+                        else
+                        {
+                            particle.RoField1 = element.RoField1;
+                        }
+                        if (element.Actions.TryGetValue(FuncAction.SetParticleRoField2, out info))
+                        {
+                            particle.RoField2 = particle.InvokeFloatFunc(info, times);
+                        }
+                        else
+                        {
+                            particle.RoField2 = element.RoField2;
+                        }
+                        if (element.Actions.TryGetValue(FuncAction.SetParticleRoField3, out info))
+                        {
+                            particle.RoField3 = particle.InvokeFloatFunc(info, times);
+                        }
+                        else
+                        {
+                            particle.RoField3 = element.RoField3;
+                        }
+                        if (element.Actions.TryGetValue(FuncAction.SetParticleRoField4, out info))
+                        {
+                            particle.RoField4 = particle.InvokeFloatFunc(info, times);
+                        }
+                        else
+                        {
+                            particle.RoField4 = element.RoField4;
+                        }
+                        if (element.Actions.TryGetValue(FuncAction.SetNewParticleLifespan, out info))
+                        {
+                            var tempTimes = new TimeValues(_elapsedTime, 1.0f, element.Lifespan);
+                            particle.Lifespan = particle.InvokeFloatFunc(info, tempTimes);
+                            particle.ExpirationTime = particle.CreationTime + particle.Lifespan;
+                        }
+                        else
+                        {
+                            particle.Lifespan = element.Lifespan;
+                            particle.ExpirationTime = element.ExpirationTime;
+                        }
+                        // in-game, if these one-time functions are called here, they are unset so they don't get called again
+                        if (element.Actions.TryGetValue(FuncAction.UpdateParticleSpeed, out info) && info.FuncId == 4)
+                        {
+                            Vector3 temp2 = particle.Speed;
+                            particle.InvokeVecFunc(info, times, ref temp2);
+                            particle.Speed = temp2;
+                        }
+                        if (element.Actions.TryGetValue(FuncAction.SetParticleRed, out info) && info.FuncId == 42)
+                        {
+                            particle.Red = particle.InvokeFloatFunc(info, times);
+                        }
+                        else
+                        {
+                            particle.Red = 1;
+                        }
+                        if (element.Actions.TryGetValue(FuncAction.SetParticleGreen, out info) && info.FuncId == 42)
+                        {
+                            particle.Green = particle.InvokeFloatFunc(info, times);
+                        }
+                        else
+                        {
+                            particle.Green = 1;
+                        }
+                        if (element.Actions.TryGetValue(FuncAction.SetParticleBlue, out info) && info.FuncId == 42)
+                        {
+                            particle.Blue = particle.InvokeFloatFunc(info, times);
+                        }
+                        else
+                        {
+                            particle.Blue = 1;
+                        }
+                        if (element.Actions.TryGetValue(FuncAction.SetParticleAlpha, out info) && info.FuncId == 42)
+                        {
+                            particle.Alpha = particle.InvokeFloatFunc(info, times);
+                            if (particle.Alpha < 0)
+                            {
+                                particle.Alpha = 0;
+                            }
+                        }
+                        else
+                        {
+                            particle.Alpha = 1;
+                        }
+                        if (element.Actions.TryGetValue(FuncAction.SetParticleScale, out info) && info.FuncId == 42)
+                        {
+                            particle.Scale = particle.InvokeFloatFunc(info, times);
+                        }
+                        else
+                        {
+                            particle.Scale = 0;
+                        }
+                        if (element.Actions.TryGetValue(FuncAction.SetParticleRotation, out info) && info.FuncId == 42)
+                        {
+                            particle.Rotation = particle.InvokeFloatFunc(info, times);
+                        }
+                        if (element.Actions.TryGetValue(FuncAction.SetParticleRwField1, out info))
+                        {
+                            particle.RwField1 = particle.InvokeFloatFunc(info, times);
+                        }
+                        if (element.Actions.TryGetValue(FuncAction.SetParticleRwField2, out info))
+                        {
+                            particle.RwField2 = particle.InvokeFloatFunc(info, times);
+                        }
+                        if (element.Actions.TryGetValue(FuncAction.SetParticleRwField3, out info))
+                        {
+                            particle.RwField3 = particle.InvokeFloatFunc(info, times);
+                        }
+                        if (element.Actions.TryGetValue(FuncAction.SetParticleRwField4, out info))
+                        {
+                            particle.RwField4 = particle.InvokeFloatFunc(info, times);
+                        }
+                        portionTotal += 1f / spawnCount;
+                    }
+                }
+                for (int j = 0; j < element.Particles.Count; j++)
+                {
+                    EffectParticle particle = element.Particles[j];
+                    if (element.Flags.TestFlag(EffElemFlags.ElementExtension) && element.Flags.TestFlag(EffElemFlags.ParticleExtension))
+                    {
+                        if (_elapsedTime - particle.CreationTime > element.BufferTime)
+                        {
+                            particle.CreationTime += element.BufferTime - element.DrainTime;
+                            particle.ExpirationTime += element.BufferTime - element.DrainTime;
+                        }
+                    }
+                    if (_elapsedTime < particle.ExpirationTime)
+                    {
+                        var times = new TimeValues(_elapsedTime, _elapsedTime - particle.CreationTime, particle.Lifespan);
+                        if (element.Actions.TryGetValue(FuncAction.SetParticleRwField1, out FxFuncInfo? info))
+                        {
+                            particle.RwField1 = particle.InvokeFloatFunc(info, times);
+                        }
+                        if (element.Actions.TryGetValue(FuncAction.SetParticleRwField2, out info))
+                        {
+                            particle.RwField2 = particle.InvokeFloatFunc(info, times);
+                        }
+                        if (element.Actions.TryGetValue(FuncAction.SetParticleRwField3, out info))
+                        {
+                            particle.RwField3 = particle.InvokeFloatFunc(info, times);
+                        }
+                        if (element.Actions.TryGetValue(FuncAction.SetParticleRwField4, out info))
+                        {
+                            particle.RwField4 = particle.InvokeFloatFunc(info, times);
+                        }
+                        if (element.Actions.TryGetValue(FuncAction.SetParticleId, out info))
+                        {
+                            particle.ParticleId = (int)particle.InvokeFloatFunc(info, times);
+                            if (particle.ParticleId >= element.ParticleDefinitions.Count)
+                            {
+                                particle.ParticleId = element.ParticleDefinitions.Count - 1;
+                            }
+                            particle.MaterialId = element.ParticleDefinitions[particle.ParticleId].MaterialId;
+                        }
+                        if (element.Actions.TryGetValue(FuncAction.UpdateParticleSpeed, out info))
+                        {
+                            Vector3 temp = particle.Speed;
+                            particle.InvokeVecFunc(info, times, ref temp);
+                            particle.Speed = temp;
+                        }
+                        if (element.Actions.TryGetValue(FuncAction.SetParticleRed, out info))
+                        {
+                            particle.Red = particle.InvokeFloatFunc(info, times);
+                        }
+                        if (element.Actions.TryGetValue(FuncAction.SetParticleGreen, out info))
+                        {
+                            particle.Green = particle.InvokeFloatFunc(info, times);
+                        }
+                        if (element.Actions.TryGetValue(FuncAction.SetParticleBlue, out info))
+                        {
+                            particle.Blue = particle.InvokeFloatFunc(info, times);
+                        }
+                        if (element.Actions.TryGetValue(FuncAction.SetParticleAlpha, out info))
+                        {
+                            particle.Alpha = particle.InvokeFloatFunc(info, times);
+                            if (particle.Alpha < 0)
+                            {
+                                particle.Alpha = 0;
+                            }
+                        }
+                        if (element.Actions.TryGetValue(FuncAction.SetParticleScale, out info))
+                        {
+                            particle.Scale = particle.InvokeFloatFunc(info, times);
+                        }
+                        if (element.Actions.TryGetValue(FuncAction.SetParticleRotation, out info))
+                        {
+                            particle.Rotation = particle.InvokeFloatFunc(info, times);
+                        }
+                        // todo: frame time scaling for speed/accel
+                        if (element.Flags.TestFlag(EffElemFlags.UseAcceleration))
+                        {
+                            particle.Speed = new Vector3(
+                                particle.Speed.X + element.Acceleration.X * (1 / 60f),
+                                particle.Speed.Y + element.Acceleration.Y * (1 / 60f),
+                                particle.Speed.Z + element.Acceleration.Z * (1 / 60f)
+                            );
+                        }
+                        Vector3 prevPos = particle.Position;
+                        particle.Position = new Vector3(
+                            particle.Position.X + particle.Speed.X * (1 / 60f),
+                            particle.Position.Y + particle.Speed.Y * (1 / 60f),
+                            particle.Position.Z + particle.Speed.Z * (1 / 60f)
+                        );
+                        if (element.Flags.TestFlag(EffElemFlags.CheckCollision))
+                        {
+                            CollisionResult res = default;
+                            if (CollisionDetection.CheckBetweenPoints(prevPos, particle.Position, TestFlags.None, this, ref res))
+                            {
+                                particle.Position = res.Position;
+                                particle.ExpirationTime = _elapsedTime;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (element.Flags.TestFlag(EffElemFlags.SpawnChildEffect) && element.ChildEffectId != 0)
+                        {
+                            Vector3 vec1 = (-particle.Speed).Normalized();
+                            Vector3 vec2;
+                            if (vec1.Z <= Fixed.ToFloat(-3686) || vec1.Z >= Fixed.ToFloat(3686))
+                            {
+                                vec2 = Vector3.UnitX;
+                            }
+                            else
+                            {
+                                vec2 = Vector3.UnitZ;
+                            }
+                            vec2 = Vector3.Cross(vec1, vec2).Normalized();
+                            Matrix4 transform = Matrix.GetTransform4(vec2, vec1, particle.Position);
+                            SpawnEffect(element.ChildEffectId, transform);
+                        }
+                        element.Particles.Remove(particle);
+                        UnlinkEffectParticle(particle);
+                        j--;
+                    }
+                }
+            }
+        }
+
+        private const int _renderItemAlloc = 200; // todo: revisit this (could allocate based on number of meshes on load)
+        private readonly Queue<RenderItem> _freeRenderItems = new Queue<RenderItem>(_renderItemAlloc);
+        private readonly Queue<RenderItem> _usedRenderItems = new Queue<RenderItem>(_renderItemAlloc);
+        // avoiding overhead by duplicating things in these lists
+        /// <summary>
+        /// Simulation steps taken since the last frame was drawn. Effects are
+        /// advanced once per step inside <see cref="GetDrawItems"/>, which is
+        /// where they have always been advanced, so their ordering against the
+        /// entity draw pass is unchanged; this is only how many times.
+        /// </summary>
+        private int _pendingEffectSteps;
+
+        /// <summary>
+        /// Which simulation step the effect system is on.
+        ///
+        /// Effects spawn particles on every *other* step -- the DS ran them at
+        /// 30 Hz and upstream's doubling to 60 is this parity check -- and an
+        /// element records the parity it was created with so that its first
+        /// advance is a spawning one. Many elements put their whole burst out
+        /// on that first advance, through a function that only returns its
+        /// value once; miss it and they emit nothing at all, ever.
+        ///
+        /// That is what happened when the step and the picture became two
+        /// calls. Both halves used to read <see cref="_frameCount"/>, which
+        /// upstream incremented *after* <c>GetDrawItems</c> -- so a spawn and
+        /// the advance that followed it in the same frame saw the same number.
+        /// Moving the increment into the simulation step put it before the
+        /// draw, every element's first advance failed its own parity check,
+        /// and the bursts stopped: no flash on a charging Missile, no
+        /// explosion on a wall. The continuous elements of the same effects --
+        /// smoke, debris -- carried on, which is why it read as "some of it is
+        /// missing" rather than as no effects at all.
+        ///
+        /// So the effect system counts its own steps here, where nothing else
+        /// can move the number, and the relationship upstream relied on is
+        /// restored exactly.
+        /// </summary>
+        private ulong _effectFrame;
+
+        /// <summary>
+        /// Every particle any effect element has spawned this run.
+        ///
+        /// The harness asserts on it. A run that fires thousands of shots and
+        /// spawns no effect particles is the failure above, and nothing else
+        /// the audit measures moves at all when it happens -- the shots still
+        /// fly, still hit, still do damage, and the pictures still come out
+        /// lit. It is invisible to every other check by construction, so it
+        /// gets one of its own.
+        /// </summary>
+        public long ModEffectParticles { get; private set; }
+
+        /// <summary>
+        /// Simulation steps owed to <see cref="UpdateFade"/>, which runs in
+        /// the draw pass because the fade is drawn there, but whose delay is a
+        /// simulation timer counted in frames. Left as one per drawn frame it
+        /// would expire two and a half times too early on a 144 Hz screen, and
+        /// what waits on it is the end of a fade -- a cutscene finishing, a
+        /// room changing.
+        /// </summary>
+        private int _pendingFadeSteps;
+
+        private readonly List<RenderItem> _decalItems = new List<RenderItem>();
+        private readonly List<RenderItem> _nonDecalItems = new List<RenderItem>();
+        private readonly List<RenderItem> _translucentItems = new List<RenderItem>();
+
+        private bool _collectingViewModelItems;
+
+        /// <summary>
+        /// Mark render items emitted by the first-person weapon as camera
+        /// viewmodel geometry. The items stay in the normal material/depth
+        /// passes so transparency, decals and cel outlines keep working; only
+        /// their projection differs.
+        /// </summary>
+        internal void BeginViewModelItems()
+        {
+            Debug.Assert(!_collectingViewModelItems);
+            _collectingViewModelItems = true;
+        }
+
+        internal void EndViewModelItems()
+        {
+            _collectingViewModelItems = false;
+        }
+
+        private RenderItem GetRenderItem()
+        {
+            if (_freeRenderItems.Count > 0)
+            {
+                return _freeRenderItems.Dequeue();
+            }
+            return new RenderItem();
+        }
+
+        private readonly float[] _scaleFactors = new float[16];
+
+        // for meshes
+        public void AddRenderItem(Material material, int polygonId, float alphaScale, Vector3 emission, LightInfo lightInfo, Matrix4 texcoordMatrix,
+            Matrix4 transform, int listId, int matrixStackCount, IReadOnlyList<float> matrixStack, Vector4? overrideColor, Vector4? paletteOverride,
+            SelectionType selectionType, BillboardMode billboardMode, float scaleFactor = 1, int? bindingOverride = null)
+        {
+            transform.Row0.X *= scaleFactor;
+            transform.Row0.Y *= scaleFactor;
+            transform.Row0.Z *= scaleFactor;
+            transform.Row1.X *= scaleFactor;
+            transform.Row1.Y *= scaleFactor;
+            transform.Row1.Z *= scaleFactor;
+            transform.Row2.X *= scaleFactor;
+            transform.Row2.Y *= scaleFactor;
+            transform.Row2.Z *= scaleFactor;
+            _scaleFactors[0] = scaleFactor;
+            _scaleFactors[1] = scaleFactor;
+            _scaleFactors[2] = scaleFactor;
+            _scaleFactors[3] = 1;
+            _scaleFactors[4] = scaleFactor;
+            _scaleFactors[5] = scaleFactor;
+            _scaleFactors[6] = scaleFactor;
+            _scaleFactors[7] = 1;
+            _scaleFactors[8] = scaleFactor;
+            _scaleFactors[9] = scaleFactor;
+            _scaleFactors[10] = scaleFactor;
+            _scaleFactors[11] = 1;
+            _scaleFactors[12] = 1;
+            _scaleFactors[13] = 1;
+            _scaleFactors[14] = 1;
+            _scaleFactors[15] = 1;
+            RenderItem item = GetRenderItem();
+            item.Type = RenderItemType.Mesh;
+            item.PolygonId = polygonId;
+            item.Alpha = material.CurrentAlpha * alphaScale;
+            item.PolygonMode = material.PolygonMode;
+            item.RenderMode = material.RenderMode;
+            item.CullingMode = material.Culling;
+            item.BillboardMode = billboardMode;
+            item.Wireframe = material.Wireframe != 0;
+            item.Lighting = material.Lighting != 0;
+            item.NoLines = false;
+            item.Diffuse = material.CurrentDiffuse;
+            item.Ambient = material.CurrentAmbient;
+            item.Specular = material.CurrentSpecular;
+            item.Emission = emission;
+            item.LightInfo = lightInfo;
+            if (bindingOverride.HasValue)
+            {
+                // double damage
+                item.TexgenMode = TexgenMode.Normal;
+                item.XRepeat = RepeatMode.Mirror;
+                item.YRepeat = RepeatMode.Mirror;
+                item.HasTexture = true;
+                item.TextureBindingId = bindingOverride.Value;
+            }
+            else
+            {
+                item.TexgenMode = material.TexgenMode;
+                item.XRepeat = material.XRepeat;
+                item.YRepeat = material.YRepeat;
+                item.HasTexture = material.TextureId != -1;
+                item.TextureBindingId = material.TextureBindingId;
+            }
+            item.TexcoordMatrix = texcoordMatrix;
+            item.Transform = transform;
+            item.ListId = listId;
+            Debug.Assert(matrixStack.Count == 16 * matrixStackCount);
+            item.MatrixStackCount = matrixStackCount;
+            for (int i = 0; i < matrixStack.Count; i++)
+            {
+                float value = matrixStack[i];
+                item.MatrixStack[i] = value * _scaleFactors[i - (i / 16) * 16];
+            }
+            item.OverrideColor = overrideColor;
+            item.PaletteOverride = paletteOverride;
+            item.Points = Array.Empty<Vector3>();
+            item.ScaleS = 1;
+            item.ScaleT = 1;
+            if (selectionType != SelectionType.None)
+            {
+                overrideColor = Selection.GetSelectionColor(selectionType);
+                if (overrideColor != null)
+                {
+                    item.OverrideColor = overrideColor;
+                    item.PaletteOverride = null;
+                }
+            }
+            AddRenderItem(item);
+        }
+
+        // for volumes/planes
+        public void AddRenderItem(CullingMode cullingMode, int polygonId, Vector4 overrideColor, RenderItemType type,
+            Vector3[] vertices, int vertexCount = 0, bool noLines = false)
+        {
+            RenderItem item = GetRenderItem();
+            item.Type = type;
+            item.PolygonId = polygonId;
+            item.Alpha = 1;
+            item.PolygonMode = PolygonMode.Modulate;
+            item.RenderMode = RenderMode.Translucent;
+            item.CullingMode = cullingMode;
+            item.BillboardMode = BillboardMode.None;
+            item.Wireframe = false;
+            item.Lighting = false;
+            item.NoLines = noLines;
+            item.Diffuse = Vector3.Zero;
+            item.Ambient = Vector3.Zero;
+            item.Specular = Vector3.Zero;
+            item.Emission = Vector3.Zero;
+            item.LightInfo = LightInfo.Zero;
+            item.TexgenMode = TexgenMode.None;
+            item.XRepeat = RepeatMode.Clamp;
+            item.YRepeat = RepeatMode.Clamp;
+            item.HasTexture = false;
+            item.TextureBindingId = 0;
+            item.TexcoordMatrix = Matrix4.Identity;
+            item.Transform = Matrix4.Identity;
+            item.ListId = 0;
+            item.MatrixStackCount = 0;
+            item.OverrideColor = overrideColor;
+            item.PaletteOverride = null;
+            item.Points = vertices;
+            item.ScaleS = 1;
+            item.ScaleT = 1;
+            Debug.Assert(type != RenderItemType.Ngon || vertexCount >= 3);
+            item.ItemCount = vertexCount;
+            AddRenderItem(item);
+        }
+
+        // for effects/trails
+        public void AddRenderItem(RenderItemType type, float alpha, int polygonId, Vector3 color,
+            RepeatMode xRepeat, RepeatMode yRepeat, float scaleS, float scaleT, Matrix4 transform, Vector3[] uvsAndVerts,
+            int bindingId, BillboardMode billboardMode = BillboardMode.None, int trailCount = 8)
+        {
+            RenderItem item = GetRenderItem();
+            item.Type = type;
+            item.PolygonId = polygonId;
+            item.Alpha = alpha;
+            item.PolygonMode = PolygonMode.Modulate;
+            item.RenderMode = RenderMode.Translucent;
+            item.CullingMode = CullingMode.Neither;
+            item.BillboardMode = billboardMode;
+            item.Wireframe = false;
+            item.Lighting = false;
+            item.NoLines = false;
+            item.Diffuse = color;
+            item.Ambient = Vector3.Zero;
+            item.Specular = Vector3.Zero;
+            item.Emission = Vector3.Zero;
+            item.LightInfo = LightInfo.Zero;
+            item.TexgenMode = TexgenMode.None;
+            item.XRepeat = xRepeat;
+            item.YRepeat = yRepeat;
+            item.HasTexture = true;
+            item.TextureBindingId = bindingId;
+            item.TexcoordMatrix = Matrix4.Identity;
+            item.Transform = transform;
+            item.ListId = 0;
+            item.MatrixStackCount = 0;
+            item.OverrideColor = null;
+            item.PaletteOverride = null;
+            item.Points = uvsAndVerts;
+            item.ScaleS = scaleS;
+            item.ScaleT = scaleT;
+            item.ItemCount = trailCount;
+            AddRenderItem(item);
+        }
+
+        // for Morph Ball trails
+        public void AddRenderItem(RenderItemType type, int polygonId, Vector3 color, RepeatMode xRepeat, RepeatMode yRepeat, float scaleS,
+            float scaleT, int matrixStackCount, IReadOnlyList<float> matrixStack, Vector3[] uvsAndVerts, int segmentCount, int bindingId)
+        {
+            RenderItem item = GetRenderItem();
+            item.Type = type;
+            item.PolygonId = polygonId;
+            item.Alpha = 1;
+            item.PolygonMode = PolygonMode.Modulate;
+            item.RenderMode = RenderMode.Translucent;
+            item.CullingMode = CullingMode.Neither;
+            item.BillboardMode = BillboardMode.None;
+            item.Wireframe = false;
+            item.Lighting = false;
+            item.NoLines = false;
+            item.Diffuse = color;
+            item.Ambient = Vector3.Zero;
+            item.Specular = Vector3.Zero;
+            item.Emission = Vector3.Zero;
+            item.LightInfo = LightInfo.Zero;
+            item.TexgenMode = TexgenMode.None;
+            item.XRepeat = xRepeat;
+            item.YRepeat = yRepeat;
+            item.HasTexture = true;
+            item.TextureBindingId = bindingId;
+            item.TexcoordMatrix = Matrix4.Identity;
+            item.Transform = Matrix4.Identity;
+            item.ListId = 0;
+            Debug.Assert(matrixStack.Count >= 16 * matrixStackCount);
+            item.MatrixStackCount = matrixStackCount;
+            for (int i = 0; i < 16 * matrixStackCount; i++)
+            {
+                item.MatrixStack[i] = matrixStack[i];
+            }
+            item.OverrideColor = null;
+            item.PaletteOverride = null;
+            item.Points = uvsAndVerts;
+            item.ScaleS = scaleS;
+            item.ScaleT = scaleT;
+            item.ItemCount = segmentCount;
+            AddRenderItem(item);
+        }
+
+        private void AddRenderItem(RenderItem item)
+        {
+            // RenderItem instances are pooled. Always overwrite this flag so a
+            // recycled gun item cannot turn ordinary world geometry into a
+            // viewmodel on a later frame.
+            item.ViewModel = _collectingViewModelItems;
+            // The results screen's hunter preview is drawn in a pass of its
+            // own, with its own camera and its own depth buffer, so its items
+            // must not join the world's three lists. See ModCollectPreview.
+            if (_collectingPreview)
+            {
+                _previewItems.Add(item);
+                _usedRenderItems.Enqueue(item);
+                return;
+            }
+            if (item.RenderMode == RenderMode.Decal)
+            {
+                _decalItems.Add(item);
+            }
+            else
+            {
+                _nonDecalItems.Add(item);
+            }
+            if (item.RenderMode == RenderMode.Translucent || item.Alpha < 1)
+            {
+                _translucentItems.Add(item);
+            }
+            _usedRenderItems.Enqueue(item);
+        }
+
+        private int _nextPolygonId = 1;
+
+        public int GetNextPolygonId()
+        {
+            return _nextPolygonId++;
+        }
+
+        public ConcurrentQueue<EntityBase> LoadedEntities { get; } = new ConcurrentQueue<EntityBase>();
+        public bool InitEntities { get; set; }
+
+        public void InitLoadedEntity(int count)
+        {
+            int i = 0;
+            while ((count == -1 || i++ < count) && LoadedEntities.TryDequeue(out EntityBase? entity))
+            {
+                InitializeEntity(entity);
+                SceneSetup.LoadEntityResources(entity, this);
+            }
+        }
+
+        private void UpdateScene()
+        {
+            if (_playingLandingMovie)
+            {
+                return;
+            }
+            bool playerActive = PlayerEntity.Main.LoadFlags.TestFlag(LoadFlags.Active);
+            if (!GameState.DialogPause)
+            {
+                if (playerActive)
+                {
+                    PlayerEntity.Main.UpdateTimedSounds();
+                    PlayerEntity.Main.ProcessHudMessageQueue();
+                }
+                foreach (EntityBase entity in Entities)
+                {
+                    if (entity.Initialized && !entity.Process())
+                    {
+                        SendMessage(Message.Destroyed, entity, null, 0, 0, delay: 1);
+                        // todo: need to handle destroying vs. unloading etc.
+                        entity.Destroy();
+                        RemoveEntity(entity);
+                    }
+                }
+                PlayerEntity.PlayerAiData.UpdateVisibilityAndGlobals(this);
+                for (int i = 0; i < PlayerEntity.Players.Count; i++)
+                {
+                    PlayerEntity.Players[i].ClosestNode = null;
+                }
+                for (int i = 0; i < PlayerEntity.Players.Count; i++)
+                {
+                    PlayerEntity player = PlayerEntity.Players[i];
+                    if (player.IsBot && player.Health != 0)
+                    {
+                        player.AiData.Process();
+                    }
+                }
+                if (playerActive)
+                {
+                    PlayerEntity.Main.ProcessModeHud();
+                }
+                GameState.UpdateFrame(this);
+                GameState.UpdateState();
+            }
+            else if (GameState.SinglePlayer)
+            {
+                if (playerActive)
+                {
+                    PlayerEntity.Main.UpdateDialogs();
+                }
+                GameState.UpdateFrame(this);
+            }
+        }
+
+        private void GetDrawItems()
+        {
+            if (GameState.MenuPause)
+            {
+                // The pause map's own animations -- the spinning octoliths,
+                // the dialog button -- advance from Scene.FrameTime inside the
+                // draw call, so they are handed the steps actually taken
+                // rather than one per picture. Zero on a frame with no step
+                // behind it, which simply draws them where they are.
+                //
+                // The effect steps owed are cleared for a different reason:
+                // nothing below consumes them while the menu is up, so they
+                // would pile up for as long as it is open and then all run at
+                // once when it closes.
+                float simFrameTime = _frameTime;
+                _frameTime = 1 / 60f * _pendingEffectSteps;
+                _pendingEffectSteps = 0;
+                PlayerEntity.Main.GetPauseMapRenderItems();
+                _frameTime = simFrameTime;
+                return;
+            }
+            if (_room != null)
+            {
+                _room.GetDrawInfo();
+                _room.GetDisplayVolumes();
+            }
+            foreach (PlayerEntity player in GetPlayerEntities())
+            {
+                if (!player.Initialized)
+                {
+                    continue;
+                }
+                if (player.LoadFlags.TestFlag(LoadFlags.Active))
+                {
+                    player.Draw();
+                    // skdebug
+                    player.GetDisplayVolumes();
+                }
+            }
+            foreach (EntityBase entity in Entities)
+            {
+                if (!entity.Initialized || entity.Type == EntityType.Player || entity.Type == EntityType.Room)
+                {
+                    continue;
+                }
+                if (entity.ShouldDraw)
+                {
+                    entity.GetDrawInfo();
+                }
+                if (_showVolumes != VolumeDisplay.None)
+                {
+                    entity.GetDisplayVolumes();
+                }
+            }
+
+            if (ProcessFrame && GameState.MatchState == MatchState.InProgress && !GameState.DialogPause)
+            {
+                for (int i = 0; i < _pendingEffectSteps; i++)
+                {
+                    // Oldest owed step first, and each advanced under its own
+                    // effect frame -- so an element spawned during that step
+                    // sees the parity it was created with.
+                    ulong owed = (ulong)(_pendingEffectSteps - 1 - i);
+                    ProcessEffects(_effectFrame >= owed ? _effectFrame - owed : _effectFrame);
+                }
+            }
+            _pendingEffectSteps = 0;
+
+            for (int i = 0; i < _activeElements.Count; i++)
+            {
+                EffectElementEntry element = _activeElements[i];
+                if (element.Flags.TestFlag(EffElemFlags.DrawEnabled))
+                {
+                    for (int j = 0; j < element.Particles.Count; j++)
+                    {
+                        EffectParticle particle = element.Particles[j];
+                        Matrix4 matrix = _viewMatrix;
+                        if (particle.Owner.Flags.TestFlag(EffElemFlags.UseTransform) && !particle.Owner.Flags.TestFlag(EffElemFlags.UseMesh))
+                        {
+                            matrix = particle.Owner.Transform * matrix;
+                        }
+                        particle.InvokeSetVecsFunc(matrix);
+                        particle.InvokeDrawFunc(1);
+                        if (particle.ShouldDraw)
+                        {
+                            particle.AddRenderItem(this);
+                        }
+                    }
+                }
+            }
+            for (int i = 0; i < _singleParticleCount; i++)
+            {
+                SingleParticle single = _singleParticles[i];
+                single.Process();
+            }
+            for (int i = 0; i < _singleParticleCount; i++)
+            {
+                SingleParticle single = _singleParticles[i];
+                if (single.ShouldDraw)
+                {
+                    single.AddRenderItem(this);
+                }
+            }
+            // Last, and on its own: nothing else may add an item while the
+            // preview is being collected.
+            ModCollectPreview();
+        }
+
+        private void UpdateUniforms()
+        {
+            UseRoomLights();
+            GL.Uniform1(_shaderLocations.UseFog, _hasFog && FogOn ? 1 : 0);
+            GL.Uniform1(_shaderLocations.CelBands, Mods.RenderOptions.CelShading
+                ? Mods.RenderOptions.CelBands : 0);
+            GL.Uniform1(_shaderLocations.ShowColors, _showColors ? 1 : 0);
+            if (ProcessFrame)
+            {
+                UpdateFade();
+            }
+        }
+
+        private void UseRoomLights()
+        {
+            GL.Uniform3(_shaderLocations.Light1Vector, _light1Vector);
+            GL.Uniform3(_shaderLocations.Light1Color, _light1Color);
+            GL.Uniform3(_shaderLocations.Light2Vector, _light2Vector);
+            GL.Uniform3(_shaderLocations.Light2Color, _light2Color);
+        }
+
+        private void UseLight1(Vector3 vector, Vector3 color)
+        {
+            GL.Uniform3(_shaderLocations.Light1Vector, vector);
+            GL.Uniform3(_shaderLocations.Light1Color, color);
+        }
+
+        private void UseLight2(Vector3 vector, Vector3 color)
+        {
+            GL.Uniform3(_shaderLocations.Light2Vector, vector);
+            GL.Uniform3(_shaderLocations.Light2Color, color);
+        }
+
+        private class MovieFadeSettings
+        {
+            public Movie MovieId { get; set; }
+            public Movie? AfterMovieId { get; set; } // for bad ending
+            public FadeType AfterFadeType { get; set; }
+            public float AfterFadeLength { get; set; }
+            public Vector3? AfterPosition { get; set; }
+            public Vector3? AfterFacing { get; set; }
+            public AfterMovie AfterMovieAction { get; set; }
+        }
+
+        private readonly MovieFadeSettings _movieSettings = new MovieFadeSettings();
+        private FadeType _fadeType = FadeType.None;
+        public FadeType FadeType => _fadeType;
+        private float _fadeColor = 0;
+        private bool _fadeIn = false;
+        private float _fadeStart = 0;
+        private float _fadeLength = 0;
+        private float _fadePercent = 0;
+        private float _fadeDelay = 0;
+        private bool _fadeEnded = false;
+        private AfterFade _afterFade = AfterFade.None;
+
+        public void SetFade(FadeType type, float length, bool overwrite, AfterFade afterFade = AfterFade.None, float delay = 0)
+        {
+            if (!overwrite && _fadeType != FadeType.None)
+            {
+                return;
+            }
+            _fadeType = type;
+            _fadeDelay = delay;
+            _fadePercent = 0;
+            if (type == FadeType.None)
+            {
+                _fadeType = type;
+                _fadeColor = 0;
+                _fadeIn = false;
+                _fadeStart = 0;
+                _fadeLength = 0;
+            }
+            else if (type == FadeType.FadeInWhite)
+            {
+                _fadeColor = 1;
+                _fadeIn = true;
+            }
+            else if (type == FadeType.FadeInBlack)
+            {
+                _fadeColor = 0;
+                _fadeIn = true;
+            }
+            else if (type == FadeType.FadeOutWhite || type == FadeType.FadeOutInWhite)
+            {
+                _fadeColor = 1;
+                _fadeIn = false;
+            }
+            else if (type == FadeType.FadeOutBlack || type == FadeType.FadeOutInBlack)
+            {
+                _fadeColor = 0;
+                _fadeIn = false;
+            }
+            _fadeStart = _globalElapsedTime;
+            _fadeLength = length;
+            _afterFade = afterFade;
+            _fadeEnded = false;
+        }
+
+        private void UpdateFade()
+        {
+            Color4 clearColor = _clearColor;
+            if (_fadeType != FadeType.None)
+            {
+                if (_fadeDelay > 0)
+                {
+                    _fadeDelay -= _frameTime * _pendingFadeSteps;
+                    _fadeStart = _globalElapsedTime;
+                }
+                _fadePercent = (_globalElapsedTime - _fadeStart) / _fadeLength;
+                if (_fadePercent >= 1)
+                {
+                    _fadePercent = 1;
+                    if (!_fadeEnded)
+                    {
+                        EndFade();
+                        _fadeEnded = true;
+                    }
+                }
+                else
+                {
+                    _fadeEnded = false;
+                }
+            }
+            else
+            {
+                _fadeEnded = false;
+            }
+            _pendingFadeSteps = 0;
+            if (!Mods.Headless.Active)
+            {
+                GL.ClearColor(_clearColor);
+            }
+        }
+
+        private void QuitGame(bool enteringShip)
+        {
+            _fadeType = FadeType.None;
+            DoCleanup();
+            if (GameState.SinglePlayer)
+            {
+                Menu.NeededSave = enteringShip ? Menu.SaveFromShip : Menu.SaveFromExit;
+                if (enteringShip)
+                {
+                    GameState.StorySave.Health = GameState.StorySave.HealthMax;
+                    GameState.StorySave.Ammo[0] = GameState.StorySave.AmmoMax[0];
+                    GameState.StorySave.Ammo[1] = GameState.StorySave.AmmoMax[1];
+                }
+            }
+            _close.Invoke();
+        }
+
+        public void DoCleanup()
+        {
+            if (!_exiting)
+            {
+                _exiting = true;
+                _room?.CancelTransition();
+                PlatformEntity.DestroyBeams();
+                EnemyInstanceEntity.DestroyBeams();
+                Sound.Sfx.ShutDown();
+                OutputStop();
+                _decoderCts?.Cancel();
+                Selection.Clear();
+            }
+        }
+
+        /// <summary>
+        /// Give every GL object this scene made back to the driver.
+        ///
+        /// Nothing needed this while a match was a window: the context died
+        /// with the window and took the lot with it. One window for the whole
+        /// session means the context outlives the match, so a player who plays
+        /// three maps would otherwise hold three sets of shaders, three
+        /// offscreen targets and three uploads of every texture in every model
+        /// -- which is the several hundred megabytes a scene weighs, times the
+        /// number of matches played.
+        ///
+        /// The display lists are the awkward half. They are made against the
+        /// context but stored on the <see cref="Model"/>, which lives in
+        /// <see cref="Read"/>'s cache and outlives the scene, and
+        /// <c>InitTextures</c> skips any mesh that already has one -- so
+        /// deleting a list without forgetting the model would leave the next
+        /// match drawing through a list id the driver has taken back. Both go,
+        /// together.
+        /// </summary>
+        public void UnloadGl()
+        {
+            if (Mods.Headless.Active)
+            {
+                return;
+            }
+            foreach (TextureMap map in _texPalMap.Values)
+            {
+                foreach (KeyValuePair<int, (int BindingId, bool OnlyOpaque)> kvp in map)
+                {
+                    GL.DeleteTexture(kvp.Value.BindingId);
+                }
+            }
+            _texPalMap.Clear();
+            foreach (Model model in Read.CachedModels)
+            {
+                foreach (Mesh mesh in model.Meshes)
+                {
+                    if (mesh.ListId != 0)
+                    {
+                        GL.DeleteLists(mesh.ListId, 1);
+                        mesh.ListId = 0;
+                    }
+                }
+            }
+            Read.ClearCache();
+            // The cel target also owns a reference to _screenTexture. Release
+            // it before deleting that texture in the shell's persistent context.
+            if (_celFrameBuffer != 0)
+            {
+                GL.DeleteFramebuffer(_celFrameBuffer);
+                _celFrameBuffer = 0;
+            }
+            _celFrameBufferColor = 0;
+            if (_frameBuffer != 0)
+            {
+                GL.DeleteFramebuffer(_frameBuffer);
+                _frameBuffer = 0;
+            }
+            if (_renderBuffer != 0)
+            {
+                GL.DeleteRenderbuffer(_renderBuffer);
+                _renderBuffer = 0;
+            }
+            DeleteTexture(ref _screenTexture);
+            DeleteTexture(ref _celTexture);
+            DeleteTexture(ref _depthTexture);
+            DeleteProgram(ref _shaderProgramId);
+            DeleteProgram(ref _rttShaderProgramId);
+            DeleteProgram(ref _shiftShaderProgramId);
+            DeleteProgram(ref _celShaderProgramId);
+        }
+
+        private static void DeleteTexture(ref int texture)
+        {
+            if (texture != 0)
+            {
+                GL.DeleteTexture(texture);
+                texture = 0;
+            }
+        }
+
+        private static void DeleteProgram(ref int program)
+        {
+            if (program != 0)
+            {
+                GL.DeleteProgram(program);
+                program = 0;
+            }
+        }
+
+        private void EndFade()
+        {
+            if (_afterFade == AfterFade.Exit || _afterFade == AfterFade.EnterShip)
+            {
+                QuitGame(enteringShip: _afterFade == AfterFade.EnterShip);
+                return;
+            }
+            AfterFade afterFade = _afterFade; // may get updated
+            if (afterFade == AfterFade.PlayMovie)
+            {
+                PlayMovie(_movieSettings.MovieId);
+            }
+            else if (afterFade == AfterFade.StopMovie)
+            {
+                if (_movieSettings.AfterPosition.HasValue)
+                {
+                    Vector3 position = _movieSettings.AfterPosition.Value;
+                    Vector3 facing = _movieSettings.AfterFacing ?? PlayerEntity.Main.FacingVector;
+                    NodeRef newNodeRef = GetNodeRefByName("rmMain");
+                    PlayerEntity.Main.Reposition(position, facing, newNodeRef);
+                }
+                StopMovie();
+            }
+            if (_fadeType == FadeType.FadeOutInBlack)
+            {
+                SetFade(FadeType.FadeInBlack, _fadeLength, overwrite: true);
+            }
+            else if (_fadeType == FadeType.FadeOutInWhite)
+            {
+                SetFade(FadeType.FadeInWhite, _fadeLength, overwrite: true);
+            }
+            else if (afterFade == AfterFade.LoadRoom)
+            {
+                Debug.Assert(_room != null);
+                _room.LoadRoom(resume: false);
+                FadeType fadeType = _fadeType == FadeType.FadeOutWhite ? FadeType.FadeInWhite : FadeType.FadeInBlack;
+                SetFade(fadeType, 10 / 30f, overwrite: true);
+            }
+            else if (afterFade != AfterFade.PlayMovie && afterFade != AfterFade.StopMovie)
+            {
+                _fadeType = FadeType.None;
+                _fadeColor = 0;
+                _fadeIn = false;
+                _fadePercent = 0;
+                _fadeStart = 0;
+                _fadeLength = 0;
+            }
+        }
+
+        private void RenderItem(RenderItem item)
+        {
+            if (item.ViewModel)
+            {
+                GL.UniformMatrix4(_shaderLocations.ProjectionMatrix, transpose: false,
+                    ref _viewModelPerspectiveMatrix);
+            }
+            UseLight1(item.LightInfo.Light1Vector, item.LightInfo.Light1Color);
+            UseLight2(item.LightInfo.Light2Vector, item.LightInfo.Light2Color);
+
+            if (item.MatrixStackCount > 0)
+            {
+                GL.UniformMatrix4(_shaderLocations.MatrixStack, item.MatrixStackCount, transpose: false, item.MatrixStack);
+            }
+            else
+            {
+                Matrix4 transform = item.Transform;
+                GL.UniformMatrix4(_shaderLocations.MatrixStack, transpose: false, ref transform);
+            }
+            Matrix4 viewInv = Matrix4.Identity;
+            if (item.BillboardMode == BillboardMode.Sphere)
+            {
+                viewInv = _viewInvRotMatrix;
+            }
+            else if (item.BillboardMode == BillboardMode.Cylinder)
+            {
+                viewInv = _viewInvRotYMatrix;
+            }
+            GL.UniformMatrix4(_shaderLocations.ViewInvMatrix, transpose: false, ref viewInv);
+
+            DoMaterial(item);
+            // texgen actually uses the transform from the current node, not the matrix stack
+            DoTexture(item);
+            if (_faceCulling)
+            {
+                GL.Enable(EnableCap.CullFace);
+                if (item.CullingMode == CullingMode.Neither)
+                {
+                    GL.Disable(EnableCap.CullFace);
+                }
+                else if (item.CullingMode == CullingMode.Back)
+                {
+                    GL.CullFace(TriangleFace.Back);
+                }
+                else if (item.CullingMode == CullingMode.Front)
+                {
+                    GL.CullFace(TriangleFace.Front);
+                }
+            }
+            bool wireframe = _wireframeLevel > 0 || item.Wireframe;
+            GL.PolygonMode(TriangleFace.FrontAndBack,
+                wireframe
+                ? OpenTK.Graphics.OpenGL.PolygonMode.Line
+                : OpenTK.Graphics.OpenGL.PolygonMode.Fill);
+            GL.LineWidth(wireframe ? Math.Max(1, _wireframeLevel) : 1);
+            if (item.Type == RenderItemType.Mesh)
+            {
+                GL.CallList(item.ListId);
+            }
+            else if (item.Type == RenderItemType.Box)
+            {
+                RenderBox(item.Points);
+            }
+            else if (item.Type == RenderItemType.Cylinder)
+            {
+                RenderCylinder(item.Points);
+            }
+            else if (item.Type == RenderItemType.Sphere)
+            {
+                RenderSphere(item.Points);
+            }
+            else if (item.Type == RenderItemType.Quad)
+            {
+                RenderQuad(item.Points);
+            }
+            else if (item.Type == RenderItemType.Ngon)
+            {
+                if (_volumeEdges != 1)
+                {
+                    RenderNgon(item.Points, item.ItemCount);
+                }
+                if (_volumeEdges != 2 && !item.NoLines)
+                {
+                    // todo: implement this for volumes as well
+                    RenderNgonLines(item.Points, item.ItemCount);
+                }
+            }
+            else if (item.Type == RenderItemType.Particle)
+            {
+                RenderParticle(item);
+            }
+            else if (item.Type == RenderItemType.TrailSingle)
+            {
+                RenderTrailSingle(item);
+            }
+            else if (item.Type == RenderItemType.TrailMulti)
+            {
+                RenderTrailMulti(item);
+            }
+            else if (item.Type == RenderItemType.TrailStack)
+            {
+                RenderTrailStack(item);
+            }
+            if (item.ViewModel)
+            {
+                // Nothing after this item should inherit the viewmodel lens.
+                GL.UniformMatrix4(_shaderLocations.ProjectionMatrix, transpose: false,
+                    ref _perspectiveMatrix);
+            }
+        }
+
+        private void RenderBox(Vector3[] verts)
+        {
+            // sides
+            GL.Begin(PrimitiveType.TriangleStrip);
+            GL.Vertex3(verts[2]);
+            GL.Vertex3(verts[6]);
+            GL.Vertex3(verts[0]);
+            GL.Vertex3(verts[4]);
+            GL.Vertex3(verts[1]);
+            GL.Vertex3(verts[5]);
+            GL.Vertex3(verts[3]);
+            GL.Vertex3(verts[7]);
+            GL.Vertex3(verts[2]);
+            GL.Vertex3(verts[6]);
+            GL.End();
+            // top
+            GL.Begin(PrimitiveType.TriangleStrip);
+            GL.Vertex3(verts[5]);
+            GL.Vertex3(verts[4]);
+            GL.Vertex3(verts[7]);
+            GL.Vertex3(verts[6]);
+            GL.End();
+            // bottom
+            GL.Begin(PrimitiveType.TriangleStrip);
+            GL.Vertex3(verts[3]);
+            GL.Vertex3(verts[2]);
+            GL.Vertex3(verts[1]);
+            GL.Vertex3(verts[0]);
+            GL.End();
+        }
+
+        private void RenderCylinder(Vector3[] verts)
+        {
+            // bottom
+            GL.Begin(PrimitiveType.TriangleFan);
+            GL.Vertex3(verts[32]);
+            GL.Vertex3(verts[0]);
+            GL.Vertex3(verts[1]);
+            GL.Vertex3(verts[2]);
+            GL.Vertex3(verts[3]);
+            GL.Vertex3(verts[4]);
+            GL.Vertex3(verts[5]);
+            GL.Vertex3(verts[6]);
+            GL.Vertex3(verts[7]);
+            GL.Vertex3(verts[8]);
+            GL.Vertex3(verts[9]);
+            GL.Vertex3(verts[10]);
+            GL.Vertex3(verts[11]);
+            GL.Vertex3(verts[12]);
+            GL.Vertex3(verts[13]);
+            GL.Vertex3(verts[14]);
+            GL.Vertex3(verts[15]);
+            GL.Vertex3(verts[0]);
+            GL.End();
+            // top
+            GL.Begin(PrimitiveType.TriangleFan);
+            GL.Vertex3(verts[33]);
+            GL.Vertex3(verts[31]);
+            GL.Vertex3(verts[30]);
+            GL.Vertex3(verts[29]);
+            GL.Vertex3(verts[28]);
+            GL.Vertex3(verts[27]);
+            GL.Vertex3(verts[26]);
+            GL.Vertex3(verts[25]);
+            GL.Vertex3(verts[24]);
+            GL.Vertex3(verts[23]);
+            GL.Vertex3(verts[22]);
+            GL.Vertex3(verts[21]);
+            GL.Vertex3(verts[20]);
+            GL.Vertex3(verts[19]);
+            GL.Vertex3(verts[18]);
+            GL.Vertex3(verts[17]);
+            GL.Vertex3(verts[16]);
+            GL.Vertex3(verts[31]);
+            GL.End();
+            // sides
+            GL.Begin(PrimitiveType.TriangleStrip);
+            GL.Vertex3(verts[0]);
+            GL.Vertex3(verts[16]);
+            GL.Vertex3(verts[1]);
+            GL.Vertex3(verts[17]);
+            GL.Vertex3(verts[2]);
+            GL.Vertex3(verts[18]);
+            GL.Vertex3(verts[3]);
+            GL.Vertex3(verts[19]);
+            GL.Vertex3(verts[4]);
+            GL.Vertex3(verts[20]);
+            GL.Vertex3(verts[5]);
+            GL.Vertex3(verts[21]);
+            GL.Vertex3(verts[6]);
+            GL.Vertex3(verts[22]);
+            GL.Vertex3(verts[7]);
+            GL.Vertex3(verts[23]);
+            GL.Vertex3(verts[8]);
+            GL.Vertex3(verts[24]);
+            GL.Vertex3(verts[9]);
+            GL.Vertex3(verts[25]);
+            GL.Vertex3(verts[10]);
+            GL.Vertex3(verts[26]);
+            GL.Vertex3(verts[11]);
+            GL.Vertex3(verts[27]);
+            GL.Vertex3(verts[12]);
+            GL.Vertex3(verts[28]);
+            GL.Vertex3(verts[13]);
+            GL.Vertex3(verts[29]);
+            GL.Vertex3(verts[14]);
+            GL.Vertex3(verts[30]);
+            GL.Vertex3(verts[15]);
+            GL.Vertex3(verts[31]);
+            GL.Vertex3(verts[0]);
+            GL.Vertex3(verts[16]);
+            GL.End();
+        }
+
+        private void RenderSphere(Vector3[] verts)
+        {
+            int stackCount = DisplaySphereStacks;
+            int sectorCount = DisplaySphereSectors;
+            GL.Begin(PrimitiveType.Triangles);
+            int k1, k2;
+            for (int i = 0; i < stackCount; i++)
+            {
+                k1 = i * (sectorCount + 1);
+                k2 = k1 + sectorCount + 1;
+                for (int j = 0; j < sectorCount; j++, k1++, k2++)
+                {
+                    if (i != 0)
+                    {
+                        GL.Vertex3(verts[k1 + 1]);
+                        GL.Vertex3(verts[k2]);
+                        GL.Vertex3(verts[k1]);
+                    }
+                    if (i != (stackCount - 1))
+                    {
+                        GL.Vertex3(verts[k2 + 1]);
+                        GL.Vertex3(verts[k2]);
+                        GL.Vertex3(verts[k1 + 1]);
+                    }
+                }
+            }
+            GL.End();
+        }
+
+        private void RenderQuad(Vector3[] verts)
+        {
+            GL.Begin(PrimitiveType.TriangleStrip);
+            GL.Vertex3(verts[0]);
+            GL.Vertex3(verts[3]);
+            GL.Vertex3(verts[1]);
+            GL.Vertex3(verts[2]);
+            GL.End();
+        }
+
+        private void RenderNgon(Vector3[] verts, int count)
+        {
+            GL.Begin(PrimitiveType.TriangleFan);
+            for (int i = 0; i < count; i++)
+            {
+                GL.Vertex3(verts[i]);
+            }
+            GL.End();
+        }
+
+        private void RenderNgonLines(Vector3[] verts, int count)
+        {
+            Vector4 color = _showCollision && ColDisplayColor == CollisionColor.None && ColDisplayAlpha == 1
+                ? new Vector4(0f, 0f, 1f, 1f)
+                : new Vector4(1f, 0f, 0f, 1f);
+            GL.Uniform4(_shaderLocations.OverrideColor, color);
+            GL.Begin(PrimitiveType.LineLoop);
+            for (int i = 0; i < count; i++)
+            {
+                GL.Vertex3(verts[i]);
+            }
+            GL.End();
+        }
+
+        private void RenderParticle(RenderItem item)
+        {
+            Vector3 texcoord0 = item.Points[0];
+            Vector3 vertex0 = item.Points[1];
+            Vector3 texcoord1 = item.Points[2];
+            Vector3 vertex1 = item.Points[3];
+            Vector3 texcoord2 = item.Points[4];
+            Vector3 vertex2 = item.Points[5];
+            Vector3 texcoord3 = item.Points[6];
+            Vector3 vertex3 = item.Points[7];
+            GL.Begin(PrimitiveType.Quads);
+            GL.TexCoord3(texcoord0.X * item.ScaleS, texcoord0.Y * item.ScaleT, 0f);
+            GL.Vertex3(vertex0);
+            GL.TexCoord3(texcoord1.X * item.ScaleS, texcoord1.Y * item.ScaleT, 0f);
+            GL.Vertex3(vertex1);
+            GL.TexCoord3(texcoord2.X * item.ScaleS, texcoord2.Y * item.ScaleT, 0f);
+            GL.Vertex3(vertex2);
+            GL.TexCoord3(texcoord3.X * item.ScaleS, texcoord3.Y * item.ScaleT, 0f);
+            GL.Vertex3(vertex3);
+            GL.End();
+        }
+
+        private void RenderTrailSingle(RenderItem item)
+        {
+            Vector3 texcoord0 = item.Points[0];
+            Vector3 vertex0 = item.Points[1];
+            Vector3 texcoord1 = item.Points[2];
+            Vector3 vertex1 = item.Points[3];
+            Vector3 texcoord2 = item.Points[4];
+            Vector3 vertex2 = item.Points[5];
+            Vector3 texcoord3 = item.Points[6];
+            Vector3 vertex3 = item.Points[7];
+            GL.Begin(PrimitiveType.QuadStrip);
+            GL.TexCoord3(texcoord0);
+            GL.Vertex3(vertex0);
+            GL.TexCoord3(texcoord1);
+            GL.Vertex3(vertex1);
+            GL.TexCoord3(texcoord2);
+            GL.Vertex3(vertex2);
+            GL.TexCoord3(texcoord3);
+            GL.Vertex3(vertex3);
+            GL.End();
+        }
+
+        private void RenderTrailMulti(RenderItem item)
+        {
+            Debug.Assert(item.ItemCount >= 4 && item.ItemCount % 2 == 0);
+            GL.Begin(PrimitiveType.QuadStrip);
+            for (int i = 0; i < item.ItemCount; i += 2)
+            {
+                Vector3 texcoord = item.Points[i];
+                Vector3 vertex = item.Points[i + 1];
+                GL.TexCoord3(texcoord);
+                GL.Vertex3(vertex);
+            }
+            GL.End();
+        }
+
+        private void RenderTrailStack(RenderItem item)
+        {
+            for (int i = 0; i < item.ItemCount; i++)
+            {
+                Vector3 texcoord0 = item.Points[i * 8];
+                Vector3 vertex0 = item.Points[i * 8 + 1];
+                Vector3 texcoord1 = item.Points[i * 8 + 2];
+                Vector3 vertex1 = item.Points[i * 8 + 3];
+                Vector3 texcoord2 = item.Points[i * 8 + 4];
+                Vector3 vertex2 = item.Points[i * 8 + 5];
+                Vector3 texcoord3 = item.Points[i * 8 + 6];
+                Vector3 vertex3 = item.Points[i * 8 + 7];
+                GL.Begin(PrimitiveType.Quads);
+                GL.TexCoord3(texcoord0);
+                GL.Vertex3(vertex0);
+                GL.TexCoord3(texcoord1);
+                GL.Vertex3(vertex1);
+                GL.TexCoord3(texcoord2);
+                GL.Vertex3(vertex2);
+                GL.TexCoord3(texcoord3);
+                GL.Vertex3(vertex3);
+                GL.End();
+            }
+        }
+
+        private void SetPauseMenuUniforms()
+        {
+            if (GameState.MenuPause && _cameraMode == CameraMode.Player)
+            {
+                (Matrix4 viewMtx, Matrix4 orthoMtx) = PlayerEntity.Main.GetPauseMapMatrices();
+                GL.UniformMatrix4(_shaderLocations.ViewMatrix, transpose: false, ref viewMtx);
+                GL.UniformMatrix4(_shaderLocations.ProjectionMatrix, transpose: false, ref orthoMtx);
+            }
+        }
+
+        public LayerInfo Layer1Info { get; } = new LayerInfo();
+        public LayerInfo Layer2Info { get; } = new LayerInfo();
+        public LayerInfo Layer3Info { get; } = new LayerInfo();
+        public LayerInfo Layer4Info { get; } = new LayerInfo();
+        public LayerInfo Layer5Info { get; } = new LayerInfo();
+
+        private void SetHudLayerUniforms()
+        {
+            GL.Disable(EnableCap.DepthTest);
+            GL.Enable(EnableCap.Blend);
+            Matrix4 identity = Matrix4.Identity;
+            GL.UniformMatrix4(_shaderLocations.MatrixStack, transpose: false, ref identity);
+            GL.UniformMatrix4(_shaderLocations.ViewInvMatrix, transpose: false, ref identity);
+            GL.Uniform1(_shaderLocations.UseLight, 0);
+            GL.Color3(Vector3.One);
+            GL.Uniform3(_shaderLocations.Diffuse, Vector3.One);
+            GL.Uniform3(_shaderLocations.Ambient, Vector3.One);
+            GL.Uniform3(_shaderLocations.Specular, Vector3.One);
+            GL.Uniform3(_shaderLocations.Emission, Vector3.One);
+            GL.Uniform1(_shaderLocations.MaterialMode, (int)PolygonMode.Modulate);
+            GL.Uniform1(_shaderLocations.TexgenMode, (int)TexgenMode.None);
+            GL.UniformMatrix4(_shaderLocations.TextureMatrix, transpose: false, ref identity);
+            GL.Uniform1(_shaderLocations.UseTexture, 1);
+            GL.Uniform1(_shaderLocations.UseOverride, 0);
+            GL.Uniform1(_shaderLocations.UsePaletteOverride, 0);
+            GL.Uniform1(_shaderLocations.UseFog, 0);
+            // The damage flash, the locator icons and the intro filter are HUD
+            // drawn through the scene's program because they are models. They
+            // are not part of the world, so they are not flattened and not
+            // banded; UpdateUniforms puts the bands back next frame.
+            GL.Uniform1(_shaderLocations.UseFlat, 0);
+            GL.Uniform1(_shaderLocations.CelBands, 0);
+            if (_faceCulling)
+            {
+                GL.Enable(EnableCap.CullFace);
+                GL.CullFace(TriangleFace.Back);
+            }
+            GL.UniformMatrix4(_shaderLocations.ViewMatrix, transpose: false, ref identity);
+            var orthoMatrix = Matrix4.CreateOrthographic(Size.X, Size.Y, 0.5f, 1.5f);
+            GL.UniformMatrix4(_shaderLocations.ProjectionMatrix, transpose: false, ref orthoMatrix);
+        }
+
+        private void UnsetHudLayerUniforms()
+        {
+            GL.Disable(EnableCap.Blend);
+            GL.Enable(EnableCap.DepthTest);
+            GL.UniformMatrix4(_shaderLocations.ViewMatrix, transpose: false, ref _viewMatrix);
+            GL.UniformMatrix4(_shaderLocations.ProjectionMatrix, transpose: false, ref _perspectiveMatrix);
+        }
+
+        private float _hudDrawScale = 1f;
+
+        internal float PushHudScale(float scale)
+        {
+            float previous = _hudDrawScale;
+            _hudDrawScale = Math.Clamp(scale, 0.5f, 1.5f);
+            return previous;
+        }
+
+        internal void RestoreHudScale(float scale)
+        {
+            _hudDrawScale = scale;
+        }
+
+        private float DiegeticHudFovScale(LayerInfo info)
+        {
+            bool visorOrHelmet = ReferenceEquals(info, Layer1Info)
+                || ReferenceEquals(info, Layer2Info)
+                || ReferenceEquals(info, Layer3Info);
+            if (!visorOrHelmet
+                || Features.ProHud
+                || PlayerEntity.Main?.ScanVisor == true
+                || _cameraMode != CameraMode.Player
+                || GameState.MenuPause
+                || GameState.DialogPause
+                || GameState.MatchState != MatchState.InProgress
+                || PlayerEntity.Main?.Flags1.TestFlag(PlayerFlags1.WeaponMenuOpen) == true)
+            {
+                return 1f;
+            }
+            return Mods.RenderOptions.HudFovScale;
+        }
+
+        private void DrawHudLayer(LayerInfo info)
+        {
+            if (info.BindingId == -1)
+            {
+                return;
+            }
+            GL.Uniform1(_shaderLocations.LayerAlpha, info.Alpha);
+            GL.BindTexture(TextureTarget.Texture2D, info.BindingId);
+            int minParameter = (int)TextureMinFilter.Nearest;
+            int magParameter = (int)TextureMagFilter.Nearest;
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, minParameter);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, magParameter);
+            GL.TexParameter(TextureTarget.Texture2D,
+                TextureParameterName.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+            GL.TexParameter(TextureTarget.Texture2D,
+                TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+            float viewWidth = Size.X;
+            float viewHeight = Size.Y;
+            float width;
+            float height;
+            if (info.ScaleX == -1 || info.ScaleY == -1)
+            {
+                float size = MathF.Max(viewWidth, viewHeight) / 2;
+                width = size / (viewWidth / 2);
+                height = size / (viewHeight / 2);
+            }
+            else
+            {
+                width = viewWidth * info.ScaleX / 2 / (viewWidth / 2);
+                height = viewHeight * info.ScaleY / 2 / (viewHeight / 2);
+            }
+            float fovScale = DiegeticHudFovScale(info);
+            width *= fovScale;
+            height *= fovScale;
+            float shiftX = info.ShiftX * fovScale;
+            float shiftY = info.ShiftY * fovScale;
+            GL.Begin(PrimitiveType.TriangleStrip);
+            // top right
+            GL.TexCoord3(1f, 0f, 0f);
+            GL.Vertex3(width + shiftX, height + shiftY, 0f);
+            // top left
+            GL.TexCoord3(0f, 0f, 0f);
+            GL.Vertex3(-width + shiftX, height + shiftY, 0f);
+            // bottom right
+            GL.TexCoord3(1f, 1f, 0f);
+            GL.Vertex3(width + shiftX, -height + shiftY, 0f);
+            // bottom left
+            GL.TexCoord3(0f, 1f, 0f);
+            GL.Vertex3(-width + shiftX, -height + shiftY, 0f);
+            GL.End();
+            GL.BindTexture(TextureTarget.Texture2D, 0);
+        }
+
+        /// <summary>
+        /// The player's crosshair at the centre of the screen, drawn with none
+        /// of the game's sprite assets -- the Quake-Live-style alternative to
+        /// the reticle. Reuses the RTT shader's fade_color path (normally the
+        /// full-screen fade) as a flat-fill: with its alpha above zero the
+        /// fragment shader outputs that colour outright instead of sampling
+        /// the bound texture, which is exactly "draw a solid shape with no
+        /// asset."
+        ///
+        /// Which shape, and how big, come from
+        /// <see cref="Mods.Render.Crosshair"/> -- the same table the settings
+        /// screen draws its preview from.
+        /// </summary>
+        /// <param name="posX">
+        /// Where the middle of the crosshair goes, as a fraction of the
+        /// window from the left; <paramref name="posY"/> is the same from the
+        /// top. 0.5, 0.5 is the middle of the screen, which is where a static
+        /// (Quake) crosshair always sits. A dynamic (Metroid) one is drawn at
+        /// the reticle's reprojected aim point instead -- the DS game's
+        /// crosshair moves around the screen and the camera follows it, and a
+        /// cross welded to the centre is not that game whatever the gun is
+        /// doing. See PlayerHud.UpdateReticle.
+        /// </param>
+        public void DrawCustomCrosshair(Vector3 color, float posX = 0.5f, float posY = 0.5f)
+        {
+            float halfW = Size.X / 2f;
+            float halfH = Size.Y / 2f;
+            // The offset is applied in the same normalised space the bars are
+            // laid out in, so nothing below has to know the crosshair moved.
+            float offX = posX * 2f - 1f;
+            float offY = 1f - posY * 2f;
+            Mods.Render.CrosshairStyle style = Mods.Render.Crosshair.Style;
+            float scale = Mods.Render.Crosshair.Scale;
+            GL.Uniform4(_shaderLocations.FadeColor, color.X, color.Y, color.Z, 1f);
+            IReadOnlyList<Mods.Render.CrosshairBar> bars =
+                Mods.Render.Crosshair.BarsOf(style, scale);
+            for (int i = 0; i < bars.Count; i++)
+            {
+                (float left, float right, float bottom, float top) =
+                    Mods.Render.Crosshair.EdgesOf(bars[i]);
+                GL.Begin(PrimitiveType.TriangleStrip);
+                GL.Vertex3(offX + right / halfW, offY + top / halfH, 0f);
+                GL.Vertex3(offX + left / halfW, offY + top / halfH, 0f);
+                GL.Vertex3(offX + right / halfW, offY + bottom / halfH, 0f);
+                GL.Vertex3(offX + left / halfW, offY + bottom / halfH, 0f);
+                GL.End();
+            }
+            (float radius, float thickness) = Mods.Render.Crosshair.RingOf(style, scale);
+            if (thickness > 0)
+            {
+                // An annulus as one triangle strip: outer point, inner point,
+                // round the circle and back to the start. Enough segments that
+                // the flats are under a pixel at the sizes this is drawn at,
+                // and it is four dozen vertices once a frame either way.
+                const int segments = 40;
+                float inner = radius - thickness / 2;
+                float outer = radius + thickness / 2;
+                GL.Begin(PrimitiveType.TriangleStrip);
+                for (int i = 0; i <= segments; i++)
+                {
+                    float angle = MathHelper.TwoPi * i / segments;
+                    float cos = MathF.Cos(angle);
+                    float sin = MathF.Sin(angle);
+                    GL.Vertex3(offX + outer * cos / halfW, offY + outer * sin / halfH, 0f);
+                    GL.Vertex3(offX + inner * cos / halfW, offY + inner * sin / halfH, 0f);
+                }
+                GL.End();
+            }
+            GL.Uniform4(_shaderLocations.FadeColor, Vector4.Zero);
+        }
+
+        /// <summary>
+        /// The mark that says a shot connected, over the middle of the
+        /// screen: four bars in an X around the crosshair, with the same
+        /// flat-fill trick and no asset. Drawn the frame the hit lands --
+        /// which on a client is the frame the trigger was pulled, not the one
+        /// the authority's answer came back on. See
+        /// <see cref="Mods.Network.NetHitPrediction"/>.
+        ///
+        /// Sized off the crosshair's own scale so that a player who has
+        /// asked for a big crosshair gets a mark to match, and drawn in
+        /// pixels for the same reason the crosshair is: it is read at a
+        /// glance, and what matters is how big it lands on the screen.
+        /// </summary>
+        /// <param name="posX">
+        /// Where the crosshair the mark surrounds is, as a fraction of the
+        /// window; see <see cref="DrawCustomCrosshair"/>. The mark answers
+        /// "did that land", and it has to sit on the thing that was aimed
+        /// with, wherever that is on the screen.
+        /// </param>
+        public void DrawHitMarker(Vector4 color, float posX = 0.5f, float posY = 0.5f)
+        {
+            float halfW = Size.X / 2f;
+            float halfH = Size.Y / 2f;
+            float offX = posX * 2f - 1f;
+            float offY = 1f - posY * 2f;
+            float scale = Mods.Render.Crosshair.Scale;
+            const float gap = 4f;
+            const float length = 7f;
+            const float thickness = 2f;
+            float diagonal = MathF.Sqrt(0.5f);
+            GL.Uniform4(_shaderLocations.FadeColor, color);
+            for (int i = 0; i < 4; i++)
+            {
+                float dx = ((i & 1) == 0 ? -1 : 1) * diagonal;
+                float dy = ((i & 2) == 0 ? -1 : 1) * diagonal;
+                // The bar runs outward along the diagonal from the gap; its
+                // width is measured across the perpendicular, so the four
+                // arms meet the crosshair at the same distance whatever the
+                // window's shape.
+                float x0 = dx * gap * scale;
+                float y0 = dy * gap * scale;
+                float x1 = dx * (gap + length) * scale;
+                float y1 = dy * (gap + length) * scale;
+                float hx = -dy * thickness * scale / 2;
+                float hy = dx * thickness * scale / 2;
+                GL.Begin(PrimitiveType.TriangleStrip);
+                GL.Vertex3(offX + (x0 + hx) / halfW, offY + (y0 + hy) / halfH, 0f);
+                GL.Vertex3(offX + (x0 - hx) / halfW, offY + (y0 - hy) / halfH, 0f);
+                GL.Vertex3(offX + (x1 + hx) / halfW, offY + (y1 + hy) / halfH, 0f);
+                GL.Vertex3(offX + (x1 - hx) / halfW, offY + (y1 - hy) / halfH, 0f);
+                GL.End();
+            }
+            GL.Uniform4(_shaderLocations.FadeColor, Vector4.Zero);
+        }
+
+        /// <summary>
+        /// A flat-coloured, unbordered rectangle in the same 256x192 virtual
+        /// space <see cref="DrawHudObject"/>'s mode 2 and the HUD text draw
+        /// use -- for the modern HUD's equipped-weapon highlight, which has
+        /// no sprite asset of its own. Same fade_color flat-fill trick as
+        /// <see cref="DrawCustomCrosshair"/>.
+        /// </summary>
+        public void DrawHudFlatBox(float left, float top, float right, float bottom, Vector4 color)
+        {
+            if (_hudDrawScale != 1f)
+            {
+                left = 128f + (left - 128f) * _hudDrawScale;
+                right = 128f + (right - 128f) * _hudDrawScale;
+                top = 96f + (top - 96f) * _hudDrawScale;
+                bottom = 96f + (bottom - 96f) * _hudDrawScale;
+            }
+            float halfW = Size.X / 2f;
+            float halfH = Size.Y / 2f;
+            float x0 = (left / 256f * Size.X - halfW) / halfW;
+            float x1 = (right / 256f * Size.X - halfW) / halfW;
+            float y0 = (halfH - top / 192f * Size.Y) / halfH;
+            float y1 = (halfH - bottom / 192f * Size.Y) / halfH;
+            GL.Uniform4(_shaderLocations.FadeColor, color);
+            GL.Begin(PrimitiveType.TriangleStrip);
+            GL.Vertex3(x1, y0, 0f);
+            GL.Vertex3(x0, y0, 0f);
+            GL.Vertex3(x1, y1, 0f);
+            GL.Vertex3(x0, y1, 0f);
+            GL.End();
+            GL.Uniform4(_shaderLocations.FadeColor, Vector4.Zero);
+        }
+
+        /// <summary>
+        /// A picture in a box of HUD units, from a texture bound by somebody
+        /// else -- a map preview, in practice (see <c>Mods.MapThumbnail</c>).
+        ///
+        /// <see cref="DrawHudObject"/> is the way every sprite the game ships
+        /// reaches the screen, and it is the wrong shape for this: it derives
+        /// the destination from the *source's* dimensions and an integer size
+        /// on the instance, which is right for art authored at one texel per
+        /// DS pixel and useless for a photograph that has to land in a
+        /// rectangle the layout chose. This is <see cref="DrawHudFlatBox"/>'s
+        /// rectangle with a texture on it instead of a colour, which is
+        /// exactly what the layout is asking for.
+        ///
+        /// The HUD shader takes the flat fill when <c>fade_color</c> has any
+        /// alpha and samples the texture otherwise, so leaving it at zero --
+        /// which every other draw here does on its way out -- is the whole of
+        /// what "textured" means.
+        /// </summary>
+        public void DrawHudTexture(float left, float top, float right, float bottom,
+            int bindingId, float alpha = 1, bool smooth = true)
+        {
+            if (bindingId <= 0)
+            {
+                return;
+            }
+            if (_hudDrawScale != 1f)
+            {
+                left = 128f + (left - 128f) * _hudDrawScale;
+                right = 128f + (right - 128f) * _hudDrawScale;
+                top = 96f + (top - 96f) * _hudDrawScale;
+                bottom = 96f + (bottom - 96f) * _hudDrawScale;
+            }
+            float halfW = Size.X / 2f;
+            float halfH = Size.Y / 2f;
+            float x0 = (left / 256f * Size.X - halfW) / halfW;
+            float x1 = (right / 256f * Size.X - halfW) / halfW;
+            float y0 = (halfH - top / 192f * Size.Y) / halfH;
+            float y1 = (halfH - bottom / 192f * Size.Y) / halfH;
+            GL.Uniform1(_shaderLocations.LayerAlpha, alpha);
+            GL.Uniform1(_shaderLocations.UseMask, 0);
+            GL.BindTexture(TextureTarget.Texture2D, bindingId);
+            // Linear, like the weapon icons and for the opposite reason: this
+            // is a photograph of a room reduced to a thumbnail, so there is no
+            // DS pixel grid to preserve and nearest would only alias it.
+            int min = (int)(smooth ? TextureMinFilter.Linear : TextureMinFilter.Nearest);
+            int mag = (int)(smooth ? TextureMagFilter.Linear : TextureMagFilter.Nearest);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, min);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, mag);
+            GL.TexParameter(TextureTarget.Texture2D,
+                TextureParameterName.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+            GL.TexParameter(TextureTarget.Texture2D,
+                TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+            GL.Begin(PrimitiveType.TriangleStrip);
+            GL.TexCoord3(1f, 0f, 0f);
+            GL.Vertex3(x1, y0, 0f);
+            GL.TexCoord3(0f, 0f, 0f);
+            GL.Vertex3(x0, y0, 0f);
+            GL.TexCoord3(1f, 1f, 0f);
+            GL.Vertex3(x1, y1, 0f);
+            GL.TexCoord3(0f, 1f, 0f);
+            GL.Vertex3(x0, y1, 0f);
+            GL.End();
+            GL.BindTexture(TextureTarget.Texture2D, 0);
+            GL.Uniform1(_shaderLocations.LayerAlpha, 1f);
+        }
+
+        /// <summary>
+        /// A filled circle, same flat-fill trick as <see cref="DrawCustomCrosshair"/>.
+        /// <paramref name="localCenter"/> is a pixel offset from
+        /// (<paramref name="posX"/>, <paramref name="posY"/>), y up -- the same
+        /// convention <see cref="DrawHitMarker"/>'s bars use, generalised to a
+        /// caller that draws more than one shape around the same anchor (a
+        /// round HUD panel, or a set of blips inside one).
+        /// </summary>
+        public void DrawFlatDisc(float posX, float posY, Vector2 localCenter, float radius,
+            Vector4 color, int segments = 32)
+        {
+            float halfW = Size.X / 2f;
+            float halfH = Size.Y / 2f;
+            float offX = posX * 2f - 1f + localCenter.X / halfW;
+            float offY = 1f - posY * 2f + localCenter.Y / halfH;
+            GL.Uniform4(_shaderLocations.FadeColor, color);
+            GL.Begin(PrimitiveType.TriangleFan);
+            GL.Vertex3(offX, offY, 0f);
+            for (int i = 0; i <= segments; i++)
+            {
+                float angle = MathHelper.TwoPi * i / segments;
+                GL.Vertex3(offX + radius * MathF.Cos(angle) / halfW,
+                    offY + radius * MathF.Sin(angle) / halfH, 0f);
+            }
+            GL.End();
+            GL.Uniform4(_shaderLocations.FadeColor, Vector4.Zero);
+        }
+
+        /// <summary>An unfilled ring; radius is to the middle of the stroke.</summary>
+        public void DrawFlatRing(float posX, float posY, Vector2 localCenter, float radius,
+            float thickness, Vector4 color, int segments = 48)
+        {
+            float halfW = Size.X / 2f;
+            float halfH = Size.Y / 2f;
+            float offX = posX * 2f - 1f + localCenter.X / halfW;
+            float offY = 1f - posY * 2f + localCenter.Y / halfH;
+            float inner = radius - thickness / 2;
+            float outer = radius + thickness / 2;
+            GL.Uniform4(_shaderLocations.FadeColor, color);
+            GL.Begin(PrimitiveType.TriangleStrip);
+            for (int i = 0; i <= segments; i++)
+            {
+                float angle = MathHelper.TwoPi * i / segments;
+                float cos = MathF.Cos(angle);
+                float sin = MathF.Sin(angle);
+                GL.Vertex3(offX + outer * cos / halfW, offY + outer * sin / halfH, 0f);
+                GL.Vertex3(offX + inner * cos / halfW, offY + inner * sin / halfH, 0f);
+            }
+            GL.End();
+            GL.Uniform4(_shaderLocations.FadeColor, Vector4.Zero);
+        }
+
+        /// <summary>
+        /// A straight bar between two points local to (<paramref name="posX"/>,
+        /// <paramref name="posY"/>), in pixels, y up.
+        /// </summary>
+        public void DrawFlatLine(float posX, float posY, Vector2 from, Vector2 to,
+            float thickness, Vector4 color)
+        {
+            Vector2 dir = to - from;
+            float len = dir.Length;
+            if (len < 0.0001f)
+            {
+                return;
+            }
+            float halfW = Size.X / 2f;
+            float halfH = Size.Y / 2f;
+            float offX = posX * 2f - 1f;
+            float offY = 1f - posY * 2f;
+            Vector2 perp = new Vector2(-dir.Y, dir.X) / len * (thickness / 2f);
+            GL.Uniform4(_shaderLocations.FadeColor, color);
+            GL.Begin(PrimitiveType.TriangleStrip);
+            GL.Vertex3(offX + (from.X + perp.X) / halfW, offY + (from.Y + perp.Y) / halfH, 0f);
+            GL.Vertex3(offX + (from.X - perp.X) / halfW, offY + (from.Y - perp.Y) / halfH, 0f);
+            GL.Vertex3(offX + (to.X + perp.X) / halfW, offY + (to.Y + perp.Y) / halfH, 0f);
+            GL.Vertex3(offX + (to.X - perp.X) / halfW, offY + (to.Y - perp.Y) / halfH, 0f);
+            GL.End();
+            GL.Uniform4(_shaderLocations.FadeColor, Vector4.Zero);
+        }
+
+        /// <summary>
+        /// A filled, axis-aligned square local to (<paramref name="posX"/>,
+        /// <paramref name="posY"/>), in pixels.
+        /// </summary>
+        public void DrawFlatSquare(float posX, float posY, Vector2 localCenter, float halfSize,
+            Vector4 color)
+        {
+            float halfW = Size.X / 2f;
+            float halfH = Size.Y / 2f;
+            float offX = posX * 2f - 1f;
+            float offY = 1f - posY * 2f;
+            float cx = localCenter.X;
+            float cy = localCenter.Y;
+            GL.Uniform4(_shaderLocations.FadeColor, color);
+            GL.Begin(PrimitiveType.TriangleStrip);
+            GL.Vertex3(offX + (cx + halfSize) / halfW, offY + (cy + halfSize) / halfH, 0f);
+            GL.Vertex3(offX + (cx - halfSize) / halfW, offY + (cy + halfSize) / halfH, 0f);
+            GL.Vertex3(offX + (cx + halfSize) / halfW, offY + (cy - halfSize) / halfH, 0f);
+            GL.Vertex3(offX + (cx - halfSize) / halfW, offY + (cy - halfSize) / halfH, 0f);
+            GL.End();
+            GL.Uniform4(_shaderLocations.FadeColor, Vector4.Zero);
+        }
+
+        /// <summary>
+        /// A filled convex polygon (a triangle or a diamond, say), given as
+        /// points local to <paramref name="localCenter"/>, itself local to
+        /// (<paramref name="posX"/>, <paramref name="posY"/>). Points must
+        /// already be in fan order.
+        /// </summary>
+        public void DrawFlatPolygon(float posX, float posY, Vector2 localCenter,
+            ReadOnlySpan<Vector2> localPoints, Vector4 color)
+        {
+            float halfW = Size.X / 2f;
+            float halfH = Size.Y / 2f;
+            float offX = posX * 2f - 1f;
+            float offY = 1f - posY * 2f;
+            GL.Uniform4(_shaderLocations.FadeColor, color);
+            GL.Begin(PrimitiveType.TriangleFan);
+            for (int i = 0; i < localPoints.Length; i++)
+            {
+                float x = localCenter.X + localPoints[i].X;
+                float y = localCenter.Y + localPoints[i].Y;
+                GL.Vertex3(offX + x / halfW, offY + y / halfH, 0f);
+            }
+            GL.End();
+            GL.Uniform4(_shaderLocations.FadeColor, Vector4.Zero);
+        }
+
+        /// <param name="scale">
+        /// Multiplies the size the object is drawn at, without touching the
+        /// size it is *cut out* at. Those are the same field on the instance --
+        /// Width and Height say how big a glyph is in the character data as
+        /// well as how big it lands on screen -- so shrinking text by setting
+        /// them re-cuts the font at the wrong size and draws confetti. This is
+        /// the destination, and only the destination.
+        /// </param>
+        public void DrawHudObject(HudObjectInstance inst, int mode = 0, float scale = 1)
+        {
+            if (!inst.Enabled)
+            {
+                return;
+            }
+            float x = inst.PositionX;
+            float y = inst.PositionY;
+            if (_hudDrawScale != 1f)
+            {
+                x = 0.5f + (x - 0.5f) * _hudDrawScale;
+                y = 0.5f + (y - 0.5f) * _hudDrawScale;
+            }
+            float width = inst.Width;
+            float height = inst.Height;
+            bool center = inst.Center;
+            GL.Uniform1(_shaderLocations.LayerAlpha, inst.Alpha);
+            GL.Uniform1(_shaderLocations.UseMask, inst.UseMask && _hudMaskActive ? 1 : 0);
+            GL.BindTexture(TextureTarget.Texture2D, inst.BindingId);
+            // Nearest, which is what the DS did and what every sprite in this
+            // game is drawn for -- except the supersampled ones, whose texture
+            // arrives bigger than the box it goes in. See HudObjectInstance.Smooth.
+            int minParameter = (int)(inst.Smooth ? TextureMinFilter.Linear : TextureMinFilter.Nearest);
+            int magParameter = (int)(inst.Smooth ? TextureMagFilter.Linear : TextureMagFilter.Nearest);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, minParameter);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, magParameter);
+            GL.TexParameter(TextureTarget.Texture2D,
+                TextureParameterName.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+            GL.TexParameter(TextureTarget.Texture2D,
+                TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+            float viewWidth = Size.X;
+            float viewHeight = Size.Y;
+            if (mode == 2)
+            {
+                width = width / 256 * viewWidth;
+                height = height / 192 * viewHeight;
+            }
+            else if (mode == 1)
+            {
+                float aspect = height / width;
+                height = height / 192 * viewHeight;
+                width = height / aspect;
+            }
+            else // if (mode == 0)
+            {
+                float aspect = width / height;
+                width = width / 256 * viewWidth;
+                height = width / aspect;
+            }
+            if (scale != 1)
+            {
+                width *= scale;
+                height *= scale;
+            }
+            if (_hudDrawScale != 1f)
+            {
+                width *= _hudDrawScale;
+                height *= _hudDrawScale;
+            }
+            float viewLeft = -viewWidth / 2;
+            float viewTop = viewHeight / 2;
+            float leftPos = viewLeft + x * viewWidth - (center ? (width / 2) : 0);
+            float rightPos = leftPos + width;
+            float topPos = viewTop - y * viewHeight + (center ? (height / 2) : 0);
+            float bottomPos = topPos - height;
+            leftPos /= (viewWidth / 2);
+            rightPos /= (viewWidth / 2);
+            topPos /= (viewHeight / 2);
+            bottomPos /= (viewHeight / 2);
+            if (inst.FlipHorizontal)
+            {
+                (rightPos, leftPos) = (leftPos, rightPos);
+            }
+            if (inst.FlipVertical)
+            {
+                (bottomPos, topPos) = (topPos, bottomPos);
+            }
+            GL.Begin(PrimitiveType.TriangleStrip);
+            // top right
+            GL.TexCoord3(1f, 0f, 0f);
+            GL.Vertex3(rightPos, topPos, 0f);
+            // top left
+            GL.TexCoord3(0f, 0f, 0f);
+            GL.Vertex3(leftPos, topPos, 0f);
+            // bottom right
+            GL.TexCoord3(1f, 1f, 0f);
+            GL.Vertex3(rightPos, bottomPos, 0f);
+            // bottom left
+            GL.TexCoord3(0f, 1f, 0f);
+            GL.Vertex3(leftPos, bottomPos, 0f);
+            GL.End();
+            GL.BindTexture(TextureTarget.Texture2D, 0);
+        }
+
+        /// <param name="scaleMult">
+        /// Multiplies the icon's usual HUD size (<c>Size.Y / 192</c>, the same
+        /// scale every other DS-native HUD element uses). 1 for the locator
+        /// arrow this was written for; smaller for a radar blip, which wants
+        /// the same asset at a fraction of that size.
+        /// </param>
+        public void DrawIconModel(Vector2 position, float angle, ModelInstance inst, ColorRgb color,
+            float alpha, float scaleMult = 1f)
+        {
+            float scale = Size.Y / 192f * scaleMult;
+            var position3d = new Vector3(position.X * Size.X - Size.X / 2, (1 - position.Y) * Size.Y - (Size.Y / 2), -1f);
+            Matrix4 transform = Matrix4.CreateRotationZ(MathHelper.DegreesToRadians(angle))
+                * Matrix4.CreateScale(scale, scale, 1) * Matrix4.CreateTranslation(position3d);
+            GL.UniformMatrix4(_shaderLocations.MatrixStack, transpose: false, ref transform);
+            Model model = inst.Model;
+            UpdateMaterials(model, 0);
+            GL.Uniform1(_shaderLocations.MaterialAlpha, alpha);
+            GL.BindTexture(TextureTarget.Texture2D, model.Materials[0].TextureBindingId);
+            int minParameter = (int)TextureMinFilter.Nearest;
+            int magParameter = (int)TextureMagFilter.Nearest;
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, minParameter);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, magParameter);
+            GL.TexParameter(TextureTarget.Texture2D,
+                TextureParameterName.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+            GL.TexParameter(TextureTarget.Texture2D,
+                TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+            GL.Color3(new Vector3(color.Red / 31f, color.Green / 31f, color.Blue / 31f));
+            GL.CallList(model.Meshes[0].ListId);
+            GL.BindTexture(TextureTarget.Texture2D, 0);
+            Matrix4 identity = Matrix4.Identity;
+            GL.UniformMatrix4(_shaderLocations.MatrixStack, transpose: false, ref identity);
+        }
+
+        public void DrawHudFilterModel(ModelInstance inst, float alpha = 1)
+        {
+            Model model = inst.Model;
+            UpdateMaterials(model, 0);
+            Material material = model.Materials[0];
+            GL.Uniform1(_shaderLocations.MaterialAlpha, material.Alpha / 31f * alpha);
+            GL.BindTexture(TextureTarget.Texture2D, material.TextureBindingId);
+            int minParameter = (int)TextureMinFilter.Nearest;
+            int magParameter = (int)TextureMagFilter.Nearest;
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, minParameter);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, magParameter);
+            GL.TexParameter(TextureTarget.Texture2D,
+                TextureParameterName.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+            GL.TexParameter(TextureTarget.Texture2D,
+                TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+            float viewWidth = Size.X;
+            float viewHeight = Size.Y;
+            GL.Begin(PrimitiveType.TriangleStrip);
+            // top right
+            GL.TexCoord3(1f, 0f, 0f);
+            GL.Vertex3(viewWidth, viewHeight, -1f);
+            // top left
+            GL.TexCoord3(0f, 0f, 0f);
+            GL.Vertex3(-viewWidth, viewHeight, -1f);
+            // bottom right
+            GL.TexCoord3(1f, 1f, 0f);
+            GL.Vertex3(viewWidth, -viewHeight, -1f);
+            // bottom left
+            GL.TexCoord3(0f, 1f, 0f);
+            GL.Vertex3(-viewWidth, -viewHeight, -1f);
+            GL.End();
+            GL.BindTexture(TextureTarget.Texture2D, 0);
+        }
+
+        private readonly float[] _hudMatrixStack = new float[16 * 31];
+
+        public void DrawHudDamageModel(ModelInstance inst)
+        {
+            Model model = inst.Model;
+            UpdateMaterials(model, 0);
+            GL.Uniform1(_shaderLocations.MaterialAlpha, 1f);
+            GL.BindTexture(TextureTarget.Texture2D, model.Materials[0].TextureBindingId);
+            int minParameter = (int)TextureMinFilter.Nearest;
+            int magParameter = (int)TextureMagFilter.Nearest;
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, minParameter);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, magParameter);
+            GL.TexParameter(TextureTarget.Texture2D,
+                TextureParameterName.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+            GL.TexParameter(TextureTarget.Texture2D,
+                TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+            float viewWidth = Size.X;
+            float viewHeight = Size.Y;
+            float xOffset = -viewWidth / 2;
+            float yOffset = -viewHeight / 2;
+            // ltodo: we only need to update this loop and matrix stack update if the viewport changes
+            for (int i = 1; i < 9; i++)
+            {
+                Node node = inst.Model.Nodes[i];
+                if (node.Enabled)
+                {
+                    float width = node.MaxBounds.X - node.MinBounds.X;
+                    float height = node.MaxBounds.Y - node.MinBounds.Y;
+                    float newWidth = width / 256 * viewWidth;
+                    float newHeight = height / 192 * viewHeight;
+                    newWidth *= model.Scale.X;
+                    newHeight *= model.Scale.Y;
+                    var transform = Matrix4.CreateScale(newWidth / width, newHeight / height, 1);
+                    transform.Row3.Xyz = new Vector3(xOffset, yOffset, -1);
+                    node.Animation = transform;
+                }
+            }
+            model.UpdateMatrixStack();
+            Array.Copy(model.MatrixStackValues.ToArray(), _hudMatrixStack, model.MatrixStackValues.Count);
+            GL.UniformMatrix4(_shaderLocations.MatrixStack, model.NodeMatrixIds.Count, transpose: false, _hudMatrixStack);
+            for (int i = 1; i < 9; i++)
+            {
+                Node node = inst.Model.Nodes[i];
+                if (node.Enabled)
+                {
+                    Mesh mesh = model.Meshes[node.MeshId / 2];
+                    GL.CallList(mesh.ListId);
+                }
+            }
+            GL.BindTexture(TextureTarget.Texture2D, 0);
+            Matrix4 identity = Matrix4.Identity;
+            GL.UniformMatrix4(_shaderLocations.MatrixStack, transpose: false, ref identity);
+        }
+
+        private void DoMaterial(RenderItem item)
+        {
+            GL.Uniform1(_shaderLocations.UseLight, LightingOn && item.Lighting ? 1 : 0);
+            // MPH applies the material colors initially by calling DIF_AMB with bit 15 set,
+            // so the diffuse color is always set as the vertex color to start
+            // (the emission color is set to white if lighting is disabled or black if lighting is enabled; we can just ignore that)
+            // --> ...except for hunter models with teams enabled or with double damage
+            GL.Color3(item.Diffuse);
+            GL.Uniform3(_shaderLocations.Diffuse, item.Diffuse);
+            GL.Uniform3(_shaderLocations.Ambient, item.Ambient);
+            GL.Uniform3(_shaderLocations.Specular, item.Specular);
+            GL.Uniform3(_shaderLocations.Emission, item.Emission);
+            GL.Uniform1(_shaderLocations.MaterialAlpha, item.Alpha);
+            GL.Uniform1(_shaderLocations.MaterialMode, (int)item.PolygonMode);
+        }
+
+        private void DoTexture(RenderItem item)
+        {
+            if (item.HasTexture)
+            {
+                GL.BindTexture(TextureTarget.Texture2D, item.TextureBindingId);
+                int minParameter = FilteringOn ? (int)TextureMinFilter.Linear : (int)TextureMinFilter.Nearest;
+                int magParameter = FilteringOn ? (int)TextureMagFilter.Linear : (int)TextureMagFilter.Nearest;
+                GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, minParameter);
+                GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, magParameter);
+                switch (item.XRepeat)
+                {
+                case RepeatMode.Clamp:
+                    GL.TexParameter(TextureTarget.Texture2D,
+                        TextureParameterName.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+                    break;
+                case RepeatMode.Repeat:
+                    GL.TexParameter(TextureTarget.Texture2D,
+                        TextureParameterName.TextureWrapS, (int)TextureWrapMode.Repeat);
+                    break;
+                case RepeatMode.Mirror:
+                    GL.TexParameter(TextureTarget.Texture2D,
+                        TextureParameterName.TextureWrapS, (int)TextureWrapMode.MirroredRepeat);
+                    break;
+                }
+                switch (item.YRepeat)
+                {
+                case RepeatMode.Clamp:
+                    GL.TexParameter(TextureTarget.Texture2D,
+                        TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+                    break;
+                case RepeatMode.Repeat:
+                    GL.TexParameter(TextureTarget.Texture2D,
+                        TextureParameterName.TextureWrapT, (int)TextureWrapMode.Repeat);
+                    break;
+                case RepeatMode.Mirror:
+                    GL.TexParameter(TextureTarget.Texture2D,
+                        TextureParameterName.TextureWrapT, (int)TextureWrapMode.MirroredRepeat);
+                    break;
+                }
+                Matrix4 texcoordMatrix = item.TexcoordMatrix;
+                GL.Uniform1(_shaderLocations.TexgenMode, (int)item.TexgenMode);
+                GL.UniformMatrix4(_shaderLocations.TextureMatrix, transpose: false, ref texcoordMatrix);
+            }
+            GL.Uniform1(_shaderLocations.UseTexture, item.HasTexture && _showTextures ? 1 : 0);
+            SetFlatColor(item.HasTexture && _showTextures ? item.TextureBindingId : -1);
+            Vector4? overrideColor = item.OverrideColor;
+            if (overrideColor != null)
+            {
+                Vector4 overrideColorValue = overrideColor.Value;
+                GL.Uniform1(_shaderLocations.UseOverride, 1);
+                GL.Uniform4(_shaderLocations.OverrideColor, ref overrideColorValue);
+            }
+            else
+            {
+                GL.Uniform1(_shaderLocations.UseOverride, 0);
+            }
+            if (item.PaletteOverride != null)
+            {
+                Vector4 overrideColorValue = item.PaletteOverride.Value;
+                GL.Uniform1(_shaderLocations.UsePaletteOverride, 1);
+                GL.Uniform4(_shaderLocations.PaletteOverrideColor, ref overrideColorValue);
+            }
+            else
+            {
+                GL.Uniform1(_shaderLocations.UsePaletteOverride, 0);
+            }
+        }
+
+        /// <summary>
+        /// Tell the fragment shader which flat colour stands in for the
+        /// texture about to be drawn, or that it should use the texture.
+        ///
+        /// Off unless cel shading is on, and off for anything whose binding
+        /// was never seen going to the card -- there is no average for it, and
+        /// a wrong flat colour is far worse than a texture.
+        /// </summary>
+        private void SetFlatColor(int bindingId)
+        {
+            if (Mods.RenderOptions.CelShading && bindingId != -1
+                && _flatColors.TryGetValue(bindingId, out Vector3 flat))
+            {
+                GL.Uniform1(_shaderLocations.UseFlat, 1);
+                GL.Uniform3(_shaderLocations.FlatColor, flat);
+            }
+            else
+            {
+                GL.Uniform1(_shaderLocations.UseFlat, 0);
+            }
+        }
+
+        public void LookAt(Vector3 target)
+        {
+            _cameraMode = CameraMode.Roam;
+            _inputMode = InputMode.CameraOnly;
+            _cameraPosition = target.AddZ(5);
+            _cameraFacing = -Vector3.UnitZ;
+            _cameraUp = Vector3.UnitY;
+            _cameraRight = Vector3.UnitX;
+        }
+
+        /// <summary>
+        /// True while the spectator's free camera specifically (as opposed to
+        /// the room/model viewer's own Roam camera, which is CameraMode.Roam
+        /// too) is up -- lets <see cref="OnMouseMove"/> turn it without
+        /// requiring the viewer tool's held-left-click gesture, since this
+        /// is meant to feel like the game's ordinary first-person look.
+        /// </summary>
+        private bool _freeCam;
+        public bool IsFreeCam => _freeCam;
+        /// <summary>
+        /// Whether the scoreboard should be drawn over the spectator's free
+        /// camera: they are on it, and holding the button for it.
+        ///
+        /// The free camera is CameraMode.Roam, which is what gets it "no HUD"
+        /// for free -- the HUD is only drawn for a player's own camera. A
+        /// scoreboard is the match's rather than a player's, though, and
+        /// somebody watching from the map is exactly who wants to read one,
+        /// so this is the one thing that reaches past that.
+        /// </summary>
+        private static bool ScoreboardOverFreeCamera => Mods.SpectatorMode.FreeCamera
+            && Mods.SpectatorMode.ShowScoreboard
+            && PlayerEntity.Main.LoadFlags.TestFlag(LoadFlags.Active);
+
+
+        /// <summary>
+        /// The spectator's own no-clip camera: an independent view of the map
+        /// with no HUD, instead of riding along with whoever spectator mode
+        /// has the camera on. What Space toggles while watching, and where
+        /// spectating now starts -- looking at the map rather than out of
+        /// somebody's eyes, the way Quake's spectator does.
+        ///
+        /// Reuses the same Roam camera the room/model viewer tooling already
+        /// has -- WASD and the arrow keys already move and turn it in
+        /// <see cref="OnKeyHeld"/>, and the HUD draw calls already gate on
+        /// <c>CameraMode == CameraMode.Player</c>, so switching to Roam gets
+        /// "no HUD" for free rather than needing a separate suppression
+        /// somewhere.
+        /// </summary>
+        public void SetFreeCamera(bool on)
+        {
+            if (on == _freeCam)
+            {
+                return;
+            }
+            if (!on)
+            {
+                _cameraMode = CameraMode.Player;
+                _inputMode = InputMode.All;
+                _freeCam = false;
+                Mods.SpectatorMode.NoteFreeCamera(false);
+                return;
+            }
+            // Starts where the view already was, so turning it on is a change
+            // of control and not a cut to somewhere else in the room.
+            _cameraPosition = PlayerEntity.Main.CameraInfo.Position;
+            _cameraFacing = PlayerEntity.Main.CameraInfo.Facing;
+            if (_cameraFacing.LengthSquared < 0.0001f)
+            {
+                _cameraFacing = -Vector3.UnitZ;
+            }
+            _cameraFacing = _cameraFacing.Normalized();
+            _cameraRight = Vector3.Cross(_cameraFacing, Vector3.UnitY);
+            _cameraUp = Vector3.Cross(_cameraRight, _cameraFacing);
+            _cameraMode = CameraMode.Roam;
+            _inputMode = InputMode.CameraOnly;
+            _freeCam = true;
+            Mods.SpectatorMode.NoteFreeCamera(true);
+        }
+
+        public void ToggleFreeCamera()
+        {
+            SetFreeCamera(!_freeCam);
+        }
+
+        public void OnMouseClick(bool down)
+        {
+            if (_inputMode != InputMode.PlayerOnly)
+            {
+                _leftMouse = down;
+            }
+        }
+
+        public void OnMouseMove(float deltaX, float deltaY)
+        {
+            if ((_leftMouse || _freeCam) && AllowCameraMovement && _inputMode != InputMode.PlayerOnly)
+            {
+                // The spectator's free camera is the player's look, so it
+                // obeys the player's settings.
+                //
+                // The /1.5 below is the model viewer's own feel and stays that
+                // for the viewer's Pivot and Roam cameras -- those are a tool,
+                // not a game. But the demo/spectator free camera is reached
+                // from a match, with the same mouse, and it ignored mouse
+                // sensitivity and both invert axes outright: turning it on
+                // changed how fast the view turned and which way up it went,
+                // with nothing in the settings able to say otherwise.
+                float sensitivity = 1f;
+                float invertX = 1f;
+                float invertY = 1f;
+                if (_freeCam)
+                {
+                    sensitivity = Mods.InputSettings.MouseSensitivity;
+                    invertX = Mods.InputSettings.InvertMouseX ? -1f : 1f;
+                    invertY = Mods.InputSettings.InvertMouseY ? -1f : 1f;
+                }
+                float moveX = deltaX * sensitivity * invertX;
+                float moveY = deltaY * sensitivity * invertY;
+                if (_cameraMode == CameraMode.Pivot)
+                {
+                    _pivotAngleX += moveY / 1.5f;
+                    _pivotAngleX = Math.Clamp(_pivotAngleX, -90.0f, 90.0f);
+                    _pivotAngleY += moveX / 1.5f;
+                    _pivotAngleY %= 360f;
+                }
+                else if (_cameraMode == CameraMode.Roam)
+                {
+                    UpdateCameraRotation(MathHelper.DegreesToRadians(moveX / 1.5f), MathHelper.DegreesToRadians(-moveY / 1.5f));
+                }
+            }
+        }
+
+        public void OnMouseWheel(float offsetY)
+        {
+            if (_cameraMode == CameraMode.Pivot && AllowCameraMovement && _inputMode != InputMode.PlayerOnly)
+            {
+                _pivotDistance += offsetY / -1.5f;
+                if (_pivotDistance < 0)
+                {
+                    _pivotDistance = 0;
+                }
+                else if (_pivotDistance > 1000)
+                {
+                    _pivotDistance = 1000;
+                }
+            }
+        }
+
+        public bool ShowCollision => _showCollision;
+        public EntityType ColEntDisplay { get; private set; } = EntityType.Room;
+        public Terrain ColTerDisplay { get; private set; } = Terrain.All;
+        public CollisionType ColTypeDisplay { get; private set; } = CollisionType.Any;
+        public CollisionColor ColDisplayColor { get; private set; } = CollisionColor.None;
+        public float ColDisplayAlpha { get; private set; } = 0.5f;
+        private int _colMenuSelect = 0; // 0-4
+
+        public void OnKeyDown(KeyboardKeyEventArgs e)
+        {
+#if DEBUG
+            if (Selection.OnKeyDown(e, this))
+            {
+                return;
+            }
+            if (e.Key == Keys.R)
+            {
+                if (e.Control && e.Shift)
+                {
+                    if (_recording)
+                    {
+                        Images.StopRecording();
+                    }
+                    _recording = !_recording;
+                    _framesRecorded = 0;
+                }
+                else if (AllowCameraMovement && _inputMode != InputMode.PlayerOnly)
+                {
+                    ResetCamera();
+                }
+            }
+            if (e.Key == Keys.P)
+            {
+                if (e.Alt)
+                {
+                    UpdatePointModule();
+                }
+                else if (e.Shift)
+                {
+                    if (_cameraMode != CameraMode.Player)
+                    {
+                        if (_inputMode == InputMode.All)
+                        {
+                            _inputMode = InputMode.PlayerOnly;
+                        }
+                        else if (_inputMode == InputMode.PlayerOnly)
+                        {
+                            _inputMode = InputMode.CameraOnly;
+                        }
+                        else
+                        {
+                            _inputMode = InputMode.All;
+                        }
+                    }
+                }
+                else
+                {
+                    if (_cameraMode == CameraMode.Pivot)
+                    {
+                        _cameraMode = CameraMode.Roam;
+                        _inputMode = InputMode.CameraOnly;
+                    }
+                    else if (_cameraMode == CameraMode.Roam)
+                    {
+                        _cameraMode = CameraMode.Player;
+                        _inputMode = InputMode.All;
+                    }
+                    else
+                    {
+                        _cameraMode = CameraMode.Pivot;
+                        _inputMode = InputMode.CameraOnly;
+                    }
+                    ResetCamera();
+                }
+            }
+            else if (e.Key == Keys.Enter)
+            {
+                _frameAdvanceOn = !_frameAdvanceOn;
+            }
+            else if (e.Key == Keys.Period)
+            {
+                if (_frameAdvanceOn)
+                {
+                    _advanceOneFrame = true;
+                }
+            }
+            if (_inputMode == InputMode.PlayerOnly)
+            {
+                return;
+            }
+            if (e.Key == Keys.J && _showCollision)
+            {
+                if (_colMenuSelect == 0)
+                {
+                    if (e.Control)
+                    {
+                        ColEntDisplay = EntityType.All;
+                    }
+                    else if (e.Shift)
+                    {
+                        if (ColEntDisplay == EntityType.Room)
+                        {
+                            ColEntDisplay = EntityType.All;
+                        }
+                        else if (ColEntDisplay == EntityType.Object)
+                        {
+                            ColEntDisplay = EntityType.Platform;
+                        }
+                        else if (ColEntDisplay == EntityType.All)
+                        {
+                            ColEntDisplay = EntityType.Object;
+                        }
+                        else
+                        {
+                            ColEntDisplay = EntityType.Room;
+                        }
+                    }
+                    else
+                    {
+                        if (ColEntDisplay == EntityType.Room)
+                        {
+                            ColEntDisplay = EntityType.Platform;
+                        }
+                        else if (ColEntDisplay == EntityType.Platform)
+                        {
+                            ColEntDisplay = EntityType.Object;
+                        }
+                        else if (ColEntDisplay == EntityType.Object)
+                        {
+                            ColEntDisplay = EntityType.All;
+                        }
+                        else
+                        {
+                            ColEntDisplay = EntityType.Room;
+                        }
+                    }
+                }
+                else if (_colMenuSelect == 1)
+                {
+                    if (e.Control)
+                    {
+                        ColTerDisplay = Terrain.All;
+                    }
+                    else if (e.Shift)
+                    {
+                        ColTerDisplay--;
+                        if ((byte)ColTerDisplay == 255)
+                        {
+                            ColTerDisplay = Terrain.All;
+                        }
+                    }
+                    else
+                    {
+                        ColTerDisplay++;
+                        if (ColTerDisplay > Terrain.All)
+                        {
+                            ColTerDisplay = Terrain.Metal;
+                        }
+                    }
+                }
+                else if (_colMenuSelect == 2)
+                {
+                    if (e.Control)
+                    {
+                        ColTypeDisplay = CollisionType.Any;
+                    }
+                    else if (e.Shift)
+                    {
+                        ColTypeDisplay--;
+                        if (ColTypeDisplay < 0)
+                        {
+                            ColTypeDisplay = CollisionType.Both;
+                        }
+                    }
+                    else
+                    {
+                        ColTypeDisplay++;
+                        if (ColTypeDisplay > CollisionType.Both)
+                        {
+                            ColTypeDisplay = CollisionType.Any;
+                        }
+                    }
+                }
+                else if (_colMenuSelect == 3)
+                {
+                    if (e.Control)
+                    {
+                        ColDisplayColor = CollisionColor.None;
+                    }
+                    else if (e.Shift)
+                    {
+                        ColDisplayColor--;
+                        if (ColDisplayColor < 0)
+                        {
+                            ColDisplayColor = CollisionColor.Type;
+                        }
+                    }
+                    else
+                    {
+                        ColDisplayColor++;
+                        if (ColDisplayColor > CollisionColor.Type)
+                        {
+                            ColDisplayColor = CollisionColor.None;
+                        }
+                    }
+                }
+                else if (_colMenuSelect == 4)
+                {
+                    if (ColDisplayAlpha == 1)
+                    {
+                        ColDisplayAlpha = 0.5f;
+                    }
+                    else
+                    {
+                        ColDisplayAlpha = 1;
+                    }
+                }
+            }
+            else if (e.Key == Keys.J && _showBotAiSlot != -1)
+            {
+                if (e.Shift)
+                {
+                    if (_showBotAiSlot <= 0)
+                    {
+                        _showBotAiSlot = 3;
+                    }
+                    else
+                    {
+                        _showBotAiSlot--;
+                    }
+                }
+                else if (_showBotAiSlot >= 3)
+                {
+                    _showBotAiSlot = 0;
+                }
+                else
+                {
+                    _showBotAiSlot++;
+                }
+            }
+            else if (e.Key == Keys.K)
+            {
+                if (e.Alt)
+                {
+                    _showCollision = !_showCollision;
+                }
+                else if (_showCollision)
+                {
+                    if (e.Control)
+                    {
+                        _colMenuSelect = 0;
+                        ColEntDisplay = EntityType.Room;
+                        ColTerDisplay = Terrain.All;
+                        ColTypeDisplay = CollisionType.Any;
+                        ColDisplayColor = CollisionColor.None;
+                        ColDisplayAlpha = 0.5f;
+                    }
+                    else if (e.Shift)
+                    {
+                        _colMenuSelect--;
+                        if (_colMenuSelect < 0)
+                        {
+                            _colMenuSelect = 4;
+                        }
+                    }
+                    else
+                    {
+                        _colMenuSelect++;
+                        if (_colMenuSelect > 4)
+                        {
+                            _colMenuSelect = 0;
+                        }
+                    }
+                }
+            }
+            else if (e.Key == Keys.D5 && e.Shift)
+            {
+                if (!_recording)
+                {
+                    Images.Screenshot(Size.X, Size.Y);
+                }
+            }
+            else if (e.Key == Keys.T)
+            {
+                _showTextures = !_showTextures;
+            }
+            else if (e.Key == Keys.C)
+            {
+                if (e.Alt)
+                {
+                    if (e.Shift)
+                    {
+                        _promptState = PromptState.CameraPos;
+                    }
+                    else
+                    {
+                        _outputCameraPos = !_outputCameraPos;
+                    }
+                }
+                else if (e.Control)
+                {
+                    _showColors = !_showColors;
+                }
+            }
+            else if (e.Key == Keys.Q)
+            {
+                if (e.Alt)
+                {
+                    if (e.Shift)
+                    {
+                        _volumeEdges--;
+                        if (_volumeEdges < 0)
+                        {
+                            _volumeEdges = 2;
+                        }
+                    }
+                    else
+                    {
+                        _volumeEdges++;
+                        if (_volumeEdges > 2)
+                        {
+                            _volumeEdges = 0;
+                        }
+                    }
+                }
+                else if (e.Control)
+                {
+                    _wireframeLevel = (_wireframeLevel + 1) % (MaxWireframeLevel + 1);
+                }
+            }
+            else if (e.Key == Keys.B)
+            {
+                if (e.Alt)
+                {
+                    _showBotAiSlot = _showBotAiSlot == -1 ? 1 : -1;
+                }
+                else
+                {
+                    _faceCulling = !_faceCulling;
+                    if (!_faceCulling)
+                    {
+                        GL.Disable(EnableCap.CullFace);
+                    }
+                }
+            }
+            else if (e.Key == Keys.F)
+            {
+                FilteringOn = !FilteringOn;
+            }
+            else if (e.Key == Keys.L)
+            {
+                LightingOn = !LightingOn;
+            }
+            else if (e.Key == Keys.Z)
+            {
+                if (e.Control)
+                {
+                    _showVolumes = VolumeDisplay.None;
+                }
+                else if (e.Shift)
+                {
+                    _showVolumes--;
+                    if (_showVolumes < VolumeDisplay.None)
+                    {
+                        _showVolumes = VolumeDisplay.Portal;
+                    }
+                }
+                else
+                {
+                    _showVolumes++;
+                    if (_showVolumes > VolumeDisplay.Portal)
+                    {
+                        _showVolumes = VolumeDisplay.None;
+                    }
+                }
+            }
+            else if (e.Key == Keys.G)
+            {
+                if (e.Alt)
+                {
+                    _useClip = !_useClip;
+                }
+                else
+                {
+                    FogOn = !FogOn;
+                }
+            }
+            else if (e.Key == Keys.N)
+            {
+                if (e.Alt)
+                {
+                    _showAllNodes = !_showAllNodes;
+                }
+                else
+                {
+                    _transformRoomNodes = !_transformRoomNodes;
+                }
+            }
+            else if (e.Key == Keys.H)
+            {
+                if (e.Alt)
+                {
+                    Selection.ToggleUnselectedVolumes();
+                }
+                else
+                {
+                    Selection.ToggleShowSelection();
+                }
+            }
+            else if (e.Key == Keys.I)
+            {
+                if (e.Alt)
+                {
+                    if (_showInvisible == 2)
+                    {
+                        _showInvisible = 0;
+                    }
+                    else
+                    {
+                        _showInvisible = 2;
+                    }
+                }
+                else if (_showInvisible == 0)
+                {
+                    _showInvisible = 1;
+                }
+                else
+                {
+                    _showInvisible = 0;
+                }
+            }
+            else if (e.Key == Keys.Y)
+            {
+                _showNodeData = !_showNodeData;
+            }
+            else if (e.Key == Keys.E && e.Shift && !e.Alt)
+            {
+                _scanVisor = !_scanVisor;
+            }
+            else if (e.Control && e.Key == Keys.O)
+            {
+                _promptState = PromptState.Load;
+            }
+            else if (e.Control && e.Key == Keys.U)
+            {
+                if (Selection.Entity != null)
+                {
+                    _unloadQueue.Enqueue(Selection.Entity);
+                }
+            }
+#endif
+        }
+
+        private enum InputMode
+        {
+            All,
+            PlayerOnly,
+            CameraOnly
+        }
+
+        private InputMode _inputMode = InputMode.All;
+
+        private void OnKeyHeld()
+        {
+            if (_keyboardState.IsKeyDown(Keys.LeftAlt) || _keyboardState.IsKeyDown(Keys.RightAlt))
+            {
+                if (!Mods.Network.DemoPlayback.IsActive)
+                {
+                    Selection.OnKeyHeld(_keyboardState);
+                }
+                return;
+            }
+            if (!AllowCameraMovement || _inputMode == InputMode.PlayerOnly)
+            {
+                return;
+            }
+            if (_cameraMode == CameraMode.Roam)
+            {
+                float moveStep = _keyboardState.IsKeyDown(Keys.LeftShift) || _keyboardState.IsKeyDown(Keys.RightShift) ? 0.5f : 0.1f;
+                float rotStepDeg = _keyboardState.IsKeyDown(Keys.LeftShift) || _keyboardState.IsKeyDown(Keys.RightShift) ? 3 : 1.5f;
+                float rotStep = MathHelper.DegreesToRadians(rotStepDeg);
+                if (_keyboardState.IsKeyDown(Keys.W)) // move forward
+                {
+                    _cameraPosition += _cameraFacing * moveStep;
+                }
+                else if (_keyboardState.IsKeyDown(Keys.S)) // move backward
+                {
+                    _cameraPosition -= _cameraFacing * moveStep;
+                }
+                if (_keyboardState.IsKeyDown(
+                    Mods.Network.DemoPlayback.IsActive ? Keys.E : Keys.Space)) // move up
+                {
+                    _cameraPosition = _cameraPosition.WithY(_cameraPosition.Y + moveStep);
+                }
+                else if (_keyboardState.IsKeyDown(Keys.V)) // move down
+                {
+                    _cameraPosition = _cameraPosition.WithY(_cameraPosition.Y - moveStep);
+                }
+                if (_keyboardState.IsKeyDown(Keys.A)) // move left
+                {
+                    _cameraPosition -= _cameraRight * moveStep;
+                }
+                else if (_keyboardState.IsKeyDown(Keys.D)) // move right
+                {
+                    _cameraPosition += _cameraRight * moveStep;
+                }
+                if (_keyboardState.IsKeyDown(Keys.Left) || _keyboardState.IsKeyDown(Keys.Right)
+                    || _keyboardState.IsKeyDown(Keys.Up) || _keyboardState.IsKeyDown(Keys.Down))
+                {
+                    float stepH = 0;
+                    float stepV = 0;
+                    if (_keyboardState.IsKeyDown(Keys.Left)) // rotate left
+                    {
+                        stepH = -rotStep;
+                    }
+                    else if (_keyboardState.IsKeyDown(Keys.Right)) // rotate right
+                    {
+                        stepH = rotStep;
+                    }
+                    if (_keyboardState.IsKeyDown(Keys.Up)) // rotate up
+                    {
+                        stepV = rotStep;
+                    }
+                    else if (_keyboardState.IsKeyDown(Keys.Down)) // rotate down
+                    {
+                        stepV = -rotStep;
+                    }
+                    UpdateCameraRotation(stepH, stepV);
+                }
+            }
+            else if (_cameraMode == CameraMode.Pivot)
+            {
+                float rotStep = _keyboardState.IsKeyDown(Keys.LeftShift) || _keyboardState.IsKeyDown(Keys.RightShift) ? -3 : -1.5f;
+                if (_keyboardState.IsKeyDown(Keys.Up)) // rotate up
+                {
+                    _pivotAngleX += rotStep;
+                    _pivotAngleX = Math.Clamp(_pivotAngleX, -90.0f, 90.0f);
+                }
+                else if (_keyboardState.IsKeyDown(Keys.Down)) // rotate down
+                {
+                    _pivotAngleX -= rotStep;
+                    _pivotAngleX = Math.Clamp(_pivotAngleX, -90.0f, 90.0f);
+                }
+                if (_keyboardState.IsKeyDown(Keys.Left)) // rotate left
+                {
+                    _pivotAngleY += rotStep;
+                    _pivotAngleY %= 360f;
+                }
+                else if (_keyboardState.IsKeyDown(Keys.Right)) // rotate right
+                {
+                    _pivotAngleY -= rotStep;
+                    _pivotAngleY %= 360f;
+                }
+            }
+        }
+
+        private void UpdatePointModule()
+        {
+            if (PointModuleEntity.Current == null)
+            {
+                if (TryGetEntity(PointModuleEntity.StartId, out EntityBase? entity) && entity is PointModuleEntity module)
+                {
+                    module.SetCurrent();
+                }
+            }
+            else
+            {
+                PointModuleEntity? next = PointModuleEntity.Current.Next ?? PointModuleEntity.Current.Prev;
+                if (next != null && next != PointModuleEntity.Current)
+                {
+                    next.SetCurrent();
+                }
+                else
+                {
+                    if (TryGetEntity(PointModuleEntity.StartId, out EntityBase? entity) && entity is PointModuleEntity module)
+                    {
+                        module.SetCurrent();
+                    }
+                }
+            }
+        }
+
+        private enum PromptState
+        {
+            None,
+            Load,
+            CameraPos
+        }
+
+        private PromptState _promptState = PromptState.None;
+        private readonly ConcurrentQueue<(string Name, int Recolor, bool FirstHunt)> _loadQueue = new ConcurrentQueue<(string, int, bool)>();
+        private readonly ConcurrentQueue<EntityBase> _unloadQueue = new ConcurrentQueue<EntityBase>();
+
+        private readonly CancellationTokenSource _outputCts = new CancellationTokenSource();
+        private string _currentOutput = "";
+        private readonly StringBuilder _sb = new StringBuilder();
+
+        private void OutputStart()
+        {
+            Task.Run(async () => await OutputUpdate(_outputCts.Token), _outputCts.Token);
+        }
+
+        private void OutputStop()
+        {
+            _outputCts.Cancel();
+        }
+
+        private async Task OutputUpdate(CancellationToken token)
+        {
+            try
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    if (_promptState == PromptState.Load)
+                    {
+                        OutputLoadPrompt();
+                        _promptState = PromptState.None;
+                        _currentOutput = "";
+                    }
+                    else if (_promptState == PromptState.CameraPos)
+                    {
+                        OutputCameraPrompt();
+                        _promptState = PromptState.None;
+                        _currentOutput = "";
+                    }
+                    string output = OutputGetAll();
+                    if (output != _currentOutput)
+                    {
+                        Console.Clear(); // todo: this causes flickering
+                        Console.WriteLine(output);
+                        _currentOutput = output;
+                    }
+                    try
+                    {
+                        await Task.Delay(100, token);
+                    }
+                    catch (TaskCanceledException) { }
+                }
+            }
+            catch (System.IO.IOException)
+            {
+                // No console buffer, so there is nothing to clear and nobody
+                // reading. Nothing awaits this task, so throwing here reaches
+                // the finalizer instead of anything that could act on it.
+            }
+        }
+
+        private void OutputLoadPrompt()
+        {
+            Console.Clear();
+            Console.Write("Enter model name: ");
+            string[] input = (Console.ReadLine() ?? "").Trim().Split(' ');
+            string name = input[0].Trim();
+            if (name.Length > 0)
+            {
+                int recolor = 0;
+                bool firstHunt = false;
+                if (input.Length > 1)
+                {
+                    if (UInt32.TryParse(input[1].Trim(), out uint value))
+                    {
+                        recolor = (int)value;
+                    }
+                    if (input.Length > 2)
+                    {
+                        firstHunt = input[2].Trim() == "-fh";
+                    }
+                }
+                _loadQueue.Enqueue((name, recolor, firstHunt));
+            }
+        }
+
+        private void OutputCameraPrompt()
+        {
+            Console.Clear();
+            Console.Write("Enter camera position: ");
+            string[] input = (Console.ReadLine() ?? "").Trim().Replace(",", "").Split(' ');
+            float x = 0;
+            float y = 0;
+            float z = 0;
+            for (int i = 0; i < input.Length && i < 3; i++)
+            {
+                string item = input[i];
+                float coord = 0;
+                if (item.StartsWith("0x"))
+                {
+                    if (Int32.TryParse(item.Replace("0x", ""), System.Globalization.NumberStyles.HexNumber, null, out int value))
+                    {
+                        coord = value / 4096f;
+                    }
+                }
+                else if (Single.TryParse(item, out float value))
+                {
+                    coord = value;
+                }
+                if (i == 0)
+                {
+                    x = coord;
+                }
+                else if (i == 1)
+                {
+                    y = coord;
+                }
+                else if (i == 2)
+                {
+                    z = coord;
+                }
+            }
+            _cameraPosition = new Vector3(x, y, z);
+        }
+
+        private string OutputGetAll()
+        {
+            _sb.Clear();
+            string recording = _recording ? " - Recording" : "";
+            string frameAdvance = _frameAdvanceOn ? " - Frame Advance" : "";
+            _sb.AppendLine($"{Mods.Branding.Name} {Program.Version}{recording}{frameAdvance}");
+            if (_showBotAiSlot >= 0 && _showBotAiSlot <= 3)
+            {
+                OutputGetBotAi();
+            }
+            else
+            {
+                if (_showCollision)
+                {
+                    OutputGetCollisionMenu();
+                }
+                if (Selection.Entity != null)
+                {
+                    OutputGetEntityInfo();
+                    if (Selection.Instance != null)
+                    {
+                        OutputGetModel();
+                        if (Selection.Node != null)
+                        {
+                            OutputGetNode();
+                            if (Selection.Mesh != null)
+                            {
+                                OutputGetMesh();
+                            }
+                        }
+                    }
+                }
+                else if (!_showCollision)
+                {
+                    OutputGetMenu();
+                }
+            }
+            return _sb.ToString();
+        }
+
+        private void OutputGetBotAi()
+        {
+            PlayerEntity player = PlayerEntity.Players[_showBotAiSlot];
+            _sb.AppendLine();
+            _sb.AppendLine($"Bot AI slot: {_showBotAiSlot} (J: Next slot, Shift+J: Previous slot)");
+            if (!player.LoadFlags.TestFlag(LoadFlags.SlotActive) && !player.LoadFlags.TestFlag(LoadFlags.Active))
+            {
+                _sb.AppendLine("none");
+            }
+            else if (!player.IsBot)
+            {
+                _sb.AppendLine($"Player - {player.Hunter}");
+            }
+            else
+            {
+                _sb.AppendLine($"Bot - {player.Hunter}");
+                player.AiData.GetOuptut(_sb);
+            }
+        }
+
+        private void OutputGetCollisionMenu()
+        {
+            _sb.AppendLine();
+            _sb.AppendLine($"[{(_colMenuSelect == 0 ? "x" : " ")}] Entities ({ColEntDisplay})");
+            _sb.AppendLine($"[{(_colMenuSelect == 1 ? "x" : " ")}] Terrain ({ColTerDisplay})");
+            _sb.AppendLine($"[{(_colMenuSelect == 2 ? "x" : " ")}] Interaction ({ColTypeDisplay})");
+            _sb.AppendLine($"[{(_colMenuSelect == 3 ? "x" : " ")}] Color mode ({ColDisplayColor})");
+            _sb.AppendLine($"[{(_colMenuSelect == 4 ? "x" : " ")}] Opacity ({ColDisplayAlpha})");
+            _sb.AppendLine();
+            _sb.AppendLine("K: Next option, Shift+K: Previous option, Alt+K: Hide collision");
+            _sb.AppendLine("J: Next value, Shift+J: Previous value, Ctrl+J: Reset value, Ctrl+K: Reset all");
+        }
+
+        private void OutputGetMenu()
+        {
+            _sb.AppendLine();
+            if (_cameraMode == CameraMode.Pivot)
+            {
+                _sb.AppendLine(" - Scroll mouse wheel to zoom");
+            }
+            else if (_cameraMode == CameraMode.Roam)
+            {
+                _sb.AppendLine(" - Use WASD, Space, and V to move");
+            }
+            string volume = _showVolumes switch
+            {
+                VolumeDisplay.LightColor1 => "light sources, color 1",
+                VolumeDisplay.LightColor2 => "light sources, color 2",
+                VolumeDisplay.TriggerParent => "trigger volumes, parent event",
+                VolumeDisplay.TriggerChild => "trigger volumes, child event",
+                VolumeDisplay.AreaInside => "area volumes, inside event",
+                VolumeDisplay.AreaExit => "area volumes, exit event",
+                VolumeDisplay.MorphCamera => "morph cameras",
+                VolumeDisplay.JumpPad => "jump pads",
+                VolumeDisplay.Teleporter => "teleporters",
+                VolumeDisplay.EnemyHurt => "enemy hurtboxes",
+                VolumeDisplay.Object => "objects",
+                VolumeDisplay.FlagBase => "flag bases",
+                VolumeDisplay.DefenseNode => "defense nodes",
+                VolumeDisplay.KillPlane => "kill plane",
+                VolumeDisplay.PlayerLimit => "room limits (player)",
+                VolumeDisplay.CameraLimit => "room limits (camera)",
+                VolumeDisplay.NodeBounds => "room node bounds",
+                VolumeDisplay.NodeData => "node data radius",
+                VolumeDisplay.Portal => "portals",
+                _ => "off"
+            };
+            string invisible = _showInvisible switch
+            {
+                2 => "all",
+                1 => "placeholders",
+                _ => "off"
+            };
+            string input = _inputMode switch
+            {
+                InputMode.PlayerOnly => "player only",
+                InputMode.CameraOnly => "camera only",
+                _ => "all",
+            };
+            _sb.AppendLine(" - Hold left mouse button or use arrow keys to rotate");
+            _sb.AppendLine(" - Hold Shift to move the camera faster");
+            _sb.AppendLine($" - T toggles texturing ({OnOff(_showTextures)})");
+            _sb.AppendLine($" - Ctrl+C toggles vertex colors ({OnOff(_showColors)})");
+            _sb.AppendLine($" - Ctrl+Q cycles wireframe (level {_wireframeLevel}/{MaxWireframeLevel})");
+            _sb.AppendLine($" - B toggles face culling ({OnOff(_faceCulling)})");
+            _sb.AppendLine($" - F toggles texture filtering ({OnOff(FilteringOn)})");
+            _sb.AppendLine($" - L toggles lighting ({OnOff(LightingOn)})");
+            _sb.AppendLine($" - G toggles fog ({OnOff(FogOn)})");
+            _sb.AppendLine($" - Shift+E toggles Scan Visor ({OnOff(_scanVisor)})");
+            _sb.AppendLine($" - I toggles invisible entities ({invisible})");
+            _sb.AppendLine($" - Z toggles volume display ({volume})");
+            _sb.AppendLine($" - P switches camera mode ({(_cameraMode == CameraMode.Pivot ? "pivot" : "roam")})");
+            _sb.AppendLine($" - Shift+P switches input mode ({input})");
+            _sb.AppendLine(" - R resets the camera");
+            _sb.AppendLine(" - Ctrl+O then enter \"model_name [recolor]\" to load");
+            _sb.AppendLine(" - Ctrl+U then enter \"model_id\" to unload");
+            _sb.AppendLine(" - Esc closes the viewer");
+        }
+
+        private void OutputGetEntityInfo()
+        {
+            EntityBase? entity = Selection.Entity;
+            Debug.Assert(entity != null);
+            _sb.AppendLine();
+            if (_roomLoaded)
+            {
+                string string1 = $"{(int)(_light1Color.X * 255)};{(int)(_light1Color.Y * 255)};{(int)(_light1Color.Z * 255)}";
+                string string2 = $"{(int)(_light2Color.X * 255)};{(int)(_light2Color.Y * 255)};{(int)(_light2Color.Z * 255)}";
+                _sb.Append($"Room \u001b[38;2;{string1}m████\u001b[0m \u001b[38;2;{string2}m████\u001b[0m");
+                _sb.AppendLine($" ({_light1Vector.X}, {_light1Vector.Y}, {_light1Vector.Z}) ({_light2Vector.X}, {_light2Vector.Y}, {_light2Vector.Z})");
+            }
+            else
+            {
+                _sb.AppendLine("No room loaded");
+            }
+            if (_outputCameraPos)
+            {
+                _sb.AppendLine($"Camera ({_cameraPosition.X}, {_cameraPosition.Y}, {_cameraPosition.Z})");
+            }
+            else
+            {
+                _sb.AppendLine($"Camera (?, ?, ?)");
+            }
+            _sb.AppendLine();
+            _sb.Append($"Entity: {entity.Type}");
+            IReadOnlyList<ModelInstance> models = entity.GetModels();
+            if (entity.Type == EntityType.Model)
+            {
+                Debug.Assert(models.Count > 0);
+                _sb.Append($" ({models[0].Model.Name})");
+            }
+            string color = "";
+            if (models.Count > 0 && !models[0].IsPlaceholder)
+            {
+                color = $" - Color {entity.Recolor}";
+            }
+            _sb.Append($" [{entity.Id}] {(entity.Active ? "On " : "Off")}{color}");
+            if (entity.Type == EntityType.Room)
+            {
+                _sb.Append($" ({entity.GetModels()[0].Model.Nodes.Count(n => n.RoomPartId >= 0)})");
+            }
+            else if (entity is LightSourceEntity light)
+            {
+                Vector3 color1 = light.Light1Color;
+                Vector3 color2 = light.Light2Color;
+                string string1 = $"{(int)(color1.X * 255)};{(int)(color1.Y * 255)};{(int)(color1.Z * 255)}";
+                string string2 = $"{(int)(color2.X * 255)};{(int)(color2.Y * 255)};{(int)(color2.Z * 255)}";
+                _sb.Append($" \u001b[38;2;{string1}m████\u001b[0m \u001b[38;2;{string2}m████\u001b[0m");
+                _sb.Append($" {light.Light1Enabled} / {light.Light2Enabled}");
+                Vector3 vector1 = light.Light1Vector;
+                Vector3 vector2 = light.Light2Vector;
+                _sb.Append($" ({vector1.X}, {vector1.Y}, {vector1.Z}) ({vector2.X}, {vector2.Y}, {vector2.Z})");
+            }
+            else if (entity is AreaVolumeEntity area)
+            {
+                EntityBase? parent = area.GetParent();
+                EntityBase? child = area.GetChild();
+                _sb.Append($" ({area.Data.TriggerFlags})");
+                _sb.AppendLine();
+                _sb.Append($"Entry: {area.Data.InsideMessage}");
+                _sb.Append($", Param1: {area.Data.InsideMsgParam1}, Param2: {area.Data.InsideMsgParam2}");
+                _sb.Append($", Target: {parent?.Type.ToString() ?? "None"} ({area.Data.ParentId})");
+                _sb.AppendLine();
+                _sb.Append($" Exit: {area.Data.ExitMessage}");
+                _sb.Append($", Param1: {area.Data.ExitMsgParam1}, Param2: {area.Data.ExitMsgParam2}");
+                _sb.Append($", Target: {child?.Type.ToString() ?? "None"} ({area.Data.ChildId})");
+            }
+            else if (entity is FhAreaVolumeEntity fhArea)
+            {
+                _sb.Append($" ({fhArea.Data.TriggerFlags})");
+                _sb.AppendLine();
+                _sb.Append($"Entry: {fhArea.Data.InsideMessage}");
+                _sb.Append($", Param1: {fhArea.Data.InsideMsgParam1}, Param2: 0");
+                _sb.AppendLine();
+                _sb.Append($" Exit: {fhArea.Data.ExitMessage}");
+                _sb.Append($", Param1: {fhArea.Data.ExitMsgParam1}, Param2: 0");
+            }
+            else if (entity is TriggerVolumeEntity trigger)
+            {
+                EntityBase? parent = trigger.GetParent();
+                EntityBase? child = trigger.GetChild();
+                _sb.Append($" ({trigger.Data.Subtype}");
+                if (trigger.Data.Subtype == TriggerType.Threshold)
+                {
+                    _sb.Append($" x{trigger.Data.TriggerThreshold}");
+                }
+                _sb.Append(')');
+                _sb.Append($" ({trigger.Data.TriggerFlags})");
+                _sb.AppendLine();
+                _sb.Append($"Parent: {trigger.Data.ParentMessage}");
+                _sb.Append($", Param1: {trigger.Data.ParentMsgParam1}, Param2: {trigger.Data.ParentMsgParam2}");
+                _sb.Append($", Target: {parent?.Type.ToString() ?? "None"} ({trigger.Data.ParentId})");
+                _sb.AppendLine();
+                _sb.Append($" Child: {trigger.Data.ChildMessage}");
+                _sb.Append($", Param1: {trigger.Data.ChildMsgParam1}, Param2: {trigger.Data.ChildMsgParam2}");
+                _sb.Append($", Target: {child?.Type.ToString() ?? "None"} ({trigger.Data.ChildId})");
+            }
+            else if (entity is FhTriggerVolumeEntity fhTrigger)
+            {
+                if (fhTrigger.Data.Subtype == FhTriggerType.Threshold)
+                {
+                    _sb.Append($" x{fhTrigger.Data.Threshold}");
+                }
+                _sb.Append($" ({fhTrigger.Data.TriggerFlags})");
+                _sb.AppendLine();
+                _sb.Append($"Parent: {fhTrigger.Data.ParentMessage}");
+                _sb.Append($", Param1: {fhTrigger.Data.ParentMsgParam1}, Param2: 0");
+                // rtodo: use entity fields for parent/child
+                if (fhTrigger.Data.ParentMessage != FhMessage.None && TryGetEntity(fhTrigger.Data.ParentId, out EntityBase? parent))
+                {
+                    _sb.Append($", Target: {parent.Type} ({fhTrigger.Data.ParentId})");
+                }
+                else
+                {
+                    _sb.Append(", Target: None");
+                }
+                _sb.AppendLine();
+                _sb.Append($" Child: {fhTrigger.Data.ChildMessage}");
+                _sb.Append($", Param1: {fhTrigger.Data.ChildMsgParam1}, Param2: 0");
+                if (fhTrigger.Data.ChildMessage != FhMessage.None && TryGetEntity(fhTrigger.Data.ChildId, out EntityBase? child))
+                {
+                    _sb.Append($", Target: {child.Type} ({fhTrigger.Data.ChildId})");
+                }
+                else
+                {
+                    _sb.Append(", Target: None");
+                }
+            }
+            else if (entity is EnemySpawnEntity enemySpawn)
+            {
+                _sb.Append($" ({enemySpawn.Data.EnemyType})");
+            }
+            else if (entity is EnemyInstanceEntity enemyInst)
+            {
+                _sb.Append($" ({enemyInst.EnemyType})");
+            }
+            else if (entity is ItemSpawnEntity itemSpawn)
+            {
+                _sb.Append($" ({itemSpawn.Data.ItemType})");
+            }
+            else if (entity is ObjectEntity obj)
+            {
+                if (obj.Data.EffectId > 0)
+                {
+                    _sb.Append($" ({obj.Data.EffectId}, {Metadata.Effects[obj.Data.EffectId].Name})");
+                }
+            }
+            else if (entity is CamSeqEntity cam)
+            {
+                _sb.Append($" (ID {cam.Data.SequenceId})");
+            }
+            else if (entity is PlayerEntity player)
+            {
+                _sb.Append($" (Health: {player.Health})");
+            }
+            _sb.AppendLine();
+            _sb.AppendLine($"Position ({entity.Position.X}, {entity.Position.Y}, {entity.Position.Z})");
+            _sb.AppendLine($"Rotation ({entity.Rotation.X}, {entity.Rotation.Y}, {entity.Rotation.Z})");
+            _sb.AppendLine($"   Scale ({entity.Scale.X}, {entity.Scale.Y}, {entity.Scale.Z})");
+        }
+
+        private void OutputGetModel()
+        {
+            ModelInstance? inst = Selection.Instance;
+            Debug.Assert(inst != null);
+            _sb.AppendLine();
+            _sb.AppendLine($"Model: {inst.Model.Name}, Scale: {inst.Model.Scale.X}, Active: {YesNo(inst.Active)}" +
+                $"{(inst.IsPlaceholder ? ", Placeholder" : "")}");
+            _sb.AppendLine($"Nodes {inst.Model.Nodes.Count}, Meshes {inst.Model.Meshes.Count}, Materials {inst.Model.Materials.Count}," +
+                $" Textures {inst.Model.Recolors[0].Textures.Count}, Palettes {inst.Model.Recolors[0].Palettes.Count}");
+            AnimationInfo a = inst.AnimInfo;
+            AnimationGroups g = inst.Model.AnimationGroups;
+            _sb.AppendLine($"Anim: {a.Index[0]}, {a.Frame[1]}" +
+                $" (Node {(a.Node.Group?.Count > 0 ? a.NodeIndex : -1)} / {g.Node.Count}," +
+                $" Mat {(a.Material.Group?.Count > 0 ? a.MaterialIndex : -1)} / {g.Material.Count}," +
+                $" UV {(a.Texcoord.Group?.Count > 0 ? a.TexcoordIndex : -1)} / {g.Texcoord.Count}," +
+                $" Tex {(a.Texture.Group?.Count > 0 ? a.TextureIndex : -1)} / {g.Texture.Count})");
+        }
+
+        private void OutputGetNode()
+        {
+            static string FormatNode(Model model, int otherId)
+            {
+                if (otherId == -1)
+                {
+                    return "None";
+                }
+                return $"{model.Nodes[otherId].Name} [{otherId}]";
+            }
+            Node? node = Selection.Node;
+            ModelInstance? inst = Selection.Instance;
+            Debug.Assert(node != null && inst != null);
+            _sb.AppendLine();
+            string mesh = $" - Meshes {node.MeshCount}";
+            IEnumerable<int> meshIds = node.GetMeshIds().OrderBy(m => m);
+            if (meshIds.Count() == 1)
+            {
+                mesh += $" ({meshIds.First()})";
+            }
+            else if (meshIds.Count() > 1)
+            {
+                mesh += $" ({meshIds.First()} - {meshIds.Last()})";
+            }
+            int index = inst.Model.Nodes.IndexOf(n => n == node);
+            string enabled = node.Enabled ? (inst.Model.NodeParentsEnabled(node) ? "On " : "On*") : "Off";
+            string billboard = node.BillboardMode != BillboardMode.None ? $" - {node.BillboardMode} Billboard" : "";
+            _sb.AppendLine($"Node: {node.Name} [{index}] {enabled}{mesh}{billboard}");
+            _sb.AppendLine($"Parent {FormatNode(inst.Model, node.ParentIndex)}");
+            _sb.AppendLine($" Child {FormatNode(inst.Model, node.ChildIndex)}");
+            _sb.AppendLine($"  Next {FormatNode(inst.Model, node.NextIndex)}");
+            _sb.AppendLine($"Position ({node.Position.X}, {node.Position.Y}, {node.Position.Z})");
+            _sb.AppendLine($"Rotation ({node.Angle.X}, {node.Angle.Y}, {node.Angle.Z})");
+            _sb.AppendLine($"   Scale ({node.Scale.X}, {node.Scale.Y}, {node.Scale.Z})");
+        }
+
+        private void OutputGetMesh()
+        {
+            Mesh? mesh = Selection.Mesh;
+            ModelInstance? inst = Selection.Instance;
+            Debug.Assert(mesh != null && inst != null);
+            int index = inst.Model.Meshes.IndexOf(n => n == mesh);
+            _sb.AppendLine();
+            _sb.AppendLine($"Mesh: [{index}] {(mesh.Visible ? "On " : "Off")} - " +
+                $"Material ID {mesh.MaterialId}, DList ID {mesh.DlistId}");
+            _sb.AppendLine();
+            Material material = inst.Model.Materials[mesh.MaterialId];
+            _sb.AppendLine($"Material: {material.Name} [{mesh.MaterialId}] - {material.RenderMode}, {material.PolygonMode}" +
+                $" - {material.TexgenMode}");
+            _sb.AppendLine($"Lighting {material.Lighting}, Alpha {material.Alpha}, " +
+                $"XRepeat {material.XRepeat}, YRepeat {material.YRepeat}");
+            _sb.AppendLine($"Texture ID {material.CurrentTextureId}, Palette ID {material.CurrentPaletteId}");
+            _sb.AppendLine($"Diffuse ({material.Diffuse.Red}, {material.Diffuse.Green}, {material.Diffuse.Blue})" +
+                $" Ambient ({material.Ambient.Red}, {material.Ambient.Green}, {material.Ambient.Blue})" +
+                $" Specular ({material.Specular.Red}, {material.Specular.Green}, {material.Specular.Blue})");
+        }
+
+        private string OnOff(bool setting)
+        {
+            return setting ? "on" : "off";
+        }
+
+        private string YesNo(bool setting)
+        {
+            return setting ? "yes" : "no ";
+        }
+    }
+
+    public class RenderWindow : GameWindow
+    {
+        /// <summary>
+        /// The loop is driven entirely from <see cref="OnRenderFrame"/>, which
+        /// runs the simulation on its own fixed-step accumulator
+        /// (<see cref="Mods.Render.FrameTiming"/>).
+        ///
+        /// OpenTK 4.9 no longer separates its update and render ticks -- the
+        /// two callbacks fire together and RenderFrequency is deprecated -- so
+        /// UpdateFrequency here is the *frame* rate, and 0 means "as fast as
+        /// the window will go", which with VSync on is the display's rate.
+        /// <see cref="ApplyFrameRateSettings"/> sets both from the player's
+        /// choice.
+        ///
+        /// This used to be 60, and it was the whole frame rate: one call did a
+        /// simulation step and a picture, so 60 steps a second and 60 pictures
+        /// a second were the same number and neither could move without the
+        /// other.
+        /// </summary>
+        private static readonly GameWindowSettings _gameWindowSettings = new GameWindowSettings()
+        {
+            UpdateFrequency = 0
+        };
+
+        private static readonly NativeWindowSettings _nativeWindowSettings = Mods.Render.DesktopGlContext.Settings();
+
+        /// <summary>
+        /// The match, while there is one.
+        ///
+        /// Null in the *shell*, which is the state the program now spends its
+        /// life in: one window, opened once, showing the launcher until a
+        /// match is loaded into it and showing it again afterwards. Every
+        /// other entry point -- the map sweeps, the network harness, the
+        /// thumbnail runs -- builds its scene in the constructor as it always
+        /// did and never sees a null here, which is why this is not a nullable
+        /// property: making it one would put a question mark on two hundred
+        /// call sites to describe a state only the launcher can be in.
+        /// </summary>
+        public Scene Scene => _scene!;
+
+        /// <summary>Whether a match is loaded. False while the launcher is up.</summary>
+        public bool HasScene => _scene != null;
+
+        private Scene? _scene;
+
+        /// <summary>
+        /// True when this window is the program's shell rather than one match's
+        /// window: it outlives every match, draws the launcher when there is
+        /// none, and closing it ends the program.
+        /// </summary>
+        private readonly bool _shell;
+
+        /// <summary>Whether <see cref="Scene.OnLoad"/> has run for the scene now loaded.</summary>
+        private bool _sceneLoaded;
+
+        private bool _startedHidden = true;
+
+        /// <summary>
+        /// Frames left before the saved window mode is applied. See where it
+        /// is set: zero means done or never asked for.
+        /// </summary>
+        private int _applyStartupIn;
+
+        /// <summary>
+        /// The smallest the game window may be dragged to.
+        ///
+        /// Not an aesthetic floor: Escape's menu is laid over this window and
+        /// its panel needs about 500 *device-independent* pixels of height, so
+        /// a shorter window cut the panel's top and bottom off -- and on a
+        /// display running at 150%, which is the ordinary Windows setting on a
+        /// laptop, 500 of those are 750 real ones. The old 600-pixel floor was
+        /// therefore short by a third before the player did anything wrong,
+        /// which is why the menu came up trimmed however the window was sized.
+        ///
+        /// The menu also scales itself down to whatever it is given now (see
+        /// <c>PauseMenuView</c>), so nothing depends on this any more; a floor
+        /// this low simply is not a size anybody wants to play at either, and
+        /// GLFW will honour a minimum where it will not honour a request to be
+        /// sensible.
+        /// </summary>
+        private static readonly Vector2i _minimumSize = new Vector2i(1024, 720);
+
+        /// <summary>
+        /// True once <see cref="Scene"/> exists. <see cref="OnResize"/> can be
+        /// called before it does, from inside this constructor.
+        /// </summary>
+        private bool _sceneReady;
+
+        /// <summary>
+        /// Say that the window is about to be created, before it is.
+        ///
+        /// The base constructor is where GLFW opens a window and makes a GL
+        /// context current, and on a machine whose GL or X11 libraries are
+        /// wrong that is a *native* crash: the process dies inside libglfw or
+        /// the driver, .NET reports a `PAL_SEHException` with no stack, and
+        /// nothing managed runs afterwards -- so the last line in the log is
+        /// whatever happened to be printed before. Reported from NixOS as a
+        /// crash "on joining a match", where the log ended on the join and the
+        /// [gl] lines (written in Scene.OnLoad, after the context exists)
+        /// never appeared at all.
+        ///
+        /// This line and the "game window created" line the constructor writes
+        /// put a boundary either side of that, so the next such log says
+        /// which side of it the
+        /// process died on rather than leaving it to be inferred.
+        /// </summary>
+        public static void LogCreatingWindow()
+        {
+            // The mode the window is actually about to open in, which is the
+            // saved one unless the command line overrode it for this run --
+            // this used to print the preference, and so said "Windowed" for a
+            // session started with -fullscreen.
+            Mods.DebugLog.Line("render", "creating the game window and GL context "
+                + $"({Mods.WindowMode.Startup}"
+                + (Mods.WindowMode.StartupForced ? ", from the command line" : "") + ")");
+        }
+
+        public RenderWindow(bool shell = false) : base(_gameWindowSettings, _nativeWindowSettings)
+        {
+            _shell = shell;
+            // First, before anything asks GLFW a question it may not be able
+            // to answer. GLFW is initialised by the base constructor, so this
+            // is the earliest point the callback can be replaced -- and it has
+            // to be the *first* statement here, not merely an early one: every
+            // line below is a question, and the one under it was enough to
+            // bring the Wayland startup crash back. See
+            // IgnoreUnavailableGlfwFeatures for why a throw here is fatal
+            // rather than catchable.
+            IgnoreUnavailableGlfwFeatures();
+            // The mark, on this window: it is the only one the program has
+            // now, so it is the only one that can carry it. Set here rather
+            // than in the settings above because those are static and shared
+            // by every window this process opens, and decoding a PNG is not
+            // work for a type initializer.
+            //
+            // Under the callback above, deliberately: glfwSetWindowIcon is one
+            // of the calls Wayland answers with FEATURE_UNAVAILABLE ("the
+            // platform does not support setting the window icon" -- an icon
+            // there comes from the .desktop file the app-id names, not from
+            // the client). Setting it before the callback was replaced put an
+            // OpenTK throw on a native GLFW frame the runtime cannot unwind,
+            // and the process aborted with "terminate called after throwing an
+            // instance of 'pal_sehexception'" before any window appeared.
+            OpenTK.Windowing.Common.Input.WindowIcon? icon = Mods.Render.AppIcon.Load();
+            if (icon != null)
+            {
+                Icon = icon;
+            }
+            Mods.DebugLog.Line("render",
+                $"game window created, {ClientSize.X}x{ClientSize.Y} client, "
+                + $"{FramebufferSize.X}x{FramebufferSize.Y} pixels");
+            // Where the player left it, and only for the window the player
+            // uses. Every other RenderWindow this process opens was given a
+            // size on purpose -- a map sweep, a thumbnail run, the network
+            // harness -- and must neither read the preference nor write it.
+            // Here rather than in _nativeWindowSettings because those are
+            // static and shared by all of them.
+            if (shell)
+            {
+                // Said before the restore, because it is also what lets
+                // WindowMode write the mode down when the player presses F11:
+                // that happens far from here, with no window to ask whether it
+                // is this one.
+                Mods.WindowGeometry.Owned = true;
+                Mods.WindowGeometry.Restore(this, _minimumSize);
+            }
+            // The scene first, and the size floor after it: applying size
+            // limits to a window smaller than the floor makes GLFW resize it
+            // on the spot, which calls the size callback -- and that reached
+            // OnResize with Scene still null. OpenTK does not let the
+            // exception out of the callback: it stashes it and rethrows it
+            // from the first ProcessWindowEvents, so a machine whose screen
+            // could not hold a 1024x720 window died with a null reference
+            // inside Run() with the whole room already loaded and nothing
+            // near the crash to explain it.
+            if (!shell)
+            {
+                _scene = NewScene();
+            }
+            _sceneReady = true;
+            FitToScreen();
+        }
+
+        /// <summary>
+        /// The size everything drawn is measured in: the framebuffer's, in
+        /// real pixels.
+        ///
+        /// Not <see cref="OpenTK.Windowing.Desktop.NativeWindow.Size"/>, which
+        /// is the *external* window -- title bar, border and all (1076x717 for
+        /// a 1000x620 client area here). The scene was built and resized
+        /// against that, so it rendered a picture bigger than the window it
+        /// was drawn into and GL, whose origin is the bottom-left corner, cut
+        /// the difference off the top: "the top of the picture is cropped in
+        /// windowed mode, by about the height of the title bar". Fullscreen
+        /// has no decorations, which is why it only ever happened windowed.
+        ///
+        /// Not ClientSize either, which is in screen coordinates: on a display
+        /// running at 150% those are two thirds of a pixel each, and the
+        /// framebuffer is what GL draws into. ClientSize is still the right
+        /// unit for the pointer, which GLFW reports in the same coordinates.
+        /// </summary>
+        private Vector2i PixelSize => FramebufferSize;
+
+        /// <summary>
+        /// A pointer position as GLFW reports it -- screen coordinates inside
+        /// the client area -- in the framebuffer's pixels, which is what the
+        /// screens are laid out and drawn in. The two are the same number
+        /// except on a display running at anything but 100%.
+        /// </summary>
+        private (double X, double Y) PointerPixels(double x, double y)
+        {
+            double scaleX = ClientSize.X > 0 ? FramebufferSize.X / (double)ClientSize.X : 1;
+            double scaleY = ClientSize.Y > 0 ? FramebufferSize.Y / (double)ClientSize.Y : 1;
+            return (x * scaleX, y * scaleY);
+        }
+
+        private Scene NewScene()
+        {
+            return new Scene(PixelSize, KeyboardState, MouseState, (string title) =>
+            {
+                Title = title;
+            }, EndOrClose);
+        }
+
+        /// <summary>
+        /// What the engine means by "quit": the end of the match.
+        ///
+        /// In the shell that is the launcher coming back, not the program
+        /// ending -- the window it would have closed is the only one there is,
+        /// and the player asked to leave a match rather than to leave. Every
+        /// other window is one match's, and closing it is right.
+        /// </summary>
+        private void EndOrClose()
+        {
+#if MPHREAD_SHELL
+            if (_shell)
+            {
+                Mods.Launcher.Gui.Shell.RequestEndMatch();
+                return;
+            }
+#endif
+            Close();
+        }
+
+        /// <summary>
+        /// A scene this window does <b>not</b> hold: one the caller owns, for
+        /// something that needs the renderer without being a match.
+        ///
+        /// <see cref="OnRenderFrame"/> routes on <c>_scene == null</c> -- that
+        /// is what tells the shell's frame apart from a match's -- so anything
+        /// that stood a scene up the ordinary way would send the window down
+        /// the match path with no room in it. The launcher's hunter preview
+        /// needs a scene for its shader and its render-item list and needs
+        /// nothing else from one; this is how it gets one without the window
+        /// deciding a match has started. See
+        /// <see cref="Mods.Render.LauncherHunter"/>.
+        /// </summary>
+        public Scene NewSideScene()
+        {
+            var scene = NewScene();
+            scene.Size = PixelSize;
+            scene.SideScene = true;
+            return scene;
+        }
+
+        /// <summary>
+        /// Make the scene a match will be built into. The caller fills it --
+        /// players, then the room -- and calls <see cref="LoadScene"/>.
+        /// </summary>
+        public Scene BeginScene()
+        {
+            _scene = NewScene();
+            _scene.Size = PixelSize;
+            _sceneLoaded = false;
+            return _scene;
+        }
+
+        /// <summary>
+        /// Hand the built scene to GL. Separate from <see cref="BeginScene"/>
+        /// because everything between the two -- the players, the room, the
+        /// entity graph -- has to exist before <see cref="Scene.OnLoad"/>
+        /// initialises it.
+        /// </summary>
+        public void LoadScene()
+        {
+            if (_scene == null || _sceneLoaded)
+            {
+                return;
+            }
+            _scene.OnLoad();
+            _sceneLoaded = true;
+            _scene.OnResize();
+        }
+
+        /// <summary>
+        /// End the match and give its GL objects back. The window stays.
+        /// </summary>
+        public void EndScene()
+        {
+            if (_scene == null)
+            {
+                return;
+            }
+            _scene.DoCleanup();
+            _scene.UnloadGl();
+            _scene = null;
+            _sceneLoaded = false;
+            // A scene is the largest thing this program allocates, and the
+            // next screen the player sees is a menu: this is the one moment in
+            // a session when a collection costs nothing anybody can see.
+            GC.Collect();
+        }
+
+        /// <summary>
+        /// The size floor, against the screen the window opened on.
+        ///
+        /// <see cref="_minimumSize"/> is 720 tall, and the work area of a
+        /// 1366x768 laptop panel is shorter than that once its taskbar and the
+        /// window's own title bar are taken off. A floor taller than the
+        /// screen is a window whose bottom is off the desktop and can never be
+        /// dragged back on -- and it is the resize GLFW performs to enforce
+        /// that floor which crashed the game outright before the guard in
+        /// <see cref="OnResize"/>. Only ever trimmed, never raised, so a
+        /// display with room for it gets exactly what it always got.
+        ///
+        /// The startup size is deliberately left alone: client sizes and a
+        /// monitor's work area are the same unit on Windows and X11 but not
+        /// on a Retina Mac, where the window is measured in pixels and the
+        /// work area in points, and clamping one against the other there
+        /// would halve a window that was never too big.
+        /// </summary>
+        /// <summary>
+        /// Whether this is a Wayland session, which has no window or monitor
+        /// positions to ask for.
+        ///
+        /// Read from the environment rather than from GLFW: the native library
+        /// here is 3.4 and does have glfwGetPlatform, but OpenTK 4.9.4 does not
+        /// bind it, so there is nothing to call.
+        /// </summary>
+        private static bool OnWayland()
+        {
+            if (!OperatingSystem.IsLinux())
+            {
+                return false;
+            }
+            // XDG_SESSION_TYPE and not WAYLAND_DISPLAY: the latter is set under
+            // XWayland too, where the window really is an X11 one and the work
+            // area can be read perfectly well. Keying on it would hand every
+            // XWayland session the fixed floor, which is the bug this method
+            // exists to avoid on a short screen.
+            string? session = Environment.GetEnvironmentVariable("XDG_SESSION_TYPE");
+            if (!string.Equals(session, "wayland", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+            // The documented workaround puts GLFW back on X11, and then the
+            // lookup works again: honour it rather than skipping anyway.
+            return Environment.GetEnvironmentVariable("OPENTK_4_USE_WAYLAND") != "0";
+        }
+
+        /// <summary>
+        /// GLFW's error callback, with the one error Wayland raises as a
+        /// matter of course taken off the fatal list.
+        ///
+        /// OpenTK's own callback throws, and it is called from inside native
+        /// GLFW. On Wayland, asking a monitor where it is answers
+        /// GLFW_FEATURE_UNAVAILABLE -- the protocol does not expose global
+        /// positions to clients at all -- so the throw happens on a native
+        /// frame the runtime cannot unwind, and the process dies with
+        /// "terminate called after throwing an instance of 'pal_sehexception'"
+        /// before any managed catch is reached. That is why the try/catch
+        /// around the work-area lookup below never caught it.
+        ///
+        /// Only that code is swallowed. Everything else still throws, because
+        /// a GLFW that cannot create a window or a context is a real failure
+        /// and silence there would be worse than the crash.
+        /// </summary>
+        private static GLFWCallbacks.ErrorCallback? _glfwErrorCallback;
+
+        private static void IgnoreUnavailableGlfwFeatures()
+        {
+            if (_glfwErrorCallback != null)
+            {
+                return;
+            }
+            // Held in a static: GLFW keeps the pointer, so a delegate that is
+            // only a local is collected and the next error jumps into freed
+            // memory.
+            _glfwErrorCallback = (OpenTK.Windowing.GraphicsLibraryFramework.ErrorCode code,
+                string description) =>
+            {
+                if (code == OpenTK.Windowing.GraphicsLibraryFramework.ErrorCode.FeatureUnavailable)
+                {
+                    Mods.DebugLog.Line("window", $"glfw feature unavailable, ignored: {description}");
+                    return;
+                }
+                Console.Error.WriteLine($"[window] GLFW {code}: {description}");
+                throw new GLFWException(description, code);
+            };
+            GLFW.SetErrorCallback(_glfwErrorCallback);
+        }
+
+        private void FitToScreen()
+        {
+            Vector2i floor = _minimumSize;
+            if (OnWayland())
+            {
+                // Nothing to ask, and asking is what used to kill the process.
+                Mods.DebugLog.Line("window", "wayland session: keeping the fixed size floor");
+                MinimumSize = floor;
+                return;
+            }
+            try
+            {
+                Box2i area = Monitors.GetMonitorFromWindow(this).WorkArea;
+                // Room for the frame the window manager draws around the
+                // client area. The exact figure does not matter: it only ever
+                // applies to a screen that is already too small.
+                var room = new Vector2i(Math.Max(320, area.Size.X - 16),
+                    Math.Max(240, area.Size.Y - 64));
+                floor = new Vector2i(Math.Min(floor.X, room.X), Math.Min(floor.Y, room.Y));
+            }
+            catch (Exception ex)
+            {
+                // No monitor to ask (a headless run, a display that went away
+                // between creating the window and this line): the fixed floor
+                // is what shipped for every release before this one.
+                Mods.DebugLog.Line("window", $"could not size against the display: {ex.Message}");
+            }
+            MinimumSize = floor;
+        }
+
+        protected override void OnClosing(CancelEventArgs e)
+        {
+            // Before the cleanup, and before the window is gone: the geometry
+            // has to be read off a window that still exists.
+            if (_shell)
+            {
+                Mods.WindowGeometry.Remember(this);
+                Mods.Launcher.LauncherPrefs.Save();
+            }
+            // Only if there is a match to clean up. In the shell this window
+            // is closed from the front screen, where there is none.
+            _scene?.DoCleanup();
+            base.OnClosing(e);
+        }
+
+        public void AddRoom(int id, GameMode mode = GameMode.None, int playerCount = 0,
+            BossFlags bossFlags = BossFlags.Unspecified, int nodeLayerMask = 0, int entityLayerId = -1)
+        {
+            RoomMetadata? meta = Metadata.GetRoomById(id);
+            if (meta == null)
+            {
+                throw new ProgramException("No room with this ID is known.");
+            }
+            Scene.AddRoom(meta.Name, mode, playerCount, bossFlags, nodeLayerMask, entityLayerId);
+        }
+
+        public void AddRoom(string name, GameMode mode = GameMode.None, int playerCount = 0,
+            BossFlags bossFlags = BossFlags.Unspecified, int nodeLayerMask = 0, int entityLayerId = -1)
+        {
+            Scene.AddRoom(name, mode, playerCount, bossFlags, nodeLayerMask, entityLayerId);
+        }
+
+        public void AddModel(string name, int recolor = 0, bool firstHunt = false, MetaDir dir = MetaDir.Models, Vector3? pos = null)
+        {
+            Scene.AddModel(name, recolor, firstHunt, dir, pos);
+        }
+
+        public void AddPlayer(Hunter hunter, int recolor = 0, int team = -1, Vector3? position = null)
+        {
+            Scene.AddPlayer(hunter, recolor, team, position);
+        }
+
+        public void QueueMovie(int movieId)
+        {
+            Sound.Sfx.Load(Scene);
+            GameState.Mode = GameMode.Unknown15; // avoid save prompt from 1P mode
+            Scene.StartMovie((Movie)movieId, FadeType.FadeOutInBlack, 0, FadeType.FadeOutBlack, 0, afterMovieAction: AfterMovie.EndGame);
+        }
+
+        protected override void OnLoad()
+        {
+            Mods.Input.WindowsPenInput.Attach(this);
+            // Not in the shell, which opens with no match in it: the scene is
+            // loaded by LoadScene when one is started. The guard also covers
+            // the ordinary path twice over, since a caller that has already
+            // built and loaded a scene must not have it initialised again.
+            if (_scene != null && !_sceneLoaded)
+            {
+                _scene.OnLoad();
+                _sceneLoaded = true;
+            }
+            base.OnLoad();
+        }
+
+        private int _appliedFrameRateCap = -1;
+
+        /// <summary>
+        /// Put the player's frame rate choice on the window, and only when it
+        /// has changed: the settings window opens from the pause menu during a
+        /// match, so this is asked every frame.
+        ///
+        /// A cap of <c>DisplayRate</c> means "whatever the monitor does",
+        /// which is VSync and no cap of ours -- the right default, and the
+        /// only one that produces a tear-free 144. Any explicit number turns
+        /// VSync off, because asking for 120 on a 144 Hz screen with VSync on
+        /// gets 72.
+        /// </summary>
+        private void ApplyFrameRateSettings()
+        {
+            int cap = Mods.Render.FrameTiming.FrameRateCap;
+            if (cap == _appliedFrameRateCap)
+            {
+                return;
+            }
+            _appliedFrameRateCap = cap;
+            if (cap == Mods.Render.FrameTiming.DisplayRate)
+            {
+                VSync = VSyncMode.On;
+                UpdateFrequency = 0;
+            }
+            else
+            {
+                VSync = VSyncMode.Off;
+                UpdateFrequency = cap;
+            }
+        }
+
+        protected override void OnRenderFrame(FrameEventArgs args)
+        {
+            ApplyFrameRateSettings();
+            if (Mods.Network.NetLaunch.TickTerminalLobby(this))
+            {
+                GL.Clear(ClearBufferMask.ColorBufferBit);
+                SwapBuffers();
+                base.OnRenderFrame(args);
+                return;
+            }
+#if MPHREAD_SHELL
+            // The launcher and the in-game menus, which are screens in this
+            // window rather than windows of their own: the shell starts and
+            // ends matches here, and the surface renders whatever screen is up
+            // into the texture drawn at the end of the frame.
+            Mods.Launcher.Gui.Shell.BeforeFrame(this);
+            // The results panel comes and goes with the results themselves,
+            // which nothing on this machine announces -- the server decides
+            // the match is over. See Shell.TickEndPanel.
+            Mods.Launcher.Gui.Shell.TickEndPanel();
+            Mods.Launcher.Gui.Shell.TickUi(this);
+#endif
+#if MPHREAD_SHELL
+            if (_scene == null)
+            {
+                // The launcher, with no match behind it. The pointer is the
+                // system's -- there is nobody to aim.
+                CursorState = CursorState.Normal;
+                Mods.Input.PointerDevice.Reset();
+                Mods.Render.UiOverlay.DrawAlone(this, FramebufferSize.X, FramebufferSize.Y);
+                // Before the swap: the back buffer holds this frame and
+                // nothing else does. Only -shellshot asks.
+                Mods.Launcher.Gui.Shell.AfterDraw(this);
+                SwapBuffers();
+                Reveal();
+                // The window work, on the front screen too. It used to run
+                // only while a match was loaded, which is how a fullscreen
+                // session that ended a match came back to a launcher with the
+                // taskbar across the bottom of it: nothing re-asserted the
+                // topmost flag the window drops whenever it loses focus, and
+                // the buttons in the bottom corners are exactly what the
+                // taskbar covers.
+                Mods.PauseMenu.Poll(this);
+                base.OnRenderFrame(args);
+                return;
+            }
+#endif
+            if (Mods.Network.DemoPlayback.IsActive
+                && Mods.Network.ReplayController.TakeRebuild(out uint target, out bool resume))
+            {
+                if (Mods.Replay.ReplayCheckpointManager.TryRestore(
+                    Scene, target, resume, out uint checkpointFrame))
+                {
+                    Console.WriteLine($"[replay] restored checkpoint {checkpointFrame} for seek to {target}");
+                    Mods.Network.ReplayController.ContinueSeek(target, resume);
+                    Mods.Render.FrameTiming.Reset();
+                }
+                else
+                {
+                    string path = Mods.Network.DemoPlayback.CurrentPath!;
+                    EndScene();
+                    Mods.Network.DemoPlayback.Stop();
+                    Mods.SpectatorMode.Reset();
+                    var plan = new Mods.Launcher.LaunchPlan
+                    {
+                        Kind = Mods.Launcher.LaunchKind.Demo,
+                        DemoPath = path
+                    };
+                    if (!Mods.Launcher.MatchStart.Begin(this, new MenuSettings(), plan))
+                    {
+                        EndOrClose();
+                        return;
+                    }
+                    Mods.Network.ReplayController.ContinueSeek(target, resume);
+                    Mods.Render.FrameTiming.Reset();
+                }
+            }
+            // The pause menu wants the pointer back, and so does the results
+            // screen: its hunter picker is something you click, and a grabbed
+            // cursor has no position on screen to click with.
+            // A pen is an absolute device -- a point on the tablet is a point
+            // on the screen -- so grabbing the cursor, which is what turns the
+            // pointer into an endless stream of deltas, takes away the one
+            // property the whole feature rests on. The zone is released for
+            // the same reason the results screen is.
+            CursorState = (Scene.CameraMode == CameraMode.Player || Scene.IsFreeCam) && !Scene.FrameAdvance
+                && !Mods.PauseMenu.Open && !Mods.EndScreen.Available
+                && !Mods.Input.PointerInput.StylusMode && !Mods.Input.StylusZone.Placing
+                && !Scene.ShowCursor && !GameState.DialogPause && !GameState.MenuPause
+                ? CursorState.Grabbed
+                : CursorState.Normal;
+            // Where the pointer is, for the picker to light up what it is
+            // over, and in the same units its hit boxes are kept in. Against
+            // the client area, which is what GLFW reports the pointer in --
+            // Size is the window with its title bar, so every hit box was off
+            // by the fraction of the window that is decoration.
+            float pointerX = MouseState.X / (float)Math.Max(ClientSize.X, 1);
+            float pointerY = MouseState.Y / (float)Math.Max(ClientSize.Y, 1);
+            Mods.EndScreen.NotePointer(pointerX, pointerY);
+            // The DS bottom screen, if the player has marked one out. The
+            // window's shape goes with it: the zone is given as a fraction of
+            // the width and has to come out the DS's shape on screen.
+            var pointer = Mods.Input.WindowsPenInput.Read(MouseState, ClientSize.X, ClientSize.Y,
+                out bool independentPrimary);
+            Mods.Input.PointerDevice.Update(pointer, ClientSize.X, ClientSize.Y, independentPrimary,
+                acceptsInput: IsFocused && !Mods.PauseMenu.Open && !Mods.Chat.ChatBox.Composing
+                    && !GameState.MenuPause && !GameState.DialogPause && !Mods.EndScreen.Available);
+            if (Mods.Input.StylusZone.Placing)
+            {
+                Mods.Input.StylusZone.PlacementDrag(pointerX, pointerY);
+            }
+            GameState.ApplyPause();
+            // The simulation runs at 60 Hz and the picture runs at the
+            // display's rate, so this is 1 on a 60 Hz screen, 0 or 1 on a
+            // faster one, and 2 or more only on a frame that took longer than
+            // a step. Everything the game *is* -- input, the network session,
+            // the world, the clock -- happens in here and exactly this often.
+            int steps;
+            if (Scene.FrameAdvance)
+            {
+                // Stepping frames by hand is the one mode that must stay one
+                // step to one picture: the request to advance is consumed
+                // after the frame is drawn (AfterRenderFrame), so a picture
+                // drawn without a step would eat it before the simulation ever
+                // saw it, and the frame would never advance.
+                Mods.Render.FrameTiming.Reset();
+                steps = 1;
+            }
+            else
+            {
+                steps = Mods.Render.FrameTiming.Advance(args.Time);
+            }
+            for (int i = 0; i < steps; i++)
+            {
+                Scene.OnSimulationFrame();
+            }
+            // Start, on a pad, is Escape. Consumed here rather than in the
+            // scene because opening the menu is a window operation and the
+            // window is this class -- the same reason the keyboard's Escape
+            // is handled in OnKeyDown and not in the entity.
+            if (Mods.Chat.ChatBox.Composing && Mods.Input.GamepadInput.TakePress(
+                Mods.Input.GamepadButtons.B | Mods.Input.GamepadButtons.Start))
+                Mods.Chat.ChatBox.Cancel();
+            if (Mods.Input.GamepadInput.TakeMenuPress()
+                && (Scene.CameraMode == CameraMode.Player || Scene.IsFreeCam))
+            {
+                Mods.PauseMenu.HandleEscape(this);
+            }
+            // Chat from the pad, next to the menu and for the same reason: it
+            // opens something that takes the keyboard, which is the window's
+            // business and not the entity's. Nothing swallows an opening
+            // character here -- there was no character, only a button.
+            if (Mods.Input.GamepadInput.TakeChatPress()
+                && Mods.Chat.ChatBox.Available && !Mods.Chat.ChatBox.Composing)
+            {
+                Mods.Chat.ChatBox.Open(swallowOpeningChar: false);
+            }
+            if (Mods.Network.ReplayController.IsSeeking)
+            {
+                return;
+            }
+            Scene.OnDrawFrame();
+            if (!Scene.OnRenderFrame())
+            {
+                return;
+            }
+            Mods.Replay.ReplayVideoExporter.AfterSceneDraw(Scene);
+            // Last, over the finished picture: the pause menu is a scrim over
+            // a match that is still being played, and the settings opened from
+            // it cover the same rectangle. Nothing is drawn when no screen is
+            // up.
+#if MPHREAD_SHELL
+            Mods.Render.UiOverlay.Draw(PixelSize.X, PixelSize.Y);
+            // The real hunter, over the screens, when a screen is asking for
+            // one during a match -- which is the results panel. Under the
+            // texture is where the world's own pass would put it, and the
+            // panel it goes in is opaque, so under is behind a card.
+            Mods.Render.LauncherHunter.Draw(this, PixelSize.X, PixelSize.Y);
+            // Before the swap, for the reason the sceneless branch gives.
+            Mods.Launcher.Gui.Shell.AfterDraw(this);
+#endif
+            SwapBuffers();
+            Reveal();
+            // What the pause menu asked for, done on the thread that owns the
+            // window: closing it and changing its border belong here.
+            Mods.PauseMenu.Poll(this);
+            Scene.AfterRenderFrame();
+            base.OnRenderFrame(args);
+        }
+
+        /// <summary>
+        /// Show the window, once, after the first frame has been drawn into
+        /// it, and apply the saved window mode a few frames later.
+        ///
+        /// Not on the same frame. The window has only just been shown and the
+        /// window manager has not mapped it yet, so the geometry Enter() sets
+        /// is computed against a window that is not on the screen and the map
+        /// that follows puts it back -- which is the startup half of the
+        /// "needed a second F11" problem Enter already describes. Waiting a
+        /// few frames lets the map settle first, and it is the difference
+        /// between opening fullscreen and having to ask for it by hand once
+        /// the game is up.
+        /// </summary>
+        private void Reveal()
+        {
+            // Once a frame, and almost always nothing: the check is a bool.
+            // Writing the file here rather than only as the window closes is
+            // what makes the size survive a crash, a kill, or an exit path
+            // that never runs the close handler.
+            if (_shell)
+            {
+                Mods.WindowGeometry.Flush();
+            }
+            if (_startedHidden)
+            {
+                IsVisible = true;
+                _startedHidden = false;
+                _applyStartupIn = 3;
+            }
+            else if (_applyStartupIn > 0 && --_applyStartupIn == 0)
+            {
+                Mods.WindowMode.ApplyStartup(this);
+            }
+        }
+
+        protected override void OnResize(ResizeEventArgs e)
+        {
+            // The shape first, and outside the _sceneReady guard: a window
+            // resized before the scene exists is still a window the player
+            // resized, and this only touches memory.
+            if (_shell)
+            {
+                Mods.WindowGeometry.Note(this);
+            }
+            // GLFW can call this while the window is still being built, before
+            // there is a scene to hand the new size to. Nothing is lost by
+            // ignoring it: the window's real size is read again when the scene
+            // is created, and the render target is sized at load.
+            if (!_sceneReady)
+            {
+                return;
+            }
+            ResizeToFramebuffer();
+            base.OnResize(e);
+        }
+
+        /// <summary>
+        /// The window was dragged somewhere else. Nothing in the engine cares,
+        /// which is why there was no override here before -- but a remembered
+        /// size with a forgotten corner is half a feature.
+        /// </summary>
+        protected override void OnMove(WindowPositionEventArgs e)
+        {
+            if (_shell)
+            {
+                Mods.WindowGeometry.Note(this);
+            }
+            base.OnMove(e);
+        }
+
+        /// <summary>
+        /// Maximized or restored. A separate callback because it is a state
+        /// rather than a size, and because the size that arrives with it is
+        /// the monitor's -- see <c>WindowGeometry</c> on why the two are kept
+        /// apart.
+        /// </summary>
+        protected override void OnMaximized(MaximizedEventArgs e)
+        {
+            if (_shell)
+            {
+                Mods.WindowGeometry.Note(this);
+            }
+            base.OnMaximized(e);
+        }
+
+        /// <summary>
+        /// The framebuffer changed without the window doing so -- the window
+        /// was dragged onto a display with a different scaling factor, which
+        /// is the one case the resize callback does not cover.
+        /// </summary>
+        protected override void OnFramebufferResize(FramebufferResizeEventArgs e)
+        {
+            if (_sceneReady)
+            {
+                ResizeToFramebuffer();
+            }
+            base.OnFramebufferResize(e);
+        }
+
+        /// <summary>
+        /// Put the viewport and the scene on the framebuffer's own size. See
+        /// <see cref="PixelSize"/> for why the event's size is not used.
+        /// </summary>
+        private void ResizeToFramebuffer()
+        {
+            Vector2i size = PixelSize;
+            if (size.X <= 0 || size.Y <= 0)
+            {
+                return;
+            }
+            GL.Viewport(0, 0, size.X, size.Y);
+            if (_scene != null && _scene.Size != size)
+            {
+                _scene.Size = size;
+                _scene.OnResize();
+            }
+        }
+
+        protected override void OnJoystickConnected(JoystickEventArgs e)
+        {
+            Mods.Input.GamepadDesktop.DeviceChanged(e.JoystickId);
+            base.OnJoystickConnected(e);
+        }
+
+        protected override void OnFocusedChanged(FocusedChangedEventArgs e)
+        {
+            Mods.Input.GamepadContexts.Focused = e.IsFocused;
+            if (!e.IsFocused)
+            {
+                Mods.Input.GamepadManager.ClearAll();
+                Mods.Input.GamepadHaptics.Stop();
+            }
+            base.OnFocusedChanged(e);
+        }
+
+        protected override void OnMouseDown(MouseButtonEventArgs e)
+        {
+            Mods.Input.InputSourceTracker.Note(Mods.Input.InputSource.KeyboardMouse);
+            if (Mods.Network.DemoPlayback.IsActive && !Mods.PauseMenu.Open
+                && e.Button == MouseButton.Right)
+            {
+                Mods.SpectatorMode.CyclePrevious();
+                Mods.Network.ReplayController.NoteInput();
+                return;
+            }
+#if MPHREAD_SHELL
+            // A screen is up in this window -- the launcher, the pause menu,
+            // the settings. It gets the whole of the input while it is, the
+            // way a window on top of the game used to get it from the window
+            // manager: the player is choosing something, not playing.
+            if (Mods.Launcher.Gui.Shell.UiVisible)
+            {
+                (double px, double py) = PointerPixels(MouseState.X, MouseState.Y);
+                Mods.Launcher.Gui.Shell.PointerButton(e.Button, px, py, down: true);
+                base.OnMouseDown(e);
+                return;
+            }
+#endif
+            if (e.Button == MouseButton.Button1)
+            {
+                // Drawing the pen zone takes the pointer outright: the
+                // player is marking out a rectangle, not playing.
+                if (Mods.Input.StylusZone.Placing)
+                {
+                    Mods.Input.StylusZone.PlacementDown(
+                        MouseState.X / (float)Math.Max(ClientSize.X, 1),
+                        MouseState.Y / (float)Math.Max(ClientSize.Y, 1));
+                    base.OnMouseDown(e);
+                    return;
+                }
+                // The vote buttons before anything else, for the picker's own
+                // reason below: they are drawn over a running match, so a
+                // click that landed on ACCEPT must not also fire the gun.
+                if (Mods.Network.MapVote.HandleClick())
+                {
+                    base.OnMouseDown(e);
+                    return;
+                }
+                // The results screen's picker first, and only while it is up.
+                // It is the reason the cursor is released at all there, and a
+                // click that also reached the game would fire the gun of a
+                // player who is standing in an ended match.
+                if (Mods.EndScreen.HandleClick())
+                {
+                    base.OnMouseDown(e);
+                    return;
+                }
+                if (Mods.SpectatorMode.IsSpectating)
+                {
+                    Mods.SpectatorMode.CycleNext();
+                }
+                else
+                {
+                    Scene.OnMouseClick(down: true);
+                }
+            }
+            base.OnMouseDown(e);
+        }
+
+        protected override void OnMouseUp(MouseButtonEventArgs e)
+        {
+#if MPHREAD_SHELL
+            // A screen is up in this window -- the launcher, the pause menu,
+            // the settings. It gets the whole of the input while it is, the
+            // way a window on top of the game used to get it from the window
+            // manager: the player is choosing something, not playing.
+            if (Mods.Launcher.Gui.Shell.UiVisible)
+            {
+                (double px, double py) = PointerPixels(MouseState.X, MouseState.Y);
+                Mods.Launcher.Gui.Shell.PointerButton(e.Button, px, py, down: false);
+                base.OnMouseUp(e);
+                return;
+            }
+#endif
+            if (e.Button == MouseButton.Button1)
+            {
+                if (Mods.Input.StylusZone.Placing)
+                {
+                    // Letting go is the whole of the answer: that rectangle
+                    // is where the bottom screen is and how big it is.
+                    Mods.Input.StylusZone.PlacementUp();
+                    Mods.Chat.ChatBox.System("pen zone set");
+                    base.OnMouseUp(e);
+                    return;
+                }
+                Scene.OnMouseClick(down: false);
+            }
+            base.OnMouseUp(e);
+        }
+
+        protected override void OnMouseMove(MouseMoveEventArgs e)
+        {
+            if (Math.Abs(e.DeltaX) + Math.Abs(e.DeltaY) > 2)
+                Mods.Input.InputSourceTracker.Note(Mods.Input.InputSource.KeyboardMouse);
+#if MPHREAD_SHELL
+            // A screen is up in this window -- the launcher, the pause menu,
+            // the settings. It gets the whole of the input while it is, the
+            // way a window on top of the game used to get it from the window
+            // manager: the player is choosing something, not playing.
+            if (Mods.Launcher.Gui.Shell.UiVisible)
+            {
+                (double px, double py) = PointerPixels(e.X, e.Y);
+                Mods.Launcher.Gui.Shell.PointerMoved(px, py);
+                base.OnMouseMove(e);
+                return;
+            }
+#endif
+            // Filtered for the same reason the player's aim is: the free
+            // camera is reached from a match, with the same pointer.
+            (float deltaX, float deltaY) = Scene.IsFreeCam
+                ? Mods.Input.PointerInput.Filter(e.DeltaX, e.DeltaY) : (e.DeltaX, e.DeltaY);
+            Scene.OnMouseMove(deltaX, deltaY);
+            base.OnMouseMove(e);
+        }
+
+        protected override void OnMouseWheel(MouseWheelEventArgs e)
+        {
+            // The results screen's map list, which is longer than the panel it
+            // is drawn in. Ahead of the shell's own handling only in the sense
+            // that the two cannot both be up: a screen and a results screen
+            // are different moments.
+            if (Mods.MapPick.Available && e.OffsetY != 0)
+            {
+                Mods.MapPick.Wheel(e.OffsetY > 0 ? -1 : 1);
+                base.OnMouseWheel(e);
+                return;
+            }
+#if MPHREAD_SHELL
+            // A screen is up in this window -- the launcher, the pause menu,
+            // the settings. It gets the whole of the input while it is, the
+            // way a window on top of the game used to get it from the window
+            // manager: the player is choosing something, not playing.
+            if (Mods.Launcher.Gui.Shell.UiVisible)
+            {
+                Mods.Launcher.Gui.Shell.PointerWheel(e.OffsetX, e.OffsetY);
+                base.OnMouseWheel(e);
+                return;
+            }
+#endif
+            Scene.OnMouseWheel(e.OffsetY);
+            base.OnMouseWheel(e);
+        }
+
+        /// <summary>
+        /// One code point, from whatever layout the player actually types on.
+        /// The key events above cannot answer this: GLFW reports physical
+        /// keys, so reading a message out of them would spell it in US QWERTY
+        /// whoever wrote it.
+        /// </summary>
+        protected override void OnTextInput(TextInputEventArgs e)
+        {
+#if MPHREAD_SHELL
+            // A screen is up in this window -- the launcher, the pause menu,
+            // the settings. It gets the whole of the input while it is, the
+            // way a window on top of the game used to get it from the window
+            // manager: the player is choosing something, not playing.
+            if (Mods.Launcher.Gui.Shell.UiVisible)
+            {
+                Mods.Launcher.Gui.Shell.TextInput(e.AsString);
+                base.OnTextInput(e);
+                return;
+            }
+#endif
+            Mods.Chat.ChatBox.HandleText(e.Unicode);
+            base.OnTextInput(e);
+        }
+
+        /// <summary>
+        /// Only the screens want this: nothing in the game is driven by a key
+        /// going up (the engine reads the keyboard's state every step), and a
+        /// text box does.
+        /// </summary>
+        protected override void OnKeyUp(KeyboardKeyEventArgs e)
+        {
+#if MPHREAD_SHELL
+            if (Mods.Launcher.Gui.Shell.UiVisible)
+            {
+                Mods.Launcher.Gui.Shell.KeyUp(e);
+            }
+#endif
+            base.OnKeyUp(e);
+        }
+
+        /// <summary>
+        /// Put a key through the window's own handler, as if it had been
+        /// pressed.
+        ///
+        /// For <c>-shellshot</c>. Its own <c>Key</c> helper hands the key
+        /// straight to <c>UiSurface</c>, which is the right shape for testing
+        /// a *screen* -- and is exactly the wrong shape for testing the keys
+        /// the window claims before any screen sees them, since it skips the
+        /// code that claims them. A test that cannot fail is worse than none.
+        /// </summary>
+        internal void FeedKey(KeyboardKeyEventArgs e) => OnKeyDown(e);
+
+        protected override void OnKeyDown(KeyboardKeyEventArgs e)
+        {
+            Mods.Input.InputSourceTracker.Note(Mods.Input.InputSource.KeyboardMouse);
+#if MPHREAD_SHELL
+            // F11 and Alt+Enter first, screen or no screen.
+            //
+            // They are gestures at the *window*, not input to whatever is
+            // drawn in it, and every other program in the world treats them
+            // that way. The shell takes the whole of the keyboard while a
+            // screen is up -- which is right for every other key -- so
+            // fullscreen was the one thing the launcher could not do, and a
+            // player who wanted it had to start a match first.
+            //
+            // Except while a rebind row is waiting: "press a key" has to be
+            // able to be told F11, or F11 is the one key in the game nobody
+            // can bind.
+            if (Mods.Launcher.Gui.Shell.UiVisible
+                && !Mods.Launcher.Gui.KeyRow.AnyListening
+                && Mods.WindowMode.HandleKey(this, e))
+            {
+                base.OnKeyDown(e);
+                return;
+            }
+            // A screen is up in this window -- the launcher, the pause menu,
+            // the settings. It gets the whole of the input while it is, the
+            // way a window on top of the game used to get it from the window
+            // manager: the player is choosing something, not playing.
+            if (Mods.Launcher.Gui.Shell.UiVisible)
+            {
+                Mods.Launcher.Gui.Shell.KeyDown(e);
+                base.OnKeyDown(e);
+                return;
+            }
+#endif
+            // First, before anything else claims a key. While the chat prompt
+            // is up every key belongs to it: Escape closes the prompt rather
+            // than the match, Space types a space rather than jumping, and
+            // Enter sends. When it is down, this is only looking for the one
+            // key that opens it.
+            //
+            // Not while a demo is playing: there is nobody to send to, and
+            // whatever was said in that match is already in the file.
+            if (Mods.Chat.ChatBox.HandleKeyDown(e,
+                canOpen: !Mods.Network.DemoPlayback.IsActive
+                    && (Scene.CameraMode == CameraMode.Player || Scene.IsFreeCam)))
+            {
+                base.OnKeyDown(e);
+                return;
+            }
+            // The results screen's hunter picker, which owns the arrow keys
+            // for as long as it is up and nothing at any other time. Before
+            // the window-mode keys only because it is cheaper to ask; the two
+            // cannot want the same key.
+            if (Mods.EndScreen.HandleKeyDown(e.Key))
+            {
+                base.OnKeyDown(e);
+                return;
+            }
+            // The keys that belong to placing the pen zone, which owns all of
+            // them while it is up: Escape gives up rather than leaving the
+            // match, the arrows move the rectangle, the brackets resize it and
+            // Enter keeps it. A drag puts it roughly where it goes and a
+            // tablet cannot live with roughly -- the hand learns the place
+            // once and then stops looking at it.
+            if (Mods.Input.StylusZone.Placing)
+            {
+                float step = e.Shift ? 0.002f : 0.01f;
+                switch (e.Key)
+                {
+                    case Keys.Escape:
+                        Mods.Input.StylusZone.CancelPlacement();
+                        Mods.Chat.ChatBox.System("pen zone left as it was");
+                        base.OnKeyDown(e);
+                        return;
+                    case Keys.Left:
+                        Mods.Input.StylusZone.Nudge(-step, 0);
+                        base.OnKeyDown(e);
+                        return;
+                    case Keys.Right:
+                        Mods.Input.StylusZone.Nudge(step, 0);
+                        base.OnKeyDown(e);
+                        return;
+                    case Keys.Up:
+                        Mods.Input.StylusZone.Nudge(0, -step);
+                        base.OnKeyDown(e);
+                        return;
+                    case Keys.Down:
+                        Mods.Input.StylusZone.Nudge(0, step);
+                        base.OnKeyDown(e);
+                        return;
+                    case Keys.LeftBracket:
+                    case Keys.Minus:
+                    case Keys.KeyPadSubtract:
+                        Mods.Input.StylusZone.Resize(-step);
+                        base.OnKeyDown(e);
+                        return;
+                    case Keys.RightBracket:
+                    case Keys.Equal:
+                    case Keys.KeyPadAdd:
+                        Mods.Input.StylusZone.Resize(step);
+                        base.OnKeyDown(e);
+                        return;
+                    case Keys.Enter:
+                    case Keys.KeyPadEnter:
+                        Mods.Input.StylusZone.CommitPlacement();
+                        Mods.Chat.ChatBox.System("pen zone set");
+                        base.OnKeyDown(e);
+                        return;
+                }
+            }
+            // Answering a map vote. Ahead of the clip key and everything
+            // below it because the prompt is on screen for thirty seconds and
+            // has to be answerable in them, and after chat because a player
+            // typing has not pressed anything the game should read.
+            if ((e.Key == Keys.F1 || e.Key == Keys.F2) && !e.Alt && !e.Control
+                && Mods.Network.MapVote.Active && !Mods.Network.MapVote.Answered)
+            {
+                Mods.Network.MapVote.Cast(yes: e.Key == Keys.F1);
+                base.OnKeyDown(e);
+                return;
+            }
+            // Save the last few seconds. After chat, which owns every key
+            // while it is up, and after the picker: a clip is worth taking
+            // during a match and there is nothing to clip on the results
+            // screen that the buffer does not already hold.
+            if (e.Key != Keys.Unknown && e.Key == Mods.InputSettings.ClipKey
+                && !e.Alt && !e.Control && Mods.Network.DemoClip.Active)
+            {
+                double held = Mods.Network.DemoClip.Held;
+                string? clip = Mods.Network.DemoClip.Save();
+                if (clip != null)
+                {
+                    Mods.Chat.ChatBox.System(
+                        $"{(Mods.Network.DemoClip.IsSaving ? "saving" : "saved")} the last {held:0} s to "
+                        + System.IO.Path.GetFileName(clip));
+                }
+                else
+                {
+                    Mods.Chat.ChatBox.System("nothing to clip yet");
+                }
+                base.OnKeyDown(e);
+                return;
+            }
+            // F11 and Alt+Enter switch window modes.
+            if (Mods.WindowMode.HandleKey(this, e))
+            {
+                base.OnKeyDown(e);
+                return;
+            }
+            if (Mods.Replay.ReplayInput.HandleKey(e.Key))
+            {
+                base.OnKeyDown(e);
+                return;
+            }
+            if (Mods.Network.DemoPlayback.IsActive && e.Key != Keys.Escape)
+            {
+                base.OnKeyDown(e);
+                return;
+            }
+            // Space, while spectating a live match: toggle between the map/free
+            // camera and the player view. Replay Space is handled above as
+            // play/pause.
+            if (e.Key == Keys.Space && Mods.SpectatorMode.IsSpectating)
+            {
+                Mods.SpectatorMode.ToggleView();
+                base.OnKeyDown(e);
+                return;
+            }
+            // Escape opens the pause menu while a player is being driven --
+            // the mouse comes back, the window can be resized, and the
+            // settings are reachable without leaving the match. Everywhere
+            // else it still means "close this" -- except the spectator's free
+            // camera, which is CameraMode.Roam and would otherwise fall
+            // through to that and quit the game instead of pausing it, taking
+            // "Rejoin match" with it.
+            if (e.Key == Keys.Escape && (Scene.CameraMode == CameraMode.Player || Scene.IsFreeCam)
+                && Mods.PauseMenu.HandleEscape(this))
+            {
+                base.OnKeyDown(e);
+                return;
+            }
+            if (e.Key == Keys.Escape)
+            {
+                Scene.DoCleanup();
+                if (GameState.SinglePlayer)
+                {
+                    Menu.NeededSave = Menu.SaveFromExit;
+                }
+                // The match, not the program: in the shell this is the
+                // launcher coming back. See EndOrClose.
+                EndOrClose();
+            }
+            else
+            {
+                Scene.OnKeyDown(e);
+            }
+            base.OnKeyDown(e);
+        }
+    }
+
+    public class TextureMap : Dictionary<int, (int BindingId, bool OnlyOpaque)>
+    {
+        private int GetKey(int textureId, int paletteId, int recolorId)
+        {
+            if (paletteId == -1)
+            {
+                paletteId = 4095;
+            }
+            Debug.Assert(textureId >= 0 && textureId < 4096);
+            Debug.Assert(paletteId >= 0 && paletteId < 4096);
+            Debug.Assert(recolorId >= 0 && recolorId < 255);
+            return textureId | (paletteId << 12) | (recolorId << 24);
+        }
+
+        public (int BindingId, bool OnlyOpaque) Get(int textureId, int paletteId, int recolorId)
+        {
+            return this[GetKey(textureId, paletteId, recolorId)];
+        }
+
+        public void Add(int textureId, int paletteId, int recolorId, int bindingId, bool onlyOpaque)
+        {
+            this[GetKey(textureId, paletteId, recolorId)] = (bindingId, onlyOpaque);
+        }
+    }
+}

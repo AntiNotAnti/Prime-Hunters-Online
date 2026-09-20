@@ -1,0 +1,271 @@
+{
+  "//": "A room with nothing in it but eight hunters and each other. Built for the network harness: the tour's duel and affliction phases only measure damage, hit registration and the freeze/burn/disrupt states when the shots actually land, and on a real map with corridors and cover most of them do not -- MP2 HARVESTER produced no freezes at all across several runs, this arena produces two in thirty seconds. Forty units square, a ceiling, one low block in the middle, eight spawns on a ring of nine looking inward, ammo and health between them. Regenerate with: FruityPrime -mapgen \"TEST ARENA\". -maptest reports MAPFAIL for a black frame or two: -renderprobe draws 99.7-99.9% from all eight spawns, so it is the third-person camera passing through a wall of a small closed box for a frame, not the room failing to draw.",
+  "name": "TEST ARENA",
+  "inGameName": "Test Arena",
+  "textureSource": "MP3 PROVING GROUND",
+  "scaleFactor": 4,
+  "killHeight": -12,
+  "farClip": 120,
+  "fogEnabled": false,
+  "light1Color": [
+    31,
+    29,
+    26
+  ],
+  "light1Vector": [
+    0.3,
+    -1.0,
+    0.2
+  ],
+  "light2Color": [
+    12,
+    13,
+    18
+  ],
+  "light2Vector": [
+    -0.3,
+    1.0,
+    -0.2
+  ],
+  "pointLimit": 7,
+  "battleTimeLimit": 12600,
+  "preview": {
+    "position": [
+      0.0,
+      16.0,
+      30.0
+    ],
+    "target": [
+      0.0,
+      1.0,
+      0.0
+    ]
+  },
+  "materials": [
+    {
+      "name": "floor",
+      "sourceMaterial": 2,
+      "texScale": 16
+    },
+    {
+      "name": "wall",
+      "sourceMaterial": 3,
+      "texScale": 16
+    }
+  ],
+  "brushes": [
+    {
+      "min": [
+        -20.0,
+        -1.0,
+        -20.0
+      ],
+      "max": [
+        20.0,
+        0.0,
+        20.0
+      ],
+      "material": 0,
+      "shade": 1.0,
+      "solid": true
+    },
+    {
+      "min": [
+        -20.0,
+        11.0,
+        -20.0
+      ],
+      "max": [
+        20.0,
+        12.0,
+        20.0
+      ],
+      "material": 1,
+      "shade": 0.7,
+      "solid": true
+    },
+    {
+      "min": [
+        -20.0,
+        0.0,
+        -21.0
+      ],
+      "max": [
+        20.0,
+        11.0,
+        -20.0
+      ],
+      "material": 1,
+      "shade": 0.85,
+      "solid": true
+    },
+    {
+      "min": [
+        -20.0,
+        0.0,
+        20.0
+      ],
+      "max": [
+        20.0,
+        11.0,
+        21.0
+      ],
+      "material": 1,
+      "shade": 0.85,
+      "solid": true
+    },
+    {
+      "min": [
+        -21.0,
+        0.0,
+        -20.0
+      ],
+      "max": [
+        -20.0,
+        11.0,
+        20.0
+      ],
+      "material": 1,
+      "shade": 0.85,
+      "solid": true
+    },
+    {
+      "min": [
+        20.0,
+        0.0,
+        -20.0
+      ],
+      "max": [
+        21.0,
+        11.0,
+        20.0
+      ],
+      "material": 1,
+      "shade": 0.85,
+      "solid": true
+    },
+    {
+      "min": [
+        -3.0,
+        0.0,
+        -3.0
+      ],
+      "max": [
+        3.0,
+        1.6,
+        3.0
+      ],
+      "material": 0,
+      "shade": 0.9,
+      "solid": true
+    }
+  ],
+  "spawns": [
+    {
+      "position": [
+        0.0,
+        0.1,
+        9.0
+      ],
+      "yaw": 180.0
+    },
+    {
+      "position": [
+        6.364,
+        0.1,
+        6.364
+      ],
+      "yaw": 225.0
+    },
+    {
+      "position": [
+        9.0,
+        0.1,
+        0.0
+      ],
+      "yaw": 270.0
+    },
+    {
+      "position": [
+        6.364,
+        0.1,
+        -6.364
+      ],
+      "yaw": 315.0
+    },
+    {
+      "position": [
+        0.0,
+        0.1,
+        -9.0
+      ],
+      "yaw": 0.0
+    },
+    {
+      "position": [
+        -6.364,
+        0.1,
+        -6.364
+      ],
+      "yaw": 45.0
+    },
+    {
+      "position": [
+        -9.0,
+        0.1,
+        -0.0
+      ],
+      "yaw": 90.0
+    },
+    {
+      "position": [
+        -6.364,
+        0.1,
+        6.364
+      ],
+      "yaw": 135.0
+    }
+  ],
+  "items": [
+    {
+      "position": [
+        4.243,
+        0.6,
+        4.243
+      ],
+      "type": "UASmall",
+      "hasBase": true,
+      "spawnInterval": 150
+    },
+    {
+      "position": [
+        4.243,
+        0.6,
+        -4.243
+      ],
+      "type": "HealthMedium",
+      "hasBase": true,
+      "spawnInterval": 150
+    },
+    {
+      "position": [
+        -4.243,
+        0.6,
+        -4.243
+      ],
+      "type": "UASmall",
+      "hasBase": true,
+      "spawnInterval": 150
+    },
+    {
+      "position": [
+        -4.243,
+        0.6,
+        4.243
+      ],
+      "type": "HealthMedium",
+      "hasBase": true,
+      "spawnInterval": 150
+    }
+  ]
+}

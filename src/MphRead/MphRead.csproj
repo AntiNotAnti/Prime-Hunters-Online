@@ -1,0 +1,314 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- MphReadServer=true builds the dedicated-server package: no launcher of
+         either kind, no UI toolkit, and a bare invocation that says what the
+         binary is for instead of asking for game files it will never use. It is
+         what the Pi and the Windows server download are published with.
+
+         One framework for every target. The launcher is Avalonia on all four
+         desktop platforms, so nothing here needs the Windows desktop TFM any
+         more, which is also what makes an osx or android build of these
+         sources possible at all. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- A console binary everywhere except a Windows game build, which is a GUI
+         one: double-clicking it has to open the launcher and nothing else, and
+         a console subsystem process gets a terminal before Main can hide it.
+         Mods/ConsoleWindow attaches or allocates one for command-line runs. -->
+    <MphReadWindowsUi Condition="$(RuntimeIdentifier.StartsWith('win')) and '$(MphReadServer)' != 'true'">true</MphReadWindowsUi>
+    <OutputType Condition="'$(MphReadWindowsUi)' != 'true'">Exe</OutputType>
+    <OutputType Condition="'$(MphReadWindowsUi)' == 'true'">WinExe</OutputType>
+    <!-- On Windows the server needs a second, differently named executable.
+
+         Windows bakes the subsystem into the PE header at link time, so a GUI
+         binary cannot be talked into behaving like a console one: cmd and
+         PowerShell do not wait for it, its exit code never reaches
+         %ERRORLEVEL%, and a service supervisor cannot tell whether it is
+         still up. Those are the three things a dedicated server is made of, so
+         it gets a binary whose header says console, and a name of its own so
+         that it can sit next to the game's in one folder.
+
+           dotnet publish -r win-x64 -p:MphReadServer=true
+             produces MphReadServer.exe
+
+         Only on Windows. Elsewhere the subsystem does not exist, the server
+         package holds exactly one binary, and renaming it would mean a Pi that
+         has been running MphRead under systemd since before this change gets a
+         second binary beside the one its unit still points at. -->
+    <!-- The project is Fruity Prime. The assembly, the namespace and this
+         file keep the name MphRead: upstream is NoneGiven/MphRead and every
+         pull from it stays a fast-forward only while the 221 files that
+         declare that namespace are untouched. What a player sees is the
+         product name, the binary name and the window title, and those are
+         here and in Mods/Branding.cs. -->
+    <AssemblyName>FruityPrime</AssemblyName>
+    <AssemblyName Condition="'$(MphReadServer)' == 'true' and $(RuntimeIdentifier.StartsWith('win'))">FruityPrimeServer</AssemblyName>
+    <Product>Fruity Prime</Product>
+    <!-- A local build must not masquerade as the SDK's default 1.0.0 release. -->
+    <InformationalVersion Condition="'$(InformationalVersion)' == ''">local</InformationalVersion>
+    <RootNamespace>MphRead</RootNamespace>
+    <!-- Not the same question as "has no launcher": a server build is shipped
+         with no game files and no way to get any, which is why it answers a
+         bare invocation differently. -->
+    <DefineConstants Condition="'$(MphReadServer)' == 'true'">$(DefineConstants);MPHREAD_SERVER</DefineConstants>
+    <!-- The graphical launcher, in Avalonia, on every platform a person plays
+         on. Server builds do not get it, because a headless relay has no use
+         for a UI toolkit and every megabyte of one is a megabyte in the Pi's
+         download. -->
+    <MphReadAvalonia Condition="'$(MphReadServer)' != 'true'">true</MphReadAvalonia>
+    <DefineConstants Condition="'$(MphReadAvalonia)' == 'true'">$(DefineConstants);MPHREAD_AVALONIA</DefineConstants>
+    <!-- The one-window shell: the launcher and the pause menu rendered into
+         the game window (Mods/Launcher/Gui/Shell.cs, UiSurface.cs). Desktop
+         only, and not because Android cannot do it: Android already
+         does it the other way round, with real Avalonia views over the GL
+         surface, which is what a platform whose windowing system *is* a view
+         stack gives for nothing. The Android head defines MPHREAD_AVALONIA
+         without this one and leaves those two files out. -->
+    <DefineConstants Condition="'$(MphReadAvalonia)' == 'true'">$(DefineConstants);MPHREAD_SHELL</DefineConstants>
+    <!-- The exe's own icon: Explorer, the taskbar, a pinned shortcut. Two
+         variants of the same mark, because the game and the server are two
+         different things to have pinned next to each other, and the server's
+         carries a small badge so the two are not the same picture at a
+         glance. Windows only; the property does nothing on other platforms. -->
+    <ApplicationIcon Condition="$(RuntimeIdentifier.StartsWith('win')) and '$(MphReadServer)' != 'true'">Assets\fruity-prime.ico</ApplicationIcon>
+    <ApplicationIcon Condition="$(RuntimeIdentifier.StartsWith('win')) and '$(MphReadServer)' == 'true'">Assets\fruity-prime-server.ico</ApplicationIcon>
+    <PublishSingleFile>true</PublishSingleFile>
+    <DebugType>embedded</DebugType>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <ProduceReferenceAssembly>False</ProduceReferenceAssembly>
+    <!-- The launcher's screens are drawn into the game window through an
+         ITopLevelImpl of our own (Mods/Launcher/Gui/UiTopLevel.cs), which is
+         the supported way to put Avalonia inside somebody else's frame and is
+         the difference between a menu that scrolls and one that does not: the
+         toolkit's headless backend allocates and frees a full-window bitmap
+         per redraw and forces two extra rasterisations per input event.
+
+         Avalonia ships reference assemblies that hide the platform interfaces,
+         so implementing one needs this switch, which is Avalonia's own. It
+         also pins us to an exact version: these interfaces are allowed to
+         change between releases, so the Avalonia PackageReferences above are
+         exact versions and not ranges, and bumping them means rebuilding
+         against the new shape rather than hoping. AVA3001 is the warning that
+         says so and is expected. -->
+    <AvaloniaAccessUnstablePrivateApis Condition="'$(MphReadAvalonia)' == 'true'">true</AvaloniaAccessUnstablePrivateApis>
+    <!-- AVA3001 is the notice the switch above prints on every build: "you are
+         using unstable internal APIs". It is saying something true and it has
+         been acted on rather than waved away, which is what the exact version
+         pins are for: bumping Avalonia means rebuilding against the new shape
+         of ITopLevelImpl and IRenderTimer, deliberately. Silenced because the
+         build has no other warnings and one that fires unconditionally is one
+         that teaches people to stop reading them. -->
+    <NoWarn Condition="'$(MphReadAvalonia)' == 'true'">$(NoWarn);AVA3001</NoWarn>
+  </PropertyGroup>
+
+  <!-- Mods\Launcher\Gui\ is the front screen and every window behind it, in
+       Avalonia. Mods\Launcher\Portable\ is the half of the launcher that is
+       just logic: preferences, game-file setup, what a launch consists of, and
+       the text front screen that stands in for the window where there is no
+       display. Only builds that declared the toolkit get the packages, so a
+       server build never restores Avalonia and never carries it. -->
+  <ItemGroup Condition="'$(MphReadAvalonia)' != 'true'">
+    <Compile Remove="Mods\Launcher\Gui\**" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(MphReadAvalonia)' == 'true'">
+    <PackageReference Include="Avalonia" Version="12.1.2" />
+    <!-- Desktop is still here for the platform's fonts, its Skia backend and
+         the packages the render path pulls in; what it is no longer used for
+         is a window. The launcher's screens are rendered by the *headless*
+         backend into a buffer and drawn inside the game window
+         (Mods/Render/UiOverlay.cs), so the program opens exactly one window on
+         every platform and the launcher is a screen in the game rather than a
+         second application beside it. -->
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Headless" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.2" />
+    <!-- Loaded at runtime through avares://, Avalonia's own asset scheme: a
+         plain EmbeddedResource is not visible to AssetLoader. The wordmark is
+         the corner of every launcher screen; the mark is the window icon. -->
+    <AvaloniaResource Include="Assets\fruity-prime-logo.png" />
+    <AvaloniaResource Include="Assets\fruity-prime-mark.png" />
+    <!-- The same file again, as a plain embedded resource: the *window's*
+         icon is set on the GL window, which knows nothing about avares:// and
+         is created before the toolkit is. Mods/Render/WindowIcon.cs reads it.
+         A few kilobytes, and the alternative is the launcher's icon existing
+         only on a screen the program no longer opens. -->
+    <EmbeddedResource Include="Assets\fruity-prime-mark.png" />
+    <!-- The launcher's two faces and its backdrop: fonts from
+         OpenQuake3/defrag's ui/font, whose UI this one is built to. -->
+    <AvaloniaResource Include="Assets\Fonts\heyNovember.ttf" />
+    <!-- Pixelify Sans, SIL OFL 1.1 (licence beside it). The deck theme's
+         display face: Balatro sets its whole UI in a pixel font and the
+         chunky faces read as web buttons without one.
+
+         Three static instances cut from the upstream variable file
+         (tools/cut-pixelify.py), not the variable file itself: Avalonia's
+         font manager does not set a variation axis, so asking a wght-variable
+         face for 600 got the 400 default with a synthesised bold over it:
+         every label a stem too heavy, which on a pixel face is the whole
+         difference between the reference's buttons and ours. 400 for the
+         rows, 600 for the labels, 700 for the wordmark. -->
+    <AvaloniaResource Include="Assets\Fonts\PixelifySans-Regular.ttf" />
+    <AvaloniaResource Include="Assets\Fonts\PixelifySans-SemiBold.ttf" />
+    <AvaloniaResource Include="Assets\Fonts\PixelifySans-Bold.ttf" />
+    <!-- JetBrains Mono, SIL OFL 1.1 (licence beside it). The deck theme's
+         body face, and it is not interchangeable with the display one: the
+         reference sets its labels, its headings and its wordmark in the pixel
+         face and everything that is read (a mode name, a ping, a note under
+         the foot) in a mono, because a pixel face at eleven points
+         loses the difference between an "e" and an "o". Two weights, since
+         400 and 700 are both used and a synthesised bold on a mono is a
+         smear. -->
+    <AvaloniaResource Include="Assets\Fonts\JetBrainsMono-Regular.ttf" />
+    <AvaloniaResource Include="Assets\Fonts\JetBrainsMono-Bold.ttf" />
+    <!-- IP-to-country ranges, so the browser can put a flag beside a server
+         without asking a third party where every server you are looking at
+         is. Built from DB-IP Lite (CC BY 4.0) by tools/build-ipcountry.py;
+         the attribution the licence requires is on the Credits page. About a
+         megabyte, which is the price of the question being answered offline. -->
+    <AvaloniaResource Include="Assets\Geo\ipcountry.bin.gz" />
+    <AvaloniaResource Include="Assets\Fonts\Roboto-Bold.ttf" />
+    <AvaloniaResource Include="Assets\Backgrounds\launcher-bg.jpg" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The backdrop again, as a plain embedded resource, for the same reason
+         the mark is above: on the desktop the photograph is drawn by GL under
+         the screens rather than rasterised into them (Mods/Render/
+         LauncherPhoto.cs, which explains why), and that side of the window
+         knows nothing about avares://. Not inside the Avalonia group: the
+         server build carries no toolkit and still compiles the file. -->
+    <EmbeddedResource Include="Assets\Backgrounds\launcher-bg.jpg" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="Export\modules\__pycache__\**" />
+    <EmbeddedResource Remove="Export\modules\__pycache__\**" />
+    <None Remove="Export\modules\__pycache__\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="OpenTK" Version="4.9.4" />
+    <PackageReference Include="ReFuel.StbImage" Version="2.1.1" />
+  </ItemGroup>
+
+  <!-- OpenAL Soft, for the sound effects.
+
+       OpenTK ships the bindings only: opentk.audio.openal has no runtimes/
+       folder and no native library at all. With nothing beside the exe and
+       no system-wide OpenAL (the normal state of a Windows machine, since
+       nothing installs oalinst.exe any more), ALC.OpenDevice fails and every
+       sound effect silently does nothing, while the music keeps playing:
+       that goes through SoundFlow, which ships its own miniaudio.dll.
+       "Music works, no SFX" is exactly that split.
+
+       The package is a file source, not a dependency (ExcludeAssets=all).
+       Its own names are soft_oal.dll and libopenal.so, while OpenTK probes
+       for openal32.dll and libopenal.so.1, so each is copied under the name
+       the loader actually looks for. A server build has no audio at all. -->
+  <ItemGroup Condition="'$(MphReadServer)' != 'true'">
+    <PackageReference Include="Silk.NET.OpenAL.Soft.Native" Version="1.23.1"
+                      GeneratePathProperty="true" ExcludeAssets="all" />
+  </ItemGroup>
+
+  <!-- Every game build gets it, under whichever name that platform's loader
+       probes for: openal32.dll on Windows, libopenal.so.1 on Linux,
+       libopenal.1.dylib on macOS. The RID picks the copy; a build with no RID
+       at all (plain `dotnet build` on this machine) is treated as this
+       machine's, which is what makes F5 produce a binary with sound. -->
+  <PropertyGroup>
+    <MphReadAudioRid Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</MphReadAudioRid>
+    <MphReadAudioRid Condition="'$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">win-x64</MphReadAudioRid>
+    <MphReadAudioRid Condition="'$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Linux'))">linux-x64</MphReadAudioRid>
+    <MphReadAudioRid Condition="'$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('OSX'))">$(NETCoreSdkRuntimeIdentifier)</MphReadAudioRid>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(MphReadServer)' != 'true' and $(MphReadAudioRid.StartsWith('win'))">
+    <None Include="$(PkgSilk_NET_OpenAL_Soft_Native)\runtimes\$(MphReadAudioRid)\native\soft_oal.dll"
+          Link="openal32.dll" CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(MphReadServer)' != 'true' and $(MphReadAudioRid.StartsWith('linux'))">
+    <None Include="$(PkgSilk_NET_OpenAL_Soft_Native)\runtimes\$(MphReadAudioRid)\native\libopenal.so"
+          Link="libopenal.so.1" CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(MphReadServer)' != 'true' and $(MphReadAudioRid.StartsWith('osx'))">
+    <None Include="$(PkgSilk_NET_OpenAL_Soft_Native)\runtimes\$(MphReadAudioRid)\native\libopenal.dylib"
+          Link="libopenal.1.dylib" CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NcsfPlay\NcsfPlay.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="gamecontrollerdb.txt;gamecontrollerdb.LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- The native packages ship their own debug symbols, and since SkiaSharp 3
+       (which Avalonia 12 binds) publish copies them: libSkiaSharp.pdb is 80 MB
+       and libHarfBuzzSharp.pdb another 20, on a download that is otherwise
+       about a hundred. Nobody debugging this program steps into Skia's C++,
+       and the managed symbols are embedded in the binary (DebugType above).
+
+       Filtered rather than switched off at the source: there is no package
+       option for it, and AllowedReferenceRelatedFileExtensions only reaches
+       *managed* references. Ours are left alone; what goes is only what came
+       out of a package's runtimes/ folder, and that is still in the NuGet
+       cache for anyone who wants it. -->
+  <Target Name="MphReadDropNativeSymbols" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish
+        Remove="@(ResolvedFileToPublish)"
+        Condition="'%(Extension)' == '.pdb' and '%(ResolvedFileToPublish.AssetType)' == 'native'" />
+    </ItemGroup>
+  </Target>
+
+  <ItemGroup>
+    <None Update="paths.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- Custom maps: the map file, and the level it converts. The room binaries
+       are still generated on the player's machine, because they land where
+       that machine's extracted files are, but everything needed to generate
+       them ships, so a downloaded release has its custom maps ready and the
+       first launch builds them.
+
+       A map is handed out as one .fpmap bundle: recipe, level and baked
+       textures in a single file, with the level trimmed to the lumps the
+       importer reads (see Mods/MapGen/MapBundle.cs): 376 KB for de_dust2
+       against the 2.8 MB its folder weighed. The folder is what a map is
+       *worked on* as, so it is still copied to the build output for the loop
+       of converting and testing one, but a .pk3 is somebody else's level in
+       somebody else's container, and CopyToPublishDirectory keeps it out of
+       what players download. The workflow cooks the bundle before it
+       publishes. -->
+  <ItemGroup>
+    <!-- What ships: the bundles, and any map file loose at the top of maps/. -->
+    <None Include="..\..\maps\**\*.fpmap;..\..\maps\*.json;..\..\maps\*.bsp;..\..\maps\*.tex;..\..\maps\*.obj" Link="maps\%(RecursiveDir)%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <!-- What a map is worked on as: a folder holding the recipe, somebody
+         else's .pk3 and the textures baked from it. Copied to a build output,
+         because that is the convert-and-test loop, and never published: a
+         package carrying the folder as well as the bundle would carry the
+         same map twice, one copy of it naming a .pk3 that is deliberately not
+         there. -->
+    <None Include="..\..\maps\**\*.json;..\..\maps\**\*.bsp;..\..\maps\**\*.tex;..\..\maps\**\*.pk3;..\..\maps\**\*.obj;..\..\maps\**\*.mtl"
+          Exclude="..\..\maps\*.json;..\..\maps\*.bsp;..\..\maps\*.tex;..\..\maps\*.obj"
+          Link="maps\%(RecursiveDir)%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

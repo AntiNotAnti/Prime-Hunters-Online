@@ -1,0 +1,7 @@
+{
+  "//": "Build with the SDK this repository targets. Every project here is net10.0, and a runner image carries more than one SDK -- so CI was installing one version and building with another, which is both a different compiler from the one anyone tests with and where 'the workload net9.0-android is out of support' (NETSDK1202) came from. latestFeature rather than a pinned patch: any 10.0.x will do, and 9.x cannot build these projects at all -- Avalonia 12's Android package exists only for net10.0-android36.0.",
+  "sdk": {
+    "version": "10.0.100",
+    "rollForward": "latestFeature"
+  }
+}

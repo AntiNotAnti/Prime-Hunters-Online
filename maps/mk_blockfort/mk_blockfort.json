@@ -1,0 +1,135 @@
+{
+  "//": "MK_BlockFort. Get MK_BlockFort.pk3 from https://ws.q3df.org/map/MK_BlockFort/ and put it in this folder -- nothing here downloads it -- and the game builds the room on next start. The .pk3 holds two levels; this one uses MK_BlockFort_s. Made with: FruityPrime -q3convert MK_BlockFort.pk3 -map MK_BlockFort_s -name MK_BLOCKFORT",
+  "Name": "MK_BLOCKFORT",
+  "InGameName": "MK_BLOCKFORT",
+  "TextureSource": "MP3 PROVING GROUND",
+  "ScaleFactor": 4,
+  "KillHeight": -10,
+  "FarClip": 156,
+  "FogEnabled": true,
+  "FogColor": [
+    8,
+    10,
+    16
+  ],
+  "FogSlope": 5,
+  "FogOffset": 65180,
+  "Light1Color": [
+    31,
+    28,
+    24
+  ],
+  "Light1Vector": [
+    0.3,
+    -1,
+    0.2
+  ],
+  "Light2Color": [
+    10,
+    11,
+    16
+  ],
+  "Light2Vector": [
+    -0.3,
+    1,
+    -0.2
+  ],
+  "BattleTimeLimit": 12600,
+  "PointLimit": 7,
+  "collision": {
+    "source": "mk_blockfort_collision.obj",
+    "zUp": false
+  },
+  "Import": {
+    "Source": "MK_BlockFort.pk3",
+    "MapName": "MK_BlockFort_s",
+    "UnitsPerUnit": 81,
+    "Textures": "mk_blockfort.tex",
+    "ShaderMaterials": {},
+    "DefaultMaterial": 0,
+    "TexScale": 24,
+    "KeepSky": true,
+    "KeepClip": true,
+    "PatchLevel": 3,
+    "KeepSpawns": false,
+    "KeepItems": false
+  },
+  "preview": { "position": [78.7, 50.8, 53.8], "target": [25.1, 13.8, -0] },
+  "Spawns": [
+    { "Position": [ 6.31638, -4.58838, 37.4923 ], "yaw": -90 },
+    { "Position": [ -13.0338, -4.58838, -18.7578 ], "yaw": 180 },
+    { "Position": [ 43.2163, -4.58838, -38.1079 ], "yaw": 90 },
+    { "Position": [ 62.5665, -4.58838, 18.1422 ], "yaw": 0 },
+
+    { "Position": [ -13.0338, -4.58838, 18.1422 ], "yaw": 0 },
+    { "Position": [ 6.31637, -4.58838, -38.1079 ], "yaw": -90 },
+    { "Position": [ 62.5665, -4.58838, -18.7578 ], "yaw": 180 },
+    { "Position": [ 43.2163, -4.58838, 37.4923 ], "yaw": 90 }
+  ],
+  // The plinths are legibility, not decoration: a pickup the colour of the
+  // area it stands in disappears into the floor without one. Green area,
+  // Battlehammer (green); blue, Judicator (purple); red, Imperialist (red).
+  // The yellow area's Volt Driver is yellow too, but it stands on the grey
+  // ground rather than on the coloured floor, so it is legible as it is.
+  // The UA is yellow-green and needs one in the yellow area and in the green;
+  // it has one in all four, because two opposite corners would be a half-turn
+  // of symmetry inside a quarter-turn layout and read as a mistake.
+  "Items": [
+    { "Position": [ 24.99, -0.89, 0 ], "Type": "DoubleDamage", "hasBase": false },
+
+    { "Position": [ -2.58491, -0.506107, 27.0647], "Type": "Imperialist", "hasBase": false },
+    { "Position": [ -2.5836, -0.506107, -27.6329], "Type": "Imperialist", "hasBase": true },
+    { "Position": [ 52.0911, -0.506107, -27.6579], "Type": "Imperialist", "hasBase": false },
+    { "Position": [ 52.1388, -0.506107, 27.0435], "Type": "Imperialist", "hasBase": false },
+
+    { "Position": [ 1.82844, 3.58007,  0.307778], "Type": "ShockCoil", "hasBase": false },
+    { "Position": [ 24.7664, 3.58007, -23.2457], "Type": "ShockCoil", "hasBase": false },
+    { "Position": [ 47.7043, 3.58007, -0.307774], "Type": "ShockCoil", "hasBase": false },
+    { "Position": [ 24.7664, 3.58007, 22.6301], "Type": "ShockCoil", "hasBase": false },
+    
+    { "Position": [ 46.152, 3.58007, 21.694], "Type": "MissileSmall", "hasBase": false },
+    { "Position": [ 46.1526, 3.58007, -21.0779], "Type": "MissileSmall", "hasBase": false },
+    { "Position": [ 3.38072, 3.58007, -21.0784], "Type": "MissileSmall", "hasBase": false },
+    { "Position": [ 3.38072, 3.58007,  21.6934], "Type": "MissileSmall", "hasBase": false },
+
+    { "Position": [ 15.1936, -0.506108,  9.26558], "Type": "UASmall", "hasBase": true },
+    { "Position": [  15.1936, -0.506108, -9.26558], "Type": "UASmall", "hasBase": true },
+    { "Position": [  34.3397, -0.506108, -9.265], "Type": "UASmall", "hasBase": true },
+    { "Position": [  34.3397, -0.506108, 9.265], "Type": "UASmall", "hasBase": true },
+
+    { "Position": [ 24.7664, -4.68734, 18.638 ], "Type": "Magmaul", "hasBase": false },
+    { "Position": [ 5.82059, -4.68734, -0.307775 ], "Type": "Magmaul", "hasBase": false },
+    { "Position": [ 24.7664, -4.68734, -19.2535 ], "Type": "Magmaul", "hasBase": false },
+    { "Position": [ 43.7122, -4.68734, -0.307772 ], "Type": "Magmaul", "hasBase": false },
+
+    { "Position": [ -9.47273, -4.68734, 34.771], "Type": "HealthMedium", "hasBase": false },
+    { "Position": [ -9.69691, -4.68734,-33.9313], "Type": "HealthMedium", "hasBase": false },
+    { "Position": [ 59.0054, -4.68734, -34.1555], "Type": "HealthMedium", "hasBase": false },
+    { "Position": [ 59.2296, -4.68734, 34.68734], "Type": "HealthMedium", "hasBase": false },
+
+    { "Position": [ 24.7664, -4.68734, 37.4923], "Type": "VoltDriver", "hasBase": false },
+    { "Position": [ -13.0338, -4.68734, -0.307777], "Type": "VoltDriver", "hasBase": false },
+    { "Position": [ 24.7664, -4.68734, -38.1079], "Type": "VoltDriver", "hasBase": false },
+    { "Position": [ 62.5665, -4.68734, -0.30777], "Type": "VoltDriver", "hasBase": false },
+
+    { "Position": [ 15.2247, -0.506107, 29.5839], "Type": "Battlehammer", "hasBase": true },
+    { "Position": [ -4.9103, -0.506107, -9.6445], "Type": "Battlehammer", "hasBase": false },
+    { "Position": [ 34.3181, -0.506107, -29.7795], "Type": "Battlehammer", "hasBase": false },
+    { "Position": [ 54.4531, -0.506107, 9.4489], "Type": "Battlehammer", "hasBase": false },
+
+    { "Position": [ -4.9103, -0.506107, 9.4489], "Type": "Judicator", "hasBase": false },
+    { "Position": [ 15.2247, -0.506107, -29.7795], "Type": "Judicator", "hasBase": false },
+    { "Position": [ 54.4531, -0.506107, -9.6445], "Type": "Judicator", "hasBase": false },
+    { "Position": [ 34.3181, -0.506107, 29.5839], "Type": "Judicator", "hasBase": true },
+
+    { "Position": [ 34.9035, -4.68734, 35.2003 ], "Type": "UASmall", "hasBase": false },
+    { "Position": [ 14.6292, -4.68734, 35.2003 ], "Type": "UASmall", "hasBase": false },
+    { "Position": [ -10.7417, -4.68734, 9.82938 ], "Type": "UASmall", "hasBase": false },
+    { "Position": [ -10.7417, -4.68734, -10.4449 ], "Type": "UASmall", "hasBase": false },
+    { "Position": [ 14.6292, -4.68734, -35.8159 ], "Type": "UASmall", "hasBase": false },
+    { "Position": [ 34.9035, -4.68734, -35.8159 ], "Type": "UASmall", "hasBase": false },
+    { "Position": [ 60.2745, -4.68734, -10.4449 ], "Type": "UASmall", "hasBase": false },
+    { "Position": [ 60.2745, -4.68734, 9.82939 ], "Type": "UASmall", "hasBase": false }
+
+  ]
+}
