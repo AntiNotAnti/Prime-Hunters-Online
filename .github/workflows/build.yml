@@ -30,6 +30,51 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v7
+
+      - name: expose preinstalled .NET
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidates=(
+            "$HOME/.dotnet/dotnet"
+            "/usr/local/share/dotnet/dotnet"
+            "/usr/share/dotnet/dotnet"
+            "/opt/homebrew/bin/dotnet"
+            "/usr/local/bin/dotnet"
+            "/usr/bin/dotnet"
+          )
+          for candidate in "${candidates[@]}"; do
+            if [ -x "$candidate" ]; then
+              dir=$(dirname "$candidate")
+              echo "$dir" >> "$GITHUB_PATH"
+              echo "DOTNET_ROOT=$(cd "$dir/.." 2>/dev/null && pwd || echo "$dir")" >> "$GITHUB_ENV"
+              "$candidate" --info
+              exit 0
+            fi
+          done
+          echo "error: preinstalled dotnet was not found in a standard location" >&2
+          exit 1
+
+      - name: expose preinstalled .NET
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $candidates = @(
+            "$env:USERPROFILE\.dotnet\dotnet.exe",
+            "C:\Program Files\dotnet\dotnet.exe",
+            "C:\Program Files (x86)\dotnet\dotnet.exe"
+          )
+          foreach ($candidate in $candidates) {
+            if (Test-Path $candidate) {
+              $dir = Split-Path $candidate -Parent
+              $dir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+              "DOTNET_ROOT=$dir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+              & $candidate --info
+              exit 0
+            }
+          }
+          throw "preinstalled dotnet was not found in a standard location"
       - name: nothing from the game is tracked
         run: tools/check-no-game-assets.sh
 
@@ -54,6 +99,51 @@ jobs:
             arch: x64
     steps:
       - uses: actions/checkout@v7
+
+      - name: expose preinstalled .NET
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidates=(
+            "$HOME/.dotnet/dotnet"
+            "/usr/local/share/dotnet/dotnet"
+            "/usr/share/dotnet/dotnet"
+            "/opt/homebrew/bin/dotnet"
+            "/usr/local/bin/dotnet"
+            "/usr/bin/dotnet"
+          )
+          for candidate in "${candidates[@]}"; do
+            if [ -x "$candidate" ]; then
+              dir=$(dirname "$candidate")
+              echo "$dir" >> "$GITHUB_PATH"
+              echo "DOTNET_ROOT=$(cd "$dir/.." 2>/dev/null && pwd || echo "$dir")" >> "$GITHUB_ENV"
+              "$candidate" --info
+              exit 0
+            fi
+          done
+          echo "error: preinstalled dotnet was not found in a standard location" >&2
+          exit 1
+
+      - name: expose preinstalled .NET
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $candidates = @(
+            "$env:USERPROFILE\.dotnet\dotnet.exe",
+            "C:\Program Files\dotnet\dotnet.exe",
+            "C:\Program Files (x86)\dotnet\dotnet.exe"
+          )
+          foreach ($candidate in $candidates) {
+            if (Test-Path $candidate) {
+              $dir = Split-Path $candidate -Parent
+              $dir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+              "DOTNET_ROOT=$dir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+              & $candidate --info
+              exit 0
+            }
+          }
+          throw "preinstalled dotnet was not found in a standard location"
       - name: deterministic controller and headless UI checks
         run: dotnet run --project src/MphRead/MphRead.csproj -c Release -- -gamepadcheck
       - name: deterministic pointer and stylus checks
@@ -93,6 +183,51 @@ jobs:
             extra: "-p:MphReadServer=true"
     steps:
       - uses: actions/checkout@v7
+
+      - name: expose preinstalled .NET
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidates=(
+            "$HOME/.dotnet/dotnet"
+            "/usr/local/share/dotnet/dotnet"
+            "/usr/share/dotnet/dotnet"
+            "/opt/homebrew/bin/dotnet"
+            "/usr/local/bin/dotnet"
+            "/usr/bin/dotnet"
+          )
+          for candidate in "${candidates[@]}"; do
+            if [ -x "$candidate" ]; then
+              dir=$(dirname "$candidate")
+              echo "$dir" >> "$GITHUB_PATH"
+              echo "DOTNET_ROOT=$(cd "$dir/.." 2>/dev/null && pwd || echo "$dir")" >> "$GITHUB_ENV"
+              "$candidate" --info
+              exit 0
+            fi
+          done
+          echo "error: preinstalled dotnet was not found in a standard location" >&2
+          exit 1
+
+      - name: expose preinstalled .NET
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $candidates = @(
+            "$env:USERPROFILE\.dotnet\dotnet.exe",
+            "C:\Program Files\dotnet\dotnet.exe",
+            "C:\Program Files (x86)\dotnet\dotnet.exe"
+          )
+          foreach ($candidate in $candidates) {
+            if (Test-Path $candidate) {
+              $dir = Split-Path $candidate -Parent
+              $dir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+              "DOTNET_ROOT=$dir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+              & $candidate --info
+              exit 0
+            }
+          }
+          throw "preinstalled dotnet was not found in a standard location"
 
       # Cook every custom map into the one file it ships as. The recipe, the
       # level it converts and the textures baked from it go into a .fpmap,
@@ -241,6 +376,51 @@ jobs:
             arch: x64
     steps:
       - uses: actions/checkout@v7
+
+      - name: expose preinstalled .NET
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidates=(
+            "$HOME/.dotnet/dotnet"
+            "/usr/local/share/dotnet/dotnet"
+            "/usr/share/dotnet/dotnet"
+            "/opt/homebrew/bin/dotnet"
+            "/usr/local/bin/dotnet"
+            "/usr/bin/dotnet"
+          )
+          for candidate in "${candidates[@]}"; do
+            if [ -x "$candidate" ]; then
+              dir=$(dirname "$candidate")
+              echo "$dir" >> "$GITHUB_PATH"
+              echo "DOTNET_ROOT=$(cd "$dir/.." 2>/dev/null && pwd || echo "$dir")" >> "$GITHUB_ENV"
+              "$candidate" --info
+              exit 0
+            fi
+          done
+          echo "error: preinstalled dotnet was not found in a standard location" >&2
+          exit 1
+
+      - name: expose preinstalled .NET
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $candidates = @(
+            "$env:USERPROFILE\.dotnet\dotnet.exe",
+            "C:\Program Files\dotnet\dotnet.exe",
+            "C:\Program Files (x86)\dotnet\dotnet.exe"
+          )
+          foreach ($candidate in $candidates) {
+            if (Test-Path $candidate) {
+              $dir = Split-Path $candidate -Parent
+              $dir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+              "DOTNET_ROOT=$dir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+              & $candidate --info
+              exit 0
+            }
+          }
+          throw "preinstalled dotnet was not found in a standard location"
       - name: bounded thumbnail worker regression
         run: dotnet run --project tools/thumbnail-batch-check/thumbnail-batch-check.csproj -c Release
 
@@ -290,6 +470,51 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v7
+
+      - name: expose preinstalled .NET
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidates=(
+            "$HOME/.dotnet/dotnet"
+            "/usr/local/share/dotnet/dotnet"
+            "/usr/share/dotnet/dotnet"
+            "/opt/homebrew/bin/dotnet"
+            "/usr/local/bin/dotnet"
+            "/usr/bin/dotnet"
+          )
+          for candidate in "${candidates[@]}"; do
+            if [ -x "$candidate" ]; then
+              dir=$(dirname "$candidate")
+              echo "$dir" >> "$GITHUB_PATH"
+              echo "DOTNET_ROOT=$(cd "$dir/.." 2>/dev/null && pwd || echo "$dir")" >> "$GITHUB_ENV"
+              "$candidate" --info
+              exit 0
+            fi
+          done
+          echo "error: preinstalled dotnet was not found in a standard location" >&2
+          exit 1
+
+      - name: expose preinstalled .NET
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $candidates = @(
+            "$env:USERPROFILE\.dotnet\dotnet.exe",
+            "C:\Program Files\dotnet\dotnet.exe",
+            "C:\Program Files (x86)\dotnet\dotnet.exe"
+          )
+          foreach ($candidate in $candidates) {
+            if (Test-Path $candidate) {
+              $dir = Split-Path $candidate -Parent
+              $dir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+              "DOTNET_ROOT=$dir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+              & $candidate --info
+              exit 0
+            }
+          }
+          throw "preinstalled dotnet was not found in a standard location"
 
       # The Android workload brings the .NET side of the toolchain. It does not
       # bring a JDK, and the Android SDK's build tools are Java.
@@ -402,6 +627,51 @@ jobs:
     runs-on: [self-hosted, windows, x64]
     steps:
       - uses: actions/checkout@v7
+
+      - name: expose preinstalled .NET
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidates=(
+            "$HOME/.dotnet/dotnet"
+            "/usr/local/share/dotnet/dotnet"
+            "/usr/share/dotnet/dotnet"
+            "/opt/homebrew/bin/dotnet"
+            "/usr/local/bin/dotnet"
+            "/usr/bin/dotnet"
+          )
+          for candidate in "${candidates[@]}"; do
+            if [ -x "$candidate" ]; then
+              dir=$(dirname "$candidate")
+              echo "$dir" >> "$GITHUB_PATH"
+              echo "DOTNET_ROOT=$(cd "$dir/.." 2>/dev/null && pwd || echo "$dir")" >> "$GITHUB_ENV"
+              "$candidate" --info
+              exit 0
+            fi
+          done
+          echo "error: preinstalled dotnet was not found in a standard location" >&2
+          exit 1
+
+      - name: expose preinstalled .NET
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $candidates = @(
+            "$env:USERPROFILE\.dotnet\dotnet.exe",
+            "C:\Program Files\dotnet\dotnet.exe",
+            "C:\Program Files (x86)\dotnet\dotnet.exe"
+          )
+          foreach ($candidate in $candidates) {
+            if (Test-Path $candidate) {
+              $dir = Split-Path $candidate -Parent
+              $dir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+              "DOTNET_ROOT=$dir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+              & $candidate --info
+              exit 0
+            }
+          }
+          throw "preinstalled dotnet was not found in a standard location"
 
       - name: publish the dedicated server, for Windows
         run: >
