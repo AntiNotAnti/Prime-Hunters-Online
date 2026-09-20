@@ -906,6 +906,34 @@ namespace MphRead.Mods.Launcher.Gui
             return new Size(width, rows * high + Math.Max(0, rows - 1) * gap);
         }
 
+        public bool HandleKey(Key key)
+        {
+            if (Children.Count == 0) return false;
+            int step = key switch
+            {
+                Key.Left => -1,
+                Key.Right => 1,
+                Key.Up => -Columns,
+                Key.Down => Columns,
+                _ => 0
+            };
+            if (step == 0) return false;
+
+            int at = -1;
+            for (int i = 0; i < Children.Count; i++)
+            {
+                if (Children[i].IsFocused)
+                {
+                    at = i;
+                    break;
+                }
+            }
+            int next = at < 0 ? 0 : Math.Clamp(at + step, 0, Children.Count - 1);
+            Children[next].Focus();
+            Children[next].BringIntoView();
+            return true;
+        }
+
         protected override Size ArrangeOverride(Size finalSize)
         {
             int columns = Columns;
