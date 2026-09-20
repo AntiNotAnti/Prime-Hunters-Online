@@ -230,7 +230,7 @@ namespace MphRead.Mods.Input
         public void ApplyPreset(string name)
         {
             if (name == "Custom") { Preset = name; return; }
-            Reset();
+            ResetGameplay();
 
             if (name == "Bumper Jumper")
             {
@@ -255,9 +255,17 @@ namespace MphRead.Mods.Input
             Array.Copy(Modifiers, copy.Modifiers, Modifiers.Length);
             copy.Preset = Preset; copy.Revision = Revision; return copy;
         }
+        private void ResetGameplay()
+        {
+            foreach (PadAction action in GameplayActionOrder)
+                Set(action, _defaults[(int)action]);
+            Preset = "Default";
+        }
+
         public void Reset()
         {
-            foreach (PadAction action in Actions) Set(action, _defaults[(int)action]);
+            foreach (PadAction action in ActionOrder)
+                Set(action, _defaults[(int)action]);
             Preset = "Default";
         }
 
