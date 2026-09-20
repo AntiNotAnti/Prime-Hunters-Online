@@ -288,7 +288,7 @@ namespace MphRead.Mods.Update
             string tag;
             string notes;
             string page;
-            var assets = new List<(string Name, string Url, long Size)>();
+            var assets = new List<(string Name, string Url, long Size, string Digest)>();
             try
             {
                 using JsonDocument document = JsonDocument.Parse(json);
@@ -311,7 +311,9 @@ namespace MphRead.Mods.Update
                             && z.TryGetInt64(out long parsedSize) ? parsedSize : 0;
                         if (name.Length > 0)
                         {
-                            assets.Add((name, url, size));
+                            string digest = asset.TryGetProperty("digest", out JsonElement d)
+                                ? d.GetString() ?? "" : "";
+                            assets.Add((name, url, size, digest));
                         }
                     }
                 }
