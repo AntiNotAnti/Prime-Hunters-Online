@@ -204,6 +204,12 @@ namespace MphRead.Mods.Launcher.Gui
             e.Handled = true;
         }
 
+        protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
+        {
+            _dragTarget = DragTarget.None;
+            base.OnPointerCaptureLost(e);
+        }
+
         protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
         {
             base.OnPointerWheelChanged(e);
