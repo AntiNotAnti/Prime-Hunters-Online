@@ -119,6 +119,41 @@ namespace MphRead.Mods.Launcher.Gui
             GamepadChecks.Check(ControllerNav.Find(deployment, "deploy.online")!.IsFocused,
                 "compact deployment follows visual order");
 
+            HubPlayDestination? selectedDeployment = null;
+            int deploymentClosed = 0;
+            deployment.Selected += destination => selectedDeployment = destination;
+            deployment.Closed += (_, _) => deploymentClosed++;
+            foreach ((string id, HubPlayDestination destination) in new[]
+            {
+                ("deploy.quickplay", HubPlayDestination.QuickPlay),
+                ("deploy.online", HubPlayDestination.Online),
+                ("deploy.custom", HubPlayDestination.Custom),
+                ("deploy.offline", HubPlayDestination.Offline),
+                ("deploy.adventure", HubPlayDestination.Adventure)
+            })
+            {
+                selectedDeployment = null;
+                Click(window, ControllerNav.Find(deployment, id)!);
+                GamepadChecks.Check(selectedDeployment == destination,
+                    $"deployment pointer click activates {destination}");
+            }
+            Click(window, ControllerNav.Find(deployment, "deploy.back")!);
+            GamepadChecks.Check(deploymentClosed == 1,
+                "deployment Back accepts a pointer click");
+
+            var quickPlay = new HubQuickPlayView(preview: true);
+            int quickClosed = 0, quickBrowse = 0;
+            quickPlay.Closed += (_, _) => quickClosed++;
+            quickPlay.BrowseRequested += (_, _) => quickBrowse++;
+            window.Width = 960; window.Height = 660; window.Content = quickPlay;
+            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            Click(window, ControllerNav.Find(quickPlay, "quick.browse")!);
+            GamepadChecks.Check(quickBrowse == 1,
+                "Quick Play Browse Servers accepts a pointer click");
+            Click(window, ControllerNav.Find(quickPlay, "quick.back")!);
+            GamepadChecks.Check(quickClosed == 1,
+                "Quick Play Back accepts a pointer click");
+
             var browserSample = new[]
             {
                 new ServerBrowserEntry(
@@ -160,6 +195,17 @@ namespace MphRead.Mods.Launcher.Gui
             GamepadChecks.Check(join!.IsFocused,
                 "modern server browser uses explicit Refresh-to-Join navigation");
 
+            int browserClosed = 0, browserCreate = 0;
+            browser.Closed += (_, _) => browserClosed++;
+            browser.CreateRequested += (_, _) => browserCreate++;
+            Click(window, ControllerNav.Find(browser, "browser.create")!);
+            GamepadChecks.Check(browserCreate == 1,
+                "server browser Create Match accepts a pointer click");
+            Click(window, ControllerNav.Find(browser, "browser.refresh")!);
+            Click(window, ControllerNav.Find(browser, "browser.back")!);
+            GamepadChecks.Check(browserClosed == 1,
+                "server browser Back accepts a pointer click");
+
             var settingsHub = new HubSettingsView();
             window.Content = settingsHub; window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
             var displaySettings = ControllerNav.Find(settingsHub, "settings.display");
@@ -174,6 +220,29 @@ namespace MphRead.Mods.Launcher.Gui
             FocusNavigator.Move(settingsHub, UiAction.Down);
             GamepadChecks.Check(ControllerNav.Find(settingsHub, "settings.audio")!.IsFocused,
                 "compact settings navigation follows visual order");
+
+            string? selectedSettingsSection = null;
+            int settingsClosed = 0;
+            settingsHub.SectionRequested += section => selectedSettingsSection = section;
+            settingsHub.Closed += (_, _) => settingsClosed++;
+            foreach ((string id, string section) in new[]
+            {
+                ("settings.display", "Display"),
+                ("settings.audio", "Audio"),
+                ("settings.controls", "Controls"),
+                ("settings.replays", "Replays"),
+                ("settings.profile", "Profile"),
+                ("settings.credits", "Credits")
+            })
+            {
+                selectedSettingsSection = null;
+                Click(window, ControllerNav.Find(settingsHub, id)!);
+                GamepadChecks.Check(selectedSettingsSection == section,
+                    $"settings pointer click activates {section}");
+            }
+            Click(window, ControllerNav.Find(settingsHub, "settings.back")!);
+            GamepadChecks.Check(settingsClosed == 1,
+                "settings Back accepts a pointer click");
 
             panel = new StackPanel();
             window.Width = 600; window.Height = 400; window.Content = panel;
