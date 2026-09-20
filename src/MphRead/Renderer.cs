@@ -7596,17 +7596,29 @@ namespace MphRead
             // The pause menu wants the pointer back, and so does the results
             // screen: its hunter picker is something you click, and a grabbed
             // cursor has no position on screen to click with.
-            // A pen is an absolute device -- a point on the tablet is a point
-            // on the screen -- so grabbing the cursor, which is what turns the
-            // pointer into an endless stream of deltas, takes away the one
-            // property the whole feature rests on. The zone is released for
-            // the same reason the results screen is.
-            CursorState = (Scene.CameraMode == CameraMode.Player || Scene.IsFreeCam) && !Scene.FrameAdvance
+            //
+            // A pen is an absolute device, so stylus gameplay must keep a free
+            // pointer. Hidden is deliberately different from Grabbed here: it
+            // preserves that absolute position while PlayerEntityStylusHud
+            // draws the pointer itself, which is how its opacity can range all
+            // the way down to 0%. Placement and UI screens keep the platform
+            // cursor so they are never made unusable by that setting.
+            bool gameplayPointer = (Scene.CameraMode == CameraMode.Player || Scene.IsFreeCam)
+                && !Scene.FrameAdvance && !Mods.Network.DemoPlayback.IsActive
                 && !Mods.PauseMenu.Open && !Mods.EndScreen.Available
-                && !Mods.Input.PointerInput.StylusMode && !Mods.Input.StylusZone.Placing
-                && !Scene.ShowCursor && !GameState.DialogPause && !GameState.MenuPause
-                ? CursorState.Grabbed
-                : CursorState.Normal;
+                && !Mods.Input.StylusZone.Placing && !GameState.DialogPause && !GameState.MenuPause;
+            if (gameplayPointer && Mods.Input.PointerInput.StylusMode)
+            {
+                CursorState = CursorState.Hidden;
+            }
+            else if (gameplayPointer && !Scene.ShowCursor)
+            {
+                CursorState = CursorState.Grabbed;
+            }
+            else
+            {
+                CursorState = CursorState.Normal;
+            }
             // Where the pointer is, for the picker to light up what it is
             // over, and in the same units its hit boxes are kept in. Against
             // the client area, which is what GLFW reports the pointer in --

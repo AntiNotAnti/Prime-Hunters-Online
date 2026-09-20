@@ -336,8 +336,39 @@ namespace MphRead.Mods.Input
                 PointerInput.GuardJumps = true;
                 InputSettings.Load();
                 Require(PointerInput.StylusMode && !PointerInput.GuardJumps, "independent settings round trip");
+
+                File.WriteAllText(path,
+                    "stylus_mode=true\nstylus_zone=true\nstylus_zone_opacity=0.4\n");
+                InputSettings.Load();
+                Require(Math.Abs(StylusZone.OutlineOpacity - 0.4f) < 0.0001f
+                    && Math.Abs(StylusZone.ButtonOpacity - 0.2f) < 0.0001f,
+                    "legacy combined overlay opacity preserves its appearance");
+
+                File.WriteAllText(path,
+                    "stylus_mode=true\nstylus_zone=true\nstylus_zone_opacity=0.4\n"
+                    + "stylus_cursor_opacity=0\nstylus_zone_outline_opacity=0\n"
+                    + "stylus_zone_button_opacity=0.75\n");
+                InputSettings.Load();
+                Require(StylusZone.CursorOpacity == 0 && StylusZone.OutlineOpacity == 0
+                    && Math.Abs(StylusZone.ButtonOpacity - 0.75f) < 0.0001f,
+                    "per-element opacity accepts zero and overrides legacy value");
+
+                InputSettings.Save();
+                StylusZone.CursorOpacity = 1;
+                StylusZone.OutlineOpacity = 1;
+                StylusZone.ButtonOpacity = 1;
+                InputSettings.Load();
+                Require(StylusZone.CursorOpacity == 0 && StylusZone.OutlineOpacity == 0
+                    && Math.Abs(StylusZone.ButtonOpacity - 0.75f) < 0.0001f,
+                    "per-element opacity round trip");
+
                 InputSettings.Reset();
-                Require(!PointerInput.StylusMode && PointerInput.GuardJumps && !StylusZone.Enabled, "reset restores ordinary mouse defaults");
+                Require(!PointerInput.StylusMode && PointerInput.GuardJumps && !StylusZone.Enabled,
+                    "reset restores ordinary mouse defaults");
+                Require(Math.Abs(StylusZone.CursorOpacity - StylusZone.DefaultCursorOpacity) < 0.0001f
+                    && Math.Abs(StylusZone.OutlineOpacity - StylusZone.DefaultOutlineOpacity) < 0.0001f
+                    && Math.Abs(StylusZone.ButtonOpacity - StylusZone.DefaultButtonOpacity) < 0.0001f,
+                    "reset restores stylus appearance defaults");
             }
             finally
             {

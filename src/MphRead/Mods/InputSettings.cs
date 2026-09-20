@@ -366,6 +366,10 @@ namespace MphRead.Mods
             {
                 bool? stylusMode = null;
                 bool? legacyGuard = null;
+                float? legacyStylusOpacity = null;
+                float? stylusOutlineOpacity = null;
+                float? stylusButtonOpacity = null;
+                float? stylusCursorOpacity = null;
                 string[] savedLines = File.ReadAllLines(Path);
                 foreach (string raw in savedLines)
                 {
@@ -421,7 +425,28 @@ namespace MphRead.Mods
                     if (key == "stylus_zone_opacity" && Single.TryParse(value, NumberStyles.Float,
                         CultureInfo.InvariantCulture, out float zoneOpacity))
                     {
-                        Input.StylusZone.Opacity = Math.Clamp(zoneOpacity, 0.02f, 1f);
+                        // Legacy combined value: the old renderer used it for
+                        // the outline and half of it for the circular buttons.
+                        legacyStylusOpacity = Math.Clamp(zoneOpacity, 0, 1);
+                        continue;
+                    }
+                    if (key == "stylus_zone_outline_opacity" && Single.TryParse(value, NumberStyles.Float,
+                        CultureInfo.InvariantCulture, out float outlineOpacity))
+                    {
+                        stylusOutlineOpacity = Math.Clamp(outlineOpacity, 0, 1);
+                        continue;
+                    }
+                    if (key == "stylus_zone_button_opacity" && Single.TryParse(value, NumberStyles.Float,
+                        CultureInfo.InvariantCulture, out float buttonOpacity))
+                    {
+                        stylusButtonOpacity = Math.Clamp(buttonOpacity, 0, 1);
+                        continue;
+                    }
+                    if (key == "stylus_cursor_opacity" && Single.TryParse(value, NumberStyles.Float,
+                        CultureInfo.InvariantCulture, out float cursorOpacity))
+                    {
+                        stylusCursorOpacity = Math.Clamp(cursorOpacity, 0, 1);
+                        continue;
                     }
                     if (key == "stylus_zone_rect")
                     {
@@ -528,6 +553,26 @@ namespace MphRead.Mods
                 // new settings win regardless of line order.
                 Input.PointerInput.StylusMode = !OperatingSystem.IsAndroid()
                     && (stylusMode ?? legacyGuard ?? false);
+
+                // Split the old one-slider overlay without changing how an
+                // existing controls.txt looks: outline = old value, buttons =
+                // half of it. Explicit per-element settings always win,
+                // regardless of their order in the file.
+                if (stylusOutlineOpacity.HasValue || legacyStylusOpacity.HasValue)
+                {
+                    Input.StylusZone.OutlineOpacity = stylusOutlineOpacity
+                        ?? legacyStylusOpacity!.Value;
+                }
+                if (stylusButtonOpacity.HasValue || legacyStylusOpacity.HasValue)
+                {
+                    Input.StylusZone.ButtonOpacity = stylusButtonOpacity
+                        ?? Math.Clamp(legacyStylusOpacity!.Value * 0.5f, 0, 1);
+                }
+                if (stylusCursorOpacity.HasValue)
+                {
+                    Input.StylusZone.CursorOpacity = stylusCursorOpacity.Value;
+                }
+
                 Input.GamepadOptions.Load(savedLines);
                 Input.PadBindings.LoadSlots(savedLines);
                 string? preset = savedLines.LastOrDefault(l => l.StartsWith("gamepad_preset=", StringComparison.Ordinal));
@@ -605,8 +650,12 @@ namespace MphRead.Mods
                     // What was asked for, not what is in force: the zone's
                     // switch survives stylus mode being turned off and on.
                     $"stylus_zone={Input.StylusZone.Wanted.ToString().ToLowerInvariant()}",
-                    "stylus_zone_opacity="
-                        + Input.StylusZone.Opacity.ToString("0.###", CultureInfo.InvariantCulture),
+                    "stylus_cursor_opacity="
+                        + Input.StylusZone.CursorOpacity.ToString("0.###", CultureInfo.InvariantCulture),
+                    "stylus_zone_outline_opacity="
+                        + Input.StylusZone.OutlineOpacity.ToString("0.###", CultureInfo.InvariantCulture),
+                    "stylus_zone_button_opacity="
+                        + Input.StylusZone.ButtonOpacity.ToString("0.###", CultureInfo.InvariantCulture),
                     "stylus_zone_rect="
                         + Input.StylusZone.Left.ToString("0.####", CultureInfo.InvariantCulture) + ","
                         + Input.StylusZone.Top.ToString("0.####", CultureInfo.InvariantCulture) + ","
@@ -646,6 +695,9 @@ namespace MphRead.Mods
                 // Retain keys from newer versions and extensions when updating known settings.
                 var keys = new HashSet<string>(lines.Where(l => l.Contains('='))
                     .Select(l => l[..l.IndexOf('=')].Trim()), StringComparer.Ordinal);
+                // Retired by the three per-element opacity settings above.
+                // Treat it as known so Save removes it after it has migrated.
+                keys.Add("stylus_zone_opacity");
                 if (File.Exists(Path)) foreach (string original in File.ReadAllLines(Path))
                 {
                     int split = original.IndexOf('=');
@@ -689,6 +741,7 @@ namespace MphRead.Mods
             Input.PointerInput.StylusMode = false;
             Input.PointerInput.GuardJumps = true;
             Input.StylusZone.Enabled = false;
+            Input.StylusZone.ResetAppearance();
             Input.PointerDevice.Reset();
             Input.GamepadOptions.Reset();
             GamepadDeadZone = 0.2f;
