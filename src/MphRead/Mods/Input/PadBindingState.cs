@@ -122,12 +122,12 @@ namespace MphRead.Mods.Input
         public string DescribeSlot(PadAction action, int slot)
             => (Modifier(action, slot) == 0 ? "" : ButtonName(Modifier(action, slot)) + " + ") + Describe(Slot(action, slot));
         public ulong Evaluate(GamepadButtons buttons, GamepadButtons suppressed = 0,
-            bool includeReplay = true)
+            bool replayContext = false)
         {
             GamepadButtons modifiers = 0, used = 0;
             ulong result = 0;
-            IEnumerable<PadAction> actions = includeReplay
-                ? ActionOrder : GameplayActionOrder;
+            IEnumerable<PadAction> actions = replayContext
+                ? ReplayActionOrder.Append(PadAction.Menu) : GameplayActionOrder;
             foreach (var action in actions) for (int slot = 0; slot < 2; slot++)
             {
                 var modifier = Modifier(action, slot); var button = Slot(action, slot);
@@ -145,11 +145,11 @@ namespace MphRead.Mods.Input
             }
             return result;
         }
-        public GamepadButtons ChordButtons(GamepadButtons buttons, bool includeReplay = true)
+        public GamepadButtons ChordButtons(GamepadButtons buttons, bool replayContext = false)
         {
             GamepadButtons used = 0;
-            IEnumerable<PadAction> actions = includeReplay
-                ? ActionOrder : GameplayActionOrder;
+            IEnumerable<PadAction> actions = replayContext
+                ? ReplayActionOrder.Append(PadAction.Menu) : GameplayActionOrder;
             foreach (var action in actions) for (int slot = 0; slot < 2; slot++)
             {
                 var modifier = Modifier(action, slot); var chord = modifier | Slot(action, slot);
