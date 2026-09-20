@@ -1911,7 +1911,7 @@ namespace MphRead.Mods.Launcher.Gui
                     _list.AddNote(entries.Count == 0
                         ? "Nothing recorded yet."
                         : "No replays match the current search and filters.");
-                    _go.IsEnabled = _replayViewIndex == 1;
+                    _go.IsEnabled = false;
                     _note.Text = entries.Count == 0
                         ? "Nothing recorded yet. Record a replay from the pause menu, or save an instant clip."
                         : "No replays match the current search and filters.";
@@ -1925,13 +1925,6 @@ namespace MphRead.Mods.Launcher.Gui
                     _go.IsEnabled = true;
                     _note.Text = $"{shown.Length} of {entries.Count} replay"
                         + $"{(entries.Count == 1 ? "" : "s")} shown";
-                }
-
-                if (_replayViewIndex == 1)
-                {
-                    _list.Add(new UiListRow("Open a file...",
-                        "browse for a replay somewhere else on this device")
-                    { Choice = _import });
                 }
 
                 ApplyView();
@@ -2137,18 +2130,8 @@ namespace MphRead.Mods.Launcher.Gui
             Populate();
         }
 
-        /// <summary>The stand-in choice that means "ask the system picker instead".</summary>
-        private static readonly object _import = new();
-
         private async Task PlayDemo()
         {
-            if (_replayViewIndex == 1
-                && (_list.Selected as UiListRow)?.Choice is object choice
-                && ReferenceEquals(choice, _import))
-            {
-                await ImportDemo();
-                return;
-            }
             if (SelectedReplayPath() is string path)
                 await Watch(path);
         }
