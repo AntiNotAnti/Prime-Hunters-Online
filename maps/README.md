@@ -43,8 +43,8 @@ makes a map something you can send, and what a downloader will want when a
 server starts offering its maps to the players joining it.
 
 ```
-FruityPrime -mapbundle           # cook every map beside the executable
-FruityPrime -mapbundle DUST2 -mapdir maps
+ProjectPrime -mapbundle           # cook every map beside the executable
+ProjectPrime -mapbundle DUST2 -mapdir maps
 ```
 
 The folder is what a map is *worked on* as; the bundle is what leaves. Bundles
@@ -62,6 +62,6 @@ guard refuses by name. Everything else is a judgement for whoever commits it:
 publish a level you have the right to publish.
 
 The format, the Quake 3 importer and the traps are in
-`../.claude/mapgen/MAP-PIPELINE.md`. `FruityPrime -mapgen` builds every map in
-this folder; `FruityPrime -mapmaterials "MP3 PROVING GROUND"` prints the
+`../.claude/mapgen/MAP-PIPELINE.md`. `ProjectPrime -mapgen` builds every map in
+this folder; `ProjectPrime -mapmaterials "MP3 PROVING GROUND"` prints the
 textures a shipped room can lend.

@@ -1,5 +1,5 @@
 {
-  "//": "de_dust2, by way of the DeFRaG level df_dust2. Put your own df_dust2.pk3 in this folder -- nothing here downloads it -- and the game builds the room on next start. Made with: FruityPrime -q3convert df_dust2.pk3 -map df_dust2 -name DUST2 -noclip",
+  "//": "de_dust2, by way of the DeFRaG level df_dust2. Put your own df_dust2.pk3 in this folder -- nothing here downloads it -- and the game builds the room on next start. Made with: ProjectPrime -q3convert df_dust2.pk3 -map df_dust2 -name DUST2 -noclip",
   "name": "DUST2",
   "inGameName": "Dust II",
   "scaleFactor": 4,
