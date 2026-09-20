@@ -125,7 +125,7 @@ moving" is a jump every 90 frames, and the case the whole question turns on is a
 target crossing fast *and* vertically -- which on a 0.30-unit headshot band is
 where a frame of disagreement between two machines is the whole band. The two
 maps differ by the pads and the ceiling and by nothing else, so TEST ARENA is
-its control. Regenerate with `FruityPrime -mapgen "TEST PADS"`; `-maptest
+its control. Regenerate with `ProjectPrime -mapgen "TEST PADS"`; `-maptest
 "TEST PADS" -players 4` reports `jumppads 4 (4/4 launched)` when it is working.
 
 **It earned its keep on the first run.** The same scenario at a 320 ms round
@@ -165,7 +165,7 @@ still prints authority claim and client smoothing lines, which is why it remains
 valuable for reproducing the dated tables below.
 
 **`stage.sh` is not a convenience.** .NET maps its assemblies into memory, so a
-rebuild that replaces `FruityPrime.dll` while a run is in flight takes every
+rebuild that replaces `ProjectPrime.dll` while a run is in flight takes every
 client and the server down mid-match, silently, leaving empty logs and a
 summary that reads as "the scenario produced nothing". Two runs were lost that
 way before it existed.

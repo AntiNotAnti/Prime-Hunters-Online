@@ -445,9 +445,9 @@ One source image, chroma-keyed and cropped into four files under
 
 | File | What | Used by |
 |---|---|---|
-| `fruity-prime-logo.png` | the wordmark, cherry and text together | the game-files card, the Android screen and the README |
-| `fruity-prime-mark.png` | the cherry alone | the window icon |
-| `fruity-prime.ico`, `fruity-prime-server.ico` | ICO frames for Windows | `ApplicationIcon` |
+| `project-prime-logo.png` | the wordmark, cherry and text together | the game-files card, the Android screen and the README |
+| `project-prime-mark.png` | the cherry alone | the window icon |
+| `project-prime.ico`, `project-prime-server.ico` | ICO frames for Windows | `ApplicationIcon` |
 
 Notes on ICOs: 256×256 is the ICO format's ceiling; the source crop carries
 detail up to ~460 px so 256 is a downsample.

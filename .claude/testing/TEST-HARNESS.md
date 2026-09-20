@@ -8,8 +8,8 @@ A basic multi-client test needs only a current build, operator-supplied game
 files and a reachable current server. Start separate clients with, for example,
 
 ```bash
-./FruityPrime -netcheck HOST -port N -name ALPHA -hunter Samus -seconds 120
-./FruityPrime -netcheck HOST -port N -name BRAVO -hunter Sylux -seconds 120
+./ProjectPrime -netcheck HOST -port N -name ALPHA -hunter Samus -seconds 120
+./ProjectPrime -netcheck HOST -port N -name BRAVO -hunter Sylux -seconds 120
 ```
 
 and compare what each client says it did with what the others observed.
