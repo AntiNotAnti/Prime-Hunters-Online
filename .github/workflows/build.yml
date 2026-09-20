@@ -1,5 +1,7 @@
-# Build every target on every push, and refuse to publish anything that came
-# out of the cartridge.
+# Build every target on every push using the repository's self-hosted runner
+# fleet, and refuse to publish anything that came out of the cartridge.
+# Standard GitHub self-hosted labels are used so jobs stay pinned to the
+# correct OS/architecture: linux/windows/macos + x64/ARM64.
 #
 # The guard runs twice on purpose: once over what git is tracking, and once
 # over what the build produced. The first catches a map preview committed by
@@ -25,7 +27,7 @@ concurrency:
 jobs:
   assets:
     name: no game assets
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v7
       - name: nothing from the game is tracked
@@ -35,12 +37,21 @@ jobs:
         run: tools/check-maps-shipped.sh
 
   controller-checks:
-    name: input regressions (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: input regressions (${{ matrix.name }})
+    runs-on: [self-hosted, "${{ matrix.os }}", "${{ matrix.arch }}"]
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, macos-15-intel]
+        include:
+          - name: windows-x64
+            os: windows
+            arch: x64
+          - name: macos-arm64
+            os: macOS
+            arch: ARM64
+          - name: macos-x64
+            os: macOS
+            arch: x64
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
@@ -54,7 +65,7 @@ jobs:
   build:
     name: ${{ matrix.id }}
     needs: assets
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     strategy:
       fail-fast: false
       matrix:
@@ -226,15 +237,15 @@ jobs:
   macos:
     name: macOS ${{ matrix.rid }}
     needs: assets
-    runs-on: ${{ matrix.runner }}
+    runs-on: [self-hosted, macOS, "${{ matrix.arch }}"]
     strategy:
       fail-fast: false
       matrix:
         include:
           - rid: osx-arm64
-            runner: macos-latest
+            arch: ARM64
           - rid: osx-x64
-            runner: macos-15-intel
+            arch: x64
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
@@ -286,7 +297,7 @@ jobs:
   android:
     name: android
     needs: assets
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v7
 
@@ -402,7 +413,7 @@ jobs:
   windows-server:
     name: win-x64 dedicated server
     needs: assets
-    runs-on: windows-latest
+    runs-on: [self-hosted, windows, x64]
     steps:
       - uses: actions/checkout@v7
 
