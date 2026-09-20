@@ -8,7 +8,7 @@ case "$2" in
     osx-x64) arch=x86_64 ;;
     *) echo "error: unsupported RID: $2" >&2; exit 1 ;;
 esac
-[[ -x "$root/FruityPrime" ]] || { echo 'error: FruityPrime is not executable' >&2; exit 1; }
+[[ -x "$root/ProjectPrime" ]] || { echo 'error: ProjectPrime is not executable' >&2; exit 1; }
 [[ -f "$root/libopenal.1.dylib" ]] || { echo 'error: missing OpenAL' >&2; exit 1; }
 list=$(mktemp)
 entitlements=$(mktemp)
@@ -17,7 +17,7 @@ find "$root" -type f -print0 > "$list"
 while IFS= read -r -d '' component; do
     description=$(file -b "$component")
     if [[ "$description" != *Mach-O* ]]; then
-        if [[ "$component" == *.dylib || "$component" == "$root/FruityPrime" ]]; then
+        if [[ "$component" == *.dylib || "$component" == "$root/ProjectPrime" ]]; then
             echo "error: not Mach-O: $component" >&2
             exit 1
         fi
@@ -29,7 +29,7 @@ while IFS= read -r -d '' component; do
     otool -L "$component"
     codesign --verify --strict --verbose=4 "$component"
 done < "$list"
-codesign -d --entitlements :- "$root/FruityPrime" > "$entitlements"
+codesign -d --entitlements :- "$root/ProjectPrime" > "$entitlements"
 cat "$entitlements"
 # Bash 3.2 does not reliably apply errexit to a failed [[ ... ]] command.
 # Both an unreadable plist and a false/missing entitlement must fail explicitly.
