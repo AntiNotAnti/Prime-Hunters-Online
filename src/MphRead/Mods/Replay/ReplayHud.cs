@@ -120,12 +120,17 @@ namespace MphRead.Mods.Replay
             else if (ReplayController.State == ReplayState.Error)
             {
                 Text(scene, 49, 183, "Replay playback error", controlsAlpha, 207);
-                Text(scene, 49, 188, "Esc: open Replay Studio", controlsAlpha, 207);
+                Text(scene, 49, 188, "Esc: menu, then Replay Studio", controlsAlpha, 207);
             }
             else if (InputSourceTracker.Current == InputSource.Gamepad)
             {
                 Text(scene, 49, 183, "A: play/pause   D-pad L/R: seek", controlsAlpha, 207);
                 Text(scene, 49, 188, "D-pad U/D: speed   X: step", controlsAlpha, 207);
+            }
+            else if (InputSourceTracker.Current == InputSource.Touch)
+            {
+                Text(scene, 49, 183, "PLAY/PAUSE   -5S / +5S", controlsAlpha, 207);
+                Text(scene, 49, 188, "MENU: full Replay Studio", controlsAlpha, 207);
             }
             else
             {
