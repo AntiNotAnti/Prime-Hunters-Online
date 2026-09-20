@@ -1,5 +1,7 @@
 # Project Prime
 
+<img src="src/MphRead/Assets/project-prime-mark.png" alt="Project Prime logo" width="160">
+
 **Metroid Prime Hunters on PC, macOS, Linux and Android.** Online matches support up to 8 players, widescreen/high-resolution rendering, a fixed 60 Hz gameplay simulation, and high-refresh presentation.
 
 A fork of [NoneGiven/MphRead](https://github.com/NoneGiven/MphRead).
@@ -35,7 +37,6 @@ A fork of [NoneGiven/MphRead](https://github.com/NoneGiven/MphRead).
 
 If you enjoy it: **[ko-fi.com/livetek](https://ko-fi.com/livetek)** ☕
 
-<img width="500" height="300" alt="Project Prime" src="https://github.com/user-attachments/assets/ec6a2871-2b67-4de0-8b1a-ac6740c8d388" />
 
 ## Getting started
 
