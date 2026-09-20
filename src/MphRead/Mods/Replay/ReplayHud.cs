@@ -114,8 +114,14 @@ namespace MphRead.Mods.Replay
             float controlsAlpha = Math.Max(alpha, 0.72f);
             if (ReplayController.AtEnd)
             {
-                Text(scene, 49, 183, "Space/A: restart replay", controlsAlpha, 207);
-                Text(scene, 49, 188, "Home: restart   Esc: menu", controlsAlpha, 207);
+                string restart = InputSourceTracker.Current switch
+                {
+                    InputSource.Gamepad => Pad(PadAction.ReplayPlayPause),
+                    InputSource.Touch => "PLAY",
+                    _ => Key(InputSettings.ReplayPlayPauseKey)
+                };
+                Text(scene, 49, 183, $"{restart}: restart replay", controlsAlpha, 207);
+                Text(scene, 49, 188, "Esc/Menu: Replay Studio", controlsAlpha, 207);
             }
             else if (ReplayController.State == ReplayState.Error)
             {
