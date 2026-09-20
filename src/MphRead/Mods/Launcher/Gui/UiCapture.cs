@@ -158,6 +158,9 @@ namespace MphRead.Mods.Launcher.Gui
                 new StartScreen(settings, rooms), _phonePortrait);
             yield return ("start-phone-landscape",
                 new StartScreen(settings, rooms), _phoneLandscape);
+            yield return ("deploy", new HubPlayView(), _windowSize);
+            yield return ("deploy-phone-portrait", new HubPlayView(), _phonePortrait);
+            yield return ("deploy-phone-landscape", new HubPlayView(), _phoneLandscape);
             // Every face of the one screen that replaced seven. They share a
             // layout and nothing else -- the list, the settings beside it and
             // the word on the tick are different on each -- so one picture of
