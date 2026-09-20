@@ -49,8 +49,8 @@ The command does not generate missing custom-map binaries.
 Run from the configured output directory, first 100 cycles, then 500:
 
 ```powershell
-dotnet .\FruityPrime.dll -respawnrendercheck "MP3 PROVING GROUND" -cycles 100 -timeout 1800
-dotnet .\FruityPrime.dll -respawnrendercheck "MP3 PROVING GROUND" -cycles 500 -timeout 3600
+dotnet .\ProjectPrime.dll -respawnrendercheck "MP3 PROVING GROUND" -cycles 100 -timeout 1800
+dotnet .\ProjectPrime.dll -respawnrendercheck "MP3 PROVING GROUND" -cycles 500 -timeout 3600
 ```
 
 The timeout is wall seconds. Default cycles/timeout are 100/1800; bounds are

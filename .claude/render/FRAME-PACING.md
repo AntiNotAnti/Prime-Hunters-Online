@@ -163,12 +163,12 @@ which is why it goes to the debug log.
 
 Neither half needs a 144 Hz monitor.
 
-**`FruityPrime -frametimingcheck`** runs the accumulator alone against frame
+**`ProjectPrime -frametimingcheck`** runs the accumulator alone against frame
 times chosen rather than measured. The half that can silently be wrong is
 arithmetic: a game running at 60.4 Hz loses a second every two and a half
 minutes, is invisible in a screenshot, and is fatal to a match clock.
 
-**`FruityPrime -maptest "ROOM" -players 8 -drawrate N`** draws each simulation
+**`ProjectPrime -maptest "ROOM" -players 8 -drawrate N`** draws each simulation
 step N times, which is what a 144 Hz screen does to a 60 Hz game. It asserts the
 one thing that can silently be wrong: that the simulation's frame counter did
 not move during a draw (`draws advancing the game: 0` -- any other number is a
@@ -187,7 +187,7 @@ button was the one screen no check had ever drawn.
 holds it open over two windows of each run. A run that never drew it is a
 `MAPFAIL`, so the coverage cannot quietly go away.
 
-**`FruityPrime -room "ROOM" -fpscap N -debuglog`** is how the *output* rate is
+**`ProjectPrime -room "ROOM" -fpscap N -debuglog`** is how the *output* rate is
 confirmed to be what it claims. The log's `frametiming` lines carry both rates
 and the steps-per-frame histogram, and the histogram is the proof: a frame that
 ran **zero** simulation steps is a picture that a 60 Hz loop would never have

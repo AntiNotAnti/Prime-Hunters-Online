@@ -171,7 +171,7 @@ Three instruments, in order of how much they are worth:
 
 ```bash
 # Inside the client. Per-process, no sudo, no extra hop, works against the Pi.
-FruityPrime -netcheck net.livetek.fr -port 27888 ... -netlag 200:20 -netloss 2
+ProjectPrime -netcheck 51.161.113.128 -port 27888 ... -netlag 200:20 -netloss 2
 ./hard/run-netlag.sh 150 0 0 150 150 300   # one match, five different lines
 
 # In the kernel, on this box's interface. Everything this machine sends.
@@ -555,7 +555,7 @@ and that changes what a hit *is*, so it is not something to do quietly.
 
 ## Traps
 
-- `run-check.sh` copied `MphRead.dll`, which the rename to `FruityPrime` deleted,
+- `run-check.sh` copied `MphRead.dll`, which the rename to `ProjectPrime` deleted,
   with `2>/dev/null`. Every run silently tested a stale binary. Fixed in both
   runners.
 - The Pi was running **protocol 4** while the notes claimed protocol 3. A
