@@ -90,7 +90,43 @@ The netlog couldn't show any of this and now can: `STATE` lines carry
 `score=<points>/<teampoints>p <kills>k<deaths>d` -- which is what made the
 double count visible as `1/2p` in a single line.
 
+## Persistent lobby lifecycle (2026-09-20)
+
+Persistent lobbies now use the lobby itself as the between-match decision
+point. After the normal winner camera and results report, a
+`ServerSessionPolicy.Lobby` session goes `PostMatch -> Lobby` on the same UDP
+session. It does **not** open the results map ballot and it does not
+automatically start another match. The launcher sees `IsInLobby`, tears down
+the rendered match, and exposes the same lobby with the same connected slots.
+The owner starts the next round explicitly. Continuous-rotation servers keep
+their existing post-match rotation and ballot behavior.
+
+The lifecycle cleanup is deliberately server-owned:
+
+- A voluntary `Bye` and a timeout both converge on `Remove`, so roster,
+  load-barrier masks, owner migration, votes and simulation cleanup share one
+  path.
+- If the last player leaves a standalone persistent lobby while it is
+  `Starting`, `InMatch` or `PostMatch`, the abandoned world is stopped
+  immediately and the server returns to a clean empty lobby. A later joiner
+  can never inherit the previous match.
+- If the last player leaves a launcher/directory-hosted lobby, the child server
+  exits immediately instead of waiting for the host-pool reap grace. Shutdown
+  sends the directory Farewell and releases the port.
+- Process ownership follows lobby ownership when the hosted owner disconnects
+  or explicitly transfers ownership. Otherwise a surviving lobby owner could
+  close the room but leave an ownerless child process behind.
+- Returning to the lobby finalizes the canonical replay, stops the
+  authoritative simulation, clears the hit-verdict sink, load masks, map
+  ballot and mid-match vote state. No per-match state is allowed to leak into
+  the next round.
+
 ## The next map, voted on the results screen (2026-09-13)
+
+This ballot is now **continuous-session only**. Persistent lobby sessions do
+not open it; they show the report/hunter picker and then return to the lobby,
+where the next map and settings can be changed before another explicit start.
+The mid-match vote remains available in both policies.
 
 `callvote map`, moved to the one moment nobody is playing. The mid-match vote
 (`MapVote`, `PacketType.Vote`/`VoteState`, F1/F2) is unchanged and still there;
