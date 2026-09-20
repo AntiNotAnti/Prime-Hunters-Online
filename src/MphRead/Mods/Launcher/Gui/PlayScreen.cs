@@ -1323,41 +1323,25 @@ namespace MphRead.Mods.Launcher.Gui
             string name = _name != null && _name.Value.Trim().Length > 0
                 ? _name.Value.Trim() : PlayerName();
             var hunter = (Hunter)Enum.Parse(typeof(Hunter), _hunter!.Value);
+            int suit = _suit?.Index ?? LauncherPrefs.LastColor;
             StopPolling();
             _go.IsEnabled = false;
             _go.Label = "joining";
             _note.Text = $"Connecting to {host}:{port}...";
             _note.Foreground = GuiTheme.TextDimBrush;
 
-            LauncherPrefs.PlayerName = name;
-            LauncherPrefs.LastHunter = hunter;
-            LauncherPrefs.ServerAddress = host;
-            LauncherPrefs.ServerPort = port;
-            LauncherPrefs.LastKind = (int)LaunchKind.Online;
-            LauncherPrefs.Save();
-
-            // Joining blocks for up to eight seconds while it retries; on the
-            // UI thread that is eight seconds of a screen that does not redraw.
-            bool joined = await Task.Run(() => NetLaunch.Connect(host, port, name, hunter));
+            OnlineJoinResult result = await ServerBrowserService.JoinAsync(
+                host, port, name, hunter, suit);
             _go.IsEnabled = true;
             _go.Label = "join";
-            if (!joined)
+            if (!result.Joined)
             {
-                NetSession.Stop();
-                _note.Text = NetLaunch.LastJoinError;
+                _note.Text = result.Error;
                 _note.Foreground = GuiTheme.BadBrush;
                 StartPolling();
                 return;
             }
-            Finish(new LaunchPlan
-            {
-                Kind = LaunchKind.Online,
-                Hunter = hunter,
-                PlayerName = name,
-                RoomKey = "",
-                Mode = GameMode.Battle,
-                Port = port
-            });
+            Finish(result.Plan);
         }
 
         // ------------------------------------------------------------- offline
