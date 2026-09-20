@@ -45,6 +45,19 @@ namespace MphRead.Mods.Launcher.Gui
             GamepadChecks.Check(desktopPlay!.IsFocused,
                 "FPS hub desktop navigation establishes focus on Play");
 
+            HubDestination? clickedHubDestination = null;
+            hub.NavigateRequested += destination => clickedHubDestination = destination;
+            Point? desktopPlayOrigin = desktopPlay.TranslatePoint(new Point(), window);
+            GamepadChecks.Check(desktopPlayOrigin.HasValue,
+                "FPS hub Play has a window-space pointer target");
+            Point clickPoint = desktopPlayOrigin!.Value
+                + new Vector(desktopPlay.Bounds.Width / 2, desktopPlay.Bounds.Height / 2);
+            window.MouseMove(clickPoint);
+            window.MouseDown(clickPoint, Avalonia.Input.MouseButton.Left);
+            window.MouseUp(clickPoint, Avalonia.Input.MouseButton.Left);
+            GamepadChecks.Check(clickedHubDestination == HubDestination.Play,
+                "FPS hub pointer click activates Play");
+
             window.Width = 700; window.Height = 480;
             window.UpdateLayout(); Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
             var compactPlay = ControllerNav.Find(hub, "hub.compact.play");

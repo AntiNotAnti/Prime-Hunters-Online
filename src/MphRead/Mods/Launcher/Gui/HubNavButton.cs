@@ -25,6 +25,7 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly bool _primary;
         private bool _pointer;
         private bool _pressed;
+        private readonly Tap _tap = new();
 
         public event EventHandler? Click;
         public string Label
@@ -109,6 +110,16 @@ namespace MphRead.Mods.Launcher.Gui
             base.OnPointerExited(e);
         }
 
+        protected override void OnPointerMoved(PointerEventArgs e)
+        {
+            if (_tap.Down && _tap.Moved(e, this))
+            {
+                _pressed = false;
+                RefreshVisual();
+            }
+            base.OnPointerMoved(e);
+        }
+
         protected override void OnPointerPressed(PointerPressedEventArgs e)
         {
             if (!IsEffectivelyEnabled)
@@ -116,6 +127,7 @@ namespace MphRead.Mods.Launcher.Gui
                 base.OnPointerPressed(e);
                 return;
             }
+            _tap.Press(e, this);
             _pressed = true;
             Focus();
             e.Pointer.Capture(this);
@@ -126,9 +138,8 @@ namespace MphRead.Mods.Launcher.Gui
 
         protected override void OnPointerReleased(PointerReleasedEventArgs e)
         {
-            bool click = _pressed && IsPointerOver && IsEffectivelyEnabled;
+            bool click = IsEffectivelyEnabled && _tap.Release(e, this);
             _pressed = false;
-            e.Pointer.Capture(null);
             RefreshVisual();
             if (click)
             {
@@ -140,6 +151,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
         {
+            _tap.Cancel();
             _pressed = false;
             RefreshVisual();
             base.OnPointerCaptureLost(e);
