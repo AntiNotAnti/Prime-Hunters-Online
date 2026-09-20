@@ -1,17 +1,17 @@
-# Prime Hunters Online — tools, design, and mechanics catalogue
+# Project Prime — tools, design, and mechanics catalogue
 
 **Read `ARCHITECTURE-INVARIANTS.md` before changing architecture. Current code
 and tests outrank prose.** The public project/repository is Prime Hunters
 Online. The C# namespace remains `MphRead` for upstream mergeability, while
-existing runtime compatibility identifiers still include `FruityPrime`,
-`FruityPrimeServer` and the legacy Android package id. Do not rename those as
+existing runtime compatibility identifiers still include `ProjectPrime`,
+`ProjectPrimeServer` and the legacy Android package id. Do not rename those as
 part of unrelated work; updater/package identity needs a deliberate migration.
 
 | Build | Binary |
 |---|---|
-| Windows game | `FruityPrime.exe` |
-| Windows server | `FruityPrimeServer.exe` |
-| Linux game, Linux and ARM64 server | `FruityPrime` |
+| Windows game | `ProjectPrime.exe` |
+| Windows server | `ProjectPrimeServer.exe` |
+| Linux game, Linux and ARM64 server | `ProjectPrime` |
 
 This file exists so a fresh session can pick work up without rediscovering the
 architecture and failure modes. Dated measurements below are historical
@@ -42,10 +42,10 @@ export MESA_GL_VERSION_OVERRIDE=4.5COMPAT  # else Mesa hands out a Core profile
 export ALSOFT_DRIVERS=null PULSE_SERVER=   # else ALSA retries stall frames
 ```
 
-- **`DOTNET_ROOT` is what the built `./FruityPrime` needs, and `PATH` is not.**
+- **`DOTNET_ROOT` is what the built `./ProjectPrime` needs, and `PATH` is not.**
   The apphost looks for `libhostfxr.so` under `DOTNET_ROOT` or a system install,
   neither of which exists here, so running the binary directly dies with *"You
-  must install .NET to run this application"* while `dotnet FruityPrime.dll`
+  must install .NET to run this application"* while `dotnet ProjectPrime.dll`
   from the same directory works. Either export it or run through `dotnet`.
 
 - If `~/.dotnet` is empty, the SDK is not installed at all:
@@ -89,9 +89,9 @@ export ALSOFT_DRIVERS=null PULSE_SERVER=   # else ALSA retries stall frames
 | Command | Use |
 |---|---|
 | `MphRead -server ... -noshadowfreeze` | run the room with the Judicator's ice wave as a cone rather than as a column of infinite height. A rule, broadcast to every client in the match state, because the machine resolving a shot decides who it hit |
-| `MphRead -server -port N -players 8` | dedicated **authoritative** server: it runs the match itself, so it needs the game files and `paths.txt` beside the binary, and it refuses to start without them. `-simulate`/`-authority` are accepted and do nothing. `-servername "NAME"` is what a browser shows; it announces itself to `net.livetek.fr` unless `-nomaster` is passed, and `-master HOST -masterport N` points it elsewhere. `-affinityweapons` is a **match rule broadcast to every client**, not a local preference: the affinity weapons are a different row of the damage table, so a client playing by its own settings ran a victim's health down at a different rate from the machine keeping score. The **damage level is pinned to medium (x1) everywhere** and has no flag -- it multiplied every weapon's damage and was the one rule each machine read out of its own file |
+| `MphRead -server -port N -players 8` | dedicated **authoritative** server: it runs the match itself, so it needs the game files and `paths.txt` beside the binary, and it refuses to start without them. `-simulate`/`-authority` are accepted and do nothing. `-servername "NAME"` is what a browser shows; it announces itself to `51.161.113.128` unless `-nomaster` is passed, and `-master HOST -masterport N` points it elsewhere. `-affinityweapons` is a **match rule broadcast to every client**, not a local preference: the affinity weapons are a different row of the damage table, so a client playing by its own settings ran a victim's health down at a different rate from the machine keeping score. The **damage level is pinned to medium (x1) everywhere** and has no flag -- it multiplied every weapon's damage and was the one rule each machine read out of its own file |
 | `MphRead -simcheck "ROOM" [-players N] [-seconds N]` | what a room costs a server: peak memory, milliseconds a simulation step, and whether every slot spawned. Runs the headless engine with nobody connected. The measurement that decides whether a given box can be the authority for a given map |
-| `FruityPrimeServer.exe -server ...` | the authoritative server on Windows, as its own console binary. `FruityPrime.exe` also contains the command path, but it is a GUI binary: a shell will not wait for it and its exit code never reaches `%ERRORLEVEL%`. Run with no arguments it prints what it is for |
+| `ProjectPrimeServer.exe -server ...` | the authoritative server on Windows, as its own console binary. `ProjectPrime.exe` also contains the command path, but it is a GUI binary: a shell will not wait for it and its exit code never reaches `%ERRORLEVEL%`. Run with no arguments it prints what it is for |
 | `MphRead -masterserver [-port N] [-public HOST] [-hostports A-B]` | the directory the launcher/browser asks. Directory-only listing/query work needs no game files. If `-hostports` is enabled, it may also start isolated authoritative game-server children, and **that hosting capability does require access to the operator's extracted game files**. `-public` is the address published for servers registering from the same machine |
 | `MphRead -hostgame "ROOM" [-mode M] [-maprotation "A,B,C"] [-master HOST]` | ask the directory to run a match and join it. No port forwarding anywhere; the only way to host from a machine with no launcher. `-maprotation` is the rest of the cycle, comma separated -- the map named by `-hostgame` is always first, so the two cannot disagree about what starts |
 | `MphRead -hostlocal "A,B,C" [-mode M] [-servername N] [-seconds N]` | the launcher's create-server screen, **Dedicated** half, with no launcher: start a server on this machine, on the first free port from 27888, and report where it landed. The one path in that feature a rendered screen cannot check -- it spawns a process, writes a rotation, copies `paths.txt` and waits for a socket, and each of those fails differently on a headless box |
@@ -102,7 +102,7 @@ export ALSOFT_DRIVERS=null PULSE_SERVER=   # else ALSA retries stall frames
 | `MphRead -netcheck HOST -port N -name X -hunter H -seconds N [-shots DIR] [-size WxH]` | a real client driven by a script, which reports what it saw. Exit code 0 = pass. `-spectate [SEC]` makes it stop playing and watch, `-rejoin SEC` puts it back in -- the one player state the tour cannot reach on its own. `-mapvote N` votes on the results screen's map list -- agreeing with whatever is in front, proposing row N when nothing is -- and is **off** unless asked, since a scripted client that votes changes what a real server plays next and the hard-case batch runs against the public one. `-hudshots` opens a real window and photographs *it*, which is the only capture that carries the HUD: a results screen is HUD and nothing else |
 | `MphRead -netlag MS[:JITTER]` / `-netloss PCT` | play, or run any check, over a line this client makes up: `-netlag 200` adds 200 ms to the round trip (half each way), `-netlag 200:40` gives it jitter, `-netloss 5` eats one datagram in twenty. Works against the real server, on any platform, with no proxy and no `sudo` -- and unlike `hard/run-latency.sh`'s netem it can be given to **one** client while the others stay fast, which is the case a player with a bad line actually is. Every report says so when it is on |
 | `MphRead -nounlagged` | resolve shots against the present, the way every build before lag compensation did. The control for measuring it; on by default. `.claude/multiplayer/NETWORK-UNLAGGED.md` |
-| `FruityPrime -nohitprediction` / `-nohitmarker` | disable local outgoing-hit prediction; or disable only the confirmation marker. Prediction is on by default. Remote lethal hits are always held at 1 HP until authority confirmation; `-deathprediction` and `-nodeathprediction` are accepted compatibility no-ops. Self-damage/self-death remains locally predictable. `.claude/multiplayer/NETWORK-PREDICTION.md` |
+| `ProjectPrime -nohitprediction` / `-nohitmarker` | disable local outgoing-hit prediction; or disable only the confirmation marker. Prediction is on by default. Remote lethal hits are always held at 1 HP until authority confirmation; `-deathprediction` and `-nodeathprediction` are accepted compatibility no-ops. Self-damage/self-death remains locally predictable. `.claude/multiplayer/NETWORK-PREDICTION.md` |
 | `MphRead -noclaims` | stop a client telling the authority which of its own shots landed. On by default: a hit the authority's own rewind cannot find -- because the rewind hit its ceiling, because the trigger pull was recovered from a press history, or because **the shooter was killed during the round trip and the authority never ran the shot at all** -- is declared, checked against the authority's own history, and either applied or refused with a reason. That last case is the one a player calls unfair rather than laggy, and the rule it is answered by is: a shot counts unless its shooter had already been put down by a hit aimed at a strictly earlier world, and two shots aimed at the same world both count. Every weapon, not just the Imperialist. `.claude/multiplayer/NETWORK-HITCLAIMS.md` |
 | `MphRead -nointerp` / `-relayedpuppets` | draw remote players by snapping them to whichever snapshot arrived last, the way every build before protocol 7 did, instead of reading them off a playout clock held a few frames behind. Interpolation is on by default and is why opponents on a bad line move instead of stuttering; it costs a few frames of extra rewind and gives nothing up in hit registration, because the read point travels in the intent as a sub-frame ack and the authority rewinds to exactly it. `-relayedpuppets` also hands puppet positions back to the owner's relayed intent, which is the full protocol-6 arm. `.claude/multiplayer/NETWORK-SMOOTHING.md` |
 | `MphRead -maxrewind N` | the furthest back a shot may be resolved, in frames. **45 (750 ms)** by default since protocol 7, against 24 (400 ms) before it: at a 320 ms round trip with jitter the old ceiling was clamping **89% of shots**, with the requested-depth distribution's mode two frames past it. `.claude/multiplayer/NETWORK-UNLAGGED.md` |
@@ -145,11 +145,11 @@ export ALSOFT_DRIVERS=null PULSE_SERVER=   # else ALSA retries stall frames
 | `MphRead` (no arguments, Windows or macOS) | the front screen. The Windows build is a GUI binary, so double-clicking it opens the launcher with no terminal behind it |
 | `MphRead -menu` | the console menu, for people who typed something |
 | `MphRead -launcher [-console]` | the front screen explicitly; `-console` also gives it a terminal. The same Avalonia screen on Windows, Linux and macOS, or the text one when there is no display. A bare `MphRead` on Linux still opens upstream's `-menu` prompts, unchanged |
-| `FruityPrime -launcher -text` | the text front screen on a machine that has a display. What an SSH session gets anyway |
-| `FruityPrime -update` | check GitHub for a newer release and open its page. Installs nothing; the one command that answers "am I on the latest build" |
-| `FruityPrime -noupdate` | do none of that, on any command that would have |
-| `FruityPrime -server ... -noautoupdate` | keep a dedicated server on the build it was started with. It updates itself otherwise -- see Updating |
-| `FruityPrime -credits` | who this is built on and who forked it, from `Mods/Credits.cs` -- which also holds the ko-fi address the settings' Credits page offers |
+| `ProjectPrime -launcher -text` | the text front screen on a machine that has a display. What an SSH session gets anyway |
+| `ProjectPrime -update` | check GitHub for a newer release and open its page. Installs nothing; the one command that answers "am I on the latest build" |
+| `ProjectPrime -noupdate` | do none of that, on any command that would have |
+| `ProjectPrime -server ... -noautoupdate` | keep a dedicated server on the build it was started with. It updates itself otherwise -- see Updating |
+| `ProjectPrime -credits` | who this is built on and who forked it, from `Mods/Credits.cs` -- which also holds the ko-fi address the settings' Credits page offers |
 | `MphRead -uinativeres` | rasterise the launcher's screens at the window's own resolution however big it is, rather than capping them at 1080p and magnifying. Sharper type above 1080p, and a much slower redraw -- which only shows while something is moving, so it is a straight choice between crisper menus and menus that scroll |
 | `MphRead -fullscreen` / `-windowed` / `-nohelmet` | display choices for the paths that never open a launcher |
 | `MphRead -windowcheck` | the window's memory, both halves, without anybody watching a window: it opens the shell at a saved size nothing else would produce, then proves that closing it would keep the size it has now. The save half runs *as the window closes*, so a scripted run has no way to reach it otherwise -- and the whole feature fails silently, since a window that opens at the default looks exactly like one that was never resized. Writes nothing; the preference is put back before it returns |
@@ -356,7 +356,7 @@ screen there is.
 The debugging-log switch left the front screen for Settings → Player. It is
 not something anybody came to the launcher for: it is what somebody is asked
 to turn on when they report a crash nobody else can reproduce. Switched on it
-writes `logs/FruityPrime-<when>.log` beside the executable (the app's data
+writes `logs/ProjectPrime-<when>.log` beside the executable (the app's data
 directory on Android) with everything the program prints plus the machine, the
 driver, every model read and the stack of anything that kills it. **Share
 logs** sits under it, only when logs exist, and zips them into the phone's
@@ -554,7 +554,7 @@ no upstream call site changed. Aim is the exception, since a stick is analogue
 -- it goes in at `ApplyModAim`, in the same units and at the same point in the
 frame as the mouse's.
 
-`FruityPrime -gamepad` prints what a pad is doing with no match in the way,
+`ProjectPrime -gamepad` prints what a pad is doing with no match in the way,
 and distinguishes "not connected" from "connected but unmapped". Layout, feel
 (radial dead zone, squared look curve, 3.5 degrees a frame at full stick), the
 four settings, and how to test one with a virtual pad on `uinput`:
@@ -833,8 +833,8 @@ saw.
 Run the current executable directly for durable reproduction:
 
 ```bash
-./FruityPrime -netcheck HOST -port N -name ALPHA -hunter Samus -seconds 150
-./FruityPrime -netcheck HOST -port N -name BRAVO -hunter Sylux -seconds 150
+./ProjectPrime -netcheck HOST -port N -name ALPHA -hunter Samus -seconds 150
+./ProjectPrime -netcheck HOST -port N -name BRAVO -hunter Sylux -seconds 150
 ```
 
 Private/external wrappers such as `run-check.sh` may orchestrate more clients
@@ -898,7 +898,7 @@ split, why only the Windows server is renamed, and the CI runner layout: `.claud
 
 ```bash
 # server and directory (rebuilds ARM64, installs both units, restarts them)
-MPH_SERVER_HOST=net.livetek.fr MPH_SERVER_USER=livetek \
+MPH_SERVER_HOST=51.161.113.128 MPH_SERVER_USER=livetek \
   MPH_SERVER_PASS="$(read -rsp 'pi password: ' p; echo "$p")" ./deploy-server.sh
 # MPH_DEPLOY_MASTER=0 to leave the directory alone
 ```

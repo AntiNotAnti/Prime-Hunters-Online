@@ -5,12 +5,12 @@
 # executable open while it runs, so overwriting it in place fails.
 #
 # Credentials come from the environment, not this file:
-#   MPH_SERVER_HOST=net.livetek.fr MPH_SERVER_USER=livetek ./deploy-server.sh
+#   MPH_SERVER_HOST=51.161.113.128 MPH_SERVER_USER=livetek ./deploy-server.sh
 # With an SSH key installed, no password is needed at all -- which is the
 # setup worth moving to.
 set -euo pipefail
 
-HOST="${MPH_SERVER_HOST:-net.livetek.fr}"
+HOST="${MPH_SERVER_HOST:-51.161.113.128}"
 USER="${MPH_SERVER_USER:-livetek}"
 REMOTE_DIR="${MPH_SERVER_DIR:-/home/$USER/mphread-server}"
 SERVICE="mphread-server"
@@ -25,7 +25,7 @@ STAGE="$ROOT/publish/server-arm64"
 # name under systemd since before the rename. Both names appear below: the new
 # one is what gets installed, the old one is what has to be cleaned up and what
 # the existing units still point at until they are rewritten.
-BINARY="FruityPrime"
+BINARY="ProjectPrime"
 OLD_BINARY="MphRead"
 
 # sshpass is only used when a password is supplied; a key-based setup skips it.
@@ -118,6 +118,6 @@ fi
 
 echo "==> done"
 echo
-echo "The browser in the launcher asks net.livetek.fr:27889 by default."
+echo "The browser in the launcher asks 51.161.113.128:27889 by default."
 echo "That name has to resolve to this machine, and UDP 27889 has to reach it,"
 echo "before any server shows up in anybody's list."

@@ -490,7 +490,7 @@ namespace MphRead.Mods
             // Except in the server package, which has no launcher of either
             // kind and ships without game files: a bare invocation there is
             // answered further down by ServerUsage, which says what the binary
-            // is for. Double-clicking FruityPrimeServer.exe must not open a
+            // is for. Double-clicking ProjectPrimeServer.exe must not open a
             // text launcher offering matches it cannot play.
             doubleClicked = false;
 #endif
