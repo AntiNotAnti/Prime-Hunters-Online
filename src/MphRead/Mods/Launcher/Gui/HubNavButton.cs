@@ -16,7 +16,7 @@ namespace MphRead.Mods.Launcher.Gui
     /// anything changes, so the shell gets its motion from discrete focus and
     /// hover changes while the OpenGL scene remains free to animate underneath.
     /// </summary>
-    internal sealed class HubNavButton : UserControl
+    internal sealed class HubNavButton : ContentControl
     {
         private readonly Border _frame;
         private readonly Border _rail;
