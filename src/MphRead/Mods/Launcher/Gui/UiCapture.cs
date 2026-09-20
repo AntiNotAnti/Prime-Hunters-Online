@@ -164,6 +164,7 @@ namespace MphRead.Mods.Launcher.Gui
             yield return ("deploy", new HubPlayView(), _windowSize);
             yield return ("deploy-phone-portrait", new HubPlayView(), _phonePortrait);
             yield return ("deploy-phone-landscape", new HubPlayView(), _phoneLandscape);
+            yield return ("quick-play", new HubQuickPlayView(preview: true), _windowSize);
             yield return ("hub-servers",
                 new HubServerBrowserView(HubBrowserSample()), _windowSize);
             yield return ("hub-servers-phone-landscape",

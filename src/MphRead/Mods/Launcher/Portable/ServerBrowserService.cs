@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -36,6 +37,12 @@ namespace MphRead.Mods.Launcher
         bool Joined,
         LaunchPlan Plan,
         string Error);
+
+    public readonly record struct QuickPlaySearchResult(
+        bool Found,
+        ServerBrowserEntry Entry,
+        ServerDiscoveryResult Discovery,
+        string Message);
 
     /// <summary>
     /// Application-layer server discovery and joining shared by every launcher
@@ -96,6 +103,42 @@ namespace MphRead.Mods.Launcher
                 live == 1
                     ? "1 server answered."
                     : $"{live} of {listed.Count} servers answered.");
+        }
+
+        public static async Task<QuickPlaySearchResult> FindBestAsync(
+            CancellationToken cancellationToken = default)
+        {
+            var found = new ConcurrentBag<ServerBrowserEntry>();
+            ServerDiscoveryResult discovery = await DiscoverAsync(
+                entry => found.Add(entry), cancellationToken);
+
+            if (cancellationToken.IsCancellationRequested)
+                return new(false, default, discovery, "Cancelled.");
+
+            ServerBrowserEntry[] candidates = found
+                .Where(entry => entry.Live
+                    && entry.Compatible
+                    && (entry.Status.MaxPlayers <= 0
+                        || entry.Status.Players < entry.Status.MaxPlayers))
+                .OrderBy(entry => entry.Status.Latency < 0
+                    ? Int32.MaxValue : entry.Status.Latency)
+                .ThenByDescending(entry => entry.Status.Players)
+                .ToArray();
+
+            if (candidates.Length == 0)
+            {
+                return new(false, default, discovery,
+                    discovery.DirectoryAnswered
+                        ? "No compatible open server answered."
+                        : discovery.Message);
+            }
+
+            ServerBrowserEntry best = candidates[0];
+            string ping = best.Status.Latency >= 0
+                ? $"{best.Status.Latency} ms"
+                : "latency unavailable";
+            return new(true, best, discovery,
+                $"{best.Name} · {ping}");
         }
 
         public static Task<ServerStatus> ProbeAsync(string host, int port,

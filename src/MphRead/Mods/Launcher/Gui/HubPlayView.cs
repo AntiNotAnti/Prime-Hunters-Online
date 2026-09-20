@@ -30,8 +30,8 @@ namespace MphRead.Mods.Launcher.Gui
             var root = new Grid
             {
                 Margin = new Thickness(28, 24, 28, 34),
-                RowDefinitions = new RowDefinitions("Auto,*,Auto"),
-                RowSpacing = 18
+                RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto"),
+                RowSpacing = 12
             };
 
             var heading = new StackPanel { Spacing = 4 };
@@ -52,6 +52,19 @@ namespace MphRead.Mods.Launcher.Gui
             });
             root.Children.Add(heading);
 
+            var quick = new HubNavButton("QUICK PLAY",
+                "Automatically join the lowest-latency compatible server with an open slot.",
+                primary: true, accent: HubTheme.Accent)
+            {
+                MinHeight = 64,
+                HorizontalAlignment = HorizontalAlignment.Stretch
+            };
+            ControllerNav.Identify(quick, "deploy.quickplay", initial: true);
+            quick.Click += (_, _) => Selected?.Invoke(HubPlayDestination.QuickPlay);
+            quick.SetValue(ControllerNav.NavDownProperty, "deploy.online");
+            Grid.SetRow(quick, 1);
+            root.Children.Add(quick);
+
             _cards = new Grid
             {
                 ColumnDefinitions = new ColumnDefinitions("*,*"),
@@ -61,7 +74,7 @@ namespace MphRead.Mods.Launcher.Gui
             };
             HubNavButton online = AddCard(0, 0, "ONLINE",
                 "Browse live public servers and join an active lobby.",
-                "PUBLIC NETWORK", HubPlayDestination.Online, HubTheme.Accent, initial: true);
+                "PUBLIC NETWORK", HubPlayDestination.Online, HubTheme.Accent);
             HubNavButton custom = AddCard(1, 0, "CUSTOM MATCH",
                 "Create a lobby, choose rotation and rules, then invite players.",
                 "HOST / LOBBY", HubPlayDestination.Custom, HubTheme.Warm);
@@ -72,11 +85,11 @@ namespace MphRead.Mods.Launcher.Gui
                 "Continue a save slot or begin a new single-player run.",
                 "STORY", HubPlayDestination.Adventure, Color.FromRgb(0xa7, 0x9b, 0xf5));
 
-            Wire(online, up: "offline", down: "offline", left: "custom", right: "custom");
-            Wire(custom, up: "adventure", down: "adventure", left: "online", right: "online");
+            Wire(online, up: "quickplay", down: "offline", left: "custom", right: "custom");
+            Wire(custom, up: "quickplay", down: "adventure", left: "online", right: "online");
             Wire(offline, up: "online", down: "online", left: "adventure", right: "adventure");
             Wire(adventure, up: "custom", down: "custom", left: "offline", right: "offline");
-            Grid.SetRow(_cards, 1);
+            Grid.SetRow(_cards, 2);
             root.Children.Add(_cards);
 
             var footer = new Grid
@@ -99,7 +112,7 @@ namespace MphRead.Mods.Launcher.Gui
             };
             Grid.SetColumn(note, 1);
             footer.Children.Add(note);
-            Grid.SetRow(footer, 2);
+            Grid.SetRow(footer, 3);
             root.Children.Add(footer);
 
             Content = root;

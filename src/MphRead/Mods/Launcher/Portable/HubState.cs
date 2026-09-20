@@ -21,6 +21,7 @@ namespace MphRead.Mods.Launcher
 
     public enum HubPlayDestination
     {
+        QuickPlay,
         Online,
         Custom,
         Offline,

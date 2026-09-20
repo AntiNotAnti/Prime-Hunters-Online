@@ -58,12 +58,17 @@ namespace MphRead.Mods.Launcher.Gui
             var deployment = new HubPlayView();
             window.Width = 960; window.Height = 660; window.Content = deployment;
             window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            var quickDeploy = ControllerNav.Find(deployment, "deploy.quickplay");
             var onlineDeploy = ControllerNav.Find(deployment, "deploy.online");
-            GamepadChecks.Check(onlineDeploy is { IsEffectivelyVisible: true },
-                "deployment screen exposes Online");
+            GamepadChecks.Check(quickDeploy is { IsEffectivelyVisible: true }
+                && onlineDeploy is { IsEffectivelyVisible: true },
+                "deployment screen exposes Quick Play and Online");
             FocusNavigator.Ensure(deployment);
+            GamepadChecks.Check(quickDeploy!.IsFocused,
+                "deployment screen defaults controller focus to Quick Play");
+            FocusNavigator.Move(deployment, UiAction.Down);
             GamepadChecks.Check(onlineDeploy!.IsFocused,
-                "deployment screen defaults controller focus to Online");
+                "Quick Play moves explicitly into deployment choices");
             FocusNavigator.Move(deployment, UiAction.Right);
             GamepadChecks.Check(ControllerNav.Find(deployment, "deploy.custom")!.IsFocused,
                 "deployment uses explicit controller neighbours");

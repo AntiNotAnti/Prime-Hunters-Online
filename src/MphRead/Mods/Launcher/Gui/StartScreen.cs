@@ -389,6 +389,10 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 switch (destination)
                 {
+                    case HubPlayDestination.QuickPlay:
+                        Pop();
+                        OpenQuickPlay();
+                        break;
                     case HubPlayDestination.Online:
                         Pop();
                         OpenServerBrowser();
@@ -406,6 +410,23 @@ namespace MphRead.Mods.Launcher.Gui
                         _ = OpenPlay(PlayScreen.Face.Story);
                         break;
                 }
+            };
+            Push(view);
+        }
+
+        private void OpenQuickPlay()
+        {
+            var view = new HubQuickPlayView();
+            view.Closed += (_, _) => Pop();
+            view.BrowseRequested += (_, _) =>
+            {
+                Pop();
+                OpenServerBrowser();
+            };
+            view.Launched += (_, plan) =>
+            {
+                Pop();
+                ConnectedOrFinished(plan);
             };
             Push(view);
         }
