@@ -294,7 +294,7 @@ namespace MphRead.Mods.Replay
             if (startFrame >= endFrame) throw new ArgumentOutOfRangeException(nameof(endFrame));
             string source = Path.GetFullPath(sourceReplay);
 
-            // Watching a virtual clip uses a materialized .fpdemo cache. A clip
+            // Watching a virtual clip uses a materialized .ppdemo cache. A clip
             // cut from that should not depend on the cache surviving: flatten it
             // back onto the original replay and rebase the selected frame range.
             string logical = LogicalPath(source);

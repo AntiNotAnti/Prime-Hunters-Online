@@ -64,7 +64,7 @@ namespace MphRead.Mods.Network
         /// that could read one by accident.
         /// </summary>
         public const byte FormatVersion = 2;
-        public const string Extension = ".fpdemo";
+        public const string Extension = ".ppdemo";
 
         /// <summary>Magic, format version, protocol version. Never compressed: it says how to read the rest.</summary>
         public const int HeaderSize = 4 + 1 + 1;

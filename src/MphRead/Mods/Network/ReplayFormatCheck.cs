@@ -59,12 +59,12 @@ namespace MphRead.Mods.Network
                 snapshotPayload.CopyTo(snapshotBytes.AsSpan(1));
                 var currentSnapshotMetadata = new ReplayMetadata { RoomKey = match.RoomKey, Mode = GameMode.Battle,
                     Bootstrap = new ReplayBootstrap { Packets = new[] { sessionBytes, matchBytes, snapshotBytes } } };
-                string currentSnapshot = Path.Combine(directory, "current-snapshot.fpdemo");
+                string currentSnapshot = Path.Combine(directory, "current-snapshot.ppdemo");
                 using (var snapshotWriter = new ReplayWriterV3(currentSnapshot, currentSnapshotMetadata)) { }
                 Require(File.Exists(currentSnapshot), "current snapshot tails accepted in bootstrap");
 
                 byte[] packet = { (byte)PacketType.Ping, 17, 42 };
-                string clean = Path.Combine(directory, "clean.fpdemo");
+                string clean = Path.Combine(directory, "clean.ppdemo");
                 using (var writer = new ReplayWriterV3(clean, metadata))
                 {
                     for (uint frame = 0; frame < 400; frame++)
@@ -95,7 +95,7 @@ namespace MphRead.Mods.Network
                     Require(after250 is DemoRecord seekRecord && seekRecord.Frame == 251,
                         "v3 footer index seek lands after requested frame");
                 }
-                string hashed = Path.Combine(directory, "hashed.fpdemo");
+                string hashed = Path.Combine(directory, "hashed.ppdemo");
                 var references = new[] { new ReplayExpectedHash(0, new string('A', 64)), new ReplayExpectedHash(300, new string('B', 64)) };
                 Require(ReplayArchive.WithExpectedHashes(clean, hashed, references) == ReplayOpenResult.Success, "store reference hashes in v3 copy");
                 using (var reader = DemoReader.Open(hashed))
@@ -109,7 +109,7 @@ namespace MphRead.Mods.Network
                 byte[] hashBytes = File.ReadAllBytes(hashed);
                 int hashFooter = (int)BinaryPrimitives.ReadInt64LittleEndian(hashBytes.AsSpan(hashBytes.Length - 12));
                 int hashFooterLength = BinaryPrimitives.ReadInt32LittleEndian(hashBytes.AsSpan(hashFooter + 4));
-                string badHash = Path.Combine(directory, "bad-hash.fpdemo");
+                string badHash = Path.Combine(directory, "bad-hash.ppdemo");
                 byte[] duplicateFrame = (byte[])hashBytes.Clone();
                 BinaryPrimitives.WriteUInt32LittleEndian(duplicateFrame.AsSpan(duplicateFrame.Length - 12 - 36), 0);
                 BinaryPrimitives.WriteUInt32LittleEndian(duplicateFrame.AsSpan(hashFooter + 8),
@@ -144,7 +144,7 @@ namespace MphRead.Mods.Network
                 Require(NetSession.Active && NetSession.LocalSlot == -1 && !NetSession.IsAuthority,
                     "reconnect/control packets cannot create a local player or end playback");
                 DemoPlayback.Stop(); NetSession.Stop();
-                string extracted = Path.Combine(directory, "extracted.fpdemo");
+                string extracted = Path.Combine(directory, "extracted.ppdemo");
                 Require(ReplayArchive.Extract(clean, 60, 180, extracted) == ReplayOpenResult.Success, "extract clip");
                 using (var reader = DemoReader.Open(extracted))
                 {
@@ -152,7 +152,7 @@ namespace MphRead.Mods.Network
                     Require(reader!.Metadata!.Events.Count == 3 && reader.Metadata.Events[0].Frame == 0, "clip event rebase");
                     Require(reader.ReadNext()?.Frame == 0, "clip frame rebase");
                 }
-                string interrupted = Path.Combine(directory, "interrupted.fpdemo");
+                string interrupted = Path.Combine(directory, "interrupted.ppdemo");
                 var partialWriter = new ReplayWriterV3(interrupted, metadata);
                 for (uint i = 0; i < 360; i++) partialWriter.WriteRecord(i, packet);
                 partialWriter.Abort();
@@ -169,7 +169,7 @@ namespace MphRead.Mods.Network
                 }
                 byte[] bytes = File.ReadAllBytes(clean);
                 int firstChunk = 14 + BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(6));
-                string corrupt = Path.Combine(directory, "corrupt.fpdemo");
+                string corrupt = Path.Combine(directory, "corrupt.ppdemo");
                 byte[] changed = (byte[])bytes.Clone(); changed[firstChunk + 24] ^= 0x80;
                 File.WriteAllBytes(corrupt, changed);
                 Require(ReplayArchive.Validate(corrupt) == ReplayOpenResult.Corrupt, "bad chunk CRC");
@@ -187,7 +187,7 @@ namespace MphRead.Mods.Network
                 Require(!DemoPlayback.Join(corrupt) && DemoPlayback.LastResult == ReplayOpenResult.ProtocolMismatch, "protocol refuses before playback");
                 Require(DemoReader.Open(Path.Combine(directory, "missing"), out var missing) == null
                     && missing == ReplayOpenResult.FileMissing, "missing file");
-                string legacy = Path.Combine(directory, "v2.fpdemo");
+                string legacy = Path.Combine(directory, "v2.ppdemo");
                 using (var writer = new DemoWriter(legacy)) { writer.WriteRecord(0, packet); writer.WriteRecord(900, packet); }
                 using (var reader = DemoReader.Open(legacy))
                 {
@@ -195,7 +195,7 @@ namespace MphRead.Mods.Network
                         "unchanged v2 delta/long-gap compatibility");
                     Require(reader!.ReadNext() == null && reader.LastResult == ReplayOpenResult.Success, "v2 EOF");
                 }
-                string truncated = Path.Combine(directory, "v2-truncated.fpdemo");
+                string truncated = Path.Combine(directory, "v2-truncated.ppdemo");
                 using (var stream = File.Create(truncated))
                 {
                     stream.Write(DemoFile.Magic); stream.WriteByte(2); stream.WriteByte((byte)NetConfig.ProtocolVersion);
@@ -203,7 +203,7 @@ namespace MphRead.Mods.Network
                     deflate.Write(new byte[] { 0, 10, 0, 1 });
                 }
                 Require(ReplayArchive.Validate(truncated) == ReplayOpenResult.Truncated, "explicit v2 partial record");
-                string empty = Path.Combine(directory, "empty.fpdemo");
+                string empty = Path.Combine(directory, "empty.ppdemo");
                 using (var writer = new DemoWriter(empty)) { }
                 Require(ReplayArchive.Validate(empty) == ReplayOpenResult.Empty, "empty replay");
 
