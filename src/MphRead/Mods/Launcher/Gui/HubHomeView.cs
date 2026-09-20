@@ -159,22 +159,35 @@ namespace MphRead.Mods.Launcher.Gui
         private StackPanel BuildDesktopNav()
         {
             var nav = new StackPanel { Spacing = 6 };
-            nav.Children.Add(Action("PLAY", "Choose multiplayer, offline or story",
-                () => PlayRequested?.Invoke(this, EventArgs.Empty), primary: true));
-            nav.Children.Add(Action("SERVERS", "Browse live public sessions",
-                () => ServersRequested?.Invoke(this, EventArgs.Empty)));
-            nav.Children.Add(Action("CUSTOM", "Create and configure a lobby",
-                () => CustomRequested?.Invoke(this, EventArgs.Empty)));
-            nav.Children.Add(Action("CLIPS", "Replay studio and saved moments",
-                () => ClipsRequested?.Invoke(this, EventArgs.Empty)));
-            nav.Children.Add(Action("SETTINGS", "Video, audio, input and player",
-                () => SettingsRequested?.Invoke(this, EventArgs.Empty)));
-            nav.Children.Add(Action("SUPPORT", "Project links",
-                () => SupportRequested?.Invoke(this, EventArgs.Empty),
-                accent: HubTheme.Warm));
-            nav.Children.Add(Action("QUIT", "Close Prime Hunters Online",
-                () => QuitRequested?.Invoke(this, EventArgs.Empty),
-                accent: HubTheme.Danger));
+            HubNavButton[] buttons =
+            {
+                Action("PLAY", "Choose multiplayer, offline or story",
+                    () => PlayRequested?.Invoke(this, EventArgs.Empty), primary: true),
+                Action("SERVERS", "Browse live public sessions",
+                    () => ServersRequested?.Invoke(this, EventArgs.Empty)),
+                Action("CUSTOM", "Create and configure a lobby",
+                    () => CustomRequested?.Invoke(this, EventArgs.Empty)),
+                Action("CLIPS", "Replay studio and saved moments",
+                    () => ClipsRequested?.Invoke(this, EventArgs.Empty)),
+                Action("SETTINGS", "Video, audio, input and player",
+                    () => SettingsRequested?.Invoke(this, EventArgs.Empty)),
+                Action("SUPPORT", "Project links",
+                    () => SupportRequested?.Invoke(this, EventArgs.Empty),
+                    accent: HubTheme.Warm),
+                Action("QUIT", "Close Prime Hunters Online",
+                    () => QuitRequested?.Invoke(this, EventArgs.Empty),
+                    accent: HubTheme.Danger)
+            };
+            for (int i = 0; i < buttons.Length; i++)
+            {
+                string id = $"hub.desktop.{buttons[i].Label.ToLowerInvariant()}";
+                ControllerNav.Identify(buttons[i], id, initial: i == 0);
+                buttons[i].SetValue(ControllerNav.NavUpProperty,
+                    $"hub.desktop.{buttons[(i + buttons.Length - 1) % buttons.Length].Label.ToLowerInvariant()}");
+                buttons[i].SetValue(ControllerNav.NavDownProperty,
+                    $"hub.desktop.{buttons[(i + 1) % buttons.Length].Label.ToLowerInvariant()}");
+                nav.Children.Add(buttons[i]);
+            }
             return nav;
         }
 
@@ -187,15 +200,35 @@ namespace MphRead.Mods.Launcher.Gui
                 ColumnSpacing = 5,
                 RowSpacing = 5
             };
-            AddCompact(grid, 0, 0, "PLAY", () => PlayRequested?.Invoke(this, EventArgs.Empty), true);
-            AddCompact(grid, 1, 0, "SERVERS", () => ServersRequested?.Invoke(this, EventArgs.Empty));
-            AddCompact(grid, 2, 0, "CUSTOM", () => CustomRequested?.Invoke(this, EventArgs.Empty));
-            AddCompact(grid, 3, 0, "CLIPS", () => ClipsRequested?.Invoke(this, EventArgs.Empty));
-            AddCompact(grid, 0, 1, "SETTINGS", () => SettingsRequested?.Invoke(this, EventArgs.Empty));
-            AddCompact(grid, 1, 1, "SUPPORT", () => SupportRequested?.Invoke(this, EventArgs.Empty),
-                accent: HubTheme.Warm);
-            AddCompact(grid, 2, 1, "QUIT", () => QuitRequested?.Invoke(this, EventArgs.Empty),
-                accent: HubTheme.Danger);
+            HubNavButton play = AddCompact(grid, 0, 0, "PLAY",
+                () => PlayRequested?.Invoke(this, EventArgs.Empty), true);
+            HubNavButton servers = AddCompact(grid, 1, 0, "SERVERS",
+                () => ServersRequested?.Invoke(this, EventArgs.Empty));
+            HubNavButton custom = AddCompact(grid, 2, 0, "CUSTOM",
+                () => CustomRequested?.Invoke(this, EventArgs.Empty));
+            HubNavButton clips = AddCompact(grid, 3, 0, "CLIPS",
+                () => ClipsRequested?.Invoke(this, EventArgs.Empty));
+            HubNavButton settings = AddCompact(grid, 0, 1, "SETTINGS",
+                () => SettingsRequested?.Invoke(this, EventArgs.Empty));
+            HubNavButton support = AddCompact(grid, 1, 1, "SUPPORT",
+                () => SupportRequested?.Invoke(this, EventArgs.Empty), accent: HubTheme.Warm);
+            HubNavButton quit = AddCompact(grid, 2, 1, "QUIT",
+                () => QuitRequested?.Invoke(this, EventArgs.Empty), accent: HubTheme.Danger);
+
+            WireCompact(play, "play", up: "settings", down: "settings",
+                left: "clips", right: "servers", initial: true);
+            WireCompact(servers, "servers", up: "support", down: "support",
+                left: "play", right: "custom");
+            WireCompact(custom, "custom", up: "quit", down: "quit",
+                left: "servers", right: "clips");
+            WireCompact(clips, "clips", up: "quit", down: "quit",
+                left: "custom", right: "play");
+            WireCompact(settings, "settings", up: "play", down: "play",
+                left: "quit", right: "support");
+            WireCompact(support, "support", up: "servers", down: "servers",
+                left: "settings", right: "quit");
+            WireCompact(quit, "quit", up: "custom", down: "custom",
+                left: "support", right: "settings");
             return grid;
         }
 
@@ -428,7 +461,7 @@ namespace MphRead.Mods.Launcher.Gui
             return button;
         }
 
-        private void AddCompact(Grid grid, int column, int row, string label,
+        private HubNavButton AddCompact(Grid grid, int column, int row, string label,
             Action action, bool primary = false, Color? accent = null)
         {
             var button = new HubNavButton(label, primary: primary, compact: true, accent: accent);
@@ -436,6 +469,17 @@ namespace MphRead.Mods.Launcher.Gui
             Grid.SetColumn(button, column);
             Grid.SetRow(button, row);
             grid.Children.Add(button);
+            return button;
+        }
+
+        private static void WireCompact(HubNavButton button, string id,
+            string up, string down, string left, string right, bool initial = false)
+        {
+            ControllerNav.Identify(button, $"hub.compact.{id}", initial);
+            button.SetValue(ControllerNav.NavUpProperty, $"hub.compact.{up}");
+            button.SetValue(ControllerNav.NavDownProperty, $"hub.compact.{down}");
+            button.SetValue(ControllerNav.NavLeftProperty, $"hub.compact.{left}");
+            button.SetValue(ControllerNav.NavRightProperty, $"hub.compact.{right}");
         }
 
         private static Border Tag(string text) => new()
