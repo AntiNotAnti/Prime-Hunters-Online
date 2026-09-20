@@ -2065,7 +2065,7 @@ namespace MphRead.Mods.Launcher.Gui
                     string directory = Path.Combine(DemoLibrary.Directory, "exports");
                     Directory.CreateDirectory(directory);
                     string destination = Path.Combine(directory,
-                        Path.GetFileNameWithoutExtension(path) + $"_{Guid.NewGuid():N}.fpdemo");
+                        Path.GetFileNameWithoutExtension(path) + $"_{Guid.NewGuid():N}.ppdemo");
                     File.Copy(exportSource, destination, overwrite: false);
                     _note.Text = "Exported to " + destination;
                 }
@@ -2078,8 +2078,8 @@ namespace MphRead.Mods.Launcher.Gui
                     var target = await top.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
                     {
                         Title = "Export replay",
-                        SuggestedFileName = Path.GetFileNameWithoutExtension(path) + ".fpdemo",
-                        DefaultExtension = "fpdemo"
+                        SuggestedFileName = Path.GetFileNameWithoutExtension(path) + ".ppdemo",
+                        DefaultExtension = "ppdemo"
                     });
                     if (target == null) return;
                     if (target.TryGetLocalPath() is string local

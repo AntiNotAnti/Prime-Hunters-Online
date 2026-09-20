@@ -654,7 +654,7 @@ never had to think about:
   honoured; on Android it is ignored, and it used to be handed a *relative*
   path, which no storage provider anywhere could resolve.
 - **The file picker cannot filter by pattern.** Android filters by MIME type
-  and a `.fpdemo` has none, so `FileTypeFilter` is skipped here exactly as it
+  and a `.ppdemo` has none, so `FileTypeFilter` is skipped here exactly as it
   is for the `.nds` picker -- setting one produces a picker in which every file
   is refused.
 - **There is no path behind what it hands back.** A `content://` document has
@@ -672,7 +672,7 @@ working directory -- which `CustomizeAppBuilder` set to whatever `ChooseRoot`
 picked. So on a phone a recording is:
 
 ```
-<root>/_demos/<room>_<yyyy-MM-dd_HH-mm-ss>.fpdemo
+<root>/_demos/<room>_<yyyy-MM-dd_HH-mm-ss>.ppdemo
 ```
 
 with `<root>` normally the external files directory, reachable over USB at

@@ -588,7 +588,7 @@ namespace MphRead.Mods.Launcher.Gui
         {
             ReplayOpenResult result = ReplayController.SaveSelection();
             _message = result == ReplayOpenResult.Success
-                ? "Standalone .fpdemo clip saved."
+                ? "Standalone .ppdemo clip saved."
                 : result == ReplayOpenResult.Empty
                     ? "Set both MARK IN and MARK OUT before saving."
                     : $"Could not save selection: {result}.";

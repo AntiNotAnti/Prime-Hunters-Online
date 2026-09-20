@@ -287,7 +287,7 @@ namespace MphRead.Mods.Replay
 
     internal static class ReplayVirtualClips
     {
-        public const string Extension = ".fpclip";
+        public const string Extension = ".ppclip";
 
         public static string Save(string sourceReplay, uint startFrame, uint endFrame, string? name = null)
         {

@@ -85,7 +85,7 @@ line option, and the test harness, are in [`CLAUDE.md`](CLAUDE.md).
 
 ## Credits
 
-Project Prime is derived from Livetek's Project Prime fork of [MphRead](https://github.com/NoneGiven/MphRead) by **NoneGiven** —
+Project Prime is derived from Livetek's fork of [MphRead](https://github.com/NoneGiven/MphRead) by **NoneGiven** —
 the model viewer, the renderer, the format parsers and the recreation of the game itself are theirs.
 That work is in turn built on **dsgraph**, [chmcl95](https://gitlab.com/ch-mcl/metroid-prime-hunters-file-document),
 [McKay42](https://github.com/McKay42), [Barubary](https://github.com/Barubary/dsdecmp),
