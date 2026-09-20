@@ -436,11 +436,9 @@ namespace MphRead.Mods.Network
                     }
                     else if (_matchEndedAt >= 0 && now - _matchEndedAt >= EndSequenceFor())
                     {
-                        if (SessionPolicy == ServerSessionPolicy.Lobby)
-                        {
-                            if (_returnToLobbyPending) ReturnToLobby();
-                            else ContinueLobbyMatch(now);
-                        }
+                        // Persistent lobbies always stop at the lobby after the
+                        // report. Continuous servers keep their rotation behavior.
+                        if (SessionPolicy == ServerSessionPolicy.Lobby) ReturnToLobby();
                         else AdvanceMap(now);
                     }
                     // Repeated rather than sent once: UDP drops, and a client that
@@ -603,13 +601,20 @@ namespace MphRead.Mods.Network
             }
             _matchEndedAt = now;
             foreach (Peer peer in _peers) peer.PostMatchReady = false;
+            CancelMapVote(now);
             SetPhase(SessionPhase.PostMatch);
-            // Before the state goes out, so the first results screen anybody
-            // draws can already be scrolled.
-            OpenBallot();
+
+            // A persistent lobby is the between-match decision point now. Keep
+            // the report/hunter picker, but do not ask a second map question on
+            // top of it. Continuous servers retain the results ballot/rotation.
+            if (SessionPolicy == ServerSessionPolicy.Lobby) CloseBallot();
+            else OpenBallot();
+
             Log($"match over on {CurrentDefinition.RoomKey} ({reason}); "
-                + $"{_rotation.Next.RoomKey} in {EndSequenceFor():0} s"
-                + (_ballotOpen ? "; ballot open" : ""));
+                + (SessionPolicy == ServerSessionPolicy.Lobby
+                    ? $"returning to lobby in {EndSequenceFor():0} s"
+                    : $"{_rotation.Next.RoomKey} in {EndSequenceFor():0} s"
+                        + (_ballotOpen ? "; ballot open" : "")));
             BroadcastMatchState(now);
             BroadcastMapChoices();
         }
@@ -627,18 +632,9 @@ namespace MphRead.Mods.Network
             Array.Clear(_slotLives);
             foreach (Peer connected in _peers) connected.LastIntentFrame = 0;
             TouchLobbyRevision("rotation advanced");
-            // A vote about which map to play next has been answered by the
-            // match ending, whatever the room was going to say.
-            if (_voteRunning)
-            {
-                _voteRunning = false;
-                _voteResolvedAt = now;
-                _voteResult = VoteStatePacket.StateFailed;
-                for (int i = 0; i < _peers.Count; i++)
-                {
-                    _peers[i].Ballot = 0;
-                }
-            }
+            // Votes belong to one match. No prompt, result or cooldown may
+            // leak into the next room.
+            CancelMapVote(now);
             // Ready describes the match that just ended. Carried into the next
             // one it would rotate the following map the moment it finished.
             for (int i = 0; i < _peers.Count; i++)
@@ -691,7 +687,12 @@ namespace MphRead.Mods.Network
                 MatchId = _matchId,
                 AuthorityEpoch = _authorityEpoch,
                 RoomKey = entry.RoomKey,
-                NextRoomKey = _returnToLobbyPending ? "" : _rotation.Next.RoomKey
+                // In a persistent lobby the next match is not committed until
+                // somebody starts it from the lobby, so the results screen must
+                // not promise a map that can still be changed there.
+                NextRoomKey = SessionPolicy == ServerSessionPolicy.Lobby
+                    ? ""
+                    : (_returnToLobbyPending ? "" : _rotation.Next.RoomKey)
             };
         }
 
@@ -1378,6 +1379,31 @@ namespace MphRead.Mods.Network
             if (now - _voteStartedAt >= VoteSeconds)
             {
                 ResolveVote(now, passed: false, $"{yes} of {eligible}");
+            }
+        }
+
+        /// <summary>
+        /// Forget a mid-match vote at a match/session boundary. This is a hard
+        /// reset rather than a failed result: the next lobby/match must not
+        /// inherit the old room, ballots, or cooldown.
+        /// </summary>
+        private void CancelMapVote(double now)
+        {
+            bool publish = _voteRunning || _voteResult != VoteStatePacket.StateIdle;
+            _voteRunning = false;
+            _voteRoom = "";
+            _voteProposer = "";
+            _voteProposerSlot = -1;
+            _voteStartedAt = 0;
+            _voteResolvedAt = Double.NegativeInfinity;
+            _voteResult = VoteStatePacket.StateIdle;
+            for (int i = 0; i < _peers.Count; i++)
+            {
+                _peers[i].Ballot = 0;
+            }
+            if (publish)
+            {
+                BroadcastVoteState(now);
             }
         }
 
