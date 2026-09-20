@@ -85,23 +85,7 @@ namespace MphRead.Mods.Launcher.Gui
             // Child screens still use the established stack below, which keeps
             // the UI overhaul independent from launch/network behaviour.
             _hub = new HubHomeView();
-            _hub.PlayRequested += (_, _) => _ = OpenPlay();
-            _hub.ServersRequested += (_, _) => _ = OpenPlay(PlayScreen.Face.Online);
-            _hub.CustomRequested += (_, _) =>
-            {
-                if (!GameFiles.Ready)
-                {
-                    OpenSetup();
-                }
-                else
-                {
-                    OpenCreateServer();
-                }
-            };
-            _hub.ClipsRequested += (_, _) => _ = OpenClips();
-            _hub.SettingsRequested += (_, _) => _ = OpenSettings();
-            _hub.SupportRequested += (_, _) => Updater.OpenLink(Mods.Credits.SupportUrl);
-            _hub.QuitRequested += (_, _) => AskToQuit();
+            _hub.NavigateRequested += NavigateHub;
             _menu = _hub;
             root.Children.Add(_menu);
 
@@ -362,6 +346,33 @@ namespace MphRead.Mods.Launcher.Gui
         }
 
         // ------------------------------------------------------------- screens
+
+        private void NavigateHub(HubDestination destination)
+        {
+            switch (destination)
+            {
+                case HubDestination.Play:
+                case HubDestination.Servers:
+                    _ = OpenPlay(PlayScreen.Face.Online);
+                    break;
+                case HubDestination.Custom:
+                    if (!GameFiles.Ready) OpenSetup();
+                    else OpenCreateServer();
+                    break;
+                case HubDestination.Clips:
+                    _ = OpenClips();
+                    break;
+                case HubDestination.Settings:
+                    _ = OpenSettings();
+                    break;
+                case HubDestination.Support:
+                    Updater.OpenLink(Mods.Credits.SupportUrl);
+                    break;
+                case HubDestination.Quit:
+                    AskToQuit();
+                    break;
+            }
+        }
 
         private Task OpenPlay(PlayScreen.Face face = PlayScreen.Face.Online)
         {
