@@ -68,6 +68,8 @@ namespace MphRead.Mods.Launcher.Gui
             Grid.SetRow(back, 2);
             root.Children.Add(back);
             Content = root;
+            AttachedToVisualTree += (_, _) =>
+                LauncherBackdrop.Set(LauncherBackdropScene.MapEditor);
         }
 
         protected override void OnKeyDown(KeyEventArgs e)

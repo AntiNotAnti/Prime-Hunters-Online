@@ -45,6 +45,7 @@ namespace MphRead.Mods.Launcher.Gui
             new(StringComparer.OrdinalIgnoreCase);
 
         private Bitmap? _bitmap;
+        private string _backdropRoom = "";
         private string? _selected;
         private string? _deleteArmed;
 
@@ -247,6 +248,9 @@ namespace MphRead.Mods.Launcher.Gui
             Grid.SetRow(footer, 2);
             root.Children.Add(footer);
             Content = root;
+            AttachedToVisualTree += (_, _) =>
+                LauncherBackdrop.Set(LauncherBackdropScene.ReplayStudio,
+                    _backdropRoom.Length > 0 ? _backdropRoom : null);
 
             SizeChanged += (_, e) =>
             {
@@ -444,8 +448,12 @@ namespace MphRead.Mods.Launcher.Gui
             _preview.Source = null;
             _bitmap?.Dispose();
             _bitmap = null;
-            if (String.IsNullOrWhiteSpace(room))
+            _backdropRoom = room?.Trim() ?? "";
+            LauncherBackdrop.Set(LauncherBackdropScene.ReplayStudio,
+                _backdropRoom.Length > 0 ? _backdropRoom : null);
+            if (_backdropRoom.Length == 0)
                 return;
+            room = _backdropRoom;
             try
             {
                 string path = ThumbnailGenerator.PathFor(room);

@@ -220,14 +220,13 @@ cost more than a frame to draw, redrawn on every frame for as long as anything
 moved. Three changes, and they are independent -- the third is that the wheel
 no longer animates at all, so a notch is one redraw instead of seven:
 
-- **The backdrop is baked** (`Mods/Launcher/Gui/BakedBackdrop.cs`). It was four
-  full-window layers -- the photograph stretched, a gradient, a corner vignette
-  and the wash -- rasterised together on every redraw. They are now rendered
-  once into one bitmap, at the device resolution, re-cut only when the window
-  changes size, and blitted. At 1:1 the result is **byte for byte the same
-  picture**, checked rather than assumed, and it is worth about 1.9x at every
-  size. The wash went into the bake with them, which is why `UiLayout.Page` no
-  longer lays one over the top and `Backdrop` takes a `BackdropWash` instead.
+- **The backdrop is baked where Avalonia owns it** (`BakedBackdrop.cs`), while
+  desktop GL owns the native-resolution cinematic map image. `LauncherBackdrop`
+  supplies one scene/room contract to both. The normal hub no longer uses the old
+  `launcher-bg.jpg` wireframe photograph: it uses locally generated map thumbnails,
+  a graded fallback when none exists, and cached tint/vignette/wash layers. Desktop
+  motion stays below the UI as a cheap GL pan/zoom plus a low-strength noise overlay;
+  Android/headless keep their baked/cached path.
 - **The raster is capped at 1920x1080** and the result is stretched over the
   window by the GL blit, which is linear and free (`UiSurface.Raster`). Nothing
   at or below 1080p is touched at all. Above it the screens are drawn at 1080p

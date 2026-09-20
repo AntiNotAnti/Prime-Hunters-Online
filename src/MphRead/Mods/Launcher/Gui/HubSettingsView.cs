@@ -101,6 +101,8 @@ namespace MphRead.Mods.Launcher.Gui
             root.Children.Add(footer);
 
             Content = root;
+            AttachedToVisualTree += (_, _) =>
+                LauncherBackdrop.Set(LauncherBackdropScene.Settings);
             SizeChanged += (_, e) => ApplyResponsive(e.NewSize);
             ApplyResponsive(new Size(960, 600));
         }

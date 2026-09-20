@@ -164,6 +164,8 @@ namespace MphRead.Mods.Launcher.Gui
             root.Children.Add(back);
 
             Content = root;
+            AttachedToVisualTree += (_, _) =>
+                LauncherBackdrop.Set(LauncherBackdropScene.Adventure);
             Select(1);
 
             SizeChanged += (_, e) =>

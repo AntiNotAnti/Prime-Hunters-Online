@@ -208,6 +208,9 @@ namespace MphRead.Mods.Launcher.Gui
             Grid.SetRow(footer, 2);
             root.Children.Add(footer);
             Content = root;
+            AttachedToVisualTree += (_, _) =>
+                LauncherBackdrop.Set(LauncherBackdropScene.Offline,
+                    _selectedRoom.Length > 0 ? _selectedRoom : null);
 
             // Subscribe only after the preview/detail controls exist. UiList may
             // select a row while it is being populated, and doing this earlier
@@ -266,6 +269,7 @@ namespace MphRead.Mods.Launcher.Gui
         private void SelectRoom(string room)
         {
             _selectedRoom = room;
+            LauncherBackdrop.Set(LauncherBackdropScene.Offline, room);
             _maps.SelectTag(room);
             try
             {

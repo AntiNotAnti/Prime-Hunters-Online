@@ -340,26 +340,19 @@ Painting and controls
   `:focus-visible`, for the reason the reference draws one -- a platform
   tooltip arrives late and in the OS's colours, which on a screen of painted
   controls is the one thing from somewhere else.
-- **The front screen's ground moves, and it is GL's.** The reference's
-  `#backdrop` is a canvas of domain-warped value noise -- a 64x64 random grid,
-  smoothstepped bilinear lookups, the field read at coordinates two more
-  lookups of itself have bent, a radial falloff, six window-points to a cell,
-  thirty a second -- laid over the photograph with `mix-blend-mode: overlay`
-  at `opacity: .62`. `Mods/Render/LauncherNoise.cs` is the field and
-  `Shaders.BackdropVertexShader`/`BackdropFragmentShader` is the blend; the
-  photo quad in `LauncherPhoto.Draw` samples both in one pass.
-  Two things decide where it lives. **It has to be a shader**: overlay is
-  multiply where the backdrop is dark and screen where it is light, decided
-  per pixel *by the destination*, and fixed-function blending can do either
-  but cannot choose. **It must not be in the screens' bitmap**: an animated
-  layer there is a full-window Skia rasterisation thirty times a second for
-  ever, which is the cost `BakedBackdrop` exists to avoid. Here it is a 320x180
-  RGB upload and one quad. A driver that will not build the program logs and
-  falls back to the still picture rather than throwing -- on Windows the
-  binary is a GUI one with no console, so a throw here is a program that
-  starts and shows nothing. `LauncherNoise.cs` is in the Android head's
-  exclude list beside `LauncherPhoto.cs`; that head has no desktop GL and
-  keeps the still backdrop.
+- **The player-facing backdrop is cinematic map art, not the old wireframe JPEG.**
+  `LauncherBackdrop` names the current hub scene and room. Desktop
+  `LauncherPhoto` loads the locally generated thumbnail for that room and
+  draws it as a native-resolution GL quad with a very slow pan/zoom; the old
+  `launcher-bg.jpg` is no longer used by the normal hub. The existing
+  `LauncherNoise` overlay remains at a much lower strength for subtle motion.
+  Android/headless use the same room through `MapShot` and `BakedBackdrop`,
+  so no game-derived backdrop is shipped in the repository.
+  Scene changes come from Home/Play/Multiplayer/Offline/Adventure/Replay/
+  Settings/Create Lobby/Lobby, and Multiplayer/Offline/Replay/Lobby update the
+  room when the player selects one. Missing thumbnails fall back to a graded
+  colour field rather than debug geometry. `Reduce menu motion` freezes the
+  GL drift and `Deck.Still` keeps captures deterministic.
 - **An animation that drives itself is capped at 60, input is not.**
   `UiSurface.Invalidate(animation: true)` is what `RequestFrame` raises, and
   `Tick` gives it `AnimGap` (16 ms) rather than `BusyGap` (0). A wheel notch

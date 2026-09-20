@@ -110,6 +110,7 @@ namespace MphRead.Mods.Launcher.Gui
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
             base.OnAttachedToVisualTree(e);
+            LauncherBackdrop.Set(LauncherBackdropScene.Setup);
             Dispatcher.UIThread.Post(() => _choose.Focus(), DispatcherPriority.Background);
         }
 

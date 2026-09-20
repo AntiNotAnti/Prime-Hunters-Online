@@ -101,6 +101,8 @@ namespace MphRead.Mods.Launcher.Gui
             var multiplayerDeploy = ControllerNav.Find(deployment, "play.multiplayer");
             GamepadChecks.Check(multiplayerDeploy is { IsEffectivelyVisible: true },
                 "Play exposes Multiplayer");
+            GamepadChecks.Check(LauncherBackdrop.Scene == LauncherBackdropScene.Play,
+                "Play selects the cinematic Play backdrop");
             FocusNavigator.Ensure(deployment);
             GamepadChecks.Check(multiplayerDeploy!.IsFocused,
                 "Play defaults controller focus to Multiplayer");
@@ -176,6 +178,10 @@ namespace MphRead.Mods.Launcher.Gui
             Click(window, quickMultiplayer);
             GamepadChecks.Check(joinMultiplayer!.IsEnabled,
                 "sample Quick Play selects a compatible server without networking");
+            GamepadChecks.Check(
+                LauncherBackdrop.Scene == LauncherBackdropScene.Multiplayer
+                && LauncherBackdrop.RoomKey == "MP3 PROVING GROUND",
+                "Multiplayer backdrop follows the selected server map");
 
             Click(window, ControllerNav.Find(multiplayer, "multiplayer.create")!);
             GamepadChecks.Check(lobbyRequested == 1,
@@ -221,6 +227,10 @@ namespace MphRead.Mods.Launcher.Gui
             offlineView.Closed += (_, _) => offlineClosed++;
             window.Width = 960; window.Height = 660; window.Content = offlineView;
             window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            GamepadChecks.Check(
+                LauncherBackdrop.Scene == LauncherBackdropScene.Offline
+                && LauncherBackdrop.RoomKey == "MP3 PROVING GROUND",
+                "Offline backdrop follows the selected map");
             Click(window, ControllerNav.Find(offlineView, "offline.start")!);
             GamepadChecks.Check(offlinePlan is { Kind: LaunchKind.Offline,
                 RoomKey: "MP3 PROVING GROUND" },
@@ -278,6 +288,9 @@ namespace MphRead.Mods.Launcher.Gui
             GamepadChecks.Check(ControllerNav.Find(replayStudio, "studio.import")
                 is { IsEffectivelyVisible: true },
                 "Replay Studio exposes Import");
+            GamepadChecks.Check(
+                LauncherBackdrop.Scene == LauncherBackdropScene.ReplayStudio,
+                "Replay Studio selects its cinematic backdrop");
             Click(window, ControllerNav.Find(replayStudio, "studio.back")!);
             GamepadChecks.Check(replayStudioClosed == 1,
                 "Replay Studio Back accepts a pointer click");
@@ -287,6 +300,9 @@ namespace MphRead.Mods.Launcher.Gui
             var displaySettings = ControllerNav.Find(settingsHub, "settings.display");
             GamepadChecks.Check(displaySettings is { IsEffectivelyVisible: true },
                 "settings hub exposes Display");
+            GamepadChecks.Check(
+                LauncherBackdrop.Scene == LauncherBackdropScene.Settings,
+                "Settings selects the subdued cinematic backdrop");
             FocusNavigator.Ensure(settingsHub);
             GamepadChecks.Check(displaySettings!.IsFocused,
                 "settings hub defaults controller focus to Display");

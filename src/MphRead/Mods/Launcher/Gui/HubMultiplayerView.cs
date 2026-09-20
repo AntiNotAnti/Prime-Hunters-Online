@@ -44,6 +44,7 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly HubNavButton _join;
         private CancellationTokenSource? _discover;
         private CancellationTokenSource? _quickSearch;
+        private string _backdropRoom = "";
         private bool _joining;
         private int _replied, _live;
 
@@ -221,7 +222,12 @@ namespace MphRead.Mods.Launcher.Gui
             root.Children.Add(footer);
 
             Content = root;
-            AttachedToVisualTree += (_, _) => RefreshServers();
+            AttachedToVisualTree += (_, _) =>
+            {
+                LauncherBackdrop.Set(LauncherBackdropScene.Multiplayer,
+                    _backdropRoom.Length > 0 ? _backdropRoom : null);
+                RefreshServers();
+            };
             DetachedFromVisualTree += (_, _) => CancelWork();
 
             SizeChanged += (_, e) =>
@@ -355,6 +361,11 @@ namespace MphRead.Mods.Launcher.Gui
                 ? $"{server.MapName}\n{server.ModeName}  /  {server.PlayerCount} PLAYERS  /  {server.PingText} MS\n{server.Endpoint}"
                 : $"NO RESPONSE\n{server.Endpoint}";
             _mapPreview.Source = server.IsLive ? MapShot.For(server.RoomKey) : null;
+            if (server.IsLive && server.RoomKey.Length > 0)
+            {
+                _backdropRoom = server.RoomKey;
+                LauncherBackdrop.Set(LauncherBackdropScene.Multiplayer, _backdropRoom);
+            }
             _join.IsEnabled = server.IsLive && !_joining;
         }
 
@@ -512,6 +523,11 @@ namespace MphRead.Mods.Launcher.Gui
             _detailMeta.Text =
                 $"{mapName}\n{NetStatus.ModeName(entry.Status.Mode)}  /  {players} PLAYERS  /  {ping}\n{entry.Endpoint}";
             _mapPreview.Source = MapShot.For(room);
+            if (room.Length > 0)
+            {
+                _backdropRoom = room;
+                LauncherBackdrop.Set(LauncherBackdropScene.Multiplayer, _backdropRoom);
+            }
             _join.IsEnabled = entry.Live && !_joining;
         }
 

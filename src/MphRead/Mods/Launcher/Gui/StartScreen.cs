@@ -69,6 +69,8 @@ namespace MphRead.Mods.Launcher.Gui
             _rooms = new List<string>(rooms);
             Focusable = true;
 
+            LauncherBackdrop.Set(LauncherBackdropScene.Home);
+
             // The wash is baked into the backdrop rather than laid over it:
             // one bitmap a frame instead of four full-window layers. See
             // BakedBackdrop.
@@ -330,6 +332,7 @@ namespace MphRead.Mods.Launcher.Gui
             _menu.IsVisible = true;
             _versionBox.IsVisible = true;
             ShowGround(true);
+            LauncherBackdrop.Set(LauncherBackdropScene.Home);
             _hub.RefreshProfile();
             RefreshVersionLine();
             HubMotion.Enter(_hub, lift: -6);
@@ -682,6 +685,12 @@ namespace MphRead.Mods.Launcher.Gui
                 return;
             }
             await ThumbnailHost.RenderMissingAsync(_ => { });
+            Dispatcher.UIThread.Post(() =>
+            {
+                MapShot.Forget();
+                BakedBackdrop.Forget();
+                LauncherBackdrop.Refresh();
+            });
         }
 
         private void RefreshRooms()

@@ -74,7 +74,13 @@ namespace MphRead.Mods.Launcher.Gui
                 // A truncated PNG from an interrupted batch is no picture, not
                 // a dead launcher.
             }
-            _cache[roomKey] = shot;
+            // Do not cache a miss. Thumbnail generation can finish while
+            // the launcher is already open, and the next draw should be able
+            // to discover the new image without a restart.
+            if (shot != null)
+            {
+                _cache[roomKey] = shot;
+            }
             return shot;
         }
 

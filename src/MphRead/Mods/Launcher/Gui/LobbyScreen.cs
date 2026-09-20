@@ -534,6 +534,8 @@ namespace MphRead.Mods.Launcher.Gui
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
             base.OnAttachedToVisualTree(e);
+            LauncherBackdrop.Set(LauncherBackdropScene.Lobby,
+                _draftRoom.Length > 0 ? _draftRoom : null);
             if (!_suspended && !_closed) _timer.Start();
         }
 
@@ -913,6 +915,8 @@ namespace MphRead.Mods.Launcher.Gui
 
         private void SetPreview(string room)
         {
+            if (!String.IsNullOrWhiteSpace(room))
+                LauncherBackdrop.Set(LauncherBackdropScene.Lobby, room);
             _preview.Source = null;
             _bitmap?.Dispose();
             _bitmap = null;
