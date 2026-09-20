@@ -141,14 +141,14 @@ namespace MphRead.Mods.Replay
         {
             if (String.IsNullOrWhiteSpace(replay))
                 throw new ArgumentException("No replay is open.", nameof(replay));
-            string path = Path.GetFullPath(replay);
+            string path = ReplayVirtualClips.LogicalPath(replay);
             if (!File.Exists(path))
                 throw new FileNotFoundException("The replay no longer exists.", path);
             return path;
         }
 
         private static string Sidecar(string replay)
-            => Path.GetFullPath(replay) + Extension;
+            => ReplayVirtualClips.LogicalPath(replay) + Extension;
 
         private static string CleanName(string? name, string fallback)
         {
