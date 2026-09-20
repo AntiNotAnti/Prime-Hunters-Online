@@ -11,7 +11,7 @@
        so that starting the app does not flash a default colour before Avalonia
        has drawn, and the match hides the system bars from code rather than
        from here, since the front screen wants them. -->
-  <style name="FruityPrime" parent="Theme.AppCompat.NoActionBar">
+  <style name="ProjectPrime" parent="Theme.AppCompat.NoActionBar">
     <item name="android:windowBackground">@color/window_background</item>
     <item name="android:windowActionBar">false</item>
     <item name="android:windowNoTitle">true</item>

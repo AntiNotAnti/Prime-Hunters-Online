@@ -17,7 +17,7 @@ namespace MphRead.Droid
     /// </summary>
     internal sealed class AndroidConsole : TextWriter
     {
-        private const string Tag = "FruityPrime";
+        private const string Tag = "ProjectPrime";
         private readonly StringBuilder _line = new StringBuilder();
 
         public override Encoding Encoding => Encoding.UTF8;
