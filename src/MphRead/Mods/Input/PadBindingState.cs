@@ -93,7 +93,7 @@ namespace MphRead.Mods.Input
                     if (Primary[index] == 0) Primary[index] = button;
                     else if (Secondary[index] == 0) Secondary[index] = button;
                 }
-            Preset = "Custom";
+            if (!IsReplay(action)) Preset = "Custom";
             Revision++;
         }
 
@@ -113,7 +113,7 @@ namespace MphRead.Mods.Input
             GamepadButtons old = Slot(action, slot);
             if (slot == 0) Primary[index] = button; else Secondary[index] = button;
             _current[index] = (_current[index] & ~old) | Primary[index] | Secondary[index];
-            Preset = "Custom";
+            if (!IsReplay(action)) Preset = "Custom";
             Revision++;
         }
         public bool Single(GamepadButtons button)
