@@ -24,23 +24,12 @@ namespace MphRead.Mods.Launcher.Gui
                 RowDefinitions = new RowDefinitions("Auto,*,Auto"),
                 RowSpacing = 18
             };
-            var heading = new StackPanel { Spacing = 4 };
-            heading.Children.Add(new TextBlock
-            {
-                Text = "MULTIPLAYER",
-                FontFamily = HubTheme.Ui,
-                FontWeight = FontWeight.Bold,
-                FontSize = 28,
-                Foreground = HubTheme.TextBrush
-            });
-            heading.Children.Add(new TextBlock
-            {
-                Text = "Find a session, inspect the server list or create your own lobby.",
-                FontFamily = HubTheme.Ui,
-                FontSize = 11,
-                Foreground = HubTheme.TextDimBrush
-            });
-            root.Children.Add(heading);
+            root.Children.Add(HubChrome.Header(
+                "PLAY  /  MULTIPLAYER",
+                "MULTIPLAYER",
+                "Find a session, inspect the server list or create your own lobby.",
+                "ONLINE",
+                HubTheme.GoodBrush));
 
             var cards = new Grid
             {

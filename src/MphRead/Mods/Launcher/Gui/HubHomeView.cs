@@ -252,7 +252,7 @@ namespace MphRead.Mods.Launcher.Gui
                 MaxWidth = 470
             });
 
-            var launch = Action("FIND A GAME", "Open deployment options",
+            var launch = Action("PLAY", "Multiplayer, offline or adventure",
                 () => Navigate(HubDestination.Play), primary: true);
             launch.Width = 250;
             launch.HorizontalAlignment = HorizontalAlignment.Left;
@@ -330,7 +330,7 @@ namespace MphRead.Mods.Launcher.Gui
             stack.Children.Add(divider);
             stack.Children.Add(new TextBlock
             {
-                Text = "Your hunter preview is rendered by the same shared UI path used by desktop and Android.",
+                Text = "Your preferred hunter and suit become the defaults for new sessions.",
                 FontFamily = HubTheme.Ui,
                 FontSize = 9.5,
                 Foreground = HubTheme.TextDimBrush,
@@ -354,7 +354,7 @@ namespace MphRead.Mods.Launcher.Gui
             };
             line.Children.Add(new TextBlock
             {
-                Text = "ONE WINDOW  //  CONTROLLER FIRST  //  DESKTOP + ANDROID",
+                Text = "CONTROLLER  //  MOUSE + KEYBOARD  //  TOUCH",
                 FontFamily = HubTheme.Data,
                 FontSize = 8.5,
                 Foreground = HubTheme.TextDimBrush,
@@ -362,7 +362,7 @@ namespace MphRead.Mods.Launcher.Gui
             });
             var right = new TextBlock
             {
-                Text = "FPS HUB / FOUNDATION",
+                Text = "COMMAND HUB",
                 FontFamily = HubTheme.DataBold,
                 FontSize = 8.5,
                 Foreground = HubTheme.AccentBrush,

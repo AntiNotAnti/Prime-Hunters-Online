@@ -24,23 +24,11 @@ namespace MphRead.Mods.Launcher.Gui
                 RowDefinitions = new RowDefinitions("Auto,*,Auto"),
                 RowSpacing = 18
             };
-            var heading = new StackPanel { Spacing = 4 };
-            heading.Children.Add(new TextBlock
-            {
-                Text = "PLAY",
-                FontFamily = HubTheme.Ui,
-                FontWeight = FontWeight.Bold,
-                FontSize = 28,
-                Foreground = HubTheme.TextBrush
-            });
-            heading.Children.Add(new TextBlock
-            {
-                Text = "Choose the kind of session you want to enter.",
-                FontFamily = HubTheme.Ui,
-                FontSize = 11,
-                Foreground = HubTheme.TextDimBrush
-            });
-            root.Children.Add(heading);
+            root.Children.Add(HubChrome.Header(
+                "HOME  /  PLAY",
+                "PLAY",
+                "Choose the kind of session you want to enter.",
+                "SESSION SELECT"));
 
             var cards = new Grid
             {

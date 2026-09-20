@@ -50,23 +50,12 @@ namespace MphRead.Mods.Launcher.Gui
                 RowDefinitions = new RowDefinitions("Auto,*,Auto"),
                 RowSpacing = 12
             };
-            var heading = new StackPanel { Spacing = 2 };
-            heading.Children.Add(new TextBlock
-            {
-                Text = "OFFLINE",
-                FontFamily = HubTheme.Ui,
-                FontWeight = FontWeight.Bold,
-                FontSize = 26,
-                Foreground = HubTheme.TextBrush
-            });
-            heading.Children.Add(new TextBlock
-            {
-                Text = "LOCAL COMBAT  /  CHOOSE A MAP AND BUILD THE MATCH",
-                FontFamily = HubTheme.DataBold,
-                FontSize = 8.5,
-                Foreground = HubTheme.GoodBrush
-            });
-            root.Children.Add(heading);
+            root.Children.Add(HubChrome.Header(
+                "PLAY  /  OFFLINE",
+                "OFFLINE",
+                "Choose a map, configure the local match and deploy.",
+                "LOCAL COMBAT",
+                HubTheme.GoodBrush));
 
             _maps.SelectionChanged += (_, row) => SelectRow(row);
             _maps.Activated += (_, row) => SelectRow(row);

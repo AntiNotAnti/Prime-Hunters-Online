@@ -392,8 +392,8 @@ namespace MphRead.Mods.Launcher.Gui
             heading.Children.Add(new TextBlock
             {
                 Text = context?.Endpoint is { Length: > 0 } endpoint
-                    ? $"LOBBY  /  {endpoint}"
-                    : "LOBBY  /  LIVE SESSION",
+                    ? $"PLAY  /  MULTIPLAYER  /  LOBBY  /  {endpoint}"
+                    : "PLAY  /  MULTIPLAYER  /  LOBBY",
                 FontFamily = HubTheme.Data,
                 FontSize = 8.5,
                 Foreground = HubTheme.AccentBrush

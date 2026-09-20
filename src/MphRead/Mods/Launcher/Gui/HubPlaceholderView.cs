@@ -23,14 +23,12 @@ namespace MphRead.Mods.Launcher.Gui
                 RowDefinitions = new RowDefinitions("Auto,*,Auto"),
                 RowSpacing = 18
             };
-            root.Children.Add(new TextBlock
-            {
-                Text = title,
-                FontFamily = HubTheme.Ui,
-                FontWeight = FontWeight.Bold,
-                FontSize = 28,
-                Foreground = HubTheme.TextBrush
-            });
+            root.Children.Add(HubChrome.Header(
+                "HOME  /  " + title,
+                title,
+                "Reserved for a future hub workspace.",
+                "COMING LATER",
+                HubTheme.WarmBrush));
 
             var center = new Border
             {

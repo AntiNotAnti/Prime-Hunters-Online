@@ -39,23 +39,11 @@ namespace MphRead.Mods.Launcher.Gui
                 RowDefinitions = new RowDefinitions("Auto,*,Auto"),
                 RowSpacing = 16
             };
-            var heading = new StackPanel { Spacing = 3 };
-            heading.Children.Add(new TextBlock
-            {
-                Text = "ADVENTURE",
-                FontFamily = HubTheme.Ui,
-                FontWeight = FontWeight.Bold,
-                FontSize = 28,
-                Foreground = HubTheme.TextBrush
-            });
-            heading.Children.Add(new TextBlock
-            {
-                Text = "Choose a save slot and hunter, then continue or begin again.",
-                FontFamily = HubTheme.Ui,
-                FontSize = 11,
-                Foreground = HubTheme.TextDimBrush
-            });
-            root.Children.Add(heading);
+            root.Children.Add(HubChrome.Header(
+                "PLAY  /  ADVENTURE",
+                "ADVENTURE",
+                "Choose a save slot and hunter, then continue or begin again.",
+                "SAVE DATA"));
 
             var body = new Grid
             {

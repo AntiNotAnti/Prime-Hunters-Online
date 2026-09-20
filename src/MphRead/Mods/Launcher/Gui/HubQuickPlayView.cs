@@ -35,23 +35,12 @@ namespace MphRead.Mods.Launcher.Gui
                 RowDefinitions = new RowDefinitions("Auto,*,Auto"),
                 RowSpacing = 18
             };
-            var heading = new StackPanel { Spacing = 3 };
-            heading.Children.Add(new TextBlock
-            {
-                Text = "QUICK PLAY",
-                FontFamily = HubTheme.Ui,
-                FontWeight = FontWeight.Bold,
-                FontSize = 28,
-                Foreground = HubTheme.TextBrush
-            });
-            heading.Children.Add(new TextBlock
-            {
-                Text = "Find the best compatible public session and deploy.",
-                FontFamily = HubTheme.Ui,
-                FontSize = 11,
-                Foreground = HubTheme.TextDimBrush
-            });
-            root.Children.Add(heading);
+            root.Children.Add(HubChrome.Header(
+                "PLAY  /  MULTIPLAYER  /  QUICK PLAY",
+                "QUICK PLAY",
+                "Find the best compatible public session and deploy.",
+                "AUTO MATCH",
+                HubTheme.AccentBrush));
 
             var center = new Border
             {

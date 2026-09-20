@@ -181,6 +181,13 @@ namespace MphRead.Mods.Launcher.Gui
             var copy = new StackPanel { Spacing = 2 };
             copy.Children.Add(new TextBlock
             {
+                Text = "PLAY  /  MULTIPLAYER  /  SERVER BROWSER",
+                FontFamily = HubTheme.DataBold,
+                FontSize = 8.5,
+                Foreground = HubTheme.AccentBrush
+            });
+            copy.Children.Add(new TextBlock
+            {
                 Text = "SERVER BROWSER",
                 FontFamily = HubTheme.Ui,
                 FontWeight = FontWeight.Bold,

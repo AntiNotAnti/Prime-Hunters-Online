@@ -65,41 +65,11 @@ namespace MphRead.Mods.Launcher.Gui
                 RowSpacing = 12
             };
 
-            var header = new Grid
-            {
-                ColumnDefinitions = new ColumnDefinitions("*,Auto")
-            };
-            var heading = new StackPanel { Spacing = 2 };
-            heading.Children.Add(new TextBlock
-            {
-                Text = "REPLAY STUDIO",
-                FontFamily = HubTheme.Ui,
-                FontWeight = FontWeight.Bold,
-                FontSize = 26,
-                Foreground = HubTheme.TextBrush
-            });
-            heading.Children.Add(new TextBlock
-            {
-                Text = "RECORDINGS  /  CLIPS  /  CINEMATIC EDITING",
-                FontFamily = HubTheme.DataBold,
-                FontSize = 8.5,
-                Foreground = HubTheme.AccentBrush
-            });
-            header.Children.Add(heading);
-
-            var location = new TextBlock
-            {
-                Text = DemoLibrary.Directory,
-                FontFamily = HubTheme.Data,
-                FontSize = 8,
-                Foreground = HubTheme.TextDimBrush,
-                VerticalAlignment = VerticalAlignment.Center,
-                MaxWidth = 390,
-                TextTrimming = TextTrimming.CharacterEllipsis
-            };
-            Grid.SetColumn(location, 1);
-            header.Children.Add(location);
-            root.Children.Add(header);
+            root.Children.Add(HubChrome.Header(
+                "HOME  /  REPLAY STUDIO",
+                "REPLAY STUDIO",
+                "Browse recordings and clips, inspect their health, then open the cinematic editor.",
+                "LOCAL LIBRARY"));
 
             _list.SelectionChanged += (_, row) =>
             {

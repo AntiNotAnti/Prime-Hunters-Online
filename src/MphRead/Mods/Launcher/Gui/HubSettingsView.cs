@@ -33,23 +33,11 @@ namespace MphRead.Mods.Launcher.Gui
                 RowSpacing = 18
             };
 
-            var heading = new StackPanel { Spacing = 3 };
-            heading.Children.Add(new TextBlock
-            {
-                Text = "SETTINGS",
-                FontFamily = HubTheme.Ui,
-                FontWeight = FontWeight.Bold,
-                FontSize = 28,
-                Foreground = HubTheme.TextBrush
-            });
-            heading.Children.Add(new TextBlock
-            {
-                Text = "Configure the game without leaving the command hub.",
-                FontFamily = HubTheme.Ui,
-                FontSize = 11,
-                Foreground = HubTheme.TextDimBrush
-            });
-            root.Children.Add(heading);
+            root.Children.Add(HubChrome.Header(
+                "HOME  /  SETTINGS",
+                "SETTINGS",
+                "Configure display, audio, controls, replays and your profile.",
+                "CONFIGURATION"));
 
             _cards = new Grid
             {
