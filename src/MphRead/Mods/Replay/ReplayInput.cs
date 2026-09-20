@@ -36,6 +36,13 @@ namespace MphRead.Mods.Replay
             if (GamepadInput.TakePress(GamepadButtons.A)) ReplayController.TogglePause();
             if (GamepadInput.TakePress(GamepadButtons.X)) ReplayController.StepForward();
             if (GamepadInput.TakePress(GamepadButtons.Y)) ReplayCamera.ToggleFree();
+            if (GamepadInput.TakePress(GamepadButtons.DpadLeft))
+                ReplayController.Seek(ReplayController.CurrentFrame > 300
+                    ? ReplayController.CurrentFrame - 300 : 0);
+            if (GamepadInput.TakePress(GamepadButtons.DpadRight))
+                ReplayController.Seek((uint)System.Math.Min(
+                    (ulong)ReplayController.CurrentFrame + 300,
+                    ReplayController.DurationFrames));
             if (GamepadInput.TakePress(GamepadButtons.DpadDown)) ReplayController.ChangeRate(-1);
             if (GamepadInput.TakePress(GamepadButtons.DpadUp)) ReplayController.ChangeRate(1);
             if (GamepadInput.TakePress(GamepadButtons.RightBumper)) SpectatorMode.CycleNext();
