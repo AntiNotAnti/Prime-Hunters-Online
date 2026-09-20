@@ -36,7 +36,16 @@ namespace MphRead.Mods
         /// somebody else ever claims the old name, so this is the current one,
         /// not the original one.
         /// </summary>
-        public const string Repository = "liveteklol/Fruity-Prime";
+        public const string Repository = "AntiNotAnti/Prime-Hunters-Online";
+
+        /// <summary>
+        /// Public, binary-only repository used by the updater.
+        ///
+        /// The source repository is private, so anonymous clients cannot read
+        /// its Releases API. CI publishes finished packages here instead; no
+        /// GitHub credential is ever embedded in a client build.
+        /// </summary>
+        public const string ReleaseRepository = "AntiNotAnti/Prime-Hunters-Online-Releases";
 
         /// <summary>
         /// The name of the running executable, without its extension. Read
