@@ -17,11 +17,11 @@ namespace MphRead.Mods.Input
         }
         public void CloseWheel() => WheelOpen = false;
         public void Reset() { _down = Pressed = 0; _suppressed = 0; WheelOpen = false; }
-        public void Update(GamepadButtons buttons, bool includeReplay = true)
+        public void Update(GamepadButtons buttons, bool replayContext = false)
         {
             _suppressed &= buttons;
-            _suppressed |= PadBindings.ChordButtons(buttons, includeReplay);
-            ulong down = PadBindings.Evaluate(buttons, _suppressed, includeReplay);
+            _suppressed |= PadBindings.ChordButtons(buttons, replayContext);
+            ulong down = PadBindings.Evaluate(buttons, _suppressed, replayContext);
             Pressed = down & ~_down; _down = down;
             WheelOpen = GamepadOptions.WheelToggle
                 ? WasPressed(PadAction.WeaponWheel) ? !WheelOpen : WheelOpen
