@@ -450,13 +450,13 @@ namespace MphRead.Mods.Network
         }
 
         /// <summary>
-        /// Kills held back so the authority could make them -- which is what
-        /// every lethal prediction did before death was predicted, and what
-        /// one still does under <c>-nodeathprediction</c>.
+        /// Remote lethal hits held at one health so the authority owns the
+        /// actual death. This is the current behavior; the old death-prediction
+        /// switches are compatibility no-ops.
         /// </summary>
         public static long LethalHeld { get; private set; }
 
-        /// <summary>Kills this machine showed the instant it landed them.</summary>
+        /// <summary>Legacy diagnostic retained for report compatibility; remote deaths are not predicted.</summary>
         public static long DeathsPredicted { get; private set; }
 
         /// <summary>
@@ -468,10 +468,8 @@ namespace MphRead.Mods.Network
         public static long SelfDeathsPredicted { get; private set; }
 
         /// <summary>
-        /// Deaths predicted here that the authority did not agree with, so the
-        /// puppet was put back on the map. The number that says whether
-        /// predicting death is worth having; a wrongly killed player is the
-        /// most visible thing this whole file can get wrong.
+        /// Legacy diagnostic retained for old report readers. Remote-player
+        /// deaths are authority-owned now, so normal current runs keep this at zero.
         /// </summary>
         public static long DeathsUndone { get; private set; }
 
