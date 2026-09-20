@@ -86,24 +86,6 @@ namespace MphRead.Mods
             return Math.Clamp(radians * 180f / MathF.PI, 1f, 175f);
         }
 
-        /// <summary>
-        /// Compensates the cartridge HUD for a wider/narrower world view.
-        ///
-        /// The HUD is screen-space art while the world shrinks with increasing
-        /// FOV. A full projection match makes the DS HUD too small at the upper
-        /// end of the slider, so use the geometric mean: it follows the camera
-        /// enough to keep visor/readout proportions believable while retaining
-        /// the legibility expected from a HUD.
-        /// </summary>
-        public static float HudFovScale
-        {
-            get
-            {
-                float projectionRatio = HalfTan(DefaultFov) / HalfTan(_fieldOfView);
-                return Math.Clamp(MathF.Sqrt(projectionRatio), 0.65f, 1.25f);
-            }
-        }
-
         private static float HalfTan(float degrees)
         {
             return MathF.Tan(degrees * MathF.PI / 360f);

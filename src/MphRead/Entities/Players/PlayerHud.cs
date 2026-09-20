@@ -1416,11 +1416,12 @@ namespace MphRead.Entities
             }
             else
             {
-                // The cartridge HUD was authored around the DS camera. Keep its
-                // visor/readouts visually coupled to a wider world view, but do
-                // not scale Pro HUD, menus, chat, dialogs or scoreboards.
-                float previousHudScale = _scene.PushHudScale(
-                    Features.ProHud || ScanVisor ? 1f : Mods.RenderOptions.HudFovScale);
+                // The cartridge HUD is screen-space UI. Field of view changes
+                // the 3D projection, not the authored HUD coordinates. Scaling
+                // these objects around the screen centre pulled edge-anchored
+                // health/ammo/score elements inward at high FOV and made the
+                // HUD disagree with the visor/helmet crop.
+                float previousHudScale = _scene.PushHudScale(1f);
                 try
                 {
                     // hiding during dialog pause due to overlap with "bottom screen" elements
