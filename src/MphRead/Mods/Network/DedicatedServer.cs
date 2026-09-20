@@ -30,9 +30,10 @@ namespace MphRead.Mods.Network
     /// never did -- and it is the reason <c>SERVER.md</c> no longer says a
     /// server needs none.
     ///
-    /// The relay path survives for exactly the two servers that cannot
-    /// simulate because they live in a process that already has a simulation
-    /// or is about to have several. See <see cref="RunsTheMatch"/>.
+    /// The old relay/client-authority path remains only as a compatibility and
+    /// test path behind <see cref="RunsTheMatch"/> = false. Normal standalone,
+    /// local-hosted and directory-hosted games all run authoritative simulation
+    /// in a dedicated process.
     /// </summary>
     public sealed partial class DedicatedServer
     {
@@ -178,8 +179,8 @@ namespace MphRead.Mods.Network
         private NetTransport? _transport;
         private Peer? _authority;
         /// <summary>
-        /// The match, simulated in this process. Null when this server is the
-        /// relay it has always been and the authority is a client.
+        /// The match simulated in this process. Null only in the explicit
+        /// RunsTheMatch=false compatibility/test path.
         /// </summary>
         private ServerSim? _sim;
         private byte[]? _lastSnapshot;
@@ -327,8 +328,9 @@ namespace MphRead.Mods.Network
         public bool AutoUpdate { get; set; }
 
         /// <summary>
-        /// Canonical server replay recording/retention. Standalone dedicated servers
-        /// configure this before <see cref="Run"/>; hosted relay instances never use it.
+        /// Canonical server replay recording/retention for any server process
+        /// that runs the authoritative match. The legacy RunsTheMatch=false
+        /// compatibility path does not produce canonical server replays.
         /// </summary>
         public ServerReplayPolicy ReplayPolicy { get; set; } = ServerReplayPolicy.Default;
 
@@ -342,27 +344,11 @@ namespace MphRead.Mods.Network
         /// something else. <c>-simulate</c> and <c>-authority</c> are still
         /// accepted so deployed units keep starting, and do nothing.
         ///
-        /// The two servers that must set it false are the two inside a process
-        /// that already has a simulation, or is about to have several:
-        ///
-        /// <list type="bullet">
-        /// <item><see cref="NetHostSession"/> -- "Host: this computer". The
-        /// server is a thread inside the host's own game, and that game's
-        /// player owns the session; simulating here would have
-        /// <c>ServerSim.Start</c> call <c>NetSession.StartServerAuthority</c>
-        /// on top of the player who started it.</item>
-        /// <item><see cref="NetMaster"/> -- "Host: online". The directory runs
-        /// one of these per hosted match, several at a time, in one
-        /// process.</item>
-        /// </list>
-        ///
-        /// The reason is the same for both, and it is that
-        /// <see cref="NetSession"/> is static: a process has exactly one
-        /// session, so it can run exactly one match. For those two, a client
-        /// running the match is not a fallback -- it is how hosting works.
-        /// Removing the relay for good means an instance-based NetSession,
-        /// which is its own piece of work; see
-        /// <c>.claude/multiplayer/NETWORK-SERVERAUTH.md</c>.
+        /// False is retained only for compatibility and deterministic tests of
+        /// the old client-authority protocol. Normal hosting does not select it:
+        /// <see cref="NetHostSession"/>, <see cref="NetMaster"/> and
+        /// <see cref="HostPool"/> start isolated server processes so each match
+        /// gets its own static <see cref="NetSession"/> and server authority.
         /// </summary>
         public bool RunsTheMatch { get; init; } = true;
 
@@ -408,7 +394,7 @@ namespace MphRead.Mods.Network
             if (_phase == SessionPhase.InMatch) StartSimulation();
             Log(Simulating
                 ? "this server runs the match itself"
-                : "hosted game: the first client to connect runs the match");
+                : "compatibility mode: the first client to connect runs the match");
             Log($"rotation: {_rotation.Entries.Count} map(s), starting on {_rotation.Current}");
             Log(Hosts.Describe());
 
@@ -499,9 +485,9 @@ namespace MphRead.Mods.Network
                     // once, and only with an empty server, so a busy one keeps
                     // playing and swaps when the last person leaves.
                     //
-                    // Hosted games count as people: they live in this process,
-                    // so a restart ends them, and somebody mid-match on one
-                    // would be dropped by an update they cannot see.
+                    // Hosted games count as active work too. They run in child
+                    // server processes tracked by Hosts, and restarting this parent
+                    // would tear those children down while people are playing.
                     if (AutoUpdate
                         && Update.ServerUpdate.ShouldRestart(_peers.Count + Hosts.Count))
                     {
@@ -746,8 +732,9 @@ namespace MphRead.Mods.Network
         /// else. An installation that has been running without the game files
         /// stops here, with the reason, on the first start after the update.
         ///
-        /// Skipped entirely -- not failed -- when <see cref="RunsTheMatch"/>
-        /// is false, which is a hosted game rather than a misconfiguration.
+        /// Skipped entirely when <see cref="RunsTheMatch"/> is false. That mode
+        /// exists for compatibility/tests; normal hosted games run in isolated
+        /// server processes with RunsTheMatch=true.
         /// </summary>
         /// <exception cref="ProgramException">
         /// The world could not be built. Thrown rather than logged and limped
