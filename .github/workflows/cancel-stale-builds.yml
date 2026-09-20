@@ -33,8 +33,9 @@ jobs:
 
           gh api --paginate \
             -H "Accept: application/vnd.github+json" \
-            "/repos/${GH_REPO}/actions/workflows/build.yml/runs?branch=${BRANCH}&per_page=100" \
-            --jq '.workflow_runs[] | select((.status == "queued" or .status == "in_progress") and .head_sha != "'"'${KEEP_SHA}'"'") | .id' |
+            "/repos/${GH_REPO}/actions/workflows/build.yml/runs?branch=${BRANCH}&per_page=100" |
+          jq -r --arg keep_sha "${KEEP_SHA}" \
+            '.workflow_runs[] | select((.status == "queued" or .status == "in_progress") and .head_sha != $keep_sha) | .id' |
           while read -r run_id; do
             [ -n "${run_id}" ] || continue
             echo "Cancelling stale build run ${run_id}"
