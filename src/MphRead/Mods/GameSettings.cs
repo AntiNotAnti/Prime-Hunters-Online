@@ -62,9 +62,9 @@ namespace MphRead.Mods
                 // console path makes the same substitution.
                 Scene.Language = Paths.MphKey == "AMHK0" ? Language.Japanese : language;
             }
-            // Read by the renderer as it builds each scene, so a change here
-            // reaches the next match; the resolution scale reaches the current
-            // one on its next resize.
+            // Render scale is observed by Scene.OnDrawFrame, which reallocates
+            // its target when this value changes, so saving from the pause menu
+            // reaches the running match without a window resize.
             RenderOptions.ResolutionScale = RenderOptions.ParseScale(settings.ResolutionScale,
                 RenderOptions.ResolutionScale);
             // Read once a frame by the camera, so this reaches the match that

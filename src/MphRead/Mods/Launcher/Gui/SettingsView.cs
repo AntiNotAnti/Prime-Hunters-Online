@@ -778,7 +778,7 @@ namespace MphRead.Mods.Launcher.Gui
             ShowTextureQualityRows();
 
             var maxQuality = new HubNavButton("MAX QUALITY",
-                "200% supersampling + trilinear mipmaps + 16x anisotropic filtering",
+                "300% supersampling + trilinear mipmaps + 16x anisotropic filtering",
                 primary: true)
             {
                 MinHeight = 50,
@@ -796,7 +796,7 @@ namespace MphRead.Mods.Launcher.Gui
                 ShowTextureQualityRows();
             };
             page.Children.Add(maxQuality);
-            Explain(page, "MAX QUALITY can be extremely expensive at 4K: 200% renders the world at 8K before resolving it back to the display.");
+            Explain(page, "MAX QUALITY is intentionally extreme: at a 4K display, 300% renders roughly 12K-class scene dimensions and shades nine times the native scene pixels.");
 
             Heading(page, "Cel shading");
             _celRow = Add(page, new ToggleRow("Cel shading", RenderOptions.CelShading));

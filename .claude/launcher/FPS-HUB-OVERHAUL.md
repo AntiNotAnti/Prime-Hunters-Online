@@ -146,9 +146,9 @@ Current information architecture:
 - Profile / Network
 - Credits
 
-Graphics now includes 25–200% internal render scale (above 100% is
-supersampling), lighting, fog, bilinear filtering, cel shading bands and outline
-strength. Display keeps window/view/frame-pacing/HUD/accessibility controls.
+Graphics now includes 25–300% internal render scale (above 100% is
+supersampling), lighting, fog, bilinear/trilinear filtering, anisotropic
+filtering up to 16x, cel shading bands and outline strength. Display keeps window/view/frame-pacing/HUD/accessibility controls.
 
 Add search, per-setting descriptions, Basic/Advanced grouping, category reset, dirty
 state and restart-required markers.
