@@ -69,6 +69,8 @@ namespace MphRead.Mods.Launcher.Gui
         private ToggleRow _fogRow = null!;
         private ToggleRow _filteringRow = null!;
         private ToggleRow _celRow = null!;
+        private SliderRow _celBandsRow = null!;
+        private SliderRow _celEdgeRow = null!;
         private ToggleRow _fpsRow = null!;
         private ToggleRow _reduceMotion = null!;
 
@@ -342,11 +344,12 @@ namespace MphRead.Mods.Launcher.Gui
         }
 
         /// <summary>
-        /// Six pages: display, audio, controls, replays, profile and credits.
+        /// Seven pages: display, graphics, audio, controls, replays, profile and credits.
         /// </summary>
         private void BuildPages()
         {
             BuildDisplay(AddSection("Display"));
+            BuildGraphics(AddSection("Graphics"));
             BuildAudio(AddSection("Audio"));
             BuildControls(AddSection("Controls"));
             BuildReplays(AddSection("Replays"));
@@ -428,25 +431,12 @@ namespace MphRead.Mods.Launcher.Gui
             // puts it back -- see Revert.
             _fovRow.ValueChanged += (_, _) => RenderOptions.FieldOfView = _fovRow.Value;
 
-            Heading(page, "Performance");
-            _resolutionScale = Add(page, new SliderRow("Render scale",
-                RenderOptions.ResolutionScale,
-                v => $"{Math.Max(RenderOptions.MinScale, v)}%"));
-            // Under the render scale because they are the same question asked
-            // from both ends -- how much picture, and how often -- and because
-            // the two of them are what somebody who is not getting a smooth
-            // game comes to this page to change.
+            Heading(page, "Frame pacing");
             _fpsLimitRow = Add(page, new SliderRow("FPS limit",
                 FpsLimitStopIndex(FrameTiming.FrameRateCap),
                 v => _fpsLimitStops[Math.Clamp(v, 0, _fpsLimitStops.Length - 1)].Label,
                 min: 0, max: _fpsLimitStops.Length - 1, keyStep: 1));
-            _lightingRow = Add(page, new ToggleRow("Lighting", RenderOptions.Lighting));
-            _fogRow = Add(page, new ToggleRow("Fog", RenderOptions.Fog));
-            _filteringRow = Add(page, new ToggleRow("Texture filtering", RenderOptions.TextureFiltering));
             _fpsRow = Add(page, new ToggleRow("FPS counter", RenderOptions.ShowFps));
-
-            Heading(page, "Cel shading");
-            _celRow = Add(page, new ToggleRow("Cel shading", RenderOptions.CelShading));
 
             // One switch, and none of what it drives.
             //
@@ -519,6 +509,39 @@ namespace MphRead.Mods.Launcher.Gui
             Heading(page, "Accessibility");
             _reduceMotion = Add(page, new ToggleRow(
                 "Reduce menu motion", LauncherPrefs.ReduceMotion));
+        }
+
+        private void BuildGraphics(StackPanel page)
+        {
+            Heading(page, "Rendering");
+            Explain(page, "100% is native framebuffer resolution. Above 100% renders the 3D world larger and downsamples it for supersampling; 200% shades four times as many pixels.");
+            _resolutionScale = Add(page, new SliderRow("Render scale",
+                RenderOptions.ResolutionScale,
+                v => v == 100 ? "100% (native)"
+                    : v > 100 ? $"{v}% (supersampled)" : $"{v}%",
+                min: RenderOptions.MinScale, max: RenderOptions.MaxScale, keyStep: 5));
+
+            Heading(page, "Scene quality");
+            _lightingRow = Add(page, new ToggleRow("Lighting", RenderOptions.Lighting));
+            _fogRow = Add(page, new ToggleRow("Fog", RenderOptions.Fog));
+            _filteringRow = Add(page, new ToggleRow("Bilinear texture filtering",
+                RenderOptions.TextureFiltering));
+
+            Heading(page, "Cel shading");
+            _celRow = Add(page, new ToggleRow("Cel shading", RenderOptions.CelShading));
+            _celBandsRow = Add(page, new SliderRow("Shading bands", RenderOptions.CelBands,
+                v => v.ToString(CultureInfo.InvariantCulture), min: 2, max: 8, keyStep: 1));
+            _celEdgeRow = Add(page, new SliderRow("Outline strength",
+                (int)MathF.Round(RenderOptions.CelEdge * 100),
+                v => $"{v}%", min: 0, max: 100, keyStep: 5));
+            _celRow.Changed += (_, _) => ShowCelRows();
+            ShowCelRows();
+        }
+
+        private void ShowCelRows()
+        {
+            _celBandsRow.IsVisible = _celRow.On;
+            _celEdgeRow.IsVisible = _celRow.On;
         }
 
         private void ShowCrosshairRows()
@@ -1204,7 +1227,8 @@ namespace MphRead.Mods.Launcher.Gui
                 Mods.Network.DemoClip.Seconds = Mods.Network.DemoClip.Lengths[
                     Math.Clamp(_clipSecondsRow.Index, 0, Mods.Network.DemoClip.Lengths.Length - 1)];
             }
-            _settings.ResolutionScale = Math.Max(RenderOptions.MinScale, _resolutionScale.Value)
+            _settings.ResolutionScale = Math.Clamp(_resolutionScale.Value,
+                RenderOptions.MinScale, RenderOptions.MaxScale)
                 .ToString(CultureInfo.InvariantCulture);
             RenderOptions.FieldOfView = _fovRow.Value;
             _settings.FieldOfView = _fovRow.Value.ToString(CultureInfo.InvariantCulture);
@@ -1217,8 +1241,10 @@ namespace MphRead.Mods.Launcher.Gui
             FrameTiming.FrameRateCap = cap;
             _settings.FrameRateCap = FrameTiming.CapString(cap);
             _settings.CelShading = RenderOptions.OnOff(_celRow.On);
-            _settings.CelBands = "8";
-            _settings.CelEdge = "50";
+            _settings.CelBands = Math.Clamp(_celBandsRow.Value, 2, 8)
+                .ToString(CultureInfo.InvariantCulture);
+            _settings.CelEdge = Math.Clamp(_celEdgeRow.Value, 0, 100)
+                .ToString(CultureInfo.InvariantCulture);
             Features.ProHud = _proHud.On;
             Crosshair.Size = (CrosshairSize)_crosshairSizeRow.Index;
             Crosshair.Style = (CrosshairStyle)_crosshairStyleRow.Index;

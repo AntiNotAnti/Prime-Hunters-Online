@@ -23,18 +23,21 @@ namespace MphRead.Mods
     public static class RenderOptions
     {
         /// <summary>
-        /// Percent of the window the 3D scene is rendered at, 25 to 100.
-        /// Halving it quarters the pixels.
+        /// Percent of the window the 3D scene is rendered at, 25 to 200.
+        /// Halving it quarters the pixels; values above 100 supersample the
+        /// world before it is downsampled to the display.
         /// </summary>
         public static int ResolutionScale
         {
             get => _resolutionScale;
-            set => _resolutionScale = Math.Clamp(value, MinScale, 100);
+            set => _resolutionScale = Math.Clamp(value, MinScale, MaxScale);
         }
 
         private static int _resolutionScale = 100;
 
         public const int MinScale = 25;
+        /// <summary>200% is 2x per axis / 4x the shaded pixels.</summary>
+        public const int MaxScale = 200;
 
         /// <summary>
         /// How wide the view is, in degrees, measured the way the game
@@ -167,11 +170,11 @@ namespace MphRead.Mods
         /// <summary>Apply a scale to one dimension, never below one pixel.</summary>
         public static int Scaled(int pixels)
         {
-            if (_resolutionScale >= 100)
+            if (_resolutionScale == 100)
             {
                 return Math.Max(1, pixels);
             }
-            return Math.Max(1, pixels * _resolutionScale / 100);
+            return Math.Max(1, (int)Math.Round(pixels * (_resolutionScale / 100d)));
         }
 
         public static bool ParseOnOff(string? value, bool fallback)
@@ -199,7 +202,7 @@ namespace MphRead.Mods
             if (value != null && Int32.TryParse(value.Trim().TrimEnd('%'),
                 NumberStyles.Integer, CultureInfo.InvariantCulture, out int percent))
             {
-                return Math.Clamp(percent, MinScale, 100);
+                return Math.Clamp(percent, MinScale, MaxScale);
             }
             return fallback;
         }

@@ -663,12 +663,14 @@ namespace MphRead
                     GL.BindTexture(TextureTarget.Texture2D, _screenTexture);
                     GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgb, target.X, target.Y, 0,
                         PixelFormat.Rgb, PixelType.UnsignedByte, IntPtr.Zero);
-                    // Nearest is the DS look; stretched targets need linear.
-                    bool upscaling = Mods.RenderOptions.ResolutionScale < 100;
+                    // Nearest is the native DS look at exactly 100%. Any scaled
+                    // target needs linear sampling: below 100% it is upscaling,
+                    // above 100% it is the resolve/downsample for supersampling.
+                    bool scaled = Mods.RenderOptions.ResolutionScale != 100;
                     GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter,
-                        (int)(upscaling ? TextureMinFilter.Linear : TextureMinFilter.Nearest));
+                        (int)(scaled ? TextureMinFilter.Linear : TextureMinFilter.Nearest));
                     GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter,
-                        (int)(upscaling ? TextureMagFilter.Linear : TextureMagFilter.Nearest));
+                        (int)(scaled ? TextureMagFilter.Linear : TextureMagFilter.Nearest));
                     GL.BindTexture(TextureTarget.Texture2D, 0);
                     if (_celTexture != 0)
                     {

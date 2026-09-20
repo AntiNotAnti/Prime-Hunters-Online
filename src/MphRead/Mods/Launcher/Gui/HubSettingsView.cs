@@ -36,41 +36,46 @@ namespace MphRead.Mods.Launcher.Gui
             root.Children.Add(HubChrome.Header(
                 "HOME  /  SETTINGS",
                 "SETTINGS",
-                "Configure display, audio, controls, replays and your profile.",
+                "Configure display, graphics, audio, controls, replays and your profile.",
                 "CONFIGURATION"));
 
             _cards = new Grid
             {
                 ColumnDefinitions = new ColumnDefinitions("*,*"),
-                RowDefinitions = new RowDefinitions("*,*,*"),
+                RowDefinitions = new RowDefinitions("*,*,*,*"),
                 ColumnSpacing = 10,
                 RowSpacing = 10
             };
 
             HubNavButton display = Add(0, 0, "DISPLAY",
-                "Resolution, frame pacing, FOV, HUD and graphics", "Display",
+                "Window, frame pacing, FOV, HUD and accessibility", "Display",
                 HubTheme.Accent, initial: true);
-            HubNavButton audio = Add(1, 0, "AUDIO",
+            HubNavButton graphics = Add(1, 0, "GRAPHICS",
+                "Supersampling, lighting, filtering, fog and cel rendering", "Graphics",
+                Color.FromRgb(0x55, 0xe0, 0xd2));
+            HubNavButton audio = Add(0, 1, "AUDIO",
                 "Sound effects and music volume", "Audio", HubTheme.Good);
-            HubNavButton controls = Add(0, 1, "CONTROLS",
+            HubNavButton controls = Add(1, 1, "CONTROLS",
                 "Keyboard, mouse, controller, touch and stylus", "Controls",
                 Color.FromRgb(0x86, 0xb8, 0xff));
-            HubNavButton replays = Add(1, 1, "REPLAYS",
+            HubNavButton replays = Add(0, 2, "REPLAYS",
                 "Recording, instant clips and replay storage", "Replays",
                 Color.FromRgb(0xa7, 0x9b, 0xf5));
-            HubNavButton profile = Add(0, 2, "PROFILE",
+            HubNavButton profile = Add(1, 2, "PROFILE",
                 "Player identity, hunter, network and updates", "Profile",
                 HubTheme.Warm);
-            HubNavButton credits = Add(1, 2, "CREDITS",
+            HubNavButton credits = Add(0, 3, "CREDITS",
                 "Project, technology and attribution", "Credits",
                 HubTheme.TextDim);
+            Grid.SetColumnSpan(credits, 2);
 
-            Wire(display, "profile", "controls", "audio", "audio");
-            Wire(audio, "credits", "replays", "display", "display");
-            Wire(controls, "display", "profile", "replays", "replays");
-            Wire(replays, "audio", "credits", "controls", "controls");
-            Wire(profile, "controls", "display", "credits", "credits");
-            Wire(credits, "replays", "audio", "profile", "profile");
+            Wire(display, "credits", "audio", "graphics", "graphics");
+            Wire(graphics, "credits", "controls", "display", "display");
+            Wire(audio, "display", "replays", "controls", "controls");
+            Wire(controls, "graphics", "profile", "audio", "audio");
+            Wire(replays, "audio", "credits", "profile", "profile");
+            Wire(profile, "controls", "credits", "replays", "replays");
+            Wire(credits, "replays", "display", "profile", "display");
 
             var cardScroll = new ScrollViewer
             {
@@ -153,6 +158,7 @@ namespace MphRead.Mods.Launcher.Gui
             _compact = compact;
 
             HubNavButton display = (HubNavButton)ControllerNav.Find(_cards, "settings.display")!;
+            HubNavButton graphics = (HubNavButton)ControllerNav.Find(_cards, "settings.graphics")!;
             HubNavButton audio = (HubNavButton)ControllerNav.Find(_cards, "settings.audio")!;
             HubNavButton controls = (HubNavButton)ControllerNav.Find(_cards, "settings.controls")!;
             HubNavButton replays = (HubNavButton)ControllerNav.Find(_cards, "settings.replays")!;
@@ -162,14 +168,17 @@ namespace MphRead.Mods.Launcher.Gui
             if (oneColumn)
             {
                 _cards.ColumnDefinitions = new ColumnDefinitions("*");
-                _cards.RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,Auto,Auto");
+                _cards.RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,Auto,Auto,Auto");
                 for (int i = 0; i < _cards.Children.Count; i++)
                 {
                     Grid.SetColumn(_cards.Children[i], 0);
                     Grid.SetRow(_cards.Children[i], i);
                 }
-                Wire(display, "credits", "audio", "credits", "audio");
-                Wire(audio, "display", "controls", "display", "controls");
+                for (int i = 0; i < _cards.Children.Count; i++)
+                    Grid.SetColumnSpan(_cards.Children[i], 1);
+                Wire(display, "credits", "graphics", "credits", "graphics");
+                Wire(graphics, "display", "audio", "display", "audio");
+                Wire(audio, "graphics", "controls", "graphics", "controls");
                 Wire(controls, "audio", "replays", "audio", "replays");
                 Wire(replays, "controls", "profile", "controls", "profile");
                 Wire(profile, "replays", "credits", "replays", "credits");
@@ -178,18 +187,23 @@ namespace MphRead.Mods.Launcher.Gui
             else if (twoColumnCompact)
             {
                 _cards.ColumnDefinitions = new ColumnDefinitions("*,*");
-                _cards.RowDefinitions = new RowDefinitions("Auto,Auto,Auto");
+                _cards.RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto");
                 for (int i = 0; i < _cards.Children.Count; i++)
                 {
+                    Grid.SetColumnSpan(_cards.Children[i], 1);
                     Grid.SetColumn(_cards.Children[i], i % 2);
                     Grid.SetRow(_cards.Children[i], i / 2);
                 }
-                Wire(display, "profile", "controls", "audio", "audio");
-                Wire(audio, "credits", "replays", "display", "display");
-                Wire(controls, "display", "profile", "replays", "replays");
-                Wire(replays, "audio", "credits", "controls", "controls");
-                Wire(profile, "controls", "display", "credits", "credits");
-                Wire(credits, "replays", "audio", "profile", "profile");
+                Grid.SetColumn(credits, 0);
+                Grid.SetRow(credits, 3);
+                Grid.SetColumnSpan(credits, 2);
+                Wire(display, "credits", "audio", "graphics", "graphics");
+                Wire(graphics, "credits", "controls", "display", "display");
+                Wire(audio, "display", "replays", "controls", "controls");
+                Wire(controls, "graphics", "profile", "audio", "audio");
+                Wire(replays, "audio", "credits", "profile", "profile");
+                Wire(profile, "controls", "credits", "replays", "replays");
+                Wire(credits, "replays", "display", "profile", "display");
             }
             else
             {
@@ -197,15 +211,20 @@ namespace MphRead.Mods.Launcher.Gui
                 _cards.RowDefinitions = new RowDefinitions("*,*,*");
                 for (int i = 0; i < _cards.Children.Count; i++)
                 {
+                    Grid.SetColumnSpan(_cards.Children[i], 1);
                     Grid.SetColumn(_cards.Children[i], i % 2);
                     Grid.SetRow(_cards.Children[i], i / 2);
                 }
-                Wire(display, "profile", "controls", "audio", "audio");
-                Wire(audio, "credits", "replays", "display", "display");
-                Wire(controls, "display", "profile", "replays", "replays");
-                Wire(replays, "audio", "credits", "controls", "controls");
-                Wire(profile, "controls", "display", "credits", "credits");
-                Wire(credits, "replays", "audio", "profile", "profile");
+                Grid.SetColumn(credits, 0);
+                Grid.SetRow(credits, 3);
+                Grid.SetColumnSpan(credits, 2);
+                Wire(display, "credits", "audio", "graphics", "graphics");
+                Wire(graphics, "credits", "controls", "display", "display");
+                Wire(audio, "display", "replays", "controls", "controls");
+                Wire(controls, "graphics", "profile", "audio", "audio");
+                Wire(replays, "audio", "credits", "profile", "profile");
+                Wire(profile, "controls", "credits", "replays", "replays");
+                Wire(credits, "replays", "display", "profile", "display");
             }
         }
     }
