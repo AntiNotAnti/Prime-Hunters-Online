@@ -107,8 +107,16 @@ namespace MphRead.Mods.Network
                     && !SessionStatePacket.IsNewer(state.Revision, old.Revision)) return;
             }
             bool newMatch = ServerSession?.MatchId != state.MatchId;
-            if (state.Policy == ServerSessionPolicy.Lobby && (newMatch || (state.Phase == SessionPhase.Lobby && !IsInLobby)))
-                ResetMatchState();
+            bool returningToLobby = state.Phase == SessionPhase.Lobby && !IsInLobby;
+            if (state.Policy == ServerSessionPolicy.Lobby && (newMatch || returningToLobby))
+            {
+                // A direct PostMatch -> Starting transition keeps the scene alive long
+                // enough for NetRoomChange to compare the old loaded match id with the
+                // new one. Clearing that marker here makes a same-map rematch look like
+                // a first join, so the room is never rebuilt and the player stays in
+                // the old round's ended/spawn state.
+                ResetMatchState(preserveRoomChange: newMatch && state.Phase != SessionPhase.Lobby);
+            }
             ServerSession = state;
             if (ServerMatch == null || ServerMatch.Value.MatchId != state.MatchId
                 || ServerMatch.Value.AuthorityEpoch != state.AuthorityEpoch)
@@ -147,11 +155,13 @@ namespace MphRead.Mods.Network
         }
 
         // The socket, local slot, identity, authoritative roster and lobby state survive this reset.
-        public static void ResetMatchState()
+        public static void ResetMatchState(bool preserveRoomChange = false)
         {
             NetHealthSync.BeginRoom();
             NetPlayerSetup.Reset(); SpectatorMode.Reset(); NetMatchSync.Reset();
-            NetSlotManager.Reset(); NetDamage.Reset(); NetRoomChange.Reset(); NetMatchEnd.Reset();
+            NetSlotManager.Reset(); NetDamage.Reset();
+            if (!preserveRoomChange) NetRoomChange.Reset();
+            NetMatchEnd.Reset();
             NetPlayerBridge.Reset(); NetUnlagged.Reset(); NetHitPrediction.Reset();
             NetHitClaims.Reset(); NetSmoothing.Reset();
             Array.Clear(RemoteStateValid); Array.Clear(RemoteIntentValid);
