@@ -844,7 +844,13 @@ namespace MphRead.Mods.Launcher.Gui
                 e.Handled = true;
                 return;
             }
-            if (_list.HandleKey(e.Key))
+            if (Current == Face.Clips && _replayViewIndex == 0
+                && _replayGrid != null && _replayGrid.HandleKey(e.Key))
+            {
+                e.Handled = true;
+                return;
+            }
+            if (_list.IsVisible && _list.HandleKey(e.Key))
             {
                 e.Handled = true;
                 return;
