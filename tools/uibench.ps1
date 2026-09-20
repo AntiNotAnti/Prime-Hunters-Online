@@ -20,8 +20,13 @@ param(
     [switch] $Slow,
     [switch] $Free,
     [string] $Shot = "",
-    [string] $Exe = "C:\GIT\Fruity-Prime\src\MphRead\bin\Release\net9.0\ProjectPrime.dll"
+    [string] $Exe = ""
 )
+
+if (-not $Exe) {
+    $repoRoot = Split-Path -Parent $PSScriptRoot
+    $Exe = Join-Path $repoRoot "src\MphRead\bin\Release\net10.0\ProjectPrime.dll"
+}
 
 $env:PATH = "$env:USERPROFILE\.dotnet;$env:PATH"
 $sizes = @("1280x720", "1600x900", "1920x1080", "2560x1440", "3840x2160")
