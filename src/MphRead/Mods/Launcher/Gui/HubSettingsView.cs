@@ -84,8 +84,14 @@ namespace MphRead.Mods.Launcher.Gui
             Wire(profile, "controls", "display", "credits", "credits");
             Wire(credits, "replays", "audio", "profile", "profile");
 
-            Grid.SetRow(_cards, 1);
-            root.Children.Add(_cards);
+            var cardScroll = new ScrollViewer
+            {
+                Content = _cards,
+                HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
+            };
+            Grid.SetRow(cardScroll, 1);
+            root.Children.Add(cardScroll);
 
             var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
             var back = new HubNavButton("BACK", compact: true);
@@ -149,10 +155,13 @@ namespace MphRead.Mods.Launcher.Gui
 
         private void ApplyResponsive(Size size)
         {
-            bool compact = size.Width < 700 || size.Height < 500;
-            if (compact == _compact)
+            bool oneColumn = size.Width < 560;
+            bool twoColumnCompact = !oneColumn && size.Height < 500;
+            bool compact = oneColumn || twoColumnCompact;
+            if (compact == _compact && !twoColumnCompact)
                 return;
             _compact = compact;
+
             HubNavButton display = (HubNavButton)ControllerNav.Find(_cards, "settings.display")!;
             HubNavButton audio = (HubNavButton)ControllerNav.Find(_cards, "settings.audio")!;
             HubNavButton controls = (HubNavButton)ControllerNav.Find(_cards, "settings.controls")!;
@@ -160,11 +169,10 @@ namespace MphRead.Mods.Launcher.Gui
             HubNavButton profile = (HubNavButton)ControllerNav.Find(_cards, "settings.profile")!;
             HubNavButton credits = (HubNavButton)ControllerNav.Find(_cards, "settings.credits")!;
 
-            if (compact)
+            if (oneColumn)
             {
                 _cards.ColumnDefinitions = new ColumnDefinitions("*");
-                _cards.RowDefinitions =
-                    new RowDefinitions("Auto,Auto,Auto,Auto,Auto,Auto");
+                _cards.RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,Auto,Auto");
                 for (int i = 0; i < _cards.Children.Count; i++)
                 {
                     Grid.SetColumn(_cards.Children[i], 0);
@@ -176,6 +184,22 @@ namespace MphRead.Mods.Launcher.Gui
                 Wire(replays, "controls", "profile", "controls", "profile");
                 Wire(profile, "replays", "credits", "replays", "credits");
                 Wire(credits, "profile", "display", "profile", "display");
+            }
+            else if (twoColumnCompact)
+            {
+                _cards.ColumnDefinitions = new ColumnDefinitions("*,*");
+                _cards.RowDefinitions = new RowDefinitions("Auto,Auto,Auto");
+                for (int i = 0; i < _cards.Children.Count; i++)
+                {
+                    Grid.SetColumn(_cards.Children[i], i % 2);
+                    Grid.SetRow(_cards.Children[i], i / 2);
+                }
+                Wire(display, "profile", "controls", "audio", "audio");
+                Wire(audio, "credits", "replays", "display", "display");
+                Wire(controls, "display", "profile", "replays", "replays");
+                Wire(replays, "audio", "credits", "controls", "controls");
+                Wire(profile, "controls", "display", "credits", "credits");
+                Wire(credits, "replays", "audio", "profile", "profile");
             }
             else
             {

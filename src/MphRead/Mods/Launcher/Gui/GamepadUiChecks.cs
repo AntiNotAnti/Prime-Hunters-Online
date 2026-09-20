@@ -256,12 +256,6 @@ namespace MphRead.Mods.Launcher.Gui
             FocusNavigator.Ensure(settingsHub);
             GamepadChecks.Check(displaySettings!.IsFocused,
                 "settings hub defaults controller focus to Display");
-            window.Width = 650; window.Height = 470;
-            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
-            FocusNavigator.Focus(displaySettings);
-            FocusNavigator.Move(settingsHub, UiAction.Down);
-            GamepadChecks.Check(ControllerNav.Find(settingsHub, "settings.audio")!.IsFocused,
-                "compact settings navigation follows visual order");
 
             string? selectedSettingsSection = null;
             int settingsClosed = 0;
@@ -282,6 +276,14 @@ namespace MphRead.Mods.Launcher.Gui
                 GamepadChecks.Check(selectedSettingsSection == section,
                     $"settings pointer click activates {section}");
             }
+
+            window.Width = 650; window.Height = 470;
+            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            FocusNavigator.Focus(displaySettings);
+            FocusNavigator.Move(settingsHub, UiAction.Down);
+            GamepadChecks.Check(ControllerNav.Find(settingsHub, "settings.controls")!.IsFocused,
+                "short-wide settings navigation follows its two-column visual order");
+
             Click(window, ControllerNav.Find(settingsHub, "settings.back")!);
             GamepadChecks.Check(settingsClosed == 1,
                 "settings Back accepts a pointer click");
