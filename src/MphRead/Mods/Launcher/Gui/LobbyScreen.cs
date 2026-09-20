@@ -466,6 +466,7 @@ namespace MphRead.Mods.Launcher.Gui
                 Tick();
                 administration.IsVisible = NetSession.LocalIsLobbyOwner;
             };
+            administration.IsVisible = NetSession.LocalIsLobbyOwner;
             Refresh();
         }
 
