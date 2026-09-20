@@ -6,9 +6,11 @@ addition on top. Code: `Mods/Network/NetUnlagged.cs`.
 
 ## The fault
 
-Not Doom's fault, because the topology is not Doom's. Nobody here is a neutral
-server: the first client to join simulates the match and everyone else feeds it
-intent through the relay. So for a client **B** shooting at **C**:
+Not Doom's fault, because the topology is not Doom's. In the current
+architecture the gameplay server runs the simulation and every client feeds it
+intent. Historical measurements below also include the former
+first-client-authority relay; those are control data, not current production
+topology. For a client **B** shooting at **C**:
 
 - B's screen shows C where the last snapshot put them — composed by the
   authority one downstream trip ago, from an intent C sent one upstream trip

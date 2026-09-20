@@ -366,7 +366,7 @@ jobs:
           mkdir -p dist
           cp LICENSE publish/win-x64/ 2>/dev/null || true
           cat > publish/win-x64/README.txt <<'NOTE'
-          Fruity Prime -- Metroid Prime Hunters, on a PC, with multiplayer.
+          Prime Hunters Online -- Metroid Prime Hunters, on PC, with multiplayer.
 
           Double-click FruityPrime.exe. The first thing it asks for is your own
           Metroid Prime Hunters cartridge dump (.nds); it unpacks what it needs
@@ -387,7 +387,7 @@ jobs:
 
           cp LICENSE publish/linux-x64/ 2>/dev/null || true
           cat > publish/linux-x64/README.txt <<'NOTE'
-          Fruity Prime -- Metroid Prime Hunters, on a PC, with multiplayer.
+          Prime Hunters Online -- Metroid Prime Hunters, on PC, with multiplayer.
 
           Set up with your own Metroid Prime Hunters cartridge dump (.nds).
           It is unpacked next to this program and the file is left alone. No
@@ -421,7 +421,7 @@ jobs:
           ( cd publish/linux-x64 && tar czf "../../dist/FruityPrime-$TAG-linux-x64.tar.gz" . )
 
           cat > publish/linux-arm64/SERVER.txt <<'NOTE'
-          Fruity Prime dedicated server.
+          Prime Hunters Online dedicated server.
 
             ./FruityPrime -server -port 27888 -players 8 -servername "My server"
 
@@ -439,18 +439,22 @@ jobs:
 
             ./FruityPrime -masterserver -port 27889
           NOTE
+          cp SERVER.md publish/linux-arm64/SERVER.md
           ( cd publish/linux-arm64 && tar czf "../../dist/FruityPrime-$TAG-server-linux-arm64.tar.gz" . )
 
           cp LICENSE publish/linux-x64-server/ 2>/dev/null || true
           cat > publish/linux-x64-server/SERVER.txt <<'NOTE'
-          Fruity Prime dedicated server, for a plain x64 Linux machine -- a
+          Prime Hunters Online dedicated server, for a plain x64 Linux machine -- a
           VPS, a spare desktop, anything that is not a Raspberry Pi (see the
           ARM64 package for that) and that nobody is playing on.
 
             ./FruityPrime -server -port 27888 -players 8 -servername "My server"
 
-          It needs no game files. Maps come from maprotation.txt, written
-          beside the binary on first run.
+          This server runs the match authoritatively and therefore requires
+          your extracted Metroid Prime Hunters game files. Put a valid paths.txt
+          beside the binary pointing at those files. No game data is included
+          in this package. Maps come from maprotation.txt, written beside the
+          binary on first run.
 
           The server lists itself on net.livetek.fr so that players can find it
           in the launcher's server browser. Pass -nomaster to stay private, or
@@ -464,11 +468,12 @@ jobs:
           systemd; deploy-server.sh automates that end to end for the ARM64
           build, and the same units work here with the RID changed.
           NOTE
+          cp SERVER.md publish/linux-x64-server/SERVER.md
           ( cd publish/linux-x64-server && tar czf "../../dist/FruityPrime-$TAG-server-linux-x64.tar.gz" . )
 
           cp LICENSE publish/win-x64-server/ 2>/dev/null || true
           cat > publish/win-x64-server/SERVER.txt <<'NOTE'
-          Fruity Prime dedicated server, for Windows.
+          Prime Hunters Online dedicated server, for Windows.
 
           From a Command Prompt or PowerShell, in this folder:
 
@@ -502,6 +507,7 @@ jobs:
 
             FruityPrimeServer.exe -servers
           NOTE
+          cp SERVER.md publish/win-x64-server/SERVER.md
           ( cd publish/win-x64-server && zip -qr "../../dist/FruityPrime-$TAG-server-win-x64.zip" . )
 
           # The APK goes out on its own rather than in an archive: what a phone

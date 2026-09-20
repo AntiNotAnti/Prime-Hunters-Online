@@ -2,8 +2,7 @@
 
 <img src="src/MphRead/Assets/fruity-prime-intro.png" alt="Prime Hunters Online" width="100%">
 
-**Metroid Prime Hunters on PC and Android.** Online matches for up to 8 players, widescreen, 60 FPS,
-and a launcher that does the setting up for you.
+**Metroid Prime Hunters on PC, macOS, Linux and Android.** Online matches support up to 8 players, widescreen/high-resolution rendering, a fixed 60 Hz gameplay simulation, and high-refresh presentation.
 
 A fork of [NoneGiven/MphRead](https://github.com/NoneGiven/MphRead).
 
@@ -16,7 +15,7 @@ A fork of [NoneGiven/MphRead](https://github.com/NoneGiven/MphRead).
 
 - **Ultra Widescreen support**
 - **High resolution**
-- **Windows / Linux / Android port**
+- **Windows / Linux / macOS / Android builds**
 - **High-refresh rendering** up to 500 FPS while gameplay simulation stays fixed at 60 Hz
 - **Server-authoritative online play** with lag compensation and client hit prediction (no WFC support)
 - **Up to 8 players**

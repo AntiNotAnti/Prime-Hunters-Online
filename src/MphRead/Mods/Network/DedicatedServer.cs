@@ -1465,8 +1465,8 @@ namespace MphRead.Mods.Network
             string wanted = roomKey.Trim();
             // The compiled-in room table, which custom maps in the server's
             // own maps folder are already part of (see CustomRooms.AppendRooms).
-            // No game files are read: a dedicated server has none, and this
-            // has to work there.
+            // This lookup itself performs no file I/O; authoritative servers
+            // still require the operator's game files to build/simulate rooms.
             foreach (KeyValuePair<string, RoomMetadata> entry in Metadata.RoomMetadata)
             {
                 if (entry.Value.Multiplayer

@@ -28,24 +28,18 @@ namespace MphRead.Mods.Network
     /// meantime). Without <see cref="NetUnlagged"/> underneath it this would
     /// mispredict exactly as often as the shots used to miss.
     ///
-    /// Two rules keep a prediction from becoming a lie:
+    /// Three rules keep a prediction from becoming a lie:
     ///
     /// <list type="number">
-    /// <item><b>A prediction never scores and never ends a match.</b> The
-    /// scoreboard is assigned from the snapshot for every slot, so a point
-    /// awarded by a predicted kill is overwritten by the authority's answer
-    /// within a snapshot either way; and <c>EndIfPointGoalReached</c> is
-    /// already refused on a machine that is not keeping the score, by
-    /// <c>NetMatchEnd.MayEndOnScore</c>. What the death path is allowed to do
-    /// here is the part a player is waiting for -- the body drops, the banner
-    /// says who it was, the mark lands.</item>
-    /// <item><b>A prediction is only ever your own shot on somebody else.</b>
-    /// Incoming damage is not predicted. Whether you were hit is a question
-    /// about a shot fired on another machine, aimed at a copy of you that
-    /// machine is holding, and this one has no better guess at it than the
-    /// authority's -- it has a worse one. The one thing predicted *onto* this
-    /// machine's own player is the health its own Shock Coil drains out of
-    /// somebody else, which is not a guess about anybody else's input.</item>
+    /// <item><b>A prediction never owns durable score or match end.</b> The
+    /// authority's snapshot owns those outcomes.</item>
+    /// <item><b>Only this client's own outgoing attacks are predicted.</b>
+    /// Incoming damage from another player waits for authority. Completely
+    /// local self-damage/self-death is the exception.</item>
+    /// <item><b>A remote predicted hit does not author a remote death.</b>
+    /// Locally lethal damage is clamped to leave the victim at one HP; the
+    /// flinch/marker/nonlethal health feedback remains immediate while the
+    /// body waits for the authoritative result.</item>
     /// </list>
     ///
     /// <para>
@@ -55,8 +49,8 @@ namespace MphRead.Mods.Network
     /// bar springs back up, which is the thing "it is not registering" is
     /// actually describing. So a prediction is held -- the victim's health is
     /// the authority's number minus whatever this machine has predicted and
-    /// not yet had confirmed, and a victim predicted dead stays down rather
-    /// than being respawned by a snapshot that has not heard about it yet.
+    /// not yet had confirmed. Remote victims are not predicted dead in the
+    /// current build; lethal remote damage is held at one HP until authority.
     /// The hold lasts one measured round trip and a margin
     /// (<see cref="HoldFrames"/>), never the two seconds a prediction is kept
     /// for the statistics: a mispredicted hit is a wrong health bar, and a

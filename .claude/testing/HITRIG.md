@@ -147,19 +147,22 @@ large, and no cartridge room the harness can hold a duel in offers the same.
 ```bash
 tools/hitrig/stage.sh                      # freeze the build the rig runs from
 tools/hitrig/bench.sh 240 270:60 2         # the local A/B, four arms, two modes
-tools/hitrig/bench-p7.sh 120 320:80 2      # protocol 7 against protocol 6, both maps
+tools/hitrig/bench-p7.sh 120 320:80 2      # historical protocol-7/protocol-6 A/B only
 HITRIG_JP_PASS=... tools/hitrig/bench-japan.sh 240   # the same over the real line
 python3 tools/hitrig/summarise.py <run-dir>...       # the table
 ```
 
-`bench-p7.sh` is the one to run after touching lag compensation, hit claims or
-puppet smoothing. Four arms: `TEST ARENA` and `TEST PADS`, each at protocol 6's
-behaviour (`-maxrewind 24 -noclaims -nointerp -relayedpuppets
--nodeathprediction`) and at the defaults. It also prints the authority's claim
-line and the clients' smoothing line per arm, which `summarise.py` does not
-read. The p7 arms run with `-debuglog`, because on a jump pad "the shot went
-through him" has to be told from "the rewind went to the wrong frame" and only
-the log separates them.
+`bench-p7.sh` preserves the old protocol-7/protocol-6 A/B and is useful
+only when reproducing those historical measurements. It is **not** the
+definition of the current architecture. After changing today's lag
+compensation, claims or smoothing, run the default server-authoritative rig
+first and use legacy flags only as explicit control arms.
+
+The historical four-arm script uses `TEST ARENA` and `TEST PADS` with
+protocol-6-style behavior (`-maxrewind 24 -noclaims -nointerp
+-relayedpuppets -nodeathprediction`) against the then-current defaults. It
+still prints authority claim and client smoothing lines, which is why it remains
+valuable for reproducing the dated tables below.
 
 **`stage.sh` is not a convenience.** .NET maps its assemblies into memory, so a
 rebuild that replaces `FruityPrime.dll` while a run is in flight takes every

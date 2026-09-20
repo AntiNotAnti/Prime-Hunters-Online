@@ -11,7 +11,7 @@ process. Windows/Linux local defaults are unchanged.
 The build pipeline cooks maps, publishes, sets executable mode, signs, checks
 architecture and signatures, and executes `-smoketest`. The release pipeline
 resolves one tag first; the Ubuntu and Mac jobs build that tag independently.
-The final draft release waits for all packages to pass before uploading them.
+The release publish job waits for all platform packages to pass before uploading them. Tag pushes publish; a manual release run may explicitly leave the release as a draft.
 
 ## Signing and packaging
 

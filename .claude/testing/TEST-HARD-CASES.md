@@ -1,10 +1,14 @@
 # Testing — the hard cases
 
 `TEST-HARNESS.md` covers the normal run: several real clients playing the
-tour and cross-checking what they saw. This file covers the runs where
-something is deliberately wrong — a player disconnects, a line goes away, a
-ninth player arrives at an eight-slot server, everybody spectates at once,
-the Pi is asked to relay twenty matches.
+tour and cross-checking what they saw. This file covers runs where something
+is deliberately wrong: a player disconnects, a line goes away, a ninth player
+arrives at an eight-slot server, everybody spectates, or a host is pushed
+toward capacity.
+
+Normal production matches are server authoritative. Client-authority/handover
+scenarios below are retained as historical regressions or explicit
+`RunsTheMatch=false` compatibility tests, not current production topology.
 
 Everything here runs **against the Pi** (`net.livetek.fr`), never a loopback
 server. A loopback server has none of the reordering, none of the jitter and
@@ -55,34 +59,32 @@ one-sided run as a whole one.
 | `run-capacity.sh` | eleven real clients at an eight-slot server: who gets in, and what the refused ones are told |
 | `run-blackout.sh` | one player's line disappears for 1, 3, 8 and 40 s while the others keep playing |
 | `run-churn.sh` | players leaving and rejoining mid-match, both by quitting and by vanishing |
-| `run-authority.sh` | the authority leaving mid-match, and coming back into a match it no longer runs |
+| `run-authority.sh` | legacy client-authority regression. In normal server-authoritative play reinterpret this as "first player leaves/rejoins and no authority handover occurs" |
 | `run-latency.sh` | 100 / 200 / 300 / 500 ms of round trip, added by `netem` in the kernel — the same line for every client |
-| `run-netlag.sh` | one match, a **different** line per client (`-netlag`, inside each process): the report that says "a couple of players had 100-200 ms and stuttered" is a mixture, not a uniform delay, and which of them the server made the authority is most of the answer |
+| `run-netlag.sh` | one match, a **different** line per client (`-netlag`, inside each process): useful for asymmetric latency while the server remains authority for every player |
 | `run-loss.sh` | 5 / 15 / 30 % packet loss, shaped on both legs, no added latency |
 | `run-spectate.sh` | one spectator among players, then every player spectating at once |
 | `run-demos.sh` | every client recording the same match, then replaying every file |
 | `run-rotation.sh` | a match boundary crossed with real clients: multi-map and single-map |
 | `run-fullhouse.sh` | eight real clients, nothing artificial — the baseline the rest is read against |
-| `run-pi-limit.sh` | how many matches the Pi will relay: a ramp of hosted games with synthetic players |
+| `run-pi-limit.sh` | historical hosted-capacity ramp. Rework/re-run it for isolated authoritative child processes before quoting a current density limit |
 
 `netprobe.py` subcommands: `capacity`, `protocol`, `slotclaim`, `spoof`,
 `matchend`, `fuzz`, `names`, `churn`, `idle`, `statusflood`, `masterhost`.
 
-## Against a server that simulates the match
+## Current production topology: server authority
 
-`-simulate` (`.claude/multiplayer/NETWORK-SERVERAUTH.md`) moves the simulation
-authority off the first client and onto the server. Point the whole batch at
-one with `MPH_SERVER_PORT`:
+Normal gameplay servers already simulate the match; `-simulate` is a
+compatibility no-op. Point the batch at one with `MPH_SERVER_PORT`:
 
 ```bash
 MPH_SERVER_PORT=27919 ./hard/run-all.sh serverauth
 ```
 
-Three things in this rig assume a *client* authority, and two of them had to
-be taught the difference. **The probes detect it rather than being told**: a
-client is made the authority by being sent `PacketType.Authority` and in no
-other way, so a first client that was not sent one is talking to a simulating
-server.
+Legacy probes that know about client authority should now treat
+`PacketType.Authority` as a compatibility-path signal. In a normal run no
+client should receive it; that absence is an invariant, not merely a probe
+mode.
 
 | Where | What changes |
 |---|---|

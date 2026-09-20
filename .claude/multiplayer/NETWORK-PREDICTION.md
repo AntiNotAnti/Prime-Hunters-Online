@@ -144,7 +144,7 @@ So three things are held against the snapshot until the authority catches up:
 |---|---|---|
 | the victim's health | the authority's number less the damage of every prediction still outstanding for that slot | `HealthFor`, called from `ApplyState` |
 | the victim's health, again | never above what was last drawn, while this machine is still predicting hits on that slot | `_shownHealth`, in `HealthFor` |
-| a player predicted dead | the snapshot is not allowed to spawn them. Somebody else only under `-deathprediction`; **this machine's own player always**, since a self-kill is predicted either way | `HeldDead`, checked in the `!wasInPlay` branch |
+| this machine's own player after a predicted self-death | the snapshot is not allowed to resurrect that local self-death until lifecycle catches up. Remote victims are not predicted dead in the current build; remote lethal damage is held at 1 HP for authority | `HeldDead`, checked in the `!wasInPlay` branch |
 | this machine's own drained health | the authority's number plus every drain credit still outstanding | `LocalHealthFor` |
 
 ### The floor, and why the debit is not enough
@@ -177,9 +177,9 @@ the same hits on both machines is a separate piece of work -- see
 
 `HealthFor` never returns zero on its own account: assigning zero health is
 not a death -- it skips the whole death path -- so a hold that ran the bar to
-the bottom would produce a player who is neither alive nor dead. A predicted
-kill goes through `TakeDamage` like every other hit, and `HeldDead` is what
-keeps it down.
+the bottom would produce a player who is neither alive nor dead. A local predicted self-kill goes through `TakeDamage` like every other hit,
+and `HeldDead` is what keeps that local player down until authoritative
+lifecycle catches up. Remote victims never enter this state from prediction.
 
 **The hold window is not the pending window.** `PendingFrames` is 120 -- two
 seconds, deliberately generous, because a confirmation that arrives late is

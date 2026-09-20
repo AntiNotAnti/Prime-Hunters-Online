@@ -61,17 +61,13 @@ claiming coverage that isn't there.
   longer arms or the Pi rather than a contended WSL box. The one-frame gap is
   still a real fault and the fix is still right; it is simply not what this
   instrument can see.
-- **Hit claims and the kill arbitration are proven on a loopback with latency
-  injected into it, and have never met a real line.** *Added 2026-09-14.* The
-  mechanism is measured end to end -- claims declared, answered, refused,
-  rescued, with 0 unanswered over a 70 s three-client run and `3 kills, 2
-  headshots rescued` in a 120 s sniper arm at 320 ms -- but every one of those
-  runs was `-netlag` on 127.0.0.1. The case the arbitration exists for is two
-  players killing each other across a real intercontinental line, and what is
-  *not* known is how often `ResultDeadShooter` actually fires there, nor
-  whether the **current dynamic grace window (RTT + margin, bounded 24–72 frames)**
-  is right when the jitter is the internet's rather than a number this box chose. `tools/hitrig/bench-p7.sh`
-  against the Pi, or `bench-japan.sh`, is what would settle it.
+- **The strict-earlier-world refusal branch of kill arbitration is still
+  weakly exercised.** Hit claims have now run on a real intercontinental line
+  (the Japan measurements in `NETWORK-HITCLAIMS.md` include claim/arbitration
+  traffic), so "claims have never met a real line" is no longer true. What
+  remains unresolved is the rare `ResultDeadShooter` refusal case and whether
+  the **current dynamic grace window (RTT + margin, bounded 24–72 frames)**
+  remains well tuned under real jitter/loss rather than synthetic shaping.
 - **The geometric gate on a claim has never refused anything, so its tolerance
   is untested from the wrong side.** `ClaimRadius` is 2.0 units and every run
   so far reads `0 refused`. That is the right outcome and it is also no
@@ -80,13 +76,13 @@ claiming coverage that isn't there.
   or irrelevant. A run with `-relayedpuppets` on one client and the default on
   another -- two clients deliberately holding different copies of the same
   puppet -- is the experiment.
-- **A mutual kill has not been staged deliberately.** The arbitration's rule --
-  a shot counts unless its shooter was put down by a hit aimed at a strictly
-  earlier world -- is exercised only by whatever the scripted tour happens to
-  produce, and `VoidedDeadShooter` has read zero in every run. Nothing in
-  `HitRig` or `NetTestScript` makes two clients shoot each other at the same
-  instant on purpose, which is what the rule is for. Until one does, the
-  ordering is proven by reading the code rather than by measurement.
+- **The duel stages crossing lethal shots, but the strict refusal outcome is
+  still rare.** `HitRig.Duel` deliberately keys both shooters to the server
+  clock so lethal Imperialist shots cross in flight. Trades have therefore been
+  staged intentionally. The measured runs still reported
+  `VoidedDeadShooter == 0`, so the *strictly earlier world* refusal branch
+  needs a deterministic test that guarantees one shooter fired after the world
+  in which they were already killed.
 - **The playout clock's snap counter is contaminated by this box.** 96 clock
   snaps in a 60 s loopback run is mostly the *client* failing to hold 60 Hz
   while three clients and a server share a WSL CPU, not the line. The same
@@ -296,19 +292,18 @@ claiming coverage that isn't there.
   on an x64 runner, so `check-dedicated-server.sh` can't run it there.
   `linux-x64-server` (same build config, a processor the runner actually has)
   is the nearest CI gets; the Pi via `deploy-server.sh` is the real test.
-- **The Windows dedicated server is started in CI, but only there.** Checked
-  on every push via the `windows-server` job, but nobody has run it on a real
-  Windows machine behind a real firewall for a long session, unlike the Linux
-  server on the Pi.
-- **The Pi's ceiling was found as "nobody else can join", not as a broken
-  match.** Twenty hosted games and 160 players held with 98.8% delivery and
-  no UDP errors; 24 and 32 games admitted no more than 160 either. What is
-  *not* known is whether a real match at that point was still playable --
-  every player in that ramp was synthetic, so it measures the relay and not
-  the game. Nor is the true traffic ceiling known: above four games this box
-  could not offer a full 60 Hz per client (`sendto` costs 3.9 ms through its
-  WSL NAT), so the higher steps held the total traffic constant and only
-  raised the match count.
+- **The Windows dedicated-server binary gets its startup contract in CI, but
+  not a real match.** CI cannot contain the operator's game files, so the
+  Windows job proves the console binary, server parsing, actionable missing-data
+  refusal and exit behavior. A long-running authoritative Windows match behind
+  a real firewall still needs field validation.
+- **Hosted-server capacity must be re-measured for isolated authoritative
+  processes.** The old 20-game/160-player Pi ramp measured the former
+  in-process/client-authority hosting architecture with synthetic players.
+  Hosted games now spawn isolated authoritative server processes, so the old
+  density number is historical and must not be used as a current capacity
+  claim. A new ramp needs CPU, RSS, 60 Hz simulation health, delivery and
+  joinability per child process.
 - **An old client against the new server is untested.** The Pi has run the
   2026-09-01 server since that date, and both refusals were then proved on the
   wire: a full server answers a ninth Hello with `Refused` reason 1 in 11 ms,
