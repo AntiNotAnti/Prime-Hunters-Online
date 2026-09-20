@@ -2,7 +2,7 @@
 # Fail if a custom map would reach a player without the level it converts.
 #
 # A map in maps/ is the recipe, the level it converts and the textures baked
-# from that level -- in a folder, or cooked into one .fpmap. The recipe alone
+# from that level -- in a folder, or cooked into one .ppmap. The recipe alone
 # registers a room that the game then declines to build -- the player sees the
 # 27 cartridge rooms and no sign that anything was meant to be there. That is
 # the right behaviour for a level nobody may publish, and a silent regression
@@ -64,7 +64,7 @@ while IFS= read -r file; do
   else
     echo "ok:      $name wears a shipped room's textures"
   fi
-done < <(find "$maps" -name '*.fpmap' | sort)
+done < <(find "$maps" -name '*.ppmap' | sort)
 
 # The level a map converts is named by import.source. Read it without a JSON
 # parser: the field is one line in every file this writes, and a dependency on
@@ -82,7 +82,7 @@ while IFS= read -r file; do
     echo "ok:      $name builds from its own description, no level needed"
     continue
   fi
-  bundle="$maps/$(basename "$file" .json).fpmap"
+  bundle="$maps/$(basename "$file" .json).ppmap"
   if [ -f "$bundle" ]; then
     echo "ok:      $name ships as $(basename "$bundle")"
   elif [ -f "$(dirname "$file")/$source" ]; then

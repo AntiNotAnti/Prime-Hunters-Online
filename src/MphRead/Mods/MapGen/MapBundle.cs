@@ -30,7 +30,7 @@ namespace MphRead.Mods.MapGen
     /// </summary>
     public static class MapBundle
     {
-        public const string Extension = ".fpmap";
+        public const string Extension = ".ppmap";
 
         /// <summary>Where the level goes inside the bundle. The pk3 layout, so the same reader finds it.</summary>
         private const string LevelDirectory = "maps/";

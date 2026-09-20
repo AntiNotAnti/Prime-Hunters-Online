@@ -127,7 +127,7 @@ namespace MphRead.Mods.Diagnostics
             {
                 string maps = MapGen.CustomRooms.MapDirectory;
                 if (!Directory.Exists(maps) || !Directory.EnumerateFiles(maps, "*", SearchOption.AllDirectories)
-                    .Any(path => Path.GetExtension(path) is ".fpmap" or ".json"))
+                    .Any(path => Path.GetExtension(path) is ".ppmap" or ".json"))
                 {
                     throw new DirectoryNotFoundException($"No bundled maps found in {maps}");
                 }

@@ -276,7 +276,7 @@
        them ships, so a downloaded release has its custom maps ready and the
        first launch builds them.
 
-       A map is handed out as one .fpmap bundle: recipe, level and baked
+       A map is handed out as one .ppmap bundle: recipe, level and baked
        textures in a single file, with the level trimmed to the lumps the
        importer reads (see Mods/MapGen/MapBundle.cs): 376 KB for de_dust2
        against the 2.8 MB its folder weighed. The folder is what a map is
@@ -287,7 +287,7 @@
        publishes. -->
   <ItemGroup>
     <!-- What ships: the bundles, and any map file loose at the top of maps/. -->
-    <None Include="..\..\maps\**\*.fpmap;..\..\maps\*.json;..\..\maps\*.bsp;..\..\maps\*.tex;..\..\maps\*.obj" Link="maps\%(RecursiveDir)%(Filename)%(Extension)">
+    <None Include="..\..\maps\**\*.ppmap;..\..\maps\*.json;..\..\maps\*.bsp;..\..\maps\*.tex;..\..\maps\*.obj" Link="maps\%(RecursiveDir)%(Filename)%(Extension)">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <!-- What a map is worked on as: a folder holding the recipe, somebody

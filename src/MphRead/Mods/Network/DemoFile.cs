@@ -55,8 +55,8 @@ namespace MphRead.Mods.Network
     /// </summary>
     internal static class DemoFile
     {
-        // "FPDM" -- Project Prime DeMo.
-        public static readonly byte[] Magic = { (byte)'F', (byte)'P', (byte)'D', (byte)'M' };
+        // "PPDM" -- Project Prime DeMo.
+        public static readonly byte[] Magic = { (byte)'P', (byte)'P', (byte)'D', (byte)'M' };
         /// <summary>
         /// 2: frame-stamped records over a deflate stream. Version 1 files
         /// are refused rather than read -- their timestamps mean something

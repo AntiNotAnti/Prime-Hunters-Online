@@ -96,7 +96,7 @@ jobs:
 
 
       # Cook every custom map into the one file it ships as. The recipe, the
-      # level it converts and the textures baked from it go into a .fpmap,
+      # level it converts and the textures baked from it go into a .ppmap,
       # with the level trimmed to the lumps the importer actually reads: 376 KB
       # for de_dust2 against the 2.8 MB its folder weighs. That bundle is what
       # the packages carry, and it is what somebody can be handed on its own --
@@ -313,7 +313,7 @@ jobs:
         run: dotnet workload install android
 
       # Cook every custom map into the one file it ships as. The recipe, the
-      # level it converts and the textures baked from it go into a .fpmap,
+      # level it converts and the textures baked from it go into a .ppmap,
       # with the level trimmed to the lumps the importer actually reads: 376 KB
       # for de_dust2 against the 2.8 MB its folder weighs. That bundle is what
       # the packages carry, and it is what somebody can be handed on its own --

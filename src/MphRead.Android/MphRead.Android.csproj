@@ -138,7 +138,7 @@
          phone shipped a recipe with no level, or nothing at all, and listed 27
          rooms. A bundle is one file at the top of maps/, which both halves
          can see. -->
-    <AndroidAsset Include="..\..\maps\*.json;..\..\maps\*.bsp;..\..\maps\*.tex;..\..\maps\*.fpmap"
+    <AndroidAsset Include="..\..\maps\*.json;..\..\maps\*.bsp;..\..\maps\*.tex;..\..\maps\*.ppmap"
                   Link="Assets\maps\%(Filename)%(Extension)" />
     <!-- Everything the launcher's screens name by avares:// URI, and none of
          it is optional here: Avalonia does not fall back when a font behind
