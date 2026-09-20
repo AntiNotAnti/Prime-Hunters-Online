@@ -10,7 +10,7 @@ using OpenTK.Mathematics;
 namespace MphRead.Mods.MapGen
 {
     /// <summary>
-    /// Converts a Quake 3 level into a Fruity Prime room.
+    /// Converts a Quake 3 level into a Project Prime room.
     ///
     /// Three things are being translated, not copied. The axes: Quake is
     /// Z-up, this engine is Y-up, and the mapping used here keeps the

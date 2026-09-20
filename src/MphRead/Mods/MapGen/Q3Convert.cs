@@ -178,9 +178,9 @@ namespace MphRead.Mods.MapGen
             {
                 Console.WriteLine($"  {scripted} of them are handed out by the level's own scripts"
                     + " rather than walked over, and are usually stood in a closet nobody can reach."
-                    + $" FruityPrime -mapitems \"{room}\" says which.");
+                    + $" ProjectPrime -mapitems \"{room}\" says which.");
             }
-            Console.WriteLine($"  then: FruityPrime -mapgen \"{room}\"");
+            Console.WriteLine($"  then: ProjectPrime -mapgen \"{room}\"");
             return 0;
         }
 

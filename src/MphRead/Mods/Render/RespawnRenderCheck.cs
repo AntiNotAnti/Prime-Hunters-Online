@@ -129,7 +129,7 @@ namespace MphRead.Mods.Render
                 new NativeWindowSettings
                 {
                     ClientSize = new Vector2i(640, 480),
-                    Title = "Fruity Prime respawn render check",
+                    Title = "Project Prime respawn render check",
                     Profile = ContextProfile.Compatability,
                     Flags = ContextFlags.Default,
                     APIVersion = new Version(3, 2),

@@ -179,7 +179,7 @@ namespace MphRead.Mods.Launcher.Gui
             Console.WriteLine("[launcher]   Debian/Ubuntu: sudo apt install libfontconfig1");
             Console.WriteLine("[launcher]   Fedora: sudo dnf install fontconfig");
             Console.WriteLine("[launcher]   NixOS/Guix: run it inside an FHS environment, "
-                + "e.g. steam-run ./FruityPrime -launcher");
+                + "e.g. steam-run ./ProjectPrime -launcher");
             // libICE and libSM used to be on this list, because the launcher
             // was an X11 window. It is drawn inside the game window now and
             // binds no windowing libraries of its own at all.
