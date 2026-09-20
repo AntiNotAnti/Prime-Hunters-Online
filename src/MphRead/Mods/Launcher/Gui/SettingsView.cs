@@ -137,6 +137,7 @@ namespace MphRead.Mods.Launcher.Gui
         private SliderRow _musicVolume = null!;
         private ChoiceRow _languageRow = null!;
         private SliderRow _sensitivity = null!;
+        private SliderRow _zoomSensitivity = null!;
         private ToggleRow _invertY = null!;
         private ToggleRow _invertX = null!;
         private ToggleRow _penTablet = null!;
@@ -602,6 +603,10 @@ namespace MphRead.Mods.Launcher.Gui
                 SensitivityToSlider(InputSettings.MouseSensitivity),
                 v => $"{SliderToSensitivity(v).ToString("0.00", CultureInfo.InvariantCulture)}x",
                 min: 1, max: 300, keyStep: 1));
+            _zoomSensitivity = Add(page, new SliderRow("Zoom sensitivity",
+                SensitivityToSlider(InputSettings.MouseZoomSensitivity),
+                v => $"{SliderToSensitivity(v).ToString("0.00", CultureInfo.InvariantCulture)}x",
+                min: 1, max: 300, keyStep: 1));
             _invertY = Add(page, new ToggleRow("Invert vertical aim", InputSettings.InvertMouseY));
             _invertX = Add(page, new ToggleRow("Invert horizontal aim", InputSettings.InvertMouseX));
 
@@ -697,6 +702,7 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 InputSettings.Reset();
                 _sensitivity.Value = SensitivityToSlider(InputSettings.MouseSensitivity);
+                _zoomSensitivity.Value = SensitivityToSlider(InputSettings.MouseZoomSensitivity);
                 _invertY.On = InputSettings.InvertMouseY;
                 _invertX.On = InputSettings.InvertMouseX;
                 _penTablet.On = Mods.Input.PointerInput.StylusMode;
@@ -1173,6 +1179,7 @@ namespace MphRead.Mods.Launcher.Gui
             _settings.Language = _languageRow.Value;
             // Controls
             InputSettings.MouseSensitivity = SliderToSensitivity(_sensitivity.Value);
+            InputSettings.MouseZoomSensitivity = SliderToSensitivity(_zoomSensitivity.Value);
             InputSettings.InvertMouseY = _invertY.On;
             InputSettings.InvertMouseX = _invertX.On;
             Mods.Input.PointerInput.StylusMode = _penTablet.On;
