@@ -150,7 +150,32 @@ namespace MphRead.Mods.Input
             Frame(1810, 650, true);
             Require(PointerDevice.TakeDelta() == (0f, 0f), "pause/focus return cannot replay accumulated aim");
             Frame(1820, 650, true, id: 2);
-            Require(!StylusZone.Aiming && PointerDevice.TakeDelta() == (0f, 0f), "new pointer identity starts a fresh contact");
+            Require(StylusZone.Aiming && PointerDevice.TakeDelta() == (0f, 0f),
+                "pointer id churn keeps the held stylus gesture without injecting aim");
+
+            // A real tablet can rotate native pointer IDs while the tip is still
+            // physically touching the same WPN/affinity icon. That must remain
+            // one press; only a real pen-up may re-arm the one-shot action.
+            PointerDevice.Reset();
+            PointerInput.StylusMode = true;
+            StylusZone.Enabled = true;
+            StylusZone.AspectCorrection = 1920f / 1080;
+            StylusZone.SetRect(0, 0, 1);
+            StylusZone.Button weapons = Array.Find(StylusZone.Buttons,
+                button => button.Region == StylusRegion.Weapons);
+            float weaponX = weapons.X / StylusZone.DsWidth * 1920;
+            float weaponY = weapons.Y / StylusZone.DsHeight * StylusZone.Height * 1080;
+            Frame(weaponX, weaponY, true, id: 10);
+            Require(StylusZone.TakePressed() == StylusRegion.Weapons,
+                "WPN contact produces one action");
+            Frame(weaponX, weaponY, true, id: 11);
+            Require(StylusZone.Held == StylusRegion.Weapons
+                && StylusZone.TakePressed() == StylusRegion.None,
+                "WPN id churn does not repeat the action");
+            Frame(weaponX, weaponY, false, id: 11);
+            Frame(weaponX, weaponY, true, id: 12);
+            Require(StylusZone.TakePressed() == StylusRegion.Weapons,
+                "real WPN release rearms the next touch");
 
             foreach (StylusZone.Button button in StylusZone.Buttons)
             {
@@ -313,7 +338,7 @@ namespace MphRead.Mods.Input
         private static void CheckSettings()
         {
             string originalDirectory = Launcher.LauncherPrefs.Directory;
-            string directory = Path.Combine(Path.GetTempPath(), "fruity-pointer-check-" + Guid.NewGuid().ToString("N"));
+            string directory = Path.Combine(Path.GetTempPath(), "project-prime-pointer-check-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(directory);
             string path = Path.Combine(directory, "controls.txt");
             try

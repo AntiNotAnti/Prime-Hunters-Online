@@ -77,8 +77,12 @@ namespace MphRead.Mods.Launcher.Gui
             // flows keep the existing results ballot.
             _hasBallot = !NetSession.PersistentLobby;
             _tabs = new UiTabs(_hasBallot
-                ? new[] { "Next match", "Change hunter" }
-                : new[] { "Change hunter" });
+                ? (Mods.EndScreen.CharacterChangeEnabled
+                    ? new[] { "Next match", "Change hunter" }
+                    : new[] { "Next match" })
+                : (Mods.EndScreen.CharacterChangeEnabled
+                    ? new[] { "Change hunter" }
+                    : new[] { "Results" }));
             _tabs.Changed += (_, _) => ShowFace();
 
             _ballotScroll = new ScrollViewer
@@ -163,7 +167,13 @@ namespace MphRead.Mods.Launcher.Gui
         }
 
         /// <summary>Open on the hunter face, for -uishot.</summary>
-        internal void ShowHunter() => _tabs.Index = _hasBallot ? 1 : 0;
+        internal void ShowHunter()
+        {
+            if (Mods.EndScreen.CharacterChangeEnabled)
+            {
+                _tabs.Index = _hasBallot ? 1 : 0;
+            }
+        }
 
         private int HunterIndex() =>
             Math.Max(0, Array.IndexOf(_hunters, Mods.EndScreen.Hunter.ToString()));
@@ -184,16 +194,21 @@ namespace MphRead.Mods.Launcher.Gui
 
         private void ShowFace()
         {
-            bool ballot = _hasBallot && _tabs.Index == 0;
+            bool ballot = _hasBallot
+                && (!Mods.EndScreen.CharacterChangeEnabled || _tabs.Index == 0);
+            bool hunter = Mods.EndScreen.CharacterChangeEnabled && !ballot;
             _ballotScroll.IsVisible = ballot;
-            _hunterPane.IsVisible = !ballot;
+            _hunterPane.IsVisible = hunter;
             // The stand as well as the pane it is in. A hidden pane keeps the
             // bounds its children were last arranged at, and the head that
             // has the engine draw the real model into the stand's rectangle
             // reads those bounds -- so on the ballot face the model's own
             // dark ground was painted over the scoreboard's deaths column.
-            _stand.IsVisible = !ballot;
-            _empty.IsVisible = ballot && MapPick.Order.Count == 0;
+            _stand.IsVisible = hunter;
+            _empty.Text = ballot
+                ? "The rotation decides where next."
+                : "Hunter changes are available from the lobby.";
+            _empty.IsVisible = ballot ? MapPick.Order.Count == 0 : !hunter;
         }
 
         /// <summary>
@@ -202,6 +217,10 @@ namespace MphRead.Mods.Launcher.Gui
         /// </summary>
         private void Commit()
         {
+            if (!Mods.EndScreen.CharacterChangeEnabled)
+            {
+                return;
+            }
             if (!Enum.TryParse(_hunter.Value, ignoreCase: true, out Hunter which))
             {
                 return;
@@ -255,7 +274,10 @@ namespace MphRead.Mods.Launcher.Gui
                     _ballot.Children.Add(tile);
                 }
             }
-            _empty.IsVisible = _hasBallot && order.Length == 0 && _tabs.Index == 0;
+            bool showingBallot = _hasBallot
+                && (!Mods.EndScreen.CharacterChangeEnabled || _tabs.Index == 0);
+            _empty.IsVisible = showingBallot ? order.Length == 0
+                : !Mods.EndScreen.CharacterChangeEnabled;
             int best = 0;
             foreach (string room in order)
             {
@@ -282,18 +304,21 @@ namespace MphRead.Mods.Launcher.Gui
                 tile.Chosen = tile.RoomKey == MapPick.Picked;
             }
 
-            int wantHunter = HunterIndex();
-            if (_hunter.Index != wantHunter)
+            if (Mods.EndScreen.CharacterChangeEnabled)
             {
-                _hunter.Index = wantHunter;
+                int wantHunter = HunterIndex();
+                if (_hunter.Index != wantHunter)
+                {
+                    _hunter.Index = wantHunter;
+                }
+                int wantSuit = Math.Clamp(Mods.EndScreen.Suit, 0, 3);
+                if (_suit.Index != wantSuit)
+                {
+                    _suit.Index = wantSuit;
+                }
+                _stand.Name2 = _hunter.Value;
+                _stand.Suit = wantSuit;
             }
-            int wantSuit = Math.Clamp(Mods.EndScreen.Suit, 0, 3);
-            if (_suit.Index != wantSuit)
-            {
-                _suit.Index = wantSuit;
-            }
-            _stand.Name2 = _hunter.Value;
-            _stand.Suit = wantSuit;
 
             _count.Text = _hasBallot && MapPick.Eligible > 1
                 ? $"{MapPick.Eligible} in the room"

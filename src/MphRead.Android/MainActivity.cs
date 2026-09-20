@@ -923,7 +923,7 @@ namespace MphRead.Droid
                 _endPanelTick = null;
                 return;
             }
-            bool want = MphRead.Mods.EndScreen.Available && !_pauseMenuOpen;
+            bool want = MphRead.Mods.EndScreen.PanelAvailable && !_pauseMenuOpen;
             // The panel going up and down mid-results is what "the 3D model
             // appears and disappears" is: the HUD draws its own picker the
             // moment PanelUp clears. Say which of Available's six clauses moved.

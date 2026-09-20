@@ -277,7 +277,7 @@ namespace MphRead.Mods.Launcher.Gui
         /// </summary>
         internal static void TickEndPanel()
         {
-            bool want = Mods.EndScreen.Available && _menu == null;
+            bool want = Mods.EndScreen.PanelAvailable && _menu == null;
             if (want && !EndPanelUp)
             {
                 // Ensure, not Current: a session that went straight into a
