@@ -721,7 +721,7 @@ namespace MphRead.Mods.Launcher.Gui
 
             Heading(page, "Controller buttons");
             var padRows = new List<PadRow>();
-            foreach (Mods.Input.PadAction action in Mods.Input.PadBindings.Actions)
+            foreach (Mods.Input.PadAction action in Mods.Input.PadBindings.GameplayActions)
             {
                 padRows.Add(Add(page, new PadRow(action)));
             }
