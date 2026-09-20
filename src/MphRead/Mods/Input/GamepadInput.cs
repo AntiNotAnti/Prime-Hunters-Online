@@ -133,7 +133,7 @@ namespace MphRead.Mods.Input
             if (!GamepadContexts.Focused) { _frame = default; _pressed = 0; return; }
             if (!_frame.Connected) { Actions.Reset(); return; }
             Actions.Update(_frame.Buttons,
-                includeReplay: MphRead.Mods.Network.DemoPlayback.IsActive);
+                replayContext: MphRead.Mods.Network.DemoPlayback.IsActive);
             if (context != GamepadContext.Gameplay || WheelHeld) return;
             var (x, y) = AimStick;
             AimDeltaX = -GamepadAnalog.ApplyResponseCurve(x, GamepadOptions.Curve) * TurnRate * GamepadOptions.LookX
