@@ -17,8 +17,10 @@ namespace MphRead.Mods.Input
         public static bool Single(GamepadButtons button) => State.Single(button);
         public static GamepadButtons Modifier(PadAction action, int slot) => State.Modifier(action, slot);
         public static string DescribeSlot(PadAction action, int slot) => State.DescribeSlot(action, slot);
-        public static ulong Evaluate(GamepadButtons buttons, GamepadButtons suppressed = 0) => State.Evaluate(buttons, suppressed);
-        public static GamepadButtons ChordButtons(GamepadButtons buttons) => State.ChordButtons(buttons);
+        public static ulong Evaluate(GamepadButtons buttons, GamepadButtons suppressed = 0,
+            bool includeReplay = true) => State.Evaluate(buttons, suppressed, includeReplay);
+        public static GamepadButtons ChordButtons(GamepadButtons buttons,
+            bool includeReplay = true) => State.ChordButtons(buttons, includeReplay);
         public static void Write(List<string> lines) => State.Write(lines);
         public static void LoadSlots(IEnumerable<string> lines) => State.LoadSlots(lines);
         public static IReadOnlyList<PadAction> Conflicts(PadAction action, GamepadButtons button, GamepadButtons modifier = 0) => State.Conflicts(action, button, modifier);
