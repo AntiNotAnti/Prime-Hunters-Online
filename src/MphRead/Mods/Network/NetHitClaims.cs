@@ -1139,35 +1139,6 @@ namespace MphRead.Mods.Network
         /// only ever rescue a shot the authority's own record agrees was
         /// there to be taken.
         /// </summary>
-        /// <summary>
-        /// Pure geometry predicate used by the authority and the asset-free
-        /// regression suite. Keeping the exact radius/finite-value rule in one
-        /// place prevents a test helper from quietly becoming a second policy.
-        /// </summary>
-        private static bool WithinClaimRadius(Vector3 authorityPosition, Vector3 hitPoint, byte beam)
-        {
-            Vector3 offset = hitPoint - authorityPosition;
-            if (!Single.IsFinite(offset.X) || !Single.IsFinite(offset.Y)
-                || !Single.IsFinite(offset.Z))
-            {
-                return false;
-            }
-            float reach = beam == HitClaimPacket.NoBeam ? MeleeRadius : ClaimRadius;
-            return offset.LengthSquared <= reach * reach;
-        }
-
-        /// <summary>
-        /// Whether the shooter had already been killed in a strictly earlier
-        /// world than the shot was fired in. Equal-world shots trade. A zero
-        /// launch stamp falls back to the ack, matching the claim protocol.
-        /// </summary>
-        private static bool ShooterDiedBeforeShot(bool dead, uint deathFire,
-            uint launchFrame, uint ackFrame)
-        {
-            uint fired = launchFrame != 0 ? launchFrame : ackFrame;
-            return dead && deathFire < fired;
-        }
-
         private static byte Judge(int shooterSlot, in HitClaimPacket claim)
         {
             int victimSlot = claim.VictimSlot;
@@ -1247,6 +1218,35 @@ namespace MphRead.Mods.Network
                 return HitVerdictPacket.ResultDeadShooter;
             }
             return HitVerdictPacket.ResultApplied;
+        }
+
+        /// <summary>
+        /// Pure geometry predicate used by the authority and the asset-free
+        /// regression suite. Keeping the exact radius/finite-value rule in one
+        /// place prevents a test helper from quietly becoming a second policy.
+        /// </summary>
+        private static bool WithinClaimRadius(Vector3 authorityPosition, Vector3 hitPoint, byte beam)
+        {
+            Vector3 offset = hitPoint - authorityPosition;
+            if (!Single.IsFinite(offset.X) || !Single.IsFinite(offset.Y)
+                || !Single.IsFinite(offset.Z))
+            {
+                return false;
+            }
+            float reach = beam == HitClaimPacket.NoBeam ? MeleeRadius : ClaimRadius;
+            return offset.LengthSquared <= reach * reach;
+        }
+
+        /// <summary>
+        /// Whether the shooter had already been killed in a strictly earlier
+        /// world than the shot was fired in. Equal-world shots trade. A zero
+        /// launch stamp falls back to the ack, matching the claim protocol.
+        /// </summary>
+        private static bool ShooterDiedBeforeShot(bool dead, uint deathFire,
+            uint launchFrame, uint ackFrame)
+        {
+            uint fired = launchFrame != 0 ? launchFrame : ackFrame;
+            return dead && deathFire < fired;
         }
 
         /// <summary>

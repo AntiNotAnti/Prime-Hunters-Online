@@ -282,11 +282,6 @@ namespace MphRead.Mods.Network
         {
             Array.Clear(Resolved);
             Array.Clear(Replayed);
-            if (resetSessionTotals)
-            {
-                Array.Clear(ResolvedSession);
-                Array.Clear(ReplayedSession);
-            }
             Array.Clear(Fired);
             NetShotDiagnostics.Reset();
             NetTimingDiagnostics.Reset();
@@ -380,6 +375,11 @@ namespace MphRead.Mods.Network
             Array.Clear(_everSeen);
             Array.Clear(Resolved);
             Array.Clear(Replayed);
+            if (resetSessionTotals)
+            {
+                Array.Clear(ResolvedSession);
+                Array.Clear(ReplayedSession);
+            }
             Array.Clear(Fired);
             NetShotDiagnostics.Reset();
             NetTimingDiagnostics.Reset();
