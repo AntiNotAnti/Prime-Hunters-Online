@@ -18,13 +18,17 @@ The replay packet clock also advances while the session is waiting for a match
 to start, so a recorded `InMatch` packet can release the load barrier. Gameplay
 remains frozen during these steps; this needs no live socket or load acknowledgement.
 
-Space plays/pauses; period steps forward; comma steps backward; brackets change
-speed; arrows seek five seconds; Home restarts; Tab displays the scoreboard.
+Replay transport keyboard and controller bindings are configurable under
+Settings -> Replays. Defaults are Space play/pause, period/comma step, brackets
+speed, arrows seek five seconds and Home restart; controller defaults are
+A play/pause, X step, D-pad seek/speed, LB/RB players and Y camera mode.
+Replay controller actions are a separate semantic context from gameplay, so
+shared physical buttons do not conflict or suppress live-match input. Android
+also exposes PLAY/PAUSE and five-second seek controls directly on the touch HUD.
 F toggles free camera, C selects chase, O selects orbit, 1-8 selects a player,
-and mouse buttons cycle players. The replay pause menu exposes the timeline,
-rate/camera/player controls, event filter/navigation, clip In/Out, and export.
-Gamepad input uses the existing abstraction; Android uses the shared menu and
-its scene-reconstruction path. B/N save/preview camera keyframes. Up to 64
+and mouse buttons cycle players. The replay HUD advertises the active input
+source's configured transport controls. The replay pause menu opens Replay
+Studio for timeline/editor/camera/export work. B/N save/preview camera keyframes. Up to 64
 frame-indexed keys persist in a checksummed `.fpdemo.camera` sidecar, atomically
 replaced and bound to the replay's size and modification time. Track v2 stores
 linear/smooth/Catmull-Rom spline interpolation, ease-in/ease-out/ease-in-out,
@@ -106,17 +110,22 @@ damage, score, objectives and match boundaries. Source-replay extraction copies
 packets and events, rebases frames, and creates a packet bootstrap at the In
 point. It never re-records engine output.
 
-The Replays library displays v3 metadata and offers watch, display rename,
+The Replay Studio library displays v3 metadata and offers watch, display rename,
 favorite, delete, export, folder reveal on desktop, and `.part` recovery.
+It supports live search across names/maps/modes/players and user annotations,
+filters for full replays/clips/favorites/recovery, and newest/oldest/name/longest
+sorting. Grid mode uses up to three opportunistically captured gameplay stills
+with the map thumbnail as immediate fallback; list mode is the denser alternative.
 A persistent size/mtime-keyed index avoids reopening every replay header on
-each library rebuild. Up to three gameplay stills are captured opportunistically
-while a replay is watched/exported; the map thumbnail is the immediate fallback.
-Display names/favorites are sidecars. Imported files stay in place.
+each library rebuild. Display names/favorites are sidecars. Imported files stay in place.
 
 `.fpclip` virtual clips store only source replay + frame range + display name.
 They share packet data with the source until watch/export needs a materialized
 `.fpdemo`, which is cached separately. Automatic highlights can create these
-non-destructive clips in one action. The replay settings page exposes a storage
+non-destructive clips in one action. Virtual-clip playback caches are mapped back
+to their logical `.fpclip` descriptor for annotations, and cutting another
+virtual clip from one is flattened back to the original replay with rebased
+frames rather than depending on a temporary cache file. The replay settings page exposes a storage
 limit and pruning policy; favorites are always protected and materialized clips
 are protected unless the user explicitly allows clip pruning.
 
@@ -185,10 +194,12 @@ This branch adds the editor/presentation layer on top of packet-faithful replay:
   accepted slot intents plus their own authoritative snapshots, roster and
   match-state stream. Recording failure is isolated from the match and rotation
   closes the prior map's replay.
-- Replay Studio provides a zoomable draggable timeline, event/highlight markers,
-  clip In/Out, automatic highlights, per-player analytics, replay/network debug
-  overlays, cinematic camera authoring and Replay Lab's "Take Control" branch
-  handoff.
+- Replay Studio provides a zoomable draggable timeline, draggable clip In/Out
+  handles with a shaded selection, event/automatic-highlight/camera-key markers,
+  user bookmarks and named highlight ranges, per-player analytics, replay/network
+  debug overlays, cinematic camera authoring and Replay Lab's "Take Control"
+  branch handoff. User-authored annotations live in a `.studio.json` sidecar
+  and never rewrite replay packets.
 - Video export walks deterministic replay simulation frames and writes clean
   scene-target PNGs or HUD-inclusive window captures. It supports 720p/1080p/
   1440p/4K output jobs and 30/60/120 fps encoding; when `ffmpeg` is available
