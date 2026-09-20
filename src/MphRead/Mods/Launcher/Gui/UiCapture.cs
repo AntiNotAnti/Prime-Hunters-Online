@@ -164,6 +164,10 @@ namespace MphRead.Mods.Launcher.Gui
             yield return ("deploy", new HubPlayView(), _windowSize);
             yield return ("deploy-phone-portrait", new HubPlayView(), _phonePortrait);
             yield return ("deploy-phone-landscape", new HubPlayView(), _phoneLandscape);
+            yield return ("hub-servers",
+                new HubServerBrowserView(HubBrowserSample()), _windowSize);
+            yield return ("hub-servers-phone-landscape",
+                new HubServerBrowserView(HubBrowserSample()), _phoneLandscape);
             // Every face of the one screen that replaced seven. They share a
             // layout and nothing else -- the list, the settings beside it and
             // the word on the tick are different on each -- so one picture of
@@ -241,6 +245,36 @@ namespace MphRead.Mods.Launcher.Gui
             paused.ShowPauseMenu(() => { }, () => { }, () => { });
             yield return ("pausemenu-phone", paused, _phoneLandscape);
             yield return ("serverbrowser", ServerList(), _windowSize);
+        }
+
+        private static IReadOnlyList<ServerBrowserEntry> HubBrowserSample()
+        {
+            var entries = new List<ServerBrowserEntry>();
+            foreach ((string name, string endpoint, ServerStatus status) in _browser)
+            {
+                string address = endpoint;
+                int port = NetConfig.DefaultPort;
+                int colon = endpoint.LastIndexOf(':');
+                if (colon > 0 && Int32.TryParse(endpoint[(colon + 1)..], out int parsed))
+                {
+                    address = endpoint[..colon];
+                    port = parsed;
+                }
+                entries.Add(new ServerBrowserEntry(
+                    new MasterListing
+                    {
+                        Address = address,
+                        Port = port,
+                        ServerName = name,
+                        RoomKey = status.RoomKey,
+                        Mode = status.Mode,
+                        Players = status.Players,
+                        MaxPlayers = status.MaxPlayers,
+                        Protocol = status.Protocol
+                    },
+                    status));
+            }
+            return entries;
         }
 
         /// <summary>
