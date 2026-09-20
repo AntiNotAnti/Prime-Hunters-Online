@@ -1,6 +1,6 @@
-# Prime Hunters Online updater
+# Project Prime updater
 
-Prime Hunters Online publishes source code, tags, release notes, and downloadable binaries from the same public repository:
+Project Prime publishes source code, tags, release notes, and downloadable binaries from the same public repository:
 
 `AntiNotAnti/Prime-Hunters-Online`
 

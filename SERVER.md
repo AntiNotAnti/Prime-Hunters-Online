@@ -1,4 +1,4 @@
-# Running a Prime Hunters Online server
+# Running a Project Prime server
 
 You do not need any of this to play online. **Host → Where: Online** in the launcher asks a public
 machine to run the match and joins you to it, with nothing to open on your router. This page is for
@@ -10,9 +10,9 @@ is still enough.
 
 ```bash
 # Linux
-./FruityPrime -server -port 27888 -players 8 -servername "My server"
-# Windows -- the console binary, not FruityPrime.exe
-FruityPrimeServer.exe -server -port 27888 -players 8 -servername "My server"
+./ProjectPrime -server -port 27888 -players 8 -servername "My server"
+# Windows -- the console binary, not ProjectPrime.exe
+ProjectPrimeServer.exe -server -port 27888 -players 8 -servername "My server"
 ```
 
 ## Game files are required
@@ -27,7 +27,7 @@ uses:
 
 ```
 0.35.1.0
-AMHP1=/home/you/fruityprime-server/files/AMHP1
+AMHP1=/home/you/projectprime-server/files/AMHP1
 ```
 
 A server without them **will not start**. It says so and exits:
@@ -54,7 +54,7 @@ existing systemd unit or launch script keeps working unchanged.
 | `-rotation FILE` | default `maprotation.txt`, written beside the binary on first run |
 | `-friendlyfire` | team damage on |
 | `-nomaster` | stay off every server list |
-| `-master HOST` `-masterport N` | use a server list other than `net.livetek.fr:27889` |
+| `-master HOST` `-masterport N` | use a server list other than `51.161.113.128:27889` |
 | `-serverreplays on\|off` | canonical authoritative replay recording. Default on |
 | `-noserverreplays` | shorthand to disable canonical server replay recording |
 | `-serverreplaystoragegb N` | replay storage soft cap in GiB. Default 25; 0 = unlimited |
@@ -94,7 +94,7 @@ The compact flags above also accept the configuration-style aliases
 Example for a smaller public server:
 
 ```bash
-./FruityPrime -server -players 8 \
+./ProjectPrime -server -players 8 \
   -serverreplaystoragegb 10 \
   -serverreplayretentiondays 7 \
   -serverreplaykeeplast 50
@@ -104,8 +104,8 @@ Example for a smaller public server:
 
 UDP only. Forward **27888** to the machine. The server list uses **27889**.
 
-Your server is listed on `net.livetek.fr` automatically, so people find it in **Join → Find a
-server**. Check it arrived with `FruityPrime -servers`, which prints the list the browser shows.
+Your server is listed on `51.161.113.128` automatically, so people find it in **Join → Find a
+server**. Check it arrived with `ProjectPrime -servers`, which prints the list the browser shows.
 `-nomaster` keeps it private.
 
 ## Map rotation
@@ -119,7 +119,7 @@ MP3 PROVING GROUND | Battle | 7 | 7
 
 `ROOM KEY | mode | minutes | points`. Only the key is required.
 
-`FruityPrime -rooms` lists every key — the 27 cartridge rooms and any custom map. It reads the game
+`ProjectPrime -rooms` lists every key — the 27 cartridge rooms and any custom map. It reads the game
 files to do that, so run it on a machine that has them, not necessarily on the server.
 
 ## As a service
@@ -127,7 +127,7 @@ files to do that, so run it on a machine that has them, not necessarily on the s
 systemd units are in `tools/systemd/`:
 
 ```bash
-sed -e 's|__USER__|youruser|' -e 's|__DIR__|/home/youruser/fruityprime-server|' \
+sed -e 's|__USER__|youruser|' -e 's|__DIR__|/home/youruser/projectprime-server|' \
     tools/systemd/mphread-server.service | sudo tee /etc/systemd/system/mphread-server.service
 sudo systemctl enable --now mphread-server
 ```
@@ -142,7 +142,7 @@ memory, so copying over a running one takes the process down in a way nothing ex
 The list players' browsers ask is the same binary:
 
 ```bash
-FruityPrime -masterserver -port 27889
+ProjectPrime -masterserver -port 27889
 ```
 
 Add `-public HOST` if a game server shares the box (its heartbeats arrive over the loopback, and the

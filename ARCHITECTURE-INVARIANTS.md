@@ -64,8 +64,9 @@ This file is the short, machine-oriented source of truth for architectural assum
 
 ## Naming
 
-- The public project/repository name is **Prime Hunters Online**.
-- The existing assembly/executable/package names still use `FruityPrime`/`FruityPrimeServer`, and Android still uses the legacy application ID. Treat those as compatibility identifiers until a deliberate migration changes updater/package semantics.
+- The public product name is **Project Prime**.
+- Desktop binaries/packages use `ProjectPrime` / `ProjectPrimeServer`; Android uses `com.projectprime.game`; macOS uses the **Project Prime** bundle identity.
+- The GitHub repository currently retains the legacy `AntiNotAnti/Prime-Hunters-Online` slug as an infrastructure locator for releases and updates.
 - The C# root namespace remains `MphRead` to minimize upstream merge churn.
 
 ## Documentation policy
