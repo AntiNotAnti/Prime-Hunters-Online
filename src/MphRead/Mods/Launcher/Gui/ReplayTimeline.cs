@@ -25,6 +25,7 @@ namespace MphRead.Mods.Launcher.Gui
         private static readonly IBrush HighlightBrush = new SolidColorBrush(Deck.Fade(0x7a6130, 0.34));
         private static readonly IBrush SelectionBrush = new SolidColorBrush(Deck.Fade(0xd8b45d, 0.18));
         private static readonly IBrush BookmarkBrush = new SolidColorBrush(Deck.Rgb(0xb78ce8));
+        private static readonly IBrush NamedHighlightBrush = new SolidColorBrush(Deck.Fade(0xb78ce8, 0.18));
         private static readonly IBrush PlayheadBrush = new SolidColorBrush(Deck.Rgb(0xf0efe8));
         private static readonly IBrush MarkBrush = new SolidColorBrush(Deck.Rgb(0xd8b45d));
         private static readonly IBrush CameraBrush = new SolidColorBrush(Deck.Rgb(0x6fb7c8));
@@ -46,6 +47,7 @@ namespace MphRead.Mods.Launcher.Gui
         private IReadOnlyList<ReplayHighlight> _highlights = Array.Empty<ReplayHighlight>();
         private IReadOnlyList<uint> _cameraKeys = Array.Empty<uint>();
         private IReadOnlyList<uint> _bookmarks = Array.Empty<uint>();
+        private IReadOnlyList<ReplayNamedHighlight> _namedHighlights = Array.Empty<ReplayNamedHighlight>();
 
         public Action<uint>? FrameRequested { get; set; }
         public Action<uint>? MarkInRequested { get; set; }
@@ -61,7 +63,8 @@ namespace MphRead.Mods.Launcher.Gui
 
         public void Update(uint duration, uint current, uint? markIn, uint? markOut,
             IReadOnlyList<ReplayEvent> events, IReadOnlyList<ReplayHighlight> highlights,
-            IReadOnlyList<uint>? cameraKeys = null, IReadOnlyList<uint>? bookmarks = null)
+            IReadOnlyList<uint>? cameraKeys = null, IReadOnlyList<uint>? bookmarks = null,
+            IReadOnlyList<ReplayNamedHighlight>? namedHighlights = null)
         {
             _duration = duration;
             _current = Math.Min(current, duration);
@@ -71,6 +74,7 @@ namespace MphRead.Mods.Launcher.Gui
             _highlights = highlights;
             _cameraKeys = cameraKeys ?? Array.Empty<uint>();
             _bookmarks = bookmarks ?? Array.Empty<uint>();
+            _namedHighlights = namedHighlights ?? Array.Empty<ReplayNamedHighlight>();
             InvalidateVisual();
         }
 
@@ -98,6 +102,15 @@ namespace MphRead.Mods.Launcher.Gui
                     context.DrawRectangle(SelectionBrush, null,
                         new Rect(x1, top, Math.Max(2, x2 - x1), Math.Max(4, height - top - 12)));
                 }
+            }
+
+            foreach (ReplayNamedHighlight highlight in _namedHighlights)
+            {
+                if (highlight.EndFrame < first || highlight.StartFrame > last) continue;
+                double x1 = X(Math.Max(first, highlight.StartFrame), first, span, width);
+                double x2 = X(Math.Min(last, highlight.EndFrame), first, span, width);
+                context.DrawRectangle(NamedHighlightBrush, null,
+                    new Rect(x1, top, Math.Max(2, x2 - x1), Math.Max(4, height - top - 12)));
             }
 
             foreach (ReplayHighlight highlight in _highlights)
