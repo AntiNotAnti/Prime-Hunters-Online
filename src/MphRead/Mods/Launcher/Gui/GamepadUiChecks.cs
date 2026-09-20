@@ -54,6 +54,9 @@ namespace MphRead.Mods.Launcher.Gui
             FocusNavigator.Ensure(hub);
             GamepadChecks.Check(compactPlay!.IsFocused,
                 "FPS hub compact navigation restores a semantic default");
+
+            window.Width = 600; window.Height = 400; window.Content = panel;
+            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
             var choice = new ChoiceRow("Option", new[] { "One", "Two" }, 0);
             panel.Children.Add(choice); window.UpdateLayout(); FocusNavigator.Focus(choice);
             FocusNavigator.Key(choice, Avalonia.Input.Key.Right);
