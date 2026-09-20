@@ -80,10 +80,13 @@ namespace MphRead.Mods.Launcher.Gui
         /// own UI does (its "default.ttf" is this exact file under another
         /// name); hierarchy there is colour and size; nothing is ever regular.
         /// </summary>
-        // A property, not a field: Pixel is declared below this and static
-        // field initialisers run in declaration order, so a field here would
-        // be null for the life of the program.
-        public static FontFamily Display => Pixel;
+        /// <summary>
+        /// The primary interface face. Inter is already registered by both the
+        /// desktop and Android Avalonia builders through WithInterFont().
+        /// </summary>
+        public static readonly FontFamily Interface = new("fonts:Inter#Inter");
+
+        public static FontFamily Display => Interface;
 
         /// <summary>
         /// Roboto Bold, still here: it is what the few places that are prose
@@ -157,7 +160,8 @@ namespace MphRead.Mods.Launcher.Gui
         /// in its server browser is a launcher with two themes in it.
         /// </summary>
         public static Typeface Face(bool bold) =>
-            new(bold ? PixelSemi : Pixel, FontStyle.Normal, FontWeight.Normal);
+            new(Interface, FontStyle.Normal,
+                bold ? FontWeight.SemiBold : FontWeight.Normal);
 
         /// <summary>
         /// Lay a string out on the pixel grid: the size snapped to the face's
@@ -168,7 +172,7 @@ namespace MphRead.Mods.Launcher.Gui
         public static FormattedText Lay(string text, double size, IBrush brush, bool bold)
         {
             return new FormattedText(text, CultureInfo.InvariantCulture,
-                FlowDirection.LeftToRight, Face(bold), PixelSize(size), brush);
+                FlowDirection.LeftToRight, Face(bold), size, brush);
         }
 
         /// <summary>
