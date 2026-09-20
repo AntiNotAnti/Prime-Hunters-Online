@@ -176,6 +176,9 @@ namespace MphRead.Mods.Launcher.Gui
         private ToggleRow _penTablet = null!;
         private ToggleRow _scrollAllWeapons = null!;
         private GamepadSettingsPanel _gamepadSettings = null!;
+        private readonly List<HubNavButton> _controlNav = new();
+        private readonly List<Control> _controlPages = new();
+        private int _controlPageIndex;
         private ToggleRow? _repositionFilter;
         private StackPanel? _stylusAdvanced;
         private DeckButton? _stylusAdvancedButton;
@@ -415,10 +418,9 @@ namespace MphRead.Mods.Launcher.Gui
                 {
                     _tabs.Index = i;
                     ShowPage(i);
-                    if (_controlTabs != null
-                        && String.Equals(name, "Controls", StringComparison.OrdinalIgnoreCase))
+                    if (String.Equals(name, "Controls", StringComparison.OrdinalIgnoreCase))
                     {
-                        _controlTabs.Index = Math.Clamp(sub, 0, 2);
+                        ShowControlPage(sub);
                     }
                     return;
                 }
@@ -836,30 +838,58 @@ namespace MphRead.Mods.Launcher.Gui
         // ------------------------------------------------------------ controls
 
         /// <summary>
-        /// Three devices, three pages.
-        ///
-        /// A keyboard, a pad and a pen tablet do not share a list: "Sensitivity"
-        /// is a different number on each of them, the key list means nothing on
-        /// two of the three, and the bottom-screen zone means nothing on two
-        /// either. They were one page with three headings, which made the page
-        /// long enough that the thing you came to change was usually below the
-        /// fold -- so they are three pages behind a strip now, and the strip is
-        /// the same <see cref="UiTabs"/> the sections above it use.
+        /// Three devices, three focused pages. The old nested UiTabs strip was
+        /// the last legacy navigation surface inside settings; these compact
+        /// hub buttons now use the same focus/selection language as the outer
+        /// Settings shell.
         /// </summary>
         private void BuildControls(StackPanel outer)
         {
             var keyboard = new StackPanel { Spacing = 2 };
-            var gamepad = new StackPanel { Spacing = 2, IsVisible = false };
-            var stylus = new StackPanel { Spacing = 2, IsVisible = false };
-            var subs = new UiTabs(new[] { "Keyboard", "Gamepad", "Stylus" });
-            _controlTabs = subs;
-            subs.Margin = new Thickness(0, 0, 0, 8);
-            subs.Changed += (_, _) =>
+            var gamepad = new StackPanel { Spacing = 2 };
+            var stylus = new StackPanel { Spacing = 2 };
+            _controlPages.Clear();
+            _controlPages.Add(keyboard);
+            _controlPages.Add(gamepad);
+            _controlPages.Add(stylus);
+
+            var subs = new Grid
             {
-                keyboard.IsVisible = subs.Index == 0;
-                gamepad.IsVisible = subs.Index == 1;
-                stylus.IsVisible = subs.Index == 2;
+                ColumnDefinitions = new ColumnDefinitions("*,*,*"),
+                ColumnSpacing = 5,
+                Margin = new Thickness(0, 0, 0, 8)
             };
+            string[] names = { "KEYBOARD", "GAMEPAD", "STYLUS" };
+            Color[] accents =
+            {
+                HubTheme.Accent,
+                Color.FromRgb(0x86, 0xb8, 0xff),
+                HubTheme.Warm
+            };
+            for (int i = 0; i < names.Length; i++)
+            {
+                int at = i;
+                var button = new HubNavButton(names[i], compact: true, accent: accents[i])
+                {
+                    MinHeight = 40
+                };
+                string id = $"settings.controls.{names[i].ToLowerInvariant()}";
+                ControllerNav.Identify(button, id, initial: i == 0);
+                button.Click += (_, _) => ShowControlPage(at);
+                Grid.SetColumn(button, i);
+                subs.Children.Add(button);
+                _controlNav.Add(button);
+            }
+            for (int i = 0; i < _controlNav.Count; i++)
+            {
+                string prev = names[(i + names.Length - 1) % names.Length].ToLowerInvariant();
+                string next = names[(i + 1) % names.Length].ToLowerInvariant();
+                _controlNav[i].SetValue(ControllerNav.NavLeftProperty,
+                    $"settings.controls.{prev}");
+                _controlNav[i].SetValue(ControllerNav.NavRightProperty,
+                    $"settings.controls.{next}");
+            }
+
             outer.Children.Add(subs);
             outer.Children.Add(keyboard);
             outer.Children.Add(gamepad);
@@ -867,15 +897,25 @@ namespace MphRead.Mods.Launcher.Gui
             BuildKeyboard(keyboard);
             BuildGamepad(gamepad);
             BuildStylus(stylus);
+            ShowControlPage(0);
         }
 
-        /// <summary>
-        /// The Controls page's own strip, so <see cref="ShowSection"/> can
-        /// open one of its three sub-pages. The rows under Gamepad are the
-        /// ones that have never been arranged until it is opened, which is
-        /// where the crash was.
-        /// </summary>
-        private UiTabs? _controlTabs;
+        private void ShowControlPage(int index)
+        {
+            if (_controlPages.Count == 0)
+            {
+                return;
+            }
+            _controlPageIndex = Math.Clamp(index, 0, _controlPages.Count - 1);
+            for (int i = 0; i < _controlPages.Count; i++)
+            {
+                _controlPages[i].IsVisible = i == _controlPageIndex;
+                if (i < _controlNav.Count)
+                {
+                    _controlNav[i].Selected = i == _controlPageIndex;
+                }
+            }
+        }
 
         private void BuildKeyboard(StackPanel page)
         {
