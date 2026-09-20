@@ -217,6 +217,12 @@ namespace MphRead.Mods.Launcher.Gui
             yield return ("create-lobby-hosts", new HostPicker(Fleet(), asking: false),
                 _windowSize);
             yield return ("settings", new SettingsView(settings), _windowSize);
+            var graphics = new SettingsView(settings);
+            graphics.ShowSection("Graphics");
+            yield return ("settings-graphics", graphics, _windowSize);
+            var settingsPhone = new SettingsView(settings);
+            settingsPhone.ShowSection("Graphics");
+            yield return ("settings-graphics-phone", settingsPhone, _phonePortrait);
             var credits = new SettingsView(settings);
             credits.ShowSection("Profile");
             yield return ("settings-player", credits, _windowSize);

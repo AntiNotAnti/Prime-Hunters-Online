@@ -7,7 +7,7 @@ during a match).
 
 Layout
 
-- A rail of sections down the left -- Display, Audio, Controls, Match rules,
+- A hub-native rail of sections down the left -- Display, Graphics, Audio, Controls,
   Launcher, Features, Cheats, Bugfixes -- and one page at a time on the right.
 - The selected section is marked with the accent on its bar and label
   (`MenuEntry.Selected`), which is deliberately not the same as the hover fill:
@@ -29,7 +29,8 @@ Sections
 
 | Section | What is on it |
 |---|---|
-| Display | window mode; performance (render scale, lighting, fog, filtering, FPS counter, **frame rate**); cel shading; **Pro mode HUD**, which is the whole of the HUD question now, plus the two crosshair rows that appear under it |
+| Display | window mode; field of view; FPS limit/counter; **Pro mode HUD**, crosshair/weapon presentation, radar and reduced menu motion |
+| Graphics | internal render scale **25–200%** (101–200% is supersampling); lighting; fog; bilinear texture filtering; cel shading with 2–8 bands and 0–100% outline strength |
 | Audio | sound-effect and music volume; the game's text language |
 | Controls | mouse sensitivity, invert either axis, and every key binding, plus reset to defaults; and a **Gamepad** section -- on/off, look sensitivity, stick dead zone, invert the stick's vertical aim. Its own section rather than more rows under Mouse, because a pad has its own sensitivity and a great many people invert one of the two and not the other. `.claude/GAMEPAD.md` |
 | Match rules | point goal, time limit, damage level, team play, friendly fire, hunter radar, affinity weapons, **shadow freeze**. The last is the Judicator ice wave's cone: on is the cartridge, glitch and all, and off makes it a cone rather than a column of infinite height. Server-decided in a networked match, like friendly fire, and broadcast in the match state -- what is set here is what a *hosted* game hands its own server |

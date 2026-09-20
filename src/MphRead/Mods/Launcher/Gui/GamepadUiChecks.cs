@@ -314,6 +314,7 @@ namespace MphRead.Mods.Launcher.Gui
             foreach ((string id, string section) in new[]
             {
                 ("settings.display", "Display"),
+                ("settings.graphics", "Graphics"),
                 ("settings.audio", "Audio"),
                 ("settings.controls", "Controls"),
                 ("settings.replays", "Replays"),
@@ -331,7 +332,7 @@ namespace MphRead.Mods.Launcher.Gui
             window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
             FocusNavigator.Focus(displaySettings);
             FocusNavigator.Move(settingsHub, UiAction.Down);
-            GamepadChecks.Check(ControllerNav.Find(settingsHub, "settings.controls")!.IsFocused,
+            GamepadChecks.Check(ControllerNav.Find(settingsHub, "settings.audio")!.IsFocused,
                 "short-wide settings navigation follows its two-column visual order");
 
             Click(window, ControllerNav.Find(settingsHub, "settings.back")!);
@@ -361,6 +362,10 @@ namespace MphRead.Mods.Launcher.Gui
             GamepadChecks.Check(answer == false, "controller Back dismisses confirmation");
             var settings = new SettingsView(new MenuSettings());
             window.Width = 960; window.Height = 660; window.Content = settings;
+            settings.ShowSection("Graphics"); window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            var graphicsNav = ControllerNav.Find(settings, "settings.detail.graphics") as HubNavButton;
+            GamepadChecks.Check(graphicsNav is { IsEffectivelyVisible: true, Selected: true },
+                "modern settings detail rail selects Graphics");
             settings.ShowSection("Controls", 1); window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
             var rows = settings.GetVisualDescendants().OfType<PadRow>()
                 .Where(row => row.IsEffectivelyVisible).ToArray();

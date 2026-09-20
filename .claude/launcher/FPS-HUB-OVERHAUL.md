@@ -125,26 +125,30 @@ permanent owner section, and add deterministic rendered-lobby coverage.
 
 In progress:
 
-- `HubSettingsView` provides a modern Display / Audio / Controls / Replays /
-  Profile / Credits landing surface while `SettingsView` remains the single
-  transactional save/apply implementation.
+- `HubSettingsView` provides a modern Display / Graphics / Audio / Controls /
+  Replays / Profile / Credits landing surface while `SettingsView` remains the
+  single transactional save/apply implementation.
+- `SettingsView` now uses the same tactical hub chrome for its detail pages:
+  selected category rail on desktop, horizontal category navigation on compact
+  layouts, and hub-native Back / Save / Apply actions.
 - `PauseMenuView` now uses the hub action language and explicitly says when a
   live network session continues behind the menu.
 
 ### Settings
 
-New information architecture:
+Current information architecture:
 
-- General
-- Video
+- Display
 - Graphics
 - Audio
-- Controller
-- Keyboard & Mouse
-- Stylus
-- Gameplay
-- Network
-- Accessibility
+- Controls (Keyboard / Gamepad / Stylus)
+- Replays
+- Profile / Network
+- Credits
+
+Graphics now includes 25–200% internal render scale (above 100% is
+supersampling), lighting, fog, bilinear filtering, cel shading bands and outline
+strength. Display keeps window/view/frame-pacing/HUD/accessibility controls.
 
 Add search, per-setting descriptions, Basic/Advanced grouping, category reset, dirty
 state and restart-required markers.
