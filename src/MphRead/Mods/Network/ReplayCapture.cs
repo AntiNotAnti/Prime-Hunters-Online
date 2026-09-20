@@ -47,18 +47,13 @@ namespace MphRead.Mods.Network
                 packet[0] = (byte)PacketType.MatchState; state.Write(packet.AsSpan(1));
                 packets.Add(packet);
             }
-            var roster = RosterPacket.Create();
-            for (int slot = 0; slot < RosterPacket.MaxSlots; slot++)
+            // Use the current wire roster instead of reconstructing an obsolete
+            // packet shape. This carries stream identity, slot generations, teams
+            // and lobby state, all of which playback needs before the first snapshot.
+            RosterPacket roster = NetSession.LobbyRoster();
+            for (int i = 0; i < roster.Count; i++)
             {
-                if (!NetSession.SlotOccupied[slot]) continue;
-                int i = roster.Count++;
-                roster.Slots[i] = (byte)slot;
-                roster.Hunters[i] = (byte)NetSession.SlotHunter[slot];
-                roster.Colors[i] = (byte)PlayerColors.Choice[slot];
-                roster.Names[i] = GameState.Nicknames[slot];
-                roster.Pings[i] = (ushort)Math.Clamp(NetSession.SlotPing[slot], 0, ushort.MaxValue);
-                // Team ownership is not part of protocol 7's roster packet.
-                players.Add(new((byte)slot, roster.Hunters[i], -1, roster.Names[i]));
+                players.Add(new(roster.Slots[i], roster.Hunters[i], roster.Teams[i], roster.Names[i]));
             }
             byte[] rosterBytes = new byte[1 + RosterPacket.Size];
             rosterBytes[0] = (byte)PacketType.Roster; roster.Write(rosterBytes.AsSpan(1));
