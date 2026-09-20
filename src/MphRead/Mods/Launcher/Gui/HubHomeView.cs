@@ -273,9 +273,9 @@ namespace MphRead.Mods.Launcher.Gui
                 Orientation = Orientation.Horizontal,
                 Spacing = 7
             };
-            tags.Children.Add(Tag("MULTIPLAYER"));
-            tags.Children.Add(Tag("CUSTOM MAPS"));
-            tags.Children.Add(Tag("REPLAYS"));
+            tags.Children.Add(ChipTag("MULTIPLAYER"));
+            tags.Children.Add(ChipTag("CUSTOM MAPS"));
+            tags.Children.Add(ChipTag("REPLAYS"));
             copy.Children.Add(tags);
             body.Children.Add(copy);
 
@@ -476,7 +476,7 @@ namespace MphRead.Mods.Launcher.Gui
             button.SetValue(ControllerNav.NavRightProperty, $"hub.compact.{right}");
         }
 
-        private static Border Tag(string text) => new()
+        private static Border ChipTag(string text) => new()
         {
             Background = HubTheme.InkBrush,
             BorderBrush = HubTheme.EdgeBrush,

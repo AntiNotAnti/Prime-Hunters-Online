@@ -1,6 +1,8 @@
 #if MPHREAD_AVALONIA
+using System;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 
@@ -11,18 +13,20 @@ namespace MphRead.Mods.Launcher.Gui
     ///
     /// It deliberately avoids perpetual animation. The launcher's current
     /// off-screen compositor rasterises a whole UI frame on the CPU whenever
-    /// anything changes, so the shell gets its motion from focus/hover state
-    /// changes while the OpenGL scene remains free to animate underneath.
+    /// anything changes, so the shell gets its motion from discrete focus and
+    /// hover changes while the OpenGL scene remains free to animate underneath.
     /// </summary>
-    internal sealed class HubNavButton : Button
+    internal sealed class HubNavButton : UserControl
     {
+        private readonly Border _frame;
         private readonly Border _rail;
         private readonly TextBlock _label;
-        private readonly TextBlock _detail;
         private readonly IBrush _accent;
         private readonly bool _primary;
         private bool _pointer;
+        private bool _pressed;
 
+        public event EventHandler? Click;
         public string Label { get; }
 
         public HubNavButton(string label, string detail = "", bool primary = false,
@@ -33,15 +37,8 @@ namespace MphRead.Mods.Launcher.Gui
             _accent = new SolidColorBrush(accent ?? HubTheme.Accent);
 
             Focusable = true;
+            Cursor = new Cursor(StandardCursorType.Hand);
             MinHeight = compact ? 42 : 54;
-            Padding = compact
-                ? new Thickness(8, 7)
-                : new Thickness(12, 9);
-            HorizontalContentAlignment = HorizontalAlignment.Stretch;
-            VerticalContentAlignment = VerticalAlignment.Center;
-            Background = primary ? HubTheme.PanelStrongBrush : HubTheme.PanelBrush;
-            BorderBrush = primary ? _accent : HubTheme.EdgeBrush;
-            BorderThickness = new Thickness(1);
 
             _rail = new Border
             {
@@ -60,7 +57,7 @@ namespace MphRead.Mods.Launcher.Gui
                 VerticalAlignment = VerticalAlignment.Center
             };
 
-            _detail = new TextBlock
+            var detailText = new TextBlock
             {
                 Text = detail,
                 FontFamily = Deck.Mono,
@@ -73,7 +70,7 @@ namespace MphRead.Mods.Launcher.Gui
 
             var text = new StackPanel { Spacing = 0 };
             text.Children.Add(_label);
-            text.Children.Add(_detail);
+            text.Children.Add(detailText);
 
             var body = new Grid
             {
@@ -82,31 +79,102 @@ namespace MphRead.Mods.Launcher.Gui
             body.Children.Add(_rail);
             Grid.SetColumn(text, 1);
             body.Children.Add(text);
-            Content = body;
 
-            PointerEntered += (_, _) =>
+            _frame = new Border
             {
-                _pointer = true;
-                RefreshVisual();
+                Padding = compact ? new Thickness(8, 7) : new Thickness(12, 9),
+                Background = primary ? HubTheme.PanelStrongBrush : HubTheme.PanelBrush,
+                BorderBrush = primary ? _accent : HubTheme.EdgeBrush,
+                BorderThickness = new Thickness(1),
+                Child = body
             };
-            PointerExited += (_, _) =>
+            Content = _frame;
+        }
+
+        protected override void OnPointerEntered(PointerEventArgs e)
+        {
+            _pointer = true;
+            RefreshVisual();
+            base.OnPointerEntered(e);
+        }
+
+        protected override void OnPointerExited(PointerEventArgs e)
+        {
+            _pointer = false;
+            RefreshVisual();
+            base.OnPointerExited(e);
+        }
+
+        protected override void OnPointerPressed(PointerPressedEventArgs e)
+        {
+            if (!IsEffectivelyEnabled)
             {
-                _pointer = false;
-                RefreshVisual();
-            };
-            GotFocus += (_, _) => RefreshVisual();
-            LostFocus += (_, _) => RefreshVisual();
+                base.OnPointerPressed(e);
+                return;
+            }
+            _pressed = true;
+            Focus();
+            e.Pointer.Capture(this);
+            e.Handled = true;
+            RefreshVisual();
+            base.OnPointerPressed(e);
+        }
+
+        protected override void OnPointerReleased(PointerReleasedEventArgs e)
+        {
+            bool click = _pressed && IsPointerOver && IsEffectivelyEnabled;
+            _pressed = false;
+            e.Pointer.Capture(null);
+            RefreshVisual();
+            if (click)
+            {
+                e.Handled = true;
+                Click?.Invoke(this, EventArgs.Empty);
+            }
+            base.OnPointerReleased(e);
+        }
+
+        protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
+        {
+            _pressed = false;
+            RefreshVisual();
+            base.OnPointerCaptureLost(e);
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            if (IsEffectivelyEnabled && (e.Key == Key.Enter || e.Key == Key.Space))
+            {
+                e.Handled = true;
+                Click?.Invoke(this, EventArgs.Empty);
+                return;
+            }
+            base.OnKeyDown(e);
+        }
+
+        protected override void OnGotFocus(FocusChangedEventArgs e)
+        {
+            RefreshVisual();
+            base.OnGotFocus(e);
+        }
+
+        protected override void OnLostFocus(FocusChangedEventArgs e)
+        {
+            _pressed = false;
+            RefreshVisual();
+            base.OnLostFocus(e);
         }
 
         private void RefreshVisual()
         {
             bool hot = _pointer || IsFocused;
-            Background = hot
+            _frame.Background = hot
                 ? HubTheme.PanelHotBrush
                 : _primary ? HubTheme.PanelStrongBrush : HubTheme.PanelBrush;
-            BorderBrush = hot || _primary ? _accent : HubTheme.EdgeBrush;
+            _frame.BorderBrush = hot || _primary ? _accent : HubTheme.EdgeBrush;
             _rail.Opacity = hot || _primary ? 1 : 0.35;
             _label.Foreground = hot || _primary ? _accent : HubTheme.TextBrush;
+            _frame.Opacity = _pressed ? 0.78 : IsEffectivelyEnabled ? 1 : 0.48;
         }
     }
 }
