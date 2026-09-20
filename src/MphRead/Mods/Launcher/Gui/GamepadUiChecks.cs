@@ -68,6 +68,47 @@ namespace MphRead.Mods.Launcher.Gui
             GamepadChecks.Check(ControllerNav.Find(deployment, "deploy.custom")!.IsFocused,
                 "deployment uses explicit controller neighbours");
 
+            var browserSample = new[]
+            {
+                new ServerBrowserEntry(
+                    new Network.MasterListing
+                    {
+                        Address = "127.0.0.1",
+                        Port = Network.NetConfig.DefaultPort,
+                        ServerName = "Test Arena",
+                        RoomKey = "MP3 PROVING GROUND",
+                        Mode = GameMode.Battle,
+                        Players = 2,
+                        MaxPlayers = 8,
+                        Protocol = Network.NetConfig.ProtocolVersion
+                    },
+                    new Network.ServerStatus
+                    {
+                        Online = true,
+                        RoomKey = "MP3 PROVING GROUND",
+                        ServerName = "Test Arena",
+                        Mode = GameMode.Battle,
+                        Players = 2,
+                        MaxPlayers = 8,
+                        Protocol = Network.NetConfig.ProtocolVersion,
+                        Latency = 31
+                    })
+            };
+            var browser = new HubServerBrowserView(browserSample);
+            window.Width = 960; window.Height = 660; window.Content = browser;
+            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            var refresh = ControllerNav.Find(browser, "browser.refresh");
+            var join = ControllerNav.Find(browser, "browser.join");
+            GamepadChecks.Check(refresh is { IsEffectivelyVisible: true }
+                && join is { IsEffectivelyVisible: true },
+                "modern server browser exposes controller actions");
+            FocusNavigator.Ensure(browser);
+            GamepadChecks.Check(refresh!.IsFocused,
+                "modern server browser defaults focus to Refresh");
+            FocusNavigator.Move(browser, UiAction.Right);
+            GamepadChecks.Check(join!.IsFocused,
+                "modern server browser uses explicit Refresh-to-Join navigation");
+
             panel = new StackPanel();
             window.Width = 600; window.Height = 400; window.Content = panel;
             window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
