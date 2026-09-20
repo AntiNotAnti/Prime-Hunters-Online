@@ -581,7 +581,13 @@ same four numbers). A pen that has left the zone has left the wheel and
 chooses nothing. Placing the zone keeps the corner the pen
 went down on where it was put (it used to slide upwards under the hand,
 because the height is derived from the width and the width was still growing),
-and the arrows, `[`/`]`, Shift and Enter place it exactly.
+and the arrows, `[`/`]`, Shift and Enter place it exactly. The stylus
+settings split the guide into **cursor, rectangle and circular-button opacity**;
+each is independently 0-100%, and 0% removes that element during play.
+Placement deliberately keeps the platform cursor and a visible guide so an
+invisible gameplay layout can still be configured. The gameplay cursor is a
+small HUD-drawn pointer rather than the platform cursor, because platform
+cursors do not have a portable arbitrary-alpha control.
 
 **The weapon wheel is a drag on a mouse and the DS's arc on anything that
 points at a place** (`Mods/Input/WeaponWheel.cs`). The arc reads the cursor's
