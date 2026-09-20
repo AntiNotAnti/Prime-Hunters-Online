@@ -40,8 +40,8 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly TextBlock _detailName;
         private readonly TextBlock _detailMeta;
         private readonly TextBlock _summary;
-        private readonly HubNavButton _join;
-        private readonly HubNavButton _refresh;
+        private HubNavButton _join = null!;
+        private HubNavButton _refresh = null!;
         private CancellationTokenSource? _discover;
         private bool _joining;
         private int _replied, _live;
@@ -326,13 +326,13 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 Dispatcher.UIThread.Post(() =>
                 {
-                    if (cancel.IsCancellationRequested || !IsAttachedToVisualTree)
+                    if (cancel.IsCancellationRequested || TopLevel.GetTopLevel(this) == null)
                         return;
                     AddEntry(entry);
                 });
             }, cancel.Token);
 
-            if (cancel.IsCancellationRequested || !IsAttachedToVisualTree)
+            if (cancel.IsCancellationRequested || TopLevel.GetTopLevel(this) == null)
                 return;
             _summary.Text = result.Message.ToUpperInvariant();
             _summary.Foreground = result.DirectoryAnswered
