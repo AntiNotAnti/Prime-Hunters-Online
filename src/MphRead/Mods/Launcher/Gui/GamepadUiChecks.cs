@@ -65,6 +65,10 @@ namespace MphRead.Mods.Launcher.Gui
                 GamepadChecks.Check(clickedHubDestination == destination,
                     $"FPS hub pointer click activates {destination}");
             }
+            clickedHubDestination = null;
+            Click(window, desktopPlay, xFraction: 0.9);
+            GamepadChecks.Check(clickedHubDestination == HubDestination.Play,
+                "FPS hub Play accepts clicks across the full card");
 
             window.Width = 700; window.Height = 480;
             window.UpdateLayout(); Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
@@ -371,13 +375,15 @@ namespace MphRead.Mods.Launcher.Gui
             window.Close();
         }
 
-        private static void Click(Window window, Control control)
+        private static void Click(Window window, Control control,
+            double xFraction = 0.5, double yFraction = 0.5)
         {
             Point? origin = control.TranslatePoint(new Point(), window);
             GamepadChecks.Check(origin.HasValue,
                 $"{control.GetType().Name} has a window-space pointer target");
-            Point point = origin!.Value
-                + new Vector(control.Bounds.Width / 2, control.Bounds.Height / 2);
+            Point point = origin!.Value + new Vector(
+                control.Bounds.Width * Math.Clamp(xFraction, 0.05, 0.95),
+                control.Bounds.Height * Math.Clamp(yFraction, 0.05, 0.95));
             window.MouseMove(point);
             window.MouseDown(point, Avalonia.Input.MouseButton.Left);
             window.MouseUp(point, Avalonia.Input.MouseButton.Left);

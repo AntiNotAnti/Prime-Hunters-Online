@@ -43,6 +43,8 @@ namespace MphRead.Mods.Launcher.Gui
             Focusable = true;
             Cursor = new Cursor(StandardCursorType.Hand);
             MinHeight = compact ? 42 : 54;
+            HorizontalContentAlignment = HorizontalAlignment.Stretch;
+            VerticalContentAlignment = VerticalAlignment.Stretch;
 
             _rail = new Border
             {
@@ -87,6 +89,8 @@ namespace MphRead.Mods.Launcher.Gui
 
             _frame = new Border
             {
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Stretch,
                 Padding = compact ? new Thickness(8, 7) : new Thickness(12, 9),
                 Background = primary ? HubTheme.PanelStrongBrush : HubTheme.PanelBrush,
                 BorderBrush = primary ? _accent : HubTheme.EdgeBrush,
