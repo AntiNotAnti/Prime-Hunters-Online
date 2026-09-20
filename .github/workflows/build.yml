@@ -15,6 +15,13 @@ on:
 permissions:
   contents: read
 
+# One branch only needs one expensive cross-platform build at a time. A newer
+# push supersedes the older revision; keeping both burns runner time and makes
+# the useful result wait behind code nobody intends to ship.
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   assets:
     name: no game assets

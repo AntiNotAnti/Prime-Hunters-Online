@@ -1,0 +1,43 @@
+name: cancel stale builds
+
+on:
+  push:
+    branches: ["**"]
+
+# Existing queued/running builds created before build.yml gained a concurrency
+# group do not retroactively join that group. This tiny workflow drains those
+# stale runs as well. It only targets build.yml on the branch that was pushed,
+# and always keeps the build for this exact commit.
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: cancel-stale-builds-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cancel:
+    name: cancel superseded build runs
+    runs-on: ubuntu-latest
+    steps:
+      - name: cancel older build.yml runs on this branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          KEEP_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh api --paginate \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${GH_REPO}/actions/workflows/build.yml/runs?branch=${BRANCH}&per_page=100" \
+            --jq '.workflow_runs[] | select((.status == "queued" or .status == "in_progress") and .head_sha != "'"'${KEEP_SHA}'"'") | .id' |
+          while read -r run_id; do
+            [ -n "${run_id}" ] || continue
+            echo "Cancelling stale build run ${run_id}"
+            gh api --method POST \
+              "/repos/${GH_REPO}/actions/runs/${run_id}/cancel" >/dev/null || true
+          done
