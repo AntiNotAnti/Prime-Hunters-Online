@@ -5,22 +5,22 @@
 # out of the cartridge -- those are produced on each player's own machine and
 # do not belong in this repository or in a release.
 
-# The Fruity Prime logo: the wordmark, the cherry mark alone (padded square,
+# The Project Prime logo: the wordmark, the cherry mark alone (padded square,
 # for icons), and the same mark with a small server badge. Sources for the
 # .ico files below and for what the launchers and the README show.
-src/MphRead/Assets/fruity-prime-logo.png
-src/MphRead/Assets/fruity-prime-mark.png
-src/MphRead/Assets/fruity-prime-mark-server.png
+src/MphRead/Assets/project-prime-logo.png
+src/MphRead/Assets/project-prime-mark.png
+src/MphRead/Assets/project-prime-mark-server.png
 
 # The intro banner the README opens with. Ours, like the logo above it, and
 # larger than the guard's size limit for a good reason: it is the wide artwork
 # at the top of the page, not a source file. Being listed here exempts it from
 # that limit as well as from the picture-format rule.
-src/MphRead/Assets/fruity-prime-intro.png
+src/MphRead/Assets/project-prime-intro.png
 
 # The same mark again, scaled into an Android launcher icon: five densities of
 # the flat one and five of the adaptive foreground. Generated from
-# fruity-prime-mark.png above, committed so a build needs no image tooling.
+# project-prime-mark.png above, committed so a build needs no image tooling.
 src/MphRead.Android/Resources/mipmap-*/appicon.png
 src/MphRead.Android/Resources/mipmap-*/appicon_foreground.png
 

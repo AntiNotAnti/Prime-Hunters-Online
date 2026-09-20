@@ -41,7 +41,7 @@ namespace MphRead.Mods.Render
             {
                 Assembly assembly = typeof(AppIcon).Assembly;
                 string? name = Array.Find(assembly.GetManifestResourceNames(),
-                    n => n.EndsWith("fruity-prime-mark.png", StringComparison.OrdinalIgnoreCase));
+                    n => n.EndsWith("project-prime-mark.png", StringComparison.OrdinalIgnoreCase));
                 if (name == null)
                 {
                     Mods.DebugLog.Line("window", "no icon resource in this build");

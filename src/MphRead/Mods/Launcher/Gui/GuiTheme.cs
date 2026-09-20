@@ -191,7 +191,7 @@ namespace MphRead.Mods.Launcher.Gui
             try
             {
                 using Stream stream = AssetLoader.Open(
-                    new Uri("avares://ProjectPrime/Assets/fruity-prime-mark.png"));
+                    new Uri("avares://ProjectPrime/Assets/project-prime-mark.png"));
                 return new WindowIcon(stream);
             }
             catch (Exception)

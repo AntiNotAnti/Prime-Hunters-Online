@@ -71,8 +71,8 @@
          different things to have pinned next to each other, and the server's
          carries a small badge so the two are not the same picture at a
          glance. Windows only; the property does nothing on other platforms. -->
-    <ApplicationIcon Condition="$(RuntimeIdentifier.StartsWith('win')) and '$(MphReadServer)' != 'true'">Assets\fruity-prime.ico</ApplicationIcon>
-    <ApplicationIcon Condition="$(RuntimeIdentifier.StartsWith('win')) and '$(MphReadServer)' == 'true'">Assets\fruity-prime-server.ico</ApplicationIcon>
+    <ApplicationIcon Condition="$(RuntimeIdentifier.StartsWith('win')) and '$(MphReadServer)' != 'true'">Assets\project-prime.ico</ApplicationIcon>
+    <ApplicationIcon Condition="$(RuntimeIdentifier.StartsWith('win')) and '$(MphReadServer)' == 'true'">Assets\project-prime-server.ico</ApplicationIcon>
     <PublishSingleFile>true</PublishSingleFile>
     <DebugType>embedded</DebugType>
     <Nullable>enable</Nullable>
@@ -130,14 +130,14 @@
     <!-- Loaded at runtime through avares://, Avalonia's own asset scheme: a
          plain EmbeddedResource is not visible to AssetLoader. The wordmark is
          the corner of every launcher screen; the mark is the window icon. -->
-    <AvaloniaResource Include="Assets\fruity-prime-logo.png" />
-    <AvaloniaResource Include="Assets\fruity-prime-mark.png" />
+    <AvaloniaResource Include="Assets\project-prime-logo.png" />
+    <AvaloniaResource Include="Assets\project-prime-mark.png" />
     <!-- The same file again, as a plain embedded resource: the *window's*
          icon is set on the GL window, which knows nothing about avares:// and
          is created before the toolkit is. Mods/Render/WindowIcon.cs reads it.
          A few kilobytes, and the alternative is the launcher's icon existing
          only on a screen the program no longer opens. -->
-    <EmbeddedResource Include="Assets\fruity-prime-mark.png" />
+    <EmbeddedResource Include="Assets\project-prime-mark.png" />
     <!-- The launcher's two faces and its backdrop: fonts from
          OpenQuake3/defrag's ui/font, whose UI this one is built to. -->
     <AvaloniaResource Include="Assets\Fonts\heyNovember.ttf" />

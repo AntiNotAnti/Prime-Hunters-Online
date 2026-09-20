@@ -624,7 +624,7 @@ namespace MphRead.Mods.Launcher.Gui
             new(() => Load("Backgrounds/launcher-bg.jpg"));
 
         private static readonly Lazy<Bitmap?> _wordmark =
-            new(() => Load("fruity-prime-logo.png"));
+            new(() => Load("project-prime-logo.png"));
 
         private static Bitmap? Load(string asset)
         {
