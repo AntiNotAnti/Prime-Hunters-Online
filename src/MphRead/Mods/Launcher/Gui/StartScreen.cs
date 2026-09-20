@@ -386,13 +386,21 @@ namespace MphRead.Mods.Launcher.Gui
                         OpenMultiplayer();
                         break;
                     case HubPlayDestination.Offline:
-                        _ = OpenPlay(PlayScreen.Face.Offline, singleFace: true);
+                        OpenOffline();
                         break;
                     case HubPlayDestination.Adventure:
                         OpenAdventure();
                         break;
                 }
             };
+            Push(view);
+        }
+
+        private void OpenOffline()
+        {
+            var view = new HubOfflineView(_settings, _rooms);
+            view.Closed += (_, _) => Pop();
+            view.Launched += (_, plan) => Finish(plan);
             Push(view);
         }
 

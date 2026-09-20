@@ -13,7 +13,8 @@ namespace MphRead.Mods.Launcher.Gui
     {
         private static readonly string[] Hunters =
             Enumerable.Range(0, MphRead.Hunters.Playable)
-                .Select(i => ((Hunter)i).ToString()).ToArray();
+                .Select(i => ((Hunter)i).ToString())
+                .Append(Hunter.Random.ToString()).ToArray();
 
         private readonly HubNavButton[] _slots = new HubNavButton[AdventureSave.SlotCount];
         private readonly TextBlock _slotTitle;

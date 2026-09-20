@@ -183,6 +183,23 @@ namespace MphRead.Mods.Launcher.Gui
             GamepadChecks.Check(adventureClosed == 1,
                 "Adventure Back accepts a pointer click");
 
+            var offlineSettings = new MenuSettings { RoomKey = "MP3 PROVING GROUND" };
+            var offlineView = new HubOfflineView(offlineSettings,
+                new[] { "MP3 PROVING GROUND" });
+            LaunchPlan? offlinePlan = null;
+            int offlineClosed = 0;
+            offlineView.Launched += (_, plan) => offlinePlan = plan;
+            offlineView.Closed += (_, _) => offlineClosed++;
+            window.Width = 960; window.Height = 660; window.Content = offlineView;
+            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            Click(window, ControllerNav.Find(offlineView, "offline.start")!);
+            GamepadChecks.Check(offlinePlan is { Kind: LaunchKind.Offline,
+                RoomKey: "MP3 PROVING GROUND" },
+                "Offline Start Match emits the selected local launch plan");
+            Click(window, ControllerNav.Find(offlineView, "offline.back")!);
+            GamepadChecks.Check(offlineClosed == 1,
+                "Offline Back accepts a pointer click");
+
             var quickPlay = new HubQuickPlayView(preview: true);
             int quickClosed = 0, quickBrowse = 0;
             quickPlay.Closed += (_, _) => quickClosed++;

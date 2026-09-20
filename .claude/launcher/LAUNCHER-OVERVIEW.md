@@ -16,7 +16,7 @@ whole program, matches loaded into it and unloaded again. See
 
 | Entry | What it does |
 |---|---|
-| Play | opens `HubPlayView`: Multiplayer, Offline or Adventure |
+| Play | opens `HubPlayView`: Multiplayer, hub-native Offline setup or hub-native Adventure saves |
 | Multiplayer | Quick Play, Server Browser or Custom Match |
 | Map Editor | placeholder for the future visual custom-map workshop |
 | Replay Studio | opens the replay library/editor directly |

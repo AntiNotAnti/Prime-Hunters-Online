@@ -1483,23 +1483,8 @@ namespace MphRead.Mods.Launcher.Gui
             }
             GameMode mode = _modes[_mode!.Index].Mode;
             var hunter = (Hunter)Enum.Parse(typeof(Hunter), _hunter!.Value);
-            _settings.RoomKey = roomKey;
-            LauncherPrefs.LastHunter = hunter;
-            LauncherPrefs.LastColor = _suit?.Index ?? LauncherPrefs.LastColor;
-            LauncherPrefs.Bots = _bots!.Index;
-            LauncherPrefs.BotLevel = _skill!.Index;
-            LauncherPrefs.LastKind = (int)LaunchKind.Offline;
-            LauncherPrefs.Save();
-            Finish(new LaunchPlan
-            {
-                Kind = LaunchKind.Offline,
-                Hunter = hunter,
-                PlayerName = LauncherPrefs.PlayerName,
-                RoomKey = roomKey,
-                Mode = mode,
-                Bots = _bots.Index,
-                BotLevel = _skill.Index
-            });
+            Finish(OfflineLaunch.Create(_settings, roomKey, mode, hunter,
+                _suit?.Index ?? LauncherPrefs.LastColor, _bots!.Index, _skill!.Index));
         }
 
         private string? SelectedRoom()

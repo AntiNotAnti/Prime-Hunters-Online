@@ -92,8 +92,12 @@ Adventure is now hub-native: save-slot status, hunter preview, Continue/New Game
 responsive layout and pointer/controller coverage all use the portable
 `AdventureSave` / `AdventureLaunch` contract.
 
-Still to add: server filtering/sorting/favorites/recent history, and the final
-hub-native Offline match configuration surface.
+Offline is now hub-native too: map browser, selected-map preview, hunter/suit,
+mode, bots, skill and Start Match all use the shared `OfflineLaunch` contract.
+
+The Play branch is now structurally hub-native end to end. Still to add:
+server filtering/sorting/favorites/recent history and deeper visual refinement
+of Replay Studio / match setup surfaces.
 
 ## P1 — Lobby
 

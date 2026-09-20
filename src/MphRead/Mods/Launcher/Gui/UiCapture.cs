@@ -191,9 +191,9 @@ namespace MphRead.Mods.Launcher.Gui
                 new PlayScreen(settings, rooms, PlayScreen.Face.Online), _phonePortrait);
             yield return ("play-online-phone-landscape",
                 new PlayScreen(settings, rooms, PlayScreen.Face.Online), _phoneLandscape);
-            yield return ("offline",
-                new PlayScreen(settings, rooms, PlayScreen.Face.Offline,
-                    singleFace: true), _windowSize);
+            yield return ("offline", new HubOfflineView(settings, rooms), _windowSize);
+            yield return ("offline-phone-landscape",
+                new HubOfflineView(settings, rooms), _phoneLandscape);
             yield return ("adventure", new HubAdventureView(), _windowSize);
             yield return ("adventure-phone-portrait",
                 new HubAdventureView(), _phonePortrait);
