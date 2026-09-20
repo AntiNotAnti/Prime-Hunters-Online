@@ -72,6 +72,12 @@ namespace MphRead.Mods.Launcher.Gui
             FocusNavigator.Move(deployment, UiAction.Right);
             GamepadChecks.Check(ControllerNav.Find(deployment, "deploy.custom")!.IsFocused,
                 "deployment uses explicit controller neighbours");
+            window.Width = 650; window.Height = 470;
+            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            FocusNavigator.Focus(ControllerNav.Find(deployment, "deploy.quickplay"));
+            FocusNavigator.Move(deployment, UiAction.Down);
+            GamepadChecks.Check(ControllerNav.Find(deployment, "deploy.online")!.IsFocused,
+                "compact deployment follows visual order");
 
             var browserSample = new[]
             {
@@ -122,6 +128,12 @@ namespace MphRead.Mods.Launcher.Gui
             FocusNavigator.Ensure(settingsHub);
             GamepadChecks.Check(displaySettings!.IsFocused,
                 "settings hub defaults controller focus to Display");
+            window.Width = 650; window.Height = 470;
+            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            FocusNavigator.Focus(displaySettings);
+            FocusNavigator.Move(settingsHub, UiAction.Down);
+            GamepadChecks.Check(ControllerNav.Find(settingsHub, "settings.audio")!.IsFocused,
+                "compact settings navigation follows visual order");
 
             panel = new StackPanel();
             window.Width = 600; window.Height = 400; window.Content = panel;

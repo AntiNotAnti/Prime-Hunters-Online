@@ -20,6 +20,7 @@ namespace MphRead.Mods.Launcher.Gui
         public event EventHandler? Closed;
 
         private readonly Grid _cards;
+        private HubNavButton _quick = null!;
         private bool _compact;
 
         public HubPlayView()
@@ -52,18 +53,18 @@ namespace MphRead.Mods.Launcher.Gui
             });
             root.Children.Add(heading);
 
-            var quick = new HubNavButton("QUICK PLAY",
+            _quick = new HubNavButton("QUICK PLAY",
                 "Automatically join the lowest-latency compatible server with an open slot.",
                 primary: true, accent: HubTheme.Accent)
             {
                 MinHeight = 64,
                 HorizontalAlignment = HorizontalAlignment.Stretch
             };
-            ControllerNav.Identify(quick, "deploy.quickplay", initial: true);
-            quick.Click += (_, _) => Selected?.Invoke(HubPlayDestination.QuickPlay);
-            quick.SetValue(ControllerNav.NavDownProperty, "deploy.online");
-            Grid.SetRow(quick, 1);
-            root.Children.Add(quick);
+            ControllerNav.Identify(_quick, "deploy.quickplay", initial: true);
+            _quick.Click += (_, _) => Selected?.Invoke(HubPlayDestination.QuickPlay);
+            _quick.SetValue(ControllerNav.NavDownProperty, "deploy.online");
+            Grid.SetRow(_quick, 1);
+            root.Children.Add(_quick);
 
             _cards = new Grid
             {
@@ -165,6 +166,11 @@ namespace MphRead.Mods.Launcher.Gui
                 return;
             }
             _compact = compact;
+            HubNavButton online = (HubNavButton)ControllerNav.Find(_cards, "deploy.online")!;
+            HubNavButton custom = (HubNavButton)ControllerNav.Find(_cards, "deploy.custom")!;
+            HubNavButton offline = (HubNavButton)ControllerNav.Find(_cards, "deploy.offline")!;
+            HubNavButton adventure = (HubNavButton)ControllerNav.Find(_cards, "deploy.adventure")!;
+
             if (compact)
             {
                 _cards.ColumnDefinitions = new ColumnDefinitions("*");
@@ -174,6 +180,10 @@ namespace MphRead.Mods.Launcher.Gui
                     Grid.SetColumn(_cards.Children[i], 0);
                     Grid.SetRow(_cards.Children[i], i);
                 }
+                Wire(online, up: "quickplay", down: "custom", left: "quickplay", right: "custom");
+                Wire(custom, up: "online", down: "offline", left: "online", right: "offline");
+                Wire(offline, up: "custom", down: "adventure", left: "custom", right: "adventure");
+                Wire(adventure, up: "offline", down: "quickplay", left: "offline", right: "quickplay");
             }
             else
             {
@@ -184,6 +194,10 @@ namespace MphRead.Mods.Launcher.Gui
                     Grid.SetColumn(_cards.Children[i], i % 2);
                     Grid.SetRow(_cards.Children[i], i / 2);
                 }
+                Wire(online, up: "quickplay", down: "offline", left: "custom", right: "custom");
+                Wire(custom, up: "quickplay", down: "adventure", left: "online", right: "online");
+                Wire(offline, up: "online", down: "online", left: "adventure", right: "adventure");
+                Wire(adventure, up: "custom", down: "custom", left: "offline", right: "offline");
             }
         }
     }

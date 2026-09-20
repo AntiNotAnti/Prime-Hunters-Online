@@ -153,6 +153,13 @@ namespace MphRead.Mods.Launcher.Gui
             if (compact == _compact)
                 return;
             _compact = compact;
+            HubNavButton display = (HubNavButton)ControllerNav.Find(_cards, "settings.display")!;
+            HubNavButton audio = (HubNavButton)ControllerNav.Find(_cards, "settings.audio")!;
+            HubNavButton controls = (HubNavButton)ControllerNav.Find(_cards, "settings.controls")!;
+            HubNavButton replays = (HubNavButton)ControllerNav.Find(_cards, "settings.replays")!;
+            HubNavButton profile = (HubNavButton)ControllerNav.Find(_cards, "settings.profile")!;
+            HubNavButton credits = (HubNavButton)ControllerNav.Find(_cards, "settings.credits")!;
+
             if (compact)
             {
                 _cards.ColumnDefinitions = new ColumnDefinitions("*");
@@ -163,6 +170,12 @@ namespace MphRead.Mods.Launcher.Gui
                     Grid.SetColumn(_cards.Children[i], 0);
                     Grid.SetRow(_cards.Children[i], i);
                 }
+                Wire(display, "credits", "audio", "credits", "audio");
+                Wire(audio, "display", "controls", "display", "controls");
+                Wire(controls, "audio", "replays", "audio", "replays");
+                Wire(replays, "controls", "profile", "controls", "profile");
+                Wire(profile, "replays", "credits", "replays", "credits");
+                Wire(credits, "profile", "display", "profile", "display");
             }
             else
             {
@@ -173,6 +186,12 @@ namespace MphRead.Mods.Launcher.Gui
                     Grid.SetColumn(_cards.Children[i], i % 2);
                     Grid.SetRow(_cards.Children[i], i / 2);
                 }
+                Wire(display, "profile", "controls", "audio", "audio");
+                Wire(audio, "credits", "replays", "display", "display");
+                Wire(controls, "display", "profile", "replays", "replays");
+                Wire(replays, "audio", "credits", "controls", "controls");
+                Wire(profile, "controls", "display", "credits", "credits");
+                Wire(credits, "replays", "audio", "profile", "profile");
             }
         }
     }
