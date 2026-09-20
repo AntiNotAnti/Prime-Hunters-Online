@@ -7,6 +7,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using MphRead.Mods.Network;
 
 namespace MphRead.Mods.Launcher.Gui
 {
