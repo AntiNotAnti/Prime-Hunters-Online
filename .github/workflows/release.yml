@@ -379,8 +379,9 @@ jobs:
           F11 or Alt+Enter switches to fullscreen, Escape leaves it.
 
           To run a server for other people without playing on it yourself,
-          download the server package instead -- it is a separate, smaller
-          download that needs no game files at all.
+          download the server package instead. The package is smaller because
+          it omits the launcher/UI, but the authoritative server still needs
+          your extracted game files and a valid paths.txt beside the binary.
           NOTE
           ( cd publish/win-x64 && zip -qr "../../dist/FruityPrime-$TAG-win-x64.zip" . )
 
@@ -409,10 +410,11 @@ jobs:
             ./FruityPrime -hostgame "ROOM"      have a server run a match for you
             ./FruityPrime -menu                 volumes, controls, match rules
 
-          This build can also run a dedicated server, with -server; it needs no
-          game files to do it. If that is all a machine is for, the server
-          package is a smaller download with no launcher in it -- there is one
-          for plain x64 Linux and one for a Raspberry Pi.
+          This build can also run a dedicated server with -server. The server
+          runs the match authoritatively, so it needs your extracted game files
+          and a valid paths.txt beside the binary. If that is all a machine is
+          for, the server package is a smaller download with no launcher in it
+          -- there is one for plain x64 Linux and one for a Raspberry Pi.
 
           F11 or Alt+Enter switches to fullscreen, Escape opens the pause menu.
           NOTE
@@ -423,8 +425,11 @@ jobs:
 
             ./FruityPrime -server -port 27888 -players 8 -servername "My server"
 
-          It needs no game files. Maps come from maprotation.txt, written
-          beside the binary on first run.
+          This server runs the match authoritatively and therefore requires
+          your extracted Metroid Prime Hunters game files. Put a valid paths.txt
+          beside the binary pointing at those files. No game data is included
+          in this package. Maps come from maprotation.txt, written beside the
+          binary on first run.
 
           The server lists itself on net.livetek.fr so that players can find it
           in the launcher's server browser. Pass -nomaster to stay private, or
@@ -469,9 +474,11 @@ jobs:
 
             FruityPrimeServer.exe -server -port 27888 -players 8 -servername "My server"
 
-          It needs no game files, and no copy of the game on this machine.
-          Maps come from maprotation.txt, written beside the binary on first
-          run.
+          This server runs the match authoritatively and therefore requires
+          your extracted Metroid Prime Hunters game files. Put a valid paths.txt
+          beside FruityPrimeServer.exe pointing at those files. No game data is
+          included in this package. Maps come from maprotation.txt, written
+          beside the binary on first run.
 
           This is a console program, unlike FruityPrime.exe: the window stays until
           the server stops, Ctrl+C shuts it down cleanly, and its exit code is
