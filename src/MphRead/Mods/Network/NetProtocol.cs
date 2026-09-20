@@ -157,9 +157,10 @@ namespace MphRead.Mods.Network
         /// the wire.
         ///
         /// The cap is the datagram rather than a policy: the fixed block is 79
-        /// bytes, an entry is 41, and <see cref="NetConfig.MaxPacketSize"/> is
-        /// 1024, so sixteen leaves room to spare and a number a player would
-        /// actually sit through is far below it anyway.
+        /// bytes, an entry is 41, and sixteen entries plus the current tail fit
+        /// comfortably under <see cref="NetConfig.MaxPacketSize"/>. Keep this
+        /// derived from the packet budget rather than duplicating its numeric
+        /// value in prose.
         /// </summary>
         public const int MaxRotation = 16;
         public const int RotationEntrySize = MaxRoomBytes + 1;
