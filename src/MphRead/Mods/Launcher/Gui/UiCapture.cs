@@ -239,7 +239,7 @@ namespace MphRead.Mods.Launcher.Gui
             yield return ("end-panel-hunter", endHunter, _windowSize);
             yield return ("setup", new SetupScreen(), _windowSize);
             yield return ("confirm",
-                new ConfirmScreen("Quit Prime Hunters Online?"), _windowSize);
+                new ConfirmScreen("Quit Project Prime?"), _windowSize);
             yield return ("pausemenu", new PauseMenuView(offerWindowMode: true), _windowSize);
             // Deliberately shorter than the menu's own content, and shorter
             // than the game window is now allowed to be. The pause menu is
@@ -302,11 +302,11 @@ namespace MphRead.Mods.Launcher.Gui
         {
             return new List<HostCandidate>
             {
-                new() { Label = "net.livetek.fr", Host = "net.livetek.fr", Port = 27889,
+                new() { Label = "51.161.113.128", Host = "51.161.113.128", Port = 27889,
                     Answered = true, CanHost = true, Latency = 3 },
-                new() { Label = "Fruity Prime - West Europe", Host = "20.16.135.109",
+                new() { Label = "Project Prime - West Europe", Host = "20.16.135.109",
                     Port = 27889, Answered = true, CanHost = null, Latency = 39 },
-                new() { Label = "Fruity Prime - Japan", Host = "13.78.14.98", Port = 27889,
+                new() { Label = "Project Prime - Japan", Host = "13.78.14.98", Port = 27889,
                     Answered = false, CanHost = null, Latency = -1 }
             };
         }

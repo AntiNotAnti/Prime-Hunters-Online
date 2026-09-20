@@ -21,7 +21,7 @@ namespace MphRead.Mods.Input
             try
             {
                 GamepadPlatformChecks.Run();
-                string install = Path.Combine(Path.GetTempPath(), "mapping fixture", "Fruity Prime.app", "Contents", "MacOS");
+                string install = Path.Combine(Path.GetTempPath(), "mapping fixture", "Project Prime.app", "Contents", "MacOS");
                 string resources = Path.Combine(Path.GetDirectoryName(install)!, "Resources");
                 string settings = Path.Combine(Path.GetTempPath(), "mapping user settings");
                 string[] mappingPaths = GamepadMappings.Paths(resources, settings);

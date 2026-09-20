@@ -71,7 +71,7 @@ namespace MphRead.Mods.Launcher.Gui
             var menu = new StackPanel { Spacing = 5, Width = 282 };
             _menu = menu;
             // Titles only. Every entry here used to say what it did twice --
-            // "Quit", "Close FruityPrime" -- and the second saying is what
+            // "Quit", "Close ProjectPrime" -- and the second saying is what
             // made a seven-line menu tall enough to be cut off by the window
             // it is drawn over.
             _resume = Add(menu, "RESUME", () => Resumed?.Invoke(this, EventArgs.Empty),

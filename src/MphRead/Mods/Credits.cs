@@ -6,7 +6,7 @@ namespace MphRead.Mods
     /// <summary>
     /// Who this is built on.
     ///
-    /// Fruity Prime is a fork of NoneGiven's MphRead, which is itself built on
+    /// Project Prime is a fork of NoneGiven's MphRead, which is itself built on
     /// the work of several other projects; the list below is the one in
     /// upstream's README, kept here so that it is in the program a player runs
     /// and not only in a file on GitHub. The multiplayer, the launcher and the

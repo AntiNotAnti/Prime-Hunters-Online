@@ -527,7 +527,7 @@ namespace MphRead.Mods.Launcher.Gui
         /// Server names are nearly always a stem and a qualifier -- a TLD, a
         /// number, a mode -- and the qualifier is what tells two rows of the
         /// same operator apart. Colouring it is the cheapest way to make a list
-        /// of "Fruity Prime - West US 2 / West Europe / Japan" scannable, and
+        /// of "Project Prime - West US 2 / West Europe / Japan" scannable, and
         /// it costs nothing when a name has no tail. Split on the last
         /// separator only, and only when what follows is short: a long tail is
         /// part of the name, not a qualifier.
