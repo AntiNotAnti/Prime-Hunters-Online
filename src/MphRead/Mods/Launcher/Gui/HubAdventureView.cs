@@ -115,7 +115,7 @@ namespace MphRead.Mods.Launcher.Gui
                 Height = 175,
                 MinHeight = 150,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
-                Name2 = HunterNames[Math.Clamp((int)LauncherPrefs.LastHunter, 0, Hunters.Length - 1)]
+                Name2 = HunterNames[Math.Clamp((int)LauncherPrefs.LastHunter, 0, HunterNames.Length - 1)]
             };
             detailStack.Children.Add(_stand);
 
