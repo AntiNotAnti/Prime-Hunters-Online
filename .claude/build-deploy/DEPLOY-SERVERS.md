@@ -6,7 +6,7 @@ Deploy script (server and directory)
 
 ```bash
 # server and directory (rebuilds ARM64, installs both units, restarts them)
-MPH_SERVER_HOST=net.livetek.fr MPH_SERVER_USER=livetek \
+MPH_SERVER_HOST=51.161.113.128 MPH_SERVER_USER=livetek \
   MPH_SERVER_PASS="$(read -rsp 'pi password: ' p; echo "$p")" ./deploy-server.sh
 # MPH_DEPLOY_MASTER=0 to leave the directory alone
 ```
@@ -26,7 +26,7 @@ dotnet publish src/MphRead/MphRead.csproj -c Release -r win-x64 \
 
 Notes
 
-- A running binary may be locked. Stage a new file and atomically rename/swap it; use the actual current binary name (`FruityPrime` / `FruityPrimeServer.exe`).
+- A running binary may be locked. Stage a new file and atomically rename/swap it; use the actual current binary name (`ProjectPrime` / `ProjectPrimeServer.exe`).
 - Any incompatible protocol change requires server and clients to match. Do **not** copy the protocol number into this runbook; read `NetConfig.ProtocolVersion` from `NetProtocol.cs` (15 at this audit). A mismatch is refused during Hello. Deploy authoritative servers before distributing a client that requires a new protocol.
 
 Standalone authoritative servers record canonical replays by default. Retention defaults to **25 GiB / 14 days / keep newest 100**. Override with `-serverreplays on|off`, `-serverreplaystoragegb N`, `-serverreplayretentiondays N`, and `-serverreplaykeeplast N`; `0` disables the corresponding size/age limit.
@@ -40,7 +40,7 @@ than the code and have repeatedly turned this file into a map of yesterday.
 Ask the directory for the current public game-server inventory:
 
 ```bash
-./FruityPrime -servers -master <directory-host> -masterport 27889
+./ProjectPrime -servers -master <directory-host> -masterport 27889
 ```
 
 Then verify the target host itself (service unit, binary SHA/version, UDP

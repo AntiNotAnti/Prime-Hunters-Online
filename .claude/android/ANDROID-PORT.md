@@ -442,7 +442,7 @@ The package's own directory is read-only, and the extracted game files are
 hundreds of megabytes the player has to copy onto the device themselves. So both
 `LauncherPrefs.Directory` and `GameFiles.Root` (added for this) point at
 `GetExternalFilesDir(null)` -- the directory reachable over USB under
-`Android/data/fr.livetek.fruityprime/files` without the app asking for a storage
+`Android/data/com.projectprime.game/files` without the app asking for a storage
 permission -- and that is made the working directory, because upstream's `Paths`
 reads `paths.txt` relative to it.
 
@@ -510,7 +510,7 @@ the working directory, which `CustomizeAppBuilder` sets to whatever
 `ChooseRoot` picked. Both candidate roots can end up holding a `paths.txt`
 from earlier runs, and the one that wins is then the only one the game reads.
 An emulator here chose the **internal** directory
-(`/data/user/0/fr.livetek.fruityprime/files`) while a hand-written
+(`/data/user/0/com.projectprime.game/files`) while a hand-written
 `settings.json` sat unread in the external one, and three rounds of "the ES
 renderer draws cel shading fine" were measured with cel shading off.
 
@@ -676,7 +676,7 @@ picked. So on a phone a recording is:
 ```
 
 with `<root>` normally the external files directory, reachable over USB at
-`Android/data/fr.livetek.fruityprime/files/_demos/`. The
+`Android/data/com.projectprime.game/files/_demos/`. The
 `[android] N bundled map files -> <path>` line names the root that was
 actually chosen; on a device that fell back to internal storage the folder is
 under `/data/user/0/...` and only `adb` can reach it.
@@ -724,13 +724,13 @@ The SDK needs `platforms;android-35` and `build-tools;35.0.0` to match the
 them. `EnableAvaloniaXamlCompilation=false` is deliberate and explained in the
 csproj.
 
-The APK lands in `bin/Debug/net10.0-android36.0/fr.livetek.fruityprime-Signed.apk`
+The APK lands in `bin/Debug/net10.0-android36.0/com.projectprime.game-Signed.apk`
 (~20 MB; a Release publish is ~45 MB, being every ABI with the trimmer run).
 `adb install -r` it.
 
 Nobody has to do any of that to get one, though: `build.yml` has an `android`
-job on every push, and its **FruityPrime-android** artifact holds the release
-APK and an INSTALL.txt. `release.yml` puts `FruityPrime-<tag>-android.apk` in a
+job on every push, and its **ProjectPrime-android** artifact holds the release
+APK and an INSTALL.txt. `release.yml` puts `ProjectPrime-<tag>-android.apk` in a
 tagged release. Both are signed with the SDK's debug key -- enough to install,
 not enough for a store.
 
@@ -853,7 +853,7 @@ desktop and nowhere else, and the head that does not have it is the head nobody
 is looking at. `GuiTheme`'s two faces arrived that way with the minimal-UI
 launcher, and Avalonia does **not** fall back for a font family it cannot
 resolve: it throws `InvalidOperationException: Could not create glyphTypeface.
-Font family: Roboto (key: avares://FruityPrime/Assets/Fonts/Roboto-Bold.ttf)`
+Font family: Roboto (key: avares://ProjectPrime/Assets/Fonts/Roboto-Bold.ttf)`
 out of the *measure pass*, which is an uncaught exception inside
 `AvaloniaActivity.GlobalLayoutListener.OnGlobalLayout` and kills the process
 before the front screen draws a pixel. The pictures next to them are guarded
@@ -935,7 +935,7 @@ Four things that cost time here and are not obvious:
   rather than that anything is wrong. `sys.boot_completed` is never set on
   this image; `init.svc.bootanim` going `stopped` is the signal, and the
   package service is up a while after that. `adb install -r`, `adb shell am start -n
-fr.livetek.fruityprime/crc64e2a07749a868b9fd.MainActivity`, and `adb shell
+com.projectprime.game/crc64e2a07749a868b9fd.MainActivity`, and `adb shell
 screencap` are enough to see the front screen. With KVM it would be seconds
 rather than minutes.
 
@@ -973,11 +973,11 @@ wm size reset` before testing input.
 
 ```sh
 adb root
-adb shell pm clear fr.livetek.fruityprime
-adb push --sync ~/mph-test/files/AMHP1 /data/data/fr.livetek.fruityprime/files/files/
-adb push paths.txt /data/data/fr.livetek.fruityprime/files/paths.txt
-adb shell chown -R u0_a140:u0_a140 /data/data/fr.livetek.fruityprime/files
-adb shell chmod -R 777 /data/data/fr.livetek.fruityprime/files
+adb shell pm clear com.projectprime.game
+adb push --sync ~/mph-test/files/AMHP1 /data/data/com.projectprime.game/files/files/
+adb push paths.txt /data/data/com.projectprime.game/files/paths.txt
+adb shell chown -R u0_a140:u0_a140 /data/data/com.projectprime.game/files
+adb shell chmod -R 777 /data/data/com.projectprime.game/files
 ```
 
 Clearing and *not* putting them back is the other case worth having: it is the

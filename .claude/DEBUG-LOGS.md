@@ -22,10 +22,10 @@ a map is loading. The log is the only thing that can be read afterwards.
 | `Mods/Launcher/Gui/HomeView.cs` | `BuildDebugSwitch`, the corner row |
 | `Mods/Launcher/Portable/LauncherPrefs.cs` | `debug_logs` in `launcher.txt` |
 | `Mods/ModEntry.cs` | `DebugLog.Attach()`, before anything else runs |
-| `logs/FruityPrime-<yyyyMMdd-HHmmss>.log` | the file, beside the executable |
-| `logs/FruityPrime-<yyyyMMdd-HHmmss>-native.txt` | the same run's **native** standard error, in a file of its own |
+| `logs/ProjectPrime-<yyyyMMdd-HHmmss>.log` | the file, beside the executable |
+| `logs/ProjectPrime-<yyyyMMdd-HHmmss>-native.txt` | the same run's **native** standard error, in a file of its own |
 
-On macOS these logs live under `~/Library/Application Support/Fruity Prime/logs/`.
+On macOS these logs live under `~/Library/Application Support/Project Prime/logs/`.
 `platform-startup.log` is also written there on every launch, even when debug
 logging is off; it records the runtime/native-loader diagnostics described in
 `build-deploy/MACOS.md`.
@@ -107,7 +107,7 @@ Three things worth knowing before touching it:
   has thrown `FileUriExposedException` since Android 7. The provider is
   declared in `Properties/AndroidManifest.xml` with authority
   `${applicationId}.logs` -- the placeholder *is* substituted, verified in the
-  built APK as `fr.livetek.fruityprime.logs`, which is what
+  built APK as `com.projectprime.game.logs`, which is what
   `PackageName + ".logs"` produces at runtime. `@xml/file_paths` exposes one
   directory, the cache folder the zip is built in, and not the logs directory
   itself.
@@ -189,7 +189,7 @@ which is the only way to read the tail of one that is about to crash.
 
 ## Turning it on without the launcher
 
-`FruityPrime -debuglog` forces it for one run, for the case where the launcher
+`ProjectPrime -debuglog` forces it for one run, for the case where the launcher
 is what will not start. `DebugLog.Attach()` is called from
 `ModEntry.TryHandleHeadless`, which runs for **every** invocation -- the game,
 the server, the harness -- so a command line path that never opens a launcher

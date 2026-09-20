@@ -16,13 +16,13 @@ The release publish job waits for all platform packages to pass before uploading
 ## Signing and packaging
 
 - `tools/sign-macos.sh DIRECTORY` signs every Mach-O file recursively, then
-  framework containers inside out, then FruityPrime. Only the apphost gets
+  framework containers inside out, then ProjectPrime. Only the apphost gets
   `com.apple.security.cs.allow-jit`; no additional runtime entitlements are used.
 - `tools/check-macos-build.sh DIRECTORY RID` checks executable mode, requires
   OpenAL, uses `lipo -verify_arch` on every Mach-O (universal files are allowed),
   prints `otool -L`, verifies signatures, and checks the JIT entitlement's value.
 - `tools/package-macos.sh DIRECTORY DIST RID VERSION` preserves the publish
-  native layout inside `Fruity Prime.app/Contents/MacOS`; maps go in
+  native layout inside `Project Prime.app/Contents/MacOS`; maps go in
   `Contents/Resources/maps` because Apple's signer treats subdirectories of
   MacOS as nested code. It versions Info.plist from
   the build version, generates an ICNS from the existing project mark, signs
@@ -93,7 +93,7 @@ handling of a quarantined Internet download. Those require manual Mac checks.
 Native libraries resolve from `AppContext.BaseDirectory`; maps resolve from
 Contents/Resources in an app bundle and beside the executable otherwise. macOS
 preferences, controls, paths.txt, extracted files, generated maps, saves,
-thumbnails and logs use `~/Library/Application Support/Fruity Prime/`.
+thumbnails and logs use `~/Library/Application Support/Project Prime/`.
 ConsoleSetup retains the caller's directory for explicit relative CLI inputs,
 then sets cwd to user data so upstream's relative writes cannot alter the app.
 Windows/Linux keep their portable behavior; Android keeps its activity overrides.
