@@ -1,49 +1,39 @@
 # The server as the simulation authority
 
-`-simulate` on a dedicated server. Code: `Mods/Network/ServerSim.cs`,
-`Mods/Headless.cs`, `Mods/Input/SyntheticInput.cs`, and the `NetRole.Server`
+Current architecture: every normal online match is server-authoritative. Code:
+`Mods/Network/ServerSim.cs`, `HostedServerProcess.cs`, `NetHostSession.cs`,
+`HostPool.cs`, `NetMaster.cs`, `Mods/Headless.cs`, and the `NetRole.Server`
 branches in `NetSession.cs` / `DedicatedServer.cs`.
 
-## What moved, and what did not
+`-simulate` and `-authority` are compatibility no-ops. `RunsTheMatch=false`
+and `PacketType.Authority` remain for legacy protocol/testing paths, not normal
+launcher hosting.
 
-The authority was never a property of being a player. It is the property of
-being the machine every other player's intent is pointed at, and until now
-that machine was whichever client joined first. The server can now be that
-machine.
+## Current authority model
 
-**What this buys, in order of how much it matters.**
+- **Standalone dedicated server:** the server simulates the match itself and
+  refuses startup if it cannot build the world.
+- **Host on this computer:** `NetHostSession` starts a dedicated-server child
+  process and joins it over loopback as an ordinary client.
+- **Directory/overflow hosting:** each hosted game gets an isolated server
+  process via `HostedServerProcess`, so the static `NetSession` belongs to that
+  match alone.
+- **No normal player is simulation authority.** The historical first-client
+  authority/hand-over path is compatibility coverage only.
+- **Combat, health, score, match state and match end are server authoritative.**
+  Movement position still comes from the owner's `IntentPacket.Position`; this
+  is not a fully server-derived movement model.
+- **Outgoing-hit responsiveness is client predicted.** `NetHitPrediction`
+  presents the shooter's own hit immediately and reconciles later. Remote
+  lethal damage is held for authority; self-damage/self-death can be local.
 
-- **Nobody is at zero latency any more.** The client authority resolved its
-  own shots against its own present and everybody else's against a rewind
-  (`NETWORK-UNLAGGED.md`). It was the one player in the match who could not be
-  wrong about where anyone was, and it paid nothing for the privilege. Now
-  every player, the ex-slot-0 included, is compensated by exactly their own
-  round trip and nobody is compensated by zero.
-- **The match stops depending on a player's machine.** No handover when the
-  authority leaves, no stand-down when their line blips (`AuthorityStandDowns`
-  exists because that happened against the Pi), no half second of nobody
-  simulating while the server picks a successor.
-- **A client can no longer publish a world.** `HandleSnapshot` refuses every
-  peer while simulating. Before, the authority *was* a client, so "the
-  authority's snapshot is trusted" and "one particular player's machine is
-  trusted" were the same sentence.
+## Historical transition
 
-**What it does not buy, and must not be sold as.**
-
-- **A player still does not see their own hit register any sooner.** Damage is
-  felt when the snapshot carrying it arrives, which is a round trip after the
-  trigger, wherever the authority sits. Moving it to the server *equalises*
-  that wait; it does not shorten it. Shortening it is client-side hit
-  prediction and is not implemented -- see "What is still owed".
-- **The server is not authoritative over movement.** `IntentPacket.Position`
-  is still where its sender says they are, exactly as it was when a client
-  held this role. Deriving position from buttons is the thing the intent
-  stream was built to stop doing (two simulations of one player drift apart on
-  the first lost packet), and undoing that needs prediction first.
-
-So: this refactor is about *fairness and resilience*, not about latency. A
-report of "my shots go through people" is answered by unlagged, which was
-already there; a report of "slot 0 always wins the trades" is answered by this.
+Older builds made the first client the simulation authority. That created a
+zero-latency advantage for one player, tied match survival to that player's
+connection, and required authority handover. The server-authority work removed
+those properties. Measurements below that compare client authority with server
+authority are retained as dated evidence, not as current topology.
 
 ## How it works
 
@@ -73,12 +63,13 @@ positions set when the attack begins or the render transforms. The
 | `NetRole.Server` | authority, `LocalSlot = -1`, no socket of its own |
 | `NetSession.StartServerAuthority(sink, matchEnded)` | takes the role; the finished snapshot is handed to the relay in this same process rather than sent as a datagram |
 | `ServerSim.Advance(now)` | the same fixed-step accumulator the game window runs. A server's loop is woken by packets, at no fixed rate, which is exactly what an accumulator is for |
-| `DedicatedServer.Simulate` | `-simulate`. Off by default |
+| `DedicatedServer.RunsTheMatch` | true for normal game servers. False exists only for compatibility/tests |
 
-**The wire does not move.** `NetConfig.ProtocolVersion` is unchanged. A client
-is told it is the authority by receiving `PacketType.Authority` and in no other
-way, so a simulating server simply never sends it -- and a client built before
-any of this joins one and behaves correctly without knowing anything changed.
+The current wire protocol is defined only by `NetConfig.ProtocolVersion`
+(currently 14). Normal server-authority matches never send
+`PacketType.Authority` to a player. The packet is still understood so legacy
+compatibility tests can exercise the old topology; it is not a normal hosting
+mechanism.
 `HandleIntent` feeds `NetSession.AcceptSlotIntent` one hop earlier than a
 client authority got the same bytes, through the same call, so the ordering
 rule that guards a rejoining player's restarted frame counter is the one that
@@ -283,31 +274,19 @@ match rules.
 path still exist for old protocol/testing code, but the normal hosting paths do
 not select them.
 
-## What is still owed
+## Current constraints and validation gaps
 
-- **The game files, and they are now required.** A simulating server needs
-  them, and "a dedicated server needs no game files" was true of every build up
-  to and including v0.8.0. It is not true any more: `RunsTheMatch` defaults to
-  true, `ServerSim.Available` is checked at startup, and a server without them
-  **exits 1 with the reason** rather than relaying. Shipping them is not an
-  option (`tools/check-no-game-assets.sh`), so this is a server whose operator
-  has a dump on the box. `SERVER.md` says so on the first screen.
-
-  **What a simulating server actually needs is 52 MB**, not the 103 MB of a
-  full extraction, found by pruning until it stopped loading and then checking
-  four maps: `_archives`, `levels`, `models`, `stage`, `effects`,
-  `cameraEditor`, `stringTables`, `aiPersonalityData`, and from `data/` only
-  `sound/*.DAT` -- the music *metadata*, which `Music.Init` reads from the
-  `Scene` constructor before anything can decide the process is headless. What
-  is not needed: `archives/` (the packed copies of `_archives`), every sound
-  sample, every movie, and the whole front end. Cutting `Music.Init` too would
-  drop `data/` entirely and save another 4.5 MB, but `Music`'s statics are
-  then null for gameplay code that calls into them, so it was left alone.
-
-  The interesting alternative is for the *client* to hand the server the files
-  it reads, in RAM, at match start -- `Read.cs` is nearly a single choke point,
-  and a room's collision file is about 50 KB.
-- **Client-side hit prediction.** See above: this refactor equalises the wait
-  for damage feedback, it does not shorten it.
-- **Movement authority.** Position is still the client's claim.
-- **The Windows server.** `-simulate` is a Linux-tested flag.
+- **Game files are required for a game server.** The operator supplies extracted
+  data and a valid `paths.txt`; no Nintendo data ships in server packages. A
+  server without them exits with an actionable error instead of falling back to
+  client authority. Historical pruning measured the headless subset at roughly
+  52 MB of extracted data, but that measurement is not a packaging contract.
+- **Movement authority remains client-reported.** `IntentPacket.Position` is
+  still the owner's position claim. Converting that into fully server-derived
+  movement would be a separate prediction/reconciliation project.
+- **Real Windows authoritative gameplay still deserves manual coverage with
+  extracted data.** CI validates the Windows server binary/startup contract,
+  but cannot ship proprietary game files into Actions.
+- **Hosted-server process isolation is intentional.** `NetSession` remains
+  static; do not move hosted matches back in-process unless that state is first
+  made instance-safe.
