@@ -4998,25 +4998,6 @@ namespace MphRead
             _hudDrawScale = scale;
         }
 
-        private float DiegeticHudFovScale(LayerInfo info)
-        {
-            bool visorOrHelmet = ReferenceEquals(info, Layer1Info)
-                || ReferenceEquals(info, Layer2Info)
-                || ReferenceEquals(info, Layer3Info);
-            if (!visorOrHelmet
-                || Features.ProHud
-                || PlayerEntity.Main?.ScanVisor == true
-                || _cameraMode != CameraMode.Player
-                || GameState.MenuPause
-                || GameState.DialogPause
-                || GameState.MatchState != MatchState.InProgress
-                || PlayerEntity.Main?.Flags1.TestFlag(PlayerFlags1.WeaponMenuOpen) == true)
-            {
-                return 1f;
-            }
-            return Mods.RenderOptions.HudFovScale;
-        }
-
         private void DrawHudLayer(LayerInfo info)
         {
             if (info.BindingId == -1)
@@ -5048,11 +5029,14 @@ namespace MphRead
                 width = viewWidth * info.ScaleX / 2 / (viewWidth / 2);
                 height = viewHeight * info.ScaleY / 2 / (viewHeight / 2);
             }
-            float fovScale = DiegeticHudFovScale(info);
-            width *= fovScale;
-            height *= fovScale;
-            float shiftX = info.ShiftX * fovScale;
-            float shiftY = info.ShiftY * fovScale;
+            // These layers are authored screen-space art. In particular, the
+            // helmet deliberately overscans the viewport (ScaleX = 2), so
+            // shrinking the quad around the screen centre when world FOV
+            // changes reveals normally cropped helmet/visor pixels and pulls
+            // the frame away from the screen edges. FOV belongs to the 3D
+            // projection only; preserve the HUD's authored crop and shifts.
+            float shiftX = info.ShiftX;
+            float shiftY = info.ShiftY;
             GL.Begin(PrimitiveType.TriangleStrip);
             // top right
             GL.TexCoord3(1f, 0f, 0f);
