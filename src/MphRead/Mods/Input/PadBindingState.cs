@@ -121,18 +121,21 @@ namespace MphRead.Mods.Input
         public GamepadButtons Modifier(PadAction action, int slot) => Modifiers[(int)action, slot];
         public string DescribeSlot(PadAction action, int slot)
             => (Modifier(action, slot) == 0 ? "" : ButtonName(Modifier(action, slot)) + " + ") + Describe(Slot(action, slot));
-        public ulong Evaluate(GamepadButtons buttons, GamepadButtons suppressed = 0)
+        public ulong Evaluate(GamepadButtons buttons, GamepadButtons suppressed = 0,
+            bool includeReplay = true)
         {
             GamepadButtons modifiers = 0, used = 0;
             ulong result = 0;
-            foreach (var action in ActionOrder) for (int slot = 0; slot < 2; slot++)
+            IEnumerable<PadAction> actions = includeReplay
+                ? ActionOrder : GameplayActionOrder;
+            foreach (var action in actions) for (int slot = 0; slot < 2; slot++)
             {
                 var modifier = Modifier(action, slot); var button = Slot(action, slot);
                 modifiers |= modifier;
                 if (modifier != 0 && button != 0 && (buttons & (modifier | button)) == (modifier | button))
                 { result |= 1UL << (int)action; used |= modifier | button; }
             }
-            foreach (var action in ActionOrder)
+            foreach (var action in actions)
             {
                 var available = buttons & ~(modifiers | used | suppressed);
                 // Retain additional alternatives from legacy flag-set bindings.
@@ -142,10 +145,12 @@ namespace MphRead.Mods.Input
             }
             return result;
         }
-        public GamepadButtons ChordButtons(GamepadButtons buttons)
+        public GamepadButtons ChordButtons(GamepadButtons buttons, bool includeReplay = true)
         {
             GamepadButtons used = 0;
-            foreach (var action in ActionOrder) for (int slot = 0; slot < 2; slot++)
+            IEnumerable<PadAction> actions = includeReplay
+                ? ActionOrder : GameplayActionOrder;
+            foreach (var action in actions) for (int slot = 0; slot < 2; slot++)
             {
                 var modifier = Modifier(action, slot); var chord = modifier | Slot(action, slot);
                 if (modifier != 0 && (buttons & chord) == chord) used |= chord;
@@ -204,7 +209,8 @@ namespace MphRead.Mods.Input
         }
 
         private static bool SameContext(PadAction first, PadAction second)
-            => IsReplay(first) == IsReplay(second);
+            => first == PadAction.Menu || second == PadAction.Menu
+                || IsReplay(first) == IsReplay(second);
 
         private static bool IsReplay(PadAction action)
             => action >= PadAction.ReplayPlayPause;
