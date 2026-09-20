@@ -68,6 +68,18 @@ namespace MphRead.Mods.Launcher.Gui
             GamepadChecks.Check(compactPlay!.IsFocused,
                 "FPS hub compact navigation restores a semantic default");
 
+            clickedHubDestination = null;
+            Point? compactPlayOrigin = compactPlay.TranslatePoint(new Point(), window);
+            GamepadChecks.Check(compactPlayOrigin.HasValue,
+                "FPS hub compact Play has a window-space pointer target");
+            Point compactClickPoint = compactPlayOrigin!.Value
+                + new Vector(compactPlay.Bounds.Width / 2, compactPlay.Bounds.Height / 2);
+            window.MouseMove(compactClickPoint);
+            window.MouseDown(compactClickPoint, Avalonia.Input.MouseButton.Left);
+            window.MouseUp(compactClickPoint, Avalonia.Input.MouseButton.Left);
+            GamepadChecks.Check(clickedHubDestination == HubDestination.Play,
+                "FPS hub compact pointer click activates Play");
+
             var deployment = new HubPlayView();
             window.Width = 960; window.Height = 660; window.Content = deployment;
             window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
