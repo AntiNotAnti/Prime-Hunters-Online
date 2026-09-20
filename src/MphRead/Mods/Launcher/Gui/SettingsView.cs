@@ -701,11 +701,16 @@ namespace MphRead.Mods.Launcher.Gui
                 _invertX.On = InputSettings.InvertMouseX;
                 _penTablet.On = Mods.Input.PointerInput.StylusMode;
                 if (_repositionFilter != null) _repositionFilter.On = Mods.Input.PointerInput.GuardJumps;
-                if (_stylusZone != null && _stylusOpacity != null)
+                if (_stylusZone != null)
                 {
                     _stylusZone.On = Mods.Input.StylusZone.Wanted;
-                    _stylusOpacity.Value = (int)MathF.Round(Mods.Input.StylusZone.Opacity * 100);
                 }
+                if (_stylusCursorOpacity != null)
+                    _stylusCursorOpacity.Value = (int)MathF.Round(Mods.Input.StylusZone.CursorOpacity * 100);
+                if (_stylusOutlineOpacity != null)
+                    _stylusOutlineOpacity.Value = (int)MathF.Round(Mods.Input.StylusZone.OutlineOpacity * 100);
+                if (_stylusButtonOpacity != null)
+                    _stylusButtonOpacity.Value = (int)MathF.Round(Mods.Input.StylusZone.ButtonOpacity * 100);
                 ShowStylusRows();
                 _scrollAllWeapons.On = InputSettings.ScrollAllWeapons;
                 _gamepadSettings.Reload();
@@ -723,7 +728,9 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly List<(Mods.Input.TouchControl Control, ToggleRow Row)> _touchRows = new();
 
         private ToggleRow? _stylusZone;
-        private SliderRow? _stylusOpacity;
+        private SliderRow? _stylusCursorOpacity;
+        private SliderRow? _stylusOutlineOpacity;
+        private SliderRow? _stylusButtonOpacity;
         private readonly List<Control> _stylusRows = new();
 
         private void ShowStylusRows()
@@ -759,11 +766,17 @@ namespace MphRead.Mods.Launcher.Gui
             _stylusAdvanced = new StackPanel { Spacing = 2, IsVisible = false };
             _repositionFilter = Add(_stylusAdvanced,
                 new ToggleRow("Reposition filtering", Mods.Input.PointerInput.GuardJumps));
-            _stylusOpacity = Add(_stylusAdvanced, new SliderRow("Overlay opacity",
-                (int)MathF.Round(Mods.Input.StylusZone.Opacity * 100),
-                v => $"{v}%", min: 4, max: 60, keyStep: 2));
+            _stylusCursorOpacity = Add(_stylusAdvanced, new SliderRow("Cursor opacity",
+                (int)MathF.Round(Mods.Input.StylusZone.CursorOpacity * 100),
+                v => $"{v}%", min: 0, max: 100, keyStep: 5));
+            _stylusOutlineOpacity = Add(_stylusAdvanced, new SliderRow("Rectangle opacity",
+                (int)MathF.Round(Mods.Input.StylusZone.OutlineOpacity * 100),
+                v => $"{v}%", min: 0, max: 100, keyStep: 5));
+            _stylusButtonOpacity = Add(_stylusAdvanced, new SliderRow("Button opacity",
+                (int)MathF.Round(Mods.Input.StylusZone.ButtonOpacity * 100),
+                v => $"{v}%", min: 0, max: 100, keyStep: 5));
             _stylusAdvanced.Children.Add(new Note(
-                "Reposition filtering ignores tablet jumps after lift/re-contact. The overlay opacity only affects the DS touch-screen guide."));
+                "Reposition filtering ignores tablet jumps after lift/re-contact. Cursor, rectangle, and circular button opacity are independent; 0% hides that element during play. Zone placement stays visible while you configure it."));
             _stylusAdvancedButton = new DeckButton("Advanced", Deck.Face.Slate,
                 sizeEms: .9, padXEms: .8, padYEms: .38, lip: 3)
             {
@@ -1178,11 +1191,16 @@ namespace MphRead.Mods.Launcher.Gui
             Mods.Input.PointerInput.StylusMode = _penTablet.On;
             if (_repositionFilter != null)
                 Mods.Input.PointerInput.GuardJumps = _repositionFilter.On;
-            if (_stylusZone != null && _stylusOpacity != null)
+            if (_stylusZone != null)
             {
                 Mods.Input.StylusZone.Enabled = _stylusZone.On;
-                Mods.Input.StylusZone.Opacity = Math.Clamp(_stylusOpacity.Value / 100f, 0.02f, 1f);
             }
+            if (_stylusCursorOpacity != null)
+                Mods.Input.StylusZone.CursorOpacity = Math.Clamp(_stylusCursorOpacity.Value / 100f, 0, 1);
+            if (_stylusOutlineOpacity != null)
+                Mods.Input.StylusZone.OutlineOpacity = Math.Clamp(_stylusOutlineOpacity.Value / 100f, 0, 1);
+            if (_stylusButtonOpacity != null)
+                Mods.Input.StylusZone.ButtonOpacity = Math.Clamp(_stylusButtonOpacity.Value / 100f, 0, 1);
             InputSettings.ScrollAllWeapons = _scrollAllWeapons.On;
             if (_clipPostRollRow != null)
                 Mods.Network.DemoClip.PostRollSeconds = Mods.Network.DemoClip.PostRollLengths[
