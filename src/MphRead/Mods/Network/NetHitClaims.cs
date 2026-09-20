@@ -1139,6 +1139,35 @@ namespace MphRead.Mods.Network
         /// only ever rescue a shot the authority's own record agrees was
         /// there to be taken.
         /// </summary>
+        /// <summary>
+        /// Pure geometry predicate used by the authority and the asset-free
+        /// regression suite. Keeping the exact radius/finite-value rule in one
+        /// place prevents a test helper from quietly becoming a second policy.
+        /// </summary>
+        private static bool WithinClaimRadius(Vector3 authorityPosition, Vector3 hitPoint, byte beam)
+        {
+            Vector3 offset = hitPoint - authorityPosition;
+            if (!Single.IsFinite(offset.X) || !Single.IsFinite(offset.Y)
+                || !Single.IsFinite(offset.Z))
+            {
+                return false;
+            }
+            float reach = beam == HitClaimPacket.NoBeam ? MeleeRadius : ClaimRadius;
+            return offset.LengthSquared <= reach * reach;
+        }
+
+        /// <summary>
+        /// Whether the shooter had already been killed in a strictly earlier
+        /// world than the shot was fired in. Equal-world shots trade. A zero
+        /// launch stamp falls back to the ack, matching the claim protocol.
+        /// </summary>
+        private static bool ShooterDiedBeforeShot(bool dead, uint deathFire,
+            uint launchFrame, uint ackFrame)
+        {
+            uint fired = launchFrame != 0 ? launchFrame : ackFrame;
+            return dead && deathFire < fired;
+        }
+
         private static byte Judge(int shooterSlot, in HitClaimPacket claim)
         {
             int victimSlot = claim.VictimSlot;
@@ -1176,11 +1205,9 @@ namespace MphRead.Mods.Network
                 TooOldHere++;
                 return HitVerdictPacket.ResultTooOld;
             }
-            float reach = claim.Beam == HitClaimPacket.NoBeam ? MeleeRadius : ClaimRadius;
-            Vector3 offset = claim.HitPoint - was;
-            if (!Single.IsFinite(offset.X) || !Single.IsFinite(offset.Y)
-                || !Single.IsFinite(offset.Z) || offset.LengthSquared > reach * reach)
+            if (!WithinClaimRadius(was, claim.HitPoint, claim.Beam))
             {
+                Vector3 offset = claim.HitPoint - was;
                 RefusedHere++;
                 NetLog.Event($"slot {shooterSlot} claimed a hit on slot {victimSlot} at "
                     + $"{claim.HitPoint}, {offset.Length:F2} units from where frame "
@@ -1213,8 +1240,8 @@ namespace MphRead.Mods.Network
             // both machines (NetUnlagged.LaunchFrameFor), so this is a
             // comparison of like with like; the ack is the fallback for the
             // hits that carry no stamp, where the two coincide anyway.
-            uint fired = claim.LaunchFrame != 0 ? claim.LaunchFrame : claim.AckFrame;
-            if (_dead[shooterSlot] && _deathFire[shooterSlot] < fired)
+            if (ShooterDiedBeforeShot(_dead[shooterSlot], _deathFire[shooterSlot],
+                claim.LaunchFrame, claim.AckFrame))
             {
                 VoidedDeadShooter++;
                 return HitVerdictPacket.ResultDeadShooter;
@@ -1703,7 +1730,8 @@ namespace MphRead.Mods.Network
             // shooter in a world earlier than the one it fired in, and the
             // arbitration is about that ordering rather than about which
             // packet arrived first.
-            if (_dead[shooterSlot] && _deathFire[shooterSlot] < (entry.LaunchFrame != 0 ? entry.LaunchFrame : entry.AckFrame))
+            if (ShooterDiedBeforeShot(_dead[shooterSlot], _deathFire[shooterSlot],
+                entry.LaunchFrame, entry.AckFrame))
             {
                 VoidedDeadShooter++;
                 Answer(shooterSlot, entry.Id, HitVerdictPacket.ResultDeadShooter);

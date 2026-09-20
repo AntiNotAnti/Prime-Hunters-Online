@@ -79,6 +79,19 @@ namespace MphRead.Mods.Network
         public static readonly int[] Replayed = new int[Slots];
 
         /// <summary>
+        /// Session-wide damage-pipeline totals. Unlike <see cref="Resolved"/>
+        /// and <see cref="Replayed"/>, these survive room/match resets so a
+        /// final netcheck report cannot erase earlier confirmed hits merely
+        /// because the lobby crossed a match boundary. They reset only with
+        /// the network session.
+        ///
+        /// Indexed by slot, so slot reuse deliberately means "traffic through
+        /// this slot during the session", not one immutable player identity.
+        /// </summary>
+        public static readonly int[] ResolvedSession = new int[Slots];
+        public static readonly int[] ReplayedSession = new int[Slots];
+
+        /// <summary>
         /// Beams each slot actually spawned on this machine.
         ///
         /// The missing third of the picture. Resolved says whether a hit
@@ -261,12 +274,19 @@ namespace MphRead.Mods.Network
         /// happening, four "damage sequence jumped" events per client per
         /// rotation.
         ///
-        /// The tallies go, because they are per-match diagnostics.
+        /// The per-match tallies go. Session-wide pipeline totals deliberately
+        /// survive so the final run report still describes everything that
+        /// crossed before this boundary.
         /// </summary>
         public static void ResetForRoomChange()
         {
             Array.Clear(Resolved);
             Array.Clear(Replayed);
+            if (resetSessionTotals)
+            {
+                Array.Clear(ResolvedSession);
+                Array.Clear(ReplayedSession);
+            }
             Array.Clear(Fired);
             NetShotDiagnostics.Reset();
             NetTimingDiagnostics.Reset();
@@ -348,7 +368,7 @@ namespace MphRead.Mods.Network
             _lastSeen[slot] = sequence;
         }
 
-        public static void Reset()
+        public static void Reset(bool resetSessionTotals = true)
         {
             Array.Clear(_history);
             Array.Clear(_sequence);
@@ -536,6 +556,7 @@ namespace MphRead.Mods.Network
             _sequence[slot] = NetLifecycleTracker.Next(_sequence[slot]);
             if (NetLog.Enabled) NetLog.Event($"[damage-publish] epoch={NetSession.AuthorityEpoch} match={NetSession.CurrentMatchId} victim={slot}/{NetPlayerLifecycle.Generation(slot)}/{NetPlayerLifecycle.Get(slot)} event={_sequence[slot]} shooter={attacker?.SlotIndex} launch={launchFrame}");
             Resolved[slot]++;
+            ResolvedSession[slot]++;
             if (NetLog.Enabled)
             {
                 // Every hit the machine running the match resolves, with the
@@ -776,6 +797,7 @@ namespace MphRead.Mods.Network
             int slot = player.SlotIndex;
             const int landed = 1;
             Replayed[slot]++;
+            ReplayedSession[slot]++;
             bool lethal = state.Health == 0;
             // Consumed before the "already down" return below, not after it.
             //

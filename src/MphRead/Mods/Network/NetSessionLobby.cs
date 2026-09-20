@@ -159,7 +159,7 @@ namespace MphRead.Mods.Network
         {
             NetHealthSync.BeginRoom();
             NetPlayerSetup.Reset(); SpectatorMode.Reset(); NetMatchSync.Reset();
-            NetSlotManager.Reset(); NetDamage.Reset();
+            NetSlotManager.Reset(); NetDamage.Reset(resetSessionTotals: false);
             if (!preserveRoomChange) NetRoomChange.Reset();
             NetMatchEnd.Reset();
             NetPlayerBridge.Reset(); NetUnlagged.Reset(); NetHitPrediction.Reset();
