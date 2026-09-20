@@ -417,8 +417,9 @@ Gotchas worth keeping in view without opening another file:
   the hunter's own portrait with an arrow either side, four suit swatches
   whose colours are read out of that hunter's model (`Mods/HunterSuits.cs`,
   nothing is written down), and the next map's name off
-  `MatchStatePacket.NextRoomKey`, which had been on the wire since the
-  rotation was written and never read. **The hunter is the real model, not a
+  `MatchStatePacket.NextRoomKey` when the session has actually committed one.
+  Persistent lobbies leave that field empty during results because they return
+  to the lobby first. **The hunter is the real model, not a
   sprite** (`Mods/Render/HunterPreview.cs`): it is an `EntityBase` that is
   *never inserted into the scene* -- so it takes no slot, runs no Process,
   holds no NodeRef and cannot outlive a room change -- whose items are
@@ -432,9 +433,12 @@ Gotchas worth keeping in view without opening another file:
   model lands, since the model reaches the frame before the HUD does. The
   sprite portrait is still there as the fallback for a model that will not
   load. Arrow keys or the d-pad. The answer is
-  still `RespawnChoice`'s and is still cashed in at the next spawn. **Under
-  it is the vote for the next map**, which is `callvote map` moved to the one
-  moment nobody is playing: **every** map, scrolled, with the launcher's own
+  still `RespawnChoice`'s and is still cashed in at the next spawn.
+  **Continuous-rotation sessions put the next-map vote under it**, which is
+  `callvote map` moved to the one moment nobody is playing. Persistent lobby
+  sessions deliberately omit that face and return to the lobby after the
+  report, where map/settings changes happen before another explicit Start.
+  The continuous ballot is **every** map, scrolled, with the launcher's own
   preview beside each one. Picking proposes, picking what somebody else picked
   validates, picking another proposes that instead, and **the map with the
   most votes is the one loaded** -- no threshold, since an intermission
