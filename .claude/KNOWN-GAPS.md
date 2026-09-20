@@ -49,9 +49,9 @@ claiming coverage that isn't there.
   The pads map says protocol 7 is better on both headshots (63.6 to 81.2) and
   confirmation (85.0 to 100.0); the arena says it is worse on both. Eight to
   sixteen headshots an arm cannot separate those, and `local%` is lower on
-  protocol 7 in **both** pairings -- which is at least partly death prediction
-  being on, since a client that kills a puppet locally then sees hits on that
-  slot it never resolved.
+  protocol 7 in **both** pairings -- and those historical A/B arms also included the then-current lethal-prediction
+  behavior. Remote lethal prediction is no longer enabled, so those percentages
+  must not be treated as current defaults.
 
   So: **the ceiling and the claim counts are measured; the percentages are
   not.** What is solid is `clamped` (80.0/87.5% down to 0/1.4%), every
@@ -69,8 +69,8 @@ claiming coverage that isn't there.
   runs was `-netlag` on 127.0.0.1. The case the arbitration exists for is two
   players killing each other across a real intercontinental line, and what is
   *not* known is how often `ResultDeadShooter` actually fires there, nor
-  whether the 18-frame grace window is the right length when the jitter is the
-  internet's rather than a number this box chose. `tools/hitrig/bench-p7.sh`
+  whether the **current dynamic grace window (RTT + margin, bounded 24–72 frames)**
+  is right when the jitter is the internet's rather than a number this box chose. `tools/hitrig/bench-p7.sh`
   against the Pi, or `bench-japan.sh`, is what would settle it.
 - **The geometric gate on a claim has never refused anything, so its tolerance
   is untested from the wrong side.** `ClaimRadius` is 2.0 units and every run
@@ -97,21 +97,6 @@ claiming coverage that isn't there.
   scripted tour has whole phases of it -- and a respawn contributes a huge
   step to `worst`. Both are only meaningful compared between two arms of the
   same scenario.
-- **The rig's own shooter fired a third of what it asked for, and the reason
-  was the rig.** *Closed 2026-09-10.* `HitRig.FinishControls` wrote its binds
-  after the pass that sets `Input.HasInput`, so the engine saw an idle player,
-  lowered the gun, and `TryFireWeapon` refused at the `GunAnimation.UpDown`
-  check -- ahead of `NetDamage.NoteFired`, so the refused shots did not even
-  register as attempted. `NetTestScript.FinishControls` has carried the fix
-  since the tour hit the same wall; this driver is newer and missed it.
-
-  | slot 0 (the shooter) | its own machine | the observer | the authority |
-  |---|---|---|---|
-  | before | **19** | 52 | 57 |
-  | after (70 s sniper arm) | **28** | 26 | 30 |
-
-  Every hit-registration percentage measured before this compared two
-  different volleys and should be discarded, not re-read.
 
 - **The authority spawns beams for a dead player that the player's own machine
   never spawned, and the reason is not established.** Fell out of the arm that
@@ -131,14 +116,6 @@ claiming coverage that isn't there.
   authority's shot count, so quote per-slot counts rather than a total. Follow
   it with `NetDamage.Fired` around a death, on all three machines.
 
-- **`NetDamage._attacker` resets to slot 0 rather than to `NoSlot`.**
-  `ForgetSlot` sets it to `0` and `Reset` clears the array, so between a reset
-  and the first hit a slot's snapshot names **slot 0** as the attacker.
-  `NetDamage.Replay` reads that as `mine` on the client that holds slot 0.
-  Today it is latent -- `landed` is zero for such a slot, and `Replay` returns
-  on that first -- but it is one reordering away from a client crediting itself
-  with damage it did not deal, and it is a one-word fix (`NoSlot`) whenever
-  that file is next touched.
 
 - **Live validation of snapshot-based form reconciliation remains.** The
   authority now reconciles from the owner's intent and each client from the
@@ -251,12 +228,12 @@ claiming coverage that isn't there.
   on this box: the Unix path is unchanged (delete then rename, as before), and
   the startup sweep really does delete a `.fp-old` and a `.incoming` left in an
   installation. The first Windows server to take a release is the test.
-- **The one launcher has never run on Windows or macOS.** Same code on all
-  three desktops now, but the only machine that's shown it is this WSL box
-  (front screen, settings, map grid, pause menu — driven and screenshotted
-  over X11). Windows changes two things this can't check: it's a GUI binary
-  with no console, and GLFW/Avalonia share a message queue instead of two X
-  connections.
+- **The Windows graphical launcher still lacks a full end-to-end window smoke on a native Windows runner.**
+  Windows CI exercises shared input/controller code and publishes the GUI binary,
+  but the automated `-shellshot` navigation still runs on Linux. macOS native
+  CI now runs `-windowcheck` when an accelerated graphics renderer is available;
+  real interactive gameplay remains covered by the separate macOS gap below.
+
 - **Nobody has played a match from the launcher window.** It starts one and
   the launcher window goes away when it does (checked), but this box can't
   show a GLFW window at all (`Scene.OnRenderFrame` never produces a frame
@@ -305,19 +282,16 @@ claiming coverage that isn't there.
 - **A phone is still a different machine** — the emulator is x86_64 with
   SwiftShader, a phone is arm64 with a real driver. That is the ABI and the GL
   implementation both differing from what is tested here.
-- **The update check has never seen a release of this repository.** Tested
-  against upstream NoneGiven/MphRead instead, which has releases: the check,
-  version comparison, "update available" line and page URL were all
-  exercised that way. Not covered: an asset name actually matching this
-  project's — the "no matching asset" path got tested, the matching one only
-  by unit test.
-- **No browser has actually been opened.** `OpenPage` was only exercised
-  where it correctly declined (headless, no `DISPLAY`). `xdg-open` on a real
-  desktop and `UseShellExecute` on Windows are untried.
-- **The rename leaves an unrun migration on the Pi.** `deploy-server.sh`
-  rewrites an `ExecStart` still naming `MphRead` and deletes the old binary,
-  but that code path hasn't run against the real box yet. Check
-  `systemctl cat mphread-server` after the first deploy following the rename.
+
+- **Opening the external release/update page is not manually verified on every desktop.**
+  The in-app server browser itself is exercised by launcher checks; this gap is
+  specifically the OS handoff used by `OpenPage` (for example macOS update-page
+  fallback), especially Windows `UseShellExecute`.
+- **Legacy service-unit migration is deployment-specific, not assumed complete.**
+  `deploy-server.sh` can rewrite older systemd units/binary names, but live host
+  state must be checked on the host after deployment. Do not treat this file as
+  evidence of what a particular Pi/VM is currently running.
+
 - **The ARM64 server package has never been started by CI** — cross-compiled
   on an x64 runner, so `check-dedicated-server.sh` can't run it there.
   `linux-x64-server` (same build config, a processor the runner actually has)
