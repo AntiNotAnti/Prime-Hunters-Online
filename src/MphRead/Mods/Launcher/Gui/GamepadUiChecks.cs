@@ -55,6 +55,19 @@ namespace MphRead.Mods.Launcher.Gui
             GamepadChecks.Check(compactPlay!.IsFocused,
                 "FPS hub compact navigation restores a semantic default");
 
+            var deployment = new HubPlayView();
+            window.Width = 960; window.Height = 660; window.Content = deployment;
+            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            var onlineDeploy = ControllerNav.Find(deployment, "deploy.online");
+            GamepadChecks.Check(onlineDeploy is { IsEffectivelyVisible: true },
+                "deployment screen exposes Online");
+            FocusNavigator.Ensure(deployment);
+            GamepadChecks.Check(onlineDeploy!.IsFocused,
+                "deployment screen defaults controller focus to Online");
+            FocusNavigator.Move(deployment, UiAction.Right);
+            GamepadChecks.Check(ControllerNav.Find(deployment, "deploy.custom")!.IsFocused,
+                "deployment uses explicit controller neighbours");
+
             window.Width = 600; window.Height = 400; window.Content = panel;
             window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
             var choice = new ChoiceRow("Option", new[] { "One", "Two" }, 0);
