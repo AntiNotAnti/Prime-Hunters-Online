@@ -605,9 +605,13 @@ namespace MphRead.Entities
                 {
                     // The 1/4 was the whole of the sensitivity setting; it is
                     // now the point where one lives (1.0 = this exact feel).
-                    float aimY = -Input.MouseDeltaY / 4f * Mods.InputSettings.MouseSensitivity
+                    // Scoped aim keeps the engine's FOV-based slowdown in UpdateAimX/Y,
+                    // with a separate player multiplier layered on top.
+                    float mouseSensitivity = Mods.InputSettings.MouseSensitivity
+                        * (EquipInfo.Zoomed ? Mods.InputSettings.MouseZoomSensitivity : 1);
+                    float aimY = -Input.MouseDeltaY / 4f * mouseSensitivity
                         * (Mods.InputSettings.InvertMouseY ? -1 : 1);
-                    float aimX = -Input.MouseDeltaX / 4f * Mods.InputSettings.MouseSensitivity
+                    float aimX = -Input.MouseDeltaX / 4f * mouseSensitivity
                         * (Mods.InputSettings.InvertMouseX ? -1 : 1);
                     if (CameraSequence.Current?.Flags.TestFlag(CamSeqFlags.BlockInput) == true
                         || _scene.FrameAdvance || _scene.FrameAdvanceLastFrame) // skdebug
