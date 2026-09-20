@@ -146,7 +146,7 @@ namespace MphRead.Mods.Launcher.Gui
             var play = new DeckButton("PLAY", Deck.Face.Blue) { Idle = true };
             play.Click += (_, _) => _ = OpenPlay();
             bar.Children.Add(play);
-            var clips = new DeckButton("CLIPS", Deck.Face.Moss);
+            var clips = new DeckButton("REPLAY STUDIO", Deck.Face.Moss);
             clips.Click += (_, _) => _ = OpenClips();
             bar.Children.Add(clips);
             var options = new DeckButton("SETTINGS", Deck.Face.Brass);
