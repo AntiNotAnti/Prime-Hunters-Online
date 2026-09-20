@@ -30,6 +30,12 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly TextBlock _cameraStatus;
         private readonly ReplayTimeline _timeline;
         private readonly StackPanel _highlightPanel;
+        private readonly StackPanel _bookmarkPanel;
+        private readonly FieldRow _bookmarkName;
+        private readonly FieldRow _clipName;
+        private readonly TextBlock _shortcuts;
+        private ReplayBookmark[] _bookmarks = Array.Empty<ReplayBookmark>();
+        private ReplayNamedHighlight[] _namedHighlights = Array.Empty<ReplayNamedHighlight>();
         private readonly DeckButton _playPause;
         private readonly DeckButton _director;
         private readonly DeckButton _track;
@@ -73,15 +79,56 @@ namespace MphRead.Mods.Launcher.Gui
                     _takeControlArmed = false;
                     ReplayController.Seek(frame, resume: false);
                     Refresh();
+                },
+                MarkInRequested = frame =>
+                {
+                    ReplayController.SetMarkIn(frame);
+                    _message = "Clip In moved to " + Time(frame) + ".";
+                    Refresh();
+                },
+                MarkOutRequested = frame =>
+                {
+                    ReplayController.SetMarkOut(frame);
+                    _message = "Clip Out moved to " + Time(frame) + ".";
+                    Refresh();
                 }
             };
             body.Children.Add(_timeline);
-            body.Children.Add(new Note("Drag to scrub · wheel zooms · ←/→ nudge one second · event marks and generated highlights share the same ruler."));
+            body.Children.Add(new Note("Drag to scrub · drag the gold In/Out handles to trim · wheel zooms · "
+                + "←/→ nudge one second · purple marks are your bookmarks/highlights."));
 
             body.Children.Add(new Caption("Highlights"));
             _highlightPanel = new StackPanel { Spacing = 4 };
             BuildHighlights();
             body.Children.Add(_highlightPanel);
+
+            ReloadAnnotations();
+            body.Children.Add(new Caption("Bookmarks & named highlights"));
+            _bookmarkName = new FieldRow("Name", "", boxWidth: 220);
+            _bookmarkName.Box.MaxLength = 80;
+            body.Children.Add(_bookmarkName);
+            var bookmarkActions = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*") };
+            var addBookmark = new DeckButton("ADD BOOKMARK", Deck.Face.Brass,
+                sizeEms: .92, padXEms: .65, padYEms: .4, lip: 3)
+            {
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                Margin = new Thickness(0, 0, 4, 0)
+            };
+            addBookmark.Click += (_, _) => AddBookmark();
+            bookmarkActions.Children.Add(addBookmark);
+            var addNamedHighlight = new DeckButton("NAME SELECTION", Deck.Face.Brass,
+                sizeEms: .92, padXEms: .65, padYEms: .4, lip: 3)
+            {
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                Margin = new Thickness(4, 0, 0, 0)
+            };
+            addNamedHighlight.Click += (_, _) => AddNamedHighlight();
+            Grid.SetColumn(addNamedHighlight, 1);
+            bookmarkActions.Children.Add(addNamedHighlight);
+            body.Children.Add(bookmarkActions);
+            _bookmarkPanel = new StackPanel { Spacing = 4 };
+            body.Children.Add(_bookmarkPanel);
+            BuildBookmarks();
 
             body.Children.Add(new Caption("Playback"));
             body.Children.Add(new Note(
@@ -162,6 +209,9 @@ namespace MphRead.Mods.Launcher.Gui
             AddAction("CAMERA MODE", CycleCamera, resume: true);
 
             BeginActionGroup("Clip editing");
+            _clipName = new FieldRow("Clip / highlight name", "", boxWidth: 220);
+            _clipName.Box.MaxLength = 80;
+            body.Children.Add(_clipName);
             AddAction("MARK IN", ReplayController.MarkIn, face: Deck.Face.Brass);
             AddAction("MARK OUT", ReplayController.MarkOut, face: Deck.Face.Brass);
             AddAction("SAVE REPLAY CLIP", SaveSelection, face: Deck.Face.Moss);
@@ -280,18 +330,16 @@ namespace MphRead.Mods.Launcher.Gui
             };
             body.Children.Add(_analytics);
 
-            var shortcuts = new TextBlock
+            _shortcuts = new TextBlock
             {
-                Text = "Keyboard: Space play/pause · ,/. step · [/] speed · ←/→ seek · "
-                    + "1-8 player · F/C/O camera · B/N camera keys\n"
-                    + "Gamepad: A play/pause · X step · D-pad seek/speed · LB/RB player",
+                Text = ShortcutText(),
                 FontFamily = GuiTheme.Display,
                 FontSize = 11,
                 Foreground = GuiTheme.TextDimBrush,
                 TextWrapping = TextWrapping.Wrap,
                 TextAlignment = TextAlignment.Center
             };
-            body.Children.Add(shortcuts);
+            body.Children.Add(_shortcuts);
 
             var scroll = new ScrollViewer
             {
@@ -342,6 +390,151 @@ namespace MphRead.Mods.Launcher.Gui
                 };
                 _highlightPanel.Children.Add(button);
             }
+        }
+
+        private void ReloadAnnotations()
+        {
+            _bookmarks = ReplayAnnotations.Bookmarks().ToArray();
+            _namedHighlights = ReplayAnnotations.Highlights().ToArray();
+        }
+
+        private void AddBookmark()
+        {
+            if (DemoPlayback.CurrentPath == null)
+            {
+                _message = "No replay is open.";
+                return;
+            }
+            try
+            {
+                ReplayBookmark bookmark = ReplayAnnotations.AddBookmark(
+                    DemoPlayback.CurrentPath, ReplayController.CurrentFrame, _bookmarkName.Value);
+                _bookmarkName.Value = "";
+                ReloadAnnotations();
+                BuildBookmarks();
+                _message = $"Bookmark saved: {bookmark.Name}.";
+                Refresh();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                or ArgumentException)
+            {
+                _message = "Could not save bookmark: " + ex.Message;
+            }
+        }
+
+        private void AddNamedHighlight()
+        {
+            if (DemoPlayback.CurrentPath == null
+                || !TrySelection(out uint start, out uint end))
+            {
+                _message = "Set both MARK IN and MARK OUT before naming a highlight.";
+                return;
+            }
+            try
+            {
+                ReplayNamedHighlight highlight = ReplayAnnotations.AddHighlight(
+                    DemoPlayback.CurrentPath, start, end, _bookmarkName.Value);
+                _bookmarkName.Value = "";
+                ReloadAnnotations();
+                BuildBookmarks();
+                _message = $"Named highlight saved: {highlight.Name}.";
+                Refresh();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                or ArgumentException)
+            {
+                _message = "Could not save named highlight: " + ex.Message;
+            }
+        }
+
+        private void BuildBookmarks()
+        {
+            _bookmarkPanel.Children.Clear();
+            if (_bookmarks.Length == 0 && _namedHighlights.Length == 0)
+            {
+                _bookmarkPanel.Children.Add(new Note(
+                    "No bookmarks yet. Add one at the playhead, or name the current In/Out selection."));
+                return;
+            }
+
+            foreach (ReplayBookmark bookmark in _bookmarks.Take(24))
+            {
+                var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+                var jump = new DeckButton(
+                    $"{Time(bookmark.Frame)}  {bookmark.Name.ToUpperInvariant()}",
+                    Deck.Face.Slate, sizeEms: .9, padXEms: .6, padYEms: .35, lip: 3)
+                {
+                    HorizontalAlignment = HorizontalAlignment.Stretch
+                };
+                jump.Click += (_, _) =>
+                {
+                    ReplayController.Seek(bookmark.Frame, resume: false);
+                    _message = "Bookmark: " + bookmark.Name + ".";
+                    Refresh();
+                };
+                row.Children.Add(jump);
+                var remove = new UiWord("remove") { Margin = new Thickness(8, 0, 0, 0) };
+                remove.Click += (_, _) =>
+                {
+                    if (DemoPlayback.CurrentPath == null) return;
+                    ReplayAnnotations.RemoveBookmark(DemoPlayback.CurrentPath, bookmark.Id);
+                    ReloadAnnotations();
+                    BuildBookmarks();
+                    Refresh();
+                };
+                Grid.SetColumn(remove, 1);
+                row.Children.Add(remove);
+                _bookmarkPanel.Children.Add(row);
+            }
+
+            foreach (ReplayNamedHighlight highlight in _namedHighlights.Take(24))
+            {
+                var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+                var jump = new DeckButton(
+                    $"{Time(highlight.StartFrame)}-{Time(highlight.EndFrame)}  "
+                        + highlight.Name.ToUpperInvariant(),
+                    Deck.Face.Brass, sizeEms: .9, padXEms: .6, padYEms: .35, lip: 3)
+                {
+                    HorizontalAlignment = HorizontalAlignment.Stretch
+                };
+                jump.Click += (_, _) =>
+                {
+                    ReplayController.SetMarkIn(highlight.StartFrame);
+                    ReplayController.SetMarkOut(highlight.EndFrame);
+                    ReplayController.Seek(highlight.StartFrame, resume: false);
+                    _message = "Named highlight: " + highlight.Name + ".";
+                    Refresh();
+                };
+                row.Children.Add(jump);
+                var remove = new UiWord("remove") { Margin = new Thickness(8, 0, 0, 0) };
+                remove.Click += (_, _) =>
+                {
+                    if (DemoPlayback.CurrentPath == null) return;
+                    ReplayAnnotations.RemoveHighlight(DemoPlayback.CurrentPath, highlight.Id);
+                    ReloadAnnotations();
+                    BuildBookmarks();
+                    Refresh();
+                };
+                Grid.SetColumn(remove, 1);
+                row.Children.Add(remove);
+                _bookmarkPanel.Children.Add(row);
+            }
+        }
+
+        private static string ShortcutText()
+        {
+            string Key(OpenTK.Windowing.GraphicsLibraryFramework.Keys key)
+                => key == OpenTK.Windowing.GraphicsLibraryFramework.Keys.Unknown
+                    ? "unbound" : InputSettings.KeyName(key);
+            string Pad(Mods.Input.PadAction action)
+                => Mods.Input.PadBindings.Describe(Mods.Input.PadBindings.Get(action));
+            return $"Keyboard: {Key(InputSettings.ReplayPlayPauseKey)} play/pause · "
+                + $"{Key(InputSettings.ReplayStepBackKey)}/{Key(InputSettings.ReplayStepForwardKey)} step · "
+                + $"{Key(InputSettings.ReplaySlowerKey)}/{Key(InputSettings.ReplayFasterKey)} speed · "
+                + $"{Key(InputSettings.ReplaySeekBackKey)}/{Key(InputSettings.ReplaySeekForwardKey)} seek\n"
+                + $"Gamepad: {Pad(Mods.Input.PadAction.ReplayPlayPause)} play/pause · "
+                + $"{Pad(Mods.Input.PadAction.ReplayStep)} step · "
+                + $"{Pad(Mods.Input.PadAction.ReplaySeekBack)}/{Pad(Mods.Input.PadAction.ReplaySeekForward)} seek";
         }
 
         private void ToggleDirector()
@@ -402,7 +595,9 @@ namespace MphRead.Mods.Launcher.Gui
             }
             try
             {
-                string path = ReplayVirtualClips.Save(DemoPlayback.CurrentPath, start, end);
+                string? name = String.IsNullOrWhiteSpace(_clipName.Value)
+                    ? null : _clipName.Value.Trim();
+                string path = ReplayVirtualClips.Save(DemoPlayback.CurrentPath, start, end, name);
                 _message = "Virtual clip saved: " + Path.GetFileName(path);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
@@ -538,7 +733,9 @@ namespace MphRead.Mods.Launcher.Gui
             ReplayCamera.EnsureTrack();
             _timeline.Update(ReplayController.DurationFrames, ReplayController.CurrentFrame,
                 ReplayController.ClipIn, ReplayController.ClipOut, DemoPlayback.Events, _highlights,
-                ReplayCamera.Track.Keys.Select(key => key.Frame).ToArray());
+                ReplayCamera.Track.Keys.Select(key => key.Frame).ToArray(),
+                _bookmarks.Select(bookmark => bookmark.Frame).ToArray(), _namedHighlights);
+            _shortcuts.Text = ShortcutText();
 
             _cameraStatus.Text =
                 $"{ReplayCamera.KeyframeCount} keys · {ReplayCamera.TrackInterpolation} · "
