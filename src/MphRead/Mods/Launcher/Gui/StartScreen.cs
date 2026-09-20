@@ -386,15 +386,21 @@ namespace MphRead.Mods.Launcher.Gui
                         OpenMultiplayer();
                         break;
                     case HubPlayDestination.Offline:
-                        Pop();
-                        _ = OpenPlay(PlayScreen.Face.Offline);
+                        _ = OpenPlay(PlayScreen.Face.Offline, singleFace: true);
                         break;
                     case HubPlayDestination.Adventure:
-                        Pop();
-                        _ = OpenPlay(PlayScreen.Face.Story);
+                        OpenAdventure();
                         break;
                 }
             };
+            Push(view);
+        }
+
+        private void OpenAdventure()
+        {
+            var view = new HubAdventureView();
+            view.Closed += (_, _) => Pop();
+            view.Launched += (_, plan) => Finish(plan);
             Push(view);
         }
 
@@ -451,14 +457,16 @@ namespace MphRead.Mods.Launcher.Gui
             Push(view);
         }
 
-        private Task OpenPlay(PlayScreen.Face face = PlayScreen.Face.Online)
+        private Task OpenPlay(PlayScreen.Face face = PlayScreen.Face.Online,
+            bool singleFace = false)
         {
             if (!GameFiles.Ready)
             {
                 OpenSetup();
                 return Task.CompletedTask;
             }
-            var view = new PlayScreen(_settings, _rooms, face);
+            var view = new PlayScreen(_settings, _rooms, face,
+                singleFace: singleFace);
             view.Closed += (_, _) => Pop();
             view.Launched += (_, plan) => ConnectedOrFinished(plan);
             view.CreateRequested += (_, _) => OpenCreateServer();

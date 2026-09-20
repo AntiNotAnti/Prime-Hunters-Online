@@ -191,10 +191,12 @@ namespace MphRead.Mods.Launcher.Gui
                 new PlayScreen(settings, rooms, PlayScreen.Face.Online), _phonePortrait);
             yield return ("play-online-phone-landscape",
                 new PlayScreen(settings, rooms, PlayScreen.Face.Online), _phoneLandscape);
-            yield return ("play-offline",
-                new PlayScreen(settings, rooms, PlayScreen.Face.Offline), _windowSize);
-            yield return ("play-story",
-                new PlayScreen(settings, rooms, PlayScreen.Face.Story), _windowSize);
+            yield return ("offline",
+                new PlayScreen(settings, rooms, PlayScreen.Face.Offline,
+                    singleFace: true), _windowSize);
+            yield return ("adventure", new HubAdventureView(), _windowSize);
+            yield return ("adventure-phone-portrait",
+                new HubAdventureView(), _phonePortrait);
             yield return ("replay-studio",
                 new PlayScreen(settings, rooms, PlayScreen.Face.Clips,
                     singleFace: true), _windowSize);

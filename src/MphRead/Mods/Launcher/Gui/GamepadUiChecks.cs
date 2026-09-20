@@ -166,6 +166,23 @@ namespace MphRead.Mods.Launcher.Gui
             GamepadChecks.Check(placeholderClosed == 1,
                 "Map Editor placeholder Back accepts a pointer click");
 
+            var adventure = new HubAdventureView();
+            LaunchPlan? adventurePlan = null;
+            int adventureClosed = 0;
+            adventure.Launched += (_, plan) => adventurePlan = plan;
+            adventure.Closed += (_, _) => adventureClosed++;
+            window.Width = 960; window.Height = 660; window.Content = adventure;
+            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            GamepadChecks.Check(ControllerNav.Find(adventure, "adventure.slot1") is { IsEffectivelyVisible: true },
+                "Adventure exposes save slots");
+            Click(window, ControllerNav.Find(adventure, "adventure.slot2")!);
+            Click(window, ControllerNav.Find(adventure, "adventure.newgame")!);
+            GamepadChecks.Check(adventurePlan is { SaveSlot: 2, NewGame: true },
+                "Adventure pointer flow launches the selected new-game slot");
+            Click(window, ControllerNav.Find(adventure, "adventure.back")!);
+            GamepadChecks.Check(adventureClosed == 1,
+                "Adventure Back accepts a pointer click");
+
             var quickPlay = new HubQuickPlayView(preview: true);
             int quickClosed = 0, quickBrowse = 0;
             quickPlay.Closed += (_, _) => quickClosed++;

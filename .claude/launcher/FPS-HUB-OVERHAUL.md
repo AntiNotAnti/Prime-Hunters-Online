@@ -88,8 +88,12 @@ Current implementation:
   same portable discovery service and joins through the same shared join path.
 
 Map Editor intentionally remains a placeholder while the UI shell is stabilized.
+Adventure is now hub-native: save-slot status, hunter preview, Continue/New Game,
+responsive layout and pointer/controller coverage all use the portable
+`AdventureSave` / `AdventureLaunch` contract.
+
 Still to add: server filtering/sorting/favorites/recent history, and the final
-Offline/Adventure hub-native match configuration surfaces.
+hub-native Offline match configuration surface.
 
 ## P1 — Lobby
 

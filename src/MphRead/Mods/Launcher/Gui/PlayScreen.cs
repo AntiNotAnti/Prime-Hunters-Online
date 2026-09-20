@@ -402,6 +402,8 @@ namespace MphRead.Mods.Launcher.Gui
             }
             string heading = face == Face.Vote ? "vote"
                 : singleFace && face == Face.Clips ? "replay studio"
+                : singleFace && face == Face.Offline ? "offline"
+                : singleFace && face == Face.Story ? "adventure"
                 : "play";
             Panel page = UiLayout.Page(overGame, UiLayout.WellPlay,
                 heading, _tabs, body, _back, _go,
@@ -1587,18 +1589,7 @@ namespace MphRead.Mods.Launcher.Gui
             bool used = AdventureSave.Read(slot).Used;
             bool newGame = !used || _resume!.Value == "New game";
             var hunter = (Hunter)Enum.Parse(typeof(Hunter), _hunter!.Value);
-            LauncherPrefs.LastHunter = hunter;
-            LauncherPrefs.LastKind = (int)LaunchKind.Adventure;
-            LauncherPrefs.Save();
-            Finish(new LaunchPlan
-            {
-                Kind = LaunchKind.Adventure,
-                Hunter = hunter,
-                PlayerName = LauncherPrefs.PlayerName,
-                RoomKey = "",
-                SaveSlot = slot,
-                NewGame = newGame
-            });
+            Finish(AdventureLaunch.Create(slot, newGame, hunter));
         }
 
         // ---------------------------------------------------------------- demo
