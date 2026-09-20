@@ -31,6 +31,29 @@ namespace MphRead.Mods.Launcher.Gui
             int clicked = 0; last.Click += (_, _) => clicked++;
             FocusNavigator.Key(last, Avalonia.Input.Key.Enter);
             GamepadChecks.Check(clicked == 1, "controller activates existing UI control");
+
+            // The front door now has two responsive navigation arrangements.
+            // Both carry semantic defaults so controller focus does not depend
+            // on which control happens to be nearest after a resize.
+            var hub = new HubHomeView();
+            window.Width = 960; window.Height = 660; window.Content = hub;
+            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            var desktopPlay = ControllerNav.Find(hub, "hub.desktop.play");
+            GamepadChecks.Check(desktopPlay is { IsEffectivelyVisible: true },
+                "FPS hub exposes desktop Play navigation");
+            FocusNavigator.Ensure(hub);
+            GamepadChecks.Check(desktopPlay!.IsFocused,
+                "FPS hub desktop navigation establishes focus on Play");
+
+            window.Width = 700; window.Height = 480;
+            window.UpdateLayout(); Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
+            var compactPlay = ControllerNav.Find(hub, "hub.compact.play");
+            GamepadChecks.Check(compactPlay is { IsEffectivelyVisible: true }
+                && !desktopPlay.IsEffectivelyVisible,
+                "FPS hub switches to compact controller navigation");
+            FocusNavigator.Ensure(hub);
+            GamepadChecks.Check(compactPlay!.IsFocused,
+                "FPS hub compact navigation restores a semantic default");
             var choice = new ChoiceRow("Option", new[] { "One", "Two" }, 0);
             panel.Children.Add(choice); window.UpdateLayout(); FocusNavigator.Focus(choice);
             FocusNavigator.Key(choice, Avalonia.Input.Key.Right);
