@@ -59,18 +59,23 @@ namespace MphRead.Mods.Launcher.Gui
                 ColumnSpacing = 12,
                 RowSpacing = 12
             };
-            AddCard(0, 0, "ONLINE",
+            HubNavButton online = AddCard(0, 0, "ONLINE",
                 "Browse live public servers and join an active lobby.",
                 "PUBLIC NETWORK", HubPlayDestination.Online, HubTheme.Accent, initial: true);
-            AddCard(1, 0, "CUSTOM MATCH",
+            HubNavButton custom = AddCard(1, 0, "CUSTOM MATCH",
                 "Create a lobby, choose rotation and rules, then invite players.",
                 "HOST / LOBBY", HubPlayDestination.Custom, HubTheme.Warm);
-            AddCard(0, 1, "OFFLINE",
+            HubNavButton offline = AddCard(0, 1, "OFFLINE",
                 "Pick any map, mode and bot configuration for local combat.",
                 "LOCAL COMBAT", HubPlayDestination.Offline, HubTheme.Good);
-            AddCard(1, 1, "ADVENTURE",
+            HubNavButton adventure = AddCard(1, 1, "ADVENTURE",
                 "Continue a save slot or begin a new single-player run.",
                 "STORY", HubPlayDestination.Adventure, Color.FromRgb(0xa7, 0x9b, 0xf5));
+
+            Wire(online, up: "offline", down: "offline", left: "custom", right: "custom");
+            Wire(custom, up: "adventure", down: "adventure", left: "online", right: "online");
+            Wire(offline, up: "online", down: "online", left: "adventure", right: "adventure");
+            Wire(adventure, up: "custom", down: "custom", left: "offline", right: "offline");
             Grid.SetRow(_cards, 1);
             root.Children.Add(_cards);
 
@@ -113,35 +118,10 @@ namespace MphRead.Mods.Launcher.Gui
             base.OnKeyDown(e);
         }
 
-        private void AddCard(int column, int row, string title, string detail,
+        private HubNavButton AddCard(int column, int row, string title, string detail,
             string tag, HubPlayDestination destination, Color accent, bool initial = false)
         {
-            var stack = new StackPanel { Spacing = 8 };
-            stack.Children.Add(new TextBlock
-            {
-                Text = tag,
-                FontFamily = HubTheme.DataBold,
-                FontSize = 8,
-                Foreground = new SolidColorBrush(accent)
-            });
-            stack.Children.Add(new TextBlock
-            {
-                Text = title,
-                FontFamily = HubTheme.Ui,
-                FontWeight = FontWeight.Bold,
-                FontSize = 19,
-                Foreground = HubTheme.TextBrush
-            });
-            stack.Children.Add(new TextBlock
-            {
-                Text = detail,
-                FontFamily = HubTheme.Ui,
-                FontSize = 10.5,
-                Foreground = HubTheme.TextDimBrush,
-                TextWrapping = TextWrapping.Wrap
-            });
-
-            var button = new HubNavButton(title, detail, accent: accent)
+            var button = new HubNavButton(title, $"{tag}  /  {detail}", accent: accent)
             {
                 MinHeight = 112
             };
@@ -152,6 +132,16 @@ namespace MphRead.Mods.Launcher.Gui
             Grid.SetColumn(button, column);
             Grid.SetRow(button, row);
             _cards.Children.Add(button);
+            return button;
+        }
+
+        private static void Wire(HubNavButton button, string up, string down,
+            string left, string right)
+        {
+            button.SetValue(ControllerNav.NavUpProperty, $"deploy.{up}");
+            button.SetValue(ControllerNav.NavDownProperty, $"deploy.{down}");
+            button.SetValue(ControllerNav.NavLeftProperty, $"deploy.{left}");
+            button.SetValue(ControllerNav.NavRightProperty, $"deploy.{right}");
         }
 
         private void ApplyResponsive(Size size)
