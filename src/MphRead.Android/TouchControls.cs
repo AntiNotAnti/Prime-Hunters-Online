@@ -590,7 +590,11 @@ namespace MphRead.Droid
                 // no touches either (see the hit test in Down), which is the
                 // point -- an aim drag that starts where ZOOM used to be is
                 // now an aim drag.
-                button.Visible = visible && TouchSettings.Shown(SettingOf(button.Action));
+                bool replayTransport = _spectating
+                    && MphRead.Mods.Network.DemoPlayback.IsActive
+                    && button.Action is TouchAction.Missile or TouchAction.WeaponMenu or TouchAction.Zoom;
+                button.Visible = visible
+                    && (replayTransport || TouchSettings.Shown(SettingOf(button.Action)));
                 button.Relabel(label);
             }
         }
