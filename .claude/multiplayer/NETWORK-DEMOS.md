@@ -217,9 +217,9 @@ They describe the v2 implementation before the controls and v3 changes above.
 # Demos: recording a match and watching it back
 
 `Mods/Network/DemoRecorder.cs`, `DemoFile.cs`, `DemoPlayback.cs`,
-`DemoInfo.cs`. Started and stopped from the pause menu ("Record demo",
+`DemoInfo.cs`. Started and stopped from the pause menu ("Record replay",
 online matches only) and from `-netcheck ... -recorddemo`; watched from the
-front screen's demo entry, which runs `MatchStart.LaunchDemo`.
+front screen's Replay Studio library, which runs `MatchStart.LaunchDemo`.
 
 ## The design, in one line
 
