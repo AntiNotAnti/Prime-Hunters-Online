@@ -9,7 +9,7 @@ A fork of [NoneGiven/MphRead](https://github.com/NoneGiven/MphRead).
 > You bring your own Metroid Prime Hunters cartridge dump. No Nintendo game data ships here or is
 > downloaded.
 
-**[Download](https://github.com/AntiNotAnti/Prime-Hunters-Online-Releases/releases)** · [Support the project ☕](https://ko-fi.com/livetek)
+**[Download](https://github.com/AntiNotAnti/Prime-Hunters-Online/releases)** · [Support the project ☕](https://ko-fi.com/livetek)
 
 ## Features
 
@@ -41,7 +41,7 @@ If you enjoy it: **[ko-fi.com/livetek](https://ko-fi.com/livetek)** ☕
 
 ## Getting started
 
-1. **[Download](https://github.com/AntiNotAnti/Prime-Hunters-Online-Releases/releases)** the package for your system
+1. **[Download](https://github.com/AntiNotAnti/Prime-Hunters-Online/releases)** the package for your system
    and unzip it.
 2. Run it:
    - **Windows** — double-click `FruityPrime.exe`

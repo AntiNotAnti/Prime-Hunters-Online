@@ -3,6 +3,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using MphRead.Mods.Multiplayer;
 
 namespace MphRead.Mods.Network
 {
@@ -29,6 +30,7 @@ namespace MphRead.Mods.Network
                 {
                     Phase = SessionPhase.InMatch, Policy = ServerSessionPolicy.Lobby,
                     OwnerSlot = byte.MaxValue, MaxPlayers = 8, MatchId = match.MatchId,
+                    AuthorityEpoch = match.AuthorityEpoch,
                     WorldProfile = MatchWorldProfile.Resolve(8),
                     Match = new MatchDefinition
                     {

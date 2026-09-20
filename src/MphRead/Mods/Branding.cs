@@ -39,13 +39,13 @@ namespace MphRead.Mods
         public const string Repository = "AntiNotAnti/Prime-Hunters-Online";
 
         /// <summary>
-        /// Public, binary-only repository used by the updater.
+        /// Repository whose public GitHub Releases feed is used by the updater.
         ///
-        /// The source repository is private, so anonymous clients cannot read
-        /// its Releases API. CI publishes finished packages here instead; no
-        /// GitHub credential is ever embedded in a client build.
+        /// Source and release assets now live together in the public project
+        /// repository. Keeping this semantic alias makes updater call sites
+        /// explicit without duplicating the repository slug.
         /// </summary>
-        public const string ReleaseRepository = "AntiNotAnti/Prime-Hunters-Online-Releases";
+        public const string ReleaseRepository = Repository;
 
         /// <summary>
         /// The name of the running executable, without its extension. Read

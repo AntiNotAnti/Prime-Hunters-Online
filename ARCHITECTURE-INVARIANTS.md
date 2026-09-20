@@ -55,7 +55,7 @@ This file is the short, machine-oriented source of truth for architectural assum
 
 ## Updates and release packaging
 
-- Public binaries are published to `AntiNotAnti/Prime-Hunters-Online-Releases`; the private source repository is not the anonymous update source.
+- Source, tags and public release binaries live together in `AntiNotAnti/Prime-Hunters-Online`; clients use that repository's anonymous GitHub Releases API as the update source.
 - One-click Windows/Linux/Android installs require a GitHub-provided SHA-256 asset digest before executing/replacing files.
 - Android in-place updates additionally require the release APK signer to match the installed app.
 - macOS opens the release page instead of replacing files inside the signed app bundle.
