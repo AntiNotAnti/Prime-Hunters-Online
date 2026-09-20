@@ -54,11 +54,6 @@ jobs:
             arch: x64
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v6
-        env:
-          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
-        with:
-          dotnet-version: '10.0.x'
       - name: deterministic controller and headless UI checks
         run: dotnet run --project src/MphRead/MphRead.csproj -c Release -- -gamepadcheck
       - name: deterministic pointer and stylus checks
@@ -98,12 +93,6 @@ jobs:
             extra: "-p:MphReadServer=true"
     steps:
       - uses: actions/checkout@v7
-
-      - uses: actions/setup-dotnet@v6
-        env:
-          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
-        with:
-          dotnet-version: '10.0.x'
 
       # Cook every custom map into the one file it ships as. The recipe, the
       # level it converts and the textures baked from it go into a .fpmap,
@@ -252,11 +241,6 @@ jobs:
             arch: x64
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v6
-        env:
-          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
-        with:
-          dotnet-version: '10.0.x'
       - name: bounded thumbnail worker regression
         run: dotnet run --project tools/thumbnail-batch-check/thumbnail-batch-check.csproj -c Release
 
@@ -306,12 +290,6 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v7
-
-      - uses: actions/setup-dotnet@v6
-        env:
-          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
-        with:
-          dotnet-version: '10.0.x'
 
       # The Android workload brings the .NET side of the toolchain. It does not
       # bring a JDK, and the Android SDK's build tools are Java.
@@ -424,12 +402,6 @@ jobs:
     runs-on: [self-hosted, windows, x64]
     steps:
       - uses: actions/checkout@v7
-
-      - uses: actions/setup-dotnet@v6
-        env:
-          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
-        with:
-          dotnet-version: '10.0.x'
 
       - name: publish the dedicated server, for Windows
         run: >
