@@ -1,6 +1,6 @@
 # Modern FPS Hub overhaul
 
-Status: **P0 foundation implemented on `feature/modern-fps-hub`**
+Status: **P0 validated; P1 multiplayer/lobby overhaul in progress on `feature/modern-fps-hub`**
 
 The goal is to turn the launcher/menu collection into a coherent game shell without
 rewriting networking, replay, settings, or match startup logic at the same time.
@@ -38,13 +38,17 @@ Implemented:
 - Existing Play/Lobby/Settings/Replay screens remain the source of truth.
 - Existing game-file setup and updater paths remain owned by `StartScreen`.
 - Screenshot automation updated to address the new hub controls.
+- Renderer-neutral `HubState`, `HubSnapshot` and destination enums.
+- Explicit controller IDs/neighbours for desktop and compact hub layouts.
+- Headless controller checks for hub, deployment and modern server-browser actions.
+- CI now preserves `-uishot` layouts as a `launcher-layouts` artifact.
+- Full Windows/Linux/macOS/Android/server matrix green on the corrected hub baseline.
+- Launcher-wide display typography moved from Pixelify Sans to **Inter**; JetBrains Mono is
+  reserved for technical/status data.
+- Shared dark/cyan tactical palette applied to legacy controls during migration.
 
-Still P0:
+Remaining P0/performance work:
 
-- Move launcher-only state behind small view-model/state objects:
-  `HubState`, `NavigationState`, `PlayerProfileState`.
-- Add explicit navigation IDs/neighbours for every hub action.
-- Add deterministic hub UI checks for desktop, compact and controller focus.
 - Add reduced-motion/high-contrast theme tokens before more animation is introduced.
 - Baseline UI composition cost at 1080p/1440p/4K.
 
@@ -71,8 +75,18 @@ Turn Play from a multipurpose form into hub destinations backed by shared state:
 5. **Story**
    - save cards and progression summary
 
-Do not duplicate `NetSession` logic in views. Introduce view models that adapt existing
-network state to presentation state.
+Current implementation:
+
+- `HubPlayView` is the deployment chooser for Online / Custom / Offline / Adventure.
+- `ServerBrowserService` owns renderer-neutral discovery, probing, endpoint parsing and
+  joining; both the transitional Play face and the new browser share its join path.
+- `HubServerBrowserView` is the modern server browser with direct-connect, operative
+  identity, selected-session detail, Refresh/Create/Join actions and lobby handoff.
+- Populated desktop/phone browser captures use deterministic sample data, never the live
+  directory.
+
+Still to add: Quick Play policy, server filtering/sorting/favorites/recent history, and
+the final Offline/Story hub-native presentations.
 
 ## P1 — Lobby
 
@@ -82,9 +96,12 @@ Rebuild `LobbyScreen` around three regions:
 - selected map + match preview
 - rules / owner controls
 
-Owner actions become contextual to the selected player instead of permanently occupying
-the screen. Chat remains docked and controller reachable. Ready/start states must be
-visually unambiguous and driven only by authoritative lobby state.
+Implemented in-place over the existing authoritative `LobbyScreen`: roster, Arena,
+Match Rules/owner actions, full-width lobby chat and a hub-native Leave/Ready/Start
+footer. Narrow layouts stack the regions inside a scroller instead of crushing them.
+
+Still to add: make owner actions a selected-player contextual surface rather than a
+permanent owner section, and add deterministic rendered-lobby coverage.
 
 ## P2 — Settings, clips and pause
 
