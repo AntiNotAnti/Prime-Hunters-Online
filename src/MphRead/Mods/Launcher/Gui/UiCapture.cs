@@ -168,6 +168,8 @@ namespace MphRead.Mods.Launcher.Gui
                 new HubServerBrowserView(HubBrowserSample()), _windowSize);
             yield return ("hub-servers-phone-landscape",
                 new HubServerBrowserView(HubBrowserSample()), _phoneLandscape);
+            yield return ("hub-settings", new HubSettingsView(), _windowSize);
+            yield return ("hub-settings-phone-portrait", new HubSettingsView(), _phonePortrait);
             // Every face of the one screen that replaced seven. They share a
             // layout and nothing else -- the list, the settings beside it and
             // the word on the tick are different on each -- so one picture of

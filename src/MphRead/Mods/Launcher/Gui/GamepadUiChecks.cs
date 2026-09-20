@@ -109,6 +109,15 @@ namespace MphRead.Mods.Launcher.Gui
             GamepadChecks.Check(join!.IsFocused,
                 "modern server browser uses explicit Refresh-to-Join navigation");
 
+            var settingsHub = new HubSettingsView();
+            window.Content = settingsHub; window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            var displaySettings = ControllerNav.Find(settingsHub, "settings.display");
+            GamepadChecks.Check(displaySettings is { IsEffectivelyVisible: true },
+                "settings hub exposes Display");
+            FocusNavigator.Ensure(settingsHub);
+            GamepadChecks.Check(displaySettings!.IsFocused,
+                "settings hub defaults controller focus to Display");
+
             panel = new StackPanel();
             window.Width = 600; window.Height = 400; window.Content = panel;
             window.UpdateLayout(); Dispatcher.UIThread.RunJobs();

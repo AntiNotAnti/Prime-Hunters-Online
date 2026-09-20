@@ -483,7 +483,17 @@ namespace MphRead.Mods.Launcher.Gui
 
         private Task OpenSettings()
         {
+            var landing = new HubSettingsView();
+            landing.Closed += (_, _) => Pop();
+            landing.SectionRequested += section => OpenSettingsSection(section);
+            Push(landing);
+            return Task.CompletedTask;
+        }
+
+        private void OpenSettingsSection(string section)
+        {
             var view = new SettingsView(_settings);
+            view.ShowSection(section);
             view.Closed += (_, _) => Pop();
             view.GameFilesRequested += (_, _) =>
             {
@@ -491,7 +501,6 @@ namespace MphRead.Mods.Launcher.Gui
                 OpenSetup();
             };
             Push(view);
-            return Task.CompletedTask;
         }
 
         private void OpenSetup()
