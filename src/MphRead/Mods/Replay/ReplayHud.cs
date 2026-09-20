@@ -3,6 +3,7 @@ using System.Linq;
 using MphRead.Entities;
 using MphRead.Hud;
 using MphRead.Mods.Chat;
+using MphRead.Mods.Input;
 using MphRead.Mods.Network;
 using OpenTK.Mathematics;
 
@@ -68,7 +69,7 @@ namespace MphRead.Mods.Replay
             float alpha = ReplayController.State == ReplayState.Playing
                 && Environment.TickCount64 - ReplayController.LastInteraction > 4000
                     ? 0.45f : 1;
-            scene.DrawHudFlatBox(46, 159, 210, 188,
+            scene.DrawHudFlatBox(46, 159, 210, 191,
                 new Vector4(0, 0, 0, alpha * 0.7f));
             if (Environment.TickCount64 - _textAt >= 100
                 || _state != ReplayController.State)
@@ -106,8 +107,31 @@ namespace MphRead.Mods.Replay
                 }
             }
             Text(scene, 49, 178, _watching, alpha, 207);
-            if (ReplayController.AtEnd || ReplayController.State == ReplayState.Error)
-                Text(scene, 49, 184, "Home: restart   Esc: exit replay", alpha, 207);
+
+            // The essential transport stays discoverable while watching. The
+            // full Replay Studio remains in the pause menu for editing, camera
+            // and export work, but play/pause, seek and speed do not require it.
+            float controlsAlpha = Math.Max(alpha, 0.72f);
+            if (ReplayController.AtEnd)
+            {
+                Text(scene, 49, 183, "Space/A: restart replay", controlsAlpha, 207);
+                Text(scene, 49, 188, "Home: restart   Esc: menu", controlsAlpha, 207);
+            }
+            else if (ReplayController.State == ReplayState.Error)
+            {
+                Text(scene, 49, 183, "Replay playback error", controlsAlpha, 207);
+                Text(scene, 49, 188, "Esc: open Replay Studio", controlsAlpha, 207);
+            }
+            else if (InputSourceTracker.Current == InputSource.Gamepad)
+            {
+                Text(scene, 49, 183, "A: play/pause   D-pad L/R: seek", controlsAlpha, 207);
+                Text(scene, 49, 188, "D-pad U/D: speed   X: step", controlsAlpha, 207);
+            }
+            else
+            {
+                Text(scene, 49, 183, "Space: play/pause   Left/Right: seek", controlsAlpha, 207);
+                Text(scene, 49, 188, "[/]: speed   .: step   Home: restart", controlsAlpha, 207);
+            }
 
             if (ShowAnalytics || ShowNetworkDebug)
                 RefreshDiagnostics();
