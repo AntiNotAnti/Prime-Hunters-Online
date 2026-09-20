@@ -41,6 +41,23 @@ namespace MphRead.Mods.Launcher.Gui
         public static readonly IBrush GoodBrush = new SolidColorBrush(Good);
         public static readonly IBrush WarmBrush = new SolidColorBrush(Warm);
         public static readonly IBrush DangerBrush = new SolidColorBrush(Danger);
+
+        /// <summary>
+        /// Inter is already shipped and registered by both app heads through
+        /// Avalonia.Fonts.Inter/WithInterFont(). It is the hub's primary face:
+        /// neutral enough for dense settings and server rows, but much cleaner
+        /// than the old pixel display face at menu sizes.
+        /// </summary>
+        public static readonly FontFamily Ui =
+            new("fonts:Inter#Inter");
+
+        /// <summary>
+        /// Technical data keeps a mono voice without turning every label into
+        /// terminal text. Ping, build, platform and packet-ish metadata use it.
+        /// </summary>
+        public static readonly FontFamily Data = Deck.Mono;
+
+        public static readonly FontFamily DataBold = Deck.MonoBold;
     }
 }
 #endif
