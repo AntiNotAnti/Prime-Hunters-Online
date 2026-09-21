@@ -58,7 +58,7 @@ jobs:
   build:
     name: ${{ matrix.id }}
     needs: assets
-    runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -293,7 +293,7 @@ jobs:
   android:
     name: android
     needs: assets
-    runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
