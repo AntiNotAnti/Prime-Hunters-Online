@@ -231,13 +231,17 @@ in GL -- it is a dozen circles that change when touched):
 | Control | Bind |
 |---|---|
 | Floating stick, left half | `MoveUp/Down/Left/Right` **and** `RollUp/Down/Left/Right`, eight-way. Both sets, because walking reads one and the morph ball the other |
-| FIRE | `Shoot` |
+| FIRE | `Shoot` on foot and `AltAttack` in the morph ball |
 | JUMP | `Jump` **and** `Boost` -- one button on the DS, and the same key by default: jumping on foot is boosting in the ball |
 | MORPH | `Morph` |
-| ALT | `AltAttack` |
+| VISOR / SCAN | opens the scan visor / scans the current target |
+| MSSL | toggles Missile / Power Beam |
 | WEAPON | `WeaponMenu`, held, with the pointer following the finger -- including that same finger once it drags off the button |
 | ZOOM | `Zoom` |
-| MENU | `Pause` |
+| MENU | app pause menu |
+| SCORE | DS map/status or multiplayer scoreboard |
+| CHAT | opens multiplayer chat and the soft keyboard |
+| CLIP | saves the rolling instant-replay buffer while it is active |
 | Anywhere else on the right | aim |
 
 Drag is converted to density-independent pixels before it becomes pointer
@@ -405,7 +409,8 @@ nine.
 | JUMP → **UP**, MORPH → **DOWN** | the free camera only, and only shown on it |
 | Left stick | drives the free camera |
 | Aim drag | turns the free camera |
-| SCORE | the scoreboard, the one control a spectator keeps |
+| SCORE | the scoreboard, the one world-independent HUD control a spectator keeps |
+| CLIP | save the rolling instant-replay buffer while it is active |
 | everything else | gone |
 
 **The free camera is not driven through binds**, and that is the part worth
@@ -419,6 +424,14 @@ and the one place this can go out of step with it.
 
 Before this, the spectator branch pressed nothing and threw the aim delta
 away: the free camera opened and could not be moved, turned or left.
+
+The Android pause menu itself is on Avalonia's UI thread while the scene belongs
+to `GameView`'s GL thread. Spectate/Rejoin therefore queue a command to that
+render loop; `SpectatorMode.Start` (including lazy HUD setup) and the resulting
+`Scene.SetFreeCamera` call execute only there. The loop also consumes camera
+requests created later by NEXT/VIEW touch input. This avoids touching scene/HUD
+state from the UI thread and keeps Android's camera state in step with the
+desktop path.
 
 `SpectatorMode.Rejoin` never puts a score *up*. A score below zero is a
 penalty — a suicide costs a point — and clearing it by spectating for a second
@@ -781,35 +794,23 @@ out perfectly correctly -- did it off the side of the display, which is what
 this head. Two heads with two curves is the failure that was already on
 record, one screen at a time, so there is one curve.
 
-**And the curve has to be asked in the right unit, which is what the first
-version of it got wrong.** Android's layout point is dp, 1/160 inch; the one
-the screens are drawn in is the desktop's, 1/96. The same number is therefore
-**0.6** of the physical size on a phone that it is on a monitor, so feeding
-the view's dp straight into the curve asks an 830-point view to hold a
-960-point layout, lands on the curve's own 0.6 floor, and draws the text at
-0.36 of desktop size on the screen held closest to the face -- reported,
-correctly, as *"bien trop petit comparé à la dernière release qui était
-parfaitement lisible"*. `UiScaleHost` converts into the authored unit, asks,
-and converts back; a phone comes out at exactly **1.0**, which is the size
-that release drew.
+**The scale now has two constraints: readable and actually visible.** Android's
+layout point is dp while the screens were authored around desktop-sized logical
+boxes, so `UiScaleHost.FactorFor` still asks the shared physical/readability
+curve in the converted unit. That answer is the preferred size, not permission
+to hand the child a box too small to contain its own responsive layout. The host
+also computes the factor that gives the child at least
+`UiLayout.MinBoxWidth x UiLayout.MinBoxHeight` and takes the smaller answer,
+with the shared 0.6 floor as a guard against transient/inset resizes.
 
-**A phone is short, not small, and that difference is the whole layout
-question.** At 1.0 the box is about 830x390 -- wider than the desktop's own
-minimum and barely half its height. Two things follow, both keyed on the
-height handed over rather than on the platform, so a tablet keeps the desktop
-shape:
-
-- `UiLayout.Well` gives its margins back below `ShortBox`: 44 above and 84
-  below is a comfortable seventh of a desktop window and a third of a phone.
-  And the well's width is a **maximum** now rather than a size
-  (`UiLayout.WellGutter`), so it shrinks to the screen instead of being drawn
-  off both edges of it -- stretch-with-a-maximum, which fills up to the width
-  asked for and centres the remainder.
-- `PlayScreen` swaps axes on a short box: the options go down the right at the
-  width they were drawn for, the list takes the full height on the left, and
-  the map picture -- the one thing on that screen that is nice rather than
-  necessary -- goes. Stacked, the top block wanted 190 points before the list
-  got any, which on a phone left the list one row tall behind the footer.
+That second constraint fixes the modern hub on ordinary phone landscapes.
+At 1.0 a roughly 830x390 view made screens such as Play enter their compact
+stacked form, then placed whole cards and the footer below the glass. A typical
+phone now lands around 0.65-0.7: the child is measured at roughly 1200-1300x600,
+so the same responsive code sees a real landscape box and every menu remains in
+frame. Tablets and roomy views keep the larger readability answer. The
+off-screen in-match Avalonia surface calls the same `FactorFor`, so pause/results
+screens do not grow a second Android-specific scaling rule.
 
 **Selection is drawn, not inferred.** The rows worked their highlight out from
 hover and focus, which is right on a desktop and empty on a touchscreen: a

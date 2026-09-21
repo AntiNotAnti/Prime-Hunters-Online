@@ -261,6 +261,16 @@ namespace MphRead.Droid
             _loop.RequestStop();
         }
 
+        public void RequestSpectate()
+        {
+            _loop.RequestSpectatorMode(spectate: true);
+        }
+
+        public void RequestRejoin()
+        {
+            _loop.RequestSpectatorMode(spectate: false);
+        }
+
         public void OnPause()
         {
             _loop.SetPaused(true);
@@ -348,6 +358,10 @@ namespace MphRead.Droid
             private bool _stopping;
             private bool _holdingSurface;
             private bool _ended;
+            // 1 = enter spectator mode, -1 = rejoin, 0 = nothing pending.
+            // Written by the Avalonia/UI thread and consumed only by the GL
+            // thread, where HUD and camera state are safe to touch.
+            private int _spectatorRequest;
             private bool _dialogClickDown;
             private readonly Action _onPauseMenu;
             /// <summary>
@@ -366,6 +380,7 @@ namespace MphRead.Droid
             private bool _replayPausedShown;
             private bool _missileWasHeld;
             private bool _chatWasHeld;
+            private bool _clipWasHeld;
             private bool _keyboardShown;
 
             private EGLDisplay? _display;
@@ -410,6 +425,15 @@ namespace MphRead.Droid
                 lock (_lock)
                 {
                     _paused = paused;
+                    Monitor.PulseAll(_lock);
+                }
+            }
+
+            public void RequestSpectatorMode(bool spectate)
+            {
+                lock (_lock)
+                {
+                    _spectatorRequest = spectate ? 1 : -1;
                     Monitor.PulseAll(_lock);
                 }
             }
@@ -769,6 +793,29 @@ namespace MphRead.Droid
                 _onLoaded();
             }
 
+            /// <summary>
+            /// Apply the pause-menu spectator command on the thread that owns
+            /// the scene and GL context. Android's pause menu is an Avalonia
+            /// view on the UI thread; SetUpHud and camera changes are not.
+            /// </summary>
+            private void ApplySpectatorRequest()
+            {
+                int request;
+                lock (_lock)
+                {
+                    request = _spectatorRequest;
+                    _spectatorRequest = 0;
+                }
+                if (request > 0)
+                {
+                    Mods.SpectatorMode.Start();
+                }
+                else if (request < 0)
+                {
+                    Mods.SpectatorMode.Rejoin();
+                }
+            }
+
             /// <summary>One frame. False means the match is over.</summary>
             ///
             /// <remarks>
@@ -810,12 +857,20 @@ namespace MphRead.Droid
                     }
                 }
                 double elapsed = WaitForTick();
+                ApplySpectatorRequest();
                 GameState.ApplyPause();
                 int steps = FrameTiming.Advance(elapsed);
                 for (int i = 0; i < steps; i++)
                 {
                     ApplyInput();
                     scene.OnSimulationFrame();
+                    if (!MphRead.Mods.Chat.ChatBox.Composing
+                        && MphRead.Mods.Network.DemoClip.Active
+                        && MphRead.Mods.Input.GamepadInput.TakeActionPress(
+                            MphRead.Mods.Input.PadAction.SaveClip))
+                    {
+                        MphRead.Mods.Network.DemoClip.SaveWithFeedback();
+                    }
                     if (MphRead.Mods.Network.NetSession.Refused || MphRead.Mods.Network.NetSession.SessionTimedOut)
                     { End(scene); return false; }
                     if (MphRead.Mods.Network.NetSession.PersistentLobby && MphRead.Mods.Network.NetSession.IsInLobby)
@@ -1058,11 +1113,11 @@ namespace MphRead.Droid
             private void ApplyInput()
             {
                 // Before the check below, and before the spectator's early
-                // return in CollectInput: somebody watching a match is in the
-                // position where talking to the people playing is most of what
-                // there is to do, and a player whose entity is not active yet
-                // has still asked for the keyboard if they pressed CHAT.
+                // return in CollectInput: chat and instant clips are app-level
+                // actions and remain useful while watching somebody else.
+                _controls.ClipEnabled = MphRead.Mods.Network.DemoClip.Active;
                 HandleChat();
+                HandleClip();
                 // The one thing a pad cannot do. A dialog's OK button is
                 // pressed by *position* -- PlayerDialog.CheckButtonPressed
                 // reads Input.ClickX/Y, because on the DS it was a touch
@@ -1255,6 +1310,19 @@ namespace MphRead.Droid
                     _keyboardShown = wanted;
                     _onSoftKeyboard(wanted);
                 }
+            }
+
+            /// <summary>One touch press saves the rolling instant-replay buffer.</summary>
+            private void HandleClip()
+            {
+                bool clip = _controls.IsHeld(TouchAction.Clip);
+                if (clip && !_clipWasHeld
+                    && MphRead.Mods.Network.DemoClip.Active
+                    && !MphRead.Mods.Chat.ChatBox.Composing)
+                {
+                    MphRead.Mods.Network.DemoClip.SaveWithFeedback();
+                }
+                _clipWasHeld = clip;
             }
 
             private void CollectInput(PlayerEntity main)

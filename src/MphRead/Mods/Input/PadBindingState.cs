@@ -37,7 +37,10 @@ namespace MphRead.Mods.Input
             /* ReplayFaster    */ GamepadButtons.DpadUp,
             /* ReplayPrevPlayer */ GamepadButtons.LeftBumper,
             /* ReplayNextPlayer */ GamepadButtons.RightBumper,
-            /* ReplayCameraMode */ GamepadButtons.Y
+            /* ReplayCameraMode */ GamepadButtons.Y,
+            // Appended enum value, gameplay context. Intentionally unbound so
+            // upgrading cannot steal a button from an existing controller.
+            /* SaveClip */ GamepadButtons.None
         };
 
         public string Preset { get; internal set; } = "Default";
@@ -59,7 +62,8 @@ namespace MphRead.Mods.Input
             PadAction.Shoot, PadAction.Jump, PadAction.Morph, PadAction.Zoom,
             PadAction.ScanVisor, PadAction.Scan, PadAction.NextWeapon,
             PadAction.PrevWeapon, PadAction.Missile, PadAction.PowerBeam,
-            PadAction.Scoreboard, PadAction.Menu, PadAction.Chat, PadAction.WeaponWheel,
+            PadAction.Scoreboard, PadAction.Menu, PadAction.Chat, PadAction.SaveClip,
+            PadAction.WeaponWheel,
             PadAction.VoltDriver, PadAction.Battlehammer, PadAction.Imperialist, PadAction.Judicator,
             PadAction.Magmaul, PadAction.ShockCoil, PadAction.OmegaCannon, PadAction.AffinitySlot, PadAction.LastWeapon
         };
@@ -213,7 +217,8 @@ namespace MphRead.Mods.Input
                 || IsReplay(first) == IsReplay(second);
 
         private static bool IsReplay(PadAction action)
-            => action >= PadAction.ReplayPlayPause;
+            => action >= PadAction.ReplayPlayPause
+                && action <= PadAction.ReplayCameraMode;
 
         public void Assign(PadAction action, int slot, GamepadButtons button, string resolution, GamepadButtons modifier = 0)
         {
@@ -297,6 +302,7 @@ namespace MphRead.Mods.Input
                 PadAction.Missile => "Missile",
                 PadAction.PowerBeam => "Power beam",
                 PadAction.Menu => "Menu",
+                PadAction.SaveClip => "Save clip",
                 PadAction.WeaponWheel => "Weapon wheel",
                 PadAction.ReplayPlayPause => "Replay: play / pause",
                 PadAction.ReplayStep => "Replay: step frame",

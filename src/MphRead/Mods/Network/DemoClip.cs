@@ -127,6 +127,28 @@ namespace MphRead.Mods.Network
             return path;
         }
 
+        /// <summary>
+        /// Save the rolling buffer and report the same player-facing status
+        /// regardless of whether the request came from a key, controller or
+        /// Android touch control.
+        /// </summary>
+        public static string? SaveWithFeedback()
+        {
+            double held = Held;
+            string? clip = Save();
+            if (clip != null)
+            {
+                Chat.ChatBox.System(
+                    $"{(IsSaving ? "saving" : "saved")} the last {held:0} s to "
+                    + Path.GetFileName(clip));
+            }
+            else
+            {
+                Chat.ChatBox.System("nothing to clip yet");
+            }
+            return clip;
+        }
+
         private static bool Finish()
         {
             string? path = _pendingPath;

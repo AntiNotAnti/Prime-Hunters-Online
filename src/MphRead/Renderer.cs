@@ -1740,9 +1740,10 @@ namespace MphRead
                     // opening a demo did.
                     Mods.SpectatorMode.Start(watchSomeone: true);
                 }
-                // Spectating is asked for from the pause menu, which runs on
-                // this thread but has no scene to hand; it leaves the camera
-                // it wants here and this picks it up between frames.
+                // Spectating is asked for from a pause menu that has no scene
+                // to hand. Desktop is already on this thread; Android queues
+                // Start/Rejoin onto its GL thread before reaching here. Either
+                // way, the camera request is consumed here on the scene owner.
                 bool? freeCamera = Mods.SpectatorMode.TakeCameraRequest();
                 if (freeCamera.HasValue)
                 {
@@ -7777,6 +7778,11 @@ namespace MphRead
             {
                 Mods.Chat.ChatBox.Open(swallowOpeningChar: false);
             }
+            if (!Mods.Chat.ChatBox.Composing && Mods.Network.DemoClip.Active
+                && Mods.Input.GamepadInput.TakeActionPress(Mods.Input.PadAction.SaveClip))
+            {
+                Mods.Network.DemoClip.SaveWithFeedback();
+            }
             if (Mods.Network.ReplayController.IsSeeking)
             {
                 return;
@@ -8273,18 +8279,7 @@ namespace MphRead
             if (e.Key != Keys.Unknown && e.Key == Mods.InputSettings.ClipKey
                 && !e.Alt && !e.Control && Mods.Network.DemoClip.Active)
             {
-                double held = Mods.Network.DemoClip.Held;
-                string? clip = Mods.Network.DemoClip.Save();
-                if (clip != null)
-                {
-                    Mods.Chat.ChatBox.System(
-                        $"{(Mods.Network.DemoClip.IsSaving ? "saving" : "saved")} the last {held:0} s to "
-                        + System.IO.Path.GetFileName(clip));
-                }
-                else
-                {
-                    Mods.Chat.ChatBox.System("nothing to clip yet");
-                }
+                Mods.Network.DemoClip.SaveWithFeedback();
                 base.OnKeyDown(e);
                 return;
             }

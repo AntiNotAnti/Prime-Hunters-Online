@@ -588,7 +588,8 @@ namespace MphRead.Mods.Launcher.Gui
         /// same <see cref="PauseMenuView"/>, so the menu cannot drift into
         /// being two menus.
         /// </summary>
-        public void ShowPauseMenu(Action onResume, Action onLeave, Action onQuit)
+        public void ShowPauseMenu(Action onResume, Action onLeave, Action onQuit,
+            Action? onSpectate = null, Action? onRejoin = null)
         {
             // Everything on this stack is read over the match: the menu, the
             // settings it opens and the map vote all ask for the scrim alone.
@@ -600,13 +601,15 @@ namespace MphRead.Mods.Launcher.Gui
             view.SpectateRequested += (_, _) =>
             {
                 Pop();
-                SpectatorMode.Start();
+                if (onSpectate != null) onSpectate();
+                else SpectatorMode.Start();
                 onResume();
             };
             view.RejoinRequested += (_, _) =>
             {
                 Pop();
-                SpectatorMode.Rejoin();
+                if (onRejoin != null) onRejoin();
+                else SpectatorMode.Rejoin();
                 onResume();
             };
             view.RecordToggleRequested += (_, _) =>

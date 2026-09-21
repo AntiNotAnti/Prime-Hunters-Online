@@ -20,7 +20,8 @@ namespace MphRead.Mods.Input
         Zoom,
         Pause,
         Scoreboard,
-        Chat
+        Chat,
+        Clip
     }
 
     /// <summary>
@@ -69,7 +70,8 @@ namespace MphRead.Mods.Input
             (TouchControl.Zoom, "ZOOM"),
             (TouchControl.Pause, "MENU"),
             (TouchControl.Scoreboard, "SCORE"),
-            (TouchControl.Chat, "CHAT")
+            (TouchControl.Chat, "CHAT"),
+            (TouchControl.Clip, "CLIP")
         };
 
         public static bool IsEnabled(TouchControl control)
@@ -92,7 +94,8 @@ namespace MphRead.Mods.Input
         /// <summary>
         /// Whether this button belongs on the screen at all right now. The
         /// head still decides whether it makes sense in the situation -- SCAN
-        /// only in the visor, CHAT only in a networked match -- and this is
+        /// only in the visor, CHAT only in a networked match and CLIP only
+        /// while the rolling clip buffer is active -- and this is
         /// the player's answer on top of that.
         /// </summary>
         public static bool Shown(TouchControl control)

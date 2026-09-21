@@ -16,6 +16,20 @@ namespace MphRead.Mods.Input
                 PadAction.Judicator, PadAction.Magmaul, PadAction.ShockCoil, PadAction.OmegaCannon,
                 PadAction.AffinitySlot, PadAction.LastWeapon };
             foreach (var action in weapons) Check(PadBindings.Get(action) == 0, action + " defaults to unassigned");
+            Check(PadBindings.Get(PadAction.SaveClip) == GamepadButtons.None
+                && PadBindings.GameplayActions.Contains(PadAction.SaveClip)
+                && !PadBindings.ReplayActions.Contains(PadAction.SaveClip),
+                "save clip is a configurable, unbound gameplay controller action");
+            PadBindings.SetSlot(PadAction.SaveClip, 0, GamepadButtons.A, GamepadButtons.LeftBumper);
+            var clipActions = new GamepadActions();
+            clipActions.Update(GamepadButtons.LeftBumper | GamepadButtons.A, replayContext: false);
+            Check(clipActions.WasPressed(PadAction.SaveClip),
+                "save clip controller chord produces a gameplay edge");
+            clipActions.Reset();
+            clipActions.Update(GamepadButtons.LeftBumper | GamepadButtons.A, replayContext: true);
+            Check(!clipActions.Down(PadAction.SaveClip),
+                "save clip controller action cannot leak into replay transport");
+            PadBindings.Reset();
             var actions = new GamepadActions();
             PadBindings.SetSlot(PadAction.Imperialist, 0, GamepadButtons.A, GamepadButtons.LeftBumper);
             actions.Update(GamepadButtons.LeftBumper);

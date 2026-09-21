@@ -50,7 +50,9 @@ namespace MphRead.Droid
         /// Hidden unless a networked match is running: offline there is nobody
         /// to read it, and in the story it does not exist at all.
         /// </summary>
-        Chat
+        Chat,
+        /// <summary>Save the rolling instant-replay buffer.</summary>
+        Clip
     }
 
     internal sealed class TouchButton
@@ -145,7 +147,8 @@ namespace MphRead.Droid
             new TouchButton(TouchAction.Zoom, "ZOOM"),
             new TouchButton(TouchAction.Pause, "MENU"),
             new TouchButton(TouchAction.Scoreboard, "SCORE"),
-            new TouchButton(TouchAction.Chat, "CHAT") { Visible = false }
+            new TouchButton(TouchAction.Chat, "CHAT") { Visible = false },
+            new TouchButton(TouchAction.Clip, "CLIP") { Visible = false }
         };
 
         public float Width { get; private set; }
@@ -318,6 +321,34 @@ namespace MphRead.Droid
         private bool _chatEnabled;
 
         /// <summary>
+        /// Whether the CLIP button is on screen. The rolling buffer exists only
+        /// during an active network match and may be disabled in Replay settings.
+        /// </summary>
+        public bool ClipEnabled
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return _clipEnabled;
+                }
+            }
+            set
+            {
+                Change(() =>
+                {
+                    if (_clipEnabled == value)
+                    {
+                        return false;
+                    }
+                    _clipEnabled = value;
+                    return true;
+                });
+            }
+        }
+        private bool _clipEnabled;
+
+        /// <summary>
         /// The screen a spectator gets: the same dozen circles, most of them
         /// gone and the rest doing something else.
         ///
@@ -352,7 +383,8 @@ namespace MphRead.Droid
         /// while it is on: nothing a player presses reaches the world during
         /// the results, so FIRE, JUMP, MORPH and the rest are twelve circles
         /// sitting on top of the one thing on screen anybody wants to touch.
-        /// Menu, scoreboard and chat stay -- they still do what they say.
+        /// Menu, scoreboard, chat and clip stay -- they still do what they say,
+        /// and CLIP is most useful immediately after something worth saving.
         /// </summary>
         public void SetEndScreen(bool active)
         {
@@ -514,10 +546,14 @@ namespace MphRead.Droid
                 string? label = null;
                 if (_endScreen)
                 {
-                    // The three that still mean something between matches.
+                    // The app-level controls that still mean something between
+                    // matches. Keep CLIP here so the last seconds can be saved
+                    // from the results screen instead of requiring a blind tap
+                    // before the match ends.
                     visible = button.Action == TouchAction.Pause
                         || button.Action == TouchAction.Scoreboard
-                        || button.Action == TouchAction.Chat && _chatEnabled;
+                        || button.Action == TouchAction.Chat && _chatEnabled
+                        || button.Action == TouchAction.Clip && _clipEnabled;
                 }
                 else if (_spectating)
                 {
@@ -567,6 +603,9 @@ namespace MphRead.Droid
                     case TouchAction.Chat:
                         visible = _chatEnabled;
                         break;
+                    case TouchAction.Clip:
+                        visible = _clipEnabled;
+                        break;
                     default:
                         visible = false;
                         break;
@@ -581,6 +620,7 @@ namespace MphRead.Droid
                         TouchAction.Scan => _scanVisorActive,
                         TouchAction.Shoot => !_scanVisorActive,
                         TouchAction.Chat => _chatEnabled,
+                        TouchAction.Clip => _clipEnabled,
                         _ => true
                     };
                 }
@@ -616,6 +656,7 @@ namespace MphRead.Droid
                 TouchAction.Zoom => TouchControl.Zoom,
                 TouchAction.Pause => TouchControl.Pause,
                 TouchAction.Scoreboard => TouchControl.Scoreboard,
+                TouchAction.Clip => TouchControl.Clip,
                 _ => TouchControl.Chat
             };
         }
@@ -773,6 +814,9 @@ namespace MphRead.Droid
                 // clear the chat log itself, which grows downward from the top
                 // of the HUD's own space and is inset to miss MENU already.
                 Place(TouchAction.Chat, 0.45f * h, 0.12f * h, 0.060f * h);
+                // Fourth utility button, still clear of the floating stick and
+                // far from the weapon/zoom cluster on the aiming side.
+                Place(TouchAction.Clip, 0.62f * h, 0.12f * h, 0.060f * h);
             }
         }
 
