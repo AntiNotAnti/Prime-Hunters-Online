@@ -66,7 +66,7 @@ positions set when the attack begins or the render transforms. The
 | `DedicatedServer.RunsTheMatch` | true for normal game servers. False exists only for compatibility/tests |
 
 The current wire protocol is defined only by `NetConfig.ProtocolVersion`
-(currently 15). Normal server-authority matches never send
+(currently 16). Normal server-authority matches never send
 `PacketType.Authority` to a player. The packet is still understood so legacy
 compatibility tests can exercise the old topology; it is not a normal hosting
 mechanism.

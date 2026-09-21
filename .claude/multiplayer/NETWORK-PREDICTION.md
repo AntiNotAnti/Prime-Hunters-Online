@@ -798,3 +798,13 @@ row), which is the open question in `KNOWN-GAPS.md`, measured there at 78.
   `NetConfig.ProtocolVersion` stays at 6. A predicting client and a server
   built before this interoperate; the client simply predicts against whatever
   the server tells it.
+
+### Self splash and rescued momentum
+
+Self splash stays local and immediate. A Missile fired into the floor already
+runs the normal splash collision on the shooter's machine, including the upward
+component that produces a rocket jump, and that path is not converted into a
+claim. What protocol 16 changes is the complementary case: when a locally
+predicted hit on another player has to be rescued by the authority, the exact
+validated impact vector now survives the claim instead of being replaced with a
+directionless damage event.

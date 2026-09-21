@@ -1904,7 +1904,7 @@ namespace MphRead.Entities
             // low health kills on the frame it happens.
             // Mods.Network.NetHitPrediction.
             Mods.Network.NetHitPrediction.NoteHit(this, attacker, ref flags, ref damage,
-                beam?.Beam ?? BeamType.None, beam?.ModLaunchFrame ?? 0, beam?.Age ?? 0);
+                beam?.Beam ?? BeamType.None, beam?.ModLaunchFrame ?? 0, beam?.Age ?? 0, direction);
             if (attacker != this)
                 Mods.Input.AimAssist.AimAssistTelemetry.Hit(attacker, beam?.Beam ?? BeamType.None, damage);
             bool dead = false;

@@ -82,12 +82,14 @@ namespace MphRead.NetTest
                 && input.LifeId == 65535 && input.ChargeLevel == 99 && input.AckSubFrame == 77, "intent round trip");
             var claim = new HitClaimPacket { MatchId = 51, AuthorityEpoch = 3, ShooterGeneration = 5,
                 ShooterLifeId = 8, VictimGeneration = 10, VictimLifeId = 9, HitPoint = state.Position,
-                ClaimId = 65535, Damage = 127, LaunchFrame = 72 };
+                ClaimId = 65535, Damage = 127, LaunchFrame = 72,
+                Direction = new Vector3(.35f, .05f, -.1f) };
             claim.Write(buffer);
             var hit = HitClaimPacket.Read(buffer);
             Check(hit.MatchId == 51 && hit.AuthorityEpoch == 3 && hit.ShooterLifeId == 8
                 && hit.VictimLifeId == 9 && hit.VictimGeneration == 10 && hit.HitPoint == state.Position
-                && hit.Damage == 127 && hit.LaunchFrame == 72, "claim round trip");
+                && hit.Damage == 127 && hit.LaunchFrame == 72
+                && (hit.Direction - claim.Direction).Length < 0.0002f, "claim round trip");
             var match = new MatchStatePacket { MatchId = 51, AuthorityEpoch = 638900000000000000UL,
                 RoomKey = new string('r', 40), NextRoomKey = new string('n', 40) };
             match.Write(buffer);
@@ -448,14 +450,18 @@ namespace MphRead.NetTest
             var shooter = Player(0, 50); var victim = Player(1, 50);
             NetHitPrediction.DeathEnabled = true;
             uint damage = 100; DamageFlags flags = DamageFlags.Death;
-            NetHitPrediction.NoteHit(victim, shooter, ref flags, ref damage, BeamType.Missile);
+            var impact = new Vector3(.35f, .05f, 0);
+            NetHitPrediction.NoteHit(victim, shooter, ref flags, ref damage,
+                BeamType.Missile, direction: impact);
             Check(damage == 49 && !flags.HasFlag(DamageFlags.Death)
                 && NetHitPrediction.DeathsPredicted == 0 && !NetHitPrediction.HeldDead(1), "remote lethal clamps even with death flag/option");
             byte[] claims = new byte[NetConfig.MaxPacketSize];
             int length = NetHitClaims.Compose(claims);
             Check(length > 0, "lethal prediction still declares hit");
             var claim = HitClaimPacket.Read(claims.AsSpan(1));
-            Check(claim.Damage == 100 && claim.VictimLifeId == 7 && claim.ShooterLifeId == 2, "claim preserves full lethal damage and identities");
+            Check(claim.Damage == 100 && claim.VictimLifeId == 7 && claim.ShooterLifeId == 2
+                && (claim.Direction - impact).Length < 0.0002f,
+                "claim preserves full lethal damage, identities and impact momentum");
             byte[] verdict = new byte[HitVerdictPacket.HeaderSize + HitVerdictPacket.EntrySize];
             HitVerdictPacket.Write(verdict, new[] { (claim.ClaimId, HitVerdictPacket.ResultRefused) }, 51, 4, 9, 2);
             NetHitClaims.ApplyVerdicts(verdict);

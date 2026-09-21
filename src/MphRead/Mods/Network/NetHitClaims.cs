@@ -225,6 +225,7 @@ namespace MphRead.Mods.Network
             public ushort Damage;
             public byte Flags;
             public Vector3 HitPoint;
+            public Vector3 Direction;
             /// <summary>Frames since it was first sent, for the retry budget.</summary>
             public int Age;
             public int Sends;
@@ -323,7 +324,7 @@ namespace MphRead.Mods.Network
         /// </returns>
         public static ushort Declare(PlayerEntity victim, PlayerEntity attacker,
             BeamType beam, uint damage, DamageFlags flags, bool lethal, Vector3 hitPoint,
-            uint launchFrame)
+            uint launchFrame, Vector3 direction)
         {
             if (!Claiming || victim == attacker || damage == 0
                 || NetPlayerLifecycle.Get(victim.SlotIndex) == 0 || NetPlayerLifecycle.Get(attacker.SlotIndex) == 0)
@@ -405,6 +406,10 @@ namespace MphRead.Mods.Network
                 Damage = (ushort)Math.Min(damage, UInt16.MaxValue),
                 Flags = claimFlags,
                 HitPoint = hitPoint,
+                // Only beam claims can prove an impulse ceiling from weapon
+                // metadata. Bomb/alt-form claims keep their historical
+                // damage-only rescue until they have equivalent validation.
+                Direction = beam == BeamType.None ? Vector3.Zero : direction,
                 Age = 0,
                 Sends = 0,
                 Live = true
@@ -468,7 +473,8 @@ namespace MphRead.Mods.Network
                     Beam = entry.Beam,
                     Damage = entry.Damage,
                     Flags = entry.Flags,
-                    HitPoint = entry.HitPoint
+                    HitPoint = entry.HitPoint,
+                    Direction = entry.Direction
                 };
                 packet.Write(dest[offset..]);
                 offset += HitClaimPacket.Size;
@@ -630,6 +636,7 @@ namespace MphRead.Mods.Network
             public uint AckFrame;
             public uint LaunchFrame;
             public Vector3 HitPoint;
+            public Vector3 Direction;
             /// <summary>The authority frame it arrived on.</summary>
             public uint Arrived;
             /// <summary>
@@ -1142,7 +1149,8 @@ namespace MphRead.Mods.Network
         private static byte Judge(int shooterSlot, in HitClaimPacket claim)
         {
             int victimSlot = claim.VictimSlot;
-            if (victimSlot < 0 || victimSlot >= Slots || victimSlot == shooterSlot
+            if (shooterSlot < 0 || shooterSlot >= Slots || shooterSlot >= PlayerEntity.Players.Count
+                || victimSlot < 0 || victimSlot >= Slots || victimSlot == shooterSlot
                 || victimSlot >= PlayerEntity.Players.Count)
             {
                 RefusedHere++;
@@ -1159,12 +1167,21 @@ namespace MphRead.Mods.Network
                 RefusedHere++;
                 return HitVerdictPacket.ResultInvalidLaunch;
             }
-            if (claim.Damage > MaxDamageFor(claim.Beam))
+            Hunter shooterHunter = PlayerEntity.Players[shooterSlot].Hunter;
+            int maxDamage = MaxDamageFor(claim.Beam, shooterHunter);
+            if (claim.Damage > maxDamage)
             {
                 RefusedHere++;
                 NetLog.Event($"slot {shooterSlot} claimed {claim.Damage} damage with beam "
-                    + $"{claim.Beam}, which cannot deal more than {MaxDamageFor(claim.Beam)}");
+                    + $"{claim.Beam}, which cannot deal more than {maxDamage}");
                 return HitVerdictPacket.ResultDamageLimit;
+            }
+            if (!ValidClaimImpulse(claim.Beam, shooterHunter, claim.Direction))
+            {
+                RefusedHere++;
+                NetLog.Event($"slot {shooterSlot} claimed impact {claim.Direction} with beam "
+                    + $"{claim.Beam}, outside that weapon's impulse limit");
+                return HitVerdictPacket.ResultImpulseLimit;
             }
             // Where the authority itself had the victim, at the frame the
             // shooter was looking at. This is the claim's only evidence and
@@ -1424,6 +1441,7 @@ namespace MphRead.Mods.Network
                 AckFrame = claim.AckFrame,
                 LaunchFrame = claim.LaunchFrame,
                 HitPoint = claim.HitPoint,
+                Direction = claim.Direction,
                 Arrived = NetSession.NetFrame,
                 Grace = GraceFor(shooterSlot),
                 Live = true
@@ -1441,23 +1459,70 @@ namespace MphRead.Mods.Network
         /// it cannot, because the shot happened on another machine with
         /// another charge level and another set of pickups.
         /// </summary>
-        private static int MaxDamageFor(byte beam)
+        private static WeaponInfo? ClaimWeapon(byte beam, Hunter hunter)
+        {
+            if (beam == HitClaimPacket.NoBeam || Weapons.Current == null
+                || beam >= Weapons.Current.Count)
+            {
+                return null;
+            }
+            int index = beam;
+            // The same choice TryEquipWeapon makes. Multiplayer stores the
+            // affinity rows at +9; choosing by the shooter's hunter means a
+            // real affinity Battlehammer gets its 0.5 impulse ceiling without
+            // granting that ceiling to everybody carrying Battlehammer.
+            if ((int)hunter < Weapons.AffinityWeapons.Count
+                && (BeamType)beam == Weapons.GetAffinityBeam(hunter)
+                && beam + 9 < Weapons.Current.Count)
+            {
+                index = beam + 9;
+            }
+            return Weapons.Current[index];
+        }
+
+        private static int MaxDamageFor(byte beam, Hunter hunter)
         {
             int raw = 200;
-            if (beam != HitClaimPacket.NoBeam && Weapons.Current != null
-                && beam < Weapons.Current.Count)
+            WeaponInfo? info = ClaimWeapon(beam, hunter);
+            if (info != null)
             {
-                WeaponInfo info = Weapons.Current[beam];
                 raw = Math.Max(info.ChargedHeadshotDamage,
                     Math.Max(info.HeadshotDamage,
                     Math.Max(info.MinChargeHeadshotDamage,
                     Math.Max(info.ChargedDamage,
                     Math.Max(info.UnchargedDamage,
-                    Math.Max(info.MinChargeDamage, info.ChargedSplashDamage))))));
+                    Math.Max(info.MinChargeDamage,
+                    Math.Max(info.ChargedSplashDamage,
+                    Math.Max(info.SplashDamage, info.MinChargeSplashDamage))))))));
             }
             // x2 double damage, x2 the largest effectiveness multiplier,
             // x1.25 the highest damage level.
             return (int)(raw * 5.0f) + 1;
+        }
+
+        private static bool ValidClaimImpulse(byte beam, Hunter hunter, Vector3 direction)
+        {
+            if (!Single.IsFinite(direction.X) || !Single.IsFinite(direction.Y)
+                || !Single.IsFinite(direction.Z))
+            {
+                return false;
+            }
+            if (direction == Vector3.Zero)
+            {
+                return true;
+            }
+            // A claim is allowed to restore only an impulse the exact weapon
+            // variant this hunter can fire can produce. Without metadata there
+            // is no trustworthy ceiling, so damage-only rescue remains safe.
+            WeaponInfo? info = ClaimWeapon(beam, hunter);
+            if (info == null)
+            {
+                return false;
+            }
+            int raw = Math.Max(Math.Abs(info.UnchargedDmgDirMag),
+                Math.Max(Math.Abs(info.MinChargeDmgDirMag), Math.Abs(info.ChargedDmgDirMag)));
+            float max = raw / 4096f + 0.001f; // leave room only for wire quantisation
+            return direction.LengthSquared <= max * max;
         }
 
         /// <summary>
@@ -1761,18 +1826,18 @@ namespace MphRead.Mods.Network
             // level the shooter has already applied.
             //
             // Source is the shooter rather than a beam, because there is no
-            // beam: this is a hit that happened on another machine. The
-            // direction is left null, which is what makes the damage indicator
-            // point at the attacker -- exactly as it does for a local hit with
-            // no knockback, and every beam that knocks anybody back carries
-            // its impulse through the authority's own resolution, which this
-            // one did not have.
+            // beam: this is a hit that happened on another machine. The claim
+            // therefore carries the exact impact vector that machine resolved.
+            // It is bounded against the named weapon in Judge before reaching
+            // here. Zero remains null so non-knockback hits retain the damage
+            // indicator's existing attacker-position fallback.
+            Vector3? impact = entry.Direction == Vector3.Zero ? null : entry.Direction;
             try
             {
                 using (new NetDamage.ClaimScope(entry.Beam == HitClaimPacket.NoBeam
                     ? BeamType.None : (BeamType)entry.Beam))
                 {
-                    victim.TakeDamage(entry.Damage, flags, null, shooter);
+                    victim.TakeDamage(entry.Damage, flags, impact, shooter);
                 }
             }
             finally
