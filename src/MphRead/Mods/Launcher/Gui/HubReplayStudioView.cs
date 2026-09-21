@@ -35,6 +35,8 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly ChoiceRow _filter;
         private readonly ChoiceRow _sort;
         private readonly DeckField _rename;
+        private readonly DeckField _tags;
+        private readonly DeckField _collections;
         private readonly HubNavButton _watch;
         private readonly HubNavButton _favorite;
         private readonly HubNavButton _validate;
@@ -67,6 +69,10 @@ namespace MphRead.Mods.Launcher.Gui
             bool IsClip,
             bool Favorite,
             bool Recoverable,
+            bool Annotated,
+            bool Organized,
+            string Room,
+            string Players,
             string SearchText);
 
         public event EventHandler? Closed;
@@ -94,8 +100,10 @@ namespace MphRead.Mods.Launcher.Gui
 
             _search = new DeckField("", widthEms: 0,
                 watermark: "Search name, map, mode, player, annotation...");
-            _filter = new ChoiceRow("Show",
-                new[] { "All", "Full replays", "Clips", "Favorites", "Needs recovery" }, 0);
+            _filter = new ChoiceRow("Smart view",
+                new[] { "All", "Full replays", "Clips", "Favorites", "Recent 7 days",
+                    "Same map", "Same players", "Annotated", "Tagged / collected",
+                    "Needs recovery" }, 0);
             _sort = new ChoiceRow("Sort",
                 new[] { "Newest", "Oldest", "Name", "Longest" }, 0);
             _summary = new TextBlock
@@ -211,6 +219,12 @@ namespace MphRead.Mods.Launcher.Gui
 
             _rename = new DeckField("", widthEms: 0, watermark: "Display name");
             detailStack.Children.Add(_rename);
+            _tags = new DeckField("", widthEms: 0,
+                watermark: "Tags, comma separated");
+            _collections = new DeckField("", widthEms: 0,
+                watermark: "Collections, comma separated");
+            detailStack.Children.Add(_tags);
+            detailStack.Children.Add(_collections);
 
             var actions = new Grid
             {
@@ -227,6 +241,7 @@ namespace MphRead.Mods.Launcher.Gui
                 accent: HubTheme.Warm);
             _export = Action("EXPORT", "studio.export", () => _ = ExportAsync());
             var rename = Action("RENAME", "studio.rename", Rename);
+            var organize = Action("SAVE TAGS", "studio.organize", SaveOrganization);
             _delete = Action("DELETE", "studio.delete", Delete,
                 accent: HubTheme.Danger);
 #if !ANDROID
@@ -235,7 +250,7 @@ namespace MphRead.Mods.Launcher.Gui
 
             HubNavButton[] actionList =
             {
-                _favorite, _validate, _recover, _export, rename, _delete
+                _favorite, _validate, _recover, _export, rename, organize, _delete
 #if !ANDROID
                 , _reveal
 #endif
@@ -423,6 +438,9 @@ namespace MphRead.Mods.Launcher.Gui
                     : String.Join(" ", demo.Metadata.Players.Select(player => player.Name));
                 string mode = demo.Metadata?.Mode.ToString() ?? "";
                 string annotations = AnnotationSearchText(demo.Path);
+                string organization = OrganizationSearchText(demo.Path);
+                bool annotated = annotations.Length > 0;
+                bool organized = organization.Length > 0;
                 _entries.Add(new ReplayLibraryEntry(
                     demo.Path,
                     demo.DisplayName,
@@ -432,7 +450,12 @@ namespace MphRead.Mods.Launcher.Gui
                     clip,
                     demo.Favorite,
                     recoverable,
-                    $"{demo.DisplayName} {demo.Room} {mode} {people} {annotations} {demo.FileName}"));
+                    annotated,
+                    organized,
+                    demo.Room,
+                    people,
+                    $"{demo.DisplayName} {demo.Room} {mode} {people} "
+                        + $"{annotations} {organization} {demo.FileName}"));
             }
 
             foreach (string path in ReplayVirtualClips.List())
@@ -447,6 +470,8 @@ namespace MphRead.Mods.Launcher.Gui
                     : String.Join(" ", source.Metadata.Players.Select(player => player.Name));
                 string mode = source.Metadata?.Mode.ToString() ?? "";
                 uint duration = clip.EndFrame - clip.StartFrame;
+                string annotations = AnnotationSearchText(path);
+                string organization = OrganizationSearchText(path);
                 _entries.Add(new ReplayLibraryEntry(
                     path,
                     clip.Name,
@@ -456,8 +481,12 @@ namespace MphRead.Mods.Launcher.Gui
                     IsClip: true,
                     ReplayVirtualClips.IsFavorite(path),
                     Recoverable: false,
+                    Annotated: annotations.Length > 0,
+                    Organized: organization.Length > 0,
+                    room,
+                    people,
                     $"{clip.Name} {room} {mode} {people} "
-                        + $"{AnnotationSearchText(path)} {Path.GetFileName(clip.SourceReplay)}"));
+                        + $"{annotations} {organization} {Path.GetFileName(clip.SourceReplay)}"));
             }
 
             Populate(preserve ?? _selected);
@@ -473,12 +502,26 @@ namespace MphRead.Mods.Launcher.Gui
                     entry.SearchText.Contains(query, StringComparison.OrdinalIgnoreCase));
             }
 
+            DateTime recent = DateTime.Now.AddDays(-7);
+            ReplayLibraryEntry anchor = _entries.FirstOrDefault(entry =>
+                preserve != null && String.Equals(entry.Path, preserve,
+                    StringComparison.OrdinalIgnoreCase));
+            string anchorRoom = anchor.Room ?? "";
+            string anchorPlayers = anchor.Players ?? "";
             filtered = _filter.Index switch
             {
                 1 => filtered.Where(entry => !entry.IsClip),
                 2 => filtered.Where(entry => entry.IsClip),
                 3 => filtered.Where(entry => entry.Favorite),
-                4 => filtered.Where(entry => entry.Recoverable),
+                4 => filtered.Where(entry => entry.Recorded >= recent),
+                5 => anchorRoom.Length == 0 ? filtered
+                    : filtered.Where(entry => String.Equals(entry.Room, anchorRoom,
+                        StringComparison.OrdinalIgnoreCase)),
+                6 => anchorPlayers.Length == 0 ? filtered
+                    : filtered.Where(entry => SharesPlayer(entry.Players, anchorPlayers)),
+                7 => filtered.Where(entry => entry.Annotated),
+                8 => filtered.Where(entry => entry.Organized),
+                9 => filtered.Where(entry => entry.Recoverable),
                 _ => filtered
             };
             filtered = _sort.Index switch
@@ -531,6 +574,32 @@ namespace MphRead.Mods.Launcher.Gui
                 .Concat(ReplayAnnotations.Highlights(path)
                     .Select(highlight => highlight.Name)));
 
+        private static bool SharesPlayer(string left, string right)
+        {
+            if (String.IsNullOrWhiteSpace(left) || String.IsNullOrWhiteSpace(right))
+                return false;
+            string[] names = right.Split(' ',
+                StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            return names.Any(name => left.Contains(name,
+                StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static string OrganizationSearchText(string path)
+            => String.Join(" ", ReplayAnnotations.Tags(path)
+                .Concat(ReplayAnnotations.Collections(path)));
+
+        private static string OrganizationSummary(string path)
+        {
+            string tags = String.Join(", ", ReplayAnnotations.Tags(path));
+            string collections = String.Join(", ", ReplayAnnotations.Collections(path));
+            if (tags.Length == 0 && collections.Length == 0)
+                return "";
+            return "\n"
+                + (tags.Length == 0 ? "" : $"TAGS  {tags}")
+                + (tags.Length > 0 && collections.Length > 0 ? "\n" : "")
+                + (collections.Length == 0 ? "" : $"COLLECTIONS  {collections}");
+        }
+
         private static string AnnotationSummary(string path)
         {
             int bookmarks = ReplayAnnotations.Bookmarks(path).Count;
@@ -553,6 +622,8 @@ namespace MphRead.Mods.Launcher.Gui
                 _title.Text = "NO REPLAY SELECTED";
                 _metadata.Text = "Record a match or import a replay to begin.";
                 _rename.Value = "";
+                _tags.Value = "";
+                _collections.Value = "";
                 _favorite.Label = "FAVORITE";
                 _watch.IsEnabled = false;
                 SetActionState(false, interrupted: false);
@@ -570,11 +641,14 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 _title.Text = clip.Name.ToUpperInvariant();
                 _rename.Value = clip.Name;
+                _tags.Value = String.Join(", ", ReplayAnnotations.Tags(path));
+                _collections.Value = String.Join(", ", ReplayAnnotations.Collections(path));
                 _metadata.Text =
                     $"VIRTUAL CLIP  /  {ReplayHud.Time(clip.EndFrame - clip.StartFrame)}\n"
                     + $"{ReplayHud.Time(clip.StartFrame)} – {ReplayHud.Time(clip.EndFrame)}\n"
                     + $"SOURCE  {Path.GetFileName(clip.SourceReplay)}"
-                    + AnnotationSummary(path);
+                    + AnnotationSummary(path)
+                    + OrganizationSummary(path);
                 _favorite.Label = ReplayVirtualClips.IsFavorite(path)
                     ? "UNFAVORITE" : "FAVORITE";
                 SetPreview(RoomForSource(clip.SourceReplay), clip.SourceReplay);
@@ -585,9 +659,12 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 _title.Text = demo.DisplayName.ToUpperInvariant();
                 _rename.Value = demo.DisplayName;
+                _tags.Value = String.Join(", ", ReplayAnnotations.Tags(path));
+                _collections.Value = String.Join(", ", ReplayAnnotations.Collections(path));
                 _metadata.Text = $"{DemoLibrary.Describe(demo)}\n"
                     + DemoLibrary.Details(demo)
-                    + AnnotationSummary(path);
+                    + AnnotationSummary(path)
+                    + OrganizationSummary(path);
                 _favorite.Label = demo.Favorite ? "UNFAVORITE" : "FAVORITE";
                 SetPreview(demo.Room, demo.Path);
                 return;
@@ -595,6 +672,8 @@ namespace MphRead.Mods.Launcher.Gui
 
             _title.Text = Path.GetFileName(path).ToUpperInvariant();
             _rename.Value = Path.GetFileNameWithoutExtension(path);
+            _tags.Value = "";
+            _collections.Value = "";
             _metadata.Text = interrupted
                 ? "INTERRUPTED RECORDING\nRecover this file before playback."
                 : path;
@@ -605,6 +684,8 @@ namespace MphRead.Mods.Launcher.Gui
         private void SetActionState(bool selected, bool interrupted)
         {
             _favorite.IsEnabled = selected && !interrupted;
+            _tags.IsEnabled = selected && !interrupted;
+            _collections.IsEnabled = selected && !interrupted;
             _validate.IsEnabled = selected;
             _recover.IsVisible = interrupted;
             _recover.IsEnabled = interrupted;
@@ -694,6 +775,30 @@ namespace MphRead.Mods.Launcher.Gui
                 Fail(ex.Message);
             }
         }
+
+        private void SaveOrganization()
+        {
+            if (_selected is not string path
+                || path.EndsWith(".part", StringComparison.OrdinalIgnoreCase))
+                return;
+            try
+            {
+                ReplayAnnotations.SetOrganization(path,
+                    SplitLabels(_tags.Value), SplitLabels(_collections.Value));
+                _status.Text = "ORGANIZATION SAVED";
+                _status.Foreground = HubTheme.GoodBrush;
+                Reload(path);
+            }
+            catch (Exception ex) when (ex is IOException
+                or UnauthorizedAccessException or ArgumentException)
+            {
+                Fail(ex.Message);
+            }
+        }
+
+        private static IEnumerable<string> SplitLabels(string value)
+            => value.Split(',', StringSplitOptions.TrimEntries
+                | StringSplitOptions.RemoveEmptyEntries);
 
         private void ToggleFavorite()
         {

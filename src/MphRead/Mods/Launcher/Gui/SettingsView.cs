@@ -72,6 +72,8 @@ namespace MphRead.Mods.Launcher.Gui
         private ChoiceRow? _replayStorageRow;
         private ToggleRow? _replayAutoPruneRow;
         private ToggleRow? _replayDeleteClipsRow;
+        private ToggleRow? _killCamRow;
+        private ToggleRow? _finalKillCamRow;
         private static readonly int[] _replayStorageStops = { 0, 5, 10, 25, 50 };
         private SliderRow _resolutionScale = null!;
         private ToggleRow _lightingRow = null!;
@@ -82,6 +84,9 @@ namespace MphRead.Mods.Launcher.Gui
         private ToggleRow _celRow = null!;
         private SliderRow _celBandsRow = null!;
         private SliderRow _celEdgeRow = null!;
+        private ChoiceRow _brightSkinsRow = null!;
+        private ChoiceRow _playerOutlineRow = null!;
+        private SliderRow _playerOutlineWidthRow = null!;
         private ToggleRow _fpsRow = null!;
         private ToggleRow _reduceMotion = null!;
 
@@ -686,13 +691,11 @@ namespace MphRead.Mods.Launcher.Gui
             _smoothNativeHud = Add(page, new ToggleRow("Smooth native HUD",
                 RenderOptions.SmoothNativeHud));
             Explain(page, "Smooth native HUD uses filtered sampling for the original DS reticle, meters and weapon-menu sprites when they are enlarged on modern displays. Turn it off for the original hard pixel edges.");
-            // The crosshair questions belong to Pro mode and nothing else --
-            // the DS HUD draws its own reticle sprite and has no use for
-            // them -- so they are only asked while it is on. Shown rather than
-            // greyed: a row that cannot be answered is still a row to read
-            // past, and this page is long enough.
+            // Size applies to both the original DS reticle and the Pro/custom
+            // crosshair. Type and weapon behavior remain Pro-mode choices.
             _crosshairSizeRow = Add(page, new ChoiceRow("Crosshair size",
                 Crosshair.SizeNames, (int)Crosshair.Size));
+            Explain(page, "Size applies to both the original DS reticle and Pro mode crosshairs.");
             _crosshairStyleRow = Add(page, new ChoiceRow("Crosshair type",
                 Crosshair.StyleNames, (int)Crosshair.Style));
             _crosshairStyleRow.Preview = (context, area) => CrosshairPreview.Draw(context, area,
@@ -742,6 +745,24 @@ namespace MphRead.Mods.Launcher.Gui
             ShowRadarRows();
 
             Heading(page, "Accessibility");
+            _brightSkinsRow = Add(page, new ChoiceRow("Player highlight",
+                new[] { "Off", "Textured", "High contrast", "Solid" },
+                !RenderOptions.BrightSkins ? 0 : RenderOptions.BrightSkinStyle switch
+                {
+                    PlayerSkinStyle.Textured => 1,
+                    PlayerSkinStyle.HighContrastTextured => 2,
+                    _ => 3
+                }));
+            Explain(page, "Local-only multiplayer visibility aid. Team modes use team colors; free-for-all uses suit colors.");
+            _playerOutlineRow = Add(page, new ChoiceRow("Player outline",
+                new[] { "Off", "Team color", "Bright red" },
+                (int)RenderOptions.PlayerOutline));
+            _playerOutlineWidthRow = Add(page, new SliderRow("Outline thickness",
+                RenderOptions.PlayerOutlineWidth, value => $"{value} px",
+                labelWidth: 160, min: 1, max: 8, keyStep: 1));
+            _playerOutlineWidthRow.IsVisible = _playerOutlineRow.Index != 0;
+            _playerOutlineRow.Changed += (_, _) =>
+                _playerOutlineWidthRow.IsVisible = _playerOutlineRow.Index != 0;
             _reduceMotion = Add(page, new ToggleRow(
                 "Reduce menu motion", LauncherPrefs.ReduceMotion));
         }
@@ -816,7 +837,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         private void ShowCrosshairRows()
         {
-            _crosshairSizeRow.IsVisible = _proHud.On;
+            _crosshairSizeRow.IsVisible = true;
             _crosshairStyleRow.IsVisible = _proHud.On;
             _weaponStyleRow.IsVisible = _proHud.On;
         }
@@ -983,6 +1004,15 @@ namespace MphRead.Mods.Launcher.Gui
                 Array.ConvertAll(Mods.Network.DemoClip.PostRollLengths, n => $"{n} seconds"),
                 Math.Max(0, Array.IndexOf(Mods.Network.DemoClip.PostRollLengths,
                     Mods.Network.DemoClip.PostRollSeconds))));
+
+            Heading(page, "Kill cams");
+            _killCamRow = Add(page, new ToggleRow("Kill cam after death",
+                LauncherPrefs.KillCamEnabled));
+            _finalKillCamRow = Add(page, new ToggleRow("Final kill cam",
+                LauncherPrefs.FinalKillCamEnabled));
+            Explain(page, "Kill cams replay buffered presentation history from before the confirmed kill; "
+                + "they never rewind the live network simulation. Release Fire, then press it again "
+                + "to skip your personal kill cam.");
 
             Heading(page, "Replay library");
             Explain(page, "Full recordings, instant clips and recovered sessions appear in "
@@ -1579,6 +1609,18 @@ namespace MphRead.Mods.Launcher.Gui
                 .ToString(CultureInfo.InvariantCulture);
             _settings.CelEdge = Math.Clamp(_celEdgeRow.Value, 0, 100)
                 .ToString(CultureInfo.InvariantCulture);
+            RenderOptions.BrightSkins = _brightSkinsRow.Index != 0;
+            if (RenderOptions.BrightSkins)
+            {
+                RenderOptions.BrightSkinStyle = _brightSkinsRow.Index switch
+                {
+                    1 => PlayerSkinStyle.Textured,
+                    2 => PlayerSkinStyle.HighContrastTextured,
+                    _ => PlayerSkinStyle.Solid
+                };
+            }
+            RenderOptions.PlayerOutline = (PlayerOutlineStyle)_playerOutlineRow.Index;
+            RenderOptions.PlayerOutlineWidth = _playerOutlineWidthRow.Value;
             Features.ProHud = _proHud.On;
             Crosshair.Size = (CrosshairSize)_crosshairSizeRow.Index;
             Crosshair.Style = (CrosshairStyle)_crosshairStyleRow.Index;
@@ -1671,6 +1713,10 @@ namespace MphRead.Mods.Launcher.Gui
                 LauncherPrefs.ReplayAutoPrune = _replayAutoPruneRow.On;
             if (_replayDeleteClipsRow != null)
                 LauncherPrefs.ReplayDeleteClips = _replayDeleteClipsRow.On;
+            if (_killCamRow != null)
+                LauncherPrefs.KillCamEnabled = _killCamRow.On;
+            if (_finalKillCamRow != null)
+                LauncherPrefs.FinalKillCamEnabled = _finalKillCamRow.On;
             GameState.CommitSettings(_settings);
             LauncherPrefs.Save();
             if (LauncherPrefs.ReplayAutoPrune && LauncherPrefs.ReplayStorageLimitGb > 0)

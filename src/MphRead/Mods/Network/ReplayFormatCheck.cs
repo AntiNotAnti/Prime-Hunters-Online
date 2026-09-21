@@ -70,7 +70,12 @@ namespace MphRead.Mods.Network
                     for (uint frame = 0; frame < 400; frame++)
                     {
                         writer.WriteRecord(frame, packet);
-                        if (frame % 60 == 0) writer.WriteEvent(new(frame, ReplayEventType.ScoreChanged, 0, Value: (int)frame));
+                        if (frame % 60 == 0)
+                            writer.WriteEvent(new(frame, ReplayEventType.ScoreChanged, 0,
+                                Value: (int)frame));
+                        if (frame == 90)
+                            writer.WriteEvent(new(frame, ReplayEventType.WeaponFired, 0,
+                                Value: (int)BeamType.Imperialist));
                     }
                 }
                 Require(File.Exists(clean) && !File.Exists(clean + ".part"), "atomic finalization");

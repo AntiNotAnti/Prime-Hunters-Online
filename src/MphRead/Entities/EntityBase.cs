@@ -422,6 +422,15 @@ namespace MphRead.Entities
             return OverrideColor;
         }
 
+        protected virtual Vector4? GetRenderColor(ModelInstance inst, int index, Material material)
+        {
+            return inst.IsPlaceholder ? GetOverrideColor(inst, index) : null;
+        }
+
+        protected virtual Vector4? GetPlayerOutlineColor(ModelInstance inst) => null;
+
+        protected virtual bool UseTexturedPlayerSkin(ModelInstance inst) => false;
+
         protected virtual LightInfo GetLightInfo()
         {
             return new LightInfo(_scene.Light1Vector, _scene.Light1Color, _scene.Light2Vector, _scene.Light2Color);
@@ -491,12 +500,13 @@ namespace MphRead.Entities
                         Material material = model.Materials[mesh.MaterialId];
                         Vector3 emission = GetEmission(inst, material, mesh.MaterialId);
                         Matrix4 texcoordMatrix = GetTexcoordMatrix(inst, material, mesh.MaterialId, node);
-                        Vector4? color = inst.IsPlaceholder ? GetOverrideColor(inst, index) : null;
+                        Vector4? color = GetRenderColor(inst, index, material);
                         SelectionType selectionType = Selection.CheckSelection(this, inst, node, mesh);
                         int? bindingOverride = GetBindingOverride(inst, material, mesh.MaterialId);
                         _scene.AddRenderItem(material, polygonId, Alpha, emission, lightInfo ?? GetLightInfo(), texcoordMatrix,
                             node.Animation, mesh.ListId, model.NodeMatrixIds.Count, model.MatrixStackValues, color,
-                            PaletteOverride, selectionType, node.BillboardMode, _drawScale, bindingOverride);
+                            PaletteOverride, selectionType, node.BillboardMode, _drawScale, bindingOverride,
+                            UseTexturedPlayerSkin(inst), GetPlayerOutlineColor(inst));
                     }
                     if (node.ChildIndex != -1)
                     {
@@ -528,7 +538,7 @@ namespace MphRead.Entities
         {
             if (nodeRef == NodeRef.None
                 || _scene.CameraMode != CameraMode.Player || _scene.ShowInvisibleEntities // skdebug
-                || DemoPlayback.IsActive)
+                || DemoPlayback.IsActive || Mods.KillCam.Active)
             {
                 // The node-ref culling this gates is an optimisation for a
                 // camera that is really walking the map and crossing its

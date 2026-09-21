@@ -84,7 +84,7 @@ namespace MphRead.Mods.Network
 
         // Called where authoritative state is accepted, after normal validation. Annotations
         // describe confirmed transitions, never inferred projectile hits or local predictions.
-        public static void AcceptedState(in PlayerState state)
+        public static void AcceptedState(in PlayerState state, uint? authoritativeFrame = null)
         {
             int slot = state.SlotIndex;
             if (DemoPlayback.IsActive || slot >= Known.Length) return;
@@ -99,7 +99,8 @@ namespace MphRead.Mods.Network
                     Event(ReplayEventType.PlayerDeath, slot, state.AttackerSlot);
                     if (state.AttackerSlot < RosterPacket.MaxSlots && state.AttackerSlot != slot)
                         Event(ReplayEventType.Kill, state.AttackerSlot, slot);
-                    MphRead.Mods.KillCam.NoteDeath(slot, state.AttackerSlot, NetSession.NetFrame);
+                    MphRead.Mods.KillCam.NoteDeath(slot, state.AttackerSlot,
+                        authoritativeFrame ?? NetSession.NetFrame);
                 }
                 if (old.DamageEventId != state.DamageEventId) Event(ReplayEventType.Damage, state.AttackerSlot, slot,
                     Math.Max(0, old.Health - state.Health));

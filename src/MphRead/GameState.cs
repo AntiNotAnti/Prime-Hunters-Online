@@ -514,7 +514,11 @@ namespace MphRead
                     scene.SetFade(FadeType.None, length: 0, overwrite: true);
                     _stateChanged = true;
                     _matchEndTime = scene.GlobalElapsedTime;
-                    Mods.KillCam.BeginFinal(Mods.Network.NetSession.NetFrame);
+                    uint finalFrame = Mods.Network.NetSession.IsClient
+                        && Mods.Network.NetSession.AppliedSnapshotFrame != 0
+                            ? Mods.Network.NetSession.AppliedSnapshotFrame
+                            : Mods.Network.NetSession.NetFrame;
+                    Mods.KillCam.BeginFinal(finalFrame);
                     Sfx.Instance.StopFreeSfxScripts();
                     Sfx.Instance.StopAllSound();
                     PlayerEntity.Main.StopLongSfx();
@@ -528,15 +532,7 @@ namespace MphRead
             else if (MatchState == MatchState.GameOver)
             {
                 PlayerEntity winner = PlayerEntity.Players[ResultSlots[0]];
-                float cameraTime = scene.GlobalElapsedTime - _matchEndTime;
-                if (Mods.KillCam.TryGetFinalTarget(out PlayerEntity finalKiller))
-                {
-                    _stateChanged = false;
-                    PlayerEntity.Main.UpdateKillCamera(finalKiller, cameraTime,
-                        cinematic: true);
-                }
-                else if (!IsResultTie && winner.Health > 0
-                    && winner.LoadFlags.TestFlag(LoadFlags.Active)
+                if (!IsResultTie && winner.Health > 0 && winner.LoadFlags.TestFlag(LoadFlags.Active)
                     && winner.LoadFlags.TestFlag(LoadFlags.Spawned))
                 {
                     if (_stateChanged)
@@ -544,7 +540,7 @@ namespace MphRead
                         _stateChanged = false;
                         winner.SetUpMatchEndCamera();
                     }
-                    PlayerEntity.Main.UpdateMatchEndCamera(winner, cameraTime);
+                    PlayerEntity.Main.UpdateMatchEndCamera(winner, scene.GlobalElapsedTime - _matchEndTime);
                 }
                 else
                 {

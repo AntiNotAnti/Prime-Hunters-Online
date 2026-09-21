@@ -177,6 +177,8 @@ namespace MphRead.Mods.Launcher
         public static bool ReplayAutoPrune { get; set; } = true;
         /// <summary>Full recordings prune first; clips remain protected unless opted in.</summary>
         public static bool ReplayDeleteClips { get; set; }
+        public static bool KillCamEnabled { get; set; } = true;
+        public static bool FinalKillCamEnabled { get; set; } = true;
 
 
         public static void Load()
@@ -199,6 +201,33 @@ namespace MphRead.Mods.Launcher
                     string value = line[(split + 1)..].Trim();
                     switch (key)
                     {
+                        case "bright_skins":
+                            if (Boolean.TryParse(value, out bool brightSkins))
+                            {
+                                RenderOptions.BrightSkins = brightSkins;
+                            }
+                            break;
+                        case "bright_skin_style":
+                            if (Enum.TryParse(value, ignoreCase: true, out PlayerSkinStyle skinStyle)
+                                && Enum.IsDefined(skinStyle))
+                            {
+                                RenderOptions.BrightSkinStyle = skinStyle;
+                            }
+                            break;
+                        case "player_outline":
+                            if (Enum.TryParse(value, ignoreCase: true, out PlayerOutlineStyle outlineStyle)
+                                && Enum.IsDefined(outlineStyle))
+                            {
+                                RenderOptions.PlayerOutline = outlineStyle;
+                            }
+                            break;
+                        case "player_outline_width":
+                            if (Int32.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture,
+                                out int outlineWidth))
+                            {
+                                RenderOptions.PlayerOutlineWidth = outlineWidth;
+                            }
+                            break;
                         case "server_address":
                             ServerAddress = value.Equals(LegacyDefaultServer, StringComparison.OrdinalIgnoreCase)
                                 ? DefaultServer
@@ -344,6 +373,18 @@ namespace MphRead.Mods.Launcher
                                 ReplayDeleteClips = replayDeleteClips;
                             }
                             break;
+                        case "kill_cam":
+                            if (Boolean.TryParse(value, out bool killCam))
+                            {
+                                KillCamEnabled = killCam;
+                            }
+                            break;
+                        case "final_kill_cam":
+                            if (Boolean.TryParse(value, out bool finalKillCam))
+                            {
+                                FinalKillCamEnabled = finalKillCam;
+                            }
+                            break;
                         case "last_kind":
                             if (Int32.TryParse(value, NumberStyles.Integer,
                                 CultureInfo.InvariantCulture, out int kind))
@@ -409,10 +450,16 @@ namespace MphRead.Mods.Launcher
                     $"last_kind={LastKind.ToString(CultureInfo.InvariantCulture)}",
                     $"auto_update={AutoUpdate.ToString().ToLowerInvariant()}",
                     $"debug_logs={DebugLogs.ToString().ToLowerInvariant()}",
+                    $"bright_skins={RenderOptions.BrightSkins.ToString().ToLowerInvariant()}",
+                    $"bright_skin_style={RenderOptions.BrightSkinStyle.ToString().ToLowerInvariant()}",
+                    $"player_outline={RenderOptions.PlayerOutline.ToString().ToLowerInvariant()}",
+                    $"player_outline_width={RenderOptions.PlayerOutlineWidth.ToString(CultureInfo.InvariantCulture)}",
                     $"reduce_motion={ReduceMotion.ToString().ToLowerInvariant()}",
                     $"replay_storage_gb={ReplayStorageLimitGb.ToString(CultureInfo.InvariantCulture)}",
                     $"replay_auto_prune={ReplayAutoPrune.ToString().ToLowerInvariant()}",
                     $"replay_delete_clips={ReplayDeleteClips.ToString().ToLowerInvariant()}",
+                    $"kill_cam={KillCamEnabled.ToString().ToLowerInvariant()}",
+                    $"final_kill_cam={FinalKillCamEnabled.ToString().ToLowerInvariant()}",
                     $"window_mode={(WindowMode == WindowStartMode.BorderlessFullscreen ? "borderless" : "windowed")}",
                     $"window_size={WindowWidth.ToString(CultureInfo.InvariantCulture)}x"
                         + WindowHeight.ToString(CultureInfo.InvariantCulture),

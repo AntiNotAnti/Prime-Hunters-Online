@@ -151,6 +151,7 @@ namespace MphRead
         public FrustumInfo FrustumInfo { get; } = new FrustumInfo();
 
         private bool _showTextures = true;
+        internal bool ShowTextures => _showTextures;
         private bool _showColors = true;
         // 0 is fill; 1..MaxWireframeLevel is wireframe, line width = level
         private int _wireframeLevel = 0;
@@ -193,6 +194,8 @@ namespace MphRead
         private bool _outputCameraPos = false;
 
         // map each model's texture ID/palette ID combinations to the bound OpenGL texture ID and "onlyOpaque" boolean
+        // Texture names handed out by BindTexture/BindGetTexture, not a live-object count.
+        // Never decrement: a freed name can precede another target that is still alive.
         private int _textureCount = 0;
         private readonly Dictionary<int, TextureMap> _texPalMap = new Dictionary<int, TextureMap>();
         private readonly HashSet<int> _mipmappedTextures = new();
@@ -885,7 +888,7 @@ namespace MphRead
             _frameBuffer = GL.GenFramebuffer();
             GL.BindFramebuffer(FramebufferTarget.Framebuffer, _frameBuffer);
             _screenTexture = GL.GenTexture();
-            _textureCount++;
+            _textureCount = Math.Max(_textureCount, _screenTexture);
             Vector2i renderTarget = RenderSize;
             GL.ActiveTexture(TextureUnit.Texture0);
             GL.BindTexture(TextureTarget.Texture2D, _screenTexture);
@@ -906,7 +909,7 @@ namespace MphRead
             // The ink pass's copy of the scene. Same size and same filtering;
             // it is only ever sampled texel for texel.
             _celTexture = GL.GenTexture();
-            _textureCount++;
+            _textureCount = Math.Max(_textureCount, _celTexture);
             GL.BindTexture(TextureTarget.Texture2D, _celTexture);
             GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgb, renderTarget.X, renderTarget.Y, 0,
                 PixelFormat.Rgb, PixelType.UnsignedByte, IntPtr.Zero);
@@ -949,6 +952,9 @@ namespace MphRead
             _shaderLocations.FogMinDistance = GL.GetUniformLocation(_shaderProgramId, "fog_min");
             _shaderLocations.FogMaxDistance = GL.GetUniformLocation(_shaderProgramId, "fog_max");
             _shaderLocations.UseOverride = GL.GetUniformLocation(_shaderProgramId, "use_override");
+            _texturedPlayerSkinUniform = GL.GetUniformLocation(_shaderProgramId, "textured_player_skin");
+            _playerOutlineMaskUniform = GL.GetUniformLocation(_shaderProgramId, "player_outline_mask");
+            _playerOutlineColorUniform = GL.GetUniformLocation(_shaderProgramId, "player_outline_color");
             _shaderLocations.OverrideColor = GL.GetUniformLocation(_shaderProgramId, "override_color");
             _shaderLocations.UsePaletteOverride = GL.GetUniformLocation(_shaderProgramId, "use_pal_override");
             _shaderLocations.PaletteOverrideColor = GL.GetUniformLocation(_shaderProgramId, "pal_override_color");
@@ -2272,19 +2278,19 @@ namespace MphRead
             {
                 return;
             }
+            _playerOutlineDepth = -1;
             if (!want)
             {
                 GL.FramebufferRenderbuffer(FramebufferTarget.Framebuffer,
                     FramebufferAttachment.DepthStencilAttachment, RenderbufferTarget.Renderbuffer,
                     _renderBuffer);
                 GL.DeleteTexture(_depthTexture);
-                _textureCount--;
-                _depthTexture = 0;
+                                _depthTexture = 0;
                 ValidateFramebuffer("Scene renderbuffer depth");
                 return;
             }
             _depthTexture = GL.GenTexture();
-            _textureCount++;
+            _textureCount = Math.Max(_textureCount, _depthTexture);
             GL.BindTexture(TextureTarget.Texture2D, _depthTexture);
             GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Depth24Stencil8,
                 target.X, target.Y, 0, PixelFormat.DepthStencil, PixelType.UnsignedInt248, IntPtr.Zero);
@@ -2305,8 +2311,7 @@ namespace MphRead
                     FramebufferAttachment.DepthStencilAttachment, RenderbufferTarget.Renderbuffer,
                     _renderBuffer);
                 GL.DeleteTexture(_depthTexture);
-                _textureCount--;
-                _depthTexture = 0;
+                                _depthTexture = 0;
             }
             ValidateFramebuffer("Scene depth attachment");
             CheckGlError("Scene depth attachment");
@@ -2796,6 +2801,8 @@ namespace MphRead
             GL.Disable(EnableCap.StencilTest);
             GL.PolygonMode(TriangleFace.FrontAndBack, OpenTK.Graphics.OpenGL.PolygonMode.Fill);
 
+            DrawWorldOutlines();
+
             // After the world and before the window: the preview is a corner
             // of the scene target with its own camera in it, so the HUD's own
             // panel is drawn over it afterwards with a hole where this lands.
@@ -2818,7 +2825,6 @@ namespace MphRead
             // After the weapon, so it is drawn around too, and before the
             // target is put on screen, so the helmet and the HUD are not.
             CheckGlError("EndWorldPass");
-            DrawCelOutline();
 
             BeginCompositePass();
             // Back to the window: everything from here down -- the quad, the
@@ -3013,39 +3019,58 @@ namespace MphRead
             {
                 if (_cameraMode == CameraMode.Player)
                 {
-                    PlayerEntity main = PlayerEntity.Main;
-                    CameraInfo camera = main.CameraInfo;
-                    bool interpolatedCamera = Mods.Render.FrameTiming.Active
-                        && (Mods.SpectatorMode.IsSpectating || Mods.Network.DemoPlayback.IsActive);
-                    _viewMatrix = interpolatedCamera
-                        ? camera.ModGetDrawView(Mods.Render.FrameTiming.PresentationAlpha)
-                        : camera.ViewMatrix;
-
-                    if (!interpolatedCamera && !Mods.PauseMenu.Open && !GameState.MenuPause
-                        && !GameState.DialogPause && !Mods.EndScreen.Available)
+                    if (Mods.KillCam.TryGetHistoricalCamera(out Mods.KillCamCameraPose killCamera))
                     {
-                        (float padX, float padY) = Mods.Input.GamepadInput.RenderAim(
-                            Mods.Render.FrameTiming.Alpha);
-                        if (_lateAimX != 0 || _lateAimY != 0 || padX != 0 || padY != 0)
-                        {
-                            _viewMatrix = main.ModLateLatchedView(_lateAimX, _lateAimY, padX, padY);
-                        }
+                        Vector3 target = killCamera.Target;
+                        if ((target - killCamera.Position).LengthSquared < 0.000001f)
+                            target = killCamera.Position + Vector3.UnitZ;
+                        Vector3 up = killCamera.Up.LengthSquared < 0.000001f
+                            ? Vector3.UnitY : killCamera.Up;
+                        _viewMatrix = Matrix4.LookAt(killCamera.Position, target, up);
+                        float fov = killCamera.Fov > 0
+                            ? killCamera.Fov : Mods.RenderOptions.DefaultFov;
+                        _viewModelFov = MathHelper.DegreesToRadians(
+                            Math.Clamp(fov, 1f, 175f));
+                        _cameraFov = MathHelper.DegreesToRadians(
+                            Mods.RenderOptions.ScaleCameraFov(fov));
                     }
+                    else
+                    {
+                        PlayerEntity main = PlayerEntity.Main;
+                        CameraInfo camera = main.CameraInfo;
+                        bool interpolatedCamera = Mods.Render.FrameTiming.Active
+                            && (Mods.SpectatorMode.IsSpectating || Mods.Network.DemoPlayback.IsActive);
+                        _viewMatrix = interpolatedCamera
+                            ? camera.ModGetDrawView(Mods.Render.FrameTiming.PresentationAlpha)
+                            : camera.ViewMatrix;
 
-                    float authoredFov = interpolatedCamera
-                        ? camera.ModGetDrawFov(Mods.Render.FrameTiming.PresentationAlpha)
-                        : camera.Fov;
-                    float fov = authoredFov > 0
-                        ? authoredFov
-                        : Mods.RenderOptions.DefaultFov;
-                    // Keep the camera-authored projection for first-person
-                    // geometry. The player's FOV widens the world, not the arm
-                    // cannon attached to the camera.
-                    _viewModelFov = MathHelper.DegreesToRadians(Math.Clamp(fov, 1f, 175f));
-                    // Preserve zoom/scope magnification in projection space,
-                    // where tan(FOV / 2) is the quantity that scales linearly.
-                    fov = Mods.RenderOptions.ScaleCameraFov(fov);
-                    _cameraFov = MathHelper.DegreesToRadians(fov);
+                        if (!interpolatedCamera && !Mods.PauseMenu.Open && !GameState.MenuPause
+                            && !GameState.DialogPause && !Mods.EndScreen.Available)
+                        {
+                            (float padX, float padY) = Mods.Input.GamepadInput.RenderAim(
+                                Mods.Render.FrameTiming.Alpha);
+                            if (_lateAimX != 0 || _lateAimY != 0 || padX != 0 || padY != 0)
+                            {
+                                _viewMatrix = main.ModLateLatchedView(
+                                    _lateAimX, _lateAimY, padX, padY);
+                            }
+                        }
+
+                        float authoredFov = interpolatedCamera
+                            ? camera.ModGetDrawFov(Mods.Render.FrameTiming.PresentationAlpha)
+                            : camera.Fov;
+                        float fov = authoredFov > 0
+                            ? authoredFov
+                            : Mods.RenderOptions.DefaultFov;
+                        // Keep the camera-authored projection for first-person
+                        // geometry. The player's FOV widens the world, not the arm
+                        // cannon attached to the camera.
+                        _viewModelFov = MathHelper.DegreesToRadians(Math.Clamp(fov, 1f, 175f));
+                        // Preserve zoom/scope magnification in projection space,
+                        // where tan(FOV / 2) is the quantity that scales linearly.
+                        fov = Mods.RenderOptions.ScaleCameraFov(fov);
+                        _cameraFov = MathHelper.DegreesToRadians(fov);
+                    }
                 }
                 else
                 {
@@ -3084,12 +3109,19 @@ namespace MphRead
             }
             else if (_cameraMode == CameraMode.Player)
             {
-                CameraInfo camera = PlayerEntity.Main.CameraInfo;
-                bool interpolate = Mods.Render.FrameTiming.Active
-                    && (Mods.SpectatorMode.IsSpectating || Mods.Network.DemoPlayback.IsActive);
-                _cameraPosition = interpolate
-                    ? camera.ModGetDrawPosition(Mods.Render.FrameTiming.PresentationAlpha)
-                    : camera.Position;
+                if (Mods.KillCam.TryGetHistoricalCamera(out Mods.KillCamCameraPose killCamera))
+                {
+                    _cameraPosition = killCamera.Position;
+                }
+                else
+                {
+                    CameraInfo camera = PlayerEntity.Main.CameraInfo;
+                    bool interpolate = Mods.Render.FrameTiming.Active
+                        && (Mods.SpectatorMode.IsSpectating || Mods.Network.DemoPlayback.IsActive);
+                    _cameraPosition = interpolate
+                        ? camera.ModGetDrawPosition(Mods.Render.FrameTiming.PresentationAlpha)
+                        : camera.Position;
+                }
             }
         }
 
@@ -3949,11 +3981,10 @@ namespace MphRead
 
         private RenderItem GetRenderItem()
         {
-            if (_freeRenderItems.Count > 0)
-            {
-                return _freeRenderItems.Dequeue();
-            }
-            return new RenderItem();
+            RenderItem item = _freeRenderItems.Count > 0 ? _freeRenderItems.Dequeue() : new RenderItem();
+            item.TexturedPlayerSkin = false;
+            item.PlayerOutlineColor = null;
+            return item;
         }
 
         private readonly float[] _scaleFactors = new float[16];
@@ -3961,7 +3992,8 @@ namespace MphRead
         // for meshes
         public void AddRenderItem(Material material, int polygonId, float alphaScale, Vector3 emission, LightInfo lightInfo, Matrix4 texcoordMatrix,
             Matrix4 transform, int listId, int matrixStackCount, IReadOnlyList<float> matrixStack, Vector4? overrideColor, Vector4? paletteOverride,
-            SelectionType selectionType, BillboardMode billboardMode, float scaleFactor = 1, int? bindingOverride = null)
+            SelectionType selectionType, BillboardMode billboardMode, float scaleFactor = 1, int? bindingOverride = null,
+            bool texturedPlayerSkin = false, Vector4? playerOutlineColor = null)
         {
             transform.Row0.X *= scaleFactor;
             transform.Row0.Y *= scaleFactor;
@@ -4032,6 +4064,8 @@ namespace MphRead
                 item.MatrixStack[i] = value * _scaleFactors[i - (i / 16) * 16];
             }
             item.OverrideColor = overrideColor;
+            item.TexturedPlayerSkin = texturedPlayerSkin;
+            item.PlayerOutlineColor = playerOutlineColor;
             item.PaletteOverride = paletteOverride;
             item.Points = Array.Empty<Vector3>();
             item.ScaleS = 1;
@@ -4594,6 +4628,7 @@ namespace MphRead
                 }
             }
             Read.ClearCache();
+            DisposePlayerOutlines();
             // The cel target also owns a reference to _screenTexture. Release
             // it before deleting that texture in the shell's persistent context.
             if (_celFrameBuffer != 0)
@@ -5077,6 +5112,8 @@ namespace MphRead
 
         private void SetHudLayerUniforms()
         {
+            GL.Uniform1(_texturedPlayerSkinUniform, 0);
+            GL.Uniform1(_playerOutlineMaskUniform, 0);
             // DrawHudModels runs inside the world target immediately after the
             // translucent passes. Treat it as a real pass boundary instead of
             // inheriting whatever the last world material happened to leave.
@@ -5905,7 +5942,9 @@ namespace MphRead
             }
             GL.Uniform1(_shaderLocations.UseTexture, item.HasTexture && _showTextures ? 1 : 0);
             SetFlatColor(item.HasTexture && _showTextures ? item.TextureBindingId : -1);
-            Vector4? overrideColor = item.OverrideColor;
+            GL.Uniform1(_texturedPlayerSkinUniform, !_drawingPlayerOutlineMask && item.TexturedPlayerSkin
+                ? (Mods.RenderOptions.BrightSkinStyle == Mods.PlayerSkinStyle.HighContrastTextured ? 2 : 1) : 0);
+            Vector4? overrideColor = _drawingPlayerOutlineMask ? null : item.OverrideColor;
             if (overrideColor != null)
             {
                 Vector4 overrideColorValue = overrideColor.Value;

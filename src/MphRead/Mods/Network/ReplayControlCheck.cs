@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using MphRead.Mods.Input;
 
 namespace MphRead.Mods.Network
@@ -51,6 +52,8 @@ namespace MphRead.Mods.Network
                     new ReplayEvent(120, ReplayEventType.Kill, 0, 1),
                     new ReplayEvent(180, ReplayEventType.Objective, 1),
                     new ReplayEvent(200, ReplayEventType.Damage, 1, 0, 200),
+                    new ReplayEvent(210, ReplayEventType.WeaponFired, 0,
+                        value: 7),
                     new ReplayEvent(300, ReplayEventType.MatchEnded)
                 };
                 var analytics = Replay.ReplayStudio.Analytics(events, 300);
@@ -61,6 +64,20 @@ namespace MphRead.Mods.Network
                 Require(player0.Kills == 2 && player1.Deaths == 2
                     && player1.ObjectiveEvents == 1 && player1.Damage == 200,
                     "studio per-player analytics");
+                Require(analytics.DamageTimeline.Count > 0
+                    && analytics.DamageTimeline.Sum(bucket => bucket.Damage) == 200,
+                    "studio damage timeline");
+                Require(analytics.WeaponUsage.Count == 1
+                    && analytics.WeaponUsage[0].Weapon == 7
+                    && analytics.WeaponUsage[0].Shots == 1,
+                    "studio weapon usage");
+                var paired = Replay.ReplayStudio.Analytics(new[]
+                {
+                    new ReplayEvent(60, ReplayEventType.PlayerDeath, 1, 0),
+                    new ReplayEvent(60, ReplayEventType.Kill, 0, 1)
+                }, 60);
+                Require(paired.Players.Single(player => player.Slot == 1).Deaths == 1,
+                    "paired kill/death analytics double-counted a death");
                 var highlights = Replay.ReplayStudio.Highlights(events, 300);
                 Require(System.Linq.Enumerable.Any(highlights,
                     h => h.Kind == Replay.ReplayHighlightKind.MultiKill && h.ActorSlot == 0),
@@ -110,10 +127,31 @@ namespace MphRead.Mods.Network
                     Replay.ReplayAnnotations.RemoveHighlight(annotationReplay, named.Id);
                     Require(Replay.ReplayAnnotations.Highlights(annotationReplay).Count == 0,
                         "named replay highlight did not remove");
+
+                    Replay.ReplayAnnotations.SetOrganization(annotationReplay,
+                        new[] { "scrim", "Sylux" }, new[] { "Tournament A" });
+                    Require(Replay.ReplayAnnotations.Tags(annotationReplay).Count == 2
+                        && Replay.ReplayAnnotations.Collections(annotationReplay).Single()
+                            == "Tournament A",
+                        "replay organization did not round-trip");
+
+                    var segmentA = Replay.ReplayReels.Add(annotationReplay,
+                        60, 120, "Opening", Replay.ReplaySegmentCamera.Chase);
+                    var segmentB = Replay.ReplayReels.Add(annotationReplay,
+                        180, 240, "Finish", Replay.ReplaySegmentCamera.Director);
+                    Replay.ReplayReels.Move(annotationReplay, segmentB.Id, -1);
+                    var reel = Replay.ReplayReels.Segments(annotationReplay);
+                    Require(reel.Count == 2 && reel[0].Id == segmentB.Id,
+                        "reel ordering did not persist");
+                    Replay.ReplayReels.Trim(annotationReplay, segmentA.Id, 70, 130);
+                    reel = Replay.ReplayReels.Segments(annotationReplay);
+                    Require(reel.Single(segment => segment.Id == segmentA.Id).StartFrame == 70,
+                        "reel trim did not persist");
                 }
                 finally
                 {
                     Replay.ReplayAnnotations.DeleteFor(annotationReplay);
+                    Replay.ReplayReels.DeleteFor(annotationReplay);
                     File.Delete(annotationReplay);
                 }
                 Console.WriteLine("[replaycheck] studio: annotation sidecar round-trip passed");

@@ -18,7 +18,7 @@ namespace MphRead.Mods.Network
     public enum ReplayEventType : byte
     {
         PlayerSpawn, PlayerDeath, Kill, Damage, ScoreChanged, PlayerJoined,
-        PlayerLeft, Objective, MatchStarted, MatchEnded
+        PlayerLeft, Objective, MatchStarted, MatchEnded, WeaponFired
     }
 
     public readonly record struct ReplayEvent(uint Frame, ReplayEventType Type,

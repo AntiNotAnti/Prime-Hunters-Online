@@ -31,7 +31,7 @@ namespace MphRead.Mods
         private static readonly Dictionary<Hunter, ColorRgba[]> _cache = new();
 
         /// <summary>
-        /// The colour of one suit, 0-3. Never throws: a missing model, a
+        /// The colour of one recolor: suits 0-3 and team palettes 4-5. Never throws: a missing model, a
         /// model with fewer recolors than expected and a palette with nothing
         /// but greys in it all come back as the neutral colour.
         /// </summary>
@@ -51,7 +51,7 @@ namespace MphRead.Mods
             {
                 return cached;
             }
-            var colors = new ColorRgba[Network.PlayerColors.Count];
+            var colors = new ColorRgba[Network.PlayerColors.Count + 2];
             for (int i = 0; i < colors.Length; i++)
             {
                 colors[i] = _unknown;
