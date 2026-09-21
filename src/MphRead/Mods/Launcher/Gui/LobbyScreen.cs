@@ -88,6 +88,7 @@ namespace MphRead.Mods.Launcher.Gui
         private double _nextPingRefresh;
         private SessionRules _shownRules;
         private string _draftRoom = "";
+        private string _teamChoiceKey = "";
         private TeamLayout _customLayout = new(2, 2, 2);
         private bool _syncing, _suspended, _closed, _draftDirty, _closingLobby, _startAfterSave;
         private double _draftChangedAt;
@@ -840,10 +841,19 @@ namespace MphRead.Mods.Launcher.Gui
             int localTeam = NetSession.LocalSlot >= 0
                 ? NetSession.SlotTeamIndex[NetSession.LocalSlot] + 1
                 : 0;
-            _team.SetItems(choices, Math.Clamp(localTeam, 0, Math.Max(0, choices.Length - 1)));
-            if (NetSession.LocalSlot >= 0)
-                _team.Index = Math.Clamp(NetSession.SlotTeamIndex[NetSession.LocalSlot] + 1,
-                    0, Math.Max(0, choices.Length - 1));
+            localTeam = Math.Clamp(localTeam, 0, Math.Max(0, choices.Length - 1));
+            string choiceKey = String.Join('|', choices);
+            if (choiceKey != _teamChoiceKey)
+            {
+                _teamChoiceKey = choiceKey;
+                _team.SetItems(choices, localTeam);
+            }
+            else if (!NetSession.LobbyCommandPending)
+            {
+                // Do not visually snap a just-chosen team back to the previous
+                // authoritative value while its SetTeam command is in flight.
+                _team.Index = localTeam;
+            }
 
             _teamSummary.Text = chooseTeams
                 ? String.Join("   ", Enumerable.Range(0, layout.TeamCount)
