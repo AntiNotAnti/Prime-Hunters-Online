@@ -54,11 +54,12 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly Note _chat = new("", lines: 0);
         private readonly ScrollViewer _chatHistory;
         private readonly ChoiceRow _hunter, _suit, _team, _mode, _format;
-        private readonly ChoiceRow _target, _moveTeam;
+        private readonly ChoiceRow _target;
         private readonly PickRow _map, _customTeams;
         private readonly ButtonToggleRow _fire, _affinity, _freeze, _requireReady, _join;
         private readonly ButtonToggleRow _lockTeams, _opponentHealth, _disablePowerups;
         private readonly Note _layoutSummary = new("");
+        private readonly Note _teamSummary = new("", lines: 1);
         private readonly FieldRow _time, _goal;
         private readonly TextBox _chatEntry = new()
         {
@@ -74,7 +75,8 @@ namespace MphRead.Mods.Launcher.Gui
             VerticalContentAlignment = VerticalAlignment.Center
         };
         private readonly HubNavButton _leave, _ready, _start;
-        private readonly HubNavButton _moveButton, _closeLobby;
+        private readonly HubNavButton _closeLobby, _transferButton, _kickButton;
+        private readonly HubNavButton[] _teamAssign = new HubNavButton[5];
         private readonly Image _preview = new() { Height = 124, Stretch = Stretch.UniformToFill };
         private readonly string[] _rooms;
         private readonly List<byte> _targetSlots = new();
@@ -87,7 +89,7 @@ namespace MphRead.Mods.Launcher.Gui
         private SessionRules _shownRules;
         private string _draftRoom = "";
         private TeamLayout _customLayout = new(2, 2, 2);
-        private bool _syncing, _suspended, _closed, _draftDirty, _closingLobby;
+        private bool _syncing, _suspended, _closed, _draftDirty, _closingLobby, _startAfterSave;
         private double _draftChangedAt;
         private Bitmap? _bitmap;
 
@@ -120,10 +122,10 @@ namespace MphRead.Mods.Launcher.Gui
             _customTeams = new PickRow("Custom teams") { IsVisible = false };
             _customTeams.Clicked += (_, _) => OpenCustomTeams();
 
-            _time = new FieldRow("Time limit (minutes)", "7", 80);
-            _goal = new FieldRow("Score goal", "7", 80);
-            _time.Box.TextChanged += (_, _) => DraftChanged();
-            _goal.Box.TextChanged += (_, _) => DraftChanged();
+            _time = new FieldRow("Time limit (minutes)", "7", 92);
+            _goal = new FieldRow("Score goal", "7", 92);
+            WireRuleField(_time);
+            WireRuleField(_goal);
 
             _fire = Toggle("Friendly fire");
             _affinity = Toggle("Affinity weapons");
@@ -184,34 +186,46 @@ namespace MphRead.Mods.Launcher.Gui
                 toggles.Children.Add(toggleRows[i]);
             }
 
-            _target = new ChoiceRow("Manage player", Array.Empty<string>());
-            _moveTeam = new ChoiceRow("Move to team", new[] { "Auto", "Team A", "Team B" });
+            _target = new ChoiceRow("Player", Array.Empty<string>());
 
-            // Owner actions belong beside the roster they operate on, not under
-            // the match rules. That uses otherwise empty roster space and
-            // keeps every rule visible without a scrollbar on a normal
-            // desktop-sized lobby.
+            // Team management is a one-click action now. The previous flow was:
+            // select a player, select a destination, then press MOVE. In a full
+            // lobby that turns basic team setup into menu bookkeeping. The owner
+            // picks a player once and then hits Auto/A/B/C/D directly.
             var administration = new StackPanel { Spacing = 4 };
-            administration.Children.Add(LobbySubhead("OWNER ACTIONS"));
+            administration.Children.Add(LobbySubhead("TEAM ORGANIZER"));
             administration.Children.Add(_target);
-            administration.Children.Add(_moveTeam);
+            administration.Children.Add(_teamSummary);
 
+            var teamButtons = new Grid
+            {
+                ColumnDefinitions = new ColumnDefinitions("*,*,*,*,*"),
+                ColumnSpacing = 4
+            };
+            for (int i = 0; i < _teamAssign.Length; i++)
+            {
+                int team = i - 1;
+                string label = i == 0 ? "AUTO" : ((char)('A' + team)).ToString();
+                _teamAssign[i] = SmallButton(label, () => AssignSelectedTeam((sbyte)team),
+                    i == 0 ? HubTheme.TextDim : HubTheme.Accent);
+                Grid.SetColumn(_teamAssign[i], i);
+                teamButtons.Children.Add(_teamAssign[i]);
+            }
+            administration.Children.Add(teamButtons);
+
+            administration.Children.Add(LobbySubhead("LOBBY CONTROL"));
             var adminButtons = new Grid
             {
-                ColumnDefinitions = new ColumnDefinitions("*,*,*"),
+                ColumnDefinitions = new ColumnDefinitions("*,*"),
                 ColumnSpacing = 5
             };
-            _moveButton = SmallButton("MOVE",
-                () => Admin(LobbyCommandType.SetTeam), HubTheme.Accent);
-            adminButtons.Children.Add(_moveButton);
-            var transfer = SmallButton("TRANSFER",
+            _transferButton = SmallButton("TRANSFER OWNER",
                 () => Admin(LobbyCommandType.TransferOwner), HubTheme.Warm);
-            Grid.SetColumn(transfer, 1);
-            adminButtons.Children.Add(transfer);
-            var kick = SmallButton("KICK",
+            adminButtons.Children.Add(_transferButton);
+            _kickButton = SmallButton("KICK",
                 () => Admin(LobbyCommandType.KickPlayer), HubTheme.Danger);
-            Grid.SetColumn(kick, 2);
-            adminButtons.Children.Add(kick);
+            Grid.SetColumn(_kickButton, 1);
+            adminButtons.Children.Add(_kickButton);
             administration.Children.Add(adminButtons);
 
             _closeLobby = SmallButton("CLOSE LOBBY", () =>
@@ -333,8 +347,7 @@ namespace MphRead.Mods.Launcher.Gui
             ControllerNav.Identify(_ready, "lobby.ready");
             actions.Children.Add(_ready);
 
-            _start = ActionButton("START MATCH",
-                () => NetSession.SendLobbyCommand(LobbyCommandType.StartMatch),
+            _start = ActionButton("START MATCH", StartMatchRequested,
                 primary: true);
             ControllerNav.Identify(_start, "lobby.start");
             actions.Children.Add(_start);
