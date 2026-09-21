@@ -366,6 +366,9 @@ namespace MphRead.Mods.Launcher.Gui
                 case HubDestination.ReplayStudio:
                     _ = OpenReplayStudio();
                     break;
+                case HubDestination.HunterLicense:
+                    OpenHunterLicensePlaceholder();
+                    break;
                 case HubDestination.Settings:
                     _ = OpenSettings();
                     break;
@@ -515,6 +518,16 @@ namespace MphRead.Mods.Launcher.Gui
                 "MAP EDITOR",
                 "WORKSHOP PLACEHOLDER",
                 "A visual custom-map editor is planned for this hub. This button is intentionally a placeholder for now.");
+            view.Closed += (_, _) => Pop();
+            Push(view);
+        }
+
+        private void OpenHunterLicensePlaceholder()
+        {
+            var view = new HubPlaceholderView(
+                "HUNTER LICENSE",
+                "COMING SOON",
+                "Your Hunter License will bring identity, career stats, match history and progression into one community profile.");
             view.Closed += (_, _) => Pop();
             Push(view);
         }
@@ -721,7 +734,21 @@ namespace MphRead.Mods.Launcher.Gui
         {
             _version.Text = text;
             _version.Foreground = new SolidColorBrush(colour);
+            _version.FontFamily = pressable ? HubTheme.DataBold : HubTheme.Data;
+            _version.FontSize = pressable ? 10.5 : 9.5;
             _updatable = pressable;
+            _versionBox.Background = pressable
+                ? HubTheme.AccentPanel(HubTheme.Warm, 68)
+                : Brushes.Transparent;
+            _versionBox.BorderBrush = pressable
+                ? HubTheme.WarmBrush
+                : Brushes.Transparent;
+            _versionBox.BorderThickness = pressable
+                ? new Thickness(1)
+                : new Thickness(0);
+            _versionBox.Padding = pressable
+                ? new Thickness(10, 6)
+                : new Thickness(0);
             _versionBox.Cursor = new Cursor(
                 pressable ? StandardCursorType.Hand : StandardCursorType.Arrow);
         }
@@ -742,10 +769,10 @@ namespace MphRead.Mods.Launcher.Gui
                 return;
             }
             string number = VersionNumber();
-            if (Updater.Available != null)
+            if (Updater.Available is UpdateInfo update)
             {
-                Say($"{number} -- update available, click here", GuiTheme.Warm,
-                    pressable: true);
+                Say($"UPDATE AVAILABLE  //  {number} > {update.Version.ToString(3)}  //  UPDATE NOW",
+                    HubTheme.Warm, pressable: true);
                 return;
             }
             Say(number, BuildVersion.IsRelease && Updater.Checked
