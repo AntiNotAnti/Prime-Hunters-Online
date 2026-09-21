@@ -73,9 +73,9 @@ namespace MphRead.Mods.Launcher.Gui
             BorderBrush = HubTheme.EdgeBrush,
             VerticalContentAlignment = VerticalAlignment.Center
         };
-        private readonly HubNavButton _ready, _start;
+        private readonly HubNavButton _leave, _ready, _start;
         private readonly HubNavButton _moveButton, _closeLobby;
-        private readonly Image _preview = new() { Height = 148, Stretch = Stretch.UniformToFill };
+        private readonly Image _preview = new() { Height = 124, Stretch = Stretch.UniformToFill };
         private readonly string[] _rooms;
         private readonly List<byte> _targetSlots = new();
 
@@ -149,7 +149,7 @@ namespace MphRead.Mods.Launcher.Gui
                 BorderThickness = new Thickness(1),
                 ClipToBounds = true,
                 Child = _preview,
-                MinHeight = 148
+                MinHeight = 96
             });
             arena.Children.Add(_map);
             arena.Children.Add(_mode);
@@ -239,7 +239,7 @@ namespace MphRead.Mods.Launcher.Gui
             var playerScroll = new ScrollViewer
             {
                 Content = _players,
-                MaxHeight = 152,
+                MaxHeight = 190,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto
             };
@@ -268,7 +268,7 @@ namespace MphRead.Mods.Launcher.Gui
             // tall enough to scroll even with acres of unused roster space.
             var columns = new Grid
             {
-                ColumnDefinitions = new ColumnDefinitions("0.82*,1.10*,1.08*"),
+                ColumnDefinitions = new ColumnDefinitions("1.02*,1.03*,1.15*"),
                 ColumnSpacing = 10
             };
             columns.Children.Add(rosterPanel);
@@ -320,9 +320,9 @@ namespace MphRead.Mods.Launcher.Gui
                 Spacing = 6,
                 HorizontalAlignment = HorizontalAlignment.Right
             };
-            var leave = ActionButton("LEAVE", () => Leave(""), accent: HubTheme.Danger);
-            ControllerNav.Identify(leave, "lobby.leave");
-            actions.Children.Add(leave);
+            _leave = ActionButton("LEAVE", () => Leave(""), accent: HubTheme.Danger);
+            ControllerNav.Identify(_leave, "lobby.leave", initial: true);
+            actions.Children.Add(_leave);
 
             _ready = ActionButton("READY", () =>
             {
@@ -330,7 +330,7 @@ namespace MphRead.Mods.Launcher.Gui
                     NetSession.SendLobbyCommand(LobbyCommandType.SetReady,
                         ready: !NetSession.SlotLobbyReady[NetSession.LocalSlot]);
             }, accent: HubTheme.Accent);
-            ControllerNav.Identify(_ready, "lobby.ready", initial: true);
+            ControllerNav.Identify(_ready, "lobby.ready");
             actions.Children.Add(_ready);
 
             _start = ActionButton("START MATCH",
@@ -339,7 +339,7 @@ namespace MphRead.Mods.Launcher.Gui
             ControllerNav.Identify(_start, "lobby.start");
             actions.Children.Add(_start);
 
-            leave.SetValue(ControllerNav.NavRightProperty, "lobby.ready");
+            _leave.SetValue(ControllerNav.NavRightProperty, "lobby.ready");
             _ready.SetValue(ControllerNav.NavLeftProperty, "lobby.leave");
             _ready.SetValue(ControllerNav.NavRightProperty, "lobby.start");
             _start.SetValue(ControllerNav.NavLeftProperty, "lobby.ready");
@@ -358,9 +358,10 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 Content = columns,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                // Desktop rules are designed to fit. Scrolling is reserved for
-                // the genuinely compact stacked layout.
-                VerticalScrollBarVisibility = ScrollBarVisibility.Disabled
+                // Never clip lobby controls. On a normal window the content fits
+                // and no bar is drawn; shorter windows get a vertical escape hatch
+                // instead of silently losing the bottom of Arena/Rules/Roster.
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto
             };
             var body = new Grid
             {
@@ -438,14 +439,17 @@ namespace MphRead.Mods.Launcher.Gui
                     Grid.SetColumn(rulesPanel, 0);
                     Grid.SetRow(rulesPanel, 2);
                     columns.RowSpacing = 10;
-                    mainScroll.VerticalScrollBarVisibility =
-                        ScrollBarVisibility.Auto;
+                    _preview.Height = 112;
+                    playerScroll.MaxHeight = 210;
                 }
                 else
                 {
                     columns.ColumnDefinitions =
-                        new ColumnDefinitions("0.82*,1.10*,1.08*");
-                    columns.RowDefinitions = new RowDefinitions("*");
+                        new ColumnDefinitions("1.02*,1.03*,1.15*");
+                    // Natural height is deliberate. A star row inside a
+                    // ScrollViewer constrained all three cards to the viewport
+                    // and clipped whichever card was tallest.
+                    columns.RowDefinitions = new RowDefinitions("Auto");
                     Grid.SetColumn(rosterPanel, 0);
                     Grid.SetRow(rosterPanel, 0);
                     Grid.SetColumn(arenaPanel, 1);
@@ -453,8 +457,8 @@ namespace MphRead.Mods.Launcher.Gui
                     Grid.SetColumn(rulesPanel, 2);
                     Grid.SetRow(rulesPanel, 0);
                     columns.RowSpacing = 0;
-                    mainScroll.VerticalScrollBarVisibility =
-                        ScrollBarVisibility.Disabled;
+                    _preview.Height = e.NewSize.Height < 650 ? 104 : 124;
+                    playerScroll.MaxHeight = e.NewSize.Height < 650 ? 150 : 190;
                 }
             };
 
@@ -601,6 +605,12 @@ namespace MphRead.Mods.Launcher.Gui
             TryAutoApply();
             if (NetSession.ShouldLoadMatch)
             {
+                // Leave a meaningful frame on screen while the synchronous map
+                // build runs. Shell keeps this surface up until the server's
+                // all-clients-loaded barrier releases the match.
+                _status.Text = "Loading match... waiting for all players.";
+                _ready.IsEnabled = false;
+                _start.IsEnabled = false;
                 Suspend();
                 MatchDefinition match = NetSession.ActiveMatchDefinition!.Value;
                 MatchRequested?.Invoke(this, new LaunchPlan
@@ -695,7 +705,14 @@ namespace MphRead.Mods.Launcher.Gui
                 && (!session.LockTeams || NetSession.LocalIsLobbyOwner);
             _moveTeam.IsVisible = chooseTeams;
             _moveButton.IsVisible = chooseTeams;
-            _ready.IsEnabled = NetSession.IsInLobby && !NetSession.LobbyCommandPending;
+
+            // Ready is a real gate only when the room requires it. Leaving a
+            // meaningless READY button on screen when the rule is disabled
+            // made players think they still had to use it, and controller
+            // navigation could land on an action the server ignores for start.
+            _ready.IsVisible = session.RequireReady;
+            _ready.IsEnabled = session.RequireReady && NetSession.IsInLobby
+                && !NetSession.LobbyCommandPending;
             _ready.Label = NetSession.LocalSlot >= 0 && NetSession.SlotLobbyReady[NetSession.LocalSlot]
                 ? "UNREADY" : "READY";
 
@@ -705,6 +722,23 @@ namespace MphRead.Mods.Launcher.Gui
             _start.IsEnabled = NetSession.CanEditLobby
                 && valid == LobbyResultCode.Ok
                 && !NetSession.LobbyCommandPending;
+
+            bool showStart = _start.IsVisible;
+            if (session.RequireReady)
+            {
+                _leave.SetValue(ControllerNav.NavRightProperty, "lobby.ready");
+                _ready.SetValue(ControllerNav.NavLeftProperty, "lobby.leave");
+                _ready.SetValue(ControllerNav.NavRightProperty,
+                    showStart ? "lobby.start" : "lobby.leave");
+                _start.SetValue(ControllerNav.NavLeftProperty, "lobby.ready");
+            }
+            else
+            {
+                _leave.SetValue(ControllerNav.NavRightProperty,
+                    showStart ? "lobby.start" : "lobby.leave");
+                _start.SetValue(ControllerNav.NavLeftProperty, "lobby.leave");
+            }
+
             _status.Text = NetSession.ConnectionLost
                 ? "Connection lost, retrying..."
                 : NetSession.LobbyMessage.Length > 0
