@@ -232,7 +232,7 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 Action("PLAY", "Multiplayer, offline combat or adventure",
                     () => Navigate(HubDestination.Play), primary: true),
-                Action("MAP EDITOR", "Custom-map workshop (coming soon)",
+                Action("MAP EDITOR", "Build, validate and play custom maps",
                     () => Navigate(HubDestination.MapEditor), accent: HubTheme.Warm),
                 Action("REPLAY STUDIO", "Recordings, clips and cinematic replay tools",
                     () => Navigate(HubDestination.ReplayStudio)),

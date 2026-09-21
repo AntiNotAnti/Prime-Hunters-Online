@@ -35,6 +35,11 @@ namespace MphRead.Formats.Collision
     {
         private static readonly Dictionary<string, CollisionInfo> _cache = new Dictionary<string, CollisionInfo>();
         private static readonly Dictionary<string, CollisionInfo> _fhCache = new Dictionary<string, CollisionInfo>();
+        public static void InvalidateRoom(string path)
+        {
+            _cache.Remove(path);
+            _fhCache.Remove(path);
+        }
 
         public static CollisionInstance GetCollision(ModelMetadata meta, bool extra = false)
         {

@@ -16,6 +16,7 @@ namespace MphRead.Mods.MapGen
     public class BuiltMap
     {
         public MapDefinition Definition { get; }
+        public MapDefinition? SourceDefinition { get; set; }
         public List<BuiltFace> Faces { get; } = new List<BuiltFace>();
         public List<BuiltFace> Solid { get; } = new List<BuiltFace>();
         public List<EntityEditorBase> Entities { get; } = new List<EntityEditorBase>();

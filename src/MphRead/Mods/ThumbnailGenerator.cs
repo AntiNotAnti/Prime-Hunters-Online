@@ -175,6 +175,14 @@ namespace MphRead.Mods
         /// </summary>
         public static void EnsureCustomPreviews(Action<string>? report = null)
         {
+            foreach(var definition in MapGen.CustomRooms.Definitions)
+            {
+                var preview=definition.Assets.FirstOrDefault(a=>a.Kind=="preview");
+                if(preview==null)continue;
+                try{MapGen.AtomicFile.Write(PathFor(definition.Name),MapGen.MapAssets.Read(definition,preview.Path));}
+                catch(Exception ex)when(ex is IOException or InvalidDataException or UnauthorizedAccessException)
+                {Console.WriteLine("[map] Preview unavailable: "+ex.Message);}
+            }
             if (!Launcher.GameFiles.Ready || !ThumbnailBatch.CanRun)
             {
                 return;

@@ -11,15 +11,16 @@ namespace MphRead.Mods.MapGen
     /// handle: the launcher lists them, -maptest loads them, the server can
     /// run them.
     ///
-    /// A map is a JSON file in `maps/` next to the executable. Its three
+    /// A map is a source project or package in `maps/`. Its five
     /// binaries are generated into the player's own extracted files, since
     /// that is where a room's paths point and where the textures come from,
-    /// and they are regenerated whenever the JSON is newer than they are.
+    /// and all outputs are regenerated when a dependency fingerprint changes.
     /// </summary>
     public static class CustomRooms
     {
         private static IReadOnlyList<MapDefinition>? _definitions;
         private static int _firstId = -1;
+        internal static int FirstId => _firstId;
         // Android builds the map binaries on a background thread while the
         // front screen is listing rooms on another, and both go through here.
         private static readonly object _lock = new object();
@@ -58,62 +59,42 @@ namespace MphRead.Mods.MapGen
         /// handed out, so a checkout that has both would otherwise register
         /// the same room twice.
         /// </summary>
-        private static IEnumerable<string> MapFiles()
-        {
-            if (!Directory.Exists(MapDirectory))
-            {
-                return Enumerable.Empty<string>();
-            }
-            var bundles = Directory.EnumerateFiles(MapDirectory, $"*{MapBundle.Extension}",
-                SearchOption.AllDirectories).ToList();
-            var names = new HashSet<string>(bundles.Select(
-                p => Path.GetFileNameWithoutExtension(p)), StringComparer.OrdinalIgnoreCase);
-            return bundles.Concat(Directory
-                .EnumerateFiles(MapDirectory, "*.json", SearchOption.AllDirectories)
-                .Where(p => !names.Contains(Path.GetFileNameWithoutExtension(p))));
-        }
-
         private static IReadOnlyList<MapDefinition> LoadDefinitions()
         {
-            var results = new List<MapDefinition>();
-            if (!Directory.Exists(MapDirectory))
+            var catalog = new MapCatalog(MapDirectory);
+            var entries = catalog.Refresh();
+            foreach (var entry in entries)
+                foreach (var diagnostic in entry.Validation.Diagnostics)
+                    Console.WriteLine($"[map] {Path.GetFileName(entry.Path)} {diagnostic.Code}: {diagnostic.Message}");
+            return entries.Where(e => e.Definition != null && e.Validation.IsValid)
+                .Select(e => e.Definition!).ToArray();
+        }
+
+        // Runtime IDs are a process snapshot. Refreshing the editor/catalog must
+        // never replace that snapshot beneath a loaded match or a room vote.
+        public static IReadOnlyList<MapCatalogEntry> Reload()
+        {
+            lock (_lock)
             {
-                return results;
+                var entries = new MapCatalog(MapDirectory).Refresh();
+                if (_firstId < 0) _definitions = null;
+                return entries;
             }
-            foreach (string path in MapFiles().OrderBy(p => p))
+        }
+        internal static void InstallSnapshot(MapDefinition definition)
+        {
+            lock(_lock)
             {
-                try
-                {
-                    MapDefinition definition = MapDefinition.Load(path);
-                    definition.Name = definition.Name.ToUpperInvariant();
-                    if (definition.Import != null && definition.Import.Resolve() == null)
-                    {
-                        // Rooms are indexed by their position in a table that
-                        // is built once, so a room registered here cannot be
-                        // taken out again later -- it would sit in the launcher
-                        // and crash whoever picked it. A converted map whose
-                        // source level is not on this machine is the case that
-                        // actually happens: the map file travels with the
-                        // repository, the level it was made from does not.
-                        Console.WriteLine($"Leaving out map {definition.Name}: its source level "
-                            + $"{definition.Import.Source} is not here. Put it in "
-                            + $"{definition.BaseDirectory ?? MapDirectory} to have this map.");
-                        continue;
-                    }
-                    results.Add(definition);
-                }
-                catch (Exception ex)
-                {
-                    // a broken map file must not stop the game from starting
-                    Console.WriteLine($"Ignoring map {Path.GetFileName(path)}: {ex.Message}");
-                }
+                var list=Definitions.ToList();int index=list.FindIndex(d=>d.Name.Equals(definition.Name,StringComparison.OrdinalIgnoreCase));
+                if(index<0)list.Add(definition);else list[index]=definition;
+                _definitions=list.AsReadOnly();
             }
-            return results;
         }
 
         /// <summary>Called from the room ID table, which fixes each room's ID as its index.</summary>
         public static IReadOnlyList<string> AppendIds(List<string> ids)
         {
+            _definitions=Definitions.Where(d=>!ids.Contains(d.Name,StringComparer.OrdinalIgnoreCase)).ToArray();
             _firstId = ids.Count;
             ids.AddRange(Definitions.Select(d => d.Name));
             return ids;
@@ -129,21 +110,24 @@ namespace MphRead.Mods.MapGen
             return rooms;
         }
 
-        private static RoomMetadata MakeMetadata(MapDefinition def, int id)
+        internal static RoomMetadata MakeMetadata(MapDefinition def, int id)
         {
             string prefix = def.Name.ToLowerInvariant();
+            // Metadata is also read before game-file setup. Only filenames
+            // belong here; resolving runtime directories requires configured paths.
+            MapOutputSet outputs = MapOutputSet.Create(def,"","","");
             return new RoomMetadata(
                 id: id,
                 name: def.Name,
                 inGameName: def.InGameName ?? def.Name,
                 archive: prefix,
-                modelPath: $"{prefix}_Model.bin",
-                animationPath: $"{prefix}_Anim.bin",
-                collisionPath: $"{prefix}_Collision.bin",
+                modelPath: Path.GetFileName(outputs.Model),
+                animationPath: Path.GetFileName(outputs.Animation),
+                collisionPath: Path.GetFileName(outputs.Collision),
                 texturePath: null, // the textures are inside the model file
-                entityPath: $"{prefix}_Ent.bin",
+                entityPath: Path.GetFileName(outputs.Entities),
                 // the metadata prepends levels\nodeData\ itself
-                nodePath: $"{prefix}_Node.bin",
+                nodePath: Path.GetFileName(outputs.Nodes),
                 roomNodeName: null,
                 battleTimeLimit: def.BattleTimeLimit,
                 timeLimit: def.BattleTimeLimit,
@@ -276,25 +260,10 @@ namespace MphRead.Mods.MapGen
                 + "The [mapgen] line above says what went wrong with it.";
         }
 
-        private static bool NeedsGenerating(MapDefinition def)
-        {
-            string prefix = def.Name.ToLowerInvariant();
-            string model = Path.Combine(ArchiveDirectory(def), $"{prefix}_Model.bin");
-            if (!File.Exists(model)
-                || !File.Exists(Path.Combine(EntityDirectory(), $"{prefix}_Ent.bin"))
-                || !File.Exists(Path.Combine(NodeDirectory(), $"{prefix}_Node.bin")))
-            {
-                // every file a room is made of, not just the first: a build
-                // from before one of them existed leaves the others in place
-                // and looks up to date
-                return true;
-            }
-            // The file it was actually loaded from -- a recipe or a bundle --
-            // rather than a search for one named after the room, which a map
-            // whose file is not named after its room quietly failed.
-            string? source = def.SourcePath;
-            return source != null && File.Exists(source)
-                && File.GetLastWriteTimeUtc(source) > File.GetLastWriteTimeUtc(model);
-        }
+        public static MapOutputSet OutputsFor(MapDefinition definition)
+            => MapOutputSet.Create(definition, ArchiveDirectory(definition), EntityDirectory(), NodeDirectory());
+
+        public static bool NeedsGenerating(MapDefinition def)
+            => !MapBuildManifest.IsCurrent(def, OutputsFor(def));
     }
 }

@@ -53,6 +53,7 @@ namespace MphRead.Mods.MapGen
                 AddBrush(map, def, brush);
             }
             AddEntities(map, def);
+            GeometryCompiler.Add(map, def);
             return map;
         }
 
@@ -142,7 +143,7 @@ namespace MphRead.Mods.MapGen
                     NodeName = "rmMain",
                     Active = true,
                     Availability = 0,
-                    TeamIndex = -1
+                    TeamIndex = (sbyte)spawn.Team
                 });
             }
             foreach (MapJumpPad pad in def.JumpPads)

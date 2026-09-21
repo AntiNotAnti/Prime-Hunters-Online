@@ -27,6 +27,7 @@ loading everything.
 - render/RENDER-STABILITY.md — explicit GL pass boundaries, respawn diagnostics and the rendered stress check
 - render/FRAME-PACING.md — 60 Hz of simulation under a picture drawn at the display's rate: the split, why interpolation was taken back out, and how both halves are tested without a 144 Hz monitor
 - mapgen/MAP-PIPELINE.md — custom maps: the generator, the Quake 3 importer, the format traps
+- mapgen/MAP-STUDIO.md — visual authoring, validation, deterministic builds, packages and editor workflow
 - testing/HITRIG.md — the headshot rig: the geometry a headshot turns on, why the feature tour cannot measure it, and how an A/B arm is run
 - testing/TEST-HARNESS.md — netcheck/maptest, map sweeps, the world and affliction probes
 - testing/TEST-HARD-CASES.md — disconnects, blackouts, latency, loss, capacity, spectators and legacy authority regressions

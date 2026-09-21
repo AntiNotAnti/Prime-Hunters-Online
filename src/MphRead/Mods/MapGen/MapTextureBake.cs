@@ -25,6 +25,16 @@ namespace MphRead.Mods.MapGen
     public static class MapTextureBake
     {
         public const int DefaultSize = 64;
+        public static byte[] BakeImage(byte[] image)
+        {
+            const int size=64;
+            var(palette,pixels)=Quantize(Decode(image,size),size);
+            using var stream=new MemoryStream();using var writer=new BinaryWriter(stream,Encoding.UTF8);
+            writer.Write(new[]{'F','P','T','X'});writer.Write((ushort)1);writer.Write((ushort)1);
+            writer.Write((ushort)0);writer.Write((ushort)size);writer.Write((ushort)size);writer.Write((ushort)palette.Length);
+            writer.Write((ushort)3);writer.Write(Encoding.UTF8.GetBytes("map"));foreach(var color in palette)writer.Write(color);writer.Write(pixels);
+            return stream.ToArray();
+        }
         private const int PaletteSize = 256;
 
         /// <summary>

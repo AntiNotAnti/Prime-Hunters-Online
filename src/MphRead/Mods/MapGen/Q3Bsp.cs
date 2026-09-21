@@ -120,6 +120,7 @@ namespace MphRead.Mods.MapGen
             }
             if (Path.GetExtension(source).Equals(".bsp", StringComparison.OrdinalIgnoreCase))
             {
+                if(new FileInfo(source).Length>MapPackageReader.MaxEntryBytes)throw new InvalidDataException("BSP exceeds the map asset limit.");
                 return File.ReadAllBytes(source);
             }
             using ZipArchive archive = ZipFile.OpenRead(source);
@@ -140,8 +141,14 @@ namespace MphRead.Mods.MapGen
                 throw new ProgramException($"{Path.GetFileName(source)} has no map {mapName}. It has: {available}");
             }
             using Stream stream = entry.Open();
+            if(entry.Length>MapPackageReader.MaxEntryBytes)throw new InvalidDataException("BSP exceeds the map asset limit.");
             using var memory = new MemoryStream();
-            stream.CopyTo(memory);
+            byte[] buffer=new byte[65536];int read;
+            while((read=stream.Read(buffer))>0)
+            {
+                if(memory.Length+read>MapPackageReader.MaxEntryBytes)throw new InvalidDataException("BSP exceeds the map asset limit.");
+                memory.Write(buffer,0,read);
+            }
             return memory.ToArray();
         }
 
@@ -173,6 +180,8 @@ namespace MphRead.Mods.MapGen
             for (int i = 0; i < offsets.Length; i++)
             {
                 offsets[i] = (reader.ReadInt32(), reader.ReadInt32());
+                if(offsets[i].offset<0||offsets[i].length<0||(long)offsets[i].offset+offsets[i].length>bytes.Length)
+                    throw new InvalidDataException("Invalid BSP lump bounds.");
             }
             var bsp = new Q3Bsp();
             bsp.Entities = ParseEntities(Encoding.ASCII.GetString(bytes, offsets[0].offset, offsets[0].length));
@@ -219,12 +228,33 @@ namespace MphRead.Mods.MapGen
                 int[] size = new[] { r.ReadInt32(), r.ReadInt32() };
                 return new Q3Face(texture, effect, type, vertex, vertexCount, meshVert, meshVertCount, normal, size);
             });
+            static bool Range(int start,int count,int size)=>start>=0&&count>=0&&(long)start+count<=size;
+            foreach(var brush in bsp.Brushes)
+                if(!Range(brush.FirstSide,brush.SideCount,bsp.BrushSides.Count)||brush.SideCount>128||brush.Texture<0||brush.Texture>=bsp.Textures.Count)
+                    throw new InvalidDataException("Invalid BSP brush references.");
+            foreach(var side in bsp.BrushSides)
+                if(side.Plane<0||side.Plane>=bsp.Planes.Count||side.Texture<0||side.Texture>=bsp.Textures.Count)throw new InvalidDataException("Invalid BSP brush side.");
+            foreach(var model in bsp.Models)
+                if(!Range(model.Face,model.FaceCount,bsp.Faces.Count)||!Range(model.Brush,model.BrushCount,bsp.Brushes.Count))throw new InvalidDataException("Invalid BSP model ranges.");
+            foreach(var face in bsp.Faces)
+            {
+                if(!Range(face.Vertex,face.VertexCount,bsp.Vertices.Count)||!Range(face.MeshVert,face.MeshVertCount,bsp.MeshVerts.Count)
+                    ||face.Texture<0||face.Texture>=bsp.Textures.Count)throw new InvalidDataException("Invalid BSP face references.");
+                if(face.Type==2&&(face.Size[0]<3||face.Size[1]<3||face.Size[0]>129||face.Size[1]>129||(long)face.Size[0]*face.Size[1]>face.VertexCount))
+                    throw new InvalidDataException("Invalid BSP patch dimensions.");
+                for(int i=face.MeshVert;i<face.MeshVert+face.MeshVertCount;i++)
+                    if(bsp.MeshVerts[i]<0||bsp.MeshVerts[i]>=face.VertexCount)throw new InvalidDataException("Invalid BSP mesh vertex index.");
+            }
+            if(bsp.Vertices.Any(v=>v.Position.Concat(v.Surface).Concat(v.Normal).Any(x=>!float.IsFinite(x)))
+                ||bsp.Planes.Any(p=>!float.IsFinite(p.X)||!float.IsFinite(p.Y)||!float.IsFinite(p.Z)||!float.IsFinite(p.Distance)))
+                throw new InvalidDataException("Nonfinite BSP coordinates.");
             return bsp;
         }
 
         private static IReadOnlyList<T> ReadLump<T>(BinaryReader reader, (int offset, int length) lump,
             int size, Func<BinaryReader, T> read)
         {
+            if(lump.length%size!=0)throw new InvalidDataException("BSP lump has a partial record.");
             var results = new List<T>(lump.length / size);
             for (int i = 0; i < lump.length / size; i++)
             {

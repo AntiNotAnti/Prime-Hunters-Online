@@ -73,6 +73,7 @@ namespace MphRead.Mods.MapGen
                 throw new ProgramException($"{Path.GetFileName(path)} is version {version}; this build reads 1.");
             }
             int count = reader.ReadUInt16();
+            if (count > 4096) throw new InvalidDataException("Too many textures in map pack.");
             var entries = new List<Entry>(count);
             for (int i = 0; i < count; i++)
             {
@@ -81,6 +82,11 @@ namespace MphRead.Mods.MapGen
                 ushort height = reader.ReadUInt16();
                 int paletteLength = reader.ReadUInt16();
                 int nameLength = reader.ReadUInt16();
+                if (width is < 8 or > 1024 || height is < 8 or > 1024
+                    || (width & (width - 1)) != 0 || (height & (height - 1)) != 0
+                    || paletteLength is < 1 or > 256 || nameLength > 4096
+                    || (long)nameLength + paletteLength * 2 + (long)width * height > stream.Length - stream.Position)
+                    throw new InvalidDataException("Invalid texture dimensions, palette or truncated texture data.");
                 string name = Encoding.UTF8.GetString(reader.ReadBytes(nameLength));
                 var palette = new ushort[paletteLength];
                 for (int p = 0; p < paletteLength; p++)
@@ -88,6 +94,7 @@ namespace MphRead.Mods.MapGen
                     palette[p] = reader.ReadUInt16();
                 }
                 byte[] pixels = reader.ReadBytes(width * height);
+                if (Array.Exists(pixels, pixel => pixel >= paletteLength)) throw new InvalidDataException("Texture references a missing palette color.");
                 entries.Add(new Entry()
                 {
                     SourceIndex = sourceIndex,
