@@ -261,7 +261,7 @@ namespace MphRead.Mods.Replay
                 Status = ReplayVideoExporter.Status;
                 return false;
             }
-            Status = $"Rendering {next.PresetName.Length == 0 ? "export" : next.PresetName}"
+            Status = $"Rendering {(next.PresetName.Length == 0 ? "export" : next.PresetName)}"
                 + $" · {Pending.Count} queued after this.";
             return true;
         }
