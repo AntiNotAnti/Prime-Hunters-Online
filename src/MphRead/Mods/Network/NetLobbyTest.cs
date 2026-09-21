@@ -53,7 +53,7 @@ namespace MphRead.Mods.Network
 
         private static void ProtocolChecks()
         {
-            Check(NetConfig.ProtocolVersion == 15 && (byte)PacketType.SessionState == 36
+            Check(NetConfig.ProtocolVersion == 16 && (byte)PacketType.SessionState == 36
                 && (byte)PacketType.MapOffer == 32 && (byte)PacketType.MapDone == 35,
                 "combined protocol and non-overlapping map/lobby IDs");
             var state = new SessionStatePacket { Phase = SessionPhase.Starting, Policy = ServerSessionPolicy.Lobby,

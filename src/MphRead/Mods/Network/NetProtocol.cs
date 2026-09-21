@@ -1710,7 +1710,8 @@ namespace MphRead.Mods.Network
         public ushort ShooterLifeId;
         public ushort VictimGeneration;
         public ushort VictimLifeId;
-        public const int Size = 2 + 4 + 4 + 4 + 1 + 1 + 2 + 1 + 12 + 18;
+        public const int Size = 2 + 4 + 4 + 4 + 1 + 1 + 2 + 1 + 12 + 18 + 6;
+        private const float DirectionScale = 16384f;
 
         /// <summary>How many claims one datagram may carry.</summary>
         public const int MaxPerPacket = 6;
@@ -1782,6 +1783,17 @@ namespace MphRead.Mods.Network
         /// near the body it finds there.
         /// </summary>
         public Vector3 HitPoint;
+        /// <summary>
+        /// The exact knockback vector the shooter's collision applied. Compact
+        /// fixed-point matches DamageEvent: weapon impulses are bounded and do
+        /// not need three 32-bit floats on every repeated claim.
+        /// </summary>
+        public Vector3 Direction;
+
+        private static short PackDirection(float value)
+            => (short)Math.Clamp((int)MathF.Round(value * DirectionScale), short.MinValue, short.MaxValue);
+
+        private static float UnpackDirection(short value) => value / DirectionScale;
 
         public void Write(Span<byte> dest)
         {
@@ -1791,6 +1803,9 @@ namespace MphRead.Mods.Network
             BinaryPrimitives.WriteUInt16LittleEndian(dest[43..], ShooterLifeId);
             BinaryPrimitives.WriteUInt16LittleEndian(dest[45..], VictimGeneration);
             BinaryPrimitives.WriteUInt16LittleEndian(dest[47..], VictimLifeId);
+            BinaryPrimitives.WriteInt16LittleEndian(dest[49..], PackDirection(Direction.X));
+            BinaryPrimitives.WriteInt16LittleEndian(dest[51..], PackDirection(Direction.Y));
+            BinaryPrimitives.WriteInt16LittleEndian(dest[53..], PackDirection(Direction.Z));
             BinaryPrimitives.WriteUInt16LittleEndian(dest[0..], ClaimId);
             BinaryPrimitives.WriteUInt32LittleEndian(dest[2..], Frame);
             BinaryPrimitives.WriteUInt32LittleEndian(dest[6..], AckFrame);
@@ -1814,6 +1829,10 @@ namespace MphRead.Mods.Network
                 ShooterLifeId = BinaryPrimitives.ReadUInt16LittleEndian(src[43..]),
                 VictimGeneration = BinaryPrimitives.ReadUInt16LittleEndian(src[45..]),
                 VictimLifeId = BinaryPrimitives.ReadUInt16LittleEndian(src[47..]),
+                Direction = new Vector3(
+                    UnpackDirection(BinaryPrimitives.ReadInt16LittleEndian(src[49..])),
+                    UnpackDirection(BinaryPrimitives.ReadInt16LittleEndian(src[51..])),
+                    UnpackDirection(BinaryPrimitives.ReadInt16LittleEndian(src[53..]))),
                 ClaimId = BinaryPrimitives.ReadUInt16LittleEndian(src[0..]),
                 Frame = BinaryPrimitives.ReadUInt32LittleEndian(src[2..]),
                 AckFrame = BinaryPrimitives.ReadUInt32LittleEndian(src[6..]),
@@ -1885,6 +1904,7 @@ namespace MphRead.Mods.Network
         public const byte ResultDamageLimit = 8;
         public const byte ResultInvalidLaunch = 9;
         public const byte ResultNoDamage = 10;
+        public const byte ResultImpulseLimit = 11;
 
         public ushort ClaimId;
         public byte Result;
@@ -1914,6 +1934,7 @@ namespace MphRead.Mods.Network
                 ResultDamageLimit => "damage exceeds weapon limit",
                 ResultInvalidLaunch => "launch frame follows hit frame",
                 ResultNoDamage => "authority damage rules prevented the hit",
+                ResultImpulseLimit => "impact impulse exceeds weapon limit",
                 ResultApplied => "applied",
                 ResultDuplicate => "already resolved",
                 ResultDeadShooter => "shooter was already dead when it fired",
@@ -2025,8 +2046,12 @@ namespace MphRead.Mods.Network
         /// Version 15 uses SessionState rule bit 7 for the DisablePowerups match
         /// rule. Packet size is unchanged, but v14 readers reject that bit, so
         /// mixed peers must be refused.
+        /// Version 16 appends a compact three-component impact impulse to
+        /// HitClaimPacket. A rescued explosive hit can now preserve the same
+        /// directional momentum as the collision that produced the claim.
+        /// Mixed v15/v16 peers must be refused because claim entry size changed.
         /// </summary>
-        public const int ProtocolVersion = 15;
+        public const int ProtocolVersion = 16;
         /// <summary>
         /// Frames between intent packets. One, so every frame.
         ///

@@ -1,6 +1,6 @@
 # Hit claims, and who decides a kill
 
-Code: `Mods/Network/NetHitClaims.cs`. Hit claims were introduced in protocol 7; the current protocol is defined by `NetConfig.ProtocolVersion` (15 at this audit). The third piece of the same
+Code: `Mods/Network/NetHitClaims.cs`. Hit claims were introduced in protocol 7; the current protocol is defined by `NetConfig.ProtocolVersion` (16 at this audit). The third piece of the same
 machine as [lag compensation](NETWORK-UNLAGGED.md) and
 [instant hit registration](NETWORK-PREDICTION.md), and the one that answers the
 complaint those two leave standing.
@@ -324,3 +324,14 @@ headshots corrected.
 - **Repeats are counted separately on both ends** or the outcomes do not add up
   to what was received, and a line reading `8 received, 1 applied, 2 already
   resolved` looks like five lost claims rather than five repeated ones.
+
+### Impact momentum on rescued hits
+
+Protocol 16 adds the hit's compact impact vector to `HitClaimPacket`. Before
+this, an authority rescue called `TakeDamage` with a null direction: damage,
+death and afflictions were restored, but knockback was silently discarded.
+Missiles and affinity Battlehammer made that especially visible because their
+splash direction is part of movement, not decoration. The shooter now sends the
+exact vector its collision resolved; the authority bounds its magnitude against
+the named weapon's damage-direction metadata before applying it. Non-beam claims
+remain damage-only until they have an equally checkable impulse ceiling.

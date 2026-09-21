@@ -178,3 +178,13 @@ process teardown. Those exits are not counted as successful acceptance runs.
 The harness now waits for OpenAL shutdown and releases its one-shot music
 engine; the final 100- and 500-cycle runs above exited normally. The updater
 canary survived all diagnostic runs, confirming that they skip updater cleanup.
+
+### Hit-flash HUD-model boundary
+
+The directional damage indicator is a 3D HUD model drawn between the world
+material passes and the full-screen composite. That transition now establishes
+its own depth, raster, texture-unit and alpha-blend state instead of inheriting
+the last world draw. `DrawHudDamageModel` also binds the material belonging to
+each enabled mesh and resets current colour to white. This closes the
+intermittent failure where the normally invisible damage model only exposed bad
+GL/material state on the frame a hit enabled one of its directional nodes.

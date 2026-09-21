@@ -164,6 +164,23 @@ namespace MphRead.Mods.Network
                 Check(offset <= 2 ? result == HitVerdictPacket.ResultApplied : result != HitVerdictPacket.ResultApplied,
                     $"InvalidHitClaimIsRefused/offset={offset} result={HitVerdictPacket.Describe(result)}");
             }
+            var impulse = Claim(0, NetSession.NetFrame - 1);
+            impulse.Beam = (byte)BeamType.Missile;
+            impulse.Direction = new Vector3(.3f, .03f, 0);
+            Check((byte)judge.Invoke(null, new object[] { 0, impulse })! == HitVerdictPacket.ResultApplied,
+                "InvalidHitClaimIsRefused/valid missile impulse");
+            impulse.Direction = new Vector3(2f, 0, 0);
+            Check((byte)judge.Invoke(null, new object[] { 0, impulse })! == HitVerdictPacket.ResultImpulseLimit,
+                "InvalidHitClaimIsRefused/forged impulse rejected");
+
+            MethodInfo validImpulse = typeof(NetHitClaims).GetMethod("ValidClaimImpulse",
+                BindingFlags.NonPublic | BindingFlags.Static)!;
+            Check((bool)validImpulse.Invoke(null, new object[]
+                { (byte)BeamType.Battlehammer, Hunter.Weavel, new Vector3(.49f, 0, 0) })!,
+                "InvalidHitClaimIsRefused/affinity Battlehammer impulse accepted");
+            Check(!(bool)validImpulse.Invoke(null, new object[]
+                { (byte)BeamType.Battlehammer, Hunter.Samus, new Vector3(.49f, 0, 0) })!,
+                "InvalidHitClaimIsRefused/non-affinity Battlehammer cannot borrow affinity impulse");
         }
         private static void MutualKillOrdering()
         {

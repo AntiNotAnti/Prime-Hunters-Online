@@ -5076,8 +5076,24 @@ namespace MphRead
 
         private void SetHudLayerUniforms()
         {
+            // DrawHudModels runs inside the world target immediately after the
+            // translucent passes. Treat it as a real pass boundary instead of
+            // inheriting whatever the last world material happened to leave.
+            // The damage indicator is normally invisible, so a poisoned state
+            // here only becomes visible on the first frame a hit enables one
+            // of its nodes -- exactly the intermittent black-flash failure.
             GL.Disable(EnableCap.DepthTest);
+            GL.DepthMask(false);
+            GL.Disable(EnableCap.ScissorTest);
+            GL.Disable(EnableCap.StencilTest);
+            GL.Disable(EnableCap.AlphaTest);
+            GL.Disable(EnableCap.PolygonOffsetFill);
+            GL.ColorMask(true, true, true, true);
+            GL.PolygonMode(TriangleFace.FrontAndBack, OpenTK.Graphics.OpenGL.PolygonMode.Fill);
+            ClearRenderTextures();
             GL.Enable(EnableCap.Blend);
+            GL.BlendEquation(BlendEquationMode.FuncAdd);
+            GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
             Matrix4 identity = Matrix4.Identity;
             GL.UniformMatrix4(_shaderLocations.MatrixStack, transpose: false, ref identity);
             GL.UniformMatrix4(_shaderLocations.ViewInvMatrix, transpose: false, ref identity);
@@ -5105,6 +5121,10 @@ namespace MphRead
                 GL.Enable(EnableCap.CullFace);
                 GL.CullFace(TriangleFace.Back);
             }
+            else
+            {
+                GL.Disable(EnableCap.CullFace);
+            }
             GL.UniformMatrix4(_shaderLocations.ViewMatrix, transpose: false, ref identity);
             var orthoMatrix = Matrix4.CreateOrthographic(Size.X, Size.Y, 0.5f, 1.5f);
             GL.UniformMatrix4(_shaderLocations.ProjectionMatrix, transpose: false, ref orthoMatrix);
@@ -5113,6 +5133,7 @@ namespace MphRead
         private void UnsetHudLayerUniforms()
         {
             GL.Disable(EnableCap.Blend);
+            GL.DepthMask(true);
             GL.Enable(EnableCap.DepthTest);
             GL.UniformMatrix4(_shaderLocations.ViewMatrix, transpose: false, ref _viewMatrix);
             GL.UniformMatrix4(_shaderLocations.ProjectionMatrix, transpose: false, ref _perspectiveMatrix);
@@ -5716,15 +5737,9 @@ namespace MphRead
             Model model = inst.Model;
             UpdateMaterials(model, 0);
             GL.Uniform1(_shaderLocations.MaterialAlpha, 1f);
-            GL.BindTexture(TextureTarget.Texture2D, model.Materials[0].TextureBindingId);
-            int minParameter = (int)TextureMinFilter.Nearest;
-            int magParameter = (int)TextureMagFilter.Nearest;
-            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, minParameter);
-            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, magParameter);
-            GL.TexParameter(TextureTarget.Texture2D,
-                TextureParameterName.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
-            GL.TexParameter(TextureTarget.Texture2D,
-                TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+            // Locator drawing can leave a tinted current colour behind. The
+            // damage model is authored by its texture, not by that tint.
+            GL.Color3(Vector3.One);
             float viewWidth = Size.X;
             float viewHeight = Size.Y;
             float xOffset = -viewWidth / 2;
@@ -5749,12 +5764,30 @@ namespace MphRead
             model.UpdateMatrixStack();
             Array.Copy(model.MatrixStackValues.ToArray(), _hudMatrixStack, model.MatrixStackValues.Count);
             GL.UniformMatrix4(_shaderLocations.MatrixStack, model.NodeMatrixIds.Count, transpose: false, _hudMatrixStack);
+            int bindingId = -1;
             for (int i = 1; i < 9; i++)
             {
                 Node node = inst.Model.Nodes[i];
                 if (node.Enabled)
                 {
                     Mesh mesh = model.Meshes[node.MeshId / 2];
+                    Material material = model.Materials[mesh.MaterialId];
+                    // Do not assume every directional piece uses material 0.
+                    // A wrong texture here is mostly transparent black and only
+                    // appears while a hit has enabled the corresponding node.
+                    if (bindingId != material.TextureBindingId)
+                    {
+                        bindingId = material.TextureBindingId;
+                        GL.BindTexture(TextureTarget.Texture2D, bindingId);
+                        GL.TexParameter(TextureTarget.Texture2D,
+                            TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
+                        GL.TexParameter(TextureTarget.Texture2D,
+                            TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
+                        GL.TexParameter(TextureTarget.Texture2D,
+                            TextureParameterName.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+                        GL.TexParameter(TextureTarget.Texture2D,
+                            TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+                    }
                     GL.CallList(mesh.ListId);
                 }
             }
