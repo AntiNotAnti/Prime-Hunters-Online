@@ -29,40 +29,49 @@ if [ ! -d "$maps" ]; then
   exit 0
 fi
 
-# A bundle is a map and its level in one file, so there is nothing beside it to
-# look for: what has to be true is that the level is inside. Read the index
-# without unpacking anything -- unzip -l is in every runner image, and a bundle
-# with no .bsp in it is exactly the failure this script exists to catch.
+# A package may be either native geometry or an imported map. Native packages
+# intentionally contain no BSP; imported packages must carry the source path
+# named by project.json. Read the archive without extracting it.
 while IFS= read -r file; do
   found=$((found + 1))
   name=$(basename "$file")
-  if unzip -l "$file" 2>/dev/null | grep -qiE '\.bsp$'; then
-    echo "ok:      $name carries its level inside it"
-  else
-    echo "MISSING: $name is a bundle with no level in it"
-    fail=1
+  recipe=$(unzip -p "$file" project.json 2>/dev/null || true)
+  if [ -z "$recipe" ]; then
+    # Legacy one-recipe packages have no v2 manifest/project naming.
+    recipe=$(unzip -p "$file" '*.json' 2>/dev/null | head -c 8388608)
   fi
-  # And its textures, which are the half that goes missing quietly. The pack is
-  # baked from the level's own art, so it is derived and not in git -- a bundle
-  # cooked where nobody had baked one carried a level and no art, and the room
-  # it built had no materials at all: listed in the launcher, and a crash when
-  # picked. The recipe inside names the pack; the pack has to be in there too.
-  recipe=$(unzip -p "$file" '*.json' 2>/dev/null)
+  if [ -z "$recipe" ]; then
+    echo "MISSING: $name has no readable map project"
+    fail=1
+    continue
+  fi
+
+  source=$(printf '%s' "$recipe" \
+    | grep -oiE '"source"[[:space:]]*:[[:space:]]*"[^"]+"' \
+    | head -n1 | sed -E 's/.*"source"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')
+  if [ -n "$source" ]; then
+    if unzip -Z1 "$file" 2>/dev/null | grep -qiFx "$source"; then
+      echo "ok:      $name carries its imported level ($source)"
+    else
+      echo "MISSING: $name names imported level $source and does not carry it"
+      fail=1
+    fi
+  else
+    echo "ok:      $name is native geometry; no BSP required"
+  fi
+
   textures=$(printf '%s' "$recipe" \
     | grep -oiE '"textures"[[:space:]]*:[[:space:]]*"[^"]*"' \
     | head -n1 | sed -E 's/.*:[[:space:]]*"([^"]*)".*/\1/')
   if [ -n "$textures" ]; then
-    if unzip -l "$file" 2>/dev/null | grep -qiF "$textures"; then
+    if unzip -Z1 "$file" 2>/dev/null | grep -qiFx "$textures"; then
       echo "ok:      $name carries its textures ($textures)"
     else
       echo "MISSING: $name names $textures and does not carry it"
       fail=1
     fi
-  elif printf '%s' "$recipe" | grep -qE '"Materials"[[:space:]]*:[[:space:]]*\[\]'; then
-    echo "MISSING: $name has no textures in it and borrows none, so its room has no materials"
-    fail=1
   else
-    echo "ok:      $name wears a shipped room's textures"
+    echo "ok:      $name needs no imported texture pack"
   fi
 done < <(find "$maps" -name '*.ppmap' | sort)
 

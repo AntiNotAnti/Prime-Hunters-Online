@@ -115,7 +115,7 @@ namespace MphRead
     {
         // custom maps are appended to both tables below: a room's ID is its
         // index here, so the two have to grow together and in this order
-        private static readonly IReadOnlyList<string> _roomIds
+        private static IReadOnlyList<string> _roomIds
             = Mods.MapGen.CustomRooms.AppendIds(new List<string>()
             {
                 /*   0 */ "UNIT1_CX",
@@ -267,7 +267,7 @@ namespace MphRead
         // bigeyeroom_Ent.bin, cylinderroom_Ent.bin, Cylinder_C1_Ent.bin
         // nodedata: ctf1_dm1.bin, unit3_Land_dm1_CTF_node.bin, others?
         // FH leftovers: morphBall_Ent.bin, regulator_Ent.bin, survivor_Ent.bin
-        public static readonly IReadOnlyList<RoomMetadata> RoomList
+        public static IReadOnlyList<RoomMetadata> RoomList { get; private set; }
             = Mods.MapGen.CustomRooms.AppendRooms(new List<RoomMetadata>()
         {
             new RoomMetadata(
@@ -4083,7 +4083,7 @@ namespace MphRead
                 firstHunt: true)
         });
 
-        public static readonly FrozenDictionary<string, RoomMetadata> RoomMetadata = RoomList.ToFrozenDictionary(d => d.Name);
+        public static FrozenDictionary<string, RoomMetadata> RoomMetadata { get; private set; } = RoomList.ToFrozenDictionary(d => d.Name);
 
         public static readonly FrozenDictionary<int, string> EncounterNodeDataOverrides = Frozen.Create<int, string>(
         [

@@ -86,6 +86,9 @@ namespace MphRead.Mods.Launcher.Gui
         private static LaunchPlan? _pending;
         private static bool _endMatch;
         private static bool _quit;
+        internal static bool OpenStudioOnStart { get; set; }
+        private static MapGen.MapDefinition? _studioPreview;
+        internal static void PrepareStudioPreview(MapGen.MapDefinition definition) => _studioPreview = definition;
         // While a persistent-lobby client has finished its local room build but
         // the server is still waiting for the other participants, keep the
         // lobby/loading surface over the scene. Revealing only after InMatch
@@ -155,6 +158,8 @@ namespace MphRead.Mods.Launcher.Gui
                 _endMatch = false;
                 _quit = false;
                 _matchLoading = false;
+                _studioPreview = null;
+                OpenStudioOnStart = false;
                 // Both own a worker thread and a bound socket; leaving the
                 // program must not leave either behind.
                 NetSession.Stop();
@@ -382,6 +387,11 @@ namespace MphRead.Mods.Launcher.Gui
                 _front.Reset();
             }
             surface.Show(_front);
+            if (OpenStudioOnStart)
+            {
+                OpenStudioOnStart = false;
+                _front.OpenMapStudio();
+            }
         }
 
         private static void Decided(LaunchPlan plan)
@@ -440,6 +450,12 @@ namespace MphRead.Mods.Launcher.Gui
             _matchLoading = false;
             try
             {
+                MapGen.MapDefinition? preview = _studioPreview;
+                _studioPreview = null;
+                if (preview != null)
+                {
+                    Metadata.RegisterStudioPreview(preview);
+                }
                 if (!MatchStart.Begin(window, _settings, plan))
                 {
                     NetSession.ReportMatchLoadFailed("The map could not be loaded.");

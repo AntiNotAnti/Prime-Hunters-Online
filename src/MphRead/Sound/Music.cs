@@ -31,6 +31,7 @@ namespace MphRead
         public static void SetUserVolume(float volume)
         {
             UserVolume = Math.Clamp(volume, 0, 1);
+            Mods.MapGen.CustomMapMusic.ApplyVolume();
             if (MusicPlayer.State != PlaybackState.Stopped)
             {
                 MusicPlayer.Volume = Volume;
@@ -67,6 +68,7 @@ namespace MphRead
 
         public static void Init()
         {
+            Mods.MapGen.CustomMapMusic.Stop();
             _musicInfo = SoundRead.ReadInterMusicInfo();
             _roomMusic = SoundRead.ReadAssignMusic();
             _pendingTracks = 0;
@@ -149,6 +151,7 @@ namespace MphRead
 
         public static void PlayRoomMusic(int roomId, int track)
         {
+            if (Mods.MapGen.CustomMapMusic.TryPlay(roomId)) return;
             track = Math.Clamp(track, 0, 2);
             for (int i = 0; i < _roomMusic.Count; i++)
             {
@@ -466,6 +469,7 @@ namespace MphRead
             {
                 return;
             }
+            if(Mods.MapGen.CustomMapMusic.Resume()){_paused=false;return;}
             int index = (int)_currentMusicId;
             if (index < 0 || index >= _musicInfo.Count)
             {
@@ -484,6 +488,7 @@ namespace MphRead
         {
             if (!_paused)
             {
+                if(Mods.MapGen.CustomMapMusic.Pause()){_paused=true;return;}
                 Stop();
                 _paused = true;
             }
@@ -491,6 +496,7 @@ namespace MphRead
 
         public static void Stop(float fadeTime = 0)
         {
+            Mods.MapGen.CustomMapMusic.Stop();
             _playing = false;
             _musicQueued = false;
             _nextMusicSeq = SeqId.None;

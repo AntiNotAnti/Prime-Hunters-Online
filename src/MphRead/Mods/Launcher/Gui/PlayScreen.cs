@@ -1532,6 +1532,15 @@ namespace MphRead.Mods.Launcher.Gui
                 return;
             }
             GameMode mode = _modes[_mode!.Index].Mode;
+            var custom = MapGen.CustomRooms.Definitions.FirstOrDefault(d => d.Name == roomKey);
+            string? unsupported = custom == null ? null
+                : MapGen.MapModeValidator.WhyUnsupported(custom, mode, 1 + _bots!.Index);
+            if (unsupported != null)
+            {
+                _note.Text = unsupported;
+                _note.Foreground = GuiTheme.WarmBrush;
+                return;
+            }
             var hunter = (Hunter)Enum.Parse(typeof(Hunter), _hunter!.Value);
             Finish(OfflineLaunch.Create(_settings, roomKey, mode, hunter,
                 _suit?.Index ?? LauncherPrefs.LastColor, _bots!.Index, _skill!.Index));

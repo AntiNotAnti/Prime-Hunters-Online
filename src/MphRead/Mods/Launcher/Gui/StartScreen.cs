@@ -52,6 +52,9 @@ namespace MphRead.Mods.Launcher.Gui
         private bool _updatable;
         private bool _updating;
         private bool _groundShown = true;
+#if MPHREAD_SHELL
+        private bool _returnToMapStudio;
+#endif
         private bool _browsingLobbyHome;
         private readonly DispatcherTimer _lobbyKeeper;
 
@@ -274,6 +277,20 @@ namespace MphRead.Mods.Launcher.Gui
             _hub.SetLobbyActive(false, 0);
             _finished = false;
             Plan = default;
+#if MPHREAD_SHELL
+            // A Map Studio playtest temporarily hides this exact StartScreen.
+            // Keep the editor document and undo stack alive when the match ends.
+            if (_returnToMapStudio)
+            {
+                _returnToMapStudio = false;
+                ShowGround(true);
+                LauncherBackdrop.Set(LauncherBackdropScene.MapEditor);
+                RefreshRooms();
+                _hub.RefreshProfile();
+                RefreshVersionLine();
+                return;
+            }
+#endif
             while (_stack.Count > 0)
             {
                 Pop();
@@ -442,7 +459,7 @@ namespace MphRead.Mods.Launcher.Gui
                     OpenDeployment();
                     break;
                 case HubDestination.MapEditor:
-                    OpenMapEditorPlaceholder();
+                    OpenMapStudio();
                     break;
                 case HubDestination.ReplayStudio:
                     _ = OpenReplayStudio();
@@ -687,14 +704,47 @@ namespace MphRead.Mods.Launcher.Gui
             Push(view);
         }
 
-        private void OpenMapEditorPlaceholder()
+        internal void OpenMapStudio()
         {
+#if MPHREAD_SHELL
+            var view = new MapStudioScreen();
+            view.Closed += (_, _) =>
+            {
+                Pop();
+                RefreshRooms();
+                LauncherBackdrop.Set(LauncherBackdropScene.Home);
+            };
+            view.PlayRequested += (_, definition) =>
+            {
+                // Browsing the hub must not destroy a persistent lobby, but an
+                // offline editor playtest cannot safely share its network session.
+                if (NetSession.Active && NetSession.PersistentLobby)
+                {
+                    view.ShowStatus("Leave the multiplayer lobby before starting a Map Studio playtest.");
+                    return;
+                }
+                _returnToMapStudio = true;
+                Shell.PrepareStudioPreview(definition);
+                Finish(new LaunchPlan
+                {
+                    Kind = LaunchKind.Offline,
+                    RoomKey = definition.Name,
+                    Hunter = Hunter.Samus,
+                    Mode = GameMode.Battle,
+                    Bots = 0,
+                    BotLevel = 5,
+                    PlayerName = "Map author"
+                });
+            };
+            Push(view);
+#else
             var view = new HubPlaceholderView(
                 "MAP EDITOR",
-                "WORKSHOP PLACEHOLDER",
-                "A visual custom-map editor is planned for this hub. This button is intentionally a placeholder for now.");
+                "DESKTOP TOOL",
+                "Map Studio is available in the desktop Project Prime build.");
             view.Closed += (_, _) => Pop();
             Push(view);
+#endif
         }
 
         private void OpenHunterLicense()

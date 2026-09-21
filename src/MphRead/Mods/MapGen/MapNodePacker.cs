@@ -67,7 +67,7 @@ namespace MphRead.Mods.MapGen
         /// quadratic. Past this the spacing is widened instead -- a bot that
         /// navigates a room on 700 waypoints is not improved by 3000.
         /// </summary>
-        private const int MaxNodes = 700;
+        public const int MaxNodes = 700;
 
         private sealed class Node
         {
@@ -76,7 +76,15 @@ namespace MphRead.Mods.MapGen
             public readonly List<int> Neighbours = new List<int>();
         }
 
-        public static (byte[] Bytes, int Nodes, int Edges) Pack(IReadOnlyList<BuiltFace> solid)
+        public static (byte[] Bytes, int Nodes, int Edges) Pack(IReadOnlyList<BuiltFace> solid, IReadOnlyList<MapNavigationLink>? links = null)
+        {
+            var graph = Analyze(solid,links);
+            return (graph.Bytes, graph.Positions.Length, graph.Edges);
+        }
+
+        public sealed record NavigationGraph(byte[] Bytes, Vector3[] Positions, int[][] Neighbours, int[] Components, int Edges);
+
+        public static NavigationGraph Analyze(IReadOnlyList<BuiltFace> solid, IReadOnlyList<MapNavigationLink>? links = null)
         {
             List<Node> fine = Sample(solid, FineSpacing);
             Connect(solid, fine, FineSpacing);
@@ -97,7 +105,28 @@ namespace MphRead.Mods.MapGen
                 }
                 spacing *= 1.4f;
             }
-            int edges = nodes.Sum(n => n.Neighbours.Count) / 2;
+            if(nodes.Count==0||nodes.Count>MaxNodes)throw new MapAuthoringException("FP-MAP-007",nodes.Count==0?"No walkable navigation floor was found.":"Navigation could not fit its 700-node routing budget; simplify disconnected geometry.");
+            if(links!=null)
+                foreach(var link in links)
+                {
+                    int Nearest(float[] point)
+                    {
+                        var p=MapBuilder.ToVector(point);int best=-1;float distance=144;
+                        for(int i=0;i<nodes.Count;i++){float candidate=(nodes[i].Position-p).LengthSquared;if(candidate<distance){best=i;distance=candidate;}}
+                        return best;
+                    }
+                    int from=Nearest(link.From),to=Nearest(link.To);
+                    if(from<0||to<0)throw new MapAuthoringException("FP-MAP-007","Navigation link endpoint is more than 12 units from a walkable node.");
+                    if(from==to)continue;
+                    void ConnectLink(int a,int b)
+                    {
+                        if(nodes[a].Neighbours.Contains(b))return;
+                        if(nodes[a].Neighbours.Count>=MaxNeighbours)throw new MapAuthoringException("FP-MAP-007","Navigation link exceeds a node's route budget.");
+                        nodes[a].Neighbours.Add(b);
+                    }
+                    ConnectLink(from,to);if(link.Bidirectional)ConnectLink(to,from);
+                }
+            int edges = nodes.Sum(n => n.Neighbours.Count);
             if (Environment.GetEnvironmentVariable("FP_NODEDEBUG") != null)
             {
                 Console.WriteLine($"  [nodes] coarse {nodes.Count} nodes, {edges} edges,"
@@ -105,7 +134,23 @@ namespace MphRead.Mods.MapGen
                     + $" degree max {nodes.Max(n => n.Neighbours.Count)},"
                     + $" isolated {nodes.Count(n => n.Neighbours.Count == 0)}");
             }
-            return (Write(nodes, spacing), nodes.Count, edges);
+            int[] components = Enumerable.Repeat(-1, nodes.Count).ToArray();
+            // Region colors describe weak connectivity. Routing remains directed
+            // so a one-way drop never silently becomes a climb.
+            var adjacent=nodes.Select(n=>n.Neighbours.ToHashSet()).ToArray();
+            for(int a=0;a<nodes.Count;a++)foreach(int b in nodes[a].Neighbours)adjacent[b].Add(a);
+            int component = 0;
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                if (components[i] >= 0) continue;
+                var queue = new Queue<int>(); queue.Enqueue(i); components[i] = component;
+                while (queue.TryDequeue(out int current))
+                    foreach (int neighbour in adjacent[current])
+                        if (components[neighbour] < 0) { components[neighbour] = component; queue.Enqueue(neighbour); }
+                component++;
+            }
+            return new(Write(nodes, spacing), nodes.Select(n => n.Position).ToArray(),
+                nodes.Select(n => n.Neighbours.ToArray()).ToArray(), components, edges);
         }
 
         private static int Largest(List<Node> nodes)

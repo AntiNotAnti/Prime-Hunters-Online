@@ -37,6 +37,7 @@ namespace MphRead.Mods.MapGen
             {
                 throw new ProgramException("A map needs at least one solid face.");
             }
+            if(data.Count>=ushort.MaxValue)throw new MapAuthoringException("FP-MAP-003","Collision face budget exceeded.");
             var points = new List<Vector3>();
             var pointIds = new Dictionary<Vector3, ushort>();
             var planes = new List<Vector4>();
@@ -55,13 +56,17 @@ namespace MphRead.Mods.MapGen
                 }
                 if (!planeIds.TryGetValue(editor.Plane, out ushort planeIndex))
                 {
+                    if(planes.Count>=ushort.MaxValue)throw new MapAuthoringException("FP-MAP-003","Collision plane budget exceeded.");
                     planeIndex = (ushort)planes.Count;
                     planes.Add(editor.Plane);
                     planeIds.Add(editor.Plane, planeIndex);
                 }
                 int start = pointIndices.Count;
+                if(start+editor.Points.Count+1>=ushort.MaxValue)throw new MapAuthoringException("FP-MAP-003","Collision point index budget exceeded.");
                 foreach (Vector3 point in editor.Points)
                 {
+                    if(!float.IsFinite(point.X)||!float.IsFinite(point.Y)||!float.IsFinite(point.Z)||Math.Abs(point.X)>=524288||Math.Abs(point.Y)>=524288||Math.Abs(point.Z)>=524288)
+                        throw new MapAuthoringException("FP-MAP-004","Collision coordinates exceed the fixed-point range.");
                     if (!pointIds.TryGetValue(point, out ushort pointIndex))
                     {
                         pointIndex = (ushort)points.Count;
@@ -87,6 +92,7 @@ namespace MphRead.Mods.MapGen
             int partsX = Math.Max(1, (int)MathF.Floor((max.X - min.X) / CellSize) + 1);
             int partsY = Math.Max(1, (int)MathF.Floor((max.Y - min.Y) / CellSize) + 1);
             int partsZ = Math.Max(1, (int)MathF.Floor((max.Z - min.Z) / CellSize) + 1);
+            if((long)partsX*partsY*partsZ>2000000)throw new MapAuthoringException("FP-MAP-003","Collision grid budget exceeded.");
             var cells = new List<ushort>[partsX * partsY * partsZ];
             for (int i = 0; i < data.Count; i++)
             {

@@ -18,6 +18,17 @@ namespace MphRead
 
         private static readonly Dictionary<string, Model> _modelCache = [];
         private static readonly Dictionary<string, Model> _fhModelCache = [];
+        private static readonly List<Model> _retiredRoomModels = [];
+
+        public static void InvalidateRoomModel(string name)
+        {
+            if (_modelCache.Remove(name, out Model? model) && model.Meshes.Any(mesh => mesh.ListId != 0))
+            {
+                // A loaded scene may still draw this snapshot. Keep its lists
+                // reachable until Scene.UnloadGl releases the old GL resources.
+                _retiredRoomModels.Add(model);
+            }
+        }
 
         /// <summary>
         /// Every model held in the caches.
@@ -40,6 +51,7 @@ namespace MphRead
                 {
                     yield return model;
                 }
+                foreach (Model model in _retiredRoomModels) yield return model;
             }
         }
 
@@ -47,6 +59,7 @@ namespace MphRead
         {
             _modelCache.Clear();
             _fhModelCache.Clear();
+            _retiredRoomModels.Clear();
             _effects.Clear();
             _particleDefs.Clear();
         }

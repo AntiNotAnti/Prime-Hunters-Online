@@ -69,6 +69,7 @@ namespace MphRead.Mods.MapGen
                     + $"{String.Join(", ", CustomRooms.Definitions.Select(d => d.Name))}.");
                 return 1;
             }
+            def = MapProjectSerializer.Clone(def);
             BuiltMap map;
             List<BuiltFace> geometry;
             try
