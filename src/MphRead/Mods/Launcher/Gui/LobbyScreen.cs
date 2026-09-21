@@ -677,9 +677,24 @@ namespace MphRead.Mods.Launcher.Gui
                 var names = new List<string>();
                 for (int i = 0; i < roster.Count; i++)
                 {
-                    _players.Children.Add(new LobbyPlayerRow(roster, i, session.OwnerSlot,
-                        showTeam: session.Match.Format != MatchFormat.OneVsOne));
-                    _targetSlots.Add(roster.Slots[i]);
+                    byte slot = roster.Slots[i];
+                    var playerRow = new LobbyPlayerRow(roster, i, session.OwnerSlot,
+                        showTeam: session.Match.Format != MatchFormat.OneVsOne,
+                        selected: slot == selected);
+                    playerRow.Cursor = new Cursor(StandardCursorType.Hand);
+                    playerRow.PointerPressed += (_, e) =>
+                    {
+                        if (!NetSession.LocalIsLobbyOwner) return;
+                        int index = _targetSlots.IndexOf(slot);
+                        if (index >= 0)
+                        {
+                            _target.Index = index;
+                            _shownRosterRevision = null;
+                            e.Handled = true;
+                        }
+                    };
+                    _players.Children.Add(playerRow);
+                    _targetSlots.Add(slot);
                     string team = roster.Teams[i] < 0
                         ? "AUTO"
                         : $"TEAM {(char)('A' + roster.Teams[i])}";
