@@ -294,6 +294,11 @@ namespace MphRead.Mods.Input
             GamepadInput.BeginFrame();
             foreach (StylusZone.Button button in StylusZone.Buttons)
             {
+                // PointerDevice deliberately requires a pen-up to survive a
+                // complete additional sample before re-arming one-shot DS
+                // buttons. Two neutral samples model a genuine lift; one is
+                // reserved for the tablet handoff glitch covered above.
+                Frame(0, 0, false);
                 Frame(0, 0, false);
                 Frame(button.X / StylusZone.DsWidth * 1920, button.Y / StylusZone.DsHeight * StylusZone.Height * 1080, true);
                 PlayerEntity.ProcessInput(keyboard, mouse, false);
@@ -323,6 +328,7 @@ namespace MphRead.Mods.Input
             typeof(PlayerEntity).GetField("<WeaponSelection>k__BackingField",
                 BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(player, BeamType.None);
             Frame(0, 0, false);
+            Frame(0, 0, false);
             var select = Array.Find(StylusZone.Buttons,
                 button => button.Region == StylusRegion.WeaponSelect);
             Frame(select.X / StylusZone.DsWidth * 1920,
@@ -331,6 +337,8 @@ namespace MphRead.Mods.Input
             processTouchInput.Invoke(player, null);
             Require(player.Flags1.TestFlag(PlayerFlags1.WeaponMenuOpen),
                 "stylus SEL opens weapon menu");
+            Frame(select.X / StylusZone.DsWidth * 1920,
+                select.Y / StylusZone.DsHeight * StylusZone.Height * 1080, false);
             Frame(select.X / StylusZone.DsWidth * 1920,
                 select.Y / StylusZone.DsHeight * StylusZone.Height * 1080, false);
             PlayerEntity.ProcessInput(keyboard, mouse, false);
