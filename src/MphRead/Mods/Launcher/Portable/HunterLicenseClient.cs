@@ -41,6 +41,7 @@ namespace MphRead.Mods.Launcher
         };
         private static readonly HashSet<string> OAuthProviders =
             new(StringComparer.OrdinalIgnoreCase) { "google", "github", "discord" };
+        private static AuthSession? _currentSession;
 
         private static string Url =>
             (Environment.GetEnvironmentVariable("PROJECT_PRIME_SUPABASE_URL") ?? DefaultUrl).TrimEnd('/');
@@ -102,13 +103,13 @@ namespace MphRead.Mods.Launcher
                 if (name.Length == 0) name = "Player";
                 Hunter preferred = Hunters.Resolve(LauncherPrefs.LastHunter);
                 int hunter = Math.Clamp((int)preferred, 0, 6);
-                _ = await RpcAsync<JsonElement>(
+                _ = await FunctionAsync<JsonElement>(
                     session.AccessToken,
-                    "project_prime_hunter_license",
+                    "hunter-license",
                     new Dictionary<string, object?>
                     {
-                        ["p_display_name"] = name,
-                        ["p_favorite_hunter"] = hunter
+                        ["display_name"] = name,
+                        ["favorite_hunter"] = hunter
                     },
                     CancellationToken.None).ConfigureAwait(false);
 
@@ -195,13 +196,13 @@ namespace MphRead.Mods.Launcher
                 Hunter preferred = Hunters.Resolve(LauncherPrefs.LastHunter);
                 int hunter = Math.Clamp((int)preferred, 0, 6);
 
-                HunterLicenseSnapshot snapshot = await RpcAsync<HunterLicenseSnapshot>(
+                HunterLicenseSnapshot snapshot = await FunctionAsync<HunterLicenseSnapshot>(
                     session.AccessToken,
-                    "project_prime_hunter_license",
+                    "hunter-license",
                     new Dictionary<string, object?>
                     {
-                        ["p_display_name"] = name,
-                        ["p_favorite_hunter"] = hunter
+                        ["display_name"] = name,
+                        ["favorite_hunter"] = hunter
                     },
                     cancellationToken).ConfigureAwait(false);
 
@@ -214,6 +215,7 @@ namespace MphRead.Mods.Launcher
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"[hunter-license] profile load failed: {ex}");
                 HunterLicenseSnapshot fallback = LocalSnapshot();
                 fallback.Status = FriendlyStatus(ex);
                 return fallback;
@@ -338,6 +340,7 @@ namespace MphRead.Mods.Launcher
                     return HunterLicenseActionResult.Fail("That sign-in did not resolve to a secured license.");
 
                 SaveStoredSession(session.RefreshToken);
+                _currentSession = session;
                 // Same process, different Supabase UUID. A ticket issued for
                 // the empty guest must never follow the recovered license.
                 InvalidateCareerTicket();
@@ -405,6 +408,13 @@ namespace MphRead.Mods.Launcher
 
         private static async Task<AuthSession> AuthenticateAsync(CancellationToken cancellationToken)
         {
+            long refreshBefore = DateTimeOffset.UtcNow.AddMinutes(2).ToUnixTimeSeconds();
+            if (_currentSession is { AccessToken.Length: > 0 } cached
+                && cached.ExpiresAt > refreshBefore)
+            {
+                return cached;
+            }
+
             StoredSession? stored = ReadStoredSession();
             if (stored?.RefreshToken is { Length: > 0 })
             {
@@ -415,6 +425,7 @@ namespace MphRead.Mods.Launcher
                         new Dictionary<string, object?> { ["refresh_token"] = stored.RefreshToken },
                         cancellationToken).ConfigureAwait(false);
                     SaveStoredSession(refreshed.RefreshToken);
+                    _currentSession = refreshed;
                     return refreshed;
                 }
                 catch (SupabaseHttpException ex) when (ex.StatusCode is 400 or 401 or 403)
@@ -432,6 +443,7 @@ namespace MphRead.Mods.Launcher
                 new Dictionary<string, object?> { ["data"] = new Dictionary<string, object?>() },
                 cancellationToken).ConfigureAwait(false);
             SaveStoredSession(created.RefreshToken);
+            _currentSession = created;
             return created;
         }
 
@@ -446,6 +458,8 @@ namespace MphRead.Mods.Launcher
             AuthSession? session = JsonSerializer.Deserialize<AuthSession>(text, Json);
             if (session == null || session.AccessToken.Length == 0 || session.RefreshToken.Length == 0)
                 throw new InvalidOperationException("Supabase Auth returned no session.");
+            if (session.ExpiresAt <= 0 && session.ExpiresIn > 0)
+                session.ExpiresAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + session.ExpiresIn;
             return session;
         }
 
@@ -478,11 +492,11 @@ namespace MphRead.Mods.Launcher
                 ?? throw new InvalidOperationException("Supabase Auth returned no user.");
         }
 
-        private static async Task<T> RpcAsync<T>(
+        private static async Task<T> FunctionAsync<T>(
             string accessToken, string function, object body, CancellationToken cancellationToken)
         {
             using var request = Request(HttpMethod.Post,
-                $"/rest/v1/rpc/{function}", accessToken, body);
+                $"/functions/v1/{function}", accessToken, body);
             using HttpResponseMessage response = await Http.SendAsync(request, cancellationToken)
                 .ConfigureAwait(false);
             string text = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
@@ -557,9 +571,11 @@ namespace MphRead.Mods.Launcher
                     new StoredSession { RefreshToken = refreshToken }, Json));
                 File.Move(temp, SessionPath, overwrite: true);
             }
-            catch
+            catch (Exception ex)
             {
-                // A session that cannot be persisted still works for this run.
+                // The in-memory session still works for this run. Log the
+                // persistence failure so a new guest is not a silent mystery.
+                Console.WriteLine($"[hunter-license] could not persist session: {ex.Message}");
             }
         }
 
@@ -610,7 +626,9 @@ namespace MphRead.Mods.Launcher
                     return "ENABLE SUPABASE ANONYMOUS SIGN-IN";
                 if (http.StatusCode is 401 or 403) return "SUPABASE AUTH REQUIRED";
             }
-            return "OFFLINE // RETRY LATER";
+            string detail = FriendlyAction(ex).ToUpperInvariant();
+            if (detail.Length > 52) detail = detail[..52];
+            return detail.Length == 0 ? "OFFLINE // RETRY LATER" : $"OFFLINE // {detail}";
         }
 
         private static string FriendlyAction(Exception ex)
@@ -641,6 +659,10 @@ namespace MphRead.Mods.Launcher
             public string AccessToken { get; set; } = "";
             [JsonPropertyName("refresh_token")]
             public string RefreshToken { get; set; } = "";
+            [JsonPropertyName("expires_in")]
+            public long ExpiresIn { get; set; }
+            [JsonPropertyName("expires_at")]
+            public long ExpiresAt { get; set; }
             [JsonPropertyName("user")]
             public AuthUser? User { get; set; }
         }
