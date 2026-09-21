@@ -923,7 +923,8 @@ namespace MphRead.Entities
             Vector3 position = Vector3.Lerp(_drawPreviousPosition, _drawCurrentPosition, t);
             Vector3 target = Vector3.Lerp(_drawPreviousTarget, _drawCurrentTarget, t);
             Vector3 up = Vector3.Lerp(_drawPreviousUp, _drawCurrentUp, t);
-            if ((target - position).LengthSquared < 0.000001f || up.LengthSquared < 0.000001f)
+            if (!IsFinite(position) || !IsFinite(target) || !IsFinite(up)
+                || (target - position).LengthSquared < 0.000001f || up.LengthSquared < 0.000001f)
             {
                 return ViewMatrix;
             }
@@ -937,10 +938,33 @@ namespace MphRead.Entities
             return _drawPreviousFov + (_drawCurrentFov - _drawPreviousFov) * t;
         }
 
+        private static bool IsFinite(Vector3 value)
+        {
+            return Single.IsFinite(value.X) && Single.IsFinite(value.Y) && Single.IsFinite(value.Z);
+        }
+
         public void Update()
         {
+            // A room/match handoff can briefly give the camera a coincident target,
+            // a vertical facing vector, or a stale non-finite vector. The old code
+            // divided by the horizontal magnitude unconditionally, which poisoned
+            // the camera basis/ViewMatrix with NaNs and left the whole frame warped
+            // until the room was rebuilt.
+            Vector3 previousFacing = Facing;
+            if (!IsFinite(Position))
+            {
+                Position = IsFinite(PrevPosition) ? PrevPosition : Vector3.Zero;
+            }
             Vector3 toTarget = Target - Position;
-            var camUp = Vector3.Cross(toTarget, Vector3.Cross(UpVector, toTarget));
+            if (!IsFinite(toTarget) || toTarget.LengthSquared < 0.000001f)
+            {
+                Vector3 fallback = IsFinite(previousFacing) && previousFacing.LengthSquared > 0.000001f
+                    ? previousFacing.Normalized()
+                    : -Vector3.UnitZ;
+                Target = Position + fallback;
+                toTarget = fallback;
+            }
+
             // todo: FPS stuff
             if (Shake > 0 && _shake)
             {
@@ -959,13 +983,55 @@ namespace MphRead.Entities
                 }
             }
             _shake = !_shake;
-            Facing = Target - Position;
+
+            toTarget = Target - Position;
+            if (!IsFinite(toTarget) || toTarget.LengthSquared < 0.000001f)
+            {
+                Vector3 fallback = IsFinite(previousFacing) && previousFacing.LengthSquared > 0.000001f
+                    ? previousFacing.Normalized()
+                    : -Vector3.UnitZ;
+                Target = Position + fallback;
+                toTarget = fallback;
+            }
+            Facing = toTarget.Normalized();
+
+            Vector3 referenceUp = IsFinite(UpVector) && UpVector.LengthSquared > 0.000001f
+                ? UpVector.Normalized()
+                : Vector3.UnitY;
+            if (MathF.Abs(Vector3.Dot(Facing, referenceUp)) > 0.999f)
+            {
+                referenceUp = MathF.Abs(Facing.Y) < 0.999f ? Vector3.UnitY : Vector3.UnitZ;
+            }
+            Vector3 right = Vector3.Cross(Facing, referenceUp);
+            if (!IsFinite(right) || right.LengthSquared < 0.000001f)
+            {
+                referenceUp = MathF.Abs(Facing.Z) < 0.999f ? Vector3.UnitZ : Vector3.UnitX;
+                right = Vector3.Cross(Facing, referenceUp);
+            }
+            Vector3 camUp = Vector3.Cross(right, Facing).Normalized();
+
             float facingX = Facing.X;
             float facingZ = Facing.Z;
             float hMag = MathF.Sqrt(facingX * facingX + facingZ * facingZ);
-            Facing = Facing.Normalized();
-            Field48 = facingX / hMag;
-            Field4C = facingZ / hMag;
+            if (hMag > 0.000001f && Single.IsFinite(hMag))
+            {
+                Field48 = facingX / hMag;
+                Field4C = facingZ / hMag;
+            }
+            else
+            {
+                float oldMag = MathF.Sqrt(Field48 * Field48 + Field4C * Field4C);
+                if (oldMag > 0.000001f && Single.IsFinite(oldMag))
+                {
+                    Field48 /= oldMag;
+                    Field4C /= oldMag;
+                }
+                else
+                {
+                    Field48 = 0;
+                    Field4C = -1;
+                }
+            }
             Field50 = Field4C;
             Field54 = -Field48;
             ViewMatrix = Matrix4.LookAt(Position, Target, camUp);

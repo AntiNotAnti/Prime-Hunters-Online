@@ -1196,6 +1196,19 @@ namespace MphRead.Mods.Network
         /// <summary>The two multipliers, as state rather than as an edge.</summary>
         public byte ShotFlags;
 
+        /// <summary>
+        /// Owner-selected player target for a homing shot released with this
+        /// state. Zero preserves the legacy behavior (receiver chooses). When
+        /// bit 7 is set, the low seven bits are authoritative input: zero means
+        /// no homing target, otherwise the value is player slot + 1.
+        ///
+        /// This occupies the state block's existing reserved fourth byte, so
+        /// packet size and the base protocol layout do not change.
+        /// </summary>
+        public byte HomingTarget;
+        public const byte HomingTargetValid = 1 << 7;
+        public const byte HomingTargetMask = 0x7F;
+
         public const byte FlagDoubleDamage = 1 << 0;
         /// <summary>
         /// Whether the sender believes it is the Prime Hunter, which is worth
@@ -1329,7 +1342,7 @@ namespace MphRead.Mods.Network
                 dest[Size] = ChargeLevel;
                 dest[Size + 1] = BoostDamage;
                 dest[Size + 2] = ShotFlags;
-                dest[Size + 3] = 0;
+                dest[Size + 3] = HomingTarget;
             }
         }
 
@@ -1369,7 +1382,8 @@ namespace MphRead.Mods.Network
                 HasState = src.Length >= FullSize,
                 ChargeLevel = src.Length >= FullSize ? src[Size] : (byte)0,
                 BoostDamage = src.Length >= FullSize ? src[Size + 1] : (byte)0,
-                ShotFlags = src.Length >= FullSize ? src[Size + 2] : (byte)0
+                ShotFlags = src.Length >= FullSize ? src[Size + 2] : (byte)0,
+                HomingTarget = src.Length >= FullSize ? src[Size + 3] : (byte)0
             };
         }
     }

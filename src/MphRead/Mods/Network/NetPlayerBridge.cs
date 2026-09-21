@@ -225,6 +225,15 @@ namespace MphRead.Mods.Network
             {
                 _latchedCharge = player.ModChargeLevel;
                 _latchedBoostDamage = player.ModBoostDamage;
+                _latchedHomingTarget = c.Shoot.IsReleased
+                    ? player.ModPickNetworkHomingTarget()
+                    : (byte)0;
+                if (c.Shoot.IsReleased)
+                {
+                    // The owner's visual projectile consumes the same decision
+                    // that is put on the wire for the authority/observers.
+                    player.ModSetPendingHomingTarget(_latchedHomingTarget);
+                }
                 _hasLatch = true;
             }
         }
@@ -235,6 +244,7 @@ namespace MphRead.Mods.Network
         /// </summary>
         private static int _latchedCharge;
         private static int _latchedBoostDamage;
+        private static byte _latchedHomingTarget;
         private static bool _hasLatch;
 
         /// <summary>Local player's controls and aim -> wire intent (client side).</summary>
@@ -317,6 +327,7 @@ namespace MphRead.Mods.Network
                     _hasLatch ? _latchedBoostDamage : player.ModBoostDamage, 0, 255),
                 ShotFlags = (byte)((player.DoubleDamage ? IntentPacket.FlagDoubleDamage : 0)
                     | (player.IsPrimeHunter ? IntentPacket.FlagPrimeHunter : 0)),
+                HomingTarget = _hasLatch ? _latchedHomingTarget : (byte)0,
                 HasState = true,
                 // Which frame of the authority's simulation this player was
                 // looking at while they aimed and fired. The authority rewinds
@@ -529,6 +540,13 @@ namespace MphRead.Mods.Network
             // Only on the authority, like the form above: it is the machine
             // whose copy of this shot decides what it hit, and a client that
             // also acted on it would be correcting a puppet from two sources.
+            if (intent.HasState && intent.HomingTarget != 0
+                && player.SlotIndex != NetHooks.LocalSlot)
+            {
+                // Unlike charge/damage state, this is a one-shot visual/physics
+                // decision that every machine simulating the projectile needs.
+                player.ModSetPendingHomingTarget(intent.HomingTarget);
+            }
             if (intent.HasState && (NetSession.IsAuthority || NetSession.IsHost))
             {
                 player.ModSetShotState(intent.ChargeLevel, intent.BoostDamage,

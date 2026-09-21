@@ -1,5 +1,6 @@
 using System;
 using MphRead.Mods.Multiplayer;
+using MphRead.Mods.Render;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
@@ -1184,12 +1185,11 @@ namespace MphRead.Entities
 
         public void HudEndDisrupted()
         {
-            if (HudDisruptedState != 0)
-            {
-                HudDisruptedState = 0;
-                _hudDisruptedTimer = 0;
-                HudDisruptionFactor = 0;
-            }
+            // Always clear all three pieces. A stale factor/timer with state zero
+            // can otherwise be inherited by a new life during a room handoff.
+            HudDisruptedState = 0;
+            _hudDisruptedTimer = 0;
+            HudDisruptionFactor = 0;
         }
 
         private void UpdateDisruptedState()
@@ -1205,8 +1205,11 @@ namespace MphRead.Entities
             }
             else if (HudDisruptedState == 2)
             {
-                if (--_hudDisruptedTimer == 0)
+                // ushort underflow here used to turn a zero timer into 65535
+                // frames of full-screen distortion.
+                if (_hudDisruptedTimer == 0 || --_hudDisruptedTimer == 0)
                 {
+                    _hudDisruptedTimer = 0;
                     HudDisruptedState = 3;
                 }
             }
@@ -1222,8 +1225,9 @@ namespace MphRead.Entities
             }
             else if (HudDisruptedState != 0)
             {
-                if (--_hudDisruptedTimer == 0)
+                if (_hudDisruptedTimer == 0 || --_hudDisruptedTimer == 0)
                 {
+                    _hudDisruptedTimer = 0;
                     HudDisruptedState = 1;
                 }
             }

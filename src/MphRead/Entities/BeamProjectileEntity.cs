@@ -1447,6 +1447,14 @@ namespace MphRead.Entities
             {
                 return chargePct <= 0 ? unchargedAmt : minChargeAmt + ((fullChargeAmt - minChargeAmt) * chargePct);
             }
+            byte syncedHomingTarget = 0;
+            if (NetSession.Active && charged && weapon.Beam == BeamType.VoltDriver
+                && weapon.Afflictions[1].TestFlag(Affliction.Disrupt) && owner is PlayerEntity homingOwner)
+            {
+                // Consume at the attempt, not after the beam is allocated: a
+                // no-ammo release must not leak its target into the next shot.
+                syncedHomingTarget = homingOwner.ModConsumePendingHomingTarget();
+            }
             int cost = (int)GetAmount(weapon.AmmoCost, weapon.MinChargeCost, weapon.ChargeCost);
             ulong phase = scene.FrameCount;
             bool sharedPhase = false;
@@ -1794,7 +1802,9 @@ namespace MphRead.Entities
                 Debug.Assert(beam.Target == null);
                 if (beam.Flags.TestFlag(BeamFlags.Homing))
                 {
-                    if (CheckHomingTargets(beam, equip, scene))
+                    bool syncedTargetHandled = ApplySyncedPlayerHomingTarget(
+                        beam, equip, scene, syncedHomingTarget);
+                    if (!syncedTargetHandled && CheckHomingTargets(beam, equip, scene))
                     {
                         result |= BeamResultFlags.Homing;
                     }
@@ -1850,8 +1860,121 @@ namespace MphRead.Entities
             EntityType.Platform
         };
 
+        internal static EntityBase? ModFindNonContinuousHomingTarget(EntityBase owner, EquipInfo equip,
+            Vector3 position, Vector3 direction, Scene scene)
+        {
+            if (direction.LengthSquared < 0.000001f)
+            {
+                return null;
+            }
+            Vector3 aim = direction.Normalized();
+            WeaponInfo weapon = equip.Weapon;
+            float tolerance = Fixed.ToFloat(equip.HomingTolerance);
+            float curDiv = tolerance;
+            float range = Fixed.ToFloat(weapon.HomingRange);
+            EntityBase? target = null;
+            for (int i = 0; i < _homingTargetTypes.Count; i++)
+            {
+                EntityType type = _homingTargetTypes[i];
+                if (type == EntityType.EnemyInstance
+                    && (owner.Type == EntityType.EnemyInstance || owner.Type == EntityType.Platform))
+                {
+                    continue;
+                }
+                foreach (EntityBase entity in scene.Entities)
+                {
+                    if (entity.Type != type || entity == owner || !entity.GetTargetable())
+                    {
+                        continue;
+                    }
+                    bool tryTarget = false;
+                    if (type == EntityType.Player)
+                    {
+                        var player = (PlayerEntity)entity;
+                        tryTarget = owner.Type != EntityType.Player
+                            || !TeamRules.AreAllies(player.TeamIndex, ((PlayerEntity)owner).TeamIndex);
+                    }
+                    else if (type == EntityType.Halfturret)
+                    {
+                        var halfturret = (HalfturretEntity)entity;
+                        tryTarget = owner.Type != EntityType.Player
+                            || halfturret.Owner != owner
+                            && !TeamRules.AreAllies(halfturret.Owner.TeamIndex, ((PlayerEntity)owner).TeamIndex);
+                    }
+                    else if (type == EntityType.EnemyInstance)
+                    {
+                        EnemyFlags flags = ((EnemyInstanceEntity)entity).Flags;
+                        tryTarget = flags.TestFlag(EnemyFlags.CollideBeam)
+                            && !flags.TestFlag(EnemyFlags.NoHomingNc);
+                    }
+                    else if (type == EntityType.Platform)
+                    {
+                        tryTarget = ((PlatformEntity)entity).Flags.TestFlag(PlatformFlags.BeamTarget);
+                    }
+                    else
+                    {
+                        tryTarget = true;
+                    }
+                    if (!tryTarget)
+                    {
+                        continue;
+                    }
+                    entity.GetPosition(out Vector3 targetPosition);
+                    Vector3 between = targetPosition - position;
+                    float distSqr = between.LengthSquared;
+                    if (distSqr <= 0 || distSqr > range * range)
+                    {
+                        continue;
+                    }
+                    float div = Vector3.Dot(between, aim) / MathF.Sqrt(distSqr);
+                    if (div >= curDiv)
+                    {
+                        curDiv = div;
+                        target = entity;
+                    }
+                }
+            }
+            return target;
+        }
+
+        private static bool ApplySyncedPlayerHomingTarget(BeamProjectileEntity beam, EquipInfo equip,
+            Scene scene, byte encodedTarget)
+        {
+            if ((encodedTarget & IntentPacket.HomingTargetValid) == 0)
+            {
+                return false;
+            }
+
+            // A valid marker with no slot means the owner saw no target.
+            int slot = (encodedTarget & IntentPacket.HomingTargetMask) - 1;
+            if (slot < 0)
+            {
+                beam.Target = null;
+                return true;
+            }
+
+            // Do not trust a client-supplied slot by itself. Re-run the normal
+            // selector in the authority's rewound world and only accept the
+            // owner's identity when that world independently considers the
+            // same player the best eligible target. A disagreement suppresses
+            // homing instead of silently bending toward a different player.
+            EntityBase? candidate = ModFindNonContinuousHomingTarget(
+                beam.Owner!, equip, beam.Position, beam.Velocity, scene);
+            beam.Target = candidate is PlayerEntity player && player.SlotIndex == slot
+                ? candidate
+                : null;
+            return true;
+        }
+
         private static bool CheckHomingTargets(BeamProjectileEntity beam, EquipInfo equip, Scene scene)
         {
+            if (!beam.Flags.TestFlag(BeamFlags.Continuous))
+            {
+                beam.Target = ModFindNonContinuousHomingTarget(
+                    beam.Owner!, equip, beam.Position, beam.Velocity, scene);
+                return false;
+            }
+
             bool result = false;
             WeaponInfo weapon = equip.Weapon;
             Debug.Assert(beam.Owner != null);
