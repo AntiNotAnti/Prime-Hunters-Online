@@ -159,7 +159,11 @@ namespace MphRead.Mods.Network
                 using (var reader = DemoReader.Open(extracted))
                 {
                     Require(reader?.Metadata?.Type == ReplayType.Clip && reader.DurationFrames == 120, "clip metadata");
-                    Require(reader!.Metadata!.Events.Count == 3 && reader.Metadata.Events[0].Frame == 0, "clip event rebase");
+                    Require(reader!.Metadata!.Events.Count == 4
+                        && reader.Metadata.Events[0].Frame == 0
+                        && reader.Metadata.Events.Any(e =>
+                            e.Type == ReplayEventType.WeaponFired && e.Frame == 30),
+                        "clip event rebase");
                     Require(reader.ReadNext()?.Frame == 0, "clip frame rebase");
                 }
                 string interrupted = Path.Combine(directory, "interrupted.ppdemo");
