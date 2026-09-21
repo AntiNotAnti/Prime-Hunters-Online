@@ -73,6 +73,8 @@ namespace MphRead
         public int MatrixStackCount { get; set; }
         public float[] MatrixStack { get; }
         public Vector4? OverrideColor { get; set; }
+        public bool TexturedPlayerSkin { get; set; }
+        public Vector4? PlayerOutlineColor { get; set; }
         public Vector4? PaletteOverride { get; set; }
         public Vector3[] Points { get; set; }
         // number of segments for morph ball trail, or total for other multi-segment trails
