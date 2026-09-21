@@ -772,6 +772,8 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 MouseButton.Right => RawInputModifiers.RightMouseButton,
                 MouseButton.Middle => RawInputModifiers.MiddleMouseButton,
+                MouseButton.XButton1 => RawInputModifiers.XButton1MouseButton,
+                MouseButton.XButton2 => RawInputModifiers.XButton2MouseButton,
                 _ => RawInputModifiers.LeftMouseButton
             };
             if (down)

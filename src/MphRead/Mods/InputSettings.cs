@@ -240,6 +240,8 @@ namespace MphRead.Mods
                         MouseButton.Left => "Mouse left",
                         MouseButton.Right => "Mouse right",
                         MouseButton.Middle => "Mouse middle",
+                        MouseButton.Button4 => "Mouse 4 (side)",
+                        MouseButton.Button5 => "Mouse 5 (side)",
                         _ => $"Mouse {(int)bind.MouseButton + 1}"
                     };
                 case ButtonType.ScrollUp:

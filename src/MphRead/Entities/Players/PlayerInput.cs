@@ -1685,11 +1685,15 @@ namespace MphRead.Entities
                     }
                     if (_abilities.TestFlag(AbilityFlags.Boost) && AttachedEnemy == null)
                     {
-                        // A whip of the mouse is the same gesture from the
-                        // desktop's end -- nothing else reads a mouse delta
-                        // in the ball -- and it asks for the boost through
-                        // the same one-shot. See Mods.Input.MouseFlick.
-                        ModCheckMouseFlick();
+                        // melonPrimeDS keeps its normal Zoom input live in Samus' ball:
+                        // right-click (or the controller's Zoom action) becomes the
+                        // native charge-and-release boost. Keep the dedicated Boost bind
+                        // too, so existing keyboard/controller layouts remain additive.
+                        bool buttonBoost = Controls.Boost.IsDown || Controls.Zoom.IsDown;
+                        // A whip of the mouse or desktop stylus is the same gesture from
+                        // the pointer's end and asks for the boost through the same
+                        // one-shot. See Mods.Input.MouseFlick.
+                        ModCheckMouseFlick(buttonBoost);
                         // A touch platform's swipe gesture is a flick, not a
                         // hold-and-release: it forces a full charge straight
                         // into the release branch below instead of building
@@ -1759,7 +1763,7 @@ namespace MphRead.Entities
                         }
                         SwipeBoostX = 0;
                         SwipeBoostY = 0;
-                        if (Controls.Boost.IsDown && !swipeBoost)
+                        if (buttonBoost && !swipeBoost)
                         {
                             // the game plays the boost charge SFX here, but that SFX is empty
                             if (_boostCharge < Values.BoostChargeMax * 2) // todo: FPS stuff
