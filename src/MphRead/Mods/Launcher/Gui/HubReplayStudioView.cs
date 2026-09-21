@@ -11,6 +11,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using MphRead.Mods.Network;
 using MphRead.Mods.Replay;
 
@@ -28,7 +29,11 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly TextBlock _title;
         private readonly TextBlock _metadata;
         private readonly TextBlock _status;
+        private readonly TextBlock _summary;
         private readonly Image _preview = new() { Stretch = Stretch.UniformToFill };
+        private readonly DeckField _search;
+        private readonly ChoiceRow _filter;
+        private readonly ChoiceRow _sort;
         private readonly DeckField _rename;
         private readonly HubNavButton _watch;
         private readonly HubNavButton _favorite;
@@ -43,11 +48,26 @@ namespace MphRead.Mods.Launcher.Gui
             new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, ReplayVirtualClipDocument> _virtual =
             new(StringComparer.OrdinalIgnoreCase);
+        private readonly List<ReplayLibraryEntry> _entries = new();
+        private readonly DispatcherTimer _previewTimer;
 
         private Bitmap? _bitmap;
+        private string[] _previewPaths = Array.Empty<string>();
+        private int _previewIndex;
         private string _backdropRoom = "";
         private string? _selected;
         private string? _deleteArmed;
+
+        private readonly record struct ReplayLibraryEntry(
+            string Path,
+            string Title,
+            string Detail,
+            DateTime Recorded,
+            uint DurationFrames,
+            bool IsClip,
+            bool Favorite,
+            bool Recoverable,
+            string SearchText);
 
         public event EventHandler? Closed;
         public event EventHandler<LaunchPlan>? Launched;
@@ -69,8 +89,38 @@ namespace MphRead.Mods.Launcher.Gui
             root.Children.Add(HubChrome.Header(
                 "HOME  /  REPLAY STUDIO",
                 "REPLAY STUDIO",
-                "Browse recordings and clips, inspect their health, then open the cinematic editor.",
+                "Find the moment you want, inspect it, then open the cinematic editor.",
                 "LOCAL LIBRARY"));
+
+            _search = new DeckField("", widthEms: 0,
+                watermark: "Search name, map, mode, player, annotation...");
+            _filter = new ChoiceRow("Show",
+                new[] { "All", "Full replays", "Clips", "Favorites", "Needs recovery" }, 0);
+            _sort = new ChoiceRow("Sort",
+                new[] { "Newest", "Oldest", "Name", "Longest" }, 0);
+            _summary = new TextBlock
+            {
+                FontFamily = HubTheme.Data,
+                FontSize = 8.5,
+                Foreground = HubTheme.TextDimBrush,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
+            _search.Box.TextChanged += (_, _) => Populate(_selected);
+            _filter.Changed += (_, _) => Populate(_selected);
+            _sort.Changed += (_, _) => Populate(_selected);
+
+            _previewTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(1100)
+            };
+            _previewTimer.Tick += (_, _) =>
+            {
+                if (_previewPaths.Length <= 1)
+                    return;
+                _previewIndex = (_previewIndex + 1) % _previewPaths.Length;
+                ShowPreview();
+            };
 
             _list.SelectionChanged += (_, row) =>
             {
@@ -86,13 +136,35 @@ namespace MphRead.Mods.Launcher.Gui
                 }
             };
 
+            var libraryControls = new Grid
+            {
+                ColumnDefinitions = new ColumnDefinitions("1.45*,*,*"),
+                ColumnSpacing = 8
+            };
+            libraryControls.Children.Add(_search);
+            Grid.SetColumn(_filter, 1);
+            libraryControls.Children.Add(_filter);
+            Grid.SetColumn(_sort, 2);
+            libraryControls.Children.Add(_sort);
+
+            var library = new Grid
+            {
+                RowDefinitions = new RowDefinitions("Auto,Auto,*"),
+                RowSpacing = 8
+            };
+            library.Children.Add(libraryControls);
+            Grid.SetRow(_summary, 1);
+            library.Children.Add(_summary);
+            Grid.SetRow(_list, 2);
+            library.Children.Add(_list);
+
             var listPanel = new Border
             {
                 Background = HubTheme.PanelBrush,
                 BorderBrush = HubTheme.EdgeBrush,
                 BorderThickness = new Thickness(1),
                 Padding = new Thickness(8),
-                Child = _list
+                Child = library
             };
 
             var detailStack = new StackPanel
@@ -249,8 +321,11 @@ namespace MphRead.Mods.Launcher.Gui
             root.Children.Add(footer);
             Content = root;
             AttachedToVisualTree += (_, _) =>
+            {
                 LauncherBackdrop.Set(LauncherBackdropScene.ReplayStudio,
                     _backdropRoom.Length > 0 ? _backdropRoom : null);
+                _previewTimer.Start();
+            };
 
             SizeChanged += (_, e) =>
             {
@@ -272,6 +347,7 @@ namespace MphRead.Mods.Launcher.Gui
         protected override void OnDetachedFromVisualTree(
             VisualTreeAttachmentEventArgs e)
         {
+            _previewTimer.Stop();
             _bitmap?.Dispose();
             _bitmap = null;
             base.OnDetachedFromVisualTree(e);
@@ -283,6 +359,14 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 e.Handled = true;
                 Closed?.Invoke(this, EventArgs.Empty);
+                return;
+            }
+            if (e.Key == Key.F
+                && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+            {
+                e.Handled = true;
+                _search.Box.Focus();
+                _search.Box.SelectAll();
                 return;
             }
             base.OnKeyDown(e);
@@ -319,20 +403,36 @@ namespace MphRead.Mods.Launcher.Gui
 
         private void Reload(string? preserve = null)
         {
-            _list.Clear();
             _recordings.Clear();
             _virtual.Clear();
+            _entries.Clear();
 
             IReadOnlyList<DemoRecording> demos = DemoLibrary.List();
+            var demoByPath = demos.ToDictionary(demo => demo.Path,
+                StringComparer.OrdinalIgnoreCase);
+
             foreach (DemoRecording demo in demos)
             {
                 _recordings[demo.Path] = demo;
-                _list.Add(new UiListRow(
-                    (demo.Favorite ? "★ " : "") + demo.DisplayName,
-                    DemoLibrary.Describe(demo))
-                {
-                    Choice = demo.Path
-                }, _ => Select(demo.Path));
+                bool clip = demo.Metadata?.Type == ReplayType.Clip
+                    || demo.FileName.Contains("_clip_", StringComparison.OrdinalIgnoreCase);
+                bool recoverable = demo.Path.EndsWith(".part",
+                        StringComparison.OrdinalIgnoreCase)
+                    || demo.Compatibility == ReplayOpenResult.Truncated;
+                string people = demo.Metadata == null ? ""
+                    : String.Join(" ", demo.Metadata.Players.Select(player => player.Name));
+                string mode = demo.Metadata?.Mode.ToString() ?? "";
+                string annotations = AnnotationSearchText(demo.Path);
+                _entries.Add(new ReplayLibraryEntry(
+                    demo.Path,
+                    demo.DisplayName,
+                    DemoLibrary.Describe(demo),
+                    demo.Recorded,
+                    demo.DurationFrames,
+                    clip,
+                    demo.Favorite,
+                    recoverable,
+                    $"{demo.DisplayName} {demo.Room} {mode} {people} {annotations} {demo.FileName}"));
             }
 
             foreach (string path in ReplayVirtualClips.List())
@@ -341,32 +441,104 @@ namespace MphRead.Mods.Launcher.Gui
                         out ReplayVirtualClipDocument? clip) || clip == null)
                     continue;
                 _virtual[path] = clip;
-                string duration = ReplayHud.Time(clip.EndFrame - clip.StartFrame);
-                _list.Add(new UiListRow(
-                    (ReplayVirtualClips.IsFavorite(path) ? "★ " : "") + clip.Name,
-                    $"virtual clip / {duration}")
-                {
-                    Choice = path
-                }, _ => Select(path));
+                demoByPath.TryGetValue(clip.SourceReplay, out DemoRecording source);
+                string room = source.Path != null ? source.Room : "";
+                string people = source.Metadata == null ? ""
+                    : String.Join(" ", source.Metadata.Players.Select(player => player.Name));
+                string mode = source.Metadata?.Mode.ToString() ?? "";
+                uint duration = clip.EndFrame - clip.StartFrame;
+                _entries.Add(new ReplayLibraryEntry(
+                    path,
+                    clip.Name,
+                    $"virtual clip / {ReplayHud.Time(duration)}",
+                    clip.CreatedUtc.ToLocalTime(),
+                    duration,
+                    IsClip: true,
+                    ReplayVirtualClips.IsFavorite(path),
+                    Recoverable: false,
+                    $"{clip.Name} {room} {mode} {people} "
+                        + $"{AnnotationSearchText(path)} {Path.GetFileName(clip.SourceReplay)}"));
             }
 
-            if (demos.Count == 0 && _virtual.Count == 0)
+            Populate(preserve ?? _selected);
+        }
+
+        private void Populate(string? preserve = null)
+        {
+            string query = _search.Value.Trim();
+            IEnumerable<ReplayLibraryEntry> filtered = _entries;
+            if (query.Length > 0)
             {
-                _list.AddNote("No recordings yet. Record a match or import a replay.",
+                filtered = filtered.Where(entry =>
+                    entry.SearchText.Contains(query, StringComparison.OrdinalIgnoreCase));
+            }
+
+            filtered = _filter.Index switch
+            {
+                1 => filtered.Where(entry => !entry.IsClip),
+                2 => filtered.Where(entry => entry.IsClip),
+                3 => filtered.Where(entry => entry.Favorite),
+                4 => filtered.Where(entry => entry.Recoverable),
+                _ => filtered
+            };
+            filtered = _sort.Index switch
+            {
+                1 => filtered.OrderBy(entry => entry.Recorded),
+                2 => filtered.OrderBy(entry => entry.Title,
+                    StringComparer.OrdinalIgnoreCase),
+                3 => filtered.OrderByDescending(entry => entry.DurationFrames),
+                _ => filtered.OrderByDescending(entry => entry.Recorded)
+            };
+            ReplayLibraryEntry[] shown = filtered.ToArray();
+
+            _list.Clear();
+            foreach (ReplayLibraryEntry entry in shown)
+            {
+                _list.Add(new UiListRow(
+                    (entry.Favorite ? "★ " : "") + entry.Title,
+                    entry.Detail)
+                {
+                    Choice = entry.Path
+                }, _ => Select(entry.Path));
+            }
+
+            if (shown.Length == 0)
+            {
+                _summary.Text = _entries.Count == 0
+                    ? "EMPTY LIBRARY"
+                    : $"0 OF {_entries.Count} ITEMS";
+                _list.AddNote(_entries.Count == 0
+                    ? "No recordings yet. Record a match or import a replay."
+                    : "No replays match the current search and filters.",
                     HubTheme.TextDim);
                 Select(null);
                 return;
             }
 
-            if (preserve != null)
-            {
-                _list.SelectTag(preserve);
-                Select(preserve);
-            }
-            else
-            {
-                _list.FocusFirst();
-            }
+            string? selected = preserve != null
+                && shown.Any(entry => String.Equals(entry.Path, preserve,
+                    StringComparison.OrdinalIgnoreCase))
+                    ? preserve : shown[0].Path;
+            _summary.Text = $"{shown.Length} OF {_entries.Count} ITEMS  /  "
+                + $"{shown.Count(entry => entry.Favorite)} FAVORITES";
+            _list.SelectTag(selected);
+            Select(selected);
+        }
+
+        private static string AnnotationSearchText(string path)
+            => String.Join(" ", ReplayAnnotations.Bookmarks(path)
+                .Select(bookmark => bookmark.Name)
+                .Concat(ReplayAnnotations.Highlights(path)
+                    .Select(highlight => highlight.Name)));
+
+        private static string AnnotationSummary(string path)
+        {
+            int bookmarks = ReplayAnnotations.Bookmarks(path).Count;
+            int highlights = ReplayAnnotations.Highlights(path).Count;
+            if (bookmarks == 0 && highlights == 0)
+                return "";
+            return $"\n{bookmarks} bookmark{(bookmarks == 1 ? "" : "s")} / "
+                + $"{highlights} named highlight{(highlights == 1 ? "" : "s")}";
         }
 
         private void Select(string? path)
@@ -381,6 +553,7 @@ namespace MphRead.Mods.Launcher.Gui
                 _title.Text = "NO REPLAY SELECTED";
                 _metadata.Text = "Record a match or import a replay to begin.";
                 _rename.Value = "";
+                _favorite.Label = "FAVORITE";
                 _watch.IsEnabled = false;
                 SetActionState(false, interrupted: false);
                 SetPreview(null);
@@ -400,8 +573,11 @@ namespace MphRead.Mods.Launcher.Gui
                 _metadata.Text =
                     $"VIRTUAL CLIP  /  {ReplayHud.Time(clip.EndFrame - clip.StartFrame)}\n"
                     + $"{ReplayHud.Time(clip.StartFrame)} – {ReplayHud.Time(clip.EndFrame)}\n"
-                    + $"SOURCE  {Path.GetFileName(clip.SourceReplay)}";
-                SetPreview(RoomForSource(clip.SourceReplay));
+                    + $"SOURCE  {Path.GetFileName(clip.SourceReplay)}"
+                    + AnnotationSummary(path);
+                _favorite.Label = ReplayVirtualClips.IsFavorite(path)
+                    ? "UNFAVORITE" : "FAVORITE";
+                SetPreview(RoomForSource(clip.SourceReplay), clip.SourceReplay);
                 return;
             }
 
@@ -410,8 +586,10 @@ namespace MphRead.Mods.Launcher.Gui
                 _title.Text = demo.DisplayName.ToUpperInvariant();
                 _rename.Value = demo.DisplayName;
                 _metadata.Text = $"{DemoLibrary.Describe(demo)}\n"
-                    + DemoLibrary.Details(demo);
-                SetPreview(demo.Room);
+                    + DemoLibrary.Details(demo)
+                    + AnnotationSummary(path);
+                _favorite.Label = demo.Favorite ? "UNFAVORITE" : "FAVORITE";
+                SetPreview(demo.Room, demo.Path);
                 return;
             }
 
@@ -420,7 +598,8 @@ namespace MphRead.Mods.Launcher.Gui
             _metadata.Text = interrupted
                 ? "INTERRUPTED RECORDING\nRecover this file before playback."
                 : path;
-            SetPreview(null);
+            _favorite.Label = "FAVORITE";
+            SetPreview(null, path);
         }
 
         private void SetActionState(bool selected, bool interrupted)
@@ -437,34 +616,61 @@ namespace MphRead.Mods.Launcher.Gui
         }
 
         private string? RoomForSource(string source)
-        {
-            DemoRecording demo = DemoLibrary.List().FirstOrDefault(d =>
-                String.Equals(d.Path, source, StringComparison.OrdinalIgnoreCase));
-            return demo.Path != null ? demo.Room : null;
-        }
+            => _recordings.TryGetValue(source, out DemoRecording demo)
+                ? demo.Room : null;
 
-        private void SetPreview(string? room)
+        private void SetPreview(string? room, string? replay = null)
         {
             _preview.Source = null;
             _bitmap?.Dispose();
             _bitmap = null;
+            _previewIndex = 0;
+            _previewPaths = Array.Empty<string>();
             _backdropRoom = room?.Trim() ?? "";
             LauncherBackdrop.Set(LauncherBackdropScene.ReplayStudio,
                 _backdropRoom.Length > 0 ? _backdropRoom : null);
-            if (_backdropRoom.Length == 0)
+
+            if (!String.IsNullOrWhiteSpace(replay))
+                _previewPaths = ReplayVideoExporter.Thumbnails(replay);
+
+            if (_previewPaths.Length == 0 && _backdropRoom.Length > 0)
+            {
+                try
+                {
+                    string fallback = ThumbnailGenerator.PathFor(_backdropRoom);
+                    if (File.Exists(fallback))
+                        _previewPaths = new[] { fallback };
+                }
+                catch
+                {
+                    // Replay metadata remains useful even without a thumbnail.
+                }
+            }
+            ShowPreview();
+        }
+
+        private void ShowPreview()
+        {
+            _preview.Source = null;
+            _bitmap?.Dispose();
+            _bitmap = null;
+            if (_previewPaths.Length == 0)
                 return;
-            room = _backdropRoom;
+
             try
             {
-                string path = ThumbnailGenerator.PathFor(room);
-                if (File.Exists(path))
-                    _bitmap = new Bitmap(path);
+                string path = _previewPaths[
+                    Math.Clamp(_previewIndex, 0, _previewPaths.Length - 1)];
+                using var stream = new MemoryStream(File.ReadAllBytes(path));
+                _bitmap = new Bitmap(stream);
+                _preview.Source = _bitmap;
             }
-            catch
+            catch (Exception ex) when (
+                ex is IOException or UnauthorizedAccessException
+                or ArgumentException)
             {
-                // Replay metadata remains useful even without a thumbnail.
+                // A partially written still should not take down the library.
             }
-            _preview.Source = _bitmap;
         }
 
         private void Rename()

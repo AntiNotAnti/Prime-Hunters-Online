@@ -70,6 +70,16 @@ namespace MphRead.Mods.Network
                     "objective highlight");
                 Console.WriteLine("[replaycheck] studio: analytics and highlight derivation passed");
 
+                Require(MphRead.Mods.KillCam.IsRecentFinalKill(120, 120),
+                    "same-frame final kill was not eligible");
+                Require(MphRead.Mods.KillCam.IsRecentFinalKill(120, 120 + 8 * 60),
+                    "final kill window excluded its boundary");
+                Require(!MphRead.Mods.KillCam.IsRecentFinalKill(120, 120 + 8 * 60 + 1),
+                    "stale kill was accepted as final");
+                Require(!MphRead.Mods.KillCam.IsRecentFinalKill(121, 120),
+                    "future kill frame was accepted as final");
+                Console.WriteLine("[replaycheck] kill cam: final-kill eligibility passed");
+
                 var bindings = new PadBindingState();
                 bindings.SetSlot(PadAction.ReplayPlayPause, 0, GamepadButtons.A,
                     GamepadButtons.LeftBumper);

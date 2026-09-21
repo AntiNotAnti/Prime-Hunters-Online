@@ -1849,6 +1849,7 @@ namespace MphRead
                 // here is counted in frames. Mods.Network.NetHitClaims.
                 Mods.Network.NetHitClaims.Tick();
                 Mods.Network.NetHooks.AfterSimulation();
+                Mods.KillCam.AfterSimulation(this);
 
                 // Capture completed simulation transforms once, after network
                 // reconciliation. Draws between this step and the next may

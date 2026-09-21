@@ -752,6 +752,60 @@ namespace MphRead.Entities
             // camtodo
         }
 
+        public void UpdateKillCamera(PlayerEntity killer, float elapsedSeconds,
+            bool cinematic)
+        {
+            CameraType = CameraType.Third2;
+            CameraInfo.PrevPosition = CameraInfo.Position;
+
+            if (!cinematic)
+            {
+                CameraInfo.Position = killer.CameraInfo.Position;
+                CameraInfo.Target = killer.CameraInfo.Target;
+                CameraInfo.UpVector = killer.CameraInfo.UpVector;
+                CameraInfo.Shake = 0;
+                CameraInfo.Fov = killer.CameraInfo.Fov > 0
+                    ? killer.CameraInfo.Fov : Fixed.ToFloat(Values.NormalFov) * 2;
+                CameraInfo.Update();
+                CameraInfo.NodeRef = _scene.UpdateNodeRef(
+                    killer.NodeRef, killer.Position, CameraInfo.Position);
+                return;
+            }
+
+            Vector3 forward = killer.FacingVector;
+            forward.Y = 0;
+            forward = forward.LengthSquared < 0.0001f
+                ? Vector3.UnitZ : forward.Normalized();
+            Vector3 right = Vector3.Cross(Vector3.UnitY, forward);
+            right = right.LengthSquared < 0.0001f
+                ? Vector3.UnitX : right.Normalized();
+
+            bool compact = killer.IsAltForm || killer.IsMorphing || killer.IsUnmorphing;
+            Vector3 focus = killer.Position.AddY(compact ? 0.65f : 1.25f);
+            float sweep = MathF.Sin(MathF.Min(elapsedSeconds, 3f) * 0.9f) * 0.8f;
+            Vector3 desired = focus
+                - forward * (compact ? 4.6f : 4.0f)
+                + right * (1.15f + sweep)
+                + Vector3.UnitY * (compact ? 1.1f : 1.35f);
+
+            CameraInfo.Target = focus + forward * 0.55f;
+            CameraInfo.Position = desired;
+            CollisionResult result = default;
+            if (CollisionDetection.CheckBetweenPoints(focus, desired,
+                TestFlags.Players, _scene, ref result))
+            {
+                Vector3 between = desired - focus;
+                CameraInfo.Position = focus + between * result.Distance
+                    + result.Plane.Xyz * 0.05f;
+            }
+            CameraInfo.UpVector = Vector3.UnitY;
+            CameraInfo.Shake = 0;
+            CameraInfo.Fov = Fixed.ToFloat(Values.NormalFov) * 2;
+            CameraInfo.Update();
+            CameraInfo.NodeRef = _scene.UpdateNodeRef(
+                killer.NodeRef, killer.Position, CameraInfo.Position);
+        }
+
         public void SetUpMatchEndCamera()
         {
             _field70 = CameraInfo.Field48;

@@ -99,6 +99,7 @@ namespace MphRead.Mods.Network
                     Event(ReplayEventType.PlayerDeath, slot, state.AttackerSlot);
                     if (state.AttackerSlot < RosterPacket.MaxSlots && state.AttackerSlot != slot)
                         Event(ReplayEventType.Kill, state.AttackerSlot, slot);
+                    MphRead.Mods.KillCam.NoteDeath(slot, state.AttackerSlot, NetSession.NetFrame);
                 }
                 if (old.DamageEventId != state.DamageEventId) Event(ReplayEventType.Damage, state.AttackerSlot, slot,
                     Math.Max(0, old.Health - state.Health));

@@ -1379,6 +1379,14 @@ namespace MphRead.Entities
             // comment below gives about that one: a vote is asked during a
             // running match and answered from wherever the player is looking.
             ModDrawVote();
+            ModDrawKillCam();
+            if (Mods.KillCam.IsPersonal)
+            {
+                // The camera is looking through the killer, not the dead
+                // player's visor. Keep chat and the kill-cam banner, but no
+                // stale weapon/health HUD from the victim underneath it.
+                return;
+            }
             // With the chat and before every early return below it, for the
             // same reason: the results screen is drawn during MatchState
             // GameOver *and* Ending, and the block further down handles those
@@ -1548,7 +1556,7 @@ namespace MphRead.Entities
 
         public void DrawHudModels()
         {
-            if (Mods.ThumbnailMode.Active)
+            if (Mods.ThumbnailMode.Active || Mods.KillCam.IsPersonal)
             {
                 return;
             }
