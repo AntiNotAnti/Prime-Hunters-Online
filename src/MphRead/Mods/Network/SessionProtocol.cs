@@ -13,6 +13,7 @@ namespace MphRead.Mods.Network
         public ServerSessionPolicy Policy;
         public ushort Revision, MatchId;
         public byte OwnerSlot, MaxPlayers, ExpectedParticipants, LoadedParticipants;
+        public ushort StartCountdownMilliseconds;
         public SessionRules RuleFlags;
         public MatchDefinition Match;
         public MatchWorldProfile WorldProfile;
@@ -32,6 +33,7 @@ namespace MphRead.Mods.Network
             BinaryPrimitives.WriteUInt16LittleEndian(dest[12..], Match.PointGoal);
             BinaryPrimitives.WriteUInt16LittleEndian(dest[14..], (ushort)(RuleFlags | Match.Rules));
             dest[16] = ExpectedParticipants; dest[17] = LoadedParticipants;
+            BinaryPrimitives.WriteUInt16LittleEndian(dest[18..], StartCountdownMilliseconds);
             dest[20] = Match.CustomTeams.TeamCount; dest[21] = Match.CustomTeams.TeamA;
             dest[22] = Match.CustomTeams.TeamB; dest[23] = Match.CustomTeams.TeamC; dest[24] = Match.CustomTeams.TeamD;
             dest[25] = WorldProfile.EntityLayerPlayers; dest[26] = (byte)WorldProfile.Resources;
@@ -58,6 +60,7 @@ namespace MphRead.Mods.Network
                 AuthorityEpoch = BinaryPrimitives.ReadUInt64LittleEndian(src[(Size - 8)..]),
                 OwnerSlot = src[6], MaxPlayers = src[7], RuleFlags = flags,
                 ExpectedParticipants = src[16], LoadedParticipants = src[17],
+                StartCountdownMilliseconds = BinaryPrimitives.ReadUInt16LittleEndian(src[18..]),
                 WorldProfile = new MatchWorldProfile(src[25], (ResourceSpawnProfile)src[26]),
                 Match = new MatchDefinition
                 {

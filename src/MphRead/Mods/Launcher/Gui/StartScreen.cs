@@ -52,6 +52,8 @@ namespace MphRead.Mods.Launcher.Gui
         private bool _updatable;
         private bool _updating;
         private bool _groundShown = true;
+        private bool _browsingLobbyHome;
+        private readonly DispatcherTimer _lobbyKeeper;
 
         /// <summary>What the screen decided. Kind None means it was closed.</summary>
         public LaunchPlan Plan { get; private set; }
@@ -88,7 +90,20 @@ namespace MphRead.Mods.Launcher.Gui
             // the UI overhaul independent from launch/network behaviour.
             _hub = new HubHomeView();
             _hub.NavigateRequested += NavigateHub;
+            _hub.ReturnToLobbyRequested += ReturnToLobby;
             _menu = _hub;
+
+            // A lobby is a network session, not a screen lifetime. Keep its
+            // control plane alive while the player browses Settings, Replays
+            // or the hub itself, otherwise detaching LobbyScreen also stops
+            // the only lobby pump and the session silently times out.
+            _lobbyKeeper = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(50)
+            };
+            _lobbyKeeper.Tick += (_, _) => MaintainLobby();
+            AttachedToVisualTree += (_, _) => _lobbyKeeper.Start();
+            DetachedFromVisualTree += (_, _) => _lobbyKeeper.Stop();
             root.Children.Add(_menu);
 
             _version = new TextBlock
@@ -230,6 +245,13 @@ namespace MphRead.Mods.Launcher.Gui
 
         protected override void OnKeyDown(KeyEventArgs e)
         {
+            if (e.Key == Key.Escape && _browsingLobbyHome && _lobby != null
+                && _stack.Count > 0 && ReferenceEquals(_stack[^1], _lobby))
+            {
+                ReturnToLobby();
+                e.Handled = true;
+                return;
+            }
             if (e.Key == Key.Escape && _stack.Count == 0)
             {
                 AskToQuit();
@@ -248,6 +270,8 @@ namespace MphRead.Mods.Launcher.Gui
         {
             _lobby?.Suspend();
             _lobby = null;
+            _browsingLobbyHome = false;
+            _hub.SetLobbyActive(false, 0);
             _finished = false;
             Plan = default;
             while (_stack.Count > 0)
@@ -279,7 +303,13 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 return false;
             }
-            if (_stack[^1] is LobbyScreen lobby) lobby.Leave("");
+            if (_stack[^1] is LobbyScreen lobby)
+            {
+                if (_browsingLobbyHome && ReferenceEquals(lobby, _lobby))
+                    ReturnToLobby();
+                else
+                    lobby.Leave("");
+            }
             else Pop();
             return true;
         }
@@ -342,19 +372,41 @@ namespace MphRead.Mods.Launcher.Gui
                 _stack.RemoveAt(_stack.Count - 1);
             }
             _overlay.Children.Clear();
+            if (_browsingLobbyHome && _lobby != null && _stack.Count > 0
+                && ReferenceEquals(_stack[^1], _lobby))
+            {
+                ShowHubSurface();
+                return;
+            }
+            ShowTopOrHub();
+        }
+
+        private void ShowTopOrHub()
+        {
+            _overlay.Children.Clear();
             if (_stack.Count > 0)
             {
                 Control top = _stack[^1];
                 _overlay.Children.Add(top);
+                _overlay.IsVisible = true;
+                _menu.IsVisible = false;
+                _versionBox.IsVisible = false;
                 HubMotion.Enter(top, lift: -6);
                 Dispatcher.UIThread.Post(() => top.Focus(), DispatcherPriority.Background);
                 return;
             }
+            ShowHubSurface();
+        }
+
+        private void ShowHubSurface()
+        {
+            _overlay.Children.Clear();
             _overlay.IsVisible = false;
             _menu.IsVisible = true;
             _versionBox.IsVisible = true;
             ShowGround(true);
             LauncherBackdrop.Set(LauncherBackdropScene.Home);
+            _hub.SetLobbyActive(_lobby != null && NetSession.Active, LobbyPlayerCount());
             _hub.RefreshProfile();
             RefreshVersionLine();
             HubMotion.Enter(_hub, lift: -6);
@@ -377,6 +429,13 @@ namespace MphRead.Mods.Launcher.Gui
 
         private void NavigateHub(HubDestination destination)
         {
+            // PLAY while a lobby is parked means "go back to the session", not
+            // "open a second networking stack on top of the first one".
+            if (_browsingLobbyHome && _lobby != null && destination == HubDestination.Play)
+            {
+                ReturnToLobby();
+                return;
+            }
             switch (destination)
             {
                 case HubDestination.Play:
@@ -495,21 +554,115 @@ namespace MphRead.Mods.Launcher.Gui
         {
             if (NetSession.Active && NetSession.PersistentLobby)
             {
+                _browsingLobbyHome = false;
                 _lobby = new LobbyScreen(_rooms, plan.Lobby);
-                _lobby.MatchRequested += (_, match) => MatchRequested?.Invoke(this, match);
-                _lobby.Closed += (_, reason) =>
+                _lobby.HubRequested += (_, _) => ShowHubFromLobby();
+                _lobby.MatchRequested += (_, match) =>
                 {
-                    _lobby = null; Pop();
-                    if (_stack.Count > 0)
-                    {
-                        if (_stack[^1] is PlayScreen play) play.SessionEnded(reason);
-                        else if (_stack[^1] is HubMultiplayerView multiplayer)
-                            multiplayer.SessionEnded(reason);
-                    }
+                    ShowLobbyForMatchStart();
+                    MatchRequested?.Invoke(this, match);
                 };
+                _lobby.Closed += (_, reason) => LobbyClosed(reason);
+                _hub.SetLobbyActive(true, LobbyPlayerCount());
                 Push(_lobby);
             }
             else Finish(plan);
+        }
+
+        private int LobbyPlayerCount() =>
+            _lobby != null && NetSession.Active ? NetSession.LobbyRoster().Count : 0;
+
+        private bool LobbyIsForeground =>
+            _lobby != null && _overlay.IsVisible && _stack.Count > 0
+                && ReferenceEquals(_stack[^1], _lobby);
+
+        private void MaintainLobby()
+        {
+            if (_lobby == null || _finished || NetSession.IsPlaying) return;
+
+            if (!LobbyIsForeground)
+                _lobby.BackgroundTick();
+            else if (_lobby.IsSuspended && NetSession.IsStarting)
+                _lobby.RefreshStartPresentation();
+
+            if (_lobby != null)
+                _hub.SetLobbyActive(NetSession.Active, LobbyPlayerCount());
+        }
+
+        private void ShowHubFromLobby()
+        {
+            if (_lobby == null || !NetSession.Active) return;
+            _browsingLobbyHome = true;
+            _lobby.Suspend();
+            ShowHubSurface();
+        }
+
+        private void ReturnToLobby()
+        {
+            if (_lobby == null || !_stack.Contains(_lobby)) return;
+            int index = _stack.IndexOf(_lobby);
+            if (index >= 0 && index + 1 < _stack.Count)
+                _stack.RemoveRange(index + 1, _stack.Count - index - 1);
+
+            _browsingLobbyHome = false;
+            _overlay.Children.Clear();
+            _overlay.Children.Add(_lobby);
+            _overlay.IsVisible = true;
+            _menu.IsVisible = false;
+            _versionBox.IsVisible = false;
+            _lobby.Resume();
+            _hub.SetLobbyActive(true, LobbyPlayerCount());
+            HubMotion.Enter(_lobby, lift: -6);
+            Dispatcher.UIThread.Post(() => _lobby?.Focus(), DispatcherPriority.Background);
+        }
+
+        private void ShowLobbyForMatchStart()
+        {
+            if (_lobby == null || !_stack.Contains(_lobby)) return;
+            int index = _stack.IndexOf(_lobby);
+            if (index + 1 < _stack.Count)
+                _stack.RemoveRange(index + 1, _stack.Count - index - 1);
+
+            _browsingLobbyHome = false;
+            _overlay.Children.Clear();
+            _overlay.Children.Add(_lobby);
+            _overlay.IsVisible = true;
+            _menu.IsVisible = false;
+            _versionBox.IsVisible = false;
+            // RequestMatchLoadIfNeeded suspended the lobby timer before raising
+            // the event. Keep it suspended while the synchronous scene build
+            // runs; StartScreen's keeper refreshes the countdown presentation.
+            _hub.SetLobbyActive(true, LobbyPlayerCount());
+        }
+
+        private void LobbyClosed(string reason)
+        {
+            LobbyScreen? lobby = _lobby;
+            if (lobby == null) return;
+
+            bool wasTop = _stack.Count > 0 && ReferenceEquals(_stack[^1], lobby);
+            bool homeWasVisible = _browsingLobbyHome && !_overlay.IsVisible;
+            _stack.Remove(lobby);
+            _lobby = null;
+            _browsingLobbyHome = false;
+            _hub.SetLobbyActive(false, 0);
+
+            if (wasTop || homeWasVisible)
+                ShowTopOrHub();
+
+            for (int i = _stack.Count - 1; i >= 0; i--)
+            {
+                if (_stack[i] is PlayScreen play)
+                {
+                    play.SessionEnded(reason);
+                    break;
+                }
+                if (_stack[i] is HubMultiplayerView multiplayer)
+                {
+                    multiplayer.SessionEnded(reason);
+                    break;
+                }
+            }
         }
 
         private Task OpenSettings()

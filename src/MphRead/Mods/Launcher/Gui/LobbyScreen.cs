@@ -43,6 +43,7 @@ namespace MphRead.Mods.Launcher.Gui
         };
 
         public event EventHandler<LaunchPlan>? MatchRequested;
+        public event EventHandler? HubRequested;
         public event EventHandler<string>? Closed;
 
         private readonly DispatcherTimer _timer;
@@ -52,6 +53,9 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly StackPanel _ownerControls = new() { Spacing = 2 };
         private readonly Note _status = new("");
         private readonly Note _chat = new("", lines: 0);
+        private readonly Border _startOverlay;
+        private readonly TextBlock _startCountdown;
+        private readonly TextBlock _startDetail;
         private readonly ScrollViewer _chatHistory;
         private readonly ChoiceRow _hunter, _suit, _team, _mode, _format;
         private readonly ChoiceRow _target;
@@ -74,7 +78,7 @@ namespace MphRead.Mods.Launcher.Gui
             BorderBrush = HubTheme.EdgeBrush,
             VerticalContentAlignment = VerticalAlignment.Center
         };
-        private readonly HubNavButton _leave, _ready, _start;
+        private readonly HubNavButton _leave, _mainMenu, _ready, _start;
         private readonly HubNavButton _closeLobby, _transferButton, _kickButton;
         private readonly HubNavButton[] _teamAssign = new HubNavButton[5];
         private readonly Image _preview = new() { Height = 124, Stretch = Stretch.UniformToFill };
@@ -90,7 +94,7 @@ namespace MphRead.Mods.Launcher.Gui
         private string _draftRoom = "";
         private string _teamChoiceKey = "";
         private TeamLayout _customLayout = new(2, 2, 2);
-        private bool _syncing, _suspended, _closed, _draftDirty, _closingLobby, _startAfterSave;
+        private bool _syncing, _suspended, _closed, _draftDirty, _closingLobby, _startAfterSave, _matchRequestIssued;
         private double _draftChangedAt;
         private Bitmap? _bitmap;
 
@@ -341,6 +345,12 @@ namespace MphRead.Mods.Launcher.Gui
             ControllerNav.Identify(_leave, "lobby.leave", initial: true);
             actions.Children.Add(_leave);
 
+            _mainMenu = ActionButton("MAIN MENU",
+                () => HubRequested?.Invoke(this, EventArgs.Empty),
+                accent: HubTheme.Accent);
+            ControllerNav.Identify(_mainMenu, "lobby.menu");
+            actions.Children.Add(_mainMenu);
+
             _ready = ActionButton("READY", () =>
             {
                 if (NetSession.LocalSlot >= 0)
@@ -355,8 +365,10 @@ namespace MphRead.Mods.Launcher.Gui
             ControllerNav.Identify(_start, "lobby.start");
             actions.Children.Add(_start);
 
-            _leave.SetValue(ControllerNav.NavRightProperty, "lobby.ready");
-            _ready.SetValue(ControllerNav.NavLeftProperty, "lobby.leave");
+            _leave.SetValue(ControllerNav.NavRightProperty, "lobby.menu");
+            _mainMenu.SetValue(ControllerNav.NavLeftProperty, "lobby.leave");
+            _mainMenu.SetValue(ControllerNav.NavRightProperty, "lobby.ready");
+            _ready.SetValue(ControllerNav.NavLeftProperty, "lobby.menu");
             _ready.SetValue(ControllerNav.NavRightProperty, "lobby.start");
             _start.SetValue(ControllerNav.NavLeftProperty, "lobby.ready");
 
@@ -482,6 +494,45 @@ namespace MphRead.Mods.Launcher.Gui
             backdrop.Children.Add(frame);
             _mainPage = backdrop;
             _root.Children.Add(_mainPage);
+
+            _startCountdown = new TextBlock
+            {
+                Text = "...",
+                FontFamily = HubTheme.DataBold,
+                FontSize = 52,
+                Foreground = HubTheme.TextBrush,
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+            _startDetail = new TextBlock
+            {
+                Text = "PREPARING MATCH",
+                FontFamily = HubTheme.Ui,
+                FontWeight = FontWeight.SemiBold,
+                FontSize = 11,
+                Foreground = HubTheme.AccentBrush,
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+            var startPanel = new StackPanel
+            {
+                Spacing = 5,
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+            startPanel.Children.Add(_startCountdown);
+            startPanel.Children.Add(_startDetail);
+            _startOverlay = new Border
+            {
+                IsVisible = false,
+                IsHitTestVisible = false,
+                Background = HubTheme.InkBrush,
+                BorderBrush = HubTheme.AccentBrush,
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(34, 20),
+                MinWidth = 300,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = startPanel
+            };
+            _root.Children.Add(_startOverlay);
             Content = _root;
 
             _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.0 / 30) };
@@ -576,6 +627,7 @@ namespace MphRead.Mods.Launcher.Gui
         public void Resume()
         {
             _suspended = false;
+            if (NetSession.IsInLobby) _matchRequestIssued = false;
             _shownRevision = null;
             _timer.Start();
         }
@@ -584,6 +636,22 @@ namespace MphRead.Mods.Launcher.Gui
         {
             _suspended = true;
             _timer.Stop();
+        }
+
+        internal bool IsSuspended => _suspended;
+
+        internal void BackgroundTick()
+        {
+            if (_closed) return;
+            NetSession.Pump();
+            if (!CheckConnection()) return;
+            RequestMatchLoadIfNeeded();
+        }
+
+        internal void RefreshStartPresentation()
+        {
+            if (!_closed && NetSession.ServerSession != null)
+                Refresh();
         }
 
         public void Leave(string reason)
@@ -601,15 +669,7 @@ namespace MphRead.Mods.Launcher.Gui
         {
             if (_suspended || _closed) return;
             NetSession.Pump();
-            if (NetSession.Refused || NetSession.SessionTimedOut || !NetSession.Active)
-            {
-                Leave(_closingLobby && !NetSession.Active
-                    ? "Lobby closed."
-                    : NetSession.Refused
-                        ? NetSession.RefusedReason.Describe("Server")
-                        : "The connection to the server was lost.");
-                return;
-            }
+            if (!CheckConnection()) return;
             Refresh();
             if (_closingLobby && !NetSession.LobbyCommandPending
                 && NetSession.LobbyMessage.Length > 0)
@@ -631,26 +691,40 @@ namespace MphRead.Mods.Launcher.Gui
                     NetSession.SendLobbyCommand(LobbyCommandType.StartMatch);
                 }
             }
-            if (NetSession.ShouldLoadMatch)
+            RequestMatchLoadIfNeeded();
+        }
+
+        private bool CheckConnection()
+        {
+            if (!NetSession.Refused && !NetSession.SessionTimedOut && NetSession.Active)
+                return true;
+
+            Leave(_closingLobby && !NetSession.Active
+                ? "Lobby closed."
+                : NetSession.Refused
+                    ? NetSession.RefusedReason.Describe("Server")
+                    : "The connection to the server was lost.");
+            return false;
+        }
+
+        private void RequestMatchLoadIfNeeded()
+        {
+            if (_matchRequestIssued || !NetSession.ShouldLoadMatch) return;
+            _matchRequestIssued = true;
+            _startAfterSave = false;
+            _status.Text = "Loading match... waiting for all players.";
+            _ready.IsEnabled = false;
+            _start.IsEnabled = false;
+            Suspend();
+            MatchDefinition match = NetSession.ActiveMatchDefinition!.Value;
+            MatchRequested?.Invoke(this, new LaunchPlan
             {
-                // Leave a meaningful frame on screen while the synchronous map
-                // build runs. Shell keeps this surface up until the server's
-                // all-clients-loaded barrier releases the match.
-                _startAfterSave = false;
-                _status.Text = "Loading match... waiting for all players.";
-                _ready.IsEnabled = false;
-                _start.IsEnabled = false;
-                Suspend();
-                MatchDefinition match = NetSession.ActiveMatchDefinition!.Value;
-                MatchRequested?.Invoke(this, new LaunchPlan
-                {
-                    Kind = LaunchKind.Online,
-                    Hunter = NetSession.LocalHunter,
-                    PlayerName = NetSession.PlayerName,
-                    RoomKey = match.RoomKey,
-                    Mode = match.Mode
-                });
-            }
+                Kind = LaunchKind.Online,
+                Hunter = NetSession.LocalHunter,
+                PlayerName = NetSession.PlayerName,
+                RoomKey = match.RoomKey,
+                Mode = match.Mode
+            });
         }
 
         private void Refresh()
@@ -741,6 +815,7 @@ namespace MphRead.Mods.Launcher.Gui
             bool chooseTeams = PlayerChoosesTeam(session.Match);
             RefreshTeamOrganizer(session, roster, activeLayout, chooseTeams);
             _hunter.IsEnabled = _suit.IsEnabled = NetSession.IsInLobby && !NetSession.LobbyCommandPending;
+            _mainMenu.IsEnabled = NetSession.IsInLobby;
             _team.IsEnabled = chooseTeams && _hunter.IsEnabled
                 && (!session.LockTeams || NetSession.LocalIsLobbyOwner);
 
@@ -764,26 +839,31 @@ namespace MphRead.Mods.Launcher.Gui
             bool showStart = _start.IsVisible;
             if (session.RequireReady)
             {
-                _leave.SetValue(ControllerNav.NavRightProperty, "lobby.ready");
-                _ready.SetValue(ControllerNav.NavLeftProperty, "lobby.leave");
+                _leave.SetValue(ControllerNav.NavRightProperty, "lobby.menu");
+                _mainMenu.SetValue(ControllerNav.NavRightProperty, "lobby.ready");
+                _ready.SetValue(ControllerNav.NavLeftProperty, "lobby.menu");
                 _ready.SetValue(ControllerNav.NavRightProperty,
                     showStart ? "lobby.start" : "lobby.leave");
                 _start.SetValue(ControllerNav.NavLeftProperty, "lobby.ready");
             }
             else
             {
-                _leave.SetValue(ControllerNav.NavRightProperty,
+                _leave.SetValue(ControllerNav.NavRightProperty, "lobby.menu");
+                _mainMenu.SetValue(ControllerNav.NavRightProperty,
                     showStart ? "lobby.start" : "lobby.leave");
-                _start.SetValue(ControllerNav.NavLeftProperty, "lobby.leave");
+                _start.SetValue(ControllerNav.NavLeftProperty, "lobby.menu");
             }
 
+            RefreshStartOverlay(session);
             _status.Text = NetSession.ConnectionLost
                 ? "Connection lost, retrying..."
                 : NetSession.LobbyMessage.Length > 0
                     ? NetSession.LobbyMessage
                     : session.Phase == SessionPhase.Lobby
                         ? reason
-                        : "Waiting for players to finish loading...";
+                        : NetSession.StartCountdownRemainingSeconds > 0
+                            ? $"Match starts in {Math.Max(1, (int)Math.Ceiling(NetSession.StartCountdownRemainingSeconds))}..."
+                            : $"{CountParticipants(session.LoadedParticipants)}/{CountParticipants(session.ExpectedParticipants)} players loaded...";
 
             if (_chatRevision != NetChat.Revision)
             {
@@ -794,6 +874,39 @@ namespace MphRead.Mods.Launcher.Gui
 
             _syncing = false;
             RefreshDraft();
+        }
+
+        private void RefreshStartOverlay(SessionStatePacket session)
+        {
+            bool starting = session.Phase == SessionPhase.Starting;
+            _startOverlay.IsVisible = starting;
+            if (!starting) return;
+
+            int loaded = CountParticipants(session.LoadedParticipants);
+            int expected = CountParticipants(session.ExpectedParticipants);
+            double remaining = NetSession.StartCountdownRemainingSeconds;
+            if (remaining > 0)
+            {
+                _startCountdown.Text = Math.Max(1, (int)Math.Ceiling(remaining))
+                    .ToString(CultureInfo.InvariantCulture);
+                _startDetail.Text = "MATCH STARTING";
+            }
+            else
+            {
+                _startCountdown.Text = "...";
+                _startDetail.Text = $"PREPARING MATCH  //  {loaded}/{expected} PLAYERS LOADED";
+            }
+        }
+
+        private static int CountParticipants(byte mask)
+        {
+            int count = 0;
+            while (mask != 0)
+            {
+                count += mask & 1;
+                mask >>= 1;
+            }
+            return count;
         }
 
         private void Identify()
