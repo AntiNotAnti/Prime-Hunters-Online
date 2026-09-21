@@ -511,7 +511,7 @@ namespace MphRead.Mods.Launcher.Gui
     }
 
     /// <summary>A label and something to type in.</summary>
-    internal sealed class FieldRow : Panel
+    internal sealed class FieldRow : Grid
     {
         private readonly TextBlock _caption;
         public TextBox Box { get; }
@@ -529,22 +529,27 @@ namespace MphRead.Mods.Launcher.Gui
         }
 
         /// <param name="compact">
-        /// A bare box in a bar rather than a labelled row in a column: 21
-        /// points tall, which is what the layout this is a port of gives the
-        /// two fields over its server list.
+        /// A short labelled field for dense bars. Both forms use real grid
+        /// columns so a long caption can never paint underneath the input box.
         /// </param>
         public FieldRow(string label, string value, double boxWidth = 150,
             bool compact = false)
         {
-            Height = compact ? 21 : 36;
+            Height = compact ? 24 : 36;
+            ColumnDefinitions = compact
+                ? new ColumnDefinitions("Auto,Auto")
+                : new ColumnDefinitions("*,Auto");
+            ColumnSpacing = compact ? 6 : 10;
+
             _caption = new TextBlock
             {
                 Text = label,
                 FontFamily = GuiTheme.Display,
-                FontSize = 13,
+                FontSize = compact ? 11 : 13,
                 Foreground = GuiTheme.TextDimBrush,
                 VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Left,
+                TextTrimming = TextTrimming.CharacterEllipsis,
                 Margin = new Thickness(4, 0, 0, 0)
             };
             // Colours are left to the Fluent dark theme rather than set here:
@@ -555,8 +560,8 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 Text = value,
                 Width = boxWidth,
-                Height = compact ? 21 : Double.NaN,
-                MinHeight = compact ? 21 : 0,
+                Height = compact ? 24 : Double.NaN,
+                MinHeight = compact ? 24 : 0,
                 FontFamily = GuiTheme.Display,
                 FontSize = compact ? 11 : 13,
                 CornerRadius = new CornerRadius(4),
@@ -565,10 +570,10 @@ namespace MphRead.Mods.Launcher.Gui
                     : new Thickness(8, 4, 8, 4),
                 VerticalContentAlignment = VerticalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
-                HorizontalAlignment = compact
-                    ? HorizontalAlignment.Left : HorizontalAlignment.Right
+                HorizontalAlignment = HorizontalAlignment.Right
             };
             Children.Add(_caption);
+            Grid.SetColumn(Box, 1);
             Children.Add(Box);
         }
     }
