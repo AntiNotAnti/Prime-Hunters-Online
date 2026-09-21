@@ -30,6 +30,7 @@ namespace MphRead.Mods.Network
                 LayoutChecks();
                 ClientStateChecks();
                 Scenario();
+                ReadyOptionalScenario();
                 AbandonedLobbyScenario();
                 HostedOwnerDepartureScenario();
                 HostedOwnerTransferScenario();
@@ -389,6 +390,31 @@ namespace MphRead.Mods.Network
             a.Dispose(); rig.Clients.Remove(a);
             rig.Wait(() => b.State!.Value.OwnerSlot == b.Slot, "oldest peer becomes owner");
             b.Rebind(); rig.Stable(); Check(b.Slot == slotB && b.State.Value.OwnerSlot == slotB, "owner rebind keeps identity and slot");
+        }
+
+        private static void ReadyOptionalScenario()
+        {
+            using var rig = new Rig();
+            Client owner = rig.Add(130);
+            Client other = rig.Add(131);
+
+            var config = owner.State!.Value;
+            config.RuleFlags &= ~SessionRules.RequireReady;
+            rig.Expect(owner, owner.Command(LobbyCommandType.UpdateMatch, config: config),
+                LobbyResultCode.Ok);
+            Check(owner.State!.Value.RequireReady == false
+                && other.State!.Value.RequireReady == false,
+                "ready-disabled rule synchronizes to every client");
+            Check(owner.Roster.LobbyReady.Take(owner.Roster.Count).All(ready => !ready),
+                "ready-disabled match starts from an entirely unready roster");
+
+            rig.Expect(owner, owner.Command(LobbyCommandType.StartMatch), LobbyResultCode.Ok);
+            Check(owner.State.Value.Phase == SessionPhase.Starting,
+                "ready-disabled start enters the same load barrier");
+            foreach (Client client in rig.Clients)
+                client.Loaded();
+            rig.Wait(() => owner.State.Value.Phase == SessionPhase.InMatch,
+                "ready-disabled match starts without any ready commands");
         }
 
         private static void AbandonedLobbyScenario()
