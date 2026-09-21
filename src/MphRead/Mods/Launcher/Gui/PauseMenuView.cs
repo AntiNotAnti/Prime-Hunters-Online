@@ -68,7 +68,14 @@ namespace MphRead.Mods.Launcher.Gui
             // Tighter than the column of words it replaces: each entry now
             // carries its own edge, and fourteen points between two objects
             // that already have a bottom lip is a gap.
-            var menu = new StackPanel { Spacing = 5, Width = 282 };
+            // Let the card own the width. A fixed 282-point child is wider than
+            // WellShort's usable area at common UI em sizes, so centering it in
+            // the card clips every button label at the panel edge.
+            var menu = new StackPanel
+            {
+                Spacing = 5,
+                HorizontalAlignment = HorizontalAlignment.Stretch
+            };
             _menu = menu;
             // Titles only. Every entry here used to say what it did twice --
             // "Quit", "Close ProjectPrime" -- and the second saying is what
@@ -135,8 +142,8 @@ namespace MphRead.Mods.Launcher.Gui
 
             var menuShell = new StackPanel
             {
-                Width = 282,
-                Spacing = 8
+                Spacing = 8,
+                HorizontalAlignment = HorizontalAlignment.Stretch
             };
             menuShell.Children.Add(new TextBlock
             {
@@ -166,7 +173,10 @@ namespace MphRead.Mods.Launcher.Gui
             _scaler = new LayoutTransformControl
             {
                 Child = menuShell,
-                HorizontalAlignment = HorizontalAlignment.Center,
+                // The vertical transform is only for fitting the action stack.
+                // Width must come from the DeckCard so the child can never be
+                // arranged wider than the panel and have its text clipped.
+                HorizontalAlignment = HorizontalAlignment.Stretch,
                 VerticalAlignment = VerticalAlignment.Center
             };
             // The menu and nothing else. It carried a "paused" heading and a
