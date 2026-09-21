@@ -809,7 +809,9 @@ namespace MphRead.Entities
                             }
                         }
                     }
-                    CameraInfo.SetShake(0.023f);
+                    // Charging already has its own loop effect and audio. Camera shake is
+                    // reserved for impacts, landings and authored world events; continuously
+                    // refreshing it here makes every held charge vibrate the first-person view.
                 }
                 if (IsMainPlayer && _chargeEffect != null)
                 {

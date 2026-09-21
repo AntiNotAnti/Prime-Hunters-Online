@@ -107,19 +107,24 @@ namespace MphRead.Mods.Input
             {
                 return (0, 0);
             }
-            GamepadState state = GamepadManager.ActiveState;
+            // Project only the controller sample BeginFrame accepted for this simulation
+            // frame. Reading GamepadManager.ActiveState here creates a second input stream:
+            // the draw pass can observe a newer/stale hardware sample that gameplay never
+            // accepted, leaving presentation turning until the device lifecycle resets.
+            GamepadState state = FrameSnapshot.State;
             if (!state.Connected) return (0, 0);
-            (float x, float y) = GamepadOptions.Southpaw
+            GamepadOptionState options = (FrameSnapshot.Runtime ?? GamepadRuntimeConfig.Current).Options;
+            (float x, float y) = options.Southpaw
                 ? GamepadAnalog.ApplyRadialDeadZone(state.LeftX, state.LeftY,
-                    GamepadOptions.LeftInner, GamepadOptions.LeftOuter)
+                    options.LeftInner, options.LeftOuter)
                 : GamepadAnalog.ApplyRadialDeadZone(state.RightX, state.RightY,
-                    GamepadOptions.RightInner, GamepadOptions.RightOuter);
+                    options.RightInner, options.RightOuter);
             float fraction = (float)Math.Clamp(alpha, 0.0, 1.0);
             return (
-                -GamepadAnalog.ApplyResponseCurve(x, GamepadOptions.Curve) * TurnRate
-                    * GamepadOptions.LookX * (GamepadOptions.InvertX ? -1 : 1) * fraction,
-                GamepadAnalog.ApplyResponseCurve(y, GamepadOptions.Curve) * TurnRate
-                    * GamepadOptions.LookY * (GamepadOptions.InvertY ? -1 : 1) * fraction
+                -GamepadAnalog.ApplyResponseCurve(x, options.Curve) * TurnRate
+                    * options.LookX * (options.InvertX ? -1 : 1) * fraction,
+                GamepadAnalog.ApplyResponseCurve(y, options.Curve) * TurnRate
+                    * options.LookY * (options.InvertY ? -1 : 1) * fraction
             );
         }
 
