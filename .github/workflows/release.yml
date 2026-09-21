@@ -29,7 +29,7 @@ on:
         description: Existing tag to build (leave empty to bump instead)
         required: false
       bump:
-        description: Create the next tag from the newest one, when no tag is given
+        description: Create the next tag from the newest release, when no tag is given
         required: false
         default: none
         type: choice
@@ -100,12 +100,10 @@ jobs:
             fi
             echo "Building the existing tag $TAG."
           elif [ "${BUMP:-none}" != none ]; then
-            # The newest release tag, sorted as versions rather than as text --
-            # the refs API returns them in ref order, where v0.10.0 sorts
-            # before v0.9.0. Anything not vX.Y.Z is not a release of this
-            # project and does not get a vote.
-            LATEST=$(gh api "repos/$REPO/git/refs/tags" --paginate --jq '.[].ref' 2>/dev/null \
-              | sed 's#^refs/tags/##' \
+            # Bump from actual releases, not bare tag refs. A failed release can
+            # leave its workflow-created tag behind before any Release exists; counting
+            # that orphan would burn a version number on every retry.
+            LATEST=$(gh api "repos/$REPO/releases" --paginate --jq '.[].tag_name' 2>/dev/null \
               | grep -E "$RELEASE_TAG" \
               | sort -V | tail -1 || true)
             if [ -z "$LATEST" ]; then
@@ -122,7 +120,7 @@ jobs:
                 patch) PATCH=$((PATCH + 1)) ;;
               esac
               TAG="v$MAJOR.$MINOR.$PATCH"
-              echo "Newest release tag is $LATEST; $BUMP bump gives $TAG."
+              echo "Newest release is $LATEST; $BUMP bump gives $TAG."
             fi
             CREATE_TAG=true
           else
@@ -146,16 +144,24 @@ jobs:
             exit 1
           fi
 
-          # Validate before creating a ref: a failed bump must not leave a tag
-          # that cannot be packaged, and that the next bump will build upon.
+          # A failed workflow can leave the tag behind before the Release is
+          # published. That tag has never been offered to clients, so a retry may safely
+          # retarget it to the current dispatch SHA. Once a Release exists, the tag is
+          # immutable here and a new version must be chosen instead.
           if [ "$CREATE_TAG" = true ]; then
             if gh api "repos/$REPO/git/ref/tags/$TAG" >/dev/null 2>&1; then
-              echo "::error::$TAG already exists. Build it by name, or bump past it."
-              exit 1
+              if gh api "repos/$REPO/releases/tags/$TAG" >/dev/null 2>&1; then
+                echo "::error::$TAG already has a GitHub Release; choose a later version."
+                exit 1
+              fi
+              gh api -X PATCH "repos/$REPO/git/refs/tags/$TAG" \
+                -f sha="$SHA" -F force=true >/dev/null
+              echo "Recovered unpublished $TAG at ${SHA:0:7}."
+            else
+              gh api -X POST "repos/$REPO/git/refs" \
+                -f ref="refs/tags/$TAG" -f sha="$SHA" >/dev/null
+              echo "Created $TAG at ${SHA:0:7}."
             fi
-            gh api -X POST "repos/$REPO/git/refs" \
-              -f ref="refs/tags/$TAG" -f sha="$SHA" >/dev/null
-            echo "Created $TAG at ${SHA:0:7}."
             echo "created=true" >> "$GITHUB_OUTPUT"
           fi
 
