@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using MphRead.Entities;
 
 namespace MphRead.Mods.Network
 {
@@ -334,8 +335,8 @@ namespace MphRead.Mods.Network
             p.DisplayName = peer.Name.Length > 0 ? peer.Name : $"Player {peer.SlotIndex + 1}";
             if (p.Active && p.Hunter != peer.Hunter) p.SingleHunter = false;
             if (p.PlayedTicks > 0 && p.Hunter != peer.Hunter) p.SingleHunter = false;
-            p.Hunter = Math.Clamp(peer.Hunter, 0, Launcher.Hunters.Playable - 1);
-            p.Team = Math.Clamp(peer.TeamIndex, 0, 7);
+            p.Hunter = Math.Clamp((int)peer.Hunter, 0, Launcher.Hunters.Playable - 1);
+            p.Team = Math.Clamp((int)peer.TeamIndex, 0, 7);
             p.Slot = peer.SlotIndex;
             p.JoinedFrame = CareerFrame;
             p.Start = CareerCounters(peer.SlotIndex);
@@ -349,8 +350,8 @@ namespace MphRead.Mods.Network
             uint key = CareerKey(peer);
             if (!_careerMatch.Participants.TryGetValue(key, out CareerParticipantState? p)) return;
             if (previousHunter != peer.Hunter) p.SingleHunter = false;
-            p.Hunter = Math.Clamp(peer.Hunter, 0, Launcher.Hunters.Playable - 1);
-            p.Team = Math.Clamp(peer.TeamIndex, 0, 7);
+            p.Hunter = Math.Clamp((int)peer.Hunter, 0, Launcher.Hunters.Playable - 1);
+            p.Team = Math.Clamp((int)peer.TeamIndex, 0, 7);
             p.DisplayName = peer.Name;
             p.CareerTicket = peer.CareerTicket;
         }
@@ -448,8 +449,8 @@ namespace MphRead.Mods.Network
                 }
                 p.CareerTicket = peer.CareerTicket;
                 p.DisplayName = peer.Name.Length > 0 ? peer.Name : p.DisplayName;
-                p.Hunter = Math.Clamp(peer.Hunter, 0, Launcher.Hunters.Playable - 1);
-                p.Team = Math.Clamp(peer.TeamIndex, 0, 7);
+                p.Hunter = Math.Clamp((int)peer.Hunter, 0, Launcher.Hunters.Playable - 1);
+                p.Team = Math.Clamp((int)peer.TeamIndex, 0, 7);
                 p.Standing = GameState.Teams
                     ? Math.Clamp(GameState.TeamStandings[peer.SlotIndex], 0, 7)
                     : Math.Clamp(GameState.Standings[peer.SlotIndex], 0, 7);
@@ -498,7 +499,7 @@ namespace MphRead.Mods.Network
                 MatchId = match.MatchId,
                 WireMatchId = match.WireMatchId,
                 ServerIncarnation = _careerServerIncarnation,
-                BuildVersion = BuildVersion.Display,
+                BuildVersion = Update.BuildVersion.Display,
                 ProtocolVersion = NetConfig.ProtocolVersion,
                 StartedAtUtc = match.StartedAtUtc,
                 EndedAtUtc = DateTimeOffset.UtcNow,

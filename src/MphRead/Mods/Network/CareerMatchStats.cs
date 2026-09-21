@@ -81,7 +81,7 @@ namespace MphRead.Mods.Network
             if (opposing && applied > 0 && !lethal)
             {
                 _assistDamage[victimSlot, attackerSlot] = Math.Min(Int32.MaxValue,
-                    _assistDamage[victimSlot, attackerSlot] + (int)Math.Min(applied, Int32.MaxValue));
+                    _assistDamage[victimSlot, attackerSlot] + (int)Math.Min((long)applied, Int32.MaxValue));
                 _assistFrame[victimSlot, attackerSlot] = frame;
             }
 
