@@ -7,7 +7,8 @@ namespace MphRead.Mods.Launcher.Gui
 {
     internal sealed class LobbyPlayerRow : Border
     {
-        public LobbyPlayerRow(RosterPacket roster, int index, byte owner, bool showTeam = true)
+        public LobbyPlayerRow(RosterPacket roster, int index, byte owner,
+            bool showTeam = true, bool selected = false)
         {
             int slot = roster.Slots[index];
             string team = roster.Teams[index] < 0 ? "FFA" : $"Team {(char)('A' + roster.Teams[index])}";
@@ -68,6 +69,11 @@ namespace MphRead.Mods.Launcher.Gui
             line.Children.Add(ping);
             line.Children.Add(facts);
             Padding = new Thickness(4, 3);
+            Background = selected
+                ? HubTheme.AccentPanel(HubTheme.Accent, 34)
+                : Brushes.Transparent;
+            BorderBrush = selected ? HubTheme.AccentBrush : Brushes.Transparent;
+            BorderThickness = selected ? new Thickness(1) : new Thickness(0);
             Child = line;
         }
     }
