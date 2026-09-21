@@ -3,7 +3,7 @@ using System;
 namespace MphRead.Mods.Input
 {
     /// <summary>
-    /// The morph ball's boost, asked for by whipping the mouse.
+    /// The morph ball's boost, asked for by whipping a mouse or stylus.
     ///
     /// The gesture already exists on the touch head -- a flick on the aim
     /// side boosts, the way a flick of the stylus did on the DS -- and the
@@ -48,9 +48,11 @@ namespace MphRead.Mods.Input
     /// in -- unpausing, regaining focus -- where the delta is enormous and
     /// means nothing.
     ///
-    /// No setting, by design: there is nothing to turn off. The gesture is
-    /// only ever looked for inside the ball, with the boost bind not held,
-    /// and it takes no input away from anything.
+    /// The gesture is optional per desktop pointer source. Settings can disable
+    /// mouse movement boost and stylus movement boost independently; that only
+    /// gates this movement gesture. Manual Zoom/right-click boost and the explicit
+    /// Boost binding stay live, matching melonPrime's separation between swipe
+    /// assist and button-driven boost.
     /// </summary>
     public static class MouseFlick
     {

@@ -1104,6 +1104,8 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 MouseButton.Button2 => Avalonia.Input.MouseButton.Right,
                 MouseButton.Button3 => Avalonia.Input.MouseButton.Middle,
+                MouseButton.Button4 => Avalonia.Input.MouseButton.XButton1,
+                MouseButton.Button5 => Avalonia.Input.MouseButton.XButton2,
                 _ => Avalonia.Input.MouseButton.Left
             };
         }

@@ -78,7 +78,7 @@ table is `PadBindings`, which starts as exactly this.
 | X | scan |
 | Y | scan visor |
 | Right trigger | shoot, and the alt form's attack |
-| Left trigger | zoom |
+| Left trigger | zoom / Samus manual morph-ball boost |
 | LB / d-pad ← | previous weapon |
 | RB / d-pad → | next weapon |
 | D-pad ↑ | missile |
@@ -160,7 +160,11 @@ it, from `ProcessAlt`'s own branch. It is now called from both, in the same
 place as the mouse's, which also means a remote player's relayed aim reaches
 their puppet while they are morphed instead of waiting for the next snapshot.
 The ball hunters (Samus, Kanden, Spire, Noxus) are unchanged: nothing aims a
-morph ball, and the mouse does not turn one either.
+morph ball, and the mouse does not turn one either. Samus follows melonPrimeDS'
+mode-specific Zoom behavior as an additional route: the normal Zoom action
+(default left trigger on a pad, right mouse on mouse/keyboard) charges and
+releases morph-ball boost while transformed. The existing Jump/Boost action
+remains available, so established layouts do not lose a control.
 
 ## Both at once, on a phone
 
