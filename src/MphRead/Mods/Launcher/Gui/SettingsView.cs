@@ -498,7 +498,7 @@ namespace MphRead.Mods.Launcher.Gui
             "Controls" => "Keyboard, mouse, controller, touch and stylus.",
             "Replays" => "Instant clips, replay storage and playback controls.",
             "Profile" => "Player identity, hunter, servers, updates and game files.",
-            "Credits" => "Project attribution, technology and support.",
+            "Credits" => "Project attribution, community contributors and technology.",
             _ => ""
         };
 
@@ -610,26 +610,13 @@ namespace MphRead.Mods.Launcher.Gui
         /// </summary>
         private void BuildCredits(StackPanel page)
         {
-            Heading(page, "Credits");
+            Heading(page, "Project Prime");
             Explain(page, Mods.Credits.Summary);
+
+            Heading(page, "Community contributors");
             page.Children.Add(new Caption(Mods.Credits.Author));
             page.Children.Add(new Note(Mods.Credits.ForkWork));
-            // The address is put in a line under the word when there is no
-            // browser to hand it to -- a headless session, or a handler that
-            // refused -- so pressing it says something either way rather than
-            // appearing to do nothing.
-            var support = new UiWord("\u2615 Support this project", 15);
-            var supportUrl = new Note("") { IsVisible = false };
-            support.Click += (_, _) =>
-            {
-                if (!Mods.Update.Updater.OpenLink(Mods.Credits.SupportUrl))
-                {
-                    supportUrl.Text = Mods.Credits.SupportUrl;
-                    supportUrl.IsVisible = true;
-                }
-            };
-            page.Children.Add(support);
-            page.Children.Add(supportUrl);
+
             Heading(page, "Built on");
             foreach (Mods.Credits.Entry entry in Mods.Credits.Entries)
             {

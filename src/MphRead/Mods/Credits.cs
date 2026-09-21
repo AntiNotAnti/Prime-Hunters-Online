@@ -17,11 +17,15 @@ namespace MphRead.Mods
     {
         public readonly record struct Entry(string Who, string What, string Where);
 
-        /// <summary>Who made this fork, as distinct from what it is a fork of.</summary>
+        /// <summary>
+        /// A named contributor to Project Prime. Kept in Credits rather than
+        /// used as the identity of the project itself: Project Prime is a
+        /// community fork, not a personal-branded fork.
+        /// </summary>
         public const string Author = "Livetek";
 
-        /// <summary>What this fork adds, in one line.</summary>
-        public const string ForkWork = "this fork: multiplayer and the dedicated server, "
+        /// <summary>What Livetek contributed to the community fork, in one line.</summary>
+        public const string ForkWork = "Project Prime development: multiplayer and the dedicated server, "
             + "the launcher, custom maps, the Android head and the pro HUD";
 
         /// <summary>
@@ -34,7 +38,7 @@ namespace MphRead.Mods
         public const string SupportUrl = "https://ko-fi.com/livetek";
 
         public static string Summary =>
-            $"{Branding.Name} is {Author}'s fork of {Branding.Upstream} by NoneGiven.";
+            $"{Branding.Name} is a Metroid Prime Hunters fork for the community, by the community.";
 
         /// <summary>
         /// The attribution as a corner of a screen can carry it: the fork, and
@@ -45,8 +49,8 @@ namespace MphRead.Mods
         /// so adding an entry there puts it here too.
         /// </summary>
         public static string Compact =>
-            $"A fork of {Branding.Upstream} by NoneGiven"
-            + $"\n{Names}";
+            $"{Summary}"
+            + $"\nBuilt on {Branding.Upstream} by NoneGiven · {Names}";
 
         /// <summary>Everyone but upstream, separated for one line.</summary>
         public static string Names

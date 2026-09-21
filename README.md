@@ -4,7 +4,7 @@
 
 **Metroid Prime Hunters on PC, macOS, Linux and Android.** Online matches support up to 8 players, widescreen/high-resolution rendering, a fixed 60 Hz gameplay simulation, and high-refresh presentation.
 
-A fork of [NoneGiven/MphRead](https://github.com/NoneGiven/MphRead).
+Project Prime is a **Metroid Prime Hunters fork for the community, by the community**, built on [NoneGiven/MphRead](https://github.com/NoneGiven/MphRead).
 
 > You bring your own Metroid Prime Hunters cartridge dump. No Nintendo game data ships here or is
 > downloaded.
@@ -85,8 +85,11 @@ line option, and the test harness, are in [`CLAUDE.md`](CLAUDE.md).
 
 ## Credits
 
-Project Prime is derived from Livetek's fork of [MphRead](https://github.com/NoneGiven/MphRead) by **NoneGiven** —
-the model viewer, the renderer, the format parsers and the recreation of the game itself are theirs.
+Project Prime is a community fork built on [MphRead](https://github.com/NoneGiven/MphRead) by **NoneGiven** —
+the model viewer, renderer, format parsers and recreation of the game itself are theirs.
+
+**Livetek** is credited for Project Prime development including multiplayer, the dedicated server,
+the launcher, custom maps, Android support and the pro HUD.
 That work is in turn built on **dsgraph**, [chmcl95](https://gitlab.com/ch-mcl/metroid-prime-hunters-file-document),
 [McKay42](https://github.com/McKay42), [Barubary](https://github.com/Barubary/dsdecmp),
 [loveemu](https://github.com/loveemu/loveemu-lab), **Gericom**,

@@ -149,7 +149,7 @@ export ALSOFT_DRIVERS=null PULSE_SERVER=   # else ALSA retries stall frames
 | `ProjectPrime -update` | check GitHub for a newer release and open its page. Installs nothing; the one command that answers "am I on the latest build" |
 | `ProjectPrime -noupdate` | do none of that, on any command that would have |
 | `ProjectPrime -server ... -noautoupdate` | keep a dedicated server on the build it was started with. It updates itself otherwise -- see Updating |
-| `ProjectPrime -credits` | who this is built on and who forked it, from `Mods/Credits.cs` -- which also holds the ko-fi address the settings' Credits page offers |
+| `ProjectPrime -credits` | who this community fork is built on and who contributed to it, from `Mods/Credits.cs`; the Settings Credits page is attribution-only and carries no support CTA |
 | `MphRead -uinativeres` | rasterise the launcher's screens at the window's own resolution however big it is, rather than capping them at 1080p and magnifying. Sharper type above 1080p, and a much slower redraw -- which only shows while something is moving, so it is a straight choice between crisper menus and menus that scroll |
 | `MphRead -fullscreen` / `-windowed` / `-nohelmet` | display choices for the paths that never open a launcher |
 | `MphRead -windowcheck` | the window's memory, both halves, without anybody watching a window: it opens the shell at a saved size nothing else would produce, then proves that closing it would keep the size it has now. The save half runs *as the window closes*, so a scripted run has no way to reach it otherwise -- and the whole feature fails silently, since a window that opens at the default looks exactly like one that was never resized. Writes nothing; the preference is put back before it returns |

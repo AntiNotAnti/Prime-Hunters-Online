@@ -248,7 +248,7 @@ namespace MphRead.Mods.Launcher.Gui
             });
             copy.Children.Add(new TextBlock
             {
-                Text = "Play, sketch custom-map ideas, review matches and configure the game from one focused command surface.",
+                Text = "Project Prime is a Metroid Prime Hunters fork for the community, by the community. Play online, build custom maps, create replays and help shape what comes next.",
                 FontFamily = HubTheme.Ui,
                 FontSize = 11,
                 Foreground = HubTheme.TextDimBrush,
@@ -256,13 +256,9 @@ namespace MphRead.Mods.Launcher.Gui
                 MaxWidth = 470
             });
 
-            var launch = Action("PLAY", "Multiplayer, offline or adventure",
-                () => Navigate(HubDestination.Play), primary: true);
-            launch.Width = 250;
-            launch.HorizontalAlignment = HorizontalAlignment.Left;
-            launch.Margin = new Thickness(0, 8, 0, 3);
-            copy.Children.Add(launch);
-
+            // PLAY already owns the primary position in the navigation rail.
+            // Repeating the same destination in the hero made the welcome
+            // surface feel like two menus competing for the same click.
             var tags = new StackPanel
             {
                 Orientation = Orientation.Horizontal,

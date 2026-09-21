@@ -23,6 +23,10 @@ namespace MphRead.Mods.Input
         private static bool _acceptingInput;
         private static float _pendingX;
         private static float _pendingY;
+        // Some tablet drivers briefly report pen-up while handing an active
+        // contact to a new native pointer id. Do not let that one sample re-arm
+        // one-shot DS buttons; a release must survive one complete update.
+        private static bool _stylusReleasePending;
 
         public static void Update(PointerSample sample, int width, int height,
             bool independentPrimaryDown = false, bool acceptsInput = true)
@@ -34,20 +38,48 @@ namespace MphRead.Mods.Input
             Current = sample;
             StylusZone.AspectCorrection = width / (float)Math.Max(height, 1);
             bool identityChanged = sample.Device != previous.Device || sample.Id != previous.Id;
+            bool hadPendingRelease = _stylusReleasePending;
+            bool rawContact = Active && acceptsInput && sample.InContact;
+            bool effectiveContact = rawContact;
+            if (!Active || !acceptsInput)
+            {
+                _stylusReleasePending = false;
+            }
+            else if (rawContact)
+            {
+                // A new down immediately after a one-frame up is the same physical
+                // gesture. This is the common WM_POINTER handoff shape on tablets.
+                _stylusReleasePending = false;
+            }
+            else if (wasActive && previous.Device == PointerDeviceType.Pen
+                && previous.InContact && sample.Device == PointerDeviceType.Pen)
+            {
+                _stylusReleasePending = true;
+                effectiveContact = true;
+            }
+            else if (hadPendingRelease)
+            {
+                // The up survived another update, so it is a real release and
+                // may re-arm the next one-shot DS button touch.
+                _stylusReleasePending = false;
+                effectiveContact = false;
+            }
+
             // Some pen/tablet drivers rotate WM_POINTER identities while the tip
             // remains physically down. Treat that as one continuous gesture:
             // synthesising an up/down edge here re-arms one-shot DS buttons and
             // turns a single WPN/affinity tap into a weapon-cycling machine gun.
-            // We still discard movement on the identity-change frame below, so
-            // an absolute-device handoff can never inject a camera teleport.
+            // A one-frame pen-up during the handoff is folded into the same gesture
+            // by the release debounce above. Movement is still discarded on every
+            // identity-change frame, so the handoff cannot inject a camera teleport.
             bool contactContinues = identityChanged && wasActive && Active && acceptsInput
-                && previous.InContact && sample.InContact;
+                && effectiveContact && (previous.InContact || hadPendingRelease);
             if (identityChanged && !contactContinues)
             {
                 StylusZone.Update(0, 0, false);
             }
             StylusZone.Update(sample.X / Math.Max(width, 1), sample.Y / Math.Max(height, 1),
-                Active && acceptsInput && sample.InContact);
+                effectiveContact);
             PrimaryDown = acceptsInput && ResolvePrimary(sample.PrimaryDown, independentPrimaryDown,
                 StylusZone.CapturingPrimaryButton || StylusZone.Placing);
             if (!Active || !acceptsInput || !wasActive || identityChanged)
@@ -89,6 +121,7 @@ namespace MphRead.Mods.Input
             Current = default;
             PrimaryDown = false;
             _pendingX = _pendingY = 0;
+            _stylusReleasePending = false;
             StylusZone.Reset();
         }
     }
