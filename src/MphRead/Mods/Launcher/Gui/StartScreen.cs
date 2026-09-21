@@ -93,22 +93,26 @@ namespace MphRead.Mods.Launcher.Gui
 
             _version = new TextBlock
             {
-                Text = VersionNumber(),
-                FontFamily = GuiTheme.Display,
-                FontSize = 12,
-                Foreground = GuiTheme.TextDimBrush,
-                HorizontalAlignment = HorizontalAlignment.Center
+                Text = $"BUILD  //  {VersionNumber()}",
+                FontFamily = HubTheme.Data,
+                FontSize = 8.5,
+                Foreground = HubTheme.TextDimBrush,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis
             };
-            // The whole line is the button, rather than a label with one beside
-            // it: the state and the action are the same fact here -- dim is
-            // "nothing to do" and amber is "press this" -- and two controls
-            // saying that would be one of them redundant in either state.
+            // Build/update state lives in the lower command strip now, opposite
+            // the input hints. Keeping it out of the header stops a utility
+            // detail competing with the Project Prime identity/status block.
             _versionBox = new Border
             {
-                Background = Brushes.Transparent,
+                Background = HubTheme.PanelBrush,
+                BorderBrush = HubTheme.EdgeBrush,
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(8, 4),
                 HorizontalAlignment = HorizontalAlignment.Right,
-                VerticalAlignment = VerticalAlignment.Top,
-                Margin = new Thickness(0, 18, 24, 0),
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Margin = new Thickness(0, 0, 24, 10),
+                MaxWidth = 460,
                 Child = _version
             };
             _versionBox.Focusable = true;
@@ -126,17 +130,35 @@ namespace MphRead.Mods.Launcher.Gui
                 }
             };
             root.Children.Add(_versionBox);
-            var help = new TextBlock { Foreground = GuiTheme.TextDimBrush, FontSize = 12,
-                Margin = new Thickness(20, 0, 0, 3), VerticalAlignment = VerticalAlignment.Bottom,
-                HorizontalAlignment = HorizontalAlignment.Left, IsHitTestVisible = false };
+            var help = new TextBlock
+            {
+                Foreground = HubTheme.TextDimBrush,
+                FontFamily = HubTheme.DataBold,
+                FontSize = 8.5,
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                IsHitTestVisible = false
+            };
+            var helpBox = new Border
+            {
+                Background = HubTheme.PanelBrush,
+                BorderBrush = HubTheme.EdgeBrush,
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(8, 4),
+                Margin = new Thickness(24, 0, 0, 10),
+                VerticalAlignment = VerticalAlignment.Bottom,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                IsHitTestVisible = false,
+                Child = help
+            };
 
             var hints = new DispatcherTimer(TimeSpan.FromMilliseconds(250), DispatcherPriority.Background, (_, _) =>
             {
                 string prompt = Mods.Input.InputSourceTracker.Current == Mods.Input.InputSource.Gamepad
-                    ? $"{Mods.Input.InputPrompt.For(Mods.Input.UiAction.Accept).Glyph} Select   "
-                        + $"{Mods.Input.InputPrompt.For(Mods.Input.UiAction.Back).Glyph} Back   "
-                        + $"{Mods.Input.InputPrompt.For(Mods.Input.UiAction.PreviousTab).Glyph}/{Mods.Input.InputPrompt.For(Mods.Input.UiAction.NextTab).Glyph} Tabs"
-                    : "Enter Select   Esc Back";
+                    ? $"{Mods.Input.InputPrompt.For(Mods.Input.UiAction.Accept).Glyph}  SELECT"
+                        + $"   //   {Mods.Input.InputPrompt.For(Mods.Input.UiAction.Back).Glyph}  BACK"
+                        + $"   //   {Mods.Input.InputPrompt.For(Mods.Input.UiAction.PreviousTab).Glyph}/{Mods.Input.InputPrompt.For(Mods.Input.UiAction.NextTab).Glyph}  TABS"
+                    : "ENTER  SELECT   //   ESC  BACK";
                 if (prompt != _controllerPrompt) { help.Text = prompt; _controllerPrompt = prompt; }
             });
             AttachedToVisualTree += (_, _) => hints.Start();
@@ -144,7 +166,7 @@ namespace MphRead.Mods.Launcher.Gui
 
             _overlay = new Panel { Background = Brushes.Transparent, IsVisible = false };
             root.Children.Add(_overlay);
-            root.Children.Add(help);
+            root.Children.Add(helpBox);
             Content = root;
 #if ANDROID
             var navigation = new GamepadNavigation();
@@ -735,20 +757,18 @@ namespace MphRead.Mods.Launcher.Gui
             _version.Text = text;
             _version.Foreground = new SolidColorBrush(colour);
             _version.FontFamily = pressable ? HubTheme.DataBold : HubTheme.Data;
-            _version.FontSize = pressable ? 10.5 : 9.5;
+            _version.FontSize = pressable ? 9 : 8.5;
             _updatable = pressable;
             _versionBox.Background = pressable
                 ? HubTheme.AccentPanel(HubTheme.Warm, 68)
-                : Brushes.Transparent;
+                : HubTheme.PanelBrush;
             _versionBox.BorderBrush = pressable
                 ? HubTheme.WarmBrush
-                : Brushes.Transparent;
-            _versionBox.BorderThickness = pressable
-                ? new Thickness(1)
-                : new Thickness(0);
+                : HubTheme.EdgeBrush;
+            _versionBox.BorderThickness = new Thickness(1);
             _versionBox.Padding = pressable
-                ? new Thickness(10, 6)
-                : new Thickness(0);
+                ? new Thickness(10, 5)
+                : new Thickness(8, 4);
             _versionBox.Cursor = new Cursor(
                 pressable ? StandardCursorType.Hand : StandardCursorType.Arrow);
         }
@@ -775,7 +795,7 @@ namespace MphRead.Mods.Launcher.Gui
                     HubTheme.Warm, pressable: true);
                 return;
             }
-            Say(number, BuildVersion.IsRelease && Updater.Checked
+            Say($"BUILD  //  {number}", BuildVersion.IsRelease && Updater.Checked
                 ? GuiTheme.Good : GuiTheme.TextDim);
         }
 
