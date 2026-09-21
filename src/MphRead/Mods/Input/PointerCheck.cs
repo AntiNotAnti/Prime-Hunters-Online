@@ -172,10 +172,25 @@ namespace MphRead.Mods.Input
             Require(StylusZone.Held == StylusRegion.Weapons
                 && StylusZone.TakePressed() == StylusRegion.None,
                 "WPN id churn does not repeat the action");
+
+            // XP-Pen and similar drivers can report the old WM_POINTER id up,
+            // then the replacement id down on the next picture while the tip
+            // never left the tablet. The one-frame gap must not re-arm WPN.
             Frame(weaponX, weaponY, false, id: 11);
+            Require(StylusZone.Held == StylusRegion.Weapons
+                && StylusZone.TakePressed() == StylusRegion.None,
+                "transient WPN release stays inside the active gesture");
             Frame(weaponX, weaponY, true, id: 12);
+            Require(StylusZone.Held == StylusRegion.Weapons
+                && StylusZone.TakePressed() == StylusRegion.None,
+                "WPN handoff after transient release does not repeat the action");
+
+            // A release that survives a complete additional update is genuine.
+            Frame(weaponX, weaponY, false, id: 12);
+            Frame(weaponX, weaponY, false, id: 12);
+            Frame(weaponX, weaponY, true, id: 13);
             Require(StylusZone.TakePressed() == StylusRegion.Weapons,
-                "real WPN release rearms the next touch");
+                "stable WPN release rearms the next touch");
 
             foreach (StylusZone.Button button in StylusZone.Buttons)
             {
