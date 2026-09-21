@@ -133,6 +133,14 @@ namespace MphRead.Mods
         /// </summary>
         public static bool ShowFps { get; set; }
 
+        /// <summary>
+        /// Linearly sample native DS HUD sprites when they are scaled to a
+        /// modern framebuffer. Text and the supersampled Pro HUD keep their own
+        /// sampling paths; this mainly softens the stock reticle, meters and
+        /// weapon-menu art without changing their authored geometry.
+        /// </summary>
+        public static bool SmoothNativeHud { get; set; } = true;
+
         /// <summary>How many steps the shading is banded into, 2 to 8.</summary>
         public static int CelBands
         {

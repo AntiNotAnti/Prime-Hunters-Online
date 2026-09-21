@@ -86,6 +86,11 @@ namespace MphRead.Mods.Launcher.Gui
         private static LaunchPlan? _pending;
         private static bool _endMatch;
         private static bool _quit;
+        // While a persistent-lobby client has finished its local room build but
+        // the server is still waiting for the other participants, keep the
+        // lobby/loading surface over the scene. Revealing only after InMatch
+        // makes the server's load barrier visible, not merely authoritative.
+        private static bool _matchLoading;
 
         /// <summary>
         /// Open the window and run until the player quits.
@@ -149,6 +154,7 @@ namespace MphRead.Mods.Launcher.Gui
                 _pending = null;
                 _endMatch = false;
                 _quit = false;
+                _matchLoading = false;
                 // Both own a worker thread and a bound socket; leaving the
                 // program must not leave either behind.
                 NetSession.Stop();
@@ -187,6 +193,20 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 _pending = null;
                 StartMatch(window, plan);
+            }
+
+            if (_matchLoading && window.HasScene)
+            {
+                if (!NetSession.PersistentLobby || NetSession.IsPlaying)
+                {
+                    _matchLoading = false;
+                    UiSurface.Current?.Hide();
+                }
+                else if (NetSession.Refused || NetSession.SessionTimedOut)
+                {
+                    _matchLoading = false;
+                    _endMatch = true;
+                }
             }
         }
 
@@ -277,7 +297,8 @@ namespace MphRead.Mods.Launcher.Gui
         /// </summary>
         internal static void TickEndPanel()
         {
-            bool want = Mods.EndScreen.PanelAvailable && _menu == null;
+            bool want = _window?.HasScene == true && !_matchLoading
+                && Mods.EndScreen.PanelAvailable && _menu == null;
             if (want && !EndPanelUp)
             {
                 // Ensure, not Current: a session that went straight into a
@@ -298,9 +319,17 @@ namespace MphRead.Mods.Launcher.Gui
             }
             if (!want && EndPanelUp)
             {
+                EndPanelView? closing = _endPanel;
                 _endPanel = null;
                 Mods.EndScreen.PanelUp = false;
-                UiSurface.Current?.Hide();
+                // The lobby or pause menu may already have replaced the
+                // results panel on the shared UiSurface earlier in this frame.
+                // Never hide that newer view while cleaning up the stale panel.
+                UiSurface? surface = UiSurface.Current;
+                if (surface != null && ReferenceEquals(surface.View, closing))
+                {
+                    surface.Hide();
+                }
                 return;
             }
             _endPanel?.Refresh();
@@ -408,13 +437,28 @@ namespace MphRead.Mods.Launcher.Gui
         {
             _played = plan;
             _front?.SuspendLobby();
-            UiSurface.Current?.Hide();
+            _matchLoading = false;
             try
             {
                 if (!MatchStart.Begin(window, _settings, plan))
                 {
                     NetSession.ReportMatchLoadFailed("The map could not be loaded.");
                     EndMatch(window);
+                    return;
+                }
+
+                if (NetSession.PersistentLobby && NetSession.IsStarting)
+                {
+                    // Do not reveal a locally loaded scene while another player
+                    // is still loading. The authority already waits for every
+                    // expected MatchLoaded ack; keeping the front surface up
+                    // until it publishes InMatch removes the black gap and gives
+                    // every participant the same visible start boundary.
+                    _matchLoading = true;
+                }
+                else
+                {
+                    UiSurface.Current?.Hide();
                 }
             }
             catch (Exception ex)
@@ -438,6 +482,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         private static void EndNetworkMatchToLobby(RenderWindow window)
         {
+            _matchLoading = false;
             CloseMenu(); window.EndScene(); MatchStart.AfterMatch();
             NetSession.ResetMatchState(); PauseMenu.Reset();
             if (_front != null) { UiSurface.Current?.Show(_front); _front.ResumeLobby(); }
@@ -445,6 +490,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         private static void EndMatch(RenderWindow window)
         {
+            _matchLoading = false;
             CloseMenu();
             window.EndScene();
             // Both own a worker thread and a bound socket; a match that ends

@@ -52,6 +52,7 @@ namespace MphRead.Mods.Launcher.Gui
                 ("hub.desktop.play", HubDestination.Play),
                 ("hub.desktop.map-editor", HubDestination.MapEditor),
                 ("hub.desktop.replay-studio", HubDestination.ReplayStudio),
+                ("hub.desktop.hunter-license", HubDestination.HunterLicense),
                 ("hub.desktop.settings", HubDestination.Settings),
                 ("hub.desktop.quit", HubDestination.Quit)
             };
@@ -83,6 +84,7 @@ namespace MphRead.Mods.Launcher.Gui
                 ("hub.compact.play", HubDestination.Play),
                 ("hub.compact.map-editor", HubDestination.MapEditor),
                 ("hub.compact.replay-studio", HubDestination.ReplayStudio),
+                ("hub.compact.hunter-license", HubDestination.HunterLicense),
                 ("hub.compact.settings", HubDestination.Settings),
                 ("hub.compact.quit", HubDestination.Quit)
             };

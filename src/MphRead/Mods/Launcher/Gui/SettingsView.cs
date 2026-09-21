@@ -161,6 +161,7 @@ namespace MphRead.Mods.Launcher.Gui
         private SliderRow _fpsLimitRow = null!;
         private SliderRow _fovRow = null!;
         private ToggleRow _proHud = null!;
+        private ToggleRow _smoothNativeHud = null!;
         private ChoiceRow _crosshairSizeRow = null!;
         private ChoiceRow _crosshairStyleRow = null!;
         private ChoiceRow _weaponStyleRow = null!;
@@ -680,6 +681,9 @@ namespace MphRead.Mods.Launcher.Gui
             // about here.
             Heading(page, "HUD");
             _proHud = Add(page, new ToggleRow("Pro mode HUD", Features.ProHud));
+            _smoothNativeHud = Add(page, new ToggleRow("Smooth native HUD",
+                RenderOptions.SmoothNativeHud));
+            Explain(page, "Smooth native HUD uses filtered sampling for the original DS reticle, meters and weapon-menu sprites when they are enlarged on modern displays. Turn it off for the original hard pixel edges.");
             // The crosshair questions belong to Pro mode and nothing else --
             // the DS HUD draws its own reticle sprite and has no use for
             // them -- so they are only asked while it is on. Shown rather than
@@ -1546,6 +1550,8 @@ namespace MphRead.Mods.Launcher.Gui
                 Math.Clamp(_anisotropyRow.Index, 0, _anisotropyStops.Length - 1)]
                 .ToString(CultureInfo.InvariantCulture);
             _settings.ShowFps = RenderOptions.OnOff(_fpsRow.On);
+            RenderOptions.SmoothNativeHud = _smoothNativeHud.On;
+            _settings.SmoothNativeHud = RenderOptions.OnOff(_smoothNativeHud.On);
             int cap = _fpsLimitStops[Math.Clamp(_fpsLimitRow.Value, 0,
                 _fpsLimitStops.Length - 1)].Cap;
             FrameTiming.FrameRateCap = cap;

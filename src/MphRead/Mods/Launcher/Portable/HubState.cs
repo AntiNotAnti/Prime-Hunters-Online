@@ -13,6 +13,7 @@ namespace MphRead.Mods.Launcher
         Play,
         MapEditor,
         ReplayStudio,
+        HunterLicense,
         Settings,
         Quit
     }

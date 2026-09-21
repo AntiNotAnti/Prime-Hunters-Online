@@ -38,6 +38,7 @@ namespace MphRead
         public string TextureMipmaps { get; set; } = "off";
         public string TextureAnisotropy { get; set; } = "1";
         public string ShowFps { get; set; } = "off";
+        public string SmoothNativeHud { get; set; } = "on";
         public string FrameRateCap { get; set; } = "display";
         public string CelShading { get; set; } = "off";
         public string CelBands { get; set; } = "8";

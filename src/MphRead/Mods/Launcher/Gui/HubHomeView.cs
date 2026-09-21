@@ -163,6 +163,8 @@ namespace MphRead.Mods.Launcher.Gui
                     () => Navigate(HubDestination.MapEditor), accent: HubTheme.Warm),
                 Action("REPLAY STUDIO", "Recordings, clips and cinematic replay tools",
                     () => Navigate(HubDestination.ReplayStudio)),
+                Action("HUNTER LICENSE", "Profile, stats and progression (coming soon)",
+                    () => Navigate(HubDestination.HunterLicense), accent: HubTheme.Good),
                 Action("SETTINGS", "Video, audio, input and player",
                     () => Navigate(HubDestination.Settings)),
                 Action("QUIT", "Close Project Prime",
@@ -197,21 +199,25 @@ namespace MphRead.Mods.Launcher.Gui
                 () => Navigate(HubDestination.MapEditor), accent: HubTheme.Warm);
             HubNavButton replays = AddCompact(grid, 2, 0, "REPLAY STUDIO",
                 () => Navigate(HubDestination.ReplayStudio));
-            HubNavButton settings = AddCompact(grid, 0, 1, "SETTINGS",
+            HubNavButton license = AddCompact(grid, 0, 1, "HUNTER LICENSE",
+                () => Navigate(HubDestination.HunterLicense), accent: HubTheme.Good);
+            HubNavButton settings = AddCompact(grid, 1, 1, "SETTINGS",
                 () => Navigate(HubDestination.Settings));
-            HubNavButton quit = AddCompact(grid, 1, 1, "QUIT",
+            HubNavButton quit = AddCompact(grid, 2, 1, "QUIT",
                 () => Navigate(HubDestination.Quit), accent: HubTheme.Danger);
 
-            WireCompact(play, "play", up: "settings", down: "settings",
+            WireCompact(play, "play", up: "hunter-license", down: "hunter-license",
                 left: "replay-studio", right: "map-editor", initial: true);
-            WireCompact(editor, "map-editor", up: "quit", down: "quit",
+            WireCompact(editor, "map-editor", up: "settings", down: "settings",
                 left: "play", right: "replay-studio");
             WireCompact(replays, "replay-studio", up: "quit", down: "quit",
                 left: "map-editor", right: "play");
-            WireCompact(settings, "settings", up: "play", down: "play",
-                left: "quit", right: "quit");
-            WireCompact(quit, "quit", up: "map-editor", down: "map-editor",
-                left: "settings", right: "settings");
+            WireCompact(license, "hunter-license", up: "play", down: "play",
+                left: "quit", right: "settings");
+            WireCompact(settings, "settings", up: "map-editor", down: "map-editor",
+                left: "hunter-license", right: "quit");
+            WireCompact(quit, "quit", up: "replay-studio", down: "replay-studio",
+                left: "settings", right: "hunter-license");
             return grid;
         }
 

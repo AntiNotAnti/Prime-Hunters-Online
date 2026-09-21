@@ -30,6 +30,7 @@ namespace MphRead.Mods.Network
                 LayoutChecks();
                 ClientStateChecks();
                 Scenario();
+                ReadyOptionalScenario();
                 AbandonedLobbyScenario();
                 HostedOwnerDepartureScenario();
                 HostedOwnerTransferScenario();
@@ -345,9 +346,18 @@ namespace MphRead.Mods.Network
             rig.Expect(a, a.Command(LobbyCommandType.StartMatch), LobbyResultCode.PlayersNotReady);
             rig.Expect(a, a.Command(LobbyCommandType.SetReady, true, revision: 0), LobbyResultCode.StaleRevision);
             rig.ReadyAll();
-            var config = a.State.Value; config.Match = config.Match with { RoomKey = Rooms()[1], TimeLimitSeconds = 600, HideOpponentHealth = true };
+            var config = a.State.Value; config.Match = config.Match with
+            {
+                RoomKey = Rooms()[1], TimeLimitSeconds = 600, PointGoal = 25,
+                HideOpponentHealth = true
+            };
             rig.Expect(a, a.Command(LobbyCommandType.UpdateMatch, config: config), LobbyResultCode.Ok);
             Check(a.Roster.LobbyReady.Take(a.Roster.Count).All(r => !r), "configuration clears ready");
+            Check(a.State.Value.Match.TimeLimitSeconds == 600
+                && a.State.Value.Match.PointGoal == 25
+                && b.State!.Value.Match.TimeLimitSeconds == 600
+                && b.State.Value.Match.PointGoal == 25,
+                "time and point goal persist and synchronize to all clients");
             Check(a.State.Value.Match.HideOpponentHealth && b.State!.Value.Match.HideOpponentHealth,
                 "owner hidden-health rule synchronizes to both UDP clients");
             var forbidden = b.State.Value;
@@ -389,6 +399,31 @@ namespace MphRead.Mods.Network
             a.Dispose(); rig.Clients.Remove(a);
             rig.Wait(() => b.State!.Value.OwnerSlot == b.Slot, "oldest peer becomes owner");
             b.Rebind(); rig.Stable(); Check(b.Slot == slotB && b.State.Value.OwnerSlot == slotB, "owner rebind keeps identity and slot");
+        }
+
+        private static void ReadyOptionalScenario()
+        {
+            using var rig = new Rig();
+            Client owner = rig.Add(130);
+            Client other = rig.Add(131);
+
+            var config = owner.State!.Value;
+            config.RuleFlags &= ~SessionRules.RequireReady;
+            rig.Expect(owner, owner.Command(LobbyCommandType.UpdateMatch, config: config),
+                LobbyResultCode.Ok);
+            Check(owner.State!.Value.RequireReady == false
+                && other.State!.Value.RequireReady == false,
+                "ready-disabled rule synchronizes to every client");
+            Check(owner.Roster.LobbyReady.Take(owner.Roster.Count).All(ready => !ready),
+                "ready-disabled match starts from an entirely unready roster");
+
+            rig.Expect(owner, owner.Command(LobbyCommandType.StartMatch), LobbyResultCode.Ok);
+            Check(owner.State.Value.Phase == SessionPhase.Starting,
+                "ready-disabled start enters the same load barrier");
+            foreach (Client client in rig.Clients)
+                client.Loaded();
+            rig.Wait(() => owner.State.Value.Phase == SessionPhase.InMatch,
+                "ready-disabled match starts without any ready commands");
         }
 
         private static void AbandonedLobbyScenario()
