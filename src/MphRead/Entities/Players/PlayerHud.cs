@@ -1323,12 +1323,40 @@ namespace MphRead.Entities
             }
         }
 
+        private void ApplyNativeHudSmoothing()
+        {
+            bool smooth = Mods.RenderOptions.SmoothNativeHud;
+
+            if (_targetCircleInst != null) _targetCircleInst.Smooth = smooth;
+            if (_weaponIconInst != null) _weaponIconInst.Smooth = smooth;
+            if (_cloakInst != null) _cloakInst.Smooth = smooth;
+            if (_doubleDamageInst != null) _doubleDamageInst.Smooth = smooth;
+            if (_boostInst != null) _boostInst.Smooth = smooth;
+            if (_bombInst != null) _bombInst.Smooth = smooth;
+
+            static void Meter(HudMeter? meter, bool value)
+            {
+                if (meter?.BarInst is { } bar) bar.Smooth = value;
+                if (meter?.TankInst is { } tank) tank.Smooth = value;
+            }
+            Meter(_healthbarMainMeter, smooth);
+            Meter(_healthbarSubMeter, smooth);
+            Meter(_ammoBarMeter, smooth);
+            Meter(_enemyHealthMeter, smooth);
+
+            foreach (HudObjectInstance inst in _weaponSelectInsts)
+                if (inst != null) inst.Smooth = smooth;
+            foreach (HudObjectInstance inst in _selectBoxInsts)
+                if (inst != null) inst.Smooth = smooth;
+        }
+
         public void DrawHudObjects()
         {
             if (Mods.ThumbnailMode.Active)
             {
                 return;
             }
+            ApplyNativeHudSmoothing();
             // Before the pause check, not after it: a frame rate you cannot
             // read while the settings window is open -- which is where the
             // switch for it is -- would be a switch with no feedback.
