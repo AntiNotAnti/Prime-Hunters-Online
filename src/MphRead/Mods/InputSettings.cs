@@ -52,6 +52,20 @@ namespace MphRead.Mods
         public static bool InvertMouseX { get; set; }
 
         /// <summary>
+        /// Whether a fast desktop mouse movement may request Samus' morph-ball boost.
+        /// This is only the movement gesture; Zoom/right-click and the explicit Boost
+        /// binding remain available when it is off.
+        /// </summary>
+        public static bool MouseMovementBoost { get; set; } = true;
+
+        /// <summary>
+        /// Stylus counterpart to <see cref="MouseMovementBoost"/>. MelonPrime keeps
+        /// stylus/touch movement as a separate input path, so the two preferences are
+        /// intentionally independent.
+        /// </summary>
+        public static bool StylusMovementBoost { get; set; } = true;
+
+        /// <summary>
         /// Whether the wheel cycles every weapon or only the affinity slots.
         ///
         /// On by default, which upstream's constant was not, and the
@@ -402,6 +416,18 @@ namespace MphRead.Mods
                         InvertMouseX = invertX;
                         continue;
                     }
+                    if (key == "mouse_movement_boost"
+                        && Boolean.TryParse(value, out bool mouseMovementBoost))
+                    {
+                        MouseMovementBoost = mouseMovementBoost;
+                        continue;
+                    }
+                    if (key == "stylus_movement_boost"
+                        && Boolean.TryParse(value, out bool stylusMovementBoost))
+                    {
+                        StylusMovementBoost = stylusMovementBoost;
+                        continue;
+                    }
                     if (key == "pointer_jump_guard" && Boolean.TryParse(value, out bool guardJumps))
                     {
                         legacyGuard = guardJumps;
@@ -646,6 +672,8 @@ namespace MphRead.Mods
                     $"sensitivity={MouseSensitivity.ToString("0.###", CultureInfo.InvariantCulture)}",
                     $"invert_y={InvertMouseY.ToString().ToLowerInvariant()}",
                     $"invert_x={InvertMouseX.ToString().ToLowerInvariant()}",
+                    $"mouse_movement_boost={MouseMovementBoost.ToString().ToLowerInvariant()}",
+                    $"stylus_movement_boost={StylusMovementBoost.ToString().ToLowerInvariant()}",
                     $"scroll_all_weapons={ScrollAllWeapons.ToString().ToLowerInvariant()}",
                     $"stylus_mode={Input.PointerInput.StylusMode.ToString().ToLowerInvariant()}",
                     $"pointer_jump_guard={Input.PointerInput.GuardJumps.ToString().ToLowerInvariant()}",
@@ -725,6 +753,8 @@ namespace MphRead.Mods
             MouseSensitivity = 1;
             InvertMouseY = false;
             InvertMouseX = false;
+            MouseMovementBoost = true;
+            StylusMovementBoost = true;
             ScrollAllWeapons = true;
             ChatKey = Keys.T;
             ClipKey = Keys.F10;

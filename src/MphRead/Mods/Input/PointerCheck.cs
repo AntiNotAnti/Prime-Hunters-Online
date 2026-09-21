@@ -386,6 +386,18 @@ namespace MphRead.Mods.Input
                 Require(PointerInput.StylusMode && !PointerInput.GuardJumps, "independent settings round trip");
 
                 File.WriteAllText(path,
+                    "mouse_movement_boost=false\nstylus_movement_boost=false\n");
+                InputSettings.Load();
+                Require(!InputSettings.MouseMovementBoost && !InputSettings.StylusMovementBoost,
+                    "mouse and stylus movement boost can be disabled independently of button boost");
+                InputSettings.Save();
+                InputSettings.MouseMovementBoost = true;
+                InputSettings.StylusMovementBoost = true;
+                InputSettings.Load();
+                Require(!InputSettings.MouseMovementBoost && !InputSettings.StylusMovementBoost,
+                    "movement boost settings round trip");
+
+                File.WriteAllText(path,
                     "stylus_mode=true\nstylus_zone=true\nstylus_zone_opacity=0.4\n");
                 InputSettings.Load();
                 Require(Math.Abs(StylusZone.OutlineOpacity - 0.4f) < 0.0001f
@@ -413,6 +425,8 @@ namespace MphRead.Mods.Input
                 InputSettings.Reset();
                 Require(!PointerInput.StylusMode && PointerInput.GuardJumps && !StylusZone.Enabled,
                     "reset restores ordinary mouse defaults");
+                Require(InputSettings.MouseMovementBoost && InputSettings.StylusMovementBoost,
+                    "reset restores movement-triggered boost defaults");
                 Require(Math.Abs(StylusZone.CursorOpacity - StylusZone.DefaultCursorOpacity) < 0.0001f
                     && Math.Abs(StylusZone.OutlineOpacity - StylusZone.DefaultOutlineOpacity) < 0.0001f
                     && Math.Abs(StylusZone.ButtonOpacity - StylusZone.DefaultButtonOpacity) < 0.0001f,

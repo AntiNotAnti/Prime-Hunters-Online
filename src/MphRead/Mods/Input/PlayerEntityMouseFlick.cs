@@ -35,7 +35,10 @@ namespace MphRead.Entities
             {
                 return;
             }
-            if (!Controls.MouseAim || buttonBoostDown
+            bool movementBoostEnabled = Mods.Input.PointerDevice.Active
+                ? Mods.InputSettings.StylusMovementBoost
+                : Mods.InputSettings.MouseMovementBoost;
+            if (!movementBoostEnabled || !Controls.MouseAim || buttonBoostDown
                 || Flags1.TestFlag(PlayerFlags1.NoAimInput)
                 || Flags1.TestFlag(PlayerFlags1.WeaponMenuOpen)
                 || Mods.SpectatorMode.IsSpectating

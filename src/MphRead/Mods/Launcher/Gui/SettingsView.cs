@@ -174,6 +174,8 @@ namespace MphRead.Mods.Launcher.Gui
         private SliderRow _sensitivity = null!;
         private ToggleRow _invertY = null!;
         private ToggleRow _invertX = null!;
+        private ToggleRow? _mouseMovementBoost;
+        private ToggleRow? _stylusMovementBoost;
         private ToggleRow _penTablet = null!;
         private ToggleRow _scrollAllWeapons = null!;
         private GamepadSettingsPanel _gamepadSettings = null!;
@@ -942,6 +944,14 @@ namespace MphRead.Mods.Launcher.Gui
             var advanced = new StackPanel { Spacing = 2, IsVisible = false };
             _scrollAllWeapons = Add(advanced, new ToggleRow("Wheel cycles every weapon",
                 InputSettings.ScrollAllWeapons));
+            if (!OperatingSystem.IsAndroid())
+            {
+                _mouseMovementBoost = Add(advanced, new ToggleRow(
+                    "Mouse movement can trigger morph boost", InputSettings.MouseMovementBoost));
+                advanced.Children.Add(new Note(
+                    "Turn this off if fast mouse movement should never boost Samus. "
+                    + "Right-click/Zoom and the normal Boost binding still work."));
+            }
             BuildTouchControls(advanced);
             AddAdvancedToggle(page, advanced, "keyboard.advanced");
 
@@ -1076,6 +1086,8 @@ namespace MphRead.Mods.Launcher.Gui
                 _sensitivity.Value = SensitivityToSlider(InputSettings.MouseSensitivity);
                 _invertY.On = InputSettings.InvertMouseY;
                 _invertX.On = InputSettings.InvertMouseX;
+                if (_mouseMovementBoost != null) _mouseMovementBoost.On = InputSettings.MouseMovementBoost;
+                if (_stylusMovementBoost != null) _stylusMovementBoost.On = InputSettings.StylusMovementBoost;
                 _penTablet.On = Mods.Input.PointerInput.StylusMode;
                 if (_repositionFilter != null) _repositionFilter.On = Mods.Input.PointerInput.GuardJumps;
                 if (_stylusZone != null)
@@ -1145,6 +1157,8 @@ namespace MphRead.Mods.Launcher.Gui
             _stylusAdvanced = new StackPanel { Spacing = 2, IsVisible = false };
             _repositionFilter = Add(_stylusAdvanced,
                 new ToggleRow("Reposition filtering", Mods.Input.PointerInput.GuardJumps));
+            _stylusMovementBoost = Add(_stylusAdvanced, new ToggleRow(
+                "Stylus movement can trigger morph boost", InputSettings.StylusMovementBoost));
             _stylusCursorOpacity = Add(_stylusAdvanced, new SliderRow("Cursor opacity",
                 (int)MathF.Round(Mods.Input.StylusZone.CursorOpacity * 100),
                 v => $"{v}%", min: 0, max: 100, keyStep: 5));
@@ -1155,7 +1169,11 @@ namespace MphRead.Mods.Launcher.Gui
                 (int)MathF.Round(Mods.Input.StylusZone.ButtonOpacity * 100),
                 v => $"{v}%", min: 0, max: 100, keyStep: 5));
             _stylusAdvanced.Children.Add(new Note(
-                "Reposition filtering ignores tablet jumps after lift/re-contact. Cursor, rectangle, and circular button opacity are independent; 0% hides that element during play. Zone placement stays visible while you configure it."));
+                "Stylus movement boost follows the separate melonPrime-style stylus path. "
+                + "Turn it off to keep pen motion from triggering Samus' boost while leaving "
+                + "button-based boost intact. Reposition filtering ignores tablet jumps after "
+                + "lift/re-contact. Cursor, rectangle, and circular button opacity are independent; "
+                + "0% hides that element during play. Zone placement stays visible while you configure it."));
             _stylusAdvancedButton = new HubNavButton("ADVANCED", compact: true)
             {
                 Width = 170,
@@ -1576,6 +1594,10 @@ namespace MphRead.Mods.Launcher.Gui
             InputSettings.MouseSensitivity = SliderToSensitivity(_sensitivity.Value);
             InputSettings.InvertMouseY = _invertY.On;
             InputSettings.InvertMouseX = _invertX.On;
+            if (_mouseMovementBoost != null)
+                InputSettings.MouseMovementBoost = _mouseMovementBoost.On;
+            if (_stylusMovementBoost != null)
+                InputSettings.StylusMovementBoost = _stylusMovementBoost.On;
             Mods.Input.PointerInput.StylusMode = _penTablet.On;
             if (_repositionFilter != null)
                 Mods.Input.PointerInput.GuardJumps = _repositionFilter.On;
