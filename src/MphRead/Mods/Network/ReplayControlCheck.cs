@@ -43,7 +43,24 @@ namespace MphRead.Mods.Network
                     }
                     Require(frames == 960, $"display rate {fps} changed replay timing");
                 }
-                Console.WriteLine("[replaycheck] timing: all rates, pause, step, resume and presentation independence passed");
+                long arrival100 = DemoPlayback.PlaybackArrivalTicks(100);
+                long arrival101 = DemoPlayback.PlaybackArrivalTicks(101);
+                double replayStep = arrival101 - arrival100;
+                double expectedReplayStep = System.Diagnostics.Stopwatch.Frequency / 60.0;
+                Require(arrival101 > arrival100
+                    && Math.Abs(replayStep - expectedReplayStep) <= 1.1,
+                    "replay receive clock is not deterministic 60 Hz");
+
+                using (var transport = new NetTransport(0, playbackOnly: true))
+                {
+                    byte[] ping = { (byte)PacketType.Ping };
+                    transport.EnqueueForPlayback(ping, ping.Length, arrival101);
+                    ReceivedPacket delivered = transport.Drain().Single();
+                    Require(delivered.ArrivedAt == arrival101,
+                        "playback packet lost its recorded receive timestamp");
+                }
+
+                Console.WriteLine("[replaycheck] timing: rates, presentation independence and deterministic receive clock passed");
                 Replay.ReplayCameraTrackCheck.Run();
 
                 var events = new[]
@@ -95,7 +112,11 @@ namespace MphRead.Mods.Network
                     "stale kill was accepted as final");
                 Require(!MphRead.Mods.KillCam.IsRecentFinalKill(121, 120),
                     "future kill frame was accepted as final");
-                Console.WriteLine("[replaycheck] kill cam: final-kill eligibility passed");
+                Require(MphRead.Mods.KillCam.WeaponName((int)BeamType.Imperialist)
+                        == "IMPERIALIST"
+                    && MphRead.Mods.KillCam.WeaponName(999) == "",
+                    "kill cam weapon label enum conversion");
+                Console.WriteLine("[replaycheck] kill cam: eligibility and weapon labels passed");
 
                 var bindings = new PadBindingState();
                 bindings.SetSlot(PadAction.ReplayPlayPause, 0, GamepadButtons.A,

@@ -452,7 +452,7 @@ namespace MphRead.Mods.Network
         /// traffic in that mode; it exists only because the constructor
         /// always binds one.
         /// </summary>
-        public void EnqueueForPlayback(byte[] data, int length)
+        public void EnqueueForPlayback(byte[] data, int length, long arrivedAt = 0)
         {
             if (length < 1 || length > data.Length || length > ushort.MaxValue)
                 throw new System.IO.InvalidDataException("Invalid replay packet length.");
@@ -464,7 +464,8 @@ namespace MphRead.Mods.Network
                 throw new System.IO.InvalidDataException("Replay exceeds 32 MiB of packets on one frame.");
             _playbackBytes += length;
             Interlocked.Increment(ref _inboxCount);
-            _inbox.Enqueue(new ReceivedPacket(_playbackSender, data, length));
+            _inbox.Enqueue(new ReceivedPacket(_playbackSender, data, length,
+                arrivedAt: arrivedAt));
         }
 
         /// <param name="extraHoldTicks">
