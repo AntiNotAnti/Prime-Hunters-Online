@@ -1,6 +1,8 @@
 #if MPHREAD_AVALONIA
 using System;
+using System.Threading.Tasks;
 using Avalonia;
+using Avalonia.Threading;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -29,9 +31,15 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly TextBlock _player;
         private readonly TextBlock _hunter;
         private readonly TextBlock _data;
+        private readonly TextBlock _onlinePlayers;
+        private readonly HubNavButton _returnLobby;
         private bool _compact;
+        private bool _lobbyActive;
+        private bool _populationRefreshing;
+        private DateTime _nextPopulationRefresh = DateTime.MinValue;
 
         public event Action<HubDestination>? NavigateRequested;
+        public event Action? ReturnToLobbyRequested;
 
         public HubHomeView()
         {
@@ -46,6 +54,23 @@ namespace MphRead.Mods.Launcher.Gui
 
             var header = BuildHeader(out StackPanel headerState);
             _headerState = headerState;
+            _onlinePlayers = new TextBlock
+            {
+                Text = "ONLINE PLAYERS  //  --",
+                FontFamily = HubTheme.DataBold,
+                FontSize = 8.5,
+                Foreground = HubTheme.AccentBrush,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            _headerState.Children.Add(_onlinePlayers);
+            _returnLobby = new HubNavButton("RETURN TO LOBBY",
+                compact: true, accent: HubTheme.Good)
+            {
+                IsVisible = false
+            };
+            _returnLobby.Click += (_, _) => ReturnToLobbyRequested?.Invoke();
+            ControllerNav.Identify(_returnLobby, "hub.return-lobby");
+            _headerState.Children.Add(_returnLobby);
             root.Children.Add(header);
 
             _main = new Grid
@@ -104,6 +129,54 @@ namespace MphRead.Mods.Launcher.Gui
             _data.Foreground = snapshot.GameFilesReady
                 ? HubTheme.GoodBrush
                 : HubTheme.WarmBrush;
+            _ = RefreshOnlinePopulation();
+        }
+
+        public void SetLobbyActive(bool active, int players)
+        {
+            _lobbyActive = active;
+            _returnLobby.IsVisible = active;
+            _returnLobby.Label = players > 0
+                ? $"RETURN TO LOBBY  //  {players} PLAYER{(players == 1 ? "" : "S")}"
+                : "RETURN TO LOBBY";
+            // The compact header cannot fit the status rail without crowding the
+            // title. PLAY still returns to a parked lobby on compact layouts.
+            _headerState.IsVisible = !_compact;
+        }
+
+        private async Task RefreshOnlinePopulation()
+        {
+            if (_populationRefreshing || DateTime.UtcNow < _nextPopulationRefresh)
+                return;
+
+            _populationRefreshing = true;
+            try
+            {
+                OnlinePopulationResult population =
+                    await ServerBrowserService.CountOnlinePlayersAsync().ConfigureAwait(false);
+                Dispatcher.UIThread.Post(() =>
+                {
+                    _onlinePlayers.Text = population.DirectoryAnswered
+                        ? $"ONLINE PLAYERS  //  {population.Players}"
+                        : "ONLINE PLAYERS  //  --";
+                    _onlinePlayers.Foreground = population.DirectoryAnswered
+                        ? HubTheme.GoodBrush
+                        : HubTheme.TextDimBrush;
+                });
+            }
+            catch
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    _onlinePlayers.Text = "ONLINE PLAYERS  //  --";
+                    _onlinePlayers.Foreground = HubTheme.TextDimBrush;
+                });
+            }
+            finally
+            {
+                _nextPopulationRefresh = DateTime.UtcNow.AddSeconds(30);
+                _populationRefreshing = false;
+            }
         }
 
         private Grid BuildHeader(out StackPanel headerState)

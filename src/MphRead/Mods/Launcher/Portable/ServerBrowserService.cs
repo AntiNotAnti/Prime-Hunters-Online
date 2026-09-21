@@ -44,6 +44,11 @@ namespace MphRead.Mods.Launcher
         ServerDiscoveryResult Discovery,
         string Message);
 
+    public readonly record struct OnlinePopulationResult(
+        bool DirectoryAnswered,
+        int Players,
+        int Servers);
+
     /// <summary>
     /// Application-layer server discovery and joining shared by every launcher
     /// presentation. The callbacks deliberately run off the UI thread; a GUI
@@ -111,6 +116,22 @@ namespace MphRead.Mods.Launcher
                 live == 1
                     ? "1 server answered."
                     : $"{live} of {listed.Count} servers answered.");
+        }
+
+        public static async Task<OnlinePopulationResult> CountOnlinePlayersAsync(
+            CancellationToken cancellationToken = default)
+        {
+            var live = new ConcurrentDictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            ServerDiscoveryResult discovery = await DiscoverAsync(entry =>
+            {
+                if (entry.Live && entry.Compatible)
+                    live[entry.Endpoint] = Math.Max(0, entry.Status.Players);
+            }, cancellationToken);
+
+            return new OnlinePopulationResult(
+                discovery.DirectoryAnswered,
+                live.Values.Sum(),
+                live.Count);
         }
 
         public static async Task<QuickPlaySearchResult> FindBestAsync(

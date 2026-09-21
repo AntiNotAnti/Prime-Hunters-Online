@@ -24,8 +24,9 @@ namespace MphRead.Mods.Network
         // may terminate the server process itself. An ordinary first-player owner on
         // a persistent dedicated server may close/reset the current lobby, not the daemon.
         private uint _processOwnerClientId;
+        private const double StartCountdownSeconds = 3.0;
         private byte _expectedLoadedSlots, _loadedSlots;
-        private double _startDeadline;
+        private double _startDeadline, _startCountdownDeadline;
 
         private MatchDefinition CurrentDefinition => SessionPolicy == ServerSessionPolicy.Lobby
             ? (_phase == SessionPhase.Lobby ? _lobbyMatch : _frozenMatch)
@@ -71,7 +72,10 @@ namespace MphRead.Mods.Network
             RuleFlags = CurrentDefinition.Rules | (RequireReady ? SessionRules.RequireReady : 0)
                 | (AllowJoinInProgress ? SessionRules.AllowJoinInProgress : 0)
                 | (LockTeams ? SessionRules.LockTeams : 0),
-            ExpectedParticipants = _expectedLoadedSlots, LoadedParticipants = _loadedSlots
+            ExpectedParticipants = _expectedLoadedSlots, LoadedParticipants = _loadedSlots,
+            StartCountdownMilliseconds = _phase == SessionPhase.Starting && _startCountdownDeadline > _now
+                ? (ushort)Math.Clamp((int)Math.Ceiling((_startCountdownDeadline - _now) * 1000), 1, ushort.MaxValue)
+                : (ushort)0
         };
 
         private void BroadcastSessionState()
@@ -253,23 +257,6 @@ namespace MphRead.Mods.Network
             _frozenMatch = match;
             _frozenWorldProfile = LobbyRules.ResolveWorldProfile(_frozenMatch, _maxPlayers);
 
-            double buildStarted = NetSession.Clock;
-            ushort previousMatch = _matchId;
-            _matchId = NetLifecycleTracker.Next(_matchId);
-            try
-            {
-                StartSimulation();
-            }
-            catch (Exception ex)
-            {
-                _matchId = previousMatch;
-                _sim?.Stop();
-                _sim = null;
-                Log($"[lobby] map load failed: {ex.Message}");
-                reason = "The server could not load this map.";
-                return false;
-            }
-
             _snapshotSeen = false;
             Array.Clear(_slotLives);
             foreach (Peer connected in _peers)
@@ -277,11 +264,36 @@ namespace MphRead.Mods.Network
             _matchEndedAt = -1;
             _expectedLoadedSlots = 0;
             _loadedSlots = 0;
+            _startCountdownDeadline = 0;
             foreach (Peer participant in _peers)
                 _expectedLoadedSlots |= (byte)(1 << participant.SlotIndex);
 
-            _startDeadline = now + (NetSession.Clock - buildStarted) + 15;
+            // Publish Starting before the server's own synchronous room build.
+            // Clients can now load in parallel with the authority instead of
+            // paying server load time and client load time back-to-back.
+            double buildStarted = NetSession.Clock;
+            _matchId = NetLifecycleTracker.Next(_matchId);
+            _startDeadline = now + 15;
             SetPhase(SessionPhase.Starting);
+            try
+            {
+                StartSimulation();
+            }
+            catch (Exception ex)
+            {
+                _sim?.Stop();
+                _sim = null;
+                Log($"[lobby] map load failed: {ex.Message}");
+                reason = "The server could not load this map.";
+                // Keep the advanced match id. Clients may already have observed
+                // it and correctly reject a rollback to the previous id.
+                EnterLobby(_frozenMatch);
+                return false;
+            }
+
+            // Preserve the full client grace period even when the authority's
+            // own cold load was expensive.
+            _startDeadline += NetSession.Clock - buildStarted;
             SyncSimulationState(now);
             Log($"[lobby] waiting for slots mask {_expectedLoadedSlots:X2}");
             return true;
@@ -296,6 +308,8 @@ namespace MphRead.Mods.Network
             _matchEndedAt = -1;
             _expectedLoadedSlots = 0;
             _loadedSlots = 0;
+            _startDeadline = 0;
+            _startCountdownDeadline = 0;
             CloseBallot();
             BroadcastMapChoices();
             InvalidateLobbyReady();
@@ -336,6 +350,7 @@ namespace MphRead.Mods.Network
             _expectedLoadedSlots = 0;
             _loadedSlots = 0;
             _startDeadline = 0;
+            _startCountdownDeadline = 0;
             _matchEndedAt = -1;
             _snapshotSeen = false;
             Array.Clear(_slotLives);
@@ -372,14 +387,24 @@ namespace MphRead.Mods.Network
         private void CheckLoadBarrier(double now)
         {
             if (_phase != SessionPhase.Starting) return;
-            if ((_loadedSlots & _expectedLoadedSlots) != _expectedLoadedSlots)
+            if (_startCountdownDeadline > 0)
             {
-                if (now < _startDeadline) return;
+                if (now < _startCountdownDeadline) return;
+                _startCountdownDeadline = 0;
+                _matchStarted = now;
+                SetPhase(SessionPhase.InMatch);
+                BroadcastMatchState(now);
+                return;
             }
-            Log(now >= _startDeadline ? "[lobby] load timeout; late clients may join in progress" : "[lobby] all clients loaded");
-            _matchStarted = now;
-            SetPhase(SessionPhase.InMatch);
-            BroadcastMatchState(now);
+
+            bool allLoaded = (_loadedSlots & _expectedLoadedSlots) == _expectedLoadedSlots;
+            if (!allLoaded && now < _startDeadline) return;
+
+            Log(allLoaded
+                ? "[lobby] all clients loaded; starting countdown"
+                : "[lobby] load timeout; starting countdown, late clients may join in progress");
+            _startCountdownDeadline = now + StartCountdownSeconds;
+            TouchLobbyRevision("start countdown");
         }
 
         private void HandleMatchLoadFailed(ReceivedPacket packet)
@@ -436,6 +461,7 @@ namespace MphRead.Mods.Network
                     _expectedLoadedSlots = 0;
                     _loadedSlots = 0;
                     _startDeadline = 0;
+                    _startCountdownDeadline = 0;
                     _matchEndedAt = -1;
                     _snapshotSeen = false;
                     Array.Clear(_slotLives);

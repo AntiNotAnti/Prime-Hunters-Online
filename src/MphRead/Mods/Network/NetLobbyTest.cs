@@ -61,13 +61,16 @@ namespace MphRead.Mods.Network
                 RuleFlags = SessionRules.RequireReady | SessionRules.AllowJoinInProgress | SessionRules.LockTeams,
                 WorldProfile = MatchWorldProfile.Resolve(8),
                 ExpectedParticipants = 255, LoadedParticipants = 3,
+                StartCountdownMilliseconds = 3000,
                 Match = new MatchDefinition { RoomKey = new string('X', 40), Mode = GameMode.BattleTeams,
                     Format = MatchFormat.FourVsFour, TimeLimitSeconds = 600, PointGoal = 20,
                     FriendlyFire = true, AffinityWeapons = true, ShadowFreeze = true, HideOpponentHealth = true,
                     DisablePowerups = true } };
             byte[] data = new byte[SessionStatePacket.Size]; state.Write(data);
             Check(SessionStatePacket.TryRead(data, out var read) && read.Match == state.Match
-                && read.Revision == state.Revision && read.LoadedParticipants == 3, "session round trip/max room/revision");
+                && read.Revision == state.Revision && read.LoadedParticipants == 3
+                && read.StartCountdownMilliseconds == 3000,
+                "session round trip/max room/revision/countdown");
             Check(MapResourceRules.IsPowerup(ItemType.DoubleDamage)
                 && MapResourceRules.IsPowerup(ItemType.Cloak)
                 && MapResourceRules.IsPowerup(ItemType.Deathalt)
@@ -200,9 +203,12 @@ namespace MphRead.Mods.Network
                 OwnerSlot = 255, Match = new MatchDefinition { RoomKey = Rooms()[0], Mode = GameMode.Battle } };
             NetSession.ApplySessionState(state);
             state.Revision = 0; state.Phase = SessionPhase.Starting; state.MatchId++;
+            state.StartCountdownMilliseconds = 3000;
             NetSession.ApplySessionState(state);
             Check(NetSession.IsStarting && NetSession.ServerSession?.MatchId == 5,
                 "client accepts session revision wrap");
+            Check(NetSession.StartCountdownRemainingSeconds > 2.5,
+                "client turns countdown packet into a local deadline");
             state.Revision = ushort.MaxValue; state.Phase = SessionPhase.Lobby; state.MatchId--;
             NetSession.ApplySessionState(state);
             Check(NetSession.IsStarting && NetSession.ServerSession?.MatchId == 5,
@@ -378,7 +384,13 @@ namespace MphRead.Mods.Network
             Check(loadingStatus.Phase == SessionPhase.Starting && loadingStatus.TimeRemaining == 600,
                 "browser status clock stays frozen through the load barrier");
             Client late = rig.Add(3); Check((late.State!.Value.ExpectedParticipants & (1 << late.Slot)) == 0, "late join excluded from barrier");
-            b.Loaded(); rig.Wait(() => a.State.Value.Phase == SessionPhase.InMatch, "barrier released");
+            b.Loaded();
+            rig.Wait(() => a.State.Value.Phase == SessionPhase.Starting
+                && a.State.Value.StartCountdownMilliseconds > 0,
+                "loaded barrier publishes start countdown");
+            Check(a.State.Value.StartCountdownMilliseconds <= 3000,
+                "countdown remains bounded to three seconds");
+            rig.Wait(() => a.State.Value.Phase == SessionPhase.InMatch, "barrier released after countdown");
             b.EndMatch();
             rig.Wait(() => a.State.Value.Phase == SessionPhase.PostMatch, "results entered");
             Check(rig.Clients.All(c => c.OpenMapChoices == 0),
@@ -510,7 +522,8 @@ namespace MphRead.Mods.Network
             config = owner.State.Value; config.Match = config.Match with { Format = MatchFormat.TwoVsTwoVsTwoVsTwo };
             rig.Expect(owner, owner.Command(LobbyCommandType.UpdateMatch, config: config), LobbyResultCode.Ok);
             rig.Expect(owner, owner.Command(LobbyCommandType.StartMatch), LobbyResultCode.Ok);
-            rig.Wait(() => owner.State.Value.Phase == SessionPhase.InMatch, "load timeout releases barrier", 18000);
+            rig.Wait(() => owner.State.Value.Phase == SessionPhase.InMatch,
+                "load timeout releases barrier after countdown", 22000);
         }
 
         private static void CustomScenario()
@@ -624,6 +637,9 @@ namespace MphRead.Mods.Network
             Check(NetSession.IsStarting && NetSession.ConnectionPort == port,
                 "lobby connection survives the load barrier");
             NetSession.MarkMatchLoaded();
+            PumpUntil(() => NetSession.StartCountdownRemainingSeconds > 0,
+                "real load ack starts countdown");
+            Check(NetSession.IsStarting, "real client stays frozen during countdown");
             PumpUntil(() => NetSession.IsPlaying, "real load ack starts match");
             Check(!NetSession.FreezeGameplay, "gameplay released after barrier");
             NetSession.SendMatchEnd();

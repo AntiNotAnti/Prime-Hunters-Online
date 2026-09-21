@@ -18,6 +18,8 @@ namespace MphRead.Mods.Network
         public static bool IsStarting => SessionPhase == SessionPhase.Starting;
         public static bool IsPlaying => SessionPhase == SessionPhase.InMatch;
         public static bool IsPostMatch => SessionPhase == SessionPhase.PostMatch;
+        public static double StartCountdownRemainingSeconds =>
+            IsStarting ? Math.Max(0, _startCountdownEndsAt - Clock) : 0;
         public static bool CanEditLobby => IsInLobby && LocalIsLobbyOwner;
         public static bool PersistentLobby => ServerSession?.Policy == ServerSessionPolicy.Lobby;
         public static bool FreezeGameplay => PersistentLobby && SessionPhase is SessionPhase.Lobby or SessionPhase.Starting;
@@ -34,7 +36,7 @@ namespace MphRead.Mods.Network
         private static uint _nextCommandId;
         private static ushort? _loadedMatch;
         private static ushort _rosterSessionRevision;
-        private static double _lastLoadAck, _lastIdentity;
+        private static double _lastLoadAck, _lastIdentity, _startCountdownEndsAt;
         private sealed class PendingLobbyCommand
         {
             public LobbyCommandPacket Packet;
@@ -118,6 +120,10 @@ namespace MphRead.Mods.Network
                 ResetMatchState(preserveRoomChange: newMatch && state.Phase != SessionPhase.Lobby);
             }
             ServerSession = state;
+            if (state.Phase == SessionPhase.Starting && state.StartCountdownMilliseconds > 0)
+                _startCountdownEndsAt = Clock + state.StartCountdownMilliseconds / 1000.0;
+            else if (state.Phase != SessionPhase.Starting)
+                _startCountdownEndsAt = 0;
             if (ServerMatch == null || ServerMatch.Value.MatchId != state.MatchId
                 || ServerMatch.Value.AuthorityEpoch != state.AuthorityEpoch)
             {
@@ -176,7 +182,7 @@ namespace MphRead.Mods.Network
             ServerSession = null; _pendingLobby.Clear(); _loadedMatch = null;
             _rosterRevision = 0; _hasRoster = false; _ownerToken = Guid.Empty;
             _rosterSessionRevision = 0;
-            LobbyMessage = ""; _lastLoadAck = _lastIdentity = 0;
+            LobbyMessage = ""; _lastLoadAck = _lastIdentity = _startCountdownEndsAt = 0;
             Array.Fill(SlotTeamIndex, (sbyte)-1); Array.Clear(SlotLobbyReady);
             Chat.NetChat.Clear();
         }
