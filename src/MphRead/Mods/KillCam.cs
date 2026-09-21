@@ -105,10 +105,9 @@ namespace MphRead.Mods
                 return;
             }
 
-            PlayerEntity victim = PlayerEntity.Players[localSlot];
             uint elapsed = NetSession.NetFrame - _startFrame;
-            if (victim.Health > 0 || elapsed >= PersonalDurationFrames
-                || !TryGetPlayer(_killerSlot, requireAlive: true,
+            if (elapsed >= PersonalDurationFrames
+                || !TryGetPlayer(_killerSlot, requireAlive: false,
                     out PlayerEntity killer))
             {
                 ClearCurrent();
