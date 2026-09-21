@@ -13,9 +13,32 @@ namespace MphRead.Entities
         {
             bool historical = Mods.KillCam.TryGetHistoricalPose(
                 SlotIndex, out Mods.KillCamPlayerPose historicalPose);
-            Vector3 drawPosition = historical ? historicalPose.Position : Position;
+
+            Vector3 presentedPosition = default;
+            bool presentedAlt = false;
+            bool networkPresented = !historical
+                && Mods.Network.NetSession.Active
+                && SlotIndex != Mods.Network.NetHooks.LocalSlot
+                && Mods.Network.NetSmoothing.SamplePresentation(
+                    SlotIndex, out presentedPosition, out presentedAlt);
+
+            Vector3 drawPosition = historical
+                ? historicalPose.Position
+                : networkPresented
+                    ? Mods.Network.NetPlayerBridge.InFormFor(
+                        this, presentedPosition, presentedAlt)
+                    : Position;
             bool drawAltForm = historical ? historicalPose.AltForm : IsAltForm;
             bool drawAlive = historical ? historicalPose.Health > 0 : _health > 0;
+
+            Vector3 drawFacing = historical ? historicalPose.Facing : _facingVector;
+            if (!historical && Mods.Network.DemoPlayback.IsActive
+                && Mods.Render.FrameTiming.Active)
+            {
+                Vector3 smoothedFacing = ModDrawTransform().Row2.Xyz;
+                if (smoothedFacing.LengthSquared > 0.000001f)
+                    drawFacing = smoothedFacing.Normalized();
+            }
 
             if (!historical && Flags2.TestFlag(PlayerFlags2.Spectating))
             {
@@ -27,7 +50,7 @@ namespace MphRead.Entities
                 return;
             }
             if (!historical)
-                DrawShadow();
+                DrawShadow(drawPosition);
             if (!historical && IsMainPlayer && ScanVisor)
             {
                 DrawScanModels();
@@ -119,7 +142,7 @@ namespace MphRead.Entities
                     Node spineNode = _spineNodes[lod]!;
                     spineNode.AnimIgnoreChild = true;
                     // todo: we can just figure out the angle directly from the facing vector
-                    Vector3 facing = historical ? historicalPose.Facing : _facingVector;
+                    Vector3 facing = drawFacing;
                     float limit = Fixed.ToFloat(2896);
                     float cos = MathF.Sqrt(1 - facing.Y * facing.Y);
                     float sin = facing.Y;
@@ -417,15 +440,16 @@ namespace MphRead.Entities
             return base.GetTexcoordMatrix(inst, material, materialId, node, recolor);
         }
 
-        private void DrawShadow()
+        private void DrawShadow(Vector3 drawPosition)
         {
             if (IsMainPlayer && CameraType == CameraType.First)
             {
                 return;
             }
             Material material = _trailModel.Model.Materials[1];
-            Vector3 point1 = _volume.SpherePosition;
-            Vector3 point2 = _volume.SpherePosition.AddY(-10);
+            Vector3 presentationOffset = drawPosition - Position;
+            Vector3 point1 = _volume.SpherePosition + presentationOffset;
+            Vector3 point2 = point1.AddY(-10);
             CollisionResult colRes = default;
             if (CollisionDetection.CheckBetweenPoints(point1, point2, TestFlags.None, _scene, ref colRes)
                 && colRes.Plane.Y >= Fixed.ToFloat(4))

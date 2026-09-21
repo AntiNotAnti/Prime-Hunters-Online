@@ -24,7 +24,8 @@ namespace MphRead.Entities
         // behind itself just to smooth its model. Remote/spectated hunters use
         // the generic draw interpolation; the local view uses render-time
         // late latching below.
-        protected override bool InterpolateDrawTransform => !IsMainPlayer && !NetSession.Active;
+        protected override bool InterpolateDrawTransform
+            => DemoPlayback.IsActive || (!IsMainPlayer && !NetSession.Active);
 
         protected override Matrix4 GetModelTransform(ModelInstance inst, int index)
         {

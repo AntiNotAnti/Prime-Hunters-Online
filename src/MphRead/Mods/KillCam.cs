@@ -385,12 +385,22 @@ namespace MphRead.Mods
             victim = PlayerName(_victimSlot);
             if (_current != null && (uint)_killerSlot < (uint)PlayerEntity.SlotCapacity)
             {
-                int value = _current.Players[_killerSlot].Weapon;
-                weapon = Enum.IsDefined(typeof(BeamType), value)
-                    ? ((BeamType)value).ToString().ToUpperInvariant()
-                    : "";
+                weapon = WeaponName(_current.Players[_killerSlot].Weapon);
             }
             return true;
+        }
+
+        internal static string WeaponName(int value)
+        {
+            // BeamType is backed by sbyte. Enum.IsDefined(Type, object)
+            // requires the boxed value to be the enum's exact underlying type;
+            // passing our stored Int32 throws instead of returning false.
+            if (value < SByte.MinValue || value > SByte.MaxValue)
+                return "";
+            sbyte raw = (sbyte)value;
+            return Enum.IsDefined(typeof(BeamType), raw)
+                ? ((BeamType)raw).ToString().ToUpperInvariant()
+                : "";
         }
 
         internal static float Progress

@@ -399,9 +399,10 @@ namespace MphRead.Mods.Network
         }
 
         /// <summary>Hands a packet read back from a demo file to this session as if it had just arrived.</summary>
-        public static void InjectPlaybackPacket(byte[] data, int length)
+        public static void InjectPlaybackPacket(byte[] data, int length,
+            long arrivedAt = 0)
         {
-            _transport?.EnqueueForPlayback(data, length);
+            _transport?.EnqueueForPlayback(data, length, arrivedAt);
         }
 
         /// <summary>

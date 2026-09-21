@@ -7948,6 +7948,14 @@ namespace MphRead
             {
                 return;
             }
+
+            // Choose the fractional network/replay playout point for this
+            // picture. The smoothing clock advances at 60 Hz; high-refresh
+            // drawing samples between its completed steps instead of showing
+            // the same puppet pose until the next simulation tick.
+            Mods.Network.NetSmoothing.PreparePresentation(
+                Mods.Render.FrameTiming.PresentationAlpha);
+
             Scene.OnDrawFrame();
             if (!Scene.OnRenderFrame())
             {

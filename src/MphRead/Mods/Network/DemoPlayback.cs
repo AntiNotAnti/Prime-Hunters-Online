@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Diagnostics;
 
 namespace MphRead.Mods.Network
 {
@@ -76,6 +77,20 @@ namespace MphRead.Mods.Network
         private const uint JoinGraceFrames = 120;
 
         /// <summary>
+        /// Synthetic receive timestamp for a recorded local frame.
+        ///
+        /// Replay packets must preserve the cadence they had in the recording,
+        /// not inherit whatever wall-clock batching this machine happens to do
+        /// while reviewing it. A catch-up draw can execute several 60 Hz replay
+        /// frames back-to-back; stamping those packets with Stopwatch.Now makes
+        /// NetSmoothing interpret the batch as new jitter and visibly hitch.
+        /// Differential transit only needs a stable cadence, so an arbitrary
+        /// epoch plus the recorded frame is sufficient.
+        /// </summary>
+        internal static long PlaybackArrivalTicks(uint frame)
+            => 1 + (long)Math.Round(frame * (double)Stopwatch.Frequency / 60.0);
+
+        /// <summary>
         /// Open the file and wind it forward to the first match info, the
         /// same shape as <see cref="NetLaunch.Join"/> -- true once
         /// <c>NetSession.ServerMatch</c> knows what room to load.
@@ -134,7 +149,8 @@ namespace MphRead.Mods.Network
                     return false;
                 }
                 foreach (byte[] packet in metadata.Bootstrap.Packets)
-                    NetSession.InjectPlaybackPacket(packet, packet.Length);
+                    NetSession.InjectPlaybackPacket(packet, packet.Length,
+                        PlaybackArrivalTicks(0));
                 NetSession.Update(0);
                 if (NetSession.ServerMatch?.RoomKey.Length is not > 0)
                 {
@@ -145,7 +161,8 @@ namespace MphRead.Mods.Network
                 }
                 NetSession.RewindPlayback();
                 foreach (byte[] packet in metadata.Bootstrap.Packets)
-                    NetSession.InjectPlaybackPacket(packet, packet.Length);
+                    NetSession.InjectPlaybackPacket(packet, packet.Length,
+                        PlaybackArrivalTicks(0));
                 _pending = _reader.ReadNext();
                 if (_pending == null)
                 {
@@ -288,7 +305,8 @@ namespace MphRead.Mods.Network
                 while (_pending is DemoRecord record && record.Frame <= _frame)
                 {
                     Replay.ReplayNetworkDiagnostics.OnPacket(record.Frame, record.Data);
-                    NetSession.InjectPlaybackPacket(record.Data, record.Data.Length);
+                    NetSession.InjectPlaybackPacket(record.Data, record.Data.Length,
+                        PlaybackArrivalTicks(record.Frame));
                     _pending = _reader.ReadNext();
                 }
             }
