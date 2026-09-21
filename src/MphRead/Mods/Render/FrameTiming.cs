@@ -17,9 +17,9 @@ namespace MphRead.Mods.Render
     /// and the *drawing* is what runs at the display's rate. A machine
     /// holding 144 fps runs the same 60 simulation steps a second it always
     /// did, sends the same packets on the same frames, and records a demo
-    /// another build can play back. Each picture is of the newest simulated
-    /// state, exactly as this engine has always drawn -- nothing is blended
-    /// between two of them.
+    /// another build can play back. On a display above 60 Hz the draw layer may
+    /// interpolate completed simulation states, but gameplay never advances
+    /// from that presentation clock.
     ///
     /// One property is worth stating plainly because it is a change, and an
     /// improvement: the game's speed no longer depends on whether the machine
@@ -86,6 +86,24 @@ namespace MphRead.Mods.Render
         public static bool Active { get; private set; }
 
         private static double _accumulator;
+
+        /// <summary>
+        /// Fraction of the next 60 Hz simulation step already accumulated by
+        /// the presentation loop. Render-only interpolation and late-latched
+        /// camera input may read this; gameplay must never advance from it.
+        /// </summary>
+        public static double Alpha => Math.Clamp(_accumulator / StepSeconds, 0.0, 1.0);
+
+        /// <summary>
+        /// Draw interpolation is useful only when the display actually shows
+        /// frames between simulation steps. At 60 Hz it would buy no smoothness
+        /// and merely draw the prior state, so presentation stays current.
+        /// </summary>
+        public static bool HighRefreshPresentation =>
+            (FrameRateCap != DisplayRate && FrameRateCap > SimulationHz)
+            || MeasuredFrameHz > 75.0;
+
+        public static double PresentationAlpha => HighRefreshPresentation ? Alpha : 1.0;
 
         /// <summary>Steps run for the frame <see cref="Advance"/> last answered.</summary>
         public static int StepsThisFrame { get; private set; }

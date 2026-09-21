@@ -94,6 +94,7 @@ namespace MphRead.Mods.Render
                 failures += RunCase(test) ? 0 : 1;
             }
             failures += RunStallCase() ? 0 : 1;
+            failures += RunPresentationAlphaCase() ? 0 : 1;
             failures += RunLockjawNoiseCases();
             Console.WriteLine(failures == 0
                 ? "FRAMETIMING all cases pass"
@@ -137,6 +138,43 @@ namespace MphRead.Mods.Render
                 + $" | worst frame {worstFrame} step(s)"
                 + $" | dropped {FrameTiming.DroppedSteps}");
             return ok;
+        }
+
+        /// <summary>
+        /// High-refresh presentation must interpolate only when there really
+        /// are extra pictures between simulation steps. At 60 Hz the draw
+        /// state stays current, while a 144 Hz presentation sees the
+        /// accumulator's fractional remainder.
+        /// </summary>
+        private static bool RunPresentationAlphaCase()
+        {
+            int priorCap = FrameTiming.FrameRateCap;
+            try
+            {
+                FrameTiming.FrameRateCap = 60;
+                FrameTiming.Reset();
+                FrameTiming.ResetDiagnostics();
+                FrameTiming.Advance(FrameTiming.StepSeconds * 0.4);
+                bool sixtyCurrent = Math.Abs(FrameTiming.PresentationAlpha - 1.0) < 0.000001;
+
+                FrameTiming.FrameRateCap = 144;
+                FrameTiming.Reset();
+                FrameTiming.ResetDiagnostics();
+                FrameTiming.Advance(FrameTiming.StepSeconds * 0.4);
+                bool highRefreshFraction = Math.Abs(FrameTiming.PresentationAlpha - 0.4) < 0.000001;
+
+                bool ok = sixtyCurrent && highRefreshFraction;
+                Console.WriteLine($"FRAMETIMING {(ok ? "ok  " : "FAIL")} presentation alpha"
+                    + $" | 60 Hz={ (sixtyCurrent ? "current" : "interpolated") }"
+                    + $" | 144 Hz={FrameTiming.PresentationAlpha:0.000}");
+                return ok;
+            }
+            finally
+            {
+                FrameTiming.FrameRateCap = priorCap;
+                FrameTiming.Reset();
+                FrameTiming.ResetDiagnostics();
+            }
         }
 
         /// <summary>

@@ -262,15 +262,17 @@ namespace MphRead.Mods
                     + "reported position on clients as well as on the authority");
             }
 
-            // A trigger pull recovered from a press history is rewound by its
-            // own age as well as by its packet's ack. Off by default so the
-            // two can be measured against each other; it costs nothing on a
-            // line that is losing nothing.
-            if (HasFlag(args, "pressage"))
+            // Recovered trigger pulls carry their own age by default. Keep
+            // both switches so old test scripts still work and -nopressage is
+            // the explicit control arm.
+            if (HasFlag(args, "nopressage"))
+            {
+                Network.NetUnlagged.PressAgeEnabled = false;
+                Console.WriteLine("[net] recovered trigger pulls use the carrying packet's ack only");
+            }
+            else if (HasFlag(args, "pressage"))
             {
                 Network.NetUnlagged.PressAgeEnabled = true;
-                Console.WriteLine("[net] recovered trigger pulls are rewound by "
-                    + "their own age as well as by their packet's ack");
             }
 
             // The headshot duel, in place of the feature tour. Both arms of a

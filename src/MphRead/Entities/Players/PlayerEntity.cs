@@ -1029,6 +1029,11 @@ namespace MphRead.Entities
                 }
                 _scene.NoteRenderLifecycle("spawn complete");
             }
+
+            // Respawn/rejoin is a new presentation lifetime even when the new
+            // spawn happens to be close to where the previous body died.
+            ModResetDrawState();
+            CameraInfo.ModResetDrawState();
         }
 
         public void InitEnemyHunter()

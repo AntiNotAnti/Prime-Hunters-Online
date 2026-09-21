@@ -20,6 +20,25 @@ namespace MphRead.Entities
     /// </summary>
     public partial class PlayerEntity
     {
+        // Do not put the locally controlled hunter one simulation frame
+        // behind itself just to smooth its model. Remote/spectated hunters use
+        // the generic draw interpolation; the local view uses render-time
+        // late latching below.
+        protected override bool InterpolateDrawTransform => !IsMainPlayer && !NetSession.Active;
+
+        protected override Matrix4 GetModelTransform(ModelInstance inst, int index)
+        {
+            Matrix4 transform = base.GetModelTransform(inst, index);
+            if (NetSession.Active && SlotIndex != NetHooks.LocalSlot
+                && NetSmoothing.SamplePresentation(SlotIndex,
+                    out Vector3 presented, out bool presentedAlt))
+            {
+                Vector3 drawPosition = NetPlayerBridge.InFormFor(this, presented, presentedAlt);
+                transform.Row3.Xyz += drawPosition - Position;
+            }
+            return transform;
+        }
+
         private const int NetworkHistoryLength = 120;
         private readonly Vector3[] _networkPositionHistory = new Vector3[NetworkHistoryLength];
         private readonly uint[] _networkPositionFrames = new uint[NetworkHistoryLength];
@@ -59,6 +78,73 @@ namespace MphRead.Entities
 
         /// <summary>Where this player's gun points. Sent as the aim in every intent.</summary>
         internal Vector3 ModGunVector => _gunVec1;
+
+        /// <summary>
+        /// Build a render-only first-person view from input that arrived after
+        /// the last 60 Hz simulation step. No gameplay field is changed: the
+        /// next simulation step will consume the same input normally and its
+        /// intent/shot remains authoritative.
+        /// </summary>
+        internal Matrix4 ModLateLatchedView(float pointerX, float pointerY,
+            float controllerX, float controllerY)
+        {
+            if (CameraType != CameraType.First || Flags1.TestFlag(PlayerFlags1.NoAimInput)
+                || CameraSequence.Current != null)
+            {
+                return CameraInfo.ViewMatrix;
+            }
+
+            float mouseX = -pointerX / 4f * Mods.InputSettings.MouseSensitivity
+                * (Mods.InputSettings.InvertMouseX ? -1 : 1);
+            float mouseY = -pointerY / 4f * Mods.InputSettings.MouseSensitivity
+                * (Mods.InputSettings.InvertMouseY ? -1 : 1);
+            if (EquipInfo.Zoomed)
+            {
+                controllerX *= Mods.Input.GamepadOptions.ScopedX;
+                controllerY *= Mods.Input.GamepadOptions.ScopedY;
+            }
+
+            float x = mouseX + controllerX;
+            float y = mouseY + controllerY;
+            float normalFov = Fixed.ToFloat(Values.NormalFov) * 2;
+            if (EquipInfo.Zoomed && normalFov != 0)
+            {
+                float zoomScale = CameraInfo.Fov / normalFov;
+                x *= zoomScale;
+                y *= zoomScale;
+            }
+            if (x == 0 && y == 0)
+            {
+                return CameraInfo.ViewMatrix;
+            }
+
+            Vector3 aim = _gunVec1;
+            float targetAimY = Math.Clamp(_aimY + y,
+                IsAltForm ? -25f : -85f, IsAltForm ? 5f : 85f);
+            float pitch = MathHelper.DegreesToRadians(targetAimY - _aimY);
+            if (pitch != 0)
+            {
+                Matrix4 pitchBasis = GetTransformMatrix(aim, Vector3.UnitY);
+                Vector3 local = pitch <= 0
+                    ? new Vector3(0, MathF.Sin(pitch), MathF.Cos(pitch))
+                    : new Vector3(0, -MathF.Sin(-pitch), MathF.Cos(-pitch));
+                aim = Matrix.Vec3MultMtx3(local, pitchBasis).Normalized();
+            }
+            if (x != 0)
+            {
+                float angle = MathHelper.DegreesToRadians(x);
+                float sin = angle <= 0 ? MathF.Sin(angle) : -MathF.Sin(-angle);
+                float cos = angle <= 0 ? MathF.Cos(angle) : MathF.Cos(-angle);
+                float oldX = aim.X;
+                float oldZ = aim.Z;
+                aim.X = oldX * cos + oldZ * sin;
+                aim.Z = oldX * -sin + oldZ * cos;
+                aim = aim.Normalized();
+            }
+            Vector3 up = CameraInfo.UpVector.LengthSquared > 0.000001f
+                ? CameraInfo.UpVector.Normalized() : Vector3.UnitY;
+            return Matrix4.LookAt(CameraInfo.Position, CameraInfo.Position + aim, up);
+        }
 
 
         internal void ModRefreshNetworkAim()

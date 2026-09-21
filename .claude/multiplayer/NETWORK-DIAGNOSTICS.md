@@ -629,7 +629,12 @@ quite that:
     input, in a protocol whose packets say "this is where I'm aiming *now*".
     Eight clients on one machine produce ~2000 packets/s between them, so one
     130 ms frame overflows it. Queue is 2048 now, socket buffers 1 MB, and an
-    overflow drops the oldest.
+    overflow drops the oldest. The current client path goes one step further:
+    receive buffers come from `ArrayPool<byte>`, and when several state packets
+    accumulate before one simulation step it keeps only the newest Snapshot and
+    newest SlotIntent per slot. Control packets and discrete events remain
+    ordered. Replay and `NetLag` fault injection bypass coalescing so a test
+    stream is never silently simplified.
 13. **The check compared two different sample rates.** A player published
     position/aim every `IntentSendInterval` frames, which was then 30 Hz, but
     `NetFeatureCheck` measured the *local* player's path every frame (60 Hz)
@@ -655,12 +660,23 @@ it did before -- **not independently measured**, since the scripted tour
 barely fires the beam at a player; rests on reading the code beside its
 already-corrected twin.
 
-## Idle server cost
+## Server pacing and idle cost
 
-The Pi's run loop slept 1 ms between passes whether or not anyone was
-connected -- 5-7% of one core burnt for nothing. Now sleeps 20 ms while empty.
-Six real clients on the Pi 3B: 5-22% of one core (typically 11-16%), system
-65-75% idle, 0 packets dropped.
+The Pi's run loop used to sleep 1 ms between every pass whether or not anyone
+was connected -- 5-7% of one core burnt for nothing. An empty non-simulating
+server still sleeps 20 ms.
+
+While the server is the authority, its 60 Hz simulation now has an **absolute
+next-step deadline**. The loop sleeps for the bulk of the remaining time,
+yields near the boundary and spins only for the last fraction of a millisecond.
+The deadline advances by exactly 1/60 s after each step, so scheduler jitter
+does not become clock drift. Long stalls still re-base rather than trying to
+pay an unbounded simulation debt.
+
+Historical Pi 3B measurement before the precision deadline change: six real
+clients used 5-22% of one core (typically 11-16%), system 65-75% idle, 0
+packets dropped. Re-measure before quoting those CPU numbers for the new pacing
+loop.
 
 ## The scoreboard's ping column
 

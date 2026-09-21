@@ -96,6 +96,34 @@ namespace MphRead.Mods.Input
         private const float TurnRate = 3.5f;
 
         /// <summary>
+        /// Render-only projection of the currently held aim stick through the
+        /// fractional part of a simulation frame. Unlike BeginFrame this does
+        /// not update edges, actions or aim-assist state.
+        /// </summary>
+        internal static (float X, float Y) RenderAim(double alpha)
+        {
+            if (GamepadContexts.Current != GamepadContext.Gameplay || !GamepadContexts.Focused
+                || WheelHeld || alpha <= 0)
+            {
+                return (0, 0);
+            }
+            GamepadState state = GamepadManager.ActiveState;
+            if (!state.Connected) return (0, 0);
+            (float x, float y) = GamepadOptions.Southpaw
+                ? GamepadAnalog.ApplyRadialDeadZone(state.LeftX, state.LeftY,
+                    GamepadOptions.LeftInner, GamepadOptions.LeftOuter)
+                : GamepadAnalog.ApplyRadialDeadZone(state.RightX, state.RightY,
+                    GamepadOptions.RightInner, GamepadOptions.RightOuter);
+            float fraction = (float)Math.Clamp(alpha, 0.0, 1.0);
+            return (
+                -GamepadAnalog.ApplyResponseCurve(x, GamepadOptions.Curve) * TurnRate
+                    * GamepadOptions.LookX * (GamepadOptions.InvertX ? -1 : 1) * fraction,
+                GamepadAnalog.ApplyResponseCurve(y, GamepadOptions.Curve) * TurnRate
+                    * GamepadOptions.LookY * (GamepadOptions.InvertY ? -1 : 1) * fraction
+            );
+        }
+
+        /// <summary>
         /// How far a stick has to go before it counts as movement. The walk
         /// keys are on or off, so this is where a stick becomes a direction.
         /// Larger than the aim dead zone below it, because a thumb resting on

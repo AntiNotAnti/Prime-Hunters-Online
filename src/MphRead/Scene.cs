@@ -65,6 +65,11 @@ namespace MphRead
         {
             // important to call in this order because the entity may add models (at least in development)
             entity.Initialize();
+            // Initialize overrides are allowed to place the entity after
+            // base.Initialize returns. Capture only once the complete initial
+            // transform exists, otherwise interpolation starts from an
+            // intermediate constructor/default pose.
+            entity.ModResetDrawState();
             InitEntity(entity);
         }
 

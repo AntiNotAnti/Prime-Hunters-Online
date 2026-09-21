@@ -861,6 +861,15 @@ namespace MphRead.Entities
 
         private bool _shake = true;
 
+        // Render-only camera history. Gameplay always reads the public fields
+        // above; this history exists solely to turn 60 Hz spectator/replay
+        // cameras into smooth high-refresh presentation.
+        private Vector3 _drawPreviousPosition, _drawCurrentPosition;
+        private Vector3 _drawPreviousTarget, _drawCurrentTarget;
+        private Vector3 _drawPreviousUp = Vector3.UnitY, _drawCurrentUp = Vector3.UnitY;
+        private float _drawPreviousFov, _drawCurrentFov;
+        private bool _drawStateValid;
+
         public void Reset()
         {
             PrevPosition = Vector3.UnitZ;
@@ -868,6 +877,64 @@ namespace MphRead.Entities
             Target = Vector3.Zero;
             UpVector = Vector3.UnitY;
             Fov = 39 * 2;
+            ModResetDrawState();
+        }
+
+        internal void ModResetDrawState()
+        {
+            _drawPreviousPosition = _drawCurrentPosition = Position;
+            _drawPreviousTarget = _drawCurrentTarget = Target;
+            _drawPreviousUp = _drawCurrentUp = UpVector;
+            _drawPreviousFov = _drawCurrentFov = Fov;
+            _drawStateValid = true;
+        }
+
+        internal void ModCaptureDrawState()
+        {
+            if (!_drawStateValid || (Position - _drawCurrentPosition).LengthSquared > 16f)
+            {
+                ModResetDrawState();
+                return;
+            }
+            _drawPreviousPosition = _drawCurrentPosition;
+            _drawPreviousTarget = _drawCurrentTarget;
+            _drawPreviousUp = _drawCurrentUp;
+            _drawPreviousFov = _drawCurrentFov;
+            _drawCurrentPosition = Position;
+            _drawCurrentTarget = Target;
+            _drawCurrentUp = UpVector;
+            _drawCurrentFov = Fov;
+        }
+
+        internal Vector3 ModGetDrawPosition(double alpha)
+        {
+            if (!_drawStateValid) return Position;
+            float t = (float)Math.Clamp(alpha, 0.0, 1.0);
+            return Vector3.Lerp(_drawPreviousPosition, _drawCurrentPosition, t);
+        }
+
+        internal Matrix4 ModGetDrawView(double alpha)
+        {
+            if (!_drawStateValid)
+            {
+                return ViewMatrix;
+            }
+            float t = (float)Math.Clamp(alpha, 0.0, 1.0);
+            Vector3 position = Vector3.Lerp(_drawPreviousPosition, _drawCurrentPosition, t);
+            Vector3 target = Vector3.Lerp(_drawPreviousTarget, _drawCurrentTarget, t);
+            Vector3 up = Vector3.Lerp(_drawPreviousUp, _drawCurrentUp, t);
+            if ((target - position).LengthSquared < 0.000001f || up.LengthSquared < 0.000001f)
+            {
+                return ViewMatrix;
+            }
+            return Matrix4.LookAt(position, target, up.Normalized());
+        }
+
+        internal float ModGetDrawFov(double alpha)
+        {
+            if (!_drawStateValid) return Fov;
+            float t = (float)Math.Clamp(alpha, 0.0, 1.0);
+            return _drawPreviousFov + (_drawCurrentFov - _drawPreviousFov) * t;
         }
 
         public void Update()

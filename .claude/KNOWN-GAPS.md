@@ -17,7 +17,7 @@ claiming coverage that isn't there.
 
 - **A client's own beam is spawned before its puppets are placed, and turning
   snapshot-owned puppets on made that visible.** *Found and fixed
-  2026-09-14; the fix is not yet re-measured.* `ProcessInput` runs before the
+  2026-09-14; direct live instrumentation added 2026-09-21.* `ProcessInput` runs before the
   movement step, so with the placement happening only in
   `NetHooks.AfterRemoteMovement` a client's shot was tested against the
   position the previous frame's step left behind while the intent it travelled
@@ -57,10 +57,17 @@ claiming coverage that isn't there.
   not.** What is solid is `clamped` (80.0/87.5% down to 0/1.4%), every
   protocol-7 arm rescuing real kills and headshots, and the duel's 14 predicted
   headshots agreed 12/12 with none downgraded. Anything derived from `hs%` or
-  `local%` at this sample size is noise, and settling it needs either much
-  longer arms or the Pi rather than a contended WSL box. The one-frame gap is
-  still a real fault and the fix is still right; it is simply not what this
-  instrument can see.
+  `local%` at this sample size is noise.
+
+  The current build now reports `pre-input puppet correction: N mean=... worst=...`
+  from `NetTimingDiagnostics`: it measures the displacement required to put a
+  puppet back on the simulation playout point before local shooting input is
+  processed. At 60 Hz that is the direct measurement of this one-frame fault
+  and should settle toward zero once the pre-input placement is doing its job.
+  High-refresh presentation has a separate `presentation correction` metric:
+  that small sub-frame move is intentional because collision is restored to the
+  exact world the previous picture showed. A new long remote A/B is still
+  required before claiming a population-level improvement.
 - **The strict-earlier-world refusal branch of kill arbitration is still
   weakly exercised.** Hit claims have now run on a real intercontinental line
   (the Japan measurements in `NETWORK-HITCLAIMS.md` include claim/arbitration
@@ -85,9 +92,11 @@ claiming coverage that isn't there.
   in which they were already killed.
 - **The playout clock's snap counter is contaminated by this box.** 96 clock
   snaps in a 60 s loopback run is mostly the *client* failing to hold 60 Hz
-  while three clients and a server share a WSL CPU, not the line. The same
-  number on a real machine would mean something quite different, and the two
-  cannot be told apart from the report as it stands.
+  while three clients and a server share a WSL CPU, not the line. The adaptive
+  buffer now reports packet-arrival `jitter` separately, and
+  `NetTimingDiagnostics` reports local simulation intervals, so those two
+  causes are visible side by side. A snap itself can still follow either cause
+  and must not be read as a network fault on its own.
 - **`% of frames still` in the smoothing line is not a stutter measurement on
   its own.** A player standing still contributes still frames honestly -- the
   scripted tour has whole phases of it -- and a respawn contributes a huge

@@ -526,25 +526,63 @@ namespace MphRead.Mods.Network
                             }
                         }
                     }
-                    // A millisecond between passes while anyone is connected --
-                    // well under any sane packet interval -- and twenty while
-                    // nobody is. An empty server spinning at 1 kHz cost 5-7% of a
-                    // core on the Pi around the clock for nothing; the only thing
-                    // waiting on this loop then is the next Hello, and twenty
-                    // milliseconds is not a join anybody can feel.
-                    // A simulating server owes a step every 16.7 ms whether
-                    // or not anybody is connected -- and it must wake often
-                    // enough to place them accurately, so the idle 20 ms is
-                    // not available to it. One millisecond costs the Pi a few
-                    // percent of a core and is what the busy case already
-                    // paid.
-                    Thread.Sleep(_peers.Count == 0 && !Simulating ? 20 : 1);
+                    // Pace around the simulation's absolute next deadline.
+                    // Empty non-simulating servers can still sleep deeply; an
+                    // active authority sleeps most of the gap, yields near the
+                    // boundary, and only spins for the final fraction.
+                    PaceLoop(clock);
                 }
             }
             finally
             {
                 Shutdown(listenPort);
             }
+        }
+
+        /// <summary>
+        /// Keep packet handling responsive while placing 60 Hz authority steps
+        /// on their absolute deadlines. Sleep for the bulk of the remaining
+        /// time, yield close to the deadline, and spin only for the final tiny
+        /// fraction so scheduler granularity does not become server jitter.
+        /// </summary>
+        private void PaceLoop(System.Diagnostics.Stopwatch clock)
+        {
+            if (_peers.Count == 0 && !Simulating)
+            {
+                Thread.Sleep(20);
+                return;
+            }
+
+            if (_sim?.Running == true)
+            {
+                double remaining = _sim.SecondsUntilNextStep(clock.Elapsed.TotalSeconds);
+                // Windows Sleep(1) can still inherit a coarse scheduler tick.
+                // Use it only when there is enough room for that worst case;
+                // Unix sleeps are fine much closer to the deadline.
+                double coarseSleepRoom = OperatingSystem.IsWindows() ? 0.012 : 0.002;
+                if (remaining > coarseSleepRoom)
+                {
+                    Thread.Sleep(1);
+                    return;
+                }
+                if (remaining > 0.00025)
+                {
+                    Thread.Yield();
+                    return;
+                }
+                if (remaining > 0)
+                {
+                    long deadline = System.Diagnostics.Stopwatch.GetTimestamp()
+                        + (long)(remaining * System.Diagnostics.Stopwatch.Frequency);
+                    while (System.Diagnostics.Stopwatch.GetTimestamp() < deadline)
+                    {
+                        Thread.SpinWait(32);
+                    }
+                    return;
+                }
+            }
+
+            Thread.Yield();
         }
 
         /// <summary>

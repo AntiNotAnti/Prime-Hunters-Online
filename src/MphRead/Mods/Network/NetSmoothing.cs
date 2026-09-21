@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using MphRead.Entities;
 using OpenTK.Mathematics;
 
@@ -72,68 +73,40 @@ namespace MphRead.Mods.Network
         private const int HistoryFrames = 64;
 
         /// <summary>
-        /// The shortest the read point is ever held behind the newest
-        /// snapshot.
-        ///
-        /// Two frames, not one. One is the smallest number that has anything
-        /// on both sides of the read point when every snapshot arrives -- and
-        /// on a line where every snapshot arrives there was nothing to smooth
-        /// in the first place. Two survives a single dropped datagram without
-        /// the read point running off the end of what has arrived, which is
-        /// the case this is actually for.
+        /// Lowest presentation delay on a clean line. A fractional delay just
+        /// above one frame still leaves a complete snapshot on both sides of
+        /// the read point while avoiding the old unconditional two-frame
+        /// (33.3 ms) tax.
         /// </summary>
-        public const int MinDelayFrames = 2;
+        public const double MinDelayFrames = 1.25;
+
+        /// <summary>The most network jitter is allowed to push presentation back.</summary>
+        public const double MaxDelayFrames = 8.0;
 
         /// <summary>
-        /// The longest.
-        ///
-        /// Every frame of buffer is a frame of rewind the authority is asked
-        /// for on top of the round trip, and a rewind is a shot resolved
-        /// against a world that much older -- which is fair to everybody and
-        /// still not free, because it is how far back somebody can be shot
-        /// after breaking line of sight. Eight frames is 133 ms, which covers
-        /// a burst of four or five lost datagrams; a line that wants more than
-        /// that is one where a player is going to notice something whatever is
-        /// done here, and paying for it in rewind depth is the wrong place.
+        /// Current fractional playout delay. It follows measured packet
+        /// inter-arrival jitter rather than waiting for the buffer to starve.
         /// </summary>
-        public const int MaxDelayFrames = 8;
+        public static double Delay { get; private set; } = MinDelayFrames;
 
-        /// <summary>
-        /// How far behind the newest snapshot the read point currently sits.
-        /// Grown when the buffer runs dry and allowed to shrink again once it
-        /// has not for a while, so a line that goes bad and then recovers does
-        /// not keep paying for it.
-        /// </summary>
-        public static int Delay { get; private set; } = MinDelayFrames;
+        /// <summary>RFC-style inter-arrival jitter expressed in 60 Hz frames.</summary>
+        public static double JitterFrames { get; private set; }
 
-        /// <summary>
-        /// How long the line must behave before the delay is allowed to come
-        /// back down by one frame. Four seconds: long enough that a single
-        /// good patch does not undo a delay a bad line just earned, short
-        /// enough that a player whose connection recovers gets their latency
-        /// back inside the same fight rather than at the end of the match.
-        ///
-        /// It was ten seconds, and that was measured as too long in the wrong
-        /// direction: with a growth of one frame per starved *frame*, a single
-        /// burst of loss took the delay to its ceiling and it sat there for
-        /// two minutes, adding 200 ms to every rewind in the match for a
-        /// hiccup that lasted a tenth of a second. See
-        /// <see cref="GrowCooldownFrames"/>, which is the other half of that
-        /// fix and the more important one.
-        /// </summary>
-        private const int ShrinkAfterFrames = 240;
+        // Differential transit jitter needs no shared clock: subtracting two
+        // (arrivalTime - authorityFrame) samples cancels the clock offset.
+        private static bool _haveTransit;
+        private static double _lastTransit;
+        private const double JitterAlpha = 1.0 / 16.0;
+        private const double JitterSafety = 2.5;
 
-        /// <summary>
-        /// The least time between two increases of the delay.
-        ///
-        /// A run of starved frames is <i>one</i> event -- a datagram that did
-        /// not arrive, or four -- and growing once per frame of it read a
-        /// tenth of a second of loss as ten separate reasons to buffer more.
-        /// Half a second between rises means the buffer answers the shape of
-        /// the line rather than the length of one gap in it.
-        /// </summary>
-        private const int GrowCooldownFrames = 30;
-        private static int _sinceGrew;
+        // Starvation is still useful evidence, but now it is an emergency
+        // boost layered on top of the measured jitter instead of the only
+        // signal the buffer has.
+        private static double _starveBoost;
+        private const double StarveBoostPerEvent = 0.75;
+        private const double StarveDecayPerFrame = 1.0 / 240.0;
+        private const double DelayGrowPerFrame = 0.12;
+        private const double DelayShrinkPerFrame = 0.02;
 
         /// <summary>
         /// Where the read point is, in the authority's frame numbers, as a
@@ -142,8 +115,10 @@ namespace MphRead.Mods.Network
         /// <c>newest - Delay</c>.
         /// </summary>
         private static double _readFrame;
+        private static double _previousReadFrame;
+        private static double _presentationReadFrame;
+        private static bool _presentationValid;
         private static bool _running;
-        private static int _sinceStarved;
 
         /// <summary>
         /// How hard the read point is pulled back onto its target each frame.
@@ -233,14 +208,34 @@ namespace MphRead.Mods.Network
         /// stale one written into the ring is a puppet interpolating
         /// backwards.
         /// </summary>
-        public static void Record(uint frame, ReadOnlySpan<PlayerState> states)
+        public static void Record(uint frame, ReadOnlySpan<PlayerState> states, long arrivedAt = 0)
         {
             if (!Enabled || frame == 0)
             {
                 return;
             }
-            // Only an explicit stream change resets this clock.
+            // Only accepted stream samples belong in the jitter estimator:
+            // a reordered stale packet has a deliberately wrong transit time.
             if (_running && !NetLifecycleTracker.Newer(frame, _newest)) return;
+
+            if (_running)
+            {
+                uint advanced = unchecked(frame - _newest);
+                if (advanced > 1 && advanced < HistoryFrames)
+                {
+                    // Jitter alone cannot see a datagram that never arrived.
+                    // A gap in authority frame numbers is explicit loss (or
+                    // deliberate latest-state coalescing after a local hitch),
+                    // so immediately buy enough temporary buffer to cover it.
+                    double missing = advanced - 1;
+                    _starveBoost = Math.Min(MaxDelayFrames - MinDelayFrames,
+                        _starveBoost + missing * StarveBoostPerEvent);
+                    Delay = Math.Min(MaxDelayFrames,
+                        Math.Max(Delay, MinDelayFrames + _starveBoost));
+                }
+            }
+
+            NoteArrival(frame, arrivedAt == 0 ? Stopwatch.GetTimestamp() : arrivedAt);
             int index = (int)(frame % HistoryFrames);
             _stamp[index] = frame;
             for (int i = 0; i < Slots; i++)
@@ -270,8 +265,27 @@ namespace MphRead.Mods.Network
             if (!_running)
             {
                 _running = true;
-                _readFrame = frame > (uint)Delay ? frame - Delay : frame;
+                _readFrame = Math.Max(1.0, frame - Delay);
+                _previousReadFrame = _presentationReadFrame = _readFrame;
+                _presentationValid = true;
             }
+        }
+
+        private static void NoteArrival(uint frame, long arrivedAt)
+        {
+            double arrivalFrame = arrivedAt * 60.0 / Stopwatch.Frequency;
+            double transit = arrivalFrame - frame;
+            if (_haveTransit)
+            {
+                double sample = Math.Abs(transit - _lastTransit);
+                // A debugger break or suspended process is not line jitter.
+                if (Single.IsFinite((float)sample) && sample < HistoryFrames)
+                {
+                    JitterFrames += (sample - JitterFrames) * JitterAlpha;
+                }
+            }
+            _lastTransit = transit;
+            _haveTransit = true;
         }
 
         /// <summary>
@@ -285,9 +299,14 @@ namespace MphRead.Mods.Network
             Array.Clear(_sampledSeen);
             Array.Clear(_stallRun);
             _newest = 0;
+            _previousReadFrame = 0;
+            _presentationReadFrame = 0;
+            _presentationValid = false;
             _running = false;
-            _sinceStarved = 0;
-            _sinceGrew = GrowCooldownFrames;
+            _haveTransit = false;
+            JitterFrames = 0;
+            _starveBoost = 0;
+            Delay = MinDelayFrames;
             NetLog.Event($"playout clock re-based on frame {frame}");
         }
 
@@ -301,15 +320,20 @@ namespace MphRead.Mods.Network
             {
                 return;
             }
+
+            _previousReadFrame = _readFrame;
             _readFrame += 1.0;
-            double target = (double)_newest - Delay;
+
+            double desired = Math.Clamp(
+                MinDelayFrames + JitterFrames * JitterSafety + _starveBoost,
+                MinDelayFrames, MaxDelayFrames);
+            double change = desired - Delay;
+            Delay += Math.Clamp(change, -DelayShrinkPerFrame, DelayGrowPerFrame);
+
+            double target = Math.Max(1.0, (double)_newest - Delay);
             double error = target - _readFrame;
             if (Math.Abs(error) > SnapError)
             {
-                // A stall, a rejoin, a rotation, a counter that restarted.
-                // Walking across ten frames of error would be four seconds of
-                // everybody moving at the wrong speed, which is a worse thing
-                // to look at than one jump.
                 _readFrame = target;
                 Snaps++;
                 NetTimingDiagnostics.Correction();
@@ -318,27 +342,19 @@ namespace MphRead.Mods.Network
             {
                 _readFrame += error * Correction;
             }
+
             if (_readFrame > _newest)
             {
-                // Past everything that has arrived. The read point is pinned
-                // rather than allowed to run on, because the alternative is
-                // extrapolating -- and a guessed position puts a player
-                // through a wall and then snaps them out of it.
                 _readFrame = _newest;
                 Starved++;
-                _sinceStarved = 0;
-                if (Delay < MaxDelayFrames && _sinceGrew >= GrowCooldownFrames)
-                {
-                    Delay++;
-                    _sinceGrew = 0;
-                }
+                _starveBoost = Math.Min(MaxDelayFrames - MinDelayFrames,
+                    _starveBoost + StarveBoostPerEvent);
+                Delay = Math.Min(MaxDelayFrames, Delay + StarveBoostPerEvent / 2.0);
             }
-            else if (++_sinceStarved > ShrinkAfterFrames && Delay > MinDelayFrames)
+            else
             {
-                Delay--;
-                _sinceStarved = 0;
+                _starveBoost = Math.Max(0, _starveBoost - StarveDecayPerFrame);
             }
-            _sinceGrew++;
         }
 
         /// <summary>
@@ -353,14 +369,46 @@ namespace MphRead.Mods.Network
         /// </summary>
         public static bool Sample(int slot, out Vector3 position, out bool altForm)
         {
+            return SampleAt(slot, _readFrame, countDiagnostics: true, out position, out altForm);
+        }
+
+        /// <summary>
+        /// Choose the exact playout point used by this picture. Network
+        /// puppets use this instead of generic entity interpolation so the
+        /// same sub-frame point can be reused by the next input and ack.
+        /// </summary>
+        public static void PreparePresentation(double alpha)
+        {
+            if (!Active)
+            {
+                _presentationValid = false;
+                return;
+            }
+            double t = Math.Clamp(alpha, 0.0, 1.0);
+            _presentationReadFrame = _previousReadFrame
+                + (_readFrame - _previousReadFrame) * t;
+            _presentationReadFrame = Math.Clamp(_presentationReadFrame, 1.0, _newest);
+            _presentationReadFrame = RecordedPoint(_presentationReadFrame);
+            _presentationValid = true;
+        }
+
+        public static bool SamplePresentation(int slot, out Vector3 position, out bool altForm)
+        {
+            double point = _presentationValid ? _presentationReadFrame : _readFrame;
+            return SampleAt(slot, point, countDiagnostics: false, out position, out altForm);
+        }
+
+        private static bool SampleAt(int slot, double readFrame, bool countDiagnostics,
+            out Vector3 position, out bool altForm)
+        {
             position = Vector3.Zero;
             altForm = false;
             if (!Active || slot < 0 || slot >= Slots)
             {
                 return false;
             }
-            uint lower = (uint)Math.Floor(_readFrame);
-            float fraction = (float)(_readFrame - lower);
+            uint lower = (uint)Math.Floor(readFrame);
+            float fraction = (float)(readFrame - lower);
             if (!Lookup(slot, lower, out Vector3 a, out bool altA))
             {
                 return false;
@@ -369,37 +417,31 @@ namespace MphRead.Mods.Network
             if (fraction <= 0.0001f || !Lookup(slot, lower + 1, out Vector3 b, out bool altB)
                 || altA != altB)
             {
-                // Nothing on the far side, or the player changed form between
-                // the two -- a biped's position and a morph ball's are
-                // measured from different centres, so blending them slides the
-                // model half a body. Hold the near one.
                 position = a;
-                Held++;
-                NoteStep(slot, position);
+                if (countDiagnostics)
+                {
+                    Held++;
+                    NoteStep(slot, position);
+                }
                 return true;
             }
             Vector3 travel = b - a;
             if (travel.LengthSquared > SnapDistance * SnapDistance)
             {
-                // A teleporter, a respawn, a jump pad's launch frame -- not
-                // something to slide across.
-                //
-                // **The near side, not the far one**, and that is the whole of
-                // why this branch is written out rather than folded into the
-                // one above. `NetUnlagged.Reconcile` makes the same three
-                // refusals at the other end and falls back to the near side in
-                // all three; a client drawing the far side here would be
-                // aiming at a body the authority rewinds to the *other* end of
-                // a teleport. One frame of the jump shown late costs nothing
-                // and is what keeps the two worlds the same world.
                 position = a;
-                Held++;
-                NoteStep(slot, position);
+                if (countDiagnostics)
+                {
+                    Held++;
+                    NoteStep(slot, position);
+                }
                 return true;
             }
             position = a + travel * fraction;
-            Interpolated++;
-            NoteStep(slot, position);
+            if (countDiagnostics)
+            {
+                Interpolated++;
+                NoteStep(slot, position);
+            }
             return true;
         }
 
@@ -410,6 +452,37 @@ namespace MphRead.Mods.Network
         /// any teleport in the game.
         /// </summary>
         private const float SnapDistance = 4.0f;
+
+        /// <summary>
+        /// A lost snapshot means the client cannot interpolate through that
+        /// authority frame even though the authority itself has it. Hold the
+        /// nearest recorded world instead, and let AckPoint name that exact
+        /// world, so packet loss never turns into a model/hitbox disagreement.
+        /// </summary>
+        private static double RecordedPoint(double point)
+        {
+            uint lower = (uint)Math.Floor(point);
+            float fraction = (float)(point - lower);
+            if (FrameRecorded(lower))
+            {
+                return fraction <= 0.0001f || FrameRecorded(lower + 1) ? point : lower;
+            }
+            for (uint back = 1; back <= MaxDelayFrames + 2 && back < lower; back++)
+            {
+                uint candidate = lower - back;
+                if (FrameRecorded(candidate))
+                {
+                    return candidate;
+                }
+            }
+            return point;
+        }
+
+        private static bool FrameRecorded(uint frame)
+        {
+            if (frame == 0 || frame > _newest) return false;
+            return _stamp[(int)(frame % HistoryFrames)] == frame;
+        }
 
         private static bool Lookup(int slot, uint frame, out Vector3 position, out bool altForm)
         {
@@ -489,13 +562,14 @@ namespace MphRead.Mods.Network
             {
                 return false;
             }
-            uint lower = (uint)Math.Floor(_readFrame);
+            double point = _presentationValid ? _presentationReadFrame : _readFrame;
+            uint lower = (uint)Math.Floor(point);
             if (lower == 0)
             {
                 return false;
             }
             frame = lower;
-            subFrame = (byte)Math.Clamp((int)((_readFrame - lower) * 256.0), 0, 255);
+            subFrame = (byte)Math.Clamp((int)((point - lower) * 256.0), 0, 255);
             return true;
         }
 
@@ -507,9 +581,14 @@ namespace MphRead.Mods.Network
             Array.Clear(_stallRun);
             _newest = 0;
             _readFrame = 0;
+            _previousReadFrame = 0;
+            _presentationReadFrame = 0;
+            _presentationValid = false;
             _running = false;
-            _sinceStarved = 0;
-            _sinceGrew = GrowCooldownFrames;
+            _haveTransit = false;
+            _lastTransit = 0;
+            JitterFrames = 0;
+            _starveBoost = 0;
             Delay = MinDelayFrames;
             Starved = 0;
             Interpolated = 0;
@@ -537,8 +616,15 @@ namespace MphRead.Mods.Network
             Array.Clear(_stallRun);
             _newest = 0;
             _readFrame = 0;
+            _previousReadFrame = 0;
+            _presentationReadFrame = 0;
+            _presentationValid = false;
             _running = false;
-            _sinceGrew = GrowCooldownFrames;
+            _haveTransit = false;
+            _lastTransit = 0;
+            JitterFrames = 0;
+            _starveBoost = 0;
+            Delay = MinDelayFrames;
         }
 
         public static string? Describe()
@@ -549,7 +635,7 @@ namespace MphRead.Mods.Network
             }
             double mean = StepSum / Steps;
             double stalled = 100.0 * StalledFrames / Steps;
-            return $"puppet smoothing: {(Enabled ? $"on, {Delay} frames of buffer" : "off")}, "
+            return $"puppet smoothing: {(Enabled ? $"on, {Delay:F2} frames of buffer, jitter {JitterFrames * 1000.0 / 60.0:F1} ms" : "off")}, "
                 + $"{Interpolated} interpolated / {Held} held, {Starved} starved, "
                 + $"{Snaps} clock snaps; steps mean {mean:F4} units, worst {WorstStep:F3}, "
                 + $"{stalled:F1}% of frames still (longest run {WorstStall})";

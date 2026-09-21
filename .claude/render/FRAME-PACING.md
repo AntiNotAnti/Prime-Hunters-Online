@@ -91,30 +91,55 @@ emulator available here has no extracted game files and so cannot load a match
 -- the gap `.claude/android/ANDROID-PORT.md` already describes. Treat the
 Android frame rate as untested rather than working.
 
-## There is no interpolation, and that is deliberate
+## High-refresh interpolation is back, with lifetime resets
 
-There was. Entity transforms and the camera were blended between their last two
-simulated states across `FrameTiming.Alpha`, so that a 144 Hz picture of a
-60 Hz world showed 144 distinct positions a second rather than 60 shown twice.
-It was removed **completely** -- `EntityBase`'s capture and blend, `CameraInfo`'s
-`ModGetDrawView`, `Scene.CaptureDrawState`, `ModAttachToDrawnView`, the setting,
-the `-interpolation` switch and the harness assertions that went with it.
+The simulation is still exactly 60 Hz. On a display that is actually faster than
+that, entity transforms are captured once per completed simulation step and the
+draw pass blends between the last two captured transforms using
+`FrameTiming.PresentationAlpha`. At 60 Hz presentation stays on the current
+simulation state, because interpolation there buys no extra pictures and would
+only add latency.
 
-It was removed because of what it did to **pooled entities**, which is most of
-the things a shot is made of. `BeamProjectileEntity`, `BeamEffectEntity` and the
-effect entries are taken off a free list and reused: an entity coming back into
-the world still holds the transform history of its last life, at wherever that
-one died. The blend guards catch a jump of more than 24 units, so a reuse
-*further* away than that was drawn correctly -- and a reuse nearer than that,
-which is the common case in a firefight, was drawn somewhere between the two.
-That is exactly what was reported: impact effects that did not land on the wall,
-and shot artifacts drifting about in all directions while moving and firing.
+The first version of this feature was removed for a real reason: pooled objects
+kept the transform history of their previous lifetime. A beam or beam effect
+reused near where the previous one died could therefore be drawn halfway between
+two completely unrelated shots. The restored version fixes the lifecycle rather
+than hiding the symptom:
 
-Putting it back needs an answer for entity reuse first -- `ModResetDrawState`
-existed and nothing called it from the pooling paths -- and is not worth it for
-what it buys. The extra frames are still worth having without it: the camera and
-the world are sampled at 60 but the *input-to-photon* path is not, and the
-picture is still drawn at the display's rate.
+- `EntityBase.ModResetDrawState` re-bases presentation history after complete
+  initialization.
+- player respawns/rejoins re-base both entity and camera history explicitly.
+- pooled `BeamProjectileEntity` and `BeamEffectEntity` re-base when a new
+  lifetime is spawned, even when the new position is close to the old one.
+- teleports and other moves over four units re-base instead of blending.
+
+This is **presentation only**. Collision, networking, replay state and every
+gameplay transform continue to use the live 60 Hz entity state.
+
+Network player models are the important exception to generic entity blending:
+they are sampled directly from `NetSmoothing`'s playout history at the draw
+fraction. The renderer remembers that exact read point, the next local input
+restores remote collision to it, and the intent's sub-frame ack names it. That
+keeps the existing invariant that the opponent drawn is the opponent shot at
+even while a 144 Hz display receives intermediate poses.
+
+### Late-latched local aim
+
+The local first-person hunter is deliberately not transform-interpolated. Mouse
+movement received after the last simulation step is accumulated separately and
+used only to build the next rendered view matrix; the next 60 Hz step consumes
+the same mouse state normally and clears the presentation delta. Android does the
+same thing non-destructively with the touch aim accumulator.
+
+A held controller stick is projected through the fractional remainder of the
+current simulation step. Button edges, aim assist, shooting and intent capture
+still happen only in `GamepadInput.BeginFrame` / the simulation step. This
+removes up to almost one 60 Hz frame from input-to-photon without changing the
+wire or the authoritative aim used for a shot.
+
+Spectator and replay cameras use the captured camera history instead, because
+they have no local input to late-latch and benefit from smooth high-refresh
+motion.
 
 ## Timers that live in the draw pass
 
