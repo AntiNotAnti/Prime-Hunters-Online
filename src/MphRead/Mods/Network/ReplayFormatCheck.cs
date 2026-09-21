@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.IO.Compression;
 using System.Buffers.Binary;
 using System.Collections.Generic;
@@ -82,7 +83,11 @@ namespace MphRead.Mods.Network
                 using (var reader = DemoReader.Open(clean, out var result))
                 {
                     Require(result == ReplayOpenResult.Success && reader?.Metadata?.DurationFrames == 399, "metadata-only duration");
-                    Require(reader!.Metadata!.Events.Count == 7, "event index");
+                    Require(reader!.Metadata!.Events.Count == 8, "event index");
+                    Require(reader.Metadata.Events.Any(e =>
+                        e.Type == ReplayEventType.WeaponFired
+                        && e.Value == (int)BeamType.Imperialist),
+                        "weapon event roundtrip");
                     uint count = 0;
                     while (reader.ReadNext() is { } record)
                     {
