@@ -963,6 +963,9 @@ namespace MphRead.Mods.Launcher.Gui
             if (_syncing) return;
             MatchDefinition draft = DraftMatch();
             _goal.Label = GoalLabel(draft.Mode);
+            _goal.Box.PlaceholderText = MatchGoalRules.UsesTimeTarget(draft.Mode)
+                ? "1:30"
+                : MatchGoalRules.UsesLives(draft.Mode) ? "3" : "25";
             _customTeams.IsVisible = draft.Format == MatchFormat.Custom;
             bool chooseTeams = PlayerChoosesTeam(draft);
             _lockTeams.IsVisible = chooseTeams;
@@ -1001,7 +1004,7 @@ namespace MphRead.Mods.Launcher.Gui
             }
             if (!TryTimeSeconds(out ushort seconds))
             {
-                reason = "Match time must be minutes from 0 to 1092.25.";
+                reason = "Time limit must be minutes (7) or m:ss (7:00).";
                 return false;
             }
             if (!TryGoalValue(match.Mode, out ushort goal, out reason))
@@ -1116,24 +1119,45 @@ namespace MphRead.Mods.Launcher.Gui
             return Metadata.GetRoomByName(room).Item1?.InGameName ?? room;
         }
 
-        private static string Minutes(ushort seconds)
-        {
-            double minutes = seconds / 60.0;
-            return minutes.ToString(minutes == Math.Truncate(minutes) ? "0" : "0.##",
-                CultureInfo.InvariantCulture);
-        }
+        private static string DurationDisplay(ushort seconds) =>
+            $"{seconds / 60}:{seconds % 60:00}";
 
-        private bool TryTimeSeconds(out ushort seconds)
+        private static bool TryDuration(string text, bool allowZero, out ushort seconds)
         {
             seconds = 0;
-            if (!double.TryParse(_time.Value, NumberStyles.Float,
-                    CultureInfo.InvariantCulture, out double minutes)
-                || !Double.IsFinite(minutes) || minutes < 0
-                || minutes * 60 > UInt16.MaxValue)
+            text = text.Trim();
+            if (text.Length == 0) return false;
+
+            int colon = text.IndexOf(':');
+            if (colon >= 0)
+            {
+                if (text.IndexOf(':', colon + 1) >= 0
+                    || !int.TryParse(text[..colon], NumberStyles.None,
+                        CultureInfo.InvariantCulture, out int minutes)
+                    || !int.TryParse(text[(colon + 1)..], NumberStyles.None,
+                        CultureInfo.InvariantCulture, out int remainder)
+                    || minutes < 0 || remainder < 0 || remainder >= 60)
+                    return false;
+                long total = minutes * 60L + remainder;
+                if (total > UInt16.MaxValue || (!allowZero && total == 0))
+                    return false;
+                seconds = (ushort)total;
+                return true;
+            }
+
+            if (!double.TryParse(text, NumberStyles.Float,
+                    CultureInfo.InvariantCulture, out double decimalMinutes)
+                || !Double.IsFinite(decimalMinutes)
+                || decimalMinutes < 0 || (!allowZero && decimalMinutes <= 0)
+                || decimalMinutes * 60 > UInt16.MaxValue)
                 return false;
-            seconds = (ushort)Math.Round(minutes * 60, MidpointRounding.AwayFromZero);
-            return true;
+            seconds = (ushort)Math.Round(decimalMinutes * 60,
+                MidpointRounding.AwayFromZero);
+            return allowZero || seconds > 0;
         }
+
+        private bool TryTimeSeconds(out ushort seconds) =>
+            TryDuration(_time.Value, allowZero: true, out seconds);
 
         private static bool PlayerChoosesTeam(MatchDefinition match)
         {
@@ -1149,9 +1173,9 @@ namespace MphRead.Mods.Launcher.Gui
             GameMode.Survival or GameMode.SurvivalTeams => "Lives",
             GameMode.Bounty or GameMode.BountyTeams => "Bounty goal",
             GameMode.Capture => "Captures",
-            GameMode.Defender or GameMode.DefenderTeams => "Hold time (minutes)",
+            GameMode.Defender or GameMode.DefenderTeams => "Hold time",
             GameMode.Nodes or GameMode.NodesTeams => "Node score",
-            GameMode.PrimeHunter => "Prime time (minutes)",
+            GameMode.PrimeHunter => "Prime time",
             _ => "Score goal"
         };
 
@@ -1160,7 +1184,7 @@ namespace MphRead.Mods.Launcher.Gui
             if (MatchGoalRules.UsesLives(mode))
                 return ((int)value + 1).ToString(CultureInfo.InvariantCulture);
             if (MatchGoalRules.UsesTimeTarget(mode))
-                return Minutes(value);
+                return DurationDisplay(value);
             return value.ToString(CultureInfo.InvariantCulture);
         }
 
@@ -1181,15 +1205,11 @@ namespace MphRead.Mods.Launcher.Gui
             }
             if (MatchGoalRules.UsesTimeTarget(mode))
             {
-                if (!double.TryParse(_goal.Value, NumberStyles.Float, CultureInfo.InvariantCulture,
-                        out double minutes) || !Double.IsFinite(minutes) || minutes <= 0
-                    || minutes * 60 > UInt16.MaxValue)
+                if (!TryDuration(_goal.Value, allowZero: false, out value))
                 {
-                    reason = $"{GoalLabel(mode)} must be greater than 0 and at most 1092.25.";
+                    reason = $"{GoalLabel(mode)} must be minutes (1.5) or m:ss (1:30).";
                     return false;
                 }
-                value = (ushort)Math.Max(1,
-                    Math.Round(minutes * 60, MidpointRounding.AwayFromZero));
                 return true;
             }
             if (!ushort.TryParse(_goal.Value, NumberStyles.None,
