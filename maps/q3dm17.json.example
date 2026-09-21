@@ -1,5 +1,5 @@
 {
-  "//": "Rename to q3dm17.json and put your own pak0.pk3 in the maps folder beside it, then run: FruityPrime -mapgen Q3DM17",
+  "//": "Rename to q3dm17.json and put your own pak0.pk3 in the maps folder beside it, then run: ProjectPrime -mapgen Q3DM17",
   "name": "Q3DM17",
   "inGameName": "The Longest Yard",
   "textureSource": "MP3 PROVING GROUND",

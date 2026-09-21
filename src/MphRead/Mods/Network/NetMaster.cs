@@ -35,7 +35,7 @@ namespace MphRead.Mods.Network
         /// pointing it somewhere else has to be possible without shipping a
         /// new build to every server operator.
         /// </summary>
-        public const string DefaultHost = "net.livetek.fr";
+        public const string DefaultHost = "51.161.113.128";
 
         /// <summary>
         /// Beside the game port rather than on it: a machine can then run
@@ -954,7 +954,7 @@ namespace MphRead.Mods.Network
         /// obvious box to also be running a directory -- so each listed
         /// address is asked on the directory port as well, and whatever
         /// answers goes on the list under that server's own name. A player
-        /// picking "Fruity Prime - Japan" to host on is then picking a place
+        /// picking "Project Prime - Japan" to host on is then picking a place
         /// they can already see and have already pinged.
         ///
         /// Nothing here needs deploying to *this* build. The moment a box in

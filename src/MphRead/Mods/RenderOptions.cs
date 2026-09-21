@@ -23,18 +23,21 @@ namespace MphRead.Mods
     public static class RenderOptions
     {
         /// <summary>
-        /// Percent of the window the 3D scene is rendered at, 25 to 100.
-        /// Halving it quarters the pixels.
+        /// Percent of the window the 3D scene is rendered at, 25 to 300.
+        /// Halving it quarters the pixels; values above 100 supersample the
+        /// world before it is downsampled to the display.
         /// </summary>
         public static int ResolutionScale
         {
             get => _resolutionScale;
-            set => _resolutionScale = Math.Clamp(value, MinScale, 100);
+            set => _resolutionScale = Math.Clamp(value, MinScale, MaxScale);
         }
 
         private static int _resolutionScale = 100;
 
         public const int MinScale = 25;
+        /// <summary>300% is 3x per axis / 9x the shaded pixels. This is intentionally an extreme ceiling.</summary>
+        public const int MaxScale = 300;
 
         /// <summary>
         /// How wide the view is, in degrees, measured the way the game
@@ -144,8 +147,8 @@ namespace MphRead.Mods
         /// the renderer then leaves the depth in the cheaper buffer that
         /// cannot be read back.
         ///
-        /// Locked at 0.5 (50%) -- steps and outline strength are no longer
-        /// player-configurable, only the on/off switch above is.
+        /// Exposed on the Graphics page so the outline can range from disabled
+        /// to a heavy ink pass without changing the underlying cel algorithm.
         /// </summary>
         public static float CelEdge
         {
@@ -164,14 +167,33 @@ namespace MphRead.Mods
         /// </summary>
         public static bool TextureFiltering { get; set; }
 
+        /// <summary>
+        /// Build and use mip chains for world textures while filtering is on.
+        /// This is independent from bilinear filtering so players can choose
+        /// the cheaper single-level path or full trilinear minification.
+        /// </summary>
+        public static bool TextureMipmaps { get; set; }
+
+        /// <summary>
+        /// Requested anisotropic filtering level for world textures. The
+        /// renderer clamps this again to what the active GPU reports.
+        /// </summary>
+        public static int TextureAnisotropy
+        {
+            get => _textureAnisotropy;
+            set => _textureAnisotropy = Math.Clamp(value, 1, 16);
+        }
+
+        private static int _textureAnisotropy = 1;
+
         /// <summary>Apply a scale to one dimension, never below one pixel.</summary>
         public static int Scaled(int pixels)
         {
-            if (_resolutionScale >= 100)
+            if (_resolutionScale == 100)
             {
                 return Math.Max(1, pixels);
             }
-            return Math.Max(1, pixels * _resolutionScale / 100);
+            return Math.Max(1, (int)Math.Round(pixels * (_resolutionScale / 100d)));
         }
 
         public static bool ParseOnOff(string? value, bool fallback)
@@ -199,7 +221,7 @@ namespace MphRead.Mods
             if (value != null && Int32.TryParse(value.Trim().TrimEnd('%'),
                 NumberStyles.Integer, CultureInfo.InvariantCulture, out int percent))
             {
-                return Math.Clamp(percent, MinScale, 100);
+                return Math.Clamp(percent, MinScale, MaxScale);
             }
             return fallback;
         }

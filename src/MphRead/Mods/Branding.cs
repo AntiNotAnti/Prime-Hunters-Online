@@ -3,7 +3,7 @@ namespace MphRead.Mods
     /// <summary>
     /// What this program is called, in one place.
     ///
-    /// The project is Fruity Prime; the code is still <c>namespace MphRead</c>
+    /// The project is Project Prime; the code is still <c>namespace MphRead</c>
     /// and always will be. Upstream is NoneGiven/MphRead and the whole mod is
     /// arranged so that pulling from it stays a fast-forward -- renaming the
     /// namespace would put a conflict in all 221 files that declare it and all
@@ -19,10 +19,10 @@ namespace MphRead.Mods
     public static class Branding
     {
         /// <summary>The product, as a person would write it.</summary>
-        public const string Name = "Fruity Prime";
+        public const string Name = "Project Prime";
 
         /// <summary>The product with no space, for file names and archives.</summary>
-        public const string FileName = "FruityPrime";
+        public const string FileName = "ProjectPrime";
 
         /// <summary>What upstream is, and what this is a fork of.</summary>
         public const string Upstream = "MphRead";
@@ -67,7 +67,7 @@ namespace MphRead.Mods
         }
 
         /// <summary>
-        /// "Fruity Prime v1.2.0", or "Fruity Prime (a local build)" when this
+        /// "Project Prime v1.2.0", or "Project Prime (a local build)" when this
         /// was not made by the release workflow -- which is worth saying out
         /// loud, because it is also the case where the updater stands down.
         /// </summary>

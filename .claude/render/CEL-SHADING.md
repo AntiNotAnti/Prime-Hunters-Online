@@ -185,9 +185,9 @@ command ask for the mode -- the settings file is the launcher's, and
 `-thumbnail`, `-maptest` and `-connect` never open one.
 
 ```bash
-FruityPrime -thumbnail "MP3 PROVING GROUND" -cel on      # one room, into thumbnails/
-FruityPrime -thumbnail "UNIT1 ALINOS LANDFALL" -cel on -celbands 5
-FruityPrime -netcheck HOST -port N -shots DIR -cel on    # a real match, with hunters
+ProjectPrime -thumbnail "MP3 PROVING GROUND" -cel on      # one room, into thumbnails/
+ProjectPrime -thumbnail "UNIT1 ALINOS LANDFALL" -cel on -celbands 5
+ProjectPrime -netcheck HOST -port N -shots DIR -cel on    # a real match, with hunters
 ```
 
 Judge it on the desktop. SwiftShader on the emulator draws this scene with

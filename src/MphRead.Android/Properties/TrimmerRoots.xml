@@ -18,7 +18,7 @@
        something worse to diagnose: a map that loads into an object of
        defaults, so a release APK would list rooms with no name, no geometry
        and no spawns while the debug build was perfect. -->
-  <assembly fullname="FruityPrime">
+  <assembly fullname="ProjectPrime">
     <type fullname="MphRead.Mods.MapGen.MapDefinition" preserve="all" />
     <type fullname="MphRead.Mods.MapGen.MapPreview" preserve="all" />
     <type fullname="MphRead.Mods.MapGen.MapImport" preserve="all" />

@@ -23,7 +23,7 @@ namespace MphRead.Mods.Launcher.Gui
     /// the same strip of names across the top, the same two marks in the
     /// bottom corners.
     ///
-    /// Six pages: Display, Audio, Controls, Replays, Profile, Credits. There is no
+    /// Seven pages: Display, Graphics, Audio, Controls, Replays, Profile, Credits. There is no
     /// "Match rules" page -- point goal, time limit, damage, team play,
     /// friendly fire, hunter radar, affinity weapons and shadow freeze are
     /// not exposed here at all any more, and stay at whatever
@@ -45,6 +45,15 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly Panel _pages = new();
         private readonly List<(string Name, Control Page)> _sections = new();
         private UiTabs _tabs = null!;
+        private readonly List<HubNavButton> _sectionNav = new();
+        private StackPanel _sectionNavStack = null!;
+        private ScrollViewer _sectionNavScroll = null!;
+        private Border _sectionNavHost = null!;
+        private Border _sectionContentHost = null!;
+        private Grid _settingsBody = null!;
+        private TextBlock _sectionTitle = null!;
+        private TextBlock _sectionDetail = null!;
+        private bool _compactShell;
 
         /// <summary>Raised when this view is finished with, saved or not.</summary>
         public event EventHandler? Closed;
@@ -68,8 +77,13 @@ namespace MphRead.Mods.Launcher.Gui
         private ToggleRow _lightingRow = null!;
         private ToggleRow _fogRow = null!;
         private ToggleRow _filteringRow = null!;
+        private ToggleRow _mipmapRow = null!;
+        private ChoiceRow _anisotropyRow = null!;
         private ToggleRow _celRow = null!;
+        private SliderRow _celBandsRow = null!;
+        private SliderRow _celEdgeRow = null!;
         private ToggleRow _fpsRow = null!;
+        private ToggleRow _reduceMotion = null!;
 
         /// <summary>
         /// The stops the FPS limit slides over, and the cap each one means.
@@ -87,6 +101,26 @@ namespace MphRead.Mods.Launcher.Gui
         /// None of them move the simulation, which runs at 60 Hz on every
         /// setting -- see Mods/Render/FrameTiming.cs.
         /// </summary>
+        private static readonly int[] _anisotropyStops = { 1, 2, 4, 8, 16 };
+
+        private static int AnisotropyIndex(int value)
+        {
+            int index = Array.IndexOf(_anisotropyStops, value);
+            if (index >= 0)
+            {
+                return index;
+            }
+            int best = 0;
+            for (int i = 1; i < _anisotropyStops.Length; i++)
+            {
+                if (_anisotropyStops[i] <= value)
+                {
+                    best = i;
+                }
+            }
+            return best;
+        }
+
         private static readonly (string Label, int Cap)[] _fpsLimitStops = new[]
         {
             ("Display (VSync)", FrameTiming.DisplayRate),
@@ -142,9 +176,12 @@ namespace MphRead.Mods.Launcher.Gui
         private ToggleRow _penTablet = null!;
         private ToggleRow _scrollAllWeapons = null!;
         private GamepadSettingsPanel _gamepadSettings = null!;
+        private readonly List<HubNavButton> _controlNav = new();
+        private readonly List<Control> _controlPages = new();
+        private int _controlPageIndex;
         private ToggleRow? _repositionFilter;
         private StackPanel? _stylusAdvanced;
-        private DeckButton? _stylusAdvancedButton;
+        private HubNavButton? _stylusAdvancedButton;
         private bool _stylusAdvancedOpen;
         private FieldRow _playerName = null!;
         private ChoiceRow _hunterRow = null!;
@@ -173,37 +210,125 @@ namespace MphRead.Mods.Launcher.Gui
 
             BuildPages();
 
+            // Keep UiTabs only as the tiny state object used by ShowSection and
+            // existing screenshot automation. The player-facing navigation is
+            // the same hub rail used everywhere else in Project Prime.
             _tabs = new UiTabs(_sections.ConvertAll(s => s.Name));
             _tabs.Changed += (_, _) => ShowPage(_tabs.Index);
 
-            var cancel = new UiMark(UiMark.Shape.Cancel, "cancel");
-            cancel.Click += (_, _) => Close();
-            var save = new UiMark(UiMark.Shape.Accept, inGame ? "apply" : "save");
-            save.Click += (_, _) => TryCommit();
+            var contentRoot = new Grid
+            {
+                Margin = new Thickness(28, 24, 28, 30),
+                RowDefinitions = new RowDefinitions("Auto,*,Auto"),
+                RowSpacing = 14
+            };
+            contentRoot.Children.Add(HubChrome.Header(
+                inGame ? "MATCH  /  SETTINGS" : "HOME  /  SETTINGS",
+                "SETTINGS",
+                "Tune Project Prime without leaving the command hub.",
+                inGame ? "LIVE MATCH" : "CONFIGURATION",
+                inGame ? HubTheme.WarmBrush : HubTheme.AccentBrush));
 
-            // Over a match the backdrop is the scrim alone, so the game shows
-            // through; away from one it is the same picture every other screen
-            // uses, so Settings never reads as a different program.
-            //
-            // The well is narrower than the window on purpose -- see
-            // UiLayout's note. A settings row is a label on the left and its
-            // control on the right, and a row as wide as a monitor is one
-            // whose two ends have to be read in two glances.
-            Panel root = UiLayout.Page(inGame, UiLayout.WellSettings, "settings",
-                _tabs, _pages, cancel, save);
-            _saveError = new Note("", GuiTheme.Warm)
+            _settingsBody = new Grid
+            {
+                ColumnDefinitions = new ColumnDefinitions("190,*"),
+                ColumnSpacing = 12
+            };
+            Grid.SetRow(_settingsBody, 1);
+            contentRoot.Children.Add(_settingsBody);
+
+            _sectionNavStack = BuildSectionNavigation();
+            _sectionNavScroll = new ScrollViewer
+            {
+                Content = _sectionNavStack,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+            };
+            _sectionNavHost = new Border
+            {
+                Background = HubTheme.PanelStrongBrush,
+                BorderBrush = HubTheme.EdgeBrush,
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(7),
+                Child = _sectionNavScroll
+            };
+            _settingsBody.Children.Add(_sectionNavHost);
+
+            var sectionHeader = new StackPanel
+            {
+                Spacing = 2,
+                Margin = new Thickness(2, 0, 2, 8)
+            };
+            _sectionTitle = new TextBlock
+            {
+                FontFamily = HubTheme.Ui,
+                FontWeight = FontWeight.Bold,
+                FontSize = 20,
+                Foreground = HubTheme.TextBrush
+            };
+            _sectionDetail = new TextBlock
+            {
+                FontFamily = HubTheme.Ui,
+                FontSize = 9.5,
+                Foreground = HubTheme.TextDimBrush,
+                TextWrapping = TextWrapping.Wrap
+            };
+            sectionHeader.Children.Add(_sectionTitle);
+            sectionHeader.Children.Add(_sectionDetail);
+            sectionHeader.Children.Add(HubChrome.Divider());
+
+            var contentGrid = new Grid
+            {
+                RowDefinitions = new RowDefinitions("Auto,*")
+            };
+            contentGrid.Children.Add(sectionHeader);
+            Grid.SetRow(_pages, 1);
+            contentGrid.Children.Add(_pages);
+            _sectionContentHost = new Border
+            {
+                Background = HubTheme.PanelStrongBrush,
+                BorderBrush = HubTheme.EdgeBrush,
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(14, 11),
+                Child = contentGrid
+            };
+            Grid.SetColumn(_sectionContentHost, 1);
+            _settingsBody.Children.Add(_sectionContentHost);
+
+            var footer = new Grid
+            {
+                ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
+                ColumnSpacing = 10
+            };
+            var back = new HubNavButton("BACK", compact: true);
+            ControllerNav.Identify(back, "settings.detail.back");
+            back.Click += (_, _) => Close();
+            footer.Children.Add(back);
+
+            _saveError = new Note("", HubTheme.Warm)
             {
                 IsVisible = false,
                 HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Bottom,
-                // Above the marks rather than behind them, which is where a
-                // bottom-anchored line lands now that the marks are down the
-                // middle too.
-                Margin = new Thickness(0, 0, 0, UiLayout.MarksBottom + 38)
+                VerticalAlignment = VerticalAlignment.Center
             };
-            root.Children.Add(_saveError);
-            Content = root;
+            Grid.SetColumn(_saveError, 1);
+            footer.Children.Add(_saveError);
+
+            var save = new HubNavButton(inGame ? "APPLY" : "SAVE",
+                primary: true, compact: true);
+            ControllerNav.Identify(save, "settings.detail.save");
+            save.Click += (_, _) => TryCommit();
+            Grid.SetColumn(save, 2);
+            footer.Children.Add(save);
+            Grid.SetRow(footer, 2);
+            contentRoot.Children.Add(footer);
+
+            Panel backdrop = UiLayout.Backdrop(inGame);
+            backdrop.Children.Add(contentRoot);
+            Content = backdrop;
+            SizeChanged += (_, e) => ApplyShellResponsive(e.NewSize);
             ShowPage(0);
+            ApplyShellResponsive(new Size(960, 600));
         }
 
         /// <summary>
@@ -218,7 +343,13 @@ namespace MphRead.Mods.Launcher.Gui
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
             base.OnAttachedToVisualTree(e);
-            Dispatcher.UIThread.Post(() => _tabs.FocusSelected(), DispatcherPriority.Background);
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (_sectionNav.Count > 0)
+                {
+                    _sectionNav[Math.Clamp(_tabs.Index, 0, _sectionNav.Count - 1)].Focus();
+                }
+            }, DispatcherPriority.Background);
         }
 
         protected override void OnKeyDown(KeyEventArgs e)
@@ -287,10 +418,9 @@ namespace MphRead.Mods.Launcher.Gui
                 {
                     _tabs.Index = i;
                     ShowPage(i);
-                    if (_controlTabs != null
-                        && String.Equals(name, "Controls", StringComparison.OrdinalIgnoreCase))
+                    if (String.Equals(name, "Controls", StringComparison.OrdinalIgnoreCase))
                     {
-                        _controlTabs.Index = Math.Clamp(sub, 0, 2);
+                        ShowControlPage(sub);
                     }
                     return;
                 }
@@ -299,9 +429,124 @@ namespace MphRead.Mods.Launcher.Gui
 
         private void ShowPage(int index)
         {
+            if (_sections.Count == 0)
+            {
+                return;
+            }
+            index = Math.Clamp(index, 0, _sections.Count - 1);
             for (int i = 0; i < _sections.Count; i++)
             {
                 _sections[i].Page.IsVisible = i == index;
+                if (i < _sectionNav.Count)
+                {
+                    _sectionNav[i].Selected = i == index;
+                }
+            }
+            if (_sectionTitle != null)
+            {
+                string name = _sections[index].Name;
+                _sectionTitle.Text = name.ToUpperInvariant();
+                _sectionDetail.Text = SectionDescription(name);
+            }
+        }
+
+        private StackPanel BuildSectionNavigation()
+        {
+            var nav = new StackPanel { Spacing = 5 };
+            for (int i = 0; i < _sections.Count; i++)
+            {
+                int at = i;
+                string name = _sections[i].Name;
+                var button = new HubNavButton(name.ToUpperInvariant(),
+                    compact: true, accent: SectionAccent(name));
+                string id = $"settings.detail.{name.ToLowerInvariant()}";
+                ControllerNav.Identify(button, id, initial: i == 0);
+                button.Click += (_, _) =>
+                {
+                    _tabs.Index = at;
+                    ShowPage(at);
+                };
+                _sectionNav.Add(button);
+                nav.Children.Add(button);
+            }
+            for (int i = 0; i < _sectionNav.Count; i++)
+            {
+                string prev = _sections[(i + _sections.Count - 1) % _sections.Count].Name.ToLowerInvariant();
+                string next = _sections[(i + 1) % _sections.Count].Name.ToLowerInvariant();
+                _sectionNav[i].SetValue(ControllerNav.NavUpProperty, $"settings.detail.{prev}");
+                _sectionNav[i].SetValue(ControllerNav.NavDownProperty, $"settings.detail.{next}");
+            }
+            return nav;
+        }
+
+        private static Color SectionAccent(string name) => name switch
+        {
+            "Graphics" => Color.FromRgb(0x55, 0xe0, 0xd2),
+            "Audio" => HubTheme.Good,
+            "Controls" => Color.FromRgb(0x86, 0xb8, 0xff),
+            "Replays" => Color.FromRgb(0xa7, 0x9b, 0xf5),
+            "Profile" => HubTheme.Warm,
+            "Credits" => HubTheme.TextDim,
+            _ => HubTheme.Accent
+        };
+
+        private static string SectionDescription(string name) => name switch
+        {
+            "Display" => "Window, view, frame pacing, HUD and accessibility.",
+            "Graphics" => "Render resolution, supersampling and scene-quality controls.",
+            "Audio" => "Sound, music and language.",
+            "Controls" => "Keyboard, mouse, controller, touch and stylus.",
+            "Replays" => "Instant clips, replay storage and playback controls.",
+            "Profile" => "Player identity, hunter, servers, updates and game files.",
+            "Credits" => "Project attribution, technology and support.",
+            _ => ""
+        };
+
+        private void ApplyShellResponsive(Size size)
+        {
+            bool compact = size.Width < 760 || size.Height < 500;
+            if (compact == _compactShell)
+            {
+                return;
+            }
+            _compactShell = compact;
+            if (compact)
+            {
+                _settingsBody.ColumnDefinitions = new ColumnDefinitions("*");
+                _settingsBody.RowDefinitions = new RowDefinitions("Auto,*");
+                _settingsBody.ColumnSpacing = 0;
+                _settingsBody.RowSpacing = 8;
+                Grid.SetColumn(_sectionNavHost, 0);
+                Grid.SetRow(_sectionNavHost, 0);
+                Grid.SetColumn(_sectionContentHost, 0);
+                Grid.SetRow(_sectionContentHost, 1);
+                _sectionNavStack.Orientation = Orientation.Horizontal;
+                _sectionNavScroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
+                _sectionNavScroll.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
+                foreach (HubNavButton button in _sectionNav)
+                {
+                    button.Width = 118;
+                    button.MinHeight = 40;
+                }
+            }
+            else
+            {
+                _settingsBody.ColumnDefinitions = new ColumnDefinitions("190,*");
+                _settingsBody.RowDefinitions = new RowDefinitions("*");
+                _settingsBody.ColumnSpacing = 12;
+                _settingsBody.RowSpacing = 0;
+                Grid.SetColumn(_sectionNavHost, 0);
+                Grid.SetRow(_sectionNavHost, 0);
+                Grid.SetColumn(_sectionContentHost, 1);
+                Grid.SetRow(_sectionContentHost, 0);
+                _sectionNavStack.Orientation = Orientation.Vertical;
+                _sectionNavScroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
+                _sectionNavScroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
+                foreach (HubNavButton button in _sectionNav)
+                {
+                    button.Width = Double.NaN;
+                    button.MinHeight = 42;
+                }
             }
         }
 
@@ -325,11 +570,11 @@ namespace MphRead.Mods.Launcher.Gui
             return control;
         }
 
-        private static DeckButton AddAdvancedToggle(StackPanel page, StackPanel advanced, string navId)
+        private static HubNavButton AddAdvancedToggle(StackPanel page, StackPanel advanced, string navId)
         {
-            var button = new DeckButton("Advanced", Deck.Face.Slate,
-                sizeEms: .9, padXEms: .8, padYEms: .38, lip: 3)
+            var button = new HubNavButton("ADVANCED", compact: true)
             {
+                Width = 170,
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Margin = new Thickness(0, 8, 0, 4)
             };
@@ -341,11 +586,12 @@ namespace MphRead.Mods.Launcher.Gui
         }
 
         /// <summary>
-        /// Six pages: display, audio, controls, replays, profile and credits.
+        /// Seven pages: display, graphics, audio, controls, replays, profile and credits.
         /// </summary>
         private void BuildPages()
         {
             BuildDisplay(AddSection("Display"));
+            BuildGraphics(AddSection("Graphics"));
             BuildAudio(AddSection("Audio"));
             BuildControls(AddSection("Controls"));
             BuildReplays(AddSection("Replays"));
@@ -427,25 +673,12 @@ namespace MphRead.Mods.Launcher.Gui
             // puts it back -- see Revert.
             _fovRow.ValueChanged += (_, _) => RenderOptions.FieldOfView = _fovRow.Value;
 
-            Heading(page, "Performance");
-            _resolutionScale = Add(page, new SliderRow("Render scale",
-                RenderOptions.ResolutionScale,
-                v => $"{Math.Max(RenderOptions.MinScale, v)}%"));
-            // Under the render scale because they are the same question asked
-            // from both ends -- how much picture, and how often -- and because
-            // the two of them are what somebody who is not getting a smooth
-            // game comes to this page to change.
+            Heading(page, "Frame pacing");
             _fpsLimitRow = Add(page, new SliderRow("FPS limit",
                 FpsLimitStopIndex(FrameTiming.FrameRateCap),
                 v => _fpsLimitStops[Math.Clamp(v, 0, _fpsLimitStops.Length - 1)].Label,
                 min: 0, max: _fpsLimitStops.Length - 1, keyStep: 1));
-            _lightingRow = Add(page, new ToggleRow("Lighting", RenderOptions.Lighting));
-            _fogRow = Add(page, new ToggleRow("Fog", RenderOptions.Fog));
-            _filteringRow = Add(page, new ToggleRow("Texture filtering", RenderOptions.TextureFiltering));
             _fpsRow = Add(page, new ToggleRow("FPS counter", RenderOptions.ShowFps));
-
-            Heading(page, "Cel shading");
-            _celRow = Add(page, new ToggleRow("Cel shading", RenderOptions.CelShading));
 
             // One switch, and none of what it drives.
             //
@@ -514,6 +747,78 @@ namespace MphRead.Mods.Launcher.Gui
                 Radar.ShowOutlines));
             _radarRow.Changed += (_, _) => ShowRadarRows();
             ShowRadarRows();
+
+            Heading(page, "Accessibility");
+            _reduceMotion = Add(page, new ToggleRow(
+                "Reduce menu motion", LauncherPrefs.ReduceMotion));
+        }
+
+        private void BuildGraphics(StackPanel page)
+        {
+            Heading(page, "Rendering");
+            Explain(page, "100% is native framebuffer resolution. Above 100% supersamples the 3D world before resolving it to the display; 300% is an extreme 3x-per-axis mode that shades nine times as many scene pixels.");
+            _resolutionScale = Add(page, new SliderRow("Render scale",
+                RenderOptions.ResolutionScale,
+                v => v == 100 ? "100% (native)"
+                    : v > 100 ? $"{v}% (supersampled)" : $"{v}%",
+                min: RenderOptions.MinScale, max: RenderOptions.MaxScale, keyStep: 5));
+
+            Heading(page, "Scene quality");
+            _lightingRow = Add(page, new ToggleRow("Lighting", RenderOptions.Lighting));
+            _fogRow = Add(page, new ToggleRow("Fog", RenderOptions.Fog));
+            _filteringRow = Add(page, new ToggleRow("Bilinear texture filtering",
+                RenderOptions.TextureFiltering));
+            _mipmapRow = Add(page, new ToggleRow("Trilinear mipmaps",
+                RenderOptions.TextureMipmaps));
+            _anisotropyRow = Add(page, new ChoiceRow("Anisotropic filtering",
+                new[] { "Off", "2x", "4x", "8x", "16x" },
+                AnisotropyIndex(RenderOptions.TextureAnisotropy)));
+            Explain(page, "Mipmaps reduce distant texture shimmer. Anisotropic filtering sharpens oblique surfaces and is capped to what the active GPU reports.");
+            _filteringRow.Changed += (_, _) => ShowTextureQualityRows();
+            ShowTextureQualityRows();
+
+            var maxQuality = new HubNavButton("MAX QUALITY",
+                "300% supersampling + trilinear mipmaps + 16x anisotropic filtering",
+                primary: true)
+            {
+                MinHeight = 50,
+                Margin = new Thickness(0, 10, 0, 4)
+            };
+            ControllerNav.Identify(maxQuality, "settings.graphics.max");
+            maxQuality.Click += (_, _) =>
+            {
+                _resolutionScale.Value = RenderOptions.MaxScale;
+                _lightingRow.On = true;
+                _fogRow.On = true;
+                _filteringRow.On = true;
+                _mipmapRow.On = true;
+                _anisotropyRow.Index = _anisotropyStops.Length - 1;
+                ShowTextureQualityRows();
+            };
+            page.Children.Add(maxQuality);
+            Explain(page, "MAX QUALITY is intentionally extreme: at a 4K display, 300% renders roughly 12K-class scene dimensions and shades nine times the native scene pixels.");
+
+            Heading(page, "Cel shading");
+            _celRow = Add(page, new ToggleRow("Cel shading", RenderOptions.CelShading));
+            _celBandsRow = Add(page, new SliderRow("Shading bands", RenderOptions.CelBands,
+                v => v.ToString(CultureInfo.InvariantCulture), min: 2, max: 8, keyStep: 1));
+            _celEdgeRow = Add(page, new SliderRow("Outline strength",
+                (int)MathF.Round(RenderOptions.CelEdge * 100),
+                v => $"{v}%", min: 0, max: 100, keyStep: 5));
+            _celRow.Changed += (_, _) => ShowCelRows();
+            ShowCelRows();
+        }
+
+        private void ShowTextureQualityRows()
+        {
+            _mipmapRow.IsVisible = _filteringRow.On;
+            _anisotropyRow.IsVisible = _filteringRow.On;
+        }
+
+        private void ShowCelRows()
+        {
+            _celBandsRow.IsVisible = _celRow.On;
+            _celEdgeRow.IsVisible = _celRow.On;
         }
 
         private void ShowCrosshairRows()
@@ -554,30 +859,58 @@ namespace MphRead.Mods.Launcher.Gui
         // ------------------------------------------------------------ controls
 
         /// <summary>
-        /// Three devices, three pages.
-        ///
-        /// A keyboard, a pad and a pen tablet do not share a list: "Sensitivity"
-        /// is a different number on each of them, the key list means nothing on
-        /// two of the three, and the bottom-screen zone means nothing on two
-        /// either. They were one page with three headings, which made the page
-        /// long enough that the thing you came to change was usually below the
-        /// fold -- so they are three pages behind a strip now, and the strip is
-        /// the same <see cref="UiTabs"/> the sections above it use.
+        /// Three devices, three focused pages. The old nested UiTabs strip was
+        /// the last legacy navigation surface inside settings; these compact
+        /// hub buttons now use the same focus/selection language as the outer
+        /// Settings shell.
         /// </summary>
         private void BuildControls(StackPanel outer)
         {
             var keyboard = new StackPanel { Spacing = 2 };
-            var gamepad = new StackPanel { Spacing = 2, IsVisible = false };
-            var stylus = new StackPanel { Spacing = 2, IsVisible = false };
-            var subs = new UiTabs(new[] { "Keyboard", "Gamepad", "Stylus" });
-            _controlTabs = subs;
-            subs.Margin = new Thickness(0, 0, 0, 8);
-            subs.Changed += (_, _) =>
+            var gamepad = new StackPanel { Spacing = 2 };
+            var stylus = new StackPanel { Spacing = 2 };
+            _controlPages.Clear();
+            _controlPages.Add(keyboard);
+            _controlPages.Add(gamepad);
+            _controlPages.Add(stylus);
+
+            var subs = new Grid
             {
-                keyboard.IsVisible = subs.Index == 0;
-                gamepad.IsVisible = subs.Index == 1;
-                stylus.IsVisible = subs.Index == 2;
+                ColumnDefinitions = new ColumnDefinitions("*,*,*"),
+                ColumnSpacing = 5,
+                Margin = new Thickness(0, 0, 0, 8)
             };
+            string[] names = { "KEYBOARD", "GAMEPAD", "STYLUS" };
+            Color[] accents =
+            {
+                HubTheme.Accent,
+                Color.FromRgb(0x86, 0xb8, 0xff),
+                HubTheme.Warm
+            };
+            for (int i = 0; i < names.Length; i++)
+            {
+                int at = i;
+                var button = new HubNavButton(names[i], compact: true, accent: accents[i])
+                {
+                    MinHeight = 40
+                };
+                string id = $"settings.controls.{names[i].ToLowerInvariant()}";
+                ControllerNav.Identify(button, id, initial: i == 0);
+                button.Click += (_, _) => ShowControlPage(at);
+                Grid.SetColumn(button, i);
+                subs.Children.Add(button);
+                _controlNav.Add(button);
+            }
+            for (int i = 0; i < _controlNav.Count; i++)
+            {
+                string prev = names[(i + names.Length - 1) % names.Length].ToLowerInvariant();
+                string next = names[(i + 1) % names.Length].ToLowerInvariant();
+                _controlNav[i].SetValue(ControllerNav.NavLeftProperty,
+                    $"settings.controls.{prev}");
+                _controlNav[i].SetValue(ControllerNav.NavRightProperty,
+                    $"settings.controls.{next}");
+            }
+
             outer.Children.Add(subs);
             outer.Children.Add(keyboard);
             outer.Children.Add(gamepad);
@@ -585,15 +918,25 @@ namespace MphRead.Mods.Launcher.Gui
             BuildKeyboard(keyboard);
             BuildGamepad(gamepad);
             BuildStylus(stylus);
+            ShowControlPage(0);
         }
 
-        /// <summary>
-        /// The Controls page's own strip, so <see cref="ShowSection"/> can
-        /// open one of its three sub-pages. The rows under Gamepad are the
-        /// ones that have never been arranged until it is opened, which is
-        /// where the crash was.
-        /// </summary>
-        private UiTabs? _controlTabs;
+        private void ShowControlPage(int index)
+        {
+            if (_controlPages.Count == 0)
+            {
+                return;
+            }
+            _controlPageIndex = Math.Clamp(index, 0, _controlPages.Count - 1);
+            for (int i = 0; i < _controlPages.Count; i++)
+            {
+                _controlPages[i].IsVisible = i == _controlPageIndex;
+                if (i < _controlNav.Count)
+                {
+                    _controlNav[i].Selected = i == _controlPageIndex;
+                }
+            }
+        }
 
         private void BuildKeyboard(StackPanel page)
         {
@@ -685,12 +1028,14 @@ namespace MphRead.Mods.Launcher.Gui
             foreach (Mods.Input.PadAction action in Mods.Input.PadBindings.ReplayActions)
                 _replayPadRows.Add(Add(page, new PadRow(action)));
 
-            var resetReplay = new DeckButton("Reset replay controls", Deck.Face.Brass,
-                sizeEms: .9, padXEms: .8, padYEms: .38, lip: 3)
+            var resetReplay = new HubNavButton("RESET REPLAY CONTROLS",
+                compact: true, accent: HubTheme.Warm)
             {
+                Width = 230,
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Margin = new Thickness(0, 10, 0, 0)
             };
+            ControllerNav.Identify(resetReplay, "replay.controls.reset");
             resetReplay.Click += (_, _) =>
             {
                 InputSettings.ResetReplayBindings();
@@ -726,9 +1071,10 @@ namespace MphRead.Mods.Launcher.Gui
                 padRows.Add(Add(page, new PadRow(action)));
             }
 
-            var reset = new DeckButton("Reset to defaults", Deck.Face.Brass,
-                sizeEms: .9, padXEms: .8, padYEms: .38, lip: 3)
+            var reset = new HubNavButton("RESET TO DEFAULTS",
+                compact: true, accent: HubTheme.Warm)
             {
+                Width = 200,
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Margin = new Thickness(0, 10, 0, 0)
             };
@@ -789,9 +1135,10 @@ namespace MphRead.Mods.Launcher.Gui
             _stylusZone = Add(page, new ToggleRow("DS touch-screen zone", Mods.Input.StylusZone.Wanted));
             _stylusRows.Add(_stylusZone);
 
-            var place = new DeckButton("Configure stylus zone", Deck.Face.Slate,
-                sizeEms: .9, padXEms: .8, padYEms: .38, lip: 3)
+            var place = new HubNavButton("CONFIGURE STYLUS ZONE",
+                compact: true, accent: HubTheme.Accent)
             {
+                Width = 220,
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Margin = new Thickness(0, 8, 0, 0)
             };
@@ -818,9 +1165,9 @@ namespace MphRead.Mods.Launcher.Gui
                 v => $"{v}%", min: 0, max: 100, keyStep: 5));
             _stylusAdvanced.Children.Add(new Note(
                 "Reposition filtering ignores tablet jumps after lift/re-contact. Cursor, rectangle, and circular button opacity are independent; 0% hides that element during play. Zone placement stays visible while you configure it."));
-            _stylusAdvancedButton = new DeckButton("Advanced", Deck.Face.Slate,
-                sizeEms: .9, padXEms: .8, padYEms: .38, lip: 3)
+            _stylusAdvancedButton = new HubNavButton("ADVANCED", compact: true)
             {
+                Width = 170,
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Margin = new Thickness(0, 8, 0, 4)
             };
@@ -1199,21 +1546,28 @@ namespace MphRead.Mods.Launcher.Gui
                 Mods.Network.DemoClip.Seconds = Mods.Network.DemoClip.Lengths[
                     Math.Clamp(_clipSecondsRow.Index, 0, Mods.Network.DemoClip.Lengths.Length - 1)];
             }
-            _settings.ResolutionScale = Math.Max(RenderOptions.MinScale, _resolutionScale.Value)
+            _settings.ResolutionScale = Math.Clamp(_resolutionScale.Value,
+                RenderOptions.MinScale, RenderOptions.MaxScale)
                 .ToString(CultureInfo.InvariantCulture);
             RenderOptions.FieldOfView = _fovRow.Value;
             _settings.FieldOfView = _fovRow.Value.ToString(CultureInfo.InvariantCulture);
             _settings.Lighting = RenderOptions.OnOff(_lightingRow.On);
             _settings.Fog = RenderOptions.OnOff(_fogRow.On);
             _settings.TextureFiltering = RenderOptions.OnOff(_filteringRow.On);
+            _settings.TextureMipmaps = RenderOptions.OnOff(_mipmapRow.On);
+            _settings.TextureAnisotropy = _anisotropyStops[
+                Math.Clamp(_anisotropyRow.Index, 0, _anisotropyStops.Length - 1)]
+                .ToString(CultureInfo.InvariantCulture);
             _settings.ShowFps = RenderOptions.OnOff(_fpsRow.On);
             int cap = _fpsLimitStops[Math.Clamp(_fpsLimitRow.Value, 0,
                 _fpsLimitStops.Length - 1)].Cap;
             FrameTiming.FrameRateCap = cap;
             _settings.FrameRateCap = FrameTiming.CapString(cap);
             _settings.CelShading = RenderOptions.OnOff(_celRow.On);
-            _settings.CelBands = "8";
-            _settings.CelEdge = "50";
+            _settings.CelBands = Math.Clamp(_celBandsRow.Value, 2, 8)
+                .ToString(CultureInfo.InvariantCulture);
+            _settings.CelEdge = Math.Clamp(_celEdgeRow.Value, 0, 100)
+                .ToString(CultureInfo.InvariantCulture);
             Features.ProHud = _proHud.On;
             Crosshair.Size = (CrosshairSize)_crosshairSizeRow.Index;
             Crosshair.Style = (CrosshairStyle)_crosshairStyleRow.Index;
@@ -1292,6 +1646,7 @@ namespace MphRead.Mods.Launcher.Gui
                 LauncherPrefs.MasterPort = masterPort;
             }
             LauncherPrefs.AutoUpdate = _autoUpdate.On;
+            LauncherPrefs.ReduceMotion = _reduceMotion.On;
             if (_replayStorageRow != null)
             {
                 LauncherPrefs.ReplayStorageLimitGb = _replayStorageStops[

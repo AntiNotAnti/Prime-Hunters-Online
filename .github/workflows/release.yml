@@ -167,7 +167,7 @@ jobs:
           # Android also needs a monotonically increasing integer versionCode;
           # encode the same semver as MAJOR.MINOR.PATCH without losing order.
           echo "android_version_code=$ANDROID_VERSION_CODE" >> "$GITHUB_OUTPUT"
-          echo "### Prime Hunters Online $TAG" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Project Prime $TAG" >> "$GITHUB_STEP_SUMMARY"
 
   release:
     needs: resolve
@@ -198,7 +198,7 @@ jobs:
         run: tools/check-maps-shipped.sh
 
       # Cook every custom map into the one file it ships as. The recipe, the
-      # level it converts and the textures baked from it go into a .fpmap,
+      # level it converts and the textures baked from it go into a .ppmap,
       # with the level trimmed to the lumps the importer actually reads: 376 KB
       # for de_dust2 against the 2.8 MB its folder weighs. That bundle is what
       # the packages carry, and it is what somebody can be handed on its own --
@@ -222,11 +222,11 @@ jobs:
           # Same project each time, launcher left out, no UI toolkit: none of
           # these machines has anybody sitting at it.
           #
-          # Only the Windows one gets a name of its own (FruityPrimeServer,
+          # Only the Windows one gets a name of its own (ProjectPrimeServer,
           # from a console-subsystem header) so that it can sit in a folder
           # beside the game's exe. Off Windows the subsystem split does not
           # exist and every server package holds exactly one binary, so both
-          # keep the plain name FruityPrime.
+          # keep the plain name ProjectPrime.
           dotnet publish src/MphRead/MphRead.csproj -c Release -r win-x64 \
             -p:MphReadServer=true $stamp --self-contained true \
             -p:PublishSingleFile=true -o publish/win-x64-server
@@ -341,8 +341,8 @@ jobs:
       - name: each Windows binary is what it claims to be
         run: |
           set -euo pipefail
-          tools/check-subsystem.sh gui publish/win-x64/FruityPrime.exe
-          tools/check-subsystem.sh console publish/win-x64-server/FruityPrimeServer.exe
+          tools/check-subsystem.sh gui publish/win-x64/ProjectPrime.exe
+          tools/check-subsystem.sh console publish/win-x64-server/ProjectPrimeServer.exe
 
       # Nothing gets tagged as a release until a server out of it has actually
       # started, registered with a directory and answered a query. This runner
@@ -366,9 +366,9 @@ jobs:
           mkdir -p dist
           cp LICENSE publish/win-x64/ 2>/dev/null || true
           cat > publish/win-x64/README.txt <<'NOTE'
-          Prime Hunters Online -- Metroid Prime Hunters, on PC, with multiplayer.
+          Project Prime -- Metroid Prime Hunters, on PC, with multiplayer.
 
-          Double-click FruityPrime.exe. The first thing it asks for is your own
+          Double-click ProjectPrime.exe. The first thing it asks for is your own
           Metroid Prime Hunters cartridge dump (.nds); it unpacks what it needs
           next to this program and leaves the file alone. No game data is
           included in this download, and none is downloaded.
@@ -383,17 +383,17 @@ jobs:
           it omits the launcher/UI, but the authoritative server still needs
           your extracted game files and a valid paths.txt beside the binary.
           NOTE
-          ( cd publish/win-x64 && zip -qr "../../dist/FruityPrime-$TAG-win-x64.zip" . )
+          ( cd publish/win-x64 && zip -qr "../../dist/ProjectPrime-$TAG-win-x64.zip" . )
 
           cp LICENSE publish/linux-x64/ 2>/dev/null || true
           cat > publish/linux-x64/README.txt <<'NOTE'
-          Prime Hunters Online -- Metroid Prime Hunters, on PC, with multiplayer.
+          Project Prime -- Metroid Prime Hunters, on PC, with multiplayer.
 
           Set up with your own Metroid Prime Hunters cartridge dump (.nds).
           It is unpacked next to this program and the file is left alone. No
           game data is included in this download, and none is downloaded.
 
-            ./FruityPrime -launcher
+            ./ProjectPrime -launcher
 
           opens the front screen: play online, play offline against bots, host
           a game, settings, and the game-files setup.
@@ -404,11 +404,11 @@ jobs:
 
           Everything it does also has a command of its own:
 
-            ./FruityPrime <path to rom.nds>     set up the game files
-            ./FruityPrime -servers              list the servers that are up
-            ./FruityPrime -connect HOST         join one
-            ./FruityPrime -hostgame "ROOM"      have a server run a match for you
-            ./FruityPrime -menu                 volumes, controls, match rules
+            ./ProjectPrime <path to rom.nds>     set up the game files
+            ./ProjectPrime -servers              list the servers that are up
+            ./ProjectPrime -connect HOST         join one
+            ./ProjectPrime -hostgame "ROOM"      have a server run a match for you
+            ./ProjectPrime -menu                 volumes, controls, match rules
 
           This build can also run a dedicated server with -server. The server
           runs the match authoritatively, so it needs your extracted game files
@@ -418,12 +418,12 @@ jobs:
 
           F11 or Alt+Enter switches to fullscreen, Escape opens the pause menu.
           NOTE
-          ( cd publish/linux-x64 && tar czf "../../dist/FruityPrime-$TAG-linux-x64.tar.gz" . )
+          ( cd publish/linux-x64 && tar czf "../../dist/ProjectPrime-$TAG-linux-x64.tar.gz" . )
 
           cat > publish/linux-arm64/SERVER.txt <<'NOTE'
-          Prime Hunters Online dedicated server.
+          Project Prime dedicated server.
 
-            ./FruityPrime -server -port 27888 -players 8 -servername "My server"
+            ./ProjectPrime -server -port 27888 -players 8 -servername "My server"
 
           This server runs the match authoritatively and therefore requires
           your extracted Metroid Prime Hunters game files. Put a valid paths.txt
@@ -431,24 +431,24 @@ jobs:
           in this package. Maps come from maprotation.txt, written beside the
           binary on first run.
 
-          The server lists itself on net.livetek.fr so that players can find it
+          The server lists itself on 51.161.113.128 so that players can find it
           in the launcher's server browser. Pass -nomaster to stay private, or
           -master HOST to use a different directory.
 
           To run a directory of your own:
 
-            ./FruityPrime -masterserver -port 27889
+            ./ProjectPrime -masterserver -port 27889
           NOTE
           cp SERVER.md publish/linux-arm64/SERVER.md
-          ( cd publish/linux-arm64 && tar czf "../../dist/FruityPrime-$TAG-server-linux-arm64.tar.gz" . )
+          ( cd publish/linux-arm64 && tar czf "../../dist/ProjectPrime-$TAG-server-linux-arm64.tar.gz" . )
 
           cp LICENSE publish/linux-x64-server/ 2>/dev/null || true
           cat > publish/linux-x64-server/SERVER.txt <<'NOTE'
-          Prime Hunters Online dedicated server, for a plain x64 Linux machine -- a
+          Project Prime dedicated server, for a plain x64 Linux machine -- a
           VPS, a spare desktop, anything that is not a Raspberry Pi (see the
           ARM64 package for that) and that nobody is playing on.
 
-            ./FruityPrime -server -port 27888 -players 8 -servername "My server"
+            ./ProjectPrime -server -port 27888 -players 8 -servername "My server"
 
           This server runs the match authoritatively and therefore requires
           your extracted Metroid Prime Hunters game files. Put a valid paths.txt
@@ -456,36 +456,36 @@ jobs:
           in this package. Maps come from maprotation.txt, written beside the
           binary on first run.
 
-          The server lists itself on net.livetek.fr so that players can find it
+          The server lists itself on 51.161.113.128 so that players can find it
           in the launcher's server browser. Pass -nomaster to stay private, or
           -master HOST to use a different directory.
 
           To run a directory of your own:
 
-            ./FruityPrime -masterserver -port 27889
+            ./ProjectPrime -masterserver -port 27889
 
           tools/systemd/ in the source has unit files to run this under
           systemd; deploy-server.sh automates that end to end for the ARM64
           build, and the same units work here with the RID changed.
           NOTE
           cp SERVER.md publish/linux-x64-server/SERVER.md
-          ( cd publish/linux-x64-server && tar czf "../../dist/FruityPrime-$TAG-server-linux-x64.tar.gz" . )
+          ( cd publish/linux-x64-server && tar czf "../../dist/ProjectPrime-$TAG-server-linux-x64.tar.gz" . )
 
           cp LICENSE publish/win-x64-server/ 2>/dev/null || true
           cat > publish/win-x64-server/SERVER.txt <<'NOTE'
-          Prime Hunters Online dedicated server, for Windows.
+          Project Prime dedicated server, for Windows.
 
           From a Command Prompt or PowerShell, in this folder:
 
-            FruityPrimeServer.exe -server -port 27888 -players 8 -servername "My server"
+            ProjectPrimeServer.exe -server -port 27888 -players 8 -servername "My server"
 
           This server runs the match authoritatively and therefore requires
           your extracted Metroid Prime Hunters game files. Put a valid paths.txt
-          beside FruityPrimeServer.exe pointing at those files. No game data is
+          beside ProjectPrimeServer.exe pointing at those files. No game data is
           included in this package. Maps come from maprotation.txt, written
           beside the binary on first run.
 
-          This is a console program, unlike FruityPrime.exe: the window stays until
+          This is a console program, unlike ProjectPrime.exe: the window stays until
           the server stops, Ctrl+C shuts it down cleanly, and its exit code is
           reported, so it can be run under a service supervisor (NSSM, or
           sc.exe with a wrapper) the way the Linux build runs under systemd.
@@ -495,26 +495,26 @@ jobs:
           Nobody outside this machine can reach the server until that is
           allowed for UDP on the port above, and until the router forwards it.
 
-          The server lists itself on net.livetek.fr so that players can find it
+          The server lists itself on 51.161.113.128 so that players can find it
           in the launcher's server browser. Pass -nomaster to stay private, or
           -master HOST to use a different directory.
 
           To run a directory of your own:
 
-            FruityPrimeServer.exe -masterserver -port 27889
+            ProjectPrimeServer.exe -masterserver -port 27889
 
           To see what is up right now:
 
-            FruityPrimeServer.exe -servers
+            ProjectPrimeServer.exe -servers
           NOTE
           cp SERVER.md publish/win-x64-server/SERVER.md
-          ( cd publish/win-x64-server && zip -qr "../../dist/FruityPrime-$TAG-server-win-x64.zip" . )
+          ( cd publish/win-x64-server && zip -qr "../../dist/ProjectPrime-$TAG-server-win-x64.zip" . )
 
           # The APK goes out on its own rather than in an archive: what a phone
           # wants is a file it can be handed. Signed with the release keystore
           # when the secrets are set, and with a throwaway debug key when they
           # are not -- the second installs, and can never be updated in place.
-          cp publish/android/*-Signed.apk "dist/FruityPrime-$TAG-android.apk"
+          cp publish/android/*-Signed.apk "dist/ProjectPrime-$TAG-android.apk"
           ls -la dist
 
       - uses: actions/upload-artifact@v7
@@ -557,11 +557,11 @@ jobs:
           dotnet publish src/MphRead/MphRead.csproj -c Release -r "$RID" \
             -p:Version="$VERSION" -p:InformationalVersion="$VERSION" \
             --self-contained true -p:PublishSingleFile=true -o "publish/$RID"
-          chmod +x "publish/$RID/FruityPrime"
+          chmod +x "publish/$RID/ProjectPrime"
           tools/sign-macos.sh "publish/$RID"
           tools/check-macos-build.sh "publish/$RID" "$RID"
           tools/run-macos-smoke.sh "publish/$RID" "$RID"
-          python3 tools/test-compatibility-smoke.py "publish/$RID/FruityPrime"
+          python3 tools/test-compatibility-smoke.py "publish/$RID/ProjectPrime"
           tools/check-no-game-assets.sh "publish/$RID"
           tools/check-maps-shipped.sh "publish/$RID"
           tools/package-macos.sh "publish/$RID" dist "$RID" "$VERSION"
@@ -605,13 +605,13 @@ jobs:
           fi
 
           cat > notes.md <<'NOTE'
-          **Prime Hunters Online**
+          **Project Prime**
 
           You bring your own Metroid Prime Hunters cartridge dump. No game data is included here
           and none is downloaded.
 
-          - **Windows** -- the `win-x64` zip, run `FruityPrime.exe`
-          - **Linux** -- the `.tar.gz`, run `./FruityPrime -launcher`
+          - **Windows** -- the `win-x64` zip, run `ProjectPrime.exe`
+          - **Linux** -- the `.tar.gz`, run `./ProjectPrime -launcher`
           - **macOS** -- the matching `.tar.gz`
           - **Android** -- the `.apk`
           - **Dedicated server** -- the `server-` package for the server OS/architecture
@@ -637,14 +637,14 @@ jobs:
               --repo "$REPOSITORY"
             gh release edit "$TAG" \
               --repo "$REPOSITORY" \
-              --title "Prime Hunters Online $TAG" --notes-file notes.md
+              --title "Project Prime $TAG" --notes-file notes.md
             if [ "$PUBLISH_NOW" = "true" ]; then
               gh release edit "$TAG" \
                 --repo "$REPOSITORY" --draft=false
             fi
           else
             args=(release create "$TAG" dist/* --repo "$REPOSITORY" \
-              --verify-tag --title "Prime Hunters Online $TAG" --notes-file notes.md)
+              --verify-tag --title "Project Prime $TAG" --notes-file notes.md)
             if [ "$PUBLISH_NOW" != "true" ]; then
               args+=(--draft)
             fi

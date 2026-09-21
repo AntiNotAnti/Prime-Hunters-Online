@@ -4,8 +4,8 @@ set -euo pipefail
 [[ $(uname -s) == Darwin ]] || { echo 'error: signing requires macOS' >&2; exit 1; }
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 root=$(cd "$1" && pwd)
-entitlements="$repo/src/MphRead/Platforms/macOS/FruityPrime.entitlements"
-[[ -x "$root/FruityPrime" ]] || { echo "error: no executable in $root" >&2; exit 1; }
+entitlements="$repo/src/MphRead/Platforms/macOS/ProjectPrime.entitlements"
+[[ -x "$root/ProjectPrime" ]] || { echo "error: no executable in $root" >&2; exit 1; }
 plutil -lint "$entitlements"
 
 # Inspect every file, including extensionless framework binaries and helpers.
@@ -14,7 +14,7 @@ list=$(mktemp)
 trap 'rm -f "$list"' EXIT
 find "$root" -type f -print0 > "$list"
 while IFS= read -r -d '' component; do
-    [[ "$component" != "$root/FruityPrime" ]] || continue
+    [[ "$component" != "$root/ProjectPrime" ]] || continue
     description=$(file -b "$component")
     if [[ "$description" == *Mach-O* ]]; then
         codesign --force --sign - "$component"
@@ -27,5 +27,5 @@ while IFS= read -r -d '' framework; do
     codesign --force --sign - "$framework"
     codesign --verify --strict --verbose=2 "$framework"
 done < "$list"
-codesign --force --sign - --entitlements "$entitlements" "$root/FruityPrime"
-codesign --verify --strict --verbose=4 "$root/FruityPrime"
+codesign --force --sign - --entitlements "$entitlements" "$root/ProjectPrime"
+codesign --verify --strict --verbose=4 "$root/ProjectPrime"

@@ -62,9 +62,9 @@ namespace MphRead.Mods
                 // console path makes the same substitution.
                 Scene.Language = Paths.MphKey == "AMHK0" ? Language.Japanese : language;
             }
-            // Read by the renderer as it builds each scene, so a change here
-            // reaches the next match; the resolution scale reaches the current
-            // one on its next resize.
+            // Render scale is observed by Scene.OnDrawFrame, which reallocates
+            // its target when this value changes, so saving from the pause menu
+            // reaches the running match without a window resize.
             RenderOptions.ResolutionScale = RenderOptions.ParseScale(settings.ResolutionScale,
                 RenderOptions.ResolutionScale);
             // Read once a frame by the camera, so this reaches the match that
@@ -75,6 +75,11 @@ namespace MphRead.Mods
             RenderOptions.Fog = RenderOptions.ParseOnOff(settings.Fog, RenderOptions.Fog);
             RenderOptions.TextureFiltering = RenderOptions.ParseOnOff(settings.TextureFiltering,
                 RenderOptions.TextureFiltering);
+            RenderOptions.TextureMipmaps = RenderOptions.ParseOnOff(settings.TextureMipmaps,
+                RenderOptions.TextureMipmaps);
+            RenderOptions.TextureAnisotropy = Math.Clamp(
+                RenderOptions.ParseInt(settings.TextureAnisotropy,
+                    RenderOptions.TextureAnisotropy), 1, 16);
             RenderOptions.ShowFps = RenderOptions.ParseOnOff(settings.ShowFps, RenderOptions.ShowFps);
             // How often the picture is drawn. It does not touch the
             // simulation, which runs at 60 Hz whatever this says -- see
@@ -83,11 +88,11 @@ namespace MphRead.Mods
                 Render.FrameTiming.FrameRateCap);
             RenderOptions.CelShading = RenderOptions.ParseOnOff(settings.CelShading,
                 RenderOptions.CelShading);
-            // Steps and outline strength are no longer player-configurable --
-            // locked at 8 steps / 50%, regardless of what an old settings.json
-            // (from before this was locked down) still has saved.
-            RenderOptions.CelBands = 8;
-            RenderOptions.CelEdge = 0.5f;
+            RenderOptions.CelBands = Math.Clamp(
+                RenderOptions.ParseInt(settings.CelBands, RenderOptions.CelBands), 2, 8);
+            RenderOptions.CelEdge = Math.Clamp(
+                RenderOptions.ParseInt(settings.CelEdge,
+                    (int)MathF.Round(RenderOptions.CelEdge * 100)) / 100f, 0, 1);
         }
 
         /// <summary>

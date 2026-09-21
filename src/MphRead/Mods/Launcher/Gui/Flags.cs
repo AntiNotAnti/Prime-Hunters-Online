@@ -212,7 +212,7 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 var text = new FormattedText(code.ToUpperInvariant(),
                     CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
-                    new Typeface(GuiTheme.PixelSemi, FontStyle.Normal, FontWeight.Normal),
+                    new Typeface(GuiTheme.Interface, FontStyle.Normal, FontWeight.SemiBold),
                     12, GuiTheme.TextDimBrush);
                 context.DrawText(text, new Point(
                     Math.Round(x + (Width - text.Width) / 2),

@@ -11,7 +11,7 @@ namespace MphRead.Mods.Replay
         {
             string directory = Path.Combine(Path.GetTempPath(), "replay-camera-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(directory);
-            string replay = Path.Combine(directory, "sample.fpdemo");
+            string replay = Path.Combine(directory, "sample.ppdemo");
             try
             {
                 byte[] source = { 1, 2, 3, 4 };
@@ -56,7 +56,7 @@ namespace MphRead.Mods.Replay
                 File.WriteAllBytes(replay + ".camera", good);
                 File.AppendAllText(replay, "changed");
                 Require(!loaded.Load(replay), "source binding");
-                Require(!loaded.Save(Path.Combine(directory, "missing.fpdemo")), "missing source");
+                Require(!loaded.Save(Path.Combine(directory, "missing.ppdemo")), "missing source");
                 Require(Directory.GetFiles(directory, "*.tmp").Length == 0, "temporary cleanup");
                 ReplayCamera.SetProfile(ReplayPresentationProfile.Presentation);
                 ReplayCamera.PlayTrack = true;

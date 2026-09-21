@@ -392,7 +392,7 @@ namespace MphRead.Droid
                 _onEnd = onEnd;
                 _onLoaded = onLoaded;
                 _onError = onError;
-                _thread = new Thread(Run) { Name = "FruityPrime GL", IsBackground = true };
+                _thread = new Thread(Run) { Name = "ProjectPrime GL", IsBackground = true };
                 _thread.Start();
             }
 

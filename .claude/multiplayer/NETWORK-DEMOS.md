@@ -1,6 +1,6 @@
 # Replay system
 
-New recordings and instant clips use `.fpdemo` v3. Version 2 remains readable;
+New recordings and instant clips use `.ppdemo` v3. Version 2 remains readable;
 its binary layout is unchanged. The viewer still feeds the recorded packets
 through `DemoPlayback`, `NetSession.StartPlayback`, `InjectPlaybackPacket`, and
 the normal session handlers. Local intent and authority snapshot synthesis are
@@ -29,7 +29,7 @@ F toggles free camera, C selects chase, O selects orbit, 1-8 selects a player,
 and mouse buttons cycle players. The replay HUD advertises the active input
 source's configured transport controls. The replay pause menu opens Replay
 Studio for timeline/editor/camera/export work. B/N save/preview camera keyframes. Up to 64
-frame-indexed keys persist in a checksummed `.fpdemo.camera` sidecar, atomically
+frame-indexed keys persist in a checksummed `.ppdemo.camera` sidecar, atomically
 replaced and bound to the replay's size and modification time. Track v2 stores
 linear/smooth/Catmull-Rom spline interpolation, ease-in/ease-out/ease-in-out,
 roll, optional constant-speed arc-length remapping and look-at targets.
@@ -54,7 +54,7 @@ and audio is muted/stopped during fast-forward seek batches.
 ## V3 storage and safety
 
 `ReplayFormatV3.cs` contains a bounded binary reader/writer with no new package.
-The uncompressed dispatch prefix remains `FPDM`, format byte, protocol byte.
+The uncompressed dispatch prefix remains `PPDM`, format byte, protocol byte.
 It is followed by length/CRC-protected metadata: tick rate, build identity,
 UTC date, full-match/clip type, room, mode, content hash, roster, and bootstrap.
 Bootstrap packets reuse the current SessionState, MatchState, Roster and
@@ -79,7 +79,7 @@ before data is accepted. Corruption and partial records are explicit results,
 not ordinary EOF. A v2 Deflate stream has no checksum/footer; a truncated stream
 that happens to end on a complete record cannot always be identified.
 
-Full recordings write `filename.fpdemo.part` with complete chunks flushed to
+Full recordings write `filename.ppdemo.part` with complete chunks flushed to
 disk. Successful close writes footer/trailer, closes the file, then renames it
 without replacing an existing replay. I/O errors stop recording without
 crashing the match and preserve recoverable data. Recovery creates a separate
@@ -120,11 +120,11 @@ with the map thumbnail as immediate fallback; list mode is the denser alternativ
 A persistent size/mtime-keyed index avoids reopening every replay header on
 each library rebuild. Display names/favorites are sidecars. Imported files stay in place.
 
-`.fpclip` virtual clips store only source replay + frame range + display name.
+`.ppclip` virtual clips store only source replay + frame range + display name.
 They share packet data with the source until watch/export needs a materialized
-`.fpdemo`, which is cached separately. Automatic highlights can create these
+`.ppdemo`, which is cached separately. Automatic highlights can create these
 non-destructive clips in one action. Virtual-clip playback caches are mapped back
-to their logical `.fpclip` descriptor for annotations, and cutting another
+to their logical `.ppclip` descriptor for annotations, and cutting another
 virtual clip from one is flattened back to the original replay with rebased
 frames rather than depending on a temporary cache file. The replay settings page exposes a storage
 limit and pruning policy; favorites are always protected and materialized clips
@@ -159,7 +159,7 @@ Commands:
   extracted clip separately, normalizes source `FRAME` to clip frame 0, then compares
   the explicit gameplay hash every frame and reports the first divergence. This is the
   clip-fidelity check; it needs extracted game assets.
-- `-replaydeterminism FILE -replayhashout OUTPUT.fpdemo`: after all comparisons pass,
+- `-replaydeterminism FILE -replayhashout OUTPUT.ppdemo`: after all comparisons pass,
   creates a separate v3 copy with expected gameplay hashes every 300 frames and at
   EOF. The source and packet contents are preserved. A matching engine build/hash
   schema verifies these references during playback and stops explicitly on a mismatch.
@@ -330,7 +330,7 @@ exactly one snapshot with no frame taking two.
 ## The file
 
 ```
-"FPDM" | version (2) | protocol      <- 6 bytes, never compressed
+"PPDM" | version (2) | protocol      <- 6 bytes, never compressed
 --- deflate ---
 [frame delta: 1 byte, 0xFF = escape + uint32] [length: uint16] [packet bytes]
 ...
@@ -358,8 +358,8 @@ one by accident.
 ## Checking a demo
 
 ```bash
-MphRead -demoinfo "path/to/x.fpdemo"            # what is in it
-MphRead -demoinfo "path/to/x.fpdemo" -replay    # and how it lands, frame by frame
+MphRead -demoinfo "path/to/x.ppdemo"            # what is in it
+MphRead -demoinfo "path/to/x.ppdemo" -replay    # and how it lands, frame by frame
 # Optional private wrapper, when available: run-demo.sh 30 authority
 ```
 

@@ -24,7 +24,7 @@ RUNS="${1:-8}"
 SEED="${2:-$RANDOM}"
 MAX_EXTRA="${3:-150}"
 RANDOM=$SEED
-HOST="${MPH_SERVER_HOST:-net.livetek.fr}"
+HOST="${MPH_SERVER_HOST:-51.161.113.128}"
 USER_="${MPH_SERVER_USER:-livetek}"
 PASS="${MPH_SERVER_PASS:-}"
 PORT=27888
@@ -37,8 +37,8 @@ MAPS=("MP1 SANCTORUS" "MP2 HARVESTER" "MP3 PROVING GROUND" "MP4 HIGHGROUND" "MP6
 EXTRAS=(0 0 30 60 100 "$MAX_EXTRA")
 
 BUILD=~/MphRead-dev/src/MphRead/bin/Release/net10.0
-cp "$BUILD"/FruityPrime.dll "$BUILD"/FruityPrime.deps.json "$BUILD"/FruityPrime.runtimeconfig.json bin/ || exit 1
-GAME=bin/FruityPrime.dll
+cp "$BUILD"/ProjectPrime.dll "$BUILD"/ProjectPrime.deps.json "$BUILD"/ProjectPrime.runtimeconfig.json bin/ || exit 1
+GAME=bin/ProjectPrime.dll
 
 ssh_pi() {
   if [ -n "$PASS" ]; then sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no "$USER_@$HOST" "$@"

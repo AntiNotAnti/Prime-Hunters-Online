@@ -2,12 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key><string>Fruity Prime</string>
-    <key>CFBundleDisplayName</key><string>Fruity Prime</string>
-    <key>CFBundleIdentifier</key><string>fr.livetek.fruityprime</string>
-    <key>CFBundleExecutable</key><string>FruityPrime</string>
+    <key>CFBundleName</key><string>Project Prime</string>
+    <key>CFBundleDisplayName</key><string>Project Prime</string>
+    <key>CFBundleIdentifier</key><string>com.projectprime.game</string>
+    <key>CFBundleExecutable</key><string>ProjectPrime</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleIconFile</key><string>FruityPrime.icns</string>
+    <key>CFBundleIconFile</key><string>ProjectPrime.icns</string>
     <key>NSHighResolutionCapable</key><true/>
 </dict>
 </plist>

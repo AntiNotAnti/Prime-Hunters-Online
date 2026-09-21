@@ -8,39 +8,34 @@ using Avalonia.Platform;
 namespace MphRead.Mods.Launcher.Gui
 {
     /// <summary>
-    /// The front screen's palette and metrics, in Avalonia terms.
+    /// Shared launcher palette and typography.
     ///
-    /// The colours are <c>LauncherTheme</c>'s, value for value, and are
-    /// meant to stay that way: the two screens are the same product on
-    /// different toolkits, and a palette copied by eye would drift the first
-    /// time either was adjusted. They are duplicated rather than shared because
-    /// LauncherTheme is System.Drawing and does not compile off Windows;
-    /// the numbers, not the types, are the thing being kept in step.
-    ///
-    /// No DPI scaling here, unlike the WinForms theme: Avalonia lays out in
-    /// device-independent pixels and scales the whole visual tree itself, which
-    /// is the one piece of per-monitor work LauncherTheme.S had to do by hand.
+    /// The FPS-hub direction uses cold dark panels, cyan focus/selection,
+    /// restrained semantic status colours and Inter as the player-facing UI
+    /// face. JetBrains Mono is reserved for technical data. Older deck controls
+    /// still consume these tokens while their layouts are migrated, which is
+    /// how the program remains one visual system during the transition.
     /// </summary>
     internal static class GuiTheme
     {
-        public static readonly Color Ink = Color.FromRgb(10, 12, 16);
-        public static readonly Color Panel = Color.FromRgb(18, 21, 28);
-        public static readonly Color PanelLight = Color.FromRgb(26, 31, 41);
-        public static readonly Color Edge = Color.FromRgb(38, 46, 60);
+        public static readonly Color Ink = Color.FromRgb(7, 13, 20);
+        public static readonly Color Panel = Color.FromRgb(13, 23, 34);
+        public static readonly Color PanelLight = Color.FromRgb(18, 34, 49);
+        public static readonly Color Edge = Color.FromRgb(45, 67, 87);
         /// <summary>Under Panel: the well a row or a card sits in.</summary>
-        public static readonly Color PanelDeep = Color.FromRgb(14, 17, 24);
-        public static readonly Color Text = Color.FromRgb(230, 234, 242);
-        public static readonly Color TextDim = Color.FromRgb(138, 147, 166);
-        /// <summary>The one accent colour everywhere: the same warm the main menu's Play uses.</summary>
-        public static readonly Color Accent = Color.FromRgb(255, 179, 71);
-        public static readonly Color Warm = Color.FromRgb(255, 179, 71);
+        public static readonly Color PanelDeep = Color.FromRgb(8, 17, 26);
+        public static readonly Color Text = Color.FromRgb(237, 247, 255);
+        public static readonly Color TextDim = Color.FromRgb(138, 160, 179);
+        /// <summary>The primary focus/selection colour across hub and migrated screens.</summary>
+        public static readonly Color Accent = Color.FromRgb(98, 217, 255);
+        public static readonly Color Warm = Color.FromRgb(240, 174, 85);
         // The deck palette's, not the old neon pair: #6ee787 and #ff6b6b were
         // chosen against a flat dark panel and buzz on this one, which is two
         // stops down and forty points less saturated. A ping column is where
         // that showed -- three rows of vivid green over a map render.
-        public static readonly Color Good = Color.FromRgb(0x5f, 0x9e, 0x72);
-        public static readonly Color Warn = Color.FromRgb(0xc0, 0x8a, 0x3e);
-        public static readonly Color Bad = Color.FromRgb(0xa8, 0x54, 0x54);
+        public static readonly Color Good = Color.FromRgb(0x75, 0xd6, 0x9d);
+        public static readonly Color Warn = Color.FromRgb(0xf0, 0xae, 0x55);
+        public static readonly Color Bad = Color.FromRgb(0xdb, 0x6b, 0x74);
 
         public static readonly IBrush InkBrush = new SolidColorBrush(Ink);
         public static readonly IBrush PanelBrush = new SolidColorBrush(Panel);
@@ -73,63 +68,39 @@ namespace MphRead.Mods.Launcher.Gui
             new SolidColorBrush(Color.FromArgb(196, Ink.R, Ink.G, Ink.B));
 
         /// <summary>
-        /// The display face: Roboto Bold, embedded rather than looked up on the
-        /// system for the same reason the WinForms theme's Bahnschrift lookup
-        /// does not apply here -- there is no font every Linux install has.
-        /// Every menu uses this one weight, the same way OpenQuake3/defrag's
-        /// own UI does (its "default.ttf" is this exact file under another
-        /// name); hierarchy there is colour and size; nothing is ever regular.
+        /// The primary interface face. Inter is already registered by both the
+        /// desktop and Android Avalonia builders through WithInterFont().
         /// </summary>
-        // A property, not a field: Pixel is declared below this and static
-        // field initialisers run in declaration order, so a field here would
-        // be null for the life of the program.
-        public static FontFamily Display => Pixel;
+        public static readonly FontFamily Interface = new("fonts:Inter#Inter");
+
+        public static FontFamily Display => Interface;
 
         /// <summary>
-        /// Roboto Bold, still here: it is what the few places that are prose
-        /// rather than interface use -- a wrapped note, a credits line -- where
-        /// a pixel face costs more in legibility than it returns in character.
+        /// Roboto Bold remains for a handful of legacy prose/credit call sites.
+        /// New hub-facing prose should use <see cref="Interface"/>.
         /// </summary>
         public static readonly FontFamily Prose =
-            new("avares://FruityPrime/Assets/Fonts/Roboto-Bold.ttf#Roboto");
+            new("avares://ProjectPrime/Assets/Fonts/Roboto-Bold.ttf#Roboto");
 
         /// <summary>
-        /// The deck theme's face: Pixelify Sans, SIL OFL 1.1, vendored beside
-        /// the other two.
-        ///
-        /// A pixel font is not decoration here. The chunky face, the solid
-        /// edge and the pop are three parts of one look and the fourth is the
-        /// type: set the same buttons in Roboto and they read as web buttons
-        /// with a drop shadow. It is also why <see cref="PixelSize"/> exists
-        /// -- a pixel face is drawn on a grid, and a size that is not a whole
-        /// multiple of that grid is a blurred pixel font, which is worse than
-        /// no pixel font at all.
+        /// Legacy Pixelify asset retained while old wordmark/deck code is
+        /// retired. It is no longer the launcher display role.
         /// </summary>
         public static readonly FontFamily Pixel =
-            new("avares://FruityPrime/Assets/Fonts/PixelifySans-Regular.ttf#Pixelify Sans");
+            new("avares://ProjectPrime/Assets/Fonts/PixelifySans-Regular.ttf#Pixelify Sans");
 
         /// <summary>
-        /// The same face at 600 and 700, as their own files.
-        ///
-        /// Not a weight on <see cref="Pixel"/>: the shipped face was the
-        /// upstream variable file, Avalonia's font manager does not set a
-        /// variation axis, and a request for SemiBold therefore got the 400
-        /// default with a synthesised bold laid over it. On a pixel face that
-        /// is an extra half-pixel on every stem -- which is exactly the
-        /// difference anybody comparing this to the reference could see and
-        /// nobody could name.
+        /// Legacy static Pixelify weights. Kept only until the remaining
+        /// Pixelify-specific controls/assets are removed.
         /// </summary>
         public static readonly FontFamily PixelSemi =
-            new("avares://FruityPrime/Assets/Fonts/PixelifySans-SemiBold.ttf#Pixelify Sans");
+            new("avares://ProjectPrime/Assets/Fonts/PixelifySans-SemiBold.ttf#Pixelify Sans");
 
         public static readonly FontFamily PixelBold =
-            new("avares://FruityPrime/Assets/Fonts/PixelifySans-Bold.ttf#Pixelify Sans");
+            new("avares://ProjectPrime/Assets/Fonts/PixelifySans-Bold.ttf#Pixelify Sans");
 
         /// <summary>
-        /// The nearest size at or below <paramref name="wanted"/> that lands
-        /// on the face's own grid. Pixelify draws on a 4-unit em, so sizes
-        /// that are multiples of four are the ones whose stems come out one
-        /// pixel wide instead of one and a half.
+        /// Legacy Pixelify grid helper. New Inter text must not use it.
         /// </summary>
         public static double PixelSize(double wanted)
         {
@@ -144,31 +115,27 @@ namespace MphRead.Mods.Launcher.Gui
             return Math.Max(9, Math.Round(wanted / 2) * 2);
         }
 
-        /// <summary>Hey November, from the same font folder: reserved for Play, and nothing else.</summary>
+        /// <summary>Legacy title asset retained for compatibility; not used by the FPS hub.</summary>
         public static readonly FontFamily Title =
-            new("avares://FruityPrime/Assets/Fonts/heyNovember.ttf#Hey November");
+            new("avares://ProjectPrime/Assets/Fonts/heyNovember.ttf#Hey November");
 
         /// <summary>
-        /// The face every self-drawn control lays its text in.
-        ///
-        /// One place, because the deck theme's type is not a per-control
-        /// choice: the pixel face, the chunky edge and the pop are three parts
-        /// of one look, and a launcher that is pixel on its buttons and Roboto
-        /// in its server browser is a launcher with two themes in it.
+        /// The face every self-drawn launcher control uses for player-facing
+        /// labels. Centralizing this is what let the Pixelify-to-Inter change
+        /// reach server rows, settings controls and transitional deck buttons
+        /// without forking those controls.
         /// </summary>
         public static Typeface Face(bool bold) =>
-            new(bold ? PixelSemi : Pixel, FontStyle.Normal, FontWeight.Normal);
+            new(Interface, FontStyle.Normal,
+                bold ? FontWeight.SemiBold : FontWeight.Normal);
 
         /// <summary>
-        /// Lay a string out on the pixel grid: the size snapped to the face's
-        /// own step, and nothing else changed. Every <c>FormattedText</c> the
-        /// launcher builds goes through here so no single call site can be the
-        /// one that comes out blurred.
+        /// Lay launcher text with the shared Inter face and requested size.
         /// </summary>
         public static FormattedText Lay(string text, double size, IBrush brush, bool bold)
         {
             return new FormattedText(text, CultureInfo.InvariantCulture,
-                FlowDirection.LeftToRight, Face(bold), PixelSize(size), brush);
+                FlowDirection.LeftToRight, Face(bold), size, brush);
         }
 
         /// <summary>
@@ -224,7 +191,7 @@ namespace MphRead.Mods.Launcher.Gui
             try
             {
                 using Stream stream = AssetLoader.Open(
-                    new Uri("avares://FruityPrime/Assets/fruity-prime-mark.png"));
+                    new Uri("avares://ProjectPrime/Assets/project-prime-mark.png"));
                 return new WindowIcon(stream);
             }
             catch (Exception)

@@ -45,7 +45,7 @@ namespace MphRead.Mods.Network
         {
             if (!ClipIn.HasValue || !ClipOut.HasValue || DemoPlayback.CurrentPath == null) return ReplayOpenResult.Empty;
             System.IO.Directory.CreateDirectory(DemoLibrary.Directory);
-            string output = System.IO.Path.Combine(DemoLibrary.Directory, $"clip_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}_{Guid.NewGuid():N}.fpdemo");
+            string output = System.IO.Path.Combine(DemoLibrary.Directory, $"clip_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}_{Guid.NewGuid():N}.ppdemo");
             return ReplayArchive.Extract(DemoPlayback.CurrentPath, ClipIn.Value, ClipOut.Value, output);
         }
         public static void NoteInput() => LastInteraction = Environment.TickCount64;

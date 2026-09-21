@@ -12,7 +12,7 @@ $ErrorActionPreference = 'Stop'
 $runtimePath = (Resolve-Path -LiteralPath $Runtime).Path
 $outputPath = [IO.Path]::GetFullPath($Output)
 New-Item -ItemType Directory -Path $outputPath -Force | Out-Null
-$exe = Join-Path $runtimePath 'FruityPrime.exe'
+$exe = Join-Path $runtimePath 'ProjectPrime.exe'
 if (!(Test-Path -LiteralPath $exe)) { throw 'Publish a staged Windows runtime first.' }
 # This runner owns only processes it starts. All network endpoints are loopback.
 $cases = @()

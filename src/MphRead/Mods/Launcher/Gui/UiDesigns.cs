@@ -602,7 +602,7 @@ namespace MphRead.Mods.Launcher.Gui
             public override Control PlayOnline()
             {
                 return Frame(BigPreview(),
-                    NameOver("net.livetek.fr", "MP3 PROVING GROUND  ·  battle  ·  3/8  ·  41 ms",
+                    NameOver("51.161.113.128", "MP3 PROVING GROUND  ·  battle  ·  3/8  ·  41 ms",
                         OnlineOptions(300)),
                     Column("play", new UiTabs(_playTabs, 0)
                     {
@@ -940,7 +940,7 @@ namespace MphRead.Mods.Launcher.Gui
                     Width = RailWidth,
                     Margin = new Thickness(38, 44, 0, 0)
                 };
-                Image mark = UiLayout.Wordmark();
+                Control mark = new DeckWordmark(1.75);
                 mark.Width = 132;
                 mark.HorizontalAlignment = HorizontalAlignment.Left;
                 mark.VerticalAlignment = VerticalAlignment.Top;
@@ -1311,10 +1311,10 @@ namespace MphRead.Mods.Launcher.Gui
         private static readonly (string Name, string Room, GameMode Mode, int Players, int Ping)[]
             _servers =
         {
-            ("net.livetek.fr", "MP3 PROVING GROUND", GameMode.Battle, 3, 41),
-            ("Fruity Prime - West Europe", "UNIT 3 VESPER STARPORT", GameMode.Battle, 0, 39),
-            ("Fruity Prime - West US 2", "MP10 OVERLOAD", GameMode.Bounty, 5, 150),
-            ("Fruity Prime - Japan", "UNIT1 ALINOS LANDFALL", GameMode.PrimeHunter, 8, 251),
+            ("51.161.113.128", "MP3 PROVING GROUND", GameMode.Battle, 3, 41),
+            ("Project Prime - West Europe", "UNIT 3 VESPER STARPORT", GameMode.Battle, 0, 39),
+            ("Project Prime - West US 2", "MP10 OVERLOAD", GameMode.Bounty, 5, 150),
+            ("Project Prime - Japan", "UNIT1 ALINOS LANDFALL", GameMode.PrimeHunter, 8, 251),
             ("raspberrypi", "MP2 HARVESTER", GameMode.Battle, 1, 2)
         };
 
@@ -1386,7 +1386,7 @@ namespace MphRead.Mods.Launcher.Gui
             stack.Children.Add(new FieldRow("Name", "Livetek", boxWidth: 150));
             stack.Children.Add(new ChoiceRow("Hunter",
                 new[] { "Samus", "Kanden", "Trace", "Sylux", "Noxus", "Spire", "Weavel" }, 3));
-            stack.Children.Add(new FieldRow("Address", "89.160.162.50:27888", boxWidth: 170));
+            stack.Children.Add(new FieldRow("Address", "51.161.113.128:27888", boxWidth: 170));
             return stack;
         }
 

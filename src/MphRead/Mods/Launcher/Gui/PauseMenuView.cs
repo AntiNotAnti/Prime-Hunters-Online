@@ -51,9 +51,9 @@ namespace MphRead.Mods.Launcher.Gui
         public event EventHandler? VoteMapRequested;
         public event EventHandler? ReplayControlsRequested;
 
-        private readonly DeckButton _resume;
-        private readonly DeckButton _voteYes;
-        private readonly DeckButton _voteNo;
+        private readonly HubNavButton _resume;
+        private readonly HubNavButton _voteYes;
+        private readonly HubNavButton _voteNo;
         private readonly StackPanel _menu;
 
         /// <param name="offerWindowMode">
@@ -68,22 +68,23 @@ namespace MphRead.Mods.Launcher.Gui
             // Tighter than the column of words it replaces: each entry now
             // carries its own edge, and fourteen points between two objects
             // that already have a bottom lip is a gap.
-            var menu = new StackPanel { Spacing = 6, Width = 230 };
+            var menu = new StackPanel { Spacing = 5, Width = 282 };
             _menu = menu;
             // Titles only. Every entry here used to say what it did twice --
-            // "Quit", "Close FruityPrime" -- and the second saying is what
+            // "Quit", "Close ProjectPrime" -- and the second saying is what
             // made a seven-line menu tall enough to be cut off by the window
             // it is drawn over.
-            _resume = Add(menu, "Resume", () => Resumed?.Invoke(this, EventArgs.Empty),
-                Deck.Face.Moss);
+            _resume = Add(menu, "RESUME", () => Resumed?.Invoke(this, EventArgs.Empty),
+                HubTheme.Accent, primary: true);
+            ControllerNav.Identify(_resume, "pause.resume", initial: true);
             if (DemoPlayback.IsActive)
             {
-                Add(menu, "Replay Studio",
+                Add(menu, "REPLAY STUDIO",
                     () => ReplayControlsRequested?.Invoke(this, EventArgs.Empty),
-                    Deck.Face.Blue);
+                    HubTheme.Accent);
             }
-            _voteYes = Add(menu, "Accept map vote", () => AnswerVote(true), Deck.Face.Moss);
-            _voteNo = Add(menu, "Deny map vote", () => AnswerVote(false), Deck.Face.Rust);
+            _voteYes = Add(menu, "ACCEPT MAP VOTE", () => AnswerVote(true), HubTheme.Good);
+            _voteNo = Add(menu, "DENY MAP VOTE", () => AnswerVote(false), HubTheme.Danger);
             RefreshVote();
             var voteTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
             voteTimer.Tick += (_, _) => RefreshVote();
@@ -96,18 +97,18 @@ namespace MphRead.Mods.Launcher.Gui
                 // somebody else's vote is running, the room is still cooling
                 // down -- are things the player wants told to them, and an
                 // entry that quietly disappears tells them nothing.
-                Add(menu, "Vote map", () => VoteMapRequested?.Invoke(this, EventArgs.Empty));
+                Add(menu, "VOTE MAP", () => VoteMapRequested?.Invoke(this, EventArgs.Empty));
             }
             if (!DemoPlayback.IsActive)
             {
                 if (SpectatorMode.IsSpectating)
                 {
-                    Add(menu, "Rejoin match",
+                    Add(menu, "REJOIN MATCH",
                         () => RejoinRequested?.Invoke(this, EventArgs.Empty));
                 }
                 else if (SpectatorMode.CanSpectate)
                 {
-                    Add(menu, "Spectate", () => SpectateRequested?.Invoke(this, EventArgs.Empty));
+                    Add(menu, "SPECTATE", () => SpectateRequested?.Invoke(this, EventArgs.Empty));
                 }
             }
             if (offerWindowMode)
@@ -115,38 +116,56 @@ namespace MphRead.Mods.Launcher.Gui
                 // The game thread does it on the next frame; the label is
                 // rebuilt here straight away so it is not a lie for 16
                 // milliseconds.
-                Add(menu, WindowLabel(),
+                Add(menu, WindowLabel().ToUpperInvariant(),
                     () => FullscreenRequested?.Invoke(this, EventArgs.Empty));
             }
             if (!DemoPlayback.IsActive && NetSession.Active)
             {
-                Add(menu, DemoRecorder.IsRecording ? "Stop replay recording" : "Record replay",
+                Add(menu, DemoRecorder.IsRecording ? "STOP REPLAY RECORDING" : "RECORD REPLAY",
                     () => RecordToggleRequested?.Invoke(this, EventArgs.Empty));
             }
-            Add(menu, "Settings", () => SettingsRequested?.Invoke(this, EventArgs.Empty));
-            Add(menu, "Leave match", () => LeaveRequested?.Invoke(this, EventArgs.Empty),
-                Deck.Face.Brass);
-            Add(menu, "Quit", () => QuitRequested?.Invoke(this, EventArgs.Empty),
-                Deck.Face.Rust);
+            Add(menu, "SETTINGS", () => SettingsRequested?.Invoke(this, EventArgs.Empty));
+            Add(menu, "LEAVE MATCH", () => LeaveRequested?.Invoke(this, EventArgs.Empty),
+                HubTheme.Warm);
+            Add(menu, "QUIT", () => QuitRequested?.Invoke(this, EventArgs.Empty),
+                HubTheme.Danger);
 
-            // Centred, like every other screen behind the front one. Each
-            // word is centred in the column rather than the column being
-            // centred with the words left-aligned inside it: a ragged edge
-            // down the middle of the frame is the thing that makes a centred
-            // menu look like an accident.
             foreach (Control child in menu.Children)
+                child.HorizontalAlignment = HorizontalAlignment.Stretch;
+
+            var menuShell = new StackPanel
             {
-                child.HorizontalAlignment = HorizontalAlignment.Center;
-            }
-            // Shrunk to fit rather than scrolled. The host is the game window
-            // and the game window is whatever size the player dragged it to;
-            // a scrollbar's answer to that is a menu with its top and bottom
-            // cut off, which is what "the menu is always bitten" was. There is
-            // nothing here to reflow -- eight words in a column stay eight
-            // words in a column, just smaller.
+                Width = 282,
+                Spacing = 8
+            };
+            menuShell.Children.Add(new TextBlock
+            {
+                Text = "MATCH MENU",
+                FontFamily = HubTheme.Ui,
+                FontWeight = FontWeight.Bold,
+                FontSize = 22,
+                Foreground = HubTheme.TextBrush
+            });
+            menuShell.Children.Add(new TextBlock
+            {
+                Text = NetSession.Active && !DemoPlayback.IsActive
+                    ? "LIVE SESSION  /  GAMEPLAY CONTINUES"
+                    : DemoPlayback.IsActive
+                        ? "REPLAY SESSION"
+                        : "LOCAL SESSION",
+                FontFamily = HubTheme.DataBold,
+                FontSize = 8,
+                Foreground = NetSession.Active && !DemoPlayback.IsActive
+                    ? HubTheme.WarmBrush : HubTheme.AccentBrush,
+                Margin = new Thickness(0, -4, 0, 4)
+            });
+            menuShell.Children.Add(menu);
+
+            // Shrunk to fit rather than scrolled. The match remains visible
+            // through the scrim while every action stays reachable.
             _scaler = new LayoutTransformControl
             {
-                Child = menu,
+                Child = menuShell,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center
             };
@@ -184,8 +203,8 @@ namespace MphRead.Mods.Launcher.Gui
                 {
                     if (child.IsVisible) count++;
                 }
-                return count * 26 + Math.Max(0, count - 1) * 6
-                    + UiLayout.WellTop + UiLayout.WellBottom + 70;
+                return count * 42 + Math.Max(0, count - 1) * 5
+                    + UiLayout.WellTop + UiLayout.WellBottom + 112;
             }
         }
 
@@ -257,16 +276,13 @@ namespace MphRead.Mods.Launcher.Gui
         /// is what lets a menu over a running match read as a menu rather
         /// than as text that happens to be on top of the game.
         /// </summary>
-        private static DeckButton Add(StackPanel menu, string text, Action action,
-            Deck.Face? face = null)
+        private static HubNavButton Add(StackPanel menu, string text, Action action,
+            Color? accent = null, bool primary = false)
         {
-            // `.pentry`: `font-size: 1.2em`, `padding: .5em .8em`, a
-            // four-point edge, and the full width of the card. Ems, not
-            // points -- the third argument is a multiple of the frame's em
-            // now, and 17 of them is a label the height of the menu.
-            var entry = new DeckButton(text, face ?? Deck.Face.Slate,
-                sizeEms: 1.2, padXEms: 0.8, padYEms: 0.5, lip: 4)
+            var entry = new HubNavButton(text, primary: primary, compact: true,
+                accent: accent)
             {
+                MinHeight = 40,
                 HorizontalAlignment = HorizontalAlignment.Stretch
             };
             entry.Click += (_, _) => action();

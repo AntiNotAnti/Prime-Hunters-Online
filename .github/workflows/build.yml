@@ -1,5 +1,6 @@
-# Build every target on every push, and refuse to publish anything that came
-# out of the cartridge.
+# Build every target on every push using GitHub-hosted runners, and refuse to
+# publish anything that came out of the cartridge. Public repositories can use
+# the standard hosted runner pool without consuming private-repository minutes.
 #
 # The guard runs twice on purpose: once over what git is tracking, and once
 # over what the build produced. The first catches a map preview committed by
@@ -15,12 +16,20 @@ on:
 permissions:
   contents: read
 
+# One branch only needs one expensive cross-platform build at a time. A newer
+# push supersedes the older revision; keeping both burns runner time and makes
+# the useful result wait behind code nobody intends to ship.
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   assets:
     name: no game assets
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+
       - name: nothing from the game is tracked
         run: tools/check-no-game-assets.sh
 
@@ -36,9 +45,11 @@ jobs:
         os: [windows-latest, macos-latest, macos-15-intel]
     steps:
       - uses: actions/checkout@v7
+
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
+
       - name: deterministic controller and headless UI checks
         run: dotnet run --project src/MphRead/MphRead.csproj -c Release -- -gamepadcheck
       - name: deterministic pointer and stylus checks
@@ -47,7 +58,7 @@ jobs:
   build:
     name: ${{ matrix.id }}
     needs: assets
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     strategy:
       fail-fast: false
       matrix:
@@ -83,8 +94,9 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+
       # Cook every custom map into the one file it ships as. The recipe, the
-      # level it converts and the textures baked from it go into a .fpmap,
+      # level it converts and the textures baked from it go into a .ppmap,
       # with the level trimmed to the lumps the importer actually reads: 376 KB
       # for de_dust2 against the 2.8 MB its folder weighs. That bundle is what
       # the packages carry, and it is what somebody can be handed on its own --
@@ -109,7 +121,7 @@ jobs:
 
       - name: replay format and server-retention regressions
         if: matrix.id == 'linux-x64'
-        run: publish/linux-x64/FruityPrime -replayformatcheck
+        run: publish/linux-x64/ProjectPrime -replayformatcheck
 
       - name: bounded thumbnail worker regression
         if: matrix.id == 'linux-x64'
@@ -120,10 +132,10 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y xvfb xauth libgl1-mesa-dri libglx-mesa0 libxinerama1 libxcursor1 libxi6
-          chmod +x publish/linux-x64/FruityPrime
+          chmod +x publish/linux-x64/ProjectPrime
           xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe \
             MESA_GL_VERSION_OVERRIDE=2.1 MESA_EXTENSION_OVERRIDE=-GL_KHR_debug \
-            publish/linux-x64/FruityPrime -thumbnailwindowcheck -legacyglcheck
+            publish/linux-x64/ProjectPrime -thumbnailwindowcheck -legacyglcheck
 
       - name: nothing from the game is in the output
         run: tools/check-no-game-assets.sh publish/${{ matrix.id }}
@@ -141,7 +153,7 @@ jobs:
       # else in this workflow would notice it changing.
       - name: the game is a GUI binary
         if: matrix.id == 'win-x64'
-        run: tools/check-subsystem.sh gui publish/${{ matrix.id }}/FruityPrime.exe
+        run: tools/check-subsystem.sh gui publish/${{ matrix.id }}/ProjectPrime.exe
 
       # Every avares:// asset the screens name has to be in the package.
       # Avalonia does not fall back for a font behind one of those: it throws
@@ -168,13 +180,29 @@ jobs:
       # launcher could not be opened at all. It needs a display and no game
       # files, which is what Xvfb and this runner are. Linux only: it is the
       # same shared launcher on every desktop target.
+      - name: the headless UI layouts render
+        if: matrix.id == 'linux-x64'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y xvfb libgl1 libglx-mesa0
+          xvfb-run -a --server-args="-screen 0 1280x800x24" \
+            publish/${{ matrix.id }}/ProjectPrime -uishot "$RUNNER_TEMP/uishot"
+
+      - name: the headless UI layouts
+        if: matrix.id == 'linux-x64' && always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: launcher-layouts
+          path: ${{ runner.temp }}/uishot
+          if-no-files-found: warn
+
       - name: the launcher opens
         if: matrix.id == 'linux-x64'
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb libgl1 libglx-mesa0
           xvfb-run -a --server-args="-screen 0 1280x800x24" \
-            publish/${{ matrix.id }}/FruityPrime -shellshot "$RUNNER_TEMP/shellshot"
+            publish/${{ matrix.id }}/ProjectPrime -shellshot "$RUNNER_TEMP/shellshot"
 
       - name: the screens it drew
         if: matrix.id == 'linux-x64' && always()
@@ -196,7 +224,7 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: FruityPrime-${{ matrix.id }}
+          name: ProjectPrime-${{ matrix.id }}
           path: publish/${{ matrix.id }}
           if-no-files-found: error
 
@@ -214,9 +242,11 @@ jobs:
             runner: macos-15-intel
     steps:
       - uses: actions/checkout@v7
+
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
+
       - name: bounded thumbnail worker regression
         run: dotnet run --project tools/thumbnail-batch-check/thumbnail-batch-check.csproj -c Release
 
@@ -231,18 +261,18 @@ jobs:
           set -euo pipefail
           dotnet publish src/MphRead/MphRead.csproj -c Release -r "$RID" \
             --self-contained true -p:PublishSingleFile=true -o "publish/$RID"
-          chmod +x "publish/$RID/FruityPrime"
+          chmod +x "publish/$RID/ProjectPrime"
           tools/sign-macos.sh "publish/$RID"
           tools/check-macos-build.sh "publish/$RID" "$RID"
           tools/run-macos-smoke.sh "publish/$RID" "$RID"
-          python3 tools/test-compatibility-smoke.py "publish/$RID/FruityPrime"
+          python3 tools/test-compatibility-smoke.py "publish/$RID/ProjectPrime"
           tools/check-no-game-assets.sh "publish/$RID"
           tools/check-maps-shipped.sh "publish/$RID"
           VERSION=$(dotnet msbuild src/MphRead/MphRead.csproj -getProperty:Version)
           tools/package-macos.sh "publish/$RID" dist "$RID" "$VERSION"
       - uses: actions/upload-artifact@v7
         with:
-          name: FruityPrime-${{ matrix.rid }}
+          name: ProjectPrime-${{ matrix.rid }}
           path: dist/*.tar.gz
           if-no-files-found: error
 
@@ -263,13 +293,14 @@ jobs:
   android:
     name: android
     needs: assets
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
+
 
       # The Android workload brings the .NET side of the toolchain. It does not
       # bring a JDK, and the Android SDK's build tools are Java.
@@ -282,7 +313,7 @@ jobs:
         run: dotnet workload install android
 
       # Cook every custom map into the one file it ships as. The recipe, the
-      # level it converts and the textures baked from it go into a .fpmap,
+      # level it converts and the textures baked from it go into a .ppmap,
       # with the level trimmed to the lumps the importer actually reads: 376 KB
       # for de_dust2 against the 2.8 MB its folder weighs. That bundle is what
       # the packages carry, and it is what somebody can be handed on its own --
@@ -338,11 +369,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifact
-          cp publish/android/*-Signed.apk artifact/FruityPrime-release.apk
+          cp publish/android/*-Signed.apk artifact/ProjectPrime-release.apk
           cat > artifact/INSTALL.txt <<'NOTE'
-          Fruity Prime for Android.
+          Project Prime for Android.
 
-            adb install -r FruityPrime-release.apk
+            adb install -r ProjectPrime-release.apk
 
           It is signed with the SDK's debug key, which is enough to install and
           not enough for a store.
@@ -350,7 +381,7 @@ jobs:
           The game's own files are yours and are not in here. Extract them on a
           desktop, then copy paths.txt and the extracted folders into
 
-            Android/data/fr.livetek.fruityprime/files
+            Android/data/com.projectprime.game/files
 
           which shows up over USB with no storage permission asked for. The
           front screen says so while they are missing, and has a
@@ -365,7 +396,7 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: FruityPrime-android
+          name: ProjectPrime-android
           path: artifact
           if-no-files-found: error
 
@@ -387,6 +418,7 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+
       - name: publish the dedicated server, for Windows
         run: >
           dotnet publish src/MphRead/MphRead.csproj
@@ -398,7 +430,7 @@ jobs:
       # thing that makes it usable from a terminal or a service supervisor.
       - name: the server is a console binary
         shell: bash
-        run: tools/check-subsystem.sh console publish/win-x64-server/FruityPrimeServer.exe
+        run: tools/check-subsystem.sh console publish/win-x64-server/ProjectPrimeServer.exe
 
       - name: nothing from the game is in the output
         shell: bash
@@ -411,6 +443,6 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: FruityPrime-win-x64-server
+          name: ProjectPrime-win-x64-server
           path: publish/win-x64-server
           if-no-files-found: error

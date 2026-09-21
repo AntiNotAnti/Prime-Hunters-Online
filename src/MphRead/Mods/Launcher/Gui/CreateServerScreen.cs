@@ -19,7 +19,7 @@ using MphRead.Mods.Update;
 namespace MphRead.Mods.Launcher.Gui
 {
     /// <summary>
-    /// Run a server, from the browser that lists them.
+    /// Create a multiplayer lobby from Play → Multiplayer → Create Lobby.
     ///
     /// Hosting used to be a row on the *offline* face -- "Where: Local or
     /// Online" -- which is the wrong screen twice over: offline is the one
@@ -106,7 +106,6 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly List<string> _rotation = new();
 
         private readonly Panel _root = new();
-        private readonly StackPanel _form = new() { Spacing = 2 };
         private readonly Note _note = new("");
         private readonly ProgressRow _progress = new();
 
@@ -117,9 +116,9 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly PickRow _host;
         private readonly PickRow _maps;
 
-        private readonly UiMark _back;
-        private readonly UiMark _go;
-        private readonly UiMark _fetch;
+        private readonly HubNavButton _back;
+        private readonly HubNavButton _go;
+        private readonly HubNavButton _fetch;
 
         private readonly Control _page;
 
@@ -149,7 +148,8 @@ namespace MphRead.Mods.Launcher.Gui
         private bool _asking = true;
         private CancellationTokenSource? _work;
 
-        public CreateServerScreen(IReadOnlyList<string> rooms, string? firstMap = null)
+        public CreateServerScreen(IReadOnlyList<string> rooms, string? firstMap = null,
+            bool discoverHosts = true)
         {
             _rooms = new List<string>(rooms);
             Background = Brushes.Transparent;
@@ -169,41 +169,116 @@ namespace MphRead.Mods.Launcher.Gui
             _kind = new ChoiceRow("Hosting", _kinds, 0);
             _kind.Changed += (_, _) => Refresh();
 
-            _form.Children.Add(_name);
-            _form.Children.Add(_mode);
-            _form.Children.Add(_hunter);
-            _form.Children.Add(_maps);
-            _form.Children.Add(_host);
+            var identity = new StackPanel { Spacing = 3 };
+            identity.Children.Add(_name);
+            identity.Children.Add(_mode);
+            identity.Children.Add(_hunter);
+
+            var rotation = new StackPanel { Spacing = 5 };
+            rotation.Children.Add(_maps);
+            rotation.Children.Add(new TextBlock
+            {
+                Text = "Maps play in the order you choose them. The first map starts the lobby.",
+                FontFamily = HubTheme.Ui,
+                FontSize = 9.5,
+                Foreground = HubTheme.TextDimBrush,
+                TextWrapping = TextWrapping.Wrap
+            });
+
+            var hosting = new StackPanel { Spacing = 3 };
+            hosting.Children.Add(_host);
             if (CanRunHere)
             {
-                _form.Children.Add(_kind);
+                hosting.Children.Add(_kind);
             }
-            _form.Children.Add(_progress);
-            _form.Children.Add(_note);
 
-            _back = new UiMark(UiMark.Shape.Cancel, "back");
-            _back.Click += (_, _) => Leave();
-            _go = new UiMark(UiMark.Shape.Accept, "continue");
-            _go.Click += (_, _) => Go();
-            // Only ever drawn when a dedicated server cannot be started as
-            // things stand. It is not a second way to do the same thing: the
-            // tick is refused while it is up, because there is nothing behind
-            // the tick to run.
-            _fetch = new UiMark(UiMark.Shape.Fetch, "files required -- install")
+            Border lobbyPanel = SectionPanel("LOBBY", identity, HubTheme.Accent);
+            Border rotationPanel = SectionPanel("MAP ROTATION", rotation, HubTheme.Good);
+            Border hostingPanel = SectionPanel("HOSTING", hosting, HubTheme.Warm);
+
+            var right = new StackPanel { Spacing = 10 };
+            right.Children.Add(rotationPanel);
+            right.Children.Add(hostingPanel);
+            right.Children.Add(_progress);
+            right.Children.Add(_note);
+
+            var layout = new Grid
             {
-                IsVisible = false
+                ColumnDefinitions = new ColumnDefinitions("0.9*,1.1*"),
+                ColumnSpacing = 12
             };
-            _fetch.Click += (_, _) => Fetch();
+            layout.Children.Add(lobbyPanel);
+            Grid.SetColumn(right, 1);
+            layout.Children.Add(right);
 
             var body = new ScrollViewer
             {
-                Content = _form,
+                Content = layout,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto
             };
-            _page = UiLayout.Page(overGame: false, UiLayout.WellSettings,
-                "create lobby", strip: null, body: body, no: _back, yes: _go,
-                extra: _fetch);
+
+            _back = new HubNavButton("BACK", compact: true);
+            ControllerNav.Identify(_back, "custom.back");
+            _back.Click += (_, _) => Leave();
+
+            _fetch = new HubNavButton("INSTALL SERVER FILES", compact: true,
+                accent: HubTheme.Warm)
+            {
+                IsVisible = false
+            };
+            ControllerNav.Identify(_fetch, "custom.install");
+            _fetch.Click += (_, _) => Fetch();
+
+            _go = new HubNavButton("CREATE LOBBY", compact: true, primary: true);
+            ControllerNav.Identify(_go, "custom.create", initial: true);
+            _go.Click += (_, _) => Go();
+
+            var footer = new Grid
+            {
+                ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto"),
+                ColumnSpacing = 7
+            };
+            footer.Children.Add(_back);
+            Grid.SetColumn(_fetch, 1);
+            footer.Children.Add(_fetch);
+            Grid.SetColumn(_go, 3);
+            footer.Children.Add(_go);
+
+            var page = new Grid
+            {
+                Margin = new Thickness(24, 20, 24, 32),
+                RowDefinitions = new RowDefinitions("Auto,*,Auto"),
+                RowSpacing = 12
+            };
+            page.Children.Add(HubChrome.Header(
+                "PLAY  /  MULTIPLAYER  /  CREATE LOBBY",
+                "CREATE LOBBY",
+                "Create the lobby, choose its rotation and decide where the server runs.",
+                "LOBBY SETUP",
+                HubTheme.WarmBrush));
+            Grid.SetRow(body, 1);
+            page.Children.Add(body);
+            Grid.SetRow(footer, 2);
+            page.Children.Add(footer);
+
+            page.SizeChanged += (_, e) =>
+            {
+                bool compact = e.NewSize.Width < 760;
+                layout.ColumnDefinitions = compact
+                    ? new ColumnDefinitions("*")
+                    : new ColumnDefinitions("0.9*,1.1*");
+                layout.RowDefinitions = compact
+                    ? new RowDefinitions("Auto,Auto")
+                    : new RowDefinitions("*");
+                Grid.SetColumn(lobbyPanel, 0);
+                Grid.SetRow(lobbyPanel, 0);
+                Grid.SetColumn(right, compact ? 0 : 1);
+                Grid.SetRow(right, compact ? 1 : 0);
+                layout.RowSpacing = compact ? 10 : 0;
+            };
+
+            _page = page;
             _root.Children.Add(_page);
             Content = _root;
 
@@ -220,8 +295,16 @@ namespace MphRead.Mods.Launcher.Gui
                 _rotation.Add(start);
             }
             _maps.Set(Describe());
+            _asking = discoverHosts;
+            if (!discoverHosts)
+            {
+                _host.Set("not checked");
+            }
             Refresh();
-            AskDirectories();
+            if (discoverHosts)
+            {
+                AskDirectories();
+            }
         }
 
         /// <summary>
@@ -237,6 +320,7 @@ namespace MphRead.Mods.Launcher.Gui
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
             base.OnAttachedToVisualTree(e);
+            LauncherBackdrop.Set(LauncherBackdropScene.CreateLobby);
             Dispatcher.UIThread.Post(() => _name.Box.Focus(), DispatcherPriority.Background);
         }
 
@@ -255,6 +339,49 @@ namespace MphRead.Mods.Launcher.Gui
                 return;
             }
             base.OnKeyDown(e);
+        }
+
+        private static Border SectionPanel(string title, Control content, Color accent)
+        {
+            var stack = new Grid
+            {
+                RowDefinitions = new RowDefinitions("Auto,*"),
+                RowSpacing = 8,
+                Margin = new Thickness(12)
+            };
+            stack.Children.Add(new TextBlock
+            {
+                Text = title,
+                FontFamily = HubTheme.Ui,
+                FontWeight = FontWeight.SemiBold,
+                FontSize = 11,
+                Foreground = new SolidColorBrush(accent)
+            });
+            Grid.SetRow(content, 1);
+            stack.Children.Add(content);
+            return new Border
+            {
+                Background = HubTheme.PanelStrongBrush,
+                BorderBrush = HubTheme.EdgeBrush,
+                BorderThickness = new Thickness(1),
+                Child = stack
+            };
+        }
+
+        private void WireFooter()
+        {
+            if (_fetch.IsVisible && _fetch.IsEnabled)
+            {
+                _back.SetValue(ControllerNav.NavRightProperty, "custom.install");
+                _fetch.SetValue(ControllerNav.NavLeftProperty, "custom.back");
+                _fetch.SetValue(ControllerNav.NavRightProperty, "custom.create");
+                _go.SetValue(ControllerNav.NavLeftProperty, "custom.install");
+            }
+            else
+            {
+                _back.SetValue(ControllerNav.NavRightProperty, "custom.create");
+                _go.SetValue(ControllerNav.NavLeftProperty, "custom.back");
+            }
         }
 
         private bool Dedicated => CanRunHere && _kind.Index == 1;
@@ -307,6 +434,7 @@ namespace MphRead.Mods.Launcher.Gui
                         : "No server will open one for you. Try again in a moment, or "
                             + "join somebody else's from the browser.", GuiTheme.Warm);
                 }
+                WireFooter();
                 return;
             }
             bool ready = LocalServer.Ready;
@@ -318,6 +446,7 @@ namespace MphRead.Mods.Launcher.Gui
                     ? $"{UpdateCheck.ServerBinaryName()} is not here yet -- install it below."
                     : "No server package is published for this platform. Use Hosted.",
                     GuiTheme.Warm);
+                WireFooter();
                 return;
             }
             // The one thing somebody has to do outside this program, said
@@ -327,6 +456,7 @@ namespace MphRead.Mods.Launcher.Gui
             Say($"Runs here, in its own window. Forward UDP {NetConfig.DefaultPort} to this "
                 + "PC for anyone outside to join; you join over 127.0.0.1 either way.",
                 GuiTheme.Warm);
+            WireFooter();
         }
 
         private void Say(string text, Color colour)
@@ -541,7 +671,7 @@ namespace MphRead.Mods.Launcher.Gui
         private void Busy(bool busy, string label)
         {
             _busy = busy;
-            _go.Label = label;
+            _go.Label = busy ? label.ToUpperInvariant() : "CREATE LOBBY";
             _go.IsEnabled = !busy;
             _back.IsEnabled = !busy;
             _fetch.IsEnabled = !busy;
@@ -549,6 +679,7 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 _fetch.IsVisible = false;
             }
+            WireFooter();
         }
 
         // ------------------------------------------------------------ the act
@@ -567,7 +698,7 @@ namespace MphRead.Mods.Launcher.Gui
             string name = _name.Value.Trim();
             if (name.Length == 0)
             {
-                name = "Fruity lobby";
+                name = "Project Prime lobby";
             }
             GameMode mode = _modes[_mode.Index].Mode;
             var hunter = (Hunter)Enum.Parse(typeof(Hunter), _hunter.Value);
@@ -864,19 +995,60 @@ namespace MphRead.Mods.Launcher.Gui
             Background = Brushes.Transparent;
             Focusable = true;
 
-            var back = new UiMark(UiMark.Shape.Cancel, "back");
-            back.Click += (_, _) => Cancelled?.Invoke(this, EventArgs.Empty);
-            var again = new UiMark(UiMark.Shape.Add, "ask again");
-            again.Click += (_, _) => RefreshRequested?.Invoke(this, EventArgs.Empty);
-
-            var body = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
+            var body = new Grid
+            {
+                RowDefinitions = new RowDefinitions("*,Auto"),
+                RowSpacing = 7
+            };
             Grid.SetRow(_list, 0);
             body.Children.Add(_list);
             Grid.SetRow(_note, 1);
             body.Children.Add(_note);
 
-            Content = UiLayout.Page(overGame: false, UiLayout.WellPlay,
-                "host on", strip: null, body: body, no: back, yes: null, extra: again);
+            var panel = new Border
+            {
+                Background = HubTheme.PanelBrush,
+                BorderBrush = HubTheme.EdgeBrush,
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(10),
+                Child = body
+            };
+
+            var back = new HubNavButton("BACK", compact: true);
+            ControllerNav.Identify(back, "host.back");
+            back.Click += (_, _) => Cancelled?.Invoke(this, EventArgs.Empty);
+            var again = new HubNavButton("REFRESH HOSTS", compact: true);
+            ControllerNav.Identify(again, "host.refresh", initial: true);
+            again.Click += (_, _) => RefreshRequested?.Invoke(this, EventArgs.Empty);
+            back.SetValue(ControllerNav.NavRightProperty, "host.refresh");
+            again.SetValue(ControllerNav.NavLeftProperty, "host.back");
+
+            var footer = new Grid
+            {
+                ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto")
+            };
+            footer.Children.Add(back);
+            Grid.SetColumn(again, 2);
+            footer.Children.Add(again);
+
+            var root = new Grid
+            {
+                Margin = new Thickness(24, 20, 24, 32),
+                RowDefinitions = new RowDefinitions("Auto,*,Auto"),
+                RowSpacing = 12
+            };
+            root.Children.Add(HubChrome.Header(
+                "PLAY  /  MULTIPLAYER  /  CREATE LOBBY  /  HOSTING",
+                "HOST ON",
+                "Choose the machine that will run this lobby.",
+                "HOST POOL",
+                HubTheme.WarmBrush));
+            Grid.SetRow(panel, 1);
+            root.Children.Add(panel);
+            Grid.SetRow(footer, 2);
+            root.Children.Add(footer);
+
+            Content = root;
             Show(candidates, asking);
         }
 
@@ -955,6 +1127,7 @@ namespace MphRead.Mods.Launcher.Gui
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
             base.OnAttachedToVisualTree(e);
+            LauncherBackdrop.Set(LauncherBackdropScene.CreateLobby);
             _list.FocusFirst();
         }
 
@@ -1006,19 +1179,67 @@ namespace MphRead.Mods.Launcher.Gui
             Background = Brushes.Transparent;
             Focusable = true;
 
-            var back = new UiMark(UiMark.Shape.Cancel, "back");
-            back.Click += (_, _) => Cancelled?.Invoke(this, EventArgs.Empty);
-            var done = new UiMark(UiMark.Shape.Accept, single ? "use this map" : "use these maps");
-            done.Click += (_, _) => Commit();
-
-            var body = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
+            var body = new Grid
+            {
+                RowDefinitions = new RowDefinitions("*,Auto"),
+                RowSpacing = 7
+            };
             Grid.SetRow(_list, 0);
             body.Children.Add(_list);
             Grid.SetRow(_note, 1);
             body.Children.Add(_note);
 
-            Content = UiLayout.Page(overGame: false, UiLayout.WellPlay,
-                single ? "choose map" : "map rotation", strip: null, body: body, no: back, yes: done);
+            var panel = new Border
+            {
+                Background = HubTheme.PanelBrush,
+                BorderBrush = HubTheme.EdgeBrush,
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(10),
+                Child = body
+            };
+
+            var back = new HubNavButton("BACK", compact: true);
+            ControllerNav.Identify(back, "rotation.back");
+            back.Click += (_, _) => Cancelled?.Invoke(this, EventArgs.Empty);
+            var done = new HubNavButton(
+                single ? "USE MAP" : "USE ROTATION",
+                compact: true,
+                primary: true);
+            ControllerNav.Identify(done, "rotation.done", initial: true);
+            done.Click += (_, _) => Commit();
+            back.SetValue(ControllerNav.NavRightProperty, "rotation.done");
+            done.SetValue(ControllerNav.NavLeftProperty, "rotation.back");
+
+            var footer = new Grid
+            {
+                ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto")
+            };
+            footer.Children.Add(back);
+            Grid.SetColumn(done, 2);
+            footer.Children.Add(done);
+
+            var root = new Grid
+            {
+                Margin = new Thickness(24, 20, 24, 32),
+                RowDefinitions = new RowDefinitions("Auto,*,Auto"),
+                RowSpacing = 12
+            };
+            root.Children.Add(HubChrome.Header(
+                single
+                    ? "PLAY  /  MAP SELECT"
+                    : "PLAY  /  MULTIPLAYER  /  CREATE LOBBY  /  MAP ROTATION",
+                single ? "CHOOSE MAP" : "MAP ROTATION",
+                single
+                    ? "Choose the map for this action."
+                    : "Build the sequence of maps this lobby will play.",
+                single ? "MAP SELECT" : "ROTATION",
+                HubTheme.GoodBrush));
+            Grid.SetRow(panel, 1);
+            root.Children.Add(panel);
+            Grid.SetRow(footer, 2);
+            root.Children.Add(footer);
+
+            Content = root;
             Fill();
         }
 

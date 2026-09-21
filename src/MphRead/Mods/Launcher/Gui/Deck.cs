@@ -7,7 +7,7 @@ using Avalonia.Media;
 namespace MphRead.Mods.Launcher.Gui
 {
     /// <summary>
-    /// The deck theme's unit, its faces, and the two type faces it sets.
+    /// Responsive sizing and transitional face colours used by the shared launcher controls.
     ///
     /// <para>
     /// Everything in these screens is sized in <b>ems</b>, and the em is not a
@@ -27,12 +27,9 @@ namespace MphRead.Mods.Launcher.Gui
     /// </para>
     ///
     /// <para>
-    /// Two faces, and they are not interchangeable. Pixelify Sans is the
-    /// display face -- anything that is a <i>label</i>: a button, a tab, a
-    /// server's name, a map's name. JetBrains Mono is the body face --
-    /// anything that is <i>read</i>: a mode, a ping, a count, the note under
-    /// the foot. Setting the second in the first is what a pixel font at
-    /// eleven points costs: the difference between an "e" and an "o".
+    /// Two typography roles are kept deliberately separate. Inter is the
+    /// player-facing label/heading face; JetBrains Mono is reserved for
+    /// technical values such as ping, build, counts and status metadata.
     /// </para>
     /// </summary>
     internal sealed class Deck
@@ -46,13 +43,13 @@ namespace MphRead.Mods.Launcher.Gui
         /// <summary>A face colour and the solid edge under it, two stops down.</summary>
         internal readonly record struct Face(Color Fill, Color Lip)
         {
-            public static Face Blue => new(Rgb(0x2b4e6b), Rgb(0x16293a));
-            public static Face Brass => new(Rgb(0x7a6130), Rgb(0x3f3118));
-            public static Face Rust => new(Rgb(0x6b3636), Rgb(0x381b1b));
-            public static Face Moss => new(Rgb(0x2c5a4e), Rgb(0x15302a));
-            public static Face Slate => new(Rgb(0x232a36), Rgb(0x12161e));
-            /// <summary>The stepper and the tab strip's own grey, a shade up from Slate.</summary>
-            public static Face Step => new(Rgb(0x2a3140), Rgb(0x151a23));
+            public static Face Blue => new(Rgb(0x12354a), Rgb(0x071c29));
+            public static Face Brass => new(Rgb(0x5a4528), Rgb(0x2c2114));
+            public static Face Rust => new(Rgb(0x563038), Rgb(0x29171c));
+            public static Face Moss => new(Rgb(0x21483b), Rgb(0x10251f));
+            public static Face Slate => new(Rgb(0x14212e), Rgb(0x09121b));
+            /// <summary>The stepper and tab strip neutral, one shade above Slate.</summary>
+            public static Face Step => new(Rgb(0x1b2b3a), Rgb(0x0b1722));
         }
 
         public static Color Rgb(int hex) => Color.FromRgb(
@@ -101,17 +98,17 @@ namespace MphRead.Mods.Launcher.Gui
         /// keycap).
         /// </summary>
         public static readonly FontFamily Mono =
-            new("avares://FruityPrime/Assets/Fonts/JetBrainsMono-Regular.ttf#JetBrains Mono");
+            new("avares://ProjectPrime/Assets/Fonts/JetBrainsMono-Regular.ttf#JetBrains Mono");
 
         public static readonly FontFamily MonoBold =
-            new("avares://FruityPrime/Assets/Fonts/JetBrainsMono-Bold.ttf#JetBrains Mono");
+            new("avares://ProjectPrime/Assets/Fonts/JetBrainsMono-Bold.ttf#JetBrains Mono");
 
         /// <summary>The body face at a weight. Never synthesised; a real file either way.</summary>
         public static Typeface Body(bool bold) =>
             new(bold ? MonoBold : Mono, FontStyle.Normal, FontWeight.Normal);
 
         /// <summary>
-        /// The display face: labels, names, headings, the wordmark.
+        /// The interface face: labels, names and headings.
         ///
         /// Two weights, and which one is not decoration. A <c>.btn</c> is
         /// <c>font-weight: 600</c> and a server row is a bare
@@ -121,8 +118,8 @@ namespace MphRead.Mods.Launcher.Gui
         /// a list wants.
         /// </summary>
         public static Typeface Label(bool strong = true) =>
-            new(strong ? GuiTheme.PixelSemi : GuiTheme.Pixel,
-                FontStyle.Normal, FontWeight.Normal);
+            new(GuiTheme.Interface, FontStyle.Normal,
+                strong ? FontWeight.SemiBold : FontWeight.Normal);
 
         // -------------------------------------------------------- the frame
 

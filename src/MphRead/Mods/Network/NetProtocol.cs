@@ -61,7 +61,7 @@ namespace MphRead.Mods.Network
         // are bounded and identify package hashes rather than peer filenames.
         MapOffer = 32,      // server -> client, "the next map is custom: name, hash, size"
         MapWant = 33,       // client -> server, "send it, from byte N"
-        MapChunk = 34,      // server -> client, one piece of the .fpmap
+        MapChunk = 34,      // server -> client, one piece of the .ppmap
         SessionState = 36, LobbyCommand = 37, LobbyCommandResult = 38,
         MatchLoaded = 39, MatchLoadFailed = 40,
         MapDone = 35,        // client -> server, "I have it and it hashes right"

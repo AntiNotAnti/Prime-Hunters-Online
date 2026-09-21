@@ -94,7 +94,7 @@ namespace MphRead.Entities
 
         internal void ModDrawEndScreen()
         {
-            if (!EndScreen.Available)
+            if (!EndScreen.Available || !EndScreen.CharacterChangeEnabled)
             {
                 return;
             }

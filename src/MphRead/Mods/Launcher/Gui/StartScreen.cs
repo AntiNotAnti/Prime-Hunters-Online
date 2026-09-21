@@ -13,18 +13,13 @@ using MphRead.Mods.Update;
 namespace MphRead.Mods.Launcher.Gui
 {
     /// <summary>
-    /// The front screen: a picture, three words, and nothing to read before
-    /// you can play.
+    /// The front door to the game: a responsive FPS-style hub with direct
+    /// routes to Play, Map Editor, Replay Studio, Settings and Quit.
     ///
-    /// The layout is the one every screen in the launcher uses: a column down
-    /// the middle of the frame, read against a soft wash, with the wordmark
-    /// over it where another screen would put its heading. It was anchored in
-    /// the bottom-left corner for several releases -- id-Tech3's shape, and
-    /// OpenQuake3/defrag's -- and moved when the screens behind it did, for
-    /// the reason those anchors existed in the first place: a front screen
-    /// laid out differently from everything it opens is the one screen that
-    /// does not look like the program. The anchors themselves live in
-    /// <see cref="UiLayout"/> and nowhere else.
+    /// The hub is intentionally a presentation layer over the existing launch
+    /// stack. Play, lobby, replay, setup and settings still own their existing
+    /// behaviour while the shell is migrated around them, so a visual overhaul
+    /// cannot quietly become a second implementation of networking or startup.
     ///
     /// It is a <see cref="UserControl"/> rather than a <see cref="Window"/>
     /// for one reason: nothing shows it in a window. The desktop renders it
@@ -46,7 +41,8 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly List<Control> _stack = new();
         private readonly TextBlock _version;
         private readonly Border _versionBox;
-        private readonly StackPanel _menu;
+        private readonly Control _menu;
+        private readonly HubHomeView _hub;
         private readonly Panel _root;
         private readonly Control[] _ground;
         private readonly Border _dark;
@@ -73,6 +69,8 @@ namespace MphRead.Mods.Launcher.Gui
             _rooms = new List<string>(rooms);
             Focusable = true;
 
+            LauncherBackdrop.Set(LauncherBackdropScene.Home);
+
             // The wash is baked into the backdrop rather than laid over it:
             // one bitmap a frame instead of four full-window layers. See
             // BakedBackdrop.
@@ -85,129 +83,13 @@ namespace MphRead.Mods.Launcher.Gui
             _dark = new Border { Background = GuiTheme.InkBrush, IsVisible = false };
             root.Children.Insert(0, _dark);
 
-            // Centred, like every screen behind it. The corner layout was this
-            // screen's own and the rest of the program has been rebuilt around
-            // the well, so a front screen still anchored to the bottom-left is
-            // the one screen that does not look like the program it opens.
-            //
-            // The wordmark comes with it. In the corner it was a watermark on
-            // somebody else's photograph; over the menu it is what the screen
-            // is of, and it means the front screen needs no heading -- the
-            // wordmark is the heading.
-            _menu = new StackPanel
-            {
-                Spacing = 0,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            // Set, not the shipped bitmap: the PNG is smooth-edged art and it
-            // is the one thing on this screen drawn by a different hand from
-            // the pixel-type row under it. The mark itself is untouched --
-            // it is still the window icon and still the release art.
-            _wordmark = new DeckWordmark()
-            {
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 0, 30)
-            };
-            _menu.Children.Add(_wordmark);
-            // `.wordmark .sub`: `.82em` of the frame, not eleven points of
-            // nothing in particular. It sat beside a mark that has just
-            // stopped being a fixed size, and a fixed caption under a mark
-            // that grows is a caption that shrinks.
-            _sub = new TextBlock
-            {
-                Text = "METROID PRIME HUNTERS  \u00b7  REBORN",
-                FontFamily = GuiTheme.Display,
-                FontSize = 11,
-                Foreground = GuiTheme.TextDimBrush,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                Margin = new Thickness(0, -18, 0, 0)
-            };
-            _menu.Children.Add(_sub);
-            // A row of faces rather than a column of words. Clips is a
-            // first-class destination now, beside Play rather than buried in
-            // the play-mode strip; what changed is
-            // that each is now an object you press rather than a word that
-            // brightens, and the row reads as one bar across the screen
-            // instead of a stack down the middle of the photograph.
-            var bar = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                Spacing = 12,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                Margin = new Thickness(0, 6, 0, 0)
-            };
-            // The front screen's four faces are the reference's plain
-            // `.btn`: `font-size: 1.55em`, `padding: .85em 1.5em`, a
-            // six-point edge -- which is what the constructor defaults to.
-            // Play is the one that bobs, and the only one on any screen that
-            // does.
-            var play = new DeckButton("PLAY", Deck.Face.Blue) { Idle = true };
-            play.Click += (_, _) => _ = OpenPlay();
-            bar.Children.Add(play);
-            var clips = new DeckButton("REPLAY STUDIO", Deck.Face.Moss);
-            clips.Click += (_, _) => _ = OpenClips();
-            bar.Children.Add(clips);
-            var options = new DeckButton("SETTINGS", Deck.Face.Brass);
-            options.Click += (_, _) => _ = OpenSettings();
-            bar.Children.Add(options);
-            var quit = new DeckButton("QUIT", Deck.Face.Rust);
-            quit.Click += (_, _) => AskToQuit();
-            bar.Children.Add(quit);
+            // The home surface is now a game hub rather than a launcher card.
+            // Child screens still use the established stack below, which keeps
+            // the UI overhaul independent from launch/network behaviour.
+            _hub = new HubHomeView();
+            _hub.NavigateRequested += NavigateHub;
+            _menu = _hub;
             root.Children.Add(_menu);
-
-            // A bar across the foot, not a stack in the middle: the four
-            // faces between the profile on one end and the support mark on
-            // the other. The photograph gets its middle back, which is what
-            // it is there for.
-            _chip = new DeckChip("Profile", PlayerNameOrDefault())
-            {
-                VerticalAlignment = VerticalAlignment.Bottom
-            };
-            DeckChip chip = _chip;
-            DeckButton heart = SupportMark();
-            heart.VerticalAlignment = VerticalAlignment.Bottom;
-            _heart = heart;
-
-            // Upright there is no room beside a column of full-width faces, so
-            // the mark goes to the corner the way it does on a phone. Its own
-            // layer, because the foot is a three-column row and this is not in
-            // it any more once the row has turned.
-            _heartCorner = SupportMark();
-            _heartCorner.HorizontalAlignment = HorizontalAlignment.Left;
-            _heartCorner.VerticalAlignment = VerticalAlignment.Top;
-            _heartCorner.Margin = new Thickness(14, 14, 0, 0);
-            _heartCorner.IsVisible = false;
-            root.Children.Add(_heartCorner);
-
-            var foot = new Grid
-            {
-                VerticalAlignment = VerticalAlignment.Bottom,
-                Margin = new Thickness(26, 0, 26, 24),
-                ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto")
-            };
-            Grid.SetColumn(chip, 0);
-            foot.Children.Add(chip);
-            bar.VerticalAlignment = VerticalAlignment.Bottom;
-            Grid.SetColumn(bar, 1);
-            foot.Children.Add(bar);
-            Grid.SetColumn(heart, 2);
-            foot.Children.Add(heart);
-            root.Children.Add(foot);
-            _foot = foot;
-
-            // A phone held upright has no room for three of these across, and
-            // a row that overflows is worse than a column: the first and last
-            // entry lose their ends off the edges of the screen. There is no
-            // media query here, so the row watches its own width and turns.
-            _bar = bar;
-            root.SizeChanged += (_, e) =>
-            {
-                LayOutBar(e.NewSize.Width);
-                LayOutWordmark(e.NewSize);
-            };
-            LayOutBar(_windowWidthGuess);
 
             _version = new TextBlock
             {
@@ -285,141 +167,6 @@ namespace MphRead.Mods.Launcher.Gui
             _ = CatchUpPreviews();
         }
 
-        /// <summary>The width below which the four faces will not fit across.</summary>
-        private const double BarTurnsWidth = 620;
-        private const double _windowWidthGuess = 940;
-        private StackPanel? _bar;
-        private DeckWordmark? _wordmark;
-        private TextBlock? _sub;
-        private Grid? _foot;
-        private DeckChip? _chip;
-        private DeckButton? _heart;
-        private DeckButton? _heartCorner;
-
-        /// <summary>
-        /// The support mark: a button like every other, with a heart where the
-        /// word goes.
-        ///
-        /// `class="btn f-rust heart"` in the reference -- the same object as
-        /// QUIT beside it, with `--lip: 5px`, `padding: .7em .9em` and a
-        /// `1.9em` by `1.27em` picture. It used to be a control of its own and
-        /// had none of what makes these buttons what they are: no bevel, no
-        /// spring, no lean towards the pointer, no press that travels by the
-        /// lip it loses.
-        /// </summary>
-        private static DeckButton SupportMark()
-        {
-            var mark = new DeckButton("", Deck.Face.Rust,
-                sizeEms: 1.55, padXEms: 0.9, padYEms: 0.7, lip: 5)
-            {
-                Glyph = DeckHeart.DrawHeart,
-                GlyphEms = new Size(1.9, 1.27),
-                GlyphColour = Color.FromRgb(0xe8, 0xa0, 0xa0),
-                Tip = "Support this project <3"
-            };
-            mark.Click += (_, _) => Updater.OpenLink(Mods.Credits.SupportUrl);
-            return mark;
-        }
-
-        private static string PlayerNameOrDefault()
-        {
-            string name = LauncherPrefs.PlayerName.Trim();
-            return name.Length > 0 ? name : "Player";
-        }
-
-        private void LayOutBar(double width)
-        {
-            StackPanel? bar = _bar;
-            if (bar == null)
-            {
-                return;
-            }
-            bool column = width < BarTurnsWidth;
-            bar.Orientation = column ? Orientation.Vertical : Orientation.Horizontal;
-            bar.Spacing = column ? 9 : 12;
-            bar.Width = column ? Math.Max(160, Math.Min(320, width - 48)) : double.NaN;
-            if (_foot != null)
-            {
-                // Turned, the foot is one column: the profile above the faces
-                // and the support mark up in the corner, which is the only
-                // place left for it.
-                _foot.ColumnDefinitions = new ColumnDefinitions(column ? "*" : "Auto,*,Auto");
-                _foot.RowDefinitions = new RowDefinitions(column ? "Auto,Auto" : "*");
-                if (_chip != null)
-                {
-                    Grid.SetColumn(_chip, 0);
-                    Grid.SetRow(_chip, 0);
-                    _chip.HorizontalAlignment = column
-                        ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
-                    _chip.Margin = new Thickness(0, 0, 0, column ? 9 : 0);
-                }
-                Grid.SetColumn(bar, column ? 0 : 1);
-                Grid.SetRow(bar, column ? 1 : 0);
-                if (_heart != null)
-                {
-                    Grid.SetColumn(_heart, column ? 0 : 2);
-                    _heart.IsVisible = !column;
-                }
-                if (_heartCorner != null)
-                {
-                    _heartCorner.IsVisible = column;
-                }
-                _foot.Margin = new Thickness(column ? 14 : 26, 0, column ? 14 : 26, column ? 18 : 24);
-            }
-            foreach (Control child in bar.Children)
-            {
-                child.HorizontalAlignment = column
-                    ? HorizontalAlignment.Stretch
-                    : HorizontalAlignment.Center;
-            }
-        }
-
-        /// <summary>
-        /// The mark's size, and the caption under it, for the box the screen
-        /// has actually been handed.
-        ///
-        /// Three numbers, and they are the reference's three:
-        /// <c>7.6em</c> on a 16:9 desktop, <c>5.2em</c> on a phone held
-        /// upright and <c>4.4em</c> on the same phone turned -- a phone in
-        /// landscape has the height of a letterbox and a mark sized for a
-        /// monitor would leave no room under it for the row it introduces.
-        ///
-        /// <see cref="DeckStage"/> is the root here, so the size it reports is
-        /// the one it measured its em from and <see cref="Deck.EmFor"/> hands
-        /// back that same number rather than a guess at it.
-        /// </summary>
-        private void LayOutWordmark(Size frame)
-        {
-            if (frame.Width <= 0 || frame.Height <= 0)
-            {
-                return;
-            }
-            bool landscape = frame.Width > frame.Height;
-            double ems = !Deck.Phone ? 7.6 : landscape ? 4.4 : 5.2;
-            if (_wordmark != null)
-            {
-                _wordmark.SizeEms = ems;
-                // The gap under the mark is the caption's `margin-top: 1.4em`
-                // of its own size, less the drop shadow the mark already
-                // carries inside its own box.
-                _wordmark.Margin = new Thickness(0, 0, 0, 0);
-            }
-            double em = Deck.EmFor(frame.Width, frame.Height);
-            if (_sub != null)
-            {
-                _sub.FontSize = Math.Max(8, Math.Round(em * 0.82));
-                _sub.Margin = new Thickness(0, Math.Round(em * 0.82 * 1.4) - 10, 0, 0);
-            }
-        }
-
-        private static UiWord Word(string text, FontFamily font, double size,
-            Color colour, Action go)
-        {
-            var word = new UiWord(text, size, font, colour);
-            word.Click += (_, _) => go();
-            return word;
-        }
-
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
             base.OnAttachedToVisualTree(e);
@@ -492,6 +239,7 @@ namespace MphRead.Mods.Launcher.Gui
             Hunters.Reroll();
             LauncherPrefs.Load();
             RefreshRooms();
+            _hub.RefreshProfile();
             RefreshVersionLine();
             if (!GameFiles.Ready)
             {
@@ -542,18 +290,6 @@ namespace MphRead.Mods.Launcher.Gui
             }
             _groundShown = show;
             _dark.IsVisible = !show;
-            // The foot goes with it. Push hides the wordmark and the version
-            // line and nothing else, because every other screen covers what is
-            // left; the profile, the three faces and the support mark were
-            // still on the glass behind a menu that covers nothing.
-            if (_foot != null)
-            {
-                _foot.IsVisible = show;
-            }
-            if (_heartCorner != null)
-            {
-                _heartCorner.IsVisible = show && _bar?.Orientation == Orientation.Vertical;
-            }
             if (show)
             {
                 _root.Children.InsertRange(1, _ground);
@@ -573,6 +309,7 @@ namespace MphRead.Mods.Launcher.Gui
             _overlay.IsVisible = true;
             _menu.IsVisible = false;
             _versionBox.IsVisible = false;
+            HubMotion.Enter(view);
             Dispatcher.UIThread.Post(() => view.Focus(), DispatcherPriority.Background);
         }
 
@@ -587,6 +324,7 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 Control top = _stack[^1];
                 _overlay.Children.Add(top);
+                HubMotion.Enter(top, lift: -6);
                 Dispatcher.UIThread.Post(() => top.Focus(), DispatcherPriority.Background);
                 return;
             }
@@ -594,7 +332,10 @@ namespace MphRead.Mods.Launcher.Gui
             _menu.IsVisible = true;
             _versionBox.IsVisible = true;
             ShowGround(true);
+            LauncherBackdrop.Set(LauncherBackdropScene.Home);
+            _hub.RefreshProfile();
             RefreshVersionLine();
+            HubMotion.Enter(_hub, lift: -6);
             Dispatcher.UIThread.Post(() => Focus(), DispatcherPriority.Background);
         }
 
@@ -612,14 +353,90 @@ namespace MphRead.Mods.Launcher.Gui
 
         // ------------------------------------------------------------- screens
 
-        private Task OpenPlay()
+        private void NavigateHub(HubDestination destination)
+        {
+            switch (destination)
+            {
+                case HubDestination.Play:
+                    OpenDeployment();
+                    break;
+                case HubDestination.MapEditor:
+                    OpenMapEditorPlaceholder();
+                    break;
+                case HubDestination.ReplayStudio:
+                    _ = OpenReplayStudio();
+                    break;
+                case HubDestination.Settings:
+                    _ = OpenSettings();
+                    break;
+                case HubDestination.Quit:
+                    AskToQuit();
+                    break;
+            }
+        }
+
+        private void OpenDeployment()
+        {
+            if (!GameFiles.Ready)
+            {
+                OpenSetup();
+                return;
+            }
+            var view = new HubPlayView();
+            view.Closed += (_, _) => Pop();
+            view.Selected += destination =>
+            {
+                switch (destination)
+                {
+                    case HubPlayDestination.Multiplayer:
+                        OpenMultiplayer();
+                        break;
+                    case HubPlayDestination.Offline:
+                        OpenOffline();
+                        break;
+                    case HubPlayDestination.Adventure:
+                        OpenAdventure();
+                        break;
+                }
+            };
+            Push(view);
+        }
+
+        private void OpenOffline()
+        {
+            var view = new HubOfflineView(_settings, _rooms);
+            view.Closed += (_, _) => Pop();
+            view.Launched += (_, plan) => Finish(plan);
+            Push(view);
+        }
+
+        private void OpenAdventure()
+        {
+            var view = new HubAdventureView();
+            view.Closed += (_, _) => Pop();
+            view.Launched += (_, plan) => Finish(plan);
+            Push(view);
+        }
+
+        private void OpenMultiplayer()
+        {
+            var view = new HubMultiplayerView();
+            view.Closed += (_, _) => Pop();
+            view.CreateLobbyRequested += (_, _) => OpenCreateServer();
+            view.Launched += (_, plan) => ConnectedOrFinished(plan);
+            Push(view);
+        }
+
+        private Task OpenPlay(PlayScreen.Face face = PlayScreen.Face.Online,
+            bool singleFace = false)
         {
             if (!GameFiles.Ready)
             {
                 OpenSetup();
                 return Task.CompletedTask;
             }
-            var view = new PlayScreen(_settings, _rooms);
+            var view = new PlayScreen(_settings, _rooms, face,
+                singleFace: singleFace);
             view.Closed += (_, _) => Pop();
             view.Launched += (_, plan) => ConnectedOrFinished(plan);
             view.CreateRequested += (_, _) => OpenCreateServer();
@@ -627,9 +444,9 @@ namespace MphRead.Mods.Launcher.Gui
             return Task.CompletedTask;
         }
 
-        private Task OpenClips()
+        private Task OpenReplayStudio()
         {
-            var view = new PlayScreen(_settings, _rooms, PlayScreen.Face.Clips);
+            var view = new HubReplayStudioView();
             view.Closed += (_, _) => Pop();
             view.Launched += (_, plan) => Finish(plan);
             Push(view);
@@ -637,9 +454,9 @@ namespace MphRead.Mods.Launcher.Gui
         }
 
         /// <summary>
-        /// Run a server rather than join one -- pushed over the browser rather
-        /// than replacing it, so backing out lands on the list of servers,
-        /// which is where somebody who changed their mind was going anyway.
+        /// Create a custom multiplayer lobby. The screen is pushed over
+        /// whichever Multiplayer surface opened it, so Back returns to the
+        /// player's previous context without duplicating hosting state.
         /// </summary>
         private void OpenCreateServer()
         {
@@ -658,7 +475,12 @@ namespace MphRead.Mods.Launcher.Gui
                 _lobby.Closed += (_, reason) =>
                 {
                     _lobby = null; Pop();
-                    if (_stack.Count > 0 && _stack[^1] is PlayScreen play) play.SessionEnded(reason);
+                    if (_stack.Count > 0)
+                    {
+                        if (_stack[^1] is PlayScreen play) play.SessionEnded(reason);
+                        else if (_stack[^1] is HubMultiplayerView multiplayer)
+                            multiplayer.SessionEnded(reason);
+                    }
                 };
                 Push(_lobby);
             }
@@ -667,7 +489,17 @@ namespace MphRead.Mods.Launcher.Gui
 
         private Task OpenSettings()
         {
+            var landing = new HubSettingsView();
+            landing.Closed += (_, _) => Pop();
+            landing.SectionRequested += section => OpenSettingsSection(section);
+            Push(landing);
+            return Task.CompletedTask;
+        }
+
+        private void OpenSettingsSection(string section)
+        {
             var view = new SettingsView(_settings);
+            view.ShowSection(section);
             view.Closed += (_, _) => Pop();
             view.GameFilesRequested += (_, _) =>
             {
@@ -675,7 +507,16 @@ namespace MphRead.Mods.Launcher.Gui
                 OpenSetup();
             };
             Push(view);
-            return Task.CompletedTask;
+        }
+
+        private void OpenMapEditorPlaceholder()
+        {
+            var view = new HubPlaceholderView(
+                "MAP EDITOR",
+                "WORKSHOP PLACEHOLDER",
+                "A visual custom-map editor is planned for this hub. This button is intentionally a placeholder for now.");
+            view.Closed += (_, _) => Pop();
+            Push(view);
         }
 
         private void OpenSetup()
@@ -691,7 +532,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         private void AskToQuit()
         {
-            var view = new ConfirmScreen($"Quit {Mods.Branding.Name}?");
+            var view = new ConfirmScreen("Quit Project Prime?");
             view.Answered += (_, yes) =>
             {
                 Pop();
@@ -844,6 +685,12 @@ namespace MphRead.Mods.Launcher.Gui
                 return;
             }
             await ThumbnailHost.RenderMissingAsync(_ => { });
+            Dispatcher.UIThread.Post(() =>
+            {
+                MapShot.Forget();
+                BakedBackdrop.Forget();
+                LauncherBackdrop.Refresh();
+            });
         }
 
         private void RefreshRooms()

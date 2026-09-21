@@ -5,11 +5,11 @@
 # so it can share a box with the game server it lists -- which is the
 # arrangement it was written for.
 #
-# Point net.livetek.fr at this machine and open UDP 27889 to it.
+# Point 51.161.113.128 at this machine and open UDP 27889 to it.
 #
 # __USER__ and __DIR__ are placeholders; see mphread-server.service.
 [Unit]
-Description=Fruity Prime server directory
+Description=Project Prime server directory
 After=network-online.target
 Wants=network-online.target
 
@@ -17,7 +17,7 @@ Wants=network-online.target
 Type=simple
 User=__USER__
 WorkingDirectory=__DIR__
-ExecStart=__DIR__/FruityPrime -masterserver -port 27889
+ExecStart=__DIR__/ProjectPrime -masterserver -port 27889
 Restart=always
 RestartSec=5
 NoNewPrivileges=true

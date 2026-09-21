@@ -123,34 +123,34 @@ namespace MphRead.Droid
     // Ten, the same as the desktop batch; how many actually start is chosen at
     // run time from the device's cores and heap, since each one is a runtime, a
     // GL context and a room's textures.
-    [Service(Name = "fr.livetek.fruityprime.PreviewWorker0", Process = ":preview0", Exported = false)]
+    [Service(Name = "com.projectprime.game.PreviewWorker0", Process = ":preview0", Exported = false)]
     public sealed class PreviewWorker0 : PreviewService { }
 
-    [Service(Name = "fr.livetek.fruityprime.PreviewWorker1", Process = ":preview1", Exported = false)]
+    [Service(Name = "com.projectprime.game.PreviewWorker1", Process = ":preview1", Exported = false)]
     public sealed class PreviewWorker1 : PreviewService { }
 
-    [Service(Name = "fr.livetek.fruityprime.PreviewWorker2", Process = ":preview2", Exported = false)]
+    [Service(Name = "com.projectprime.game.PreviewWorker2", Process = ":preview2", Exported = false)]
     public sealed class PreviewWorker2 : PreviewService { }
 
-    [Service(Name = "fr.livetek.fruityprime.PreviewWorker3", Process = ":preview3", Exported = false)]
+    [Service(Name = "com.projectprime.game.PreviewWorker3", Process = ":preview3", Exported = false)]
     public sealed class PreviewWorker3 : PreviewService { }
 
-    [Service(Name = "fr.livetek.fruityprime.PreviewWorker4", Process = ":preview4", Exported = false)]
+    [Service(Name = "com.projectprime.game.PreviewWorker4", Process = ":preview4", Exported = false)]
     public sealed class PreviewWorker4 : PreviewService { }
 
-    [Service(Name = "fr.livetek.fruityprime.PreviewWorker5", Process = ":preview5", Exported = false)]
+    [Service(Name = "com.projectprime.game.PreviewWorker5", Process = ":preview5", Exported = false)]
     public sealed class PreviewWorker5 : PreviewService { }
 
-    [Service(Name = "fr.livetek.fruityprime.PreviewWorker6", Process = ":preview6", Exported = false)]
+    [Service(Name = "com.projectprime.game.PreviewWorker6", Process = ":preview6", Exported = false)]
     public sealed class PreviewWorker6 : PreviewService { }
 
-    [Service(Name = "fr.livetek.fruityprime.PreviewWorker7", Process = ":preview7", Exported = false)]
+    [Service(Name = "com.projectprime.game.PreviewWorker7", Process = ":preview7", Exported = false)]
     public sealed class PreviewWorker7 : PreviewService { }
 
-    [Service(Name = "fr.livetek.fruityprime.PreviewWorker8", Process = ":preview8", Exported = false)]
+    [Service(Name = "com.projectprime.game.PreviewWorker8", Process = ":preview8", Exported = false)]
     public sealed class PreviewWorker8 : PreviewService { }
 
-    [Service(Name = "fr.livetek.fruityprime.PreviewWorker9", Process = ":preview9", Exported = false)]
+    [Service(Name = "com.projectprime.game.PreviewWorker9", Process = ":preview9", Exported = false)]
     public sealed class PreviewWorker9 : PreviewService { }
 
     internal static class PreviewWorkerTypes

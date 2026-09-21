@@ -30,20 +30,18 @@
          that it can sit next to the game's in one folder.
 
            dotnet publish -r win-x64 -p:MphReadServer=true
-             produces FruityPrimeServer.exe
+             produces ProjectPrimeServer.exe
 
          Only on Windows. Elsewhere the subsystem does not exist, the server
          package holds exactly one binary, and renaming it would mean a Pi that
          has been running MphRead under systemd since before this change gets a
          second binary beside the one its unit still points at. -->
-    <!-- The public project/repository is Prime Hunters Online. The C#
-         namespace remains MphRead for upstream compatibility, while the
-         FruityPrime assembly/binary and Fruity Prime product metadata are
-         legacy installation identities. Rename those only as an explicit
-         package/updater migration, not as documentation cleanup. -->
-    <AssemblyName>FruityPrime</AssemblyName>
-    <AssemblyName Condition="'$(MphReadServer)' == 'true' and $(RuntimeIdentifier.StartsWith('win'))">FruityPrimeServer</AssemblyName>
-    <Product>Fruity Prime</Product>
+    <!-- The public product is Project Prime. The C# namespace remains MphRead
+         for upstream compatibility; the assembly, binary and package identities
+         intentionally use the Project Prime name after the product migration. -->
+    <AssemblyName>ProjectPrime</AssemblyName>
+    <AssemblyName Condition="'$(MphReadServer)' == 'true' and $(RuntimeIdentifier.StartsWith('win'))">ProjectPrimeServer</AssemblyName>
+    <Product>Project Prime</Product>
     <!-- A local build must not masquerade as the SDK's default 1.0.0 release. -->
     <InformationalVersion Condition="'$(InformationalVersion)' == ''">local</InformationalVersion>
     <RootNamespace>MphRead</RootNamespace>
@@ -66,13 +64,12 @@
          stack gives for nothing. The Android head defines MPHREAD_AVALONIA
          without this one and leaves those two files out. -->
     <DefineConstants Condition="'$(MphReadAvalonia)' == 'true'">$(DefineConstants);MPHREAD_SHELL</DefineConstants>
-    <!-- The exe's own icon: Explorer, the taskbar, a pinned shortcut. Two
-         variants of the same mark, because the game and the server are two
-         different things to have pinned next to each other, and the server's
-         carries a small badge so the two are not the same picture at a
-         glance. Windows only; the property does nothing on other platforms. -->
-    <ApplicationIcon Condition="$(RuntimeIdentifier.StartsWith('win')) and '$(MphReadServer)' != 'true'">Assets\fruity-prime.ico</ApplicationIcon>
-    <ApplicationIcon Condition="$(RuntimeIdentifier.StartsWith('win')) and '$(MphReadServer)' == 'true'">Assets\fruity-prime-server.ico</ApplicationIcon>
+    <!-- Project Prime shell identity for Explorer, the taskbar and pinned
+         shortcuts. The dedicated server keeps a small badge so it is visually
+         distinct from the game client. Runtime GL windows still use the
+         embedded PNG mark below. -->
+    <ApplicationIcon Condition="$(RuntimeIdentifier.StartsWith('win')) and '$(MphReadServer)' != 'true'">Assets\project-prime.ico</ApplicationIcon>
+    <ApplicationIcon Condition="$(RuntimeIdentifier.StartsWith('win')) and '$(MphReadServer)' == 'true'">Assets\project-prime-server.ico</ApplicationIcon>
     <PublishSingleFile>true</PublishSingleFile>
     <DebugType>embedded</DebugType>
     <Nullable>enable</Nullable>
@@ -128,16 +125,14 @@
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.2" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.2" />
     <!-- Loaded at runtime through avares://, Avalonia's own asset scheme: a
-         plain EmbeddedResource is not visible to AssetLoader. The wordmark is
-         the corner of every launcher screen; the mark is the window icon. -->
-    <AvaloniaResource Include="Assets\fruity-prime-logo.png" />
-    <AvaloniaResource Include="Assets\fruity-prime-mark.png" />
+         plain EmbeddedResource is not visible to AssetLoader. The launcher wordmark is rendered in code; the mark is the window icon. -->
+    <AvaloniaResource Include="Assets\project-prime-mark.png" />
     <!-- The same file again, as a plain embedded resource: the *window's*
          icon is set on the GL window, which knows nothing about avares:// and
          is created before the toolkit is. Mods/Render/WindowIcon.cs reads it.
          A few kilobytes, and the alternative is the launcher's icon existing
          only on a screen the program no longer opens. -->
-    <EmbeddedResource Include="Assets\fruity-prime-mark.png" />
+    <EmbeddedResource Include="Assets\project-prime-mark.png" />
     <!-- The launcher's two faces and its backdrop: fonts from
          OpenQuake3/defrag's ui/font, whose UI this one is built to. -->
     <AvaloniaResource Include="Assets\Fonts\heyNovember.ttf" />
@@ -284,7 +279,7 @@
        them ships, so a downloaded release has its custom maps ready and the
        first launch builds them.
 
-       A map is handed out as one .fpmap bundle: recipe, level and baked
+       A map is handed out as one .ppmap bundle: recipe, level and baked
        textures in a single file, with the level trimmed to the lumps the
        importer reads (see Mods/MapGen/MapBundle.cs): 376 KB for de_dust2
        against the 2.8 MB its folder weighed. The folder is what a map is
@@ -295,7 +290,7 @@
        publishes. -->
   <ItemGroup>
     <!-- What ships: the bundles, and any map file loose at the top of maps/. -->
-    <None Include="..\..\maps\**\*.fpmap;..\..\maps\*.json;..\..\maps\*.bsp;..\..\maps\*.tex;..\..\maps\*.obj" Link="maps\%(RecursiveDir)%(Filename)%(Extension)">
+    <None Include="..\..\maps\**\*.ppmap;..\..\maps\*.json;..\..\maps\*.bsp;..\..\maps\*.tex;..\..\maps\*.obj" Link="maps\%(RecursiveDir)%(Filename)%(Extension)">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <!-- What a map is worked on as: a folder holding the recipe, somebody

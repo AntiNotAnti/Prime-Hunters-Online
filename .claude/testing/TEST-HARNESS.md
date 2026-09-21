@@ -8,8 +8,8 @@ A basic multi-client test needs only a current build, operator-supplied game
 files and a reachable current server. Start separate clients with, for example,
 
 ```bash
-./FruityPrime -netcheck HOST -port N -name ALPHA -hunter Samus -seconds 120
-./FruityPrime -netcheck HOST -port N -name BRAVO -hunter Sylux -seconds 120
+./ProjectPrime -netcheck HOST -port N -name ALPHA -hunter Samus -seconds 120
+./ProjectPrime -netcheck HOST -port N -name BRAVO -hunter Sylux -seconds 120
 ```
 
 and compare what each client says it did with what the others observed.
@@ -191,10 +191,10 @@ Replay regression commands are documented in
 [multiplayer/NETWORK-DEMOS.md](../multiplayer/NETWORK-DEMOS.md). Run
 `-replaycontrolcheck` and `-replayformatcheck` without cartridge assets, then
 `-replaydeterminism FILE` against a recorded match with game assets available.
-Add `-replayhashout OUTPUT.fpdemo` to create a separately named v3 copy with
+Add `-replayhashout OUTPUT.ppdemo` to create a separately named v3 copy with
 versioned expected gameplay hashes after verification passes. The every-frame
 comparison reports the first differing gameplay frame and uses a temporary disk
 trace to bound memory; stored references are checked only by a matching build/schema.
 The latter verifies replay-vs-replay state equivalence, not live-client or
-full-world checkpoint equivalence. Keep `.fpdemo` fixtures and extracted assets
+full-world checkpoint equivalence. Keep `.ppdemo` fixtures and extracted assets
 out of Git; record local `-netcheck ... -recorddemo` sessions to regenerate them.

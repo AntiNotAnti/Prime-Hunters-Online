@@ -41,7 +41,7 @@ namespace MphRead.Mods.Render
             {
                 Assembly assembly = typeof(AppIcon).Assembly;
                 string? name = Array.Find(assembly.GetManifestResourceNames(),
-                    n => n.EndsWith("fruity-prime-mark.png", StringComparison.OrdinalIgnoreCase));
+                    n => n.EndsWith("project-prime-mark.png", StringComparison.OrdinalIgnoreCase));
                 if (name == null)
                 {
                     Mods.DebugLog.Line("window", "no icon resource in this build");
@@ -57,7 +57,7 @@ namespace MphRead.Mods.Render
                 using StbImage image = StbImage.Load(stream, StbiImageFormat.Rgba);
                 var pixels = new byte[image.Width * image.Height * 4];
                 image.AsSpan<byte>().Slice(0, pixels.Length).CopyTo(pixels);
-                // Several sizes, not just the one in the file. The art is 552
+                // Several sizes, not just the one in the file. The art is 512
                 // square and a title bar wants 16: GLFW picks the closest size
                 // it is given and leaves the rest to the platform, and a
                 // 552-to-16 reduction done by Windows is a smudge. Box-filtered
@@ -81,9 +81,9 @@ namespace MphRead.Mods.Render
         }
 
         /// <summary>
-        /// One square of the mark, box-filtered down, alpha included -- the
-        /// art is a cherry on nothing, so averaging colour without averaging
-        /// coverage would give every edge a halo of opaque red.
+        /// One square of the mark, box-filtered down, alpha included. Colour
+        /// is weighted by coverage so transparent edge pixels cannot create a
+        /// halo around the Project Prime mark.
         /// </summary>
         private static Image Scaled(byte[] source, int width, int height, int size)
         {

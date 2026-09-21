@@ -416,7 +416,7 @@ namespace MphRead.Mods.Update
         public static string Rid()
         {
             // Android first, and not as an "os-arch" pair: the APK is one file
-            // for every ABI (release.yml publishes FruityPrime-<tag>-android.apk
+            // for every ABI (release.yml publishes ProjectPrime-<tag>-android.apk
             // and nothing per-architecture), so matching on the architecture
             // here would find nothing on every phone.
             if (OperatingSystem.IsAndroid())
@@ -444,7 +444,7 @@ namespace MphRead.Mods.Update
         /// not necessarily the name of the file currently running.
         ///
         /// Only the Windows server package renames its binary to
-        /// <c>FruityPrimeServer.exe</c> -- the Linux and ARM64 server
+        /// <c>ProjectPrimeServer.exe</c> -- the Linux and ARM64 server
         /// packages ship the plain <see cref="Mods.Branding.FileName"/>, same
         /// as the game (see the binary table in CLAUDE.md). Getting this
         /// wrong here once meant every non-Windows server's own staging

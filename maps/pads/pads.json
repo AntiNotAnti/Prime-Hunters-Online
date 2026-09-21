@@ -1,5 +1,5 @@
 {
-  "//": "A room for the one case hit registration is hardest in: a player crossing the room fast and vertically. Four jump pads on the diagonals, each throwing a hunter over the middle to the pad opposite, in a box tall enough for the arc -- so the tour and the headshot rig both spend most of a run shooting at somebody who is moving 0.3 units a frame or more, against a headshot band 0.3 units tall. TEST ARENA is the same room without them and is the control. Regenerate with: FruityPrime -mapgen \"TEST PADS\".",
+  "//": "A room for the one case hit registration is hardest in: a player crossing the room fast and vertically. Four jump pads on the diagonals, each throwing a hunter over the middle to the pad opposite, in a box tall enough for the arc -- so the tour and the headshot rig both spend most of a run shooting at somebody who is moving 0.3 units a frame or more, against a headshot band 0.3 units tall. TEST ARENA is the same room without them and is the control. Regenerate with: ProjectPrime -mapgen \"TEST PADS\".",
   "name": "TEST PADS",
   "inGameName": "Test Pads",
   "textureSource": "MP3 PROVING GROUND",

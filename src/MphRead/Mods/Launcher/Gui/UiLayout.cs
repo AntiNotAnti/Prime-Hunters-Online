@@ -618,18 +618,17 @@ namespace MphRead.Mods.Launcher.Gui
             }
         }
 
+        // Kept as an asset-loading compatibility hook for legacy design
+        // studies. The player-facing hub no longer draws launcher-bg.jpg.
         private static readonly Lazy<Bitmap?> _background =
             new(() => Load("Backgrounds/launcher-bg.jpg"));
-
-        private static readonly Lazy<Bitmap?> _wordmark =
-            new(() => Load("fruity-prime-logo.png"));
 
         private static Bitmap? Load(string asset)
         {
             try
             {
                 using Stream stream = AssetLoader.Open(
-                    new Uri($"avares://FruityPrime/Assets/{asset}"));
+                    new Uri($"avares://ProjectPrime/Assets/{asset}"));
                 return new Bitmap(stream);
             }
             catch (Exception)
@@ -649,6 +648,86 @@ namespace MphRead.Mods.Launcher.Gui
         /// running -- a networked one cannot be paused -- and covering it with
         /// a photograph would be a lie about what the program is doing.
         /// </summary>
+        private static Border CinematicFallback()
+        {
+            (Color a, Color b) = LauncherBackdrop.Scene switch
+            {
+                LauncherBackdropScene.Adventure =>
+                    (Color.FromRgb(0x18, 0x23, 0x35), Color.FromRgb(0x07, 0x12, 0x1c)),
+                LauncherBackdropScene.ReplayStudio =>
+                    (Color.FromRgb(0x0b, 0x25, 0x2d), Color.FromRgb(0x05, 0x0b, 0x12)),
+                LauncherBackdropScene.CreateLobby or LauncherBackdropScene.Multiplayer =>
+                    (Color.FromRgb(0x0c, 0x2d, 0x38), Color.FromRgb(0x07, 0x0d, 0x14)),
+                LauncherBackdropScene.MapEditor =>
+                    (Color.FromRgb(0x28, 0x1d, 0x12), Color.FromRgb(0x08, 0x0d, 0x13)),
+                _ =>
+                    (Color.FromRgb(0x10, 0x29, 0x36), Color.FromRgb(0x06, 0x0c, 0x13))
+            };
+            return new Border
+            {
+                Background = new LinearGradientBrush
+                {
+                    StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+                    EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
+                    GradientStops =
+                    {
+                        new GradientStop(a, 0),
+                        new GradientStop(Color.FromRgb(0x08, 0x13, 0x1d), 0.48),
+                        new GradientStop(b, 1)
+                    }
+                }
+            };
+        }
+
+        private static Border CinematicTint()
+        {
+            Color tint = LauncherBackdrop.Scene switch
+            {
+                LauncherBackdropScene.Adventure => Color.FromArgb(56, 0x58, 0x69, 0x9c),
+                LauncherBackdropScene.ReplayStudio => Color.FromArgb(62, 0x13, 0x79, 0x8d),
+                LauncherBackdropScene.Settings => Color.FromArgb(74, 0x08, 0x18, 0x27),
+                LauncherBackdropScene.MapEditor => Color.FromArgb(62, 0xa2, 0x63, 0x2d),
+                LauncherBackdropScene.CreateLobby => Color.FromArgb(52, 0xe0, 0x99, 0x45),
+                LauncherBackdropScene.Multiplayer => Color.FromArgb(54, 0x29, 0xb5, 0xd4),
+                LauncherBackdropScene.Offline => Color.FromArgb(48, 0x3d, 0x9a, 0x7a),
+                _ => Color.FromArgb(46, 0x26, 0xa8, 0xc9)
+            };
+            return new Border
+            {
+                Background = new LinearGradientBrush
+                {
+                    StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+                    EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
+                    GradientStops =
+                    {
+                        new GradientStop(tint, 0),
+                        new GradientStop(Color.FromArgb(10, tint.R, tint.G, tint.B), 0.52),
+                        new GradientStop(Color.FromArgb(0, tint.R, tint.G, tint.B), 1)
+                    }
+                }
+            };
+        }
+
+        private static Border CinematicVignette()
+        {
+            return new Border
+            {
+                Background = new RadialGradientBrush
+                {
+                    Center = new RelativePoint(0.52, 0.44, RelativeUnit.Relative),
+                    GradientOrigin = new RelativePoint(0.52, 0.44, RelativeUnit.Relative),
+                    RadiusX = new RelativeScalar(0.78, RelativeUnit.Relative),
+                    RadiusY = new RelativeScalar(0.72, RelativeUnit.Relative),
+                    GradientStops =
+                    {
+                        new GradientStop(Color.FromArgb(0, 5, 7, 10), 0),
+                        new GradientStop(Color.FromArgb(18, 5, 7, 10), 0.58),
+                        new GradientStop(Color.FromArgb(132, 5, 7, 10), 1)
+                    }
+                }
+            };
+        }
+
         public static Panel Backdrop(bool overGame = false,
             BackdropWash wash = BackdropWash.None)
         {
@@ -713,18 +792,25 @@ namespace MphRead.Mods.Launcher.Gui
             bool photoBelow = PhotoDrawnBelow;
             if (!photoBelow && part != BackdropPart.Washes)
             {
-                // Only where nothing else is drawing it. The desktop shell
-                // puts the photograph on the screen as a GL quad at the
-                // window's own resolution -- see LauncherPhoto -- because this
-                // bitmap is capped at 1080p and magnified, and a photograph is
-                // the one layer that shows it. The washes below stay here
-                // either way: they are gradients, and a gradient magnifies for
-                // nothing.
-                root.Children.Add(new Image
+                // The launcher now uses locally generated map thumbnails as
+                // cinematic art. No game-derived image is shipped here: if a
+                // thumbnail does not exist yet, the fallback is a graded
+                // colour field rather than the old collision/wireframe photo.
+                Bitmap? scene = LauncherBackdrop.RoomKey.Length > 0
+                    ? MapShot.For(LauncherBackdrop.RoomKey)
+                    : null;
+                if (scene != null)
                 {
-                    Source = _background.Value,
-                    Stretch = Stretch.UniformToFill
-                });
+                    root.Children.Add(new Image
+                    {
+                        Source = scene,
+                        Stretch = Stretch.UniformToFill
+                    });
+                }
+                else
+                {
+                    root.Children.Add(CinematicFallback());
+                }
             }
             // `#ground`, both gradients, in the order CSS paints them -- a
             // background list is drawn last-first, so the sideways one goes
@@ -741,6 +827,8 @@ namespace MphRead.Mods.Launcher.Gui
             // that is mostly lava it is the difference between shade and soot.
             if (part != BackdropPart.Photo)
             {
+                root.Children.Add(CinematicTint());
+                root.Children.Add(CinematicVignette());
                 root.Children.Add(Ground(horizontal: true));
                 root.Children.Add(Ground(horizontal: false));
             }
@@ -779,21 +867,6 @@ namespace MphRead.Mods.Launcher.Gui
                 HorizontalAlignment = HorizontalAlignment.Left,
                 VerticalAlignment = VerticalAlignment.Bottom,
                 Margin = new Thickness(ColumnLeft - 50, 0, 0, FooterBottom)
-            };
-        }
-
-        /// <summary>The mark in the opposite corner, at the size the front screen uses.</summary>
-        public static Image Wordmark()
-        {
-            return new Image
-            {
-                Source = _wordmark.Value,
-                Stretch = Stretch.Uniform,
-                Width = 220,
-                HorizontalAlignment = HorizontalAlignment.Right,
-                VerticalAlignment = VerticalAlignment.Bottom,
-                Margin = new Thickness(0, 0, 32, 28),
-                Opacity = 0.92
             };
         }
 

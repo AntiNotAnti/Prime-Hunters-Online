@@ -1,17 +1,17 @@
-# Prime Hunters Online — tools, design, and mechanics catalogue
+# Project Prime — tools, design, and mechanics catalogue
 
 **Read `ARCHITECTURE-INVARIANTS.md` before changing architecture. Current code
 and tests outrank prose.** The public project/repository is Prime Hunters
 Online. The C# namespace remains `MphRead` for upstream mergeability, while
-existing runtime compatibility identifiers still include `FruityPrime`,
-`FruityPrimeServer` and the legacy Android package id. Do not rename those as
+existing runtime compatibility identifiers still include `ProjectPrime`,
+`ProjectPrimeServer` and the legacy Android package id. Do not rename those as
 part of unrelated work; updater/package identity needs a deliberate migration.
 
 | Build | Binary |
 |---|---|
-| Windows game | `FruityPrime.exe` |
-| Windows server | `FruityPrimeServer.exe` |
-| Linux game, Linux and ARM64 server | `FruityPrime` |
+| Windows game | `ProjectPrime.exe` |
+| Windows server | `ProjectPrimeServer.exe` |
+| Linux game, Linux and ARM64 server | `ProjectPrime` |
 
 This file exists so a fresh session can pick work up without rediscovering the
 architecture and failure modes. Dated measurements below are historical
@@ -42,10 +42,10 @@ export MESA_GL_VERSION_OVERRIDE=4.5COMPAT  # else Mesa hands out a Core profile
 export ALSOFT_DRIVERS=null PULSE_SERVER=   # else ALSA retries stall frames
 ```
 
-- **`DOTNET_ROOT` is what the built `./FruityPrime` needs, and `PATH` is not.**
+- **`DOTNET_ROOT` is what the built `./ProjectPrime` needs, and `PATH` is not.**
   The apphost looks for `libhostfxr.so` under `DOTNET_ROOT` or a system install,
   neither of which exists here, so running the binary directly dies with *"You
-  must install .NET to run this application"* while `dotnet FruityPrime.dll`
+  must install .NET to run this application"* while `dotnet ProjectPrime.dll`
   from the same directory works. Either export it or run through `dotnet`.
 
 - If `~/.dotnet` is empty, the SDK is not installed at all:
@@ -89,9 +89,9 @@ export ALSOFT_DRIVERS=null PULSE_SERVER=   # else ALSA retries stall frames
 | Command | Use |
 |---|---|
 | `MphRead -server ... -noshadowfreeze` | run the room with the Judicator's ice wave as a cone rather than as a column of infinite height. A rule, broadcast to every client in the match state, because the machine resolving a shot decides who it hit |
-| `MphRead -server -port N -players 8` | dedicated **authoritative** server: it runs the match itself, so it needs the game files and `paths.txt` beside the binary, and it refuses to start without them. `-simulate`/`-authority` are accepted and do nothing. `-servername "NAME"` is what a browser shows; it announces itself to `net.livetek.fr` unless `-nomaster` is passed, and `-master HOST -masterport N` points it elsewhere. `-affinityweapons` is a **match rule broadcast to every client**, not a local preference: the affinity weapons are a different row of the damage table, so a client playing by its own settings ran a victim's health down at a different rate from the machine keeping score. The **damage level is pinned to medium (x1) everywhere** and has no flag -- it multiplied every weapon's damage and was the one rule each machine read out of its own file |
+| `MphRead -server -port N -players 8` | dedicated **authoritative** server: it runs the match itself, so it needs the game files and `paths.txt` beside the binary, and it refuses to start without them. `-simulate`/`-authority` are accepted and do nothing. `-servername "NAME"` is what a browser shows; it announces itself to `51.161.113.128` unless `-nomaster` is passed, and `-master HOST -masterport N` points it elsewhere. `-affinityweapons` is a **match rule broadcast to every client**, not a local preference: the affinity weapons are a different row of the damage table, so a client playing by its own settings ran a victim's health down at a different rate from the machine keeping score. The **damage level is pinned to medium (x1) everywhere** and has no flag -- it multiplied every weapon's damage and was the one rule each machine read out of its own file |
 | `MphRead -simcheck "ROOM" [-players N] [-seconds N]` | what a room costs a server: peak memory, milliseconds a simulation step, and whether every slot spawned. Runs the headless engine with nobody connected. The measurement that decides whether a given box can be the authority for a given map |
-| `FruityPrimeServer.exe -server ...` | the authoritative server on Windows, as its own console binary. `FruityPrime.exe` also contains the command path, but it is a GUI binary: a shell will not wait for it and its exit code never reaches `%ERRORLEVEL%`. Run with no arguments it prints what it is for |
+| `ProjectPrimeServer.exe -server ...` | the authoritative server on Windows, as its own console binary. `ProjectPrime.exe` also contains the command path, but it is a GUI binary: a shell will not wait for it and its exit code never reaches `%ERRORLEVEL%`. Run with no arguments it prints what it is for |
 | `MphRead -masterserver [-port N] [-public HOST] [-hostports A-B]` | the directory the launcher/browser asks. Directory-only listing/query work needs no game files. If `-hostports` is enabled, it may also start isolated authoritative game-server children, and **that hosting capability does require access to the operator's extracted game files**. `-public` is the address published for servers registering from the same machine |
 | `MphRead -hostgame "ROOM" [-mode M] [-maprotation "A,B,C"] [-master HOST]` | ask the directory to run a match and join it. No port forwarding anywhere; the only way to host from a machine with no launcher. `-maprotation` is the rest of the cycle, comma separated -- the map named by `-hostgame` is always first, so the two cannot disagree about what starts |
 | `MphRead -hostlocal "A,B,C" [-mode M] [-servername N] [-seconds N]` | the launcher's create-server screen, **Dedicated** half, with no launcher: start a server on this machine, on the first free port from 27888, and report where it landed. The one path in that feature a rendered screen cannot check -- it spawns a process, writes a rotation, copies `paths.txt` and waits for a socket, and each of those fails differently on a headless box |
@@ -102,7 +102,7 @@ export ALSOFT_DRIVERS=null PULSE_SERVER=   # else ALSA retries stall frames
 | `MphRead -netcheck HOST -port N -name X -hunter H -seconds N [-shots DIR] [-size WxH]` | a real client driven by a script, which reports what it saw. Exit code 0 = pass. `-spectate [SEC]` makes it stop playing and watch, `-rejoin SEC` puts it back in -- the one player state the tour cannot reach on its own. `-mapvote N` votes on the results screen's map list -- agreeing with whatever is in front, proposing row N when nothing is -- and is **off** unless asked, since a scripted client that votes changes what a real server plays next and the hard-case batch runs against the public one. `-hudshots` opens a real window and photographs *it*, which is the only capture that carries the HUD: a results screen is HUD and nothing else |
 | `MphRead -netlag MS[:JITTER]` / `-netloss PCT` | play, or run any check, over a line this client makes up: `-netlag 200` adds 200 ms to the round trip (half each way), `-netlag 200:40` gives it jitter, `-netloss 5` eats one datagram in twenty. Works against the real server, on any platform, with no proxy and no `sudo` -- and unlike `hard/run-latency.sh`'s netem it can be given to **one** client while the others stay fast, which is the case a player with a bad line actually is. Every report says so when it is on |
 | `MphRead -nounlagged` | resolve shots against the present, the way every build before lag compensation did. The control for measuring it; on by default. `.claude/multiplayer/NETWORK-UNLAGGED.md` |
-| `FruityPrime -nohitprediction` / `-nohitmarker` | disable local outgoing-hit prediction; or disable only the confirmation marker. Prediction is on by default. Remote lethal hits are always held at 1 HP until authority confirmation; `-deathprediction` and `-nodeathprediction` are accepted compatibility no-ops. Self-damage/self-death remains locally predictable. `.claude/multiplayer/NETWORK-PREDICTION.md` |
+| `ProjectPrime -nohitprediction` / `-nohitmarker` | disable local outgoing-hit prediction; or disable only the confirmation marker. Prediction is on by default. Remote lethal hits are always held at 1 HP until authority confirmation; `-deathprediction` and `-nodeathprediction` are accepted compatibility no-ops. Self-damage/self-death remains locally predictable. `.claude/multiplayer/NETWORK-PREDICTION.md` |
 | `MphRead -noclaims` | stop a client telling the authority which of its own shots landed. On by default: a hit the authority's own rewind cannot find -- because the rewind hit its ceiling, because the trigger pull was recovered from a press history, or because **the shooter was killed during the round trip and the authority never ran the shot at all** -- is declared, checked against the authority's own history, and either applied or refused with a reason. That last case is the one a player calls unfair rather than laggy, and the rule it is answered by is: a shot counts unless its shooter had already been put down by a hit aimed at a strictly earlier world, and two shots aimed at the same world both count. Every weapon, not just the Imperialist. `.claude/multiplayer/NETWORK-HITCLAIMS.md` |
 | `MphRead -nointerp` / `-relayedpuppets` | draw remote players by snapping them to whichever snapshot arrived last, the way every build before protocol 7 did, instead of reading them off a playout clock held a few frames behind. Interpolation is on by default and is why opponents on a bad line move instead of stuttering; it costs a few frames of extra rewind and gives nothing up in hit registration, because the read point travels in the intent as a sub-frame ack and the authority rewinds to exactly it. `-relayedpuppets` also hands puppet positions back to the owner's relayed intent, which is the full protocol-6 arm. `.claude/multiplayer/NETWORK-SMOOTHING.md` |
 | `MphRead -maxrewind N` | the furthest back a shot may be resolved, in frames. **45 (750 ms)** by default since protocol 7, against 24 (400 ms) before it: at a 320 ms round trip with jitter the old ceiling was clamping **89% of shots**, with the requested-depth distribution's mode two frames past it. `.claude/multiplayer/NETWORK-UNLAGGED.md` |
@@ -125,8 +125,8 @@ export ALSOFT_DRIVERS=null PULSE_SERVER=   # else ALSA retries stall frames
 | `MphRead -mapitems "ROOM"` / `-mapitems FILE.pk3 -map LEVEL` | what pickups a level already holds, printed as the `items` block a recipe would carry, with the Quake classname each came from and which are handed out by the level's scripts rather than walked over. Writes nothing: a recipe carries comments and is nobody's to rewrite |
 | `MphRead -mapcheck "ROOM"` | what a custom map's collision will be, built in memory and written nowhere: against the format's limits, faces that reject part of their own interior (the run-time edge test, run early), what the surfaces are and how many of them hurt, what a hand-edited `.obj` changed against the geometry's own collision, and every drawn surface with nothing solid behind it. The check for collision a person edits by hand -- every way of getting that wrong is invisible in a 3D tool and in the game until somebody walks into it |
 | a recipe's `"collision": { "source": "x.obj" }` | what stops a player, read from a Wavefront OBJ instead of derived from the level, **replacing** it. `tools/collision-to-obj.py --group terrain` writes the file to start from; a material named `<terrain>[_attribute...]` (`sand`, `lava_damaging`, `metal_nobeams`) carries everything the format holds per face, and winding is what says which side blocks. What it is for: a converted level's collision includes every face nobody can reach -- a quarter of df_dust2's collision area -- and no importer can tell which of those are wanted. `.claude/mapgen/MAP-PIPELINE.md` |
-| `MphRead -mapgen ["NAME"]` | generate the room binaries for the custom maps in `maps/` (recursively: a map may sit in a folder of its own with its level and textures beside it, or be a single `.fpmap` bundle), from the player's own textures. `-mapmaterials "ROOM"` prints what textures a room can lend. A map is a JSON file; the `.bin` it produces is never committed. `.claude/mapgen/MAP-PIPELINE.md` |
-| `MphRead -mapbundle ["NAME"] [-mapdir DIR]` | cook a map into the one file it ships and is handed out as: recipe, level and baked textures in a `.fpmap`, with the level trimmed to the lumps the importer reads (376 KB for de_dust2, against 2.8 MB for the folder). What the workflow runs before it publishes -- the bundle is not committed, and the `.pk3` it is cooked from never reaches a package. `-mapdir` is resolved against the directory the command was typed in |
+| `MphRead -mapgen ["NAME"]` | generate the room binaries for the custom maps in `maps/` (recursively: a map may sit in a folder of its own with its level and textures beside it, or be a single `.ppmap` bundle), from the player's own textures. `-mapmaterials "ROOM"` prints what textures a room can lend. A map is a JSON file; the `.bin` it produces is never committed. `.claude/mapgen/MAP-PIPELINE.md` |
+| `MphRead -mapbundle ["NAME"] [-mapdir DIR]` | cook a map into the one file it ships and is handed out as: recipe, level and baked textures in a `.ppmap`, with the level trimmed to the lumps the importer reads (376 KB for de_dust2, against 2.8 MB for the folder). What the workflow runs before it publishes -- the bundle is not committed, and the `.pk3` it is cooked from never reaches a package. `-mapdir` is resolved against the directory the command was typed in |
 | `MphRead -gamepad [-seconds N]` | what a connected pad is doing, with no match in the way: its name, its axes, and which game action each button reaches. The only thing that tells "not connected" from "connected but GLFW has no mapping for it" from "the dead zone is eating it" apart. `.claude/GAMEPAD.md` |
 | `MphRead -cel on\|off [-celbands N] [-celedge N]` / `-fog on\|off` / `-prohud on\|off` | render options for every path that never opens a launcher, which is every screenshot command. `.claude/render/CEL-SHADING.md` |
 | `MphRead -fov N` | how wide the view is, 60 to 120 degrees, default **78** -- the DS's own (`NormalFov` 39, doubled). A multiplier on whatever the camera asked for, so a weapon's zoom and every scripted shot keep the proportions they had on the cartridge. For the paths that never open a launcher, like `-cel` and `-fog`: a session that does opens one takes the number from the settings' **Field of view** row instead |
@@ -145,11 +145,11 @@ export ALSOFT_DRIVERS=null PULSE_SERVER=   # else ALSA retries stall frames
 | `MphRead` (no arguments, Windows or macOS) | the front screen. The Windows build is a GUI binary, so double-clicking it opens the launcher with no terminal behind it |
 | `MphRead -menu` | the console menu, for people who typed something |
 | `MphRead -launcher [-console]` | the front screen explicitly; `-console` also gives it a terminal. The same Avalonia screen on Windows, Linux and macOS, or the text one when there is no display. A bare `MphRead` on Linux still opens upstream's `-menu` prompts, unchanged |
-| `FruityPrime -launcher -text` | the text front screen on a machine that has a display. What an SSH session gets anyway |
-| `FruityPrime -update` | check GitHub for a newer release and open its page. Installs nothing; the one command that answers "am I on the latest build" |
-| `FruityPrime -noupdate` | do none of that, on any command that would have |
-| `FruityPrime -server ... -noautoupdate` | keep a dedicated server on the build it was started with. It updates itself otherwise -- see Updating |
-| `FruityPrime -credits` | who this is built on and who forked it, from `Mods/Credits.cs` -- which also holds the ko-fi address the settings' Credits page offers |
+| `ProjectPrime -launcher -text` | the text front screen on a machine that has a display. What an SSH session gets anyway |
+| `ProjectPrime -update` | check GitHub for a newer release and open its page. Installs nothing; the one command that answers "am I on the latest build" |
+| `ProjectPrime -noupdate` | do none of that, on any command that would have |
+| `ProjectPrime -server ... -noautoupdate` | keep a dedicated server on the build it was started with. It updates itself otherwise -- see Updating |
+| `ProjectPrime -credits` | who this is built on and who forked it, from `Mods/Credits.cs` -- which also holds the ko-fi address the settings' Credits page offers |
 | `MphRead -uinativeres` | rasterise the launcher's screens at the window's own resolution however big it is, rather than capping them at 1080p and magnifying. Sharper type above 1080p, and a much slower redraw -- which only shows while something is moving, so it is a straight choice between crisper menus and menus that scroll |
 | `MphRead -fullscreen` / `-windowed` / `-nohelmet` | display choices for the paths that never open a launcher |
 | `MphRead -windowcheck` | the window's memory, both halves, without anybody watching a window: it opens the shell at a saved size nothing else would produce, then proves that closing it would keep the size it has now. The save half runs *as the window closes*, so a scripted run has no way to reach it otherwise -- and the whole feature fails silently, since a window that opens at the default looks exactly like one that was never resized. Writes nothing; the preference is put back before it returns |
@@ -218,14 +218,13 @@ cost more than a frame to draw, redrawn on every frame for as long as anything
 moved. Three changes, and they are independent -- the third is that the wheel
 no longer animates at all, so a notch is one redraw instead of seven:
 
-- **The backdrop is baked** (`Mods/Launcher/Gui/BakedBackdrop.cs`). It was four
-  full-window layers -- the photograph stretched, a gradient, a corner vignette
-  and the wash -- rasterised together on every redraw. They are now rendered
-  once into one bitmap, at the device resolution, re-cut only when the window
-  changes size, and blitted. At 1:1 the result is **byte for byte the same
-  picture**, checked rather than assumed, and it is worth about 1.9x at every
-  size. The wash went into the bake with them, which is why `UiLayout.Page` no
-  longer lays one over the top and `Backdrop` takes a `BackdropWash` instead.
+- **The backdrop is baked where Avalonia owns it** (`BakedBackdrop.cs`), while
+  desktop GL owns the native-resolution cinematic map image. `LauncherBackdrop`
+  supplies one scene/room contract to both. The normal hub no longer uses the old
+  `launcher-bg.jpg` wireframe photograph: it uses locally generated map thumbnails,
+  a graded fallback when none exists, and cached tint/vignette/wash layers. Desktop
+  motion stays below the UI as a cheap GL pan/zoom plus a low-strength noise overlay;
+  Android/headless keep their baked/cached path.
 - **The raster is capped at 1920x1080** and the result is stretched over the
   window by the GL blit, which is linear and free (`UiSurface.Raster`). Nothing
   at or below 1080p is touched at all. Above it the screens are drawn at 1080p
@@ -345,17 +344,19 @@ screen there is.
 
 | Screen | What it does |
 |---|---|
-| Start | the wordmark over Play, Settings, Quit, centred. No heading -- the wordmark is the heading. The build sits under the column, centred, and is the update button when there is one to take. Replaced entirely by the game-files screen while there is nothing to load -- a menu whose entries are all refused is a program that looks broken |
-| Play | one list, and a strip over it saying what the list is: the picture of what is selected sits at the top of the well with the settings about it to its right, and the list runs the full width underneath -- a centred well has no side to hang a column off without stopping being centred, and the picture is the answer to "which map is that", so it is the thing that gets the room. **Online** (the directory's servers, with name, hunter and an address box), **Offline** (maps, with match type, hunter, bots and skill -- and nothing else: the `Where` row that used to sit here, whose second answer had the directory run a *server*, is gone, because a server is not a variant of a match against bots and the one face of Play that is about not being online is the wrong place to make one), **Story** (save slots, hunter, continue or start over), **Clips** (this machine's recordings, plus the system picker last). Choosing is two presses: a click selects the row -- the picture of the map, the details and, for a server, the address box fill in -- and the tick at the foot (**JOIN**, **START**, **WATCH**, or a second click, or Enter) is what commits. Three words, not four: joining somebody else's server is its own act and keeps **JOIN**, while Offline and Story both start a game of your own and both say **START**. The picture is the map on every face that has one, the server browser included -- a server row says which map it is running, and the map is most of what decides whether to join. It was one press, which put players in matches they had only meant to read the ping of. This one screen replaced seven -- host, join, browser, adventure, demos, the map grid and the vote picker. The Online face carries a third mark, **CREATE SERVER**, between BACK and JOIN -- running a server is neither leaving the browser nor joining a row on it, and beside the act it is an alternative to is the one place on this screen it belongs |
-| Settings | three pages, not six. **Game** is display, audio and the match rules -- including **Field of view**, a slider from 60 to 120 degrees defaulting to the DS's own 78, applied as a multiplier on whatever the camera asked for so a zoom or a scripted shot keeps the proportions it had on the cartridge, and applied as it is dragged (cancel puts it back); **Controls** is mouse, pen, touch, pad and keys; **Player** is name, hunter, suit, server addresses, updates, game files, the debugging-log switch and the credits. Reachable from the pause menu during a match, where the backdrop is the scrim alone so the game shows through. **Pro mode HUD** is the whole HUD question in one switch -- no helmet, plain fixed crosshair, weapon list at 170%, fixed weapon, and its own energy, ammo and score readouts in place of the game's; off is the game as the DS drew it. Two rows appear under it while it is on and nowhere else: **Crosshair size** and **Crosshair type**, the type row carrying a live picture of the answer at the chosen size. Cheats, bugfixes, the leftover feature flags and the HUD-readout opacity have **no UI** and no longer load from `settings.json` |
-| Create server | six rows and a warning: **Server name**, **Game type**, **Your hunter**, **Map rotation** (a row that opens every map as a list where a press appends and a second press takes back, numbered `#1 #2 #3` in the order they were pressed -- a rotation is a sequence, which is why it is not a column of tick boxes), **Host on** and **Server type**. Two kinds, and the difference is whose machine runs it. **Hosted** is the default: a directory starts an ordinary `DedicatedServer` on its own box and answers with the port, so there is no router to configure -- and **Host on** opens a page of its own listing **every server the directory names**, each asked on the port the browser already pings it on -- with a ping against the ones that will open a game and a reason against the ones that will not. A server says so in a flags byte on its status reply, and it is the machine that would run the match, so there is nothing in between to ask. The first shape of this asked for a *directory* on each box, which meant deploying one per region that listed nothing and existed purely to be answered -- a component invented to satisfy a layering mistake. There is still exactly one directory in the world: it answers "who is up", and each server answers "can you open me a game". The directory is a candidate too, since it has a port range and will open one. **Dedicated server** runs it here **in its own console window, as its own process that outlives the client** -- quitting to the front screen or closing the game does not end the match anybody else is in. On Windows that means the console binary out of the server package, *not* the game's own exe: `FruityPrime.exe` accepts `-server` but is a GUI binary, so a server started from it has no window, logs nowhere and cannot be closed. Its absence is what the **install** mark at the foot is for, and it is the only case that mark appears in. The router and firewall have to let UDP 27888 in before anybody outside can reach it, which the row says before it is picked. Either way the player is joined without the launcher closing, and a dedicated one is dialled on **127.0.0.1** rather than on this machine's public address -- the loopback is the one address certain to reach a server on this box, and a router that hairpins badly would otherwise look exactly like a server that did not start. `Mods/Launcher/Gui/CreateServerScreen.cs`, `Mods/Network/LocalServer.cs` |
-| Confirm | one sentence, centred, with the two marks directly under it. Quitting, leaving a match, resetting every keybind and wiping a save slot are four consequences and one screen |
-| Pause | the same centred column, over the scrim **in the game window itself** (and the scrim alone -- no wash, or the match it exists to keep visible goes away), with the match still running behind it. No heading and no footer, unlike every other screen: "paused" says what the player has just done with the frozen match behind it saying the same thing, and the match's name names something they are looking straight at -- neither is what anybody pressed Escape to find out. It is and **longer than the rest on purpose**: Resume, Vote map, Spectate/Rejoin, Fullscreen, Record replay, Settings, Leave match, Quit. Voting on a map, going fullscreen, spectating and recording are things you can only want *during* a match, so this is the one screen they can live on -- everything else is short precisely so this can be long. **Vote map** opens Play with the strip taken away, because calling a vote is picking a map |
+| Start | a responsive FPS-style hub with **Play**, **Map Editor**, **Replay Studio**, **Settings** and **Quit**. Map Editor is a deliberate placeholder. Panels use restrained static gradients and contextual game imagery; page entry gets a short fade/lift unless **Reduce menu motion** is enabled. |
+| Replay Studio | `HubReplayStudioView` is a first-class Home destination. It owns the modern library/workspace while playback still uses the deterministic replay engine and in-match replay controls. Mainline replay search, filters, annotations, grid/list state and dedicated replay input bindings remain the source of truth underneath the hub. |
+| Play | `HubPlayView` asks **Multiplayer / Offline / Adventure**. Multiplayer is one `HubMultiplayerView`: live directory in the body, **Quick Play** as one primary action, **Create Lobby**, manual/direct Join, Refresh, selected-map artwork and hunter/suit setup. Offline and Adventure remain hub-native through `OfflineLaunch` and `AdventureLaunch`. |
+| Settings | the front hub opens `HubSettingsView`, a modern **Display / Audio / Controls / Replays / Profile / Credits** category surface. Categories push the current `SettingsView`, so mainline Replay Studio bindings, independent stylus overlay opacity, accessibility, Save/Cancel and live apply behavior remain one implementation. |
+| Create Lobby | opened from the Multiplayer workspace. `CreateServerScreen` keeps hosted-vs-dedicated behavior, host discovery, dedicated-server install/start and map rotation, but the player-facing concept is simply **Create Lobby**. Its Lobby / Map Rotation / Hosting flow uses the same hub shell. |
+| Lobby | the authoritative `LobbyScreen` uses a desktop **Roster / Arena / Match Rules** three-column layout, with owner actions moved into the roster column so the complete rules surface fits without scrolling. Chat stays full-width below; compact windows stack the panels and enable scrolling only there. Mainline rules including **Disable powerups**, opponent-health visibility and ready defaults remain server-authoritative. |
+| Confirm | one question in the hub visual language with safe/default Cancel focus; destructive confirmation is never the initial action. |
+| Pause | `PauseMenuView` uses hub-native actions over the existing scrim, so the real match stays visible. A live online session explicitly says **GAMEPLAY CONTINUES**. Replay Studio, vote, spectate/rejoin, fullscreen, replay recording, settings, leave and quit still raise the same host-owned events. |
 
 The debugging-log switch left the front screen for Settings → Player. It is
 not something anybody came to the launcher for: it is what somebody is asked
 to turn on when they report a crash nobody else can reproduce. Switched on it
-writes `logs/FruityPrime-<when>.log` beside the executable (the app's data
+writes `logs/ProjectPrime-<when>.log` beside the executable (the app's data
 directory on Android) with everything the program prints plus the machine, the
 driver, every model read and the stack of anything that kills it. **Share
 logs** sits under it, only when logs exist, and zips them into the phone's
@@ -553,7 +554,7 @@ no upstream call site changed. Aim is the exception, since a stick is analogue
 -- it goes in at `ApplyModAim`, in the same units and at the same point in the
 frame as the mouse's.
 
-`FruityPrime -gamepad` prints what a pad is doing with no match in the way,
+`ProjectPrime -gamepad` prints what a pad is doing with no match in the way,
 and distinguishes "not connected" from "connected but unmapped". Layout, feel
 (radial dead zone, squared look curve, 3.5 degrees a frame at full stick), the
 four settings, and how to test one with a virtual pad on `uinput`:
@@ -832,8 +833,8 @@ saw.
 Run the current executable directly for durable reproduction:
 
 ```bash
-./FruityPrime -netcheck HOST -port N -name ALPHA -hunter Samus -seconds 150
-./FruityPrime -netcheck HOST -port N -name BRAVO -hunter Sylux -seconds 150
+./ProjectPrime -netcheck HOST -port N -name ALPHA -hunter Samus -seconds 150
+./ProjectPrime -netcheck HOST -port N -name BRAVO -hunter Sylux -seconds 150
 ```
 
 Private/external wrappers such as `run-check.sh` may orchestrate more clients
@@ -897,7 +898,7 @@ split, why only the Windows server is renamed, and the CI runner layout: `.claud
 
 ```bash
 # server and directory (rebuilds ARM64, installs both units, restarts them)
-MPH_SERVER_HOST=net.livetek.fr MPH_SERVER_USER=livetek \
+MPH_SERVER_HOST=51.161.113.128 MPH_SERVER_USER=livetek \
   MPH_SERVER_PASS="$(read -rsp 'pi password: ' p; echo "$p")" ./deploy-server.sh
 # MPH_DEPLOY_MASTER=0 to leave the directory alone
 ```

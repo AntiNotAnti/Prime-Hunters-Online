@@ -647,7 +647,9 @@ namespace MphRead.Mods.Launcher.Gui
             _lastFrame = now;
             if (!_dragging)
             {
-                _spin += dt * 0.7;
+                // A slow showroom turn, not a spinner. The real model uses
+                // its 60 Hz idle clock; this fallback should feel equally calm.
+                _spin += dt * 0.28;
             }
 
             double w = Bounds.Width, h = Bounds.Height;

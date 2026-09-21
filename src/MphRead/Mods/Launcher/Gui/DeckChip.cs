@@ -87,7 +87,7 @@ namespace MphRead.Mods.Launcher.Gui
         {
             return new FormattedText(s, CultureInfo.InvariantCulture,
                 FlowDirection.LeftToRight,
-                new Typeface(GuiTheme.PixelSemi, FontStyle.Normal, FontWeight.Normal),
+                new Typeface(GuiTheme.Interface, FontStyle.Normal, FontWeight.SemiBold),
                 GuiTheme.PixelSize(17), GuiTheme.TextBrush);
         }
 

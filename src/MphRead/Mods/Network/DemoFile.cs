@@ -55,8 +55,8 @@ namespace MphRead.Mods.Network
     /// </summary>
     internal static class DemoFile
     {
-        // "FPDM" -- Fruity Prime DeMo.
-        public static readonly byte[] Magic = { (byte)'F', (byte)'P', (byte)'D', (byte)'M' };
+        // "PPDM" -- Project Prime DeMo.
+        public static readonly byte[] Magic = { (byte)'P', (byte)'P', (byte)'D', (byte)'M' };
         /// <summary>
         /// 2: frame-stamped records over a deflate stream. Version 1 files
         /// are refused rather than read -- their timestamps mean something
@@ -64,7 +64,7 @@ namespace MphRead.Mods.Network
         /// that could read one by accident.
         /// </summary>
         public const byte FormatVersion = 2;
-        public const string Extension = ".fpdemo";
+        public const string Extension = ".ppdemo";
 
         /// <summary>Magic, format version, protocol version. Never compressed: it says how to read the rest.</summary>
         public const int HeaderSize = 4 + 1 + 1;

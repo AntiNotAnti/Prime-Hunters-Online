@@ -84,11 +84,11 @@ pushes publish.
 
 Two Windows executables, one PE header field
 
-`FruityPrime.exe` is `WinExe` (no console; double-clicking opens the
+`ProjectPrime.exe` is `WinExe` (no console; double-clicking opens the
 launcher). That same property makes it useless as a server: cmd/PowerShell do
 not wait for it and its exit code never reaches `%ERRORLEVEL%`.
 `dotnet publish -r win-x64 -p:MphReadServer=true` publishes the same sources
-without the launcher and with a console header, as `FruityPrimeServer.exe`.
+without the launcher and with a console header, as `ProjectPrimeServer.exe`.
 `tools/check-subsystem.sh gui|console <exe>` asserts each one in both
 workflows, since it comes out of a csproj condition nothing else would notice
 changing.
@@ -96,7 +96,7 @@ changing.
 `-p:MphReadServer=true` is published three times: `win-x64-server`,
 `linux-x64-server` and `linux-arm64` (the Pi is server-only; plain x64 server
 covers a VPS/spare desktop). Only the Windows server package is renamed --
-Linux keeps the plain `FruityPrime` name, and the Pi's own
+Linux keeps the plain `ProjectPrime` name, and the Pi's own
 `deploy-server.sh` migrates a systemd unit still pointing at the old name,
 `MphRead`.
 
@@ -169,7 +169,7 @@ fetched and installed rather than pointed at.
   `obj/.../MphRead.Android.AssemblyInfo.cs` against a build with
   `-p:InformationalVersion=1.2.3`.
 - **Only a *tagged release* APK is stamped.** `build.yml`'s android job passes
-  no version, so the `FruityPrime-android` artifact from a push says "a local
+  no version, so the `ProjectPrime-android` artifact from a push says "a local
   build" and that is correct, not a bug: an unstamped build has no way to tell
   whether it is ahead of the published release or behind it, and overwriting a
   developer's own binary with a download is the one failure the updater must
@@ -273,9 +273,9 @@ against the last release's log.
 Make the keystore once:
 
 ```
-keytool -genkeypair -v -keystore fruityprime.jks -alias fruityprime \
+keytool -genkeypair -v -keystore projectprime.jks -alias projectprime \
   -keyalg RSA -keysize 4096 -validity 10000 \
-  -dname "CN=Fruity Prime, O=Fruity Prime, C=FR"
+  -dname "CN=Project Prime, O=Project Prime, C=FR"
 ```
 
 No domain and no certificate authority: an Android signing certificate is

@@ -277,7 +277,7 @@ namespace MphRead.Mods.Launcher.Gui
         /// </summary>
         internal static void TickEndPanel()
         {
-            bool want = Mods.EndScreen.Available && _menu == null;
+            bool want = Mods.EndScreen.PanelAvailable && _menu == null;
             if (want && !EndPanelUp)
             {
                 // Ensure, not Current: a session that went straight into a
@@ -686,7 +686,7 @@ namespace MphRead.Mods.Launcher.Gui
             // picking a map is two presses now -- one to select the row, one
             // on the tick -- and the picture after the first of them has to be
             // the play screen and not a match.
-            _ => { ClickIfReady(c => c is DeckButton button && button.Text == "PLAY"); Wait(20); },
+            _ => { ClickIfReady(c => FrontAction(c, "PLAY")); Wait(20); },
             // A server that answered, and the drawer it opens beside the list.
             // The browser is the one face where the picture after the click is
             // not the same screen plus a highlight.
@@ -760,7 +760,7 @@ namespace MphRead.Mods.Launcher.Gui
             // The settings, in a match and in the smallest window the
             // sequence uses: the page that has to fit is this one, and the
             // in-game screens are drawn larger than the launcher's.
-            w => { Shot(w, "shell-pause"); Click(c => c is DeckButton button && button.Text == "Settings"); Wait(20); },
+            w => { Shot(w, "shell-pause"); Click(c => FrontAction(c, "SETTINGS")); Wait(20); },
             w => { Shot(w, "shell-settings-ingame"); Escape(); Wait(15); },
             // The match *ending*, in fullscreen, rather than being left: a
             // different path out (the engine fades and quits the scene itself)
@@ -808,7 +808,7 @@ namespace MphRead.Mods.Launcher.Gui
         {
             if (GameFiles.Ready)
             {
-                Click(c => c is DeckButton button && button.Text == "SETTINGS");
+                Click(c => FrontAction(c, "SETTINGS"));
                 return;
             }
             // The setup screen's tick, which is the only thing on it that can
@@ -826,7 +826,7 @@ namespace MphRead.Mods.Launcher.Gui
         {
             if (GameFiles.Ready)
             {
-                Hover(c => c is DeckButton button && button.Text == "SETTINGS");
+                Hover(c => FrontAction(c, "SETTINGS"));
                 return;
             }
             Hover(c => c is UiMark mark && mark.Label == "choose your .nds file");
@@ -838,6 +838,12 @@ namespace MphRead.Mods.Launcher.Gui
         /// row to select and no tick to press, and that is the machine CI is,
         /// not a fault.
         /// </summary>
+        private static bool FrontAction(Control control, string label) =>
+            control is HubNavButton hub
+                && String.Equals(hub.Label, label, StringComparison.OrdinalIgnoreCase)
+            || control is DeckButton deck
+                && String.Equals(deck.Text, label, StringComparison.OrdinalIgnoreCase);
+
         private static void ClickIfReady(Func<Control, bool> match)
         {
             if (GameFiles.Ready)

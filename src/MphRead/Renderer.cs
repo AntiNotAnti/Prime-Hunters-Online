@@ -170,6 +170,10 @@ namespace MphRead
         // map each model's texture ID/palette ID combinations to the bound OpenGL texture ID and "onlyOpaque" boolean
         private int _textureCount = 0;
         private readonly Dictionary<int, TextureMap> _texPalMap = new Dictionary<int, TextureMap>();
+        private readonly HashSet<int> _mipmappedTextures = new();
+        private int _maxTextureAnisotropy = -1;
+        private const int TextureMaxAnisotropyExt = 0x84FE;
+        private const int MaxTextureMaxAnisotropyExt = 0x84FF;
 
         private int _shaderProgramId = 0;
         private int _rttShaderProgramId = 0;
@@ -628,15 +632,46 @@ namespace MphRead
         private bool _depthTextureRefused = false;
         private int _celFrameBuffer = 0;
         private int _celFrameBufferColor = 0;
+        private int _maxRenderTargetSize;
 
         /// <summary>
-        /// The size the 3D scene is actually drawn at, which the resolution
-        /// scale may make smaller than the window. The quad that puts it on
-        /// screen stretches it back, and the HUD is drawn after that at full
-        /// size, so nothing readable is ever scaled.
+        /// The size the 3D scene is actually drawn at. Supersampling may ask
+        /// for a target larger than the window, but never larger than both the
+        /// GPU's maximum texture and renderbuffer dimensions. Aspect ratio is
+        /// preserved when an extreme scale has to be capped.
         /// </summary>
-        public Vector2i RenderSize => new Vector2i(
-            Mods.RenderOptions.Scaled(Size.X), Mods.RenderOptions.Scaled(Size.Y));
+        public Vector2i RenderSize
+        {
+            get
+            {
+                var requested = new Vector2i(
+                    Mods.RenderOptions.Scaled(Size.X), Mods.RenderOptions.Scaled(Size.Y));
+                int limit = MaxRenderTargetSize();
+                if (requested.X <= limit && requested.Y <= limit)
+                {
+                    return requested;
+                }
+                double fit = Math.Min(limit / (double)Math.Max(1, requested.X),
+                    limit / (double)Math.Max(1, requested.Y));
+                return new Vector2i(
+                    Math.Max(1, (int)Math.Floor(requested.X * fit)),
+                    Math.Max(1, (int)Math.Floor(requested.Y * fit)));
+            }
+        }
+
+        private int MaxRenderTargetSize()
+        {
+            if (_maxRenderTargetSize > 0)
+            {
+                return _maxRenderTargetSize;
+            }
+            int texture = GL.GetInteger(GetPName.MaxTextureSize);
+            int renderbuffer = GL.GetInteger(GetPName.MaxRenderbufferSize);
+            int limit = Math.Min(texture > 0 ? texture : Int32.MaxValue,
+                renderbuffer > 0 ? renderbuffer : Int32.MaxValue);
+            _maxRenderTargetSize = limit == Int32.MaxValue ? 4096 : Math.Max(1, limit);
+            return _maxRenderTargetSize;
+        }
 
         private Vector2i _targetSize;
 
@@ -663,12 +698,14 @@ namespace MphRead
                     GL.BindTexture(TextureTarget.Texture2D, _screenTexture);
                     GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgb, target.X, target.Y, 0,
                         PixelFormat.Rgb, PixelType.UnsignedByte, IntPtr.Zero);
-                    // Nearest is the DS look; stretched targets need linear.
-                    bool upscaling = Mods.RenderOptions.ResolutionScale < 100;
+                    // Nearest is the native DS look at exactly 100%. Any scaled
+                    // target needs linear sampling: below 100% it is upscaling,
+                    // above 100% it is the resolve/downsample for supersampling.
+                    bool scaled = Mods.RenderOptions.ResolutionScale != 100;
                     GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter,
-                        (int)(upscaling ? TextureMinFilter.Linear : TextureMinFilter.Nearest));
+                        (int)(scaled ? TextureMinFilter.Linear : TextureMinFilter.Nearest));
                     GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter,
-                        (int)(upscaling ? TextureMagFilter.Linear : TextureMagFilter.Nearest));
+                        (int)(scaled ? TextureMagFilter.Linear : TextureMagFilter.Nearest));
                     GL.BindTexture(TextureTarget.Texture2D, 0);
                     if (_celTexture != 0)
                     {
@@ -829,12 +866,12 @@ namespace MphRead
             GL.BindTexture(TextureTarget.Texture2D, _screenTexture);
             GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgb, renderTarget.X, renderTarget.Y, 0,
                 PixelFormat.Rgb, PixelType.UnsignedByte, IntPtr.Zero);
-            // Nearest at full size, which is what the DS looked like; linear
-            // once the scene is being stretched, where nearest is a mess of
-            // stair-stepped edges rather than a soft picture.
-            bool upscaling = Mods.RenderOptions.ResolutionScale < 100;
-            int minParameter = (int)(upscaling ? TextureMinFilter.Linear : TextureMinFilter.Nearest);
-            int magParameter = (int)(upscaling ? TextureMagFilter.Linear : TextureMagFilter.Nearest);
+            // Native scale keeps the DS's nearest presentation. A non-native
+            // target uses linear sampling both for upscaling and for resolving
+            // supersampling back down to the display.
+            bool scaled = Mods.RenderOptions.ResolutionScale != 100;
+            int minParameter = (int)(scaled ? TextureMinFilter.Linear : TextureMinFilter.Nearest);
+            int magParameter = (int)(scaled ? TextureMagFilter.Linear : TextureMagFilter.Nearest);
             GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, minParameter);
             GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, magParameter);
             GL.BindTexture(TextureTarget.Texture2D, 0);
@@ -1375,6 +1412,10 @@ namespace MphRead
             GL.BindTexture(TextureTarget.Texture2D, _textureCount);
             GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba, texture.Width, texture.Height, 0,
                 PixelFormat.Rgba, PixelType.UnsignedByte, pixels.ToArray());
+            // Mipmaps are generated lazily if/when the player enables them.
+            // The default DS/competitive path therefore pays no extra upload
+            // time or GPU memory simply because the option exists.
+            _mipmappedTextures.Remove(_textureCount);
             GL.BindTexture(TextureTarget.Texture2D, 0);
             _flatColors[_textureCount] = average.Result;
             return onlyOpaque;
@@ -1448,6 +1489,7 @@ namespace MphRead
             GL.BindTexture(TextureTarget.Texture2D, _textureCount);
             GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba, width, height, 0,
                 PixelFormat.Rgba, PixelType.UnsignedByte, data.ToArray());
+            _mipmappedTextures.Remove(_textureCount);
             GL.BindTexture(TextureTarget.Texture2D, 0);
             _flatColors[_textureCount] = AverageOf(data);
             return _textureCount;
@@ -1458,6 +1500,7 @@ namespace MphRead
             GL.BindTexture(TextureTarget.Texture2D, bindingId);
             GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba, width, height, 0,
                 PixelFormat.Rgba, PixelType.UnsignedByte, data.ToArray());
+            _mipmappedTextures.Remove(bindingId);
             GL.BindTexture(TextureTarget.Texture2D, 0);
             // this binding may already have had a different picture in it
             _flatColors[bindingId] = AverageOf(data);
@@ -2876,6 +2919,7 @@ namespace MphRead
                     foreach (KeyValuePair<int, (int BindingId, bool OnlyOpaque)> kvp in map)
                     {
                         GL.DeleteTexture(kvp.Value.BindingId);
+                        _mipmappedTextures.Remove(kvp.Value.BindingId);
                     }
                     _texPalMap.Remove(model.Id);
                 }
@@ -4447,6 +4491,7 @@ namespace MphRead
                 }
             }
             _texPalMap.Clear();
+            _mipmappedTextures.Clear();
             foreach (Model model in Read.CachedModels)
             {
                 foreach (Mesh mesh in model.Meshes)
@@ -5645,15 +5690,62 @@ namespace MphRead
             GL.Uniform1(_shaderLocations.MaterialMode, (int)item.PolygonMode);
         }
 
+        private int MaxTextureAnisotropy()
+        {
+            if (_maxTextureAnisotropy >= 0)
+            {
+                return _maxTextureAnisotropy;
+            }
+            _maxTextureAnisotropy = 1;
+            string extensions = GL.GetString(StringName.Extensions) ?? "";
+            if (!extensions.Contains("GL_EXT_texture_filter_anisotropic", StringComparison.Ordinal)
+                && !extensions.Contains("GL_ARB_texture_filter_anisotropic", StringComparison.Ordinal))
+            {
+                return _maxTextureAnisotropy;
+            }
+            // EXT/ARB use the same constants. Querying through the raw value
+            // also keeps this shared source independent of enum-version drift
+            // between desktop OpenGL and the Android ES wrapper.
+            int max = GL.GetInteger((GetPName)MaxTextureMaxAnisotropyExt);
+            _maxTextureAnisotropy = Math.Clamp(max, 1, 16);
+            return _maxTextureAnisotropy;
+        }
+
+        private void ApplyTextureAnisotropy()
+        {
+            int max = MaxTextureAnisotropy();
+            if (max <= 1)
+            {
+                return;
+            }
+            int wanted = FilteringOn
+                ? Math.Clamp(Mods.RenderOptions.TextureAnisotropy, 1, max)
+                : 1;
+            GL.TexParameter(TextureTarget.Texture2D,
+                (TextureParameterName)TextureMaxAnisotropyExt, wanted);
+        }
+
         private void DoTexture(RenderItem item)
         {
             if (item.HasTexture)
             {
                 GL.BindTexture(TextureTarget.Texture2D, item.TextureBindingId);
-                int minParameter = FilteringOn ? (int)TextureMinFilter.Linear : (int)TextureMinFilter.Nearest;
-                int magParameter = FilteringOn ? (int)TextureMagFilter.Linear : (int)TextureMagFilter.Nearest;
+                bool mipmapped = FilteringOn && Mods.RenderOptions.TextureMipmaps;
+                if (mipmapped && _mipmappedTextures.Add(item.TextureBindingId))
+                {
+                    GL.GenerateMipmap(GenerateMipmapTarget.Texture2D);
+                }
+                int minParameter = !FilteringOn
+                    ? (int)TextureMinFilter.Nearest
+                    : mipmapped
+                        ? (int)TextureMinFilter.LinearMipmapLinear
+                        : (int)TextureMinFilter.Linear;
+                int magParameter = FilteringOn
+                    ? (int)TextureMagFilter.Linear
+                    : (int)TextureMagFilter.Nearest;
                 GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, minParameter);
                 GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, magParameter);
+                ApplyTextureAnisotropy();
                 switch (item.XRepeat)
                 {
                 case RepeatMode.Clamp:

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Exercise the published smoke test with no display, assets, or audio device.
 
-Usage: python3 tools/test-compatibility-smoke.py publish/<rid>/FruityPrime
-Also accepts a framework-dependent FruityPrime.dll (runs it through dotnet).
+Usage: python3 tools/test-compatibility-smoke.py publish/<rid>/ProjectPrime
+Also accepts a framework-dependent ProjectPrime.dll (runs it through dotnet).
 Only the temporary copy is modified, never the supplied build.
 """
 

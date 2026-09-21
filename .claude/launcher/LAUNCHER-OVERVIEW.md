@@ -4,10 +4,12 @@ This file summarises the launcher features and where its code lives.
 
 Basics
 
-`MphRead -launcher` opens a front screen, not a settings dialog: a map picture
-on the left, the things you can do on the right. Everything that is not a
-per-session choice lives in the settings page, which is one of the entries and
-is also what the pause menu opens mid-match.
+`MphRead -launcher` opens a responsive FPS-style command hub inside the game
+window. The home surface exposes **Play, Map Editor, Replay Studio, Settings and Quit**.
+Play opens Multiplayer, Offline and Adventure. Multiplayer is one integrated
+workspace: live server browser in the body, Quick Play as a primary action, and
+Create Lobby for hosting. Map Editor is intentionally a placeholder while the
+editor itself remains out of scope.
 
 The front screen is **drawn inside the game window** -- one window for the
 whole program, matches loaded into it and unloaded again. See
@@ -15,21 +17,26 @@ whole program, matches loaded into it and unloaded again. See
 
 | Entry | What it does |
 |---|---|
-| Adventure | save slot, hunter, continue or start over |
-| Play online | name, hunter, `host` or `host:port`, and a live line saying what that server is running. **Find a server** opens the browser below. |
-| Play offline | map, mode, 0-7 bots and their skill, hunter, and straight into the match. **See every map** opens the picture grid |
-| Host a game | the same choices plus hosting location. Local hosting starts an isolated dedicated-server child process and joins it over loopback; online hosting asks the directory/host pool to start an isolated authoritative server process |
-| Settings | display, audio, controls, match rules, launcher preferences, features, cheats, bugfixes |
-| Game files | where the .nds goes. Shown first, and everything else greyed out, when there is nothing set up yet |
+| Play | opens `HubPlayView`: Multiplayer, hub-native Offline setup or hub-native Adventure saves |
+| Multiplayer | one workspace with live servers, Quick Play, direct Join, Refresh and Create Lobby; selected-server map artwork and hunter/suit setup stay visible in the same screen |
+| Map Editor | placeholder for the future visual custom-map editor |
+| Replay Studio | opens `HubReplayStudioView`: recordings/virtual clips, map and metadata detail, watch/import/rename/favorite/integrity/recovery/export/delete, then the existing in-match Replay Studio editor during playback |
+| Settings | display, audio, controls, player/profile and launcher preferences |
+| Game files | first-run cartridge setup; normal hub actions stay behind it until setup completes |
 
 Key implementation notes
 
 - **One launcher, in Avalonia, on every platform.** Windows, Linux and macOS run
   the same screens; there is no second toolkit and no per-platform launcher any
-  more. `Mods/Launcher/Gui/` is the whole of it.
-- Every control is painted by this code (`GuiTheme`, `MenuEntry`, `ChoiceRow`,
-  `SliderRow`, `KeyRow`, `SplashView`); only the text boxes and scroll bars are
-  stock, under Fluent dark.
+  more. `Mods/Launcher/Gui/` is the whole of it. The home surface is now
+  `HubHomeView`; the existing Play/Lobby/Settings/Replay views remain shared
+  underneath it while the FPS-hub migration proceeds.
+- The FPS shell uses **Inter** for player-facing headings/labels and JetBrains Mono
+  only for technical/status data. The old Pixelify display role is no longer the
+  launcher default.
+- Shared controls are still painted by this code (`GuiTheme`, `ChoiceRow`,
+  `SliderRow`, `KeyRow`, `HubNavButton`); text boxes and scroll bars use the
+  toolkit surface under the same palette.
 - The picture is a map preview out of `thumbnails/`, rendered from the user's own
   files -- no art is shipped. A `splash.png` beside the exe replaces the home
   picture.
@@ -69,15 +76,12 @@ macOS and Android
   The smoke test checks headless startup; it does not prove a visible GLFW
   window, OpenGL gameplay, or Gatekeeper acceptance of an Internet download.
 - **Android** is `src/MphRead.Android/`, a head project compiling the same
-  sources with `ANDROID` defined. It builds the launcher and playable match:
+  sources with `ANDROID` defined. It builds the launcher and a playable match:
   desktop GL calls are redirected to the OpenGL ES compatibility layer and
-  keyboard/mouse input is synthesized from touch/controller input. the engine's desktop GL is redirected to OpenGL ES 3.0 by a single
-  using alias pointing `GL` at `Mods/Render/GlEs.cs`, and the keyboard and
-  mouse it reads are synthesised from on-screen controls, so no call site in
-  the renderer or the input path changed. Full account:
-  `.claude/android/ANDROID-PORT.md`. The launcher and an offline match have been driven on an emulator with extracted
-  game files. Emulator rendering is not a quality reference; real-device touch,
-  driver and presentation behavior remain the important manual checks. See
+  keyboard/mouse input is synthesized from touch/controller input. The launcher
+  and an offline match have been driven on an emulator with extracted game files.
+  Emulator rendering is not a quality reference; real-device touch, driver and
+  presentation behavior remain the important manual checks. See
   `../android/ANDROID-PORT.md` and `../KNOWN-GAPS.md`.
 - The head is still a compile check on shared code: it **stops building** the
   moment that code grows something desktop-only. It already forced out
@@ -86,7 +90,8 @@ macOS and Android
   `GameFiles.Root` for `paths.txt`, and the `ANDROID` guard in `GuiLauncher`
   (Android stands the toolkit up from its activity, with no desktop backend
   to detect).
-- Building Android needs the workload, a JDK 17 and an SDK with the platform required by `net10.0-android36.0` (currently Android API 36):
+- Building Android needs the workload, a JDK 17 and an SDK with the platform
+  required by `net10.0-android36.0` (currently Android API 36):
   ```bash
   export JAVA_HOME=$HOME/jdk17
   dotnet workload install android

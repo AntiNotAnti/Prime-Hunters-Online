@@ -33,7 +33,16 @@ namespace MphRead.Mods.Input
             PointerSample previous = Current;
             Current = sample;
             StylusZone.AspectCorrection = width / (float)Math.Max(height, 1);
-            if (sample.Device != previous.Device || sample.Id != previous.Id)
+            bool identityChanged = sample.Device != previous.Device || sample.Id != previous.Id;
+            // Some pen/tablet drivers rotate WM_POINTER identities while the tip
+            // remains physically down. Treat that as one continuous gesture:
+            // synthesising an up/down edge here re-arms one-shot DS buttons and
+            // turns a single WPN/affinity tap into a weapon-cycling machine gun.
+            // We still discard movement on the identity-change frame below, so
+            // an absolute-device handoff can never inject a camera teleport.
+            bool contactContinues = identityChanged && wasActive && Active && acceptsInput
+                && previous.InContact && sample.InContact;
+            if (identityChanged && !contactContinues)
             {
                 StylusZone.Update(0, 0, false);
             }
@@ -41,7 +50,7 @@ namespace MphRead.Mods.Input
                 Active && acceptsInput && sample.InContact);
             PrimaryDown = acceptsInput && ResolvePrimary(sample.PrimaryDown, independentPrimaryDown,
                 StylusZone.CapturingPrimaryButton || StylusZone.Placing);
-            if (!Active || !acceptsInput || !wasActive || sample.Device != previous.Device || sample.Id != previous.Id)
+            if (!Active || !acceptsInput || !wasActive || identityChanged)
             {
                 _pendingX = _pendingY = 0;
                 return;

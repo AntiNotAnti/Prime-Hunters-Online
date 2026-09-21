@@ -31,6 +31,317 @@ namespace MphRead.Mods.Launcher.Gui
             int clicked = 0; last.Click += (_, _) => clicked++;
             FocusNavigator.Key(last, Avalonia.Input.Key.Enter);
             GamepadChecks.Check(clicked == 1, "controller activates existing UI control");
+
+            // The front door now has two responsive navigation arrangements.
+            // Both carry semantic defaults so controller focus does not depend
+            // on which control happens to be nearest after a resize.
+            var hub = new HubHomeView();
+            window.Width = 960; window.Height = 660; window.Content = hub;
+            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            var desktopPlay = ControllerNav.Find(hub, "hub.desktop.play");
+            GamepadChecks.Check(desktopPlay is { IsEffectivelyVisible: true },
+                "FPS hub exposes desktop Play navigation");
+            FocusNavigator.Ensure(hub);
+            GamepadChecks.Check(desktopPlay!.IsFocused,
+                "FPS hub desktop navigation establishes focus on Play");
+
+            HubDestination? clickedHubDestination = null;
+            hub.NavigateRequested += destination => clickedHubDestination = destination;
+            (string Id, HubDestination Destination)[] desktopActions =
+            {
+                ("hub.desktop.play", HubDestination.Play),
+                ("hub.desktop.map-editor", HubDestination.MapEditor),
+                ("hub.desktop.replay-studio", HubDestination.ReplayStudio),
+                ("hub.desktop.settings", HubDestination.Settings),
+                ("hub.desktop.quit", HubDestination.Quit)
+            };
+            foreach ((string id, HubDestination destination) in desktopActions)
+            {
+                Control action = ControllerNav.Find(hub, id)!;
+                clickedHubDestination = null;
+                Click(window, action);
+                GamepadChecks.Check(clickedHubDestination == destination,
+                    $"FPS hub pointer click activates {destination}");
+            }
+            clickedHubDestination = null;
+            Click(window, desktopPlay, xFraction: 0.9);
+            GamepadChecks.Check(clickedHubDestination == HubDestination.Play,
+                "FPS hub Play accepts clicks across the full card");
+
+            window.Width = 700; window.Height = 480;
+            window.UpdateLayout(); Dispatcher.UIThread.RunJobs(); window.UpdateLayout();
+            var compactPlay = ControllerNav.Find(hub, "hub.compact.play");
+            GamepadChecks.Check(compactPlay is { IsEffectivelyVisible: true }
+                && !desktopPlay.IsEffectivelyVisible,
+                "FPS hub switches to compact controller navigation");
+            FocusNavigator.Ensure(hub);
+            GamepadChecks.Check(compactPlay!.IsFocused,
+                "FPS hub compact navigation restores a semantic default");
+
+            (string Id, HubDestination Destination)[] compactActions =
+            {
+                ("hub.compact.play", HubDestination.Play),
+                ("hub.compact.map-editor", HubDestination.MapEditor),
+                ("hub.compact.replay-studio", HubDestination.ReplayStudio),
+                ("hub.compact.settings", HubDestination.Settings),
+                ("hub.compact.quit", HubDestination.Quit)
+            };
+            foreach ((string id, HubDestination destination) in compactActions)
+            {
+                Control action = ControllerNav.Find(hub, id)!;
+                clickedHubDestination = null;
+                Click(window, action);
+                GamepadChecks.Check(clickedHubDestination == destination,
+                    $"FPS hub compact pointer click activates {destination}");
+            }
+
+            var deployment = new HubPlayView();
+            window.Width = 960; window.Height = 660; window.Content = deployment;
+            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            var multiplayerDeploy = ControllerNav.Find(deployment, "play.multiplayer");
+            GamepadChecks.Check(multiplayerDeploy is { IsEffectivelyVisible: true },
+                "Play exposes Multiplayer");
+            GamepadChecks.Check(LauncherBackdrop.Scene == LauncherBackdropScene.Play,
+                "Play selects the cinematic Play backdrop");
+            FocusNavigator.Ensure(deployment);
+            GamepadChecks.Check(multiplayerDeploy!.IsFocused,
+                "Play defaults controller focus to Multiplayer");
+            FocusNavigator.Move(deployment, UiAction.Right);
+            GamepadChecks.Check(ControllerNav.Find(deployment, "play.offline")!.IsFocused,
+                "Play uses explicit controller neighbours");
+
+            HubPlayDestination? selectedDeployment = null;
+            int deploymentClosed = 0;
+            deployment.Selected += destination => selectedDeployment = destination;
+            deployment.Closed += (_, _) => deploymentClosed++;
+            foreach ((string id, HubPlayDestination destination) in new[]
+            {
+                ("play.multiplayer", HubPlayDestination.Multiplayer),
+                ("play.offline", HubPlayDestination.Offline),
+                ("play.adventure", HubPlayDestination.Adventure)
+            })
+            {
+                selectedDeployment = null;
+                Click(window, ControllerNav.Find(deployment, id)!);
+                GamepadChecks.Check(selectedDeployment == destination,
+                    $"Play pointer click activates {destination}");
+            }
+            Click(window, ControllerNav.Find(deployment, "play.back")!);
+            GamepadChecks.Check(deploymentClosed == 1,
+                "Play Back accepts a pointer click");
+
+            var browserSample = new[]
+            {
+                new ServerBrowserEntry(
+                    new Network.MasterListing
+                    {
+                        Address = "127.0.0.1",
+                        Port = Network.NetConfig.DefaultPort,
+                        ServerName = "Test Arena",
+                        RoomKey = "MP3 PROVING GROUND",
+                        Mode = GameMode.Battle,
+                        Players = 2,
+                        MaxPlayers = 8,
+                        Protocol = Network.NetConfig.ProtocolVersion
+                    },
+                    new Network.ServerStatus
+                    {
+                        Online = true,
+                        RoomKey = "MP3 PROVING GROUND",
+                        ServerName = "Test Arena",
+                        Mode = GameMode.Battle,
+                        Players = 2,
+                        MaxPlayers = 8,
+                        Protocol = Network.NetConfig.ProtocolVersion,
+                        Latency = 31
+                    })
+            };
+            var multiplayer = new HubMultiplayerView(browserSample);
+            int multiplayerClosed = 0, lobbyRequested = 0;
+            multiplayer.Closed += (_, _) => multiplayerClosed++;
+            multiplayer.CreateLobbyRequested += (_, _) => lobbyRequested++;
+            window.Width = 960; window.Height = 660; window.Content = multiplayer;
+            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+
+            var quickMultiplayer = ControllerNav.Find(multiplayer, "multiplayer.quick");
+            var refreshMultiplayer = ControllerNav.Find(multiplayer, "multiplayer.refresh");
+            var joinMultiplayer = ControllerNav.Find(multiplayer, "multiplayer.join");
+            GamepadChecks.Check(quickMultiplayer is { IsEffectivelyVisible: true }
+                && refreshMultiplayer is { IsEffectivelyVisible: true }
+                && joinMultiplayer is { IsEffectivelyVisible: true },
+                "Multiplayer exposes Quick Play, browser refresh and Join");
+
+            FocusNavigator.Ensure(multiplayer);
+            GamepadChecks.Check(quickMultiplayer!.IsFocused,
+                "Multiplayer defaults controller focus to Quick Play");
+
+            Click(window, quickMultiplayer);
+            GamepadChecks.Check(joinMultiplayer!.IsEnabled,
+                "sample Quick Play selects a compatible server without networking");
+            GamepadChecks.Check(
+                LauncherBackdrop.Scene == LauncherBackdropScene.Multiplayer
+                && LauncherBackdrop.RoomKey == "MP3 PROVING GROUND",
+                "Multiplayer backdrop follows the selected server map");
+
+            Click(window, ControllerNav.Find(multiplayer, "multiplayer.create")!);
+            GamepadChecks.Check(lobbyRequested == 1,
+                "Multiplayer Create Lobby accepts a pointer click");
+
+            Click(window, refreshMultiplayer!);
+            Click(window, ControllerNav.Find(multiplayer, "multiplayer.back")!);
+            GamepadChecks.Check(multiplayerClosed == 1,
+                "Multiplayer Back accepts a pointer click");
+
+            var placeholder = new HubPlaceholderView(
+                "MAP EDITOR", "WORKSHOP PLACEHOLDER", "Coming soon.");
+            int placeholderClosed = 0;
+            placeholder.Closed += (_, _) => placeholderClosed++;
+            window.Content = placeholder; window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            Click(window, ControllerNav.Find(placeholder, "placeholder.back")!);
+            GamepadChecks.Check(placeholderClosed == 1,
+                "Map Editor placeholder Back accepts a pointer click");
+
+            var adventure = new HubAdventureView();
+            LaunchPlan? adventurePlan = null;
+            int adventureClosed = 0;
+            adventure.Launched += (_, plan) => adventurePlan = plan;
+            adventure.Closed += (_, _) => adventureClosed++;
+            window.Width = 960; window.Height = 660; window.Content = adventure;
+            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            GamepadChecks.Check(ControllerNav.Find(adventure, "adventure.slot1") is { IsEffectivelyVisible: true },
+                "Adventure exposes save slots");
+            Click(window, ControllerNav.Find(adventure, "adventure.slot2")!);
+            Click(window, ControllerNav.Find(adventure, "adventure.newgame")!);
+            GamepadChecks.Check(adventurePlan is { SaveSlot: 2, NewGame: true },
+                "Adventure pointer flow launches the selected new-game slot");
+            Click(window, ControllerNav.Find(adventure, "adventure.back")!);
+            GamepadChecks.Check(adventureClosed == 1,
+                "Adventure Back accepts a pointer click");
+
+            var offlineSettings = new MenuSettings { RoomKey = "MP3 PROVING GROUND" };
+            var offlineView = new HubOfflineView(offlineSettings,
+                new[] { "MP3 PROVING GROUND" });
+            LaunchPlan? offlinePlan = null;
+            int offlineClosed = 0;
+            offlineView.Launched += (_, plan) => offlinePlan = plan;
+            offlineView.Closed += (_, _) => offlineClosed++;
+            window.Width = 960; window.Height = 660; window.Content = offlineView;
+            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            GamepadChecks.Check(
+                LauncherBackdrop.Scene == LauncherBackdropScene.Offline
+                && LauncherBackdrop.RoomKey == "MP3 PROVING GROUND",
+                "Offline backdrop follows the selected map");
+            Click(window, ControllerNav.Find(offlineView, "offline.start")!);
+            GamepadChecks.Check(offlinePlan is { Kind: LaunchKind.Offline,
+                RoomKey: "MP3 PROVING GROUND" },
+                "Offline Start Match emits the selected local launch plan");
+            Click(window, ControllerNav.Find(offlineView, "offline.back")!);
+            GamepadChecks.Check(offlineClosed == 1,
+                "Offline Back accepts a pointer click");
+
+            var customMatch = new CreateServerScreen(
+                Array.Empty<string>(), discoverHosts: false);
+            int customClosed = 0;
+            customMatch.Closed += (_, _) => customClosed++;
+            window.Width = 960; window.Height = 660; window.Content = customMatch;
+            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            GamepadChecks.Check(ControllerNav.Find(customMatch, "custom.create")
+                is { IsEffectivelyVisible: true },
+                "Custom Match exposes Create Lobby");
+            Click(window, ControllerNav.Find(customMatch, "custom.back")!);
+            GamepadChecks.Check(customClosed == 1,
+                "Custom Match Back accepts a pointer click");
+
+            var rotationPicker = new MapRotationPicker(
+                Array.Empty<string>(), Array.Empty<string>());
+            int rotationCancelled = 0;
+            rotationPicker.Cancelled += (_, _) => rotationCancelled++;
+            window.Content = rotationPicker; window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            Click(window, ControllerNav.Find(rotationPicker, "rotation.back")!);
+            GamepadChecks.Check(rotationCancelled == 1,
+                "Custom Match map rotation Back accepts a pointer click");
+
+            var hostPicker = new HostPicker(new[]
+            {
+                new Network.HostCandidate
+                {
+                    Label = "Test host",
+                    Host = "127.0.0.1",
+                    Port = Network.NetConfig.DefaultPort,
+                    Answered = true,
+                    CanHost = true,
+                    Latency = 1
+                }
+            }, asking: false);
+            int hostCancelled = 0;
+            hostPicker.Cancelled += (_, _) => hostCancelled++;
+            window.Content = hostPicker; window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            Click(window, ControllerNav.Find(hostPicker, "host.back")!);
+            GamepadChecks.Check(hostCancelled == 1,
+                "Custom Match host selection Back accepts a pointer click");
+
+            var replayStudio = new HubReplayStudioView();
+            int replayStudioClosed = 0;
+            replayStudio.Closed += (_, _) => replayStudioClosed++;
+            window.Width = 960; window.Height = 660; window.Content = replayStudio;
+            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            GamepadChecks.Check(ControllerNav.Find(replayStudio, "studio.import")
+                is { IsEffectivelyVisible: true },
+                "Replay Studio exposes Import");
+            GamepadChecks.Check(
+                LauncherBackdrop.Scene == LauncherBackdropScene.ReplayStudio,
+                "Replay Studio selects its cinematic backdrop");
+            Click(window, ControllerNav.Find(replayStudio, "studio.back")!);
+            GamepadChecks.Check(replayStudioClosed == 1,
+                "Replay Studio Back accepts a pointer click");
+
+            var settingsHub = new HubSettingsView();
+            window.Content = settingsHub; window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            var displaySettings = ControllerNav.Find(settingsHub, "settings.display");
+            GamepadChecks.Check(displaySettings is { IsEffectivelyVisible: true },
+                "settings hub exposes Display");
+            GamepadChecks.Check(
+                LauncherBackdrop.Scene == LauncherBackdropScene.Settings,
+                "Settings selects the subdued cinematic backdrop");
+            FocusNavigator.Ensure(settingsHub);
+            GamepadChecks.Check(displaySettings!.IsFocused,
+                "settings hub defaults controller focus to Display");
+
+            string? selectedSettingsSection = null;
+            int settingsClosed = 0;
+            settingsHub.SectionRequested += section => selectedSettingsSection = section;
+            settingsHub.Closed += (_, _) => settingsClosed++;
+            foreach ((string id, string section) in new[]
+            {
+                ("settings.display", "Display"),
+                ("settings.graphics", "Graphics"),
+                ("settings.audio", "Audio"),
+                ("settings.controls", "Controls"),
+                ("settings.replays", "Replays"),
+                ("settings.profile", "Profile"),
+                ("settings.credits", "Credits")
+            })
+            {
+                selectedSettingsSection = null;
+                Click(window, ControllerNav.Find(settingsHub, id)!);
+                GamepadChecks.Check(selectedSettingsSection == section,
+                    $"settings pointer click activates {section}");
+            }
+
+            window.Width = 650; window.Height = 470;
+            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            FocusNavigator.Focus(displaySettings);
+            FocusNavigator.Move(settingsHub, UiAction.Down);
+            GamepadChecks.Check(ControllerNav.Find(settingsHub, "settings.audio")!.IsFocused,
+                "short-wide settings navigation follows its two-column visual order");
+
+            Click(window, ControllerNav.Find(settingsHub, "settings.back")!);
+            GamepadChecks.Check(settingsClosed == 1,
+                "settings Back accepts a pointer click");
+
+            panel = new StackPanel();
+            window.Width = 600; window.Height = 400; window.Content = panel;
+            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
             var choice = new ChoiceRow("Option", new[] { "One", "Two" }, 0);
             panel.Children.Add(choice); window.UpdateLayout(); FocusNavigator.Focus(choice);
             FocusNavigator.Key(choice, Avalonia.Input.Key.Right);
@@ -51,6 +362,10 @@ namespace MphRead.Mods.Launcher.Gui
             GamepadChecks.Check(answer == false, "controller Back dismisses confirmation");
             var settings = new SettingsView(new MenuSettings());
             window.Width = 960; window.Height = 660; window.Content = settings;
+            settings.ShowSection("Graphics"); window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            var graphicsNav = ControllerNav.Find(settings, "settings.detail.graphics") as HubNavButton;
+            GamepadChecks.Check(graphicsNav is { IsEffectivelyVisible: true, Selected: true },
+                "modern settings detail rail selects Graphics");
             settings.ShowSection("Controls", 1); window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
             var rows = settings.GetVisualDescendants().OfType<PadRow>()
                 .Where(row => row.IsEffectivelyVisible).ToArray();
@@ -108,7 +423,8 @@ namespace MphRead.Mods.Launcher.Gui
                 State = Network.VoteStatePacket.StateRunning, RoomKey = "test", Proposer = "Player", Seconds = 30
             });
             pause.RefreshVote(); window.UpdateLayout();
-            var vote = pause.GetVisualDescendants().OfType<DeckButton>().First(w => w.Text == "Accept map vote");
+            var vote = pause.GetVisualDescendants().OfType<HubNavButton>()
+                .First(w => w.Label == "ACCEPT MAP VOTE");
             FocusNavigator.Focus(vote);
             GamepadChecks.Check(vote.IsVisible && vote.IsFocused, "active map vote can be reached with controller focus");
             Network.MapVote.Reset(); pause.RefreshVote(); window.UpdateLayout();
@@ -162,6 +478,20 @@ namespace MphRead.Mods.Launcher.Gui
             GamepadManager.RemoveDevice("ui-test"); binding.Check();
             GamepadChecks.Check(!GamepadContexts.Capturing, "disconnect exits binding capture");
             window.Close();
+        }
+
+        private static void Click(Window window, Control control,
+            double xFraction = 0.5, double yFraction = 0.5)
+        {
+            Point? origin = control.TranslatePoint(new Point(), window);
+            GamepadChecks.Check(origin.HasValue,
+                $"{control.GetType().Name} has a window-space pointer target");
+            Point point = origin!.Value + new Vector(
+                control.Bounds.Width * Math.Clamp(xFraction, 0.05, 0.95),
+                control.Bounds.Height * Math.Clamp(yFraction, 0.05, 0.95));
+            window.MouseMove(point);
+            window.MouseDown(point, Avalonia.Input.MouseButton.Left);
+            window.MouseUp(point, Avalonia.Input.MouseButton.Left);
         }
 
         private static void CheckControllerSettings(Window window, SettingsView settings, string? shots)

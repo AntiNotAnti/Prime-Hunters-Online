@@ -3,7 +3,7 @@ using System.IO;
 using MphRead.Mods.Platform;
 
 string root = Path.Combine(Path.GetTempPath(), "path fixture with spaces");
-string bundle = Path.Combine(root, "Fruity Prime.app", "Contents");
+string bundle = Path.Combine(root, "Project Prime.app", "Contents");
 string executable = Path.Combine(bundle, "MacOS");
 string resources = Path.Combine(bundle, "Resources", "maps");
 var cases = new (string Directory, string Expected)[]

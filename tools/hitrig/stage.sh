@@ -4,7 +4,7 @@
 #   stage.sh [dest]
 #
 # Not a convenience. .NET maps its assemblies into memory, so a rebuild that
-# replaces FruityPrime.dll while a run is in flight takes every client and the
+# replaces ProjectPrime.dll while a run is in flight takes every client and the
 # server down mid-match -- silently, leaving empty logs and a summary that
 # reads as "the scenario produced nothing". Two runs of this rig were lost that
 # way before it existed. A staged copy is what makes "build the next arm while
@@ -14,7 +14,7 @@ set -eu
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BUILD="$ROOT/src/MphRead/bin/Release/net10.0"
 DEST="${1:-$ROOT/tools/hitrig/bin}"
-[ -f "$BUILD/FruityPrime.dll" ] || { echo "no build at $BUILD"; exit 1; }
+[ -f "$BUILD/ProjectPrime.dll" ] || { echo "no build at $BUILD"; exit 1; }
 rm -rf "$DEST"
 mkdir -p "$DEST"
 cp -r "$BUILD"/. "$DEST"/

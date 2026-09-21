@@ -32,6 +32,20 @@ namespace MphRead.Mods
     public static class EndScreen
     {
         /// <summary>
+        /// Post-match hunter/suit changes are intentionally disabled for now.
+        /// The results/map-choice lifecycle remains active; players can change
+        /// their hunter from the lobby before the next match instead.
+        /// </summary>
+        public const bool CharacterChangeEnabled = false;
+
+        /// <summary>
+        /// Whether the themed results side panel has something to show. A
+        /// persistent lobby has no results ballot, so with character changes
+        /// disabled it should leave the scoreboard unobstructed.
+        /// </summary>
+        public static bool PanelAvailable => Available
+            && (CharacterChangeEnabled || !NetSession.PersistentLobby);
+        /// <summary>
         /// Whether the results screen is up and this machine has a player who
         /// could pick something.
         /// </summary>
@@ -263,7 +277,7 @@ namespace MphRead.Mods
         /// <summary>Which suit swatch the pointer is over, or -1.</summary>
         public static int HoveredSuit()
         {
-            if (!Available)
+            if (!CharacterChangeEnabled || !Available)
             {
                 return -1;
             }
@@ -277,8 +291,10 @@ namespace MphRead.Mods
             return -1;
         }
 
-        public static bool HoveredPrev => Available && _hitPrev.Contains(PointerX, PointerY);
-        public static bool HoveredNext => Available && _hitNext.Contains(PointerX, PointerY);
+        public static bool HoveredPrev => CharacterChangeEnabled && Available
+            && _hitPrev.Contains(PointerX, PointerY);
+        public static bool HoveredNext => CharacterChangeEnabled && Available
+            && _hitNext.Contains(PointerX, PointerY);
         // Kept for source compatibility with older result renderers. There is
         // no post-match Ready target anymore.
         public static bool HoveredReady => false;
@@ -298,22 +314,25 @@ namespace MphRead.Mods
             {
                 return false;
             }
-            if (_hitPrev.Contains(PointerX, PointerY))
+            if (CharacterChangeEnabled)
             {
-                Step(-1, 0);
-                return true;
-            }
-            if (_hitNext.Contains(PointerX, PointerY))
-            {
-                Step(1, 0);
-                return true;
-            }
-            for (int i = 0; i < _hitSuits.Length; i++)
-            {
-                if (_hitSuits[i].Contains(PointerX, PointerY))
+                if (_hitPrev.Contains(PointerX, PointerY))
                 {
-                    Choose(Hunter, i);
+                    Step(-1, 0);
                     return true;
+                }
+                if (_hitNext.Contains(PointerX, PointerY))
+                {
+                    Step(1, 0);
+                    return true;
+                }
+                for (int i = 0; i < _hitSuits.Length; i++)
+                {
+                    if (_hitSuits[i].Contains(PointerX, PointerY))
+                    {
+                        Choose(Hunter, i);
+                        return true;
+                    }
                 }
             }
             // The ballot under the picker. Last only because it is the
@@ -339,11 +358,19 @@ namespace MphRead.Mods
             switch (key)
             {
                 case Keys.Left:
-                    Step(-1, 0);
-                    return true;
+                    if (CharacterChangeEnabled)
+                    {
+                        Step(-1, 0);
+                        return true;
+                    }
+                    return false;
                 case Keys.Right:
-                    Step(1, 0);
-                    return true;
+                    if (CharacterChangeEnabled)
+                    {
+                        Step(1, 0);
+                        return true;
+                    }
+                    return false;
                 case Keys.Up:
                     StepList(-1);
                     return true;
@@ -375,8 +402,12 @@ namespace MphRead.Mods
             {
                 switch (action)
                 {
-                    case Input.UiAction.Left: Step(-1, 0); break;
-                    case Input.UiAction.Right: Step(1, 0); break;
+                    case Input.UiAction.Left:
+                        if (CharacterChangeEnabled) Step(-1, 0);
+                        break;
+                    case Input.UiAction.Right:
+                        if (CharacterChangeEnabled) Step(1, 0);
+                        break;
                     case Input.UiAction.Up: StepList(-1); break;
                     case Input.UiAction.Down: StepList(1); break;
                     case Input.UiAction.Accept:
@@ -422,11 +453,18 @@ namespace MphRead.Mods
                 MapPick.Step(by);
                 return;
             }
-            Step(0, by);
+            if (CharacterChangeEnabled)
+            {
+                Step(0, by);
+            }
         }
 
         private static void Step(int hunterBy, int suitBy)
         {
+            if (!CharacterChangeEnabled)
+            {
+                return;
+            }
             int hunter = (int)Launcher.Hunters.Resolve(Hunter);
             if (hunterBy != 0)
             {
@@ -451,7 +489,13 @@ namespace MphRead.Mods
         /// asked; what it does not have is the HUD's own hit rectangles, so it
         /// needs a way in that is not "pretend the player clicked a swatch".
         /// </summary>
-        public static void Pick(Hunter hunter, int suit) => Choose(hunter, suit);
+        public static void Pick(Hunter hunter, int suit)
+        {
+            if (CharacterChangeEnabled)
+            {
+                Choose(hunter, suit);
+            }
+        }
 
         private static void Choose(Hunter hunter, int suit)
         {

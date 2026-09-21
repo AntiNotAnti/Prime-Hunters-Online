@@ -290,7 +290,7 @@ namespace MphRead.Mods.Launcher.Gui
         }
 
         public PlayScreen(MenuSettings settings, IReadOnlyList<string> rooms,
-            Face face = Face.Online, bool overGame = false)
+            Face face = Face.Online, bool overGame = false, bool singleFace = false)
         {
             _settings = settings;
             _rooms = new List<string>(rooms);
@@ -425,14 +425,19 @@ namespace MphRead.Mods.Launcher.Gui
             // is whatever the list is currently about. Nothing picked, and it
             // creates; a row picked, and it joins that row.
 
-            if (face != Face.Vote)
+            if (face != Face.Vote && !singleFace)
             {
                 _tabs = new UiTabs(new[] { "Online", "Offline", "Story", "Replays" },
                     (int)face);
                 _tabs.Changed += (_, _) => Rebuild();
             }
+            string heading = face == Face.Vote ? "vote"
+                : singleFace && face == Face.Clips ? "replay studio"
+                : singleFace && face == Face.Offline ? "offline"
+                : singleFace && face == Face.Story ? "adventure"
+                : "play";
             Panel page = UiLayout.Page(overGame, UiLayout.WellPlay,
-                face == Face.Vote ? "vote" : "play", _tabs, body, _back, _go,
+                heading, _tabs, body, _back, _go,
                 extra: _createLobby, note: _note);
             // Over the sheet, not inside the panel: the reference's `.side` is
             // a sibling of the sheet and slides in past its right edge, which
@@ -1373,41 +1378,25 @@ namespace MphRead.Mods.Launcher.Gui
             string name = _name != null && _name.Value.Trim().Length > 0
                 ? _name.Value.Trim() : PlayerName();
             var hunter = (Hunter)Enum.Parse(typeof(Hunter), _hunter!.Value);
+            int suit = _suit?.Index ?? LauncherPrefs.LastColor;
             StopPolling();
             _go.IsEnabled = false;
             _go.Label = "joining";
             _note.Text = $"Connecting to {host}:{port}...";
             _note.Foreground = GuiTheme.TextDimBrush;
 
-            LauncherPrefs.PlayerName = name;
-            LauncherPrefs.LastHunter = hunter;
-            LauncherPrefs.ServerAddress = host;
-            LauncherPrefs.ServerPort = port;
-            LauncherPrefs.LastKind = (int)LaunchKind.Online;
-            LauncherPrefs.Save();
-
-            // Joining blocks for up to eight seconds while it retries; on the
-            // UI thread that is eight seconds of a screen that does not redraw.
-            bool joined = await Task.Run(() => NetLaunch.Connect(host, port, name, hunter));
+            OnlineJoinResult result = await ServerBrowserService.JoinAsync(
+                host, port, name, hunter, suit);
             _go.IsEnabled = true;
             _go.Label = "join";
-            if (!joined)
+            if (!result.Joined)
             {
-                NetSession.Stop();
-                _note.Text = NetLaunch.LastJoinError;
+                _note.Text = result.Error;
                 _note.Foreground = GuiTheme.BadBrush;
                 StartPolling();
                 return;
             }
-            Finish(new LaunchPlan
-            {
-                Kind = LaunchKind.Online,
-                Hunter = hunter,
-                PlayerName = name,
-                RoomKey = "",
-                Mode = GameMode.Battle,
-                Port = port
-            });
+            Finish(result.Plan);
         }
 
         // ------------------------------------------------------------- offline
@@ -1544,23 +1533,8 @@ namespace MphRead.Mods.Launcher.Gui
             }
             GameMode mode = _modes[_mode!.Index].Mode;
             var hunter = (Hunter)Enum.Parse(typeof(Hunter), _hunter!.Value);
-            _settings.RoomKey = roomKey;
-            LauncherPrefs.LastHunter = hunter;
-            LauncherPrefs.LastColor = _suit?.Index ?? LauncherPrefs.LastColor;
-            LauncherPrefs.Bots = _bots!.Index;
-            LauncherPrefs.BotLevel = _skill!.Index;
-            LauncherPrefs.LastKind = (int)LaunchKind.Offline;
-            LauncherPrefs.Save();
-            Finish(new LaunchPlan
-            {
-                Kind = LaunchKind.Offline,
-                Hunter = hunter,
-                PlayerName = LauncherPrefs.PlayerName,
-                RoomKey = roomKey,
-                Mode = mode,
-                Bots = _bots.Index,
-                BotLevel = _skill.Index
-            });
+            Finish(OfflineLaunch.Create(_settings, roomKey, mode, hunter,
+                _suit?.Index ?? LauncherPrefs.LastColor, _bots!.Index, _skill!.Index));
         }
 
         private string? SelectedRoom()
@@ -1660,18 +1634,7 @@ namespace MphRead.Mods.Launcher.Gui
             bool used = AdventureSave.Read(slot).Used;
             bool newGame = !used || _resume!.Value == "New game";
             var hunter = (Hunter)Enum.Parse(typeof(Hunter), _hunter!.Value);
-            LauncherPrefs.LastHunter = hunter;
-            LauncherPrefs.LastKind = (int)LaunchKind.Adventure;
-            LauncherPrefs.Save();
-            Finish(new LaunchPlan
-            {
-                Kind = LaunchKind.Adventure,
-                Hunter = hunter,
-                PlayerName = LauncherPrefs.PlayerName,
-                RoomKey = "",
-                SaveSlot = slot,
-                NewGame = newGame
-            });
+            Finish(AdventureLaunch.Create(slot, newGame, hunter));
         }
 
         // ---------------------------------------------------------------- replay library
@@ -2102,7 +2065,7 @@ namespace MphRead.Mods.Launcher.Gui
                     string directory = Path.Combine(DemoLibrary.Directory, "exports");
                     Directory.CreateDirectory(directory);
                     string destination = Path.Combine(directory,
-                        Path.GetFileNameWithoutExtension(path) + $"_{Guid.NewGuid():N}.fpdemo");
+                        Path.GetFileNameWithoutExtension(path) + $"_{Guid.NewGuid():N}.ppdemo");
                     File.Copy(exportSource, destination, overwrite: false);
                     _note.Text = "Exported to " + destination;
                 }
@@ -2115,8 +2078,8 @@ namespace MphRead.Mods.Launcher.Gui
                     var target = await top.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
                     {
                         Title = "Export replay",
-                        SuggestedFileName = Path.GetFileNameWithoutExtension(path) + ".fpdemo",
-                        DefaultExtension = "fpdemo"
+                        SuggestedFileName = Path.GetFileNameWithoutExtension(path) + ".ppdemo",
+                        DefaultExtension = "ppdemo"
                     });
                     if (target == null) return;
                     if (target.TryGetLocalPath() is string local

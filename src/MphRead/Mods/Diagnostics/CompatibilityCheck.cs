@@ -69,11 +69,11 @@ namespace MphRead.Mods.Diagnostics
             });
             Check("launcher resources", () =>
             {
-                foreach (string resource in new[] { "fruity-prime-logo.png", "fruity-prime-mark.png",
+                foreach (string resource in new[] { "project-prime-mark.png",
                     "Fonts/heyNovember.ttf", "Fonts/Roboto-Bold.ttf", "Backgrounds/launcher-bg.jpg" })
                 {
                     using Stream stream = Avalonia.Platform.AssetLoader.Open(
-                        new Uri($"avares://FruityPrime/Assets/{resource}"));
+                        new Uri($"avares://ProjectPrime/Assets/{resource}"));
                     if (stream.ReadByte() < 0)
                     {
                         throw new InvalidDataException($"Empty launcher resource: {resource}");
@@ -127,7 +127,7 @@ namespace MphRead.Mods.Diagnostics
             {
                 string maps = MapGen.CustomRooms.MapDirectory;
                 if (!Directory.Exists(maps) || !Directory.EnumerateFiles(maps, "*", SearchOption.AllDirectories)
-                    .Any(path => Path.GetExtension(path) is ".fpmap" or ".json"))
+                    .Any(path => Path.GetExtension(path) is ".ppmap" or ".json"))
                 {
                     throw new DirectoryNotFoundException($"No bundled maps found in {maps}");
                 }

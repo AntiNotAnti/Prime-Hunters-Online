@@ -158,6 +158,24 @@ namespace MphRead.Mods.Launcher.Gui
                 new StartScreen(settings, rooms), _phonePortrait);
             yield return ("start-phone-landscape",
                 new StartScreen(settings, rooms), _phoneLandscape);
+            yield return ("hub-home", new HubHomeView(), _windowSize);
+            yield return ("hub-home-phone-portrait", new HubHomeView(), _phonePortrait);
+            yield return ("hub-home-phone-landscape", new HubHomeView(), _phoneLandscape);
+            yield return ("play", new HubPlayView(), _windowSize);
+            yield return ("play-phone-portrait", new HubPlayView(), _phonePortrait);
+            yield return ("play-phone-landscape", new HubPlayView(), _phoneLandscape);
+            yield return ("multiplayer",
+                new HubMultiplayerView(HubBrowserSample()), _windowSize);
+            yield return ("multiplayer-phone-portrait",
+                new HubMultiplayerView(HubBrowserSample()), _phonePortrait);
+            yield return ("multiplayer-phone-landscape",
+                new HubMultiplayerView(HubBrowserSample()), _phoneLandscape);
+            yield return ("map-editor-placeholder",
+                new HubPlaceholderView("MAP EDITOR", "WORKSHOP PLACEHOLDER",
+                    "A visual custom-map editor is planned for this hub."),
+                _windowSize);
+            yield return ("hub-settings", new HubSettingsView(), _windowSize);
+            yield return ("hub-settings-phone-portrait", new HubSettingsView(), _phonePortrait);
             // Every face of the one screen that replaced seven. They share a
             // layout and nothing else -- the list, the settings beside it and
             // the word on the tick are different on each -- so one picture of
@@ -171,12 +189,15 @@ namespace MphRead.Mods.Launcher.Gui
                 new PlayScreen(settings, rooms, PlayScreen.Face.Online), _phonePortrait);
             yield return ("play-online-phone-landscape",
                 new PlayScreen(settings, rooms, PlayScreen.Face.Online), _phoneLandscape);
-            yield return ("play-offline",
-                new PlayScreen(settings, rooms, PlayScreen.Face.Offline), _windowSize);
-            yield return ("play-story",
-                new PlayScreen(settings, rooms, PlayScreen.Face.Story), _windowSize);
-            yield return ("play-clips",
-                new PlayScreen(settings, rooms, PlayScreen.Face.Clips), _windowSize);
+            yield return ("offline", new HubOfflineView(settings, rooms), _windowSize);
+            yield return ("offline-phone-landscape",
+                new HubOfflineView(settings, rooms), _phoneLandscape);
+            yield return ("adventure", new HubAdventureView(), _windowSize);
+            yield return ("adventure-phone-portrait",
+                new HubAdventureView(), _phonePortrait);
+            yield return ("replay-studio", new HubReplayStudioView(), _windowSize);
+            yield return ("replay-studio-phone-landscape",
+                new HubReplayStudioView(), _phoneLandscape);
             yield return ("play-vote",
                 new PlayScreen(settings, rooms, PlayScreen.Face.Vote, overGame: true),
                 _windowSize);
@@ -184,15 +205,24 @@ namespace MphRead.Mods.Launcher.Gui
             // The dedicated one is a separate picture because the rows it
             // hides and the warning it raises are the whole difference between
             // the two, and neither shows on the other.
-            yield return ("create-server", new CreateServerScreen(rooms), _windowSize);
-            var dedicated = new CreateServerScreen(rooms);
+            yield return ("create-lobby",
+                new CreateServerScreen(rooms, discoverHosts: false), _windowSize);
+            yield return ("create-lobby-phone-landscape",
+                new CreateServerScreen(rooms, discoverHosts: false), _phoneLandscape);
+            var dedicated = new CreateServerScreen(rooms, discoverHosts: false);
             dedicated.ShowDedicated();
-            yield return ("create-server-dedicated", dedicated, _windowSize);
-            yield return ("create-server-maps",
+            yield return ("create-lobby-dedicated", dedicated, _windowSize);
+            yield return ("create-lobby-rotation",
                 new MapRotationPicker(rooms, Array.Empty<string>()), _windowSize);
-            yield return ("create-server-hosts", new HostPicker(Fleet(), asking: false),
+            yield return ("create-lobby-hosts", new HostPicker(Fleet(), asking: false),
                 _windowSize);
             yield return ("settings", new SettingsView(settings), _windowSize);
+            var graphics = new SettingsView(settings);
+            graphics.ShowSection("Graphics");
+            yield return ("settings-graphics", graphics, _windowSize);
+            var settingsPhone = new SettingsView(settings);
+            settingsPhone.ShowSection("Graphics");
+            yield return ("settings-graphics-phone", settingsPhone, _phonePortrait);
             var credits = new SettingsView(settings);
             credits.ShowSection("Profile");
             yield return ("settings-player", credits, _windowSize);
@@ -215,7 +245,7 @@ namespace MphRead.Mods.Launcher.Gui
             yield return ("end-panel-hunter", endHunter, _windowSize);
             yield return ("setup", new SetupScreen(), _windowSize);
             yield return ("confirm",
-                new ConfirmScreen($"Quit {Mods.Branding.Name}?"), _windowSize);
+                new ConfirmScreen("Quit Project Prime?"), _windowSize);
             yield return ("pausemenu", new PauseMenuView(offerWindowMode: true), _windowSize);
             // Deliberately shorter than the menu's own content, and shorter
             // than the game window is now allowed to be. The pause menu is
@@ -237,6 +267,36 @@ namespace MphRead.Mods.Launcher.Gui
             yield return ("serverbrowser", ServerList(), _windowSize);
         }
 
+        private static IReadOnlyList<ServerBrowserEntry> HubBrowserSample()
+        {
+            var entries = new List<ServerBrowserEntry>();
+            foreach ((string name, string endpoint, ServerStatus status) in _browser)
+            {
+                string address = endpoint;
+                int port = NetConfig.DefaultPort;
+                int colon = endpoint.LastIndexOf(':');
+                if (colon > 0 && Int32.TryParse(endpoint[(colon + 1)..], out int parsed))
+                {
+                    address = endpoint[..colon];
+                    port = parsed;
+                }
+                entries.Add(new ServerBrowserEntry(
+                    new MasterListing
+                    {
+                        Address = address,
+                        Port = port,
+                        ServerName = name,
+                        RoomKey = status.RoomKey,
+                        Mode = status.Mode,
+                        Players = status.Players,
+                        MaxPlayers = status.MaxPlayers,
+                        Protocol = status.Protocol
+                    },
+                    status));
+            }
+            return entries;
+        }
+
         /// <summary>
         /// The fleet as the host picker draws it, without asking the network:
         /// one that will run a match, one too old to say so, and one with no
@@ -248,11 +308,11 @@ namespace MphRead.Mods.Launcher.Gui
         {
             return new List<HostCandidate>
             {
-                new() { Label = "net.livetek.fr", Host = "net.livetek.fr", Port = 27889,
+                new() { Label = "51.161.113.128", Host = "51.161.113.128", Port = 27889,
                     Answered = true, CanHost = true, Latency = 3 },
-                new() { Label = "Fruity Prime - West Europe", Host = "20.16.135.109",
+                new() { Label = "Project Prime - West Europe", Host = "20.16.135.109",
                     Port = 27889, Answered = true, CanHost = null, Latency = 39 },
-                new() { Label = "Fruity Prime - Japan", Host = "13.78.14.98", Port = 27889,
+                new() { Label = "Project Prime - Japan", Host = "13.78.14.98", Port = 27889,
                     Answered = false, CanHost = null, Latency = -1 }
             };
         }

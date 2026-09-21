@@ -161,7 +161,7 @@ Three things in there are worth keeping in view:
   download was meant to prevent — hence `-noautoupdate` on the child too.
   **On Windows the game exe is not a candidate at all.** It accepts `-server`
   and it is a `WinExe`, so the server it starts has no console: nothing it
-  logs is ever seen and there is no window to close. `FruityPrimeServer.exe`
+  logs is ever seen and there is no window to close. `ProjectPrimeServer.exe`
   is looked for beside the game first and in `<base>/server/` second, and its
   absence is the *only* case where the screen's install mark appears.
   `MphRead -installserver` is that download on its own, for when it is the
@@ -227,7 +227,7 @@ architecture.
 installs both it and the game server's, filling in user/directory, and
 **leaves an existing unit alone** on later deploys — so the two hand-added
 options on the Pi (`-master 127.0.0.1` on the server, `-public
-net.livetek.fr` on the directory) survive a redeploy and aren't in the
+51.161.113.128` on the directory) survive a redeploy and aren't in the
 templates.
 
 Two things had to be true before anything appeared in a list, neither visible
@@ -236,7 +236,7 @@ from the code:
 - **`-public` on the directory.** Right for a server behind a router, exactly
   wrong for a server sharing a box with the directory — that heartbeat
   arrives from `127.0.0.1`, and a list of loopback addresses sends every
-  player to their own machine. `-public net.livetek.fr` tells the
+  player to their own machine. `-public 51.161.113.128` tells the
   directory once what to publish for anything registering from loopback or a
   private range.
 - **UDP 27889 through the firewall**, separately from the game port. `ufw`

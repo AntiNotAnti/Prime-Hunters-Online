@@ -69,6 +69,13 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly UiLayout.BackdropPart _part;
         private Bitmap? _image;
 
+        private void SceneChanged()
+        {
+            _image = null;
+            InvalidateArrange();
+            InvalidateVisual();
+        }
+
         public BakedBackdrop(UiLayout.BackdropWash wash,
             UiLayout.BackdropPart part = UiLayout.BackdropPart.All)
         {
@@ -77,6 +84,18 @@ namespace MphRead.Mods.Launcher.Gui
             // It is the ground, not a control: a click on the backdrop is a
             // click on whatever the screen put over it, or on nothing.
             IsHitTestVisible = false;
+        }
+
+        protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+        {
+            base.OnAttachedToVisualTree(e);
+            LauncherBackdrop.Changed += SceneChanged;
+        }
+
+        protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+        {
+            LauncherBackdrop.Changed -= SceneChanged;
+            base.OnDetachedFromVisualTree(e);
         }
 
         /// <summary>
@@ -104,7 +123,7 @@ namespace MphRead.Mods.Launcher.Gui
         }
 
         private readonly record struct Cut(int Width, int Height,
-            UiLayout.BackdropWash Wash, UiLayout.BackdropPart Part);
+            UiLayout.BackdropWash Wash, UiLayout.BackdropPart Part, string SceneKey);
 
         private static readonly List<KeyValuePair<Cut, RenderTargetBitmap>> _cache = new();
 
@@ -118,7 +137,7 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 return null;
             }
-            var cut = new Cut(width, height, wash, part);
+            var cut = new Cut(width, height, wash, part, LauncherBackdrop.CacheKey);
             for (int i = 0; i < _cache.Count; i++)
             {
                 if (_cache[i].Key == cut)

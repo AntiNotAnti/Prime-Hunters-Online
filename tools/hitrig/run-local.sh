@@ -26,8 +26,8 @@ mkdir -p "$OUT"
 cd "$BUILD" || exit 1
 
 cleanup() {
-  for p in $(pgrep -f "FruityPrime.dll -server -port $PORT" 2>/dev/null); do kill -9 "$p" 2>/dev/null; done
-  for p in $(pgrep -f "FruityPrime.dll -netcheck 127.0.0.1 -port $PORT" 2>/dev/null); do kill -9 "$p" 2>/dev/null; done
+  for p in $(pgrep -f "ProjectPrime.dll -server -port $PORT" 2>/dev/null); do kill -9 "$p" 2>/dev/null; done
+  for p in $(pgrep -f "ProjectPrime.dll -netcheck 127.0.0.1 -port $PORT" 2>/dev/null); do kill -9 "$p" 2>/dev/null; done
 }
 trap cleanup EXIT
 cleanup
@@ -54,7 +54,7 @@ printf '%s | Battle | 15 | 99\n' "$MAP" > maprotation.txt
 # purpose: it is a list of flags, and quoting it would hand the server one
 # argument that happens to contain spaces.
 # shellcheck disable=SC2086
-setsid "$DN" FruityPrime.dll -server -port "$PORT" -players 8 -simulate -nomaster \
+setsid "$DN" ProjectPrime.dll -server -port "$PORT" -players 8 -simulate -nomaster \
     -noautoupdate -maxrewind "$MAXREWIND" ${HITRIG_SERVER_EXTRA:-} \
     -servername "hitrig $LABEL" \
     > "$OUT/server.log" 2>&1 < /dev/null &
@@ -82,7 +82,7 @@ pids=()
 i=0
 for spec in ALPHA:Samus BRAVO:Trace; do
   name="${spec%%:*}"; hunter="${spec##*:}"
-  "$DN" FruityPrime.dll -netcheck 127.0.0.1 -port "$PORT" -name "$name" \
+  "$DN" ProjectPrime.dll -netcheck 127.0.0.1 -port "$PORT" -name "$name" \
       -hunter "$hunter" -seconds "$(( SECS - i * 3 ))" -size 320x180 \
       -hitrig "$MODE" -netlag "$LAG" ${HITRIG_CLIENT_EXTRA:-} \
       > "$OUT/$name.log" 2>&1 &

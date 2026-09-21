@@ -5,26 +5,36 @@ the windows.
 
 One toolkit
 
-The launcher is Avalonia everywhere. It used to be two: a WinForms front screen
-for Windows and an Avalonia one for everything else, over shared logic. That
-split cost a second implementation of every screen, and the two halves were not
-equal -- the settings window, the map grid and the pause menu existed only in
-WinForms, so a Linux player was told to go and use the console menu instead.
-Everything is now in `Mods/Launcher/Gui/`:
+The launcher is Avalonia everywhere and is rendered into the same game window as
+the match on desktop. Android hosts the same shared controls over its GL surface.
+The modern FPS hub is a presentation layer over portable launcher/network state;
+it does not own a second copy of match or lobby truth.
 
 | File | What |
 |---|---|
-| `GuiLauncher.cs` | setup, the launcher-then-match loop, and `Pump` |
-| `HomeWindow.cs` | the front screen and its cards |
-| `SettingsWindow.cs` | the rail of sections and every setting |
-| `MapPickerWindow.cs` | every map at once, as pictures |
-| `PauseMenuWindow.cs` | what Escape shows during a match |
-| `SplashView.cs`, `MenuEntry.cs`, `Rows.cs`, `SliderRow.cs`, `KeyRow.cs`, `ProgressRow.cs`, `UpdateBadge.cs`, `TrackedText.cs`, `GuiTheme.cs` | the painted controls and the palette |
+| `Shell.cs`, `UiSurface.cs` | one-window lifecycle, off-screen UI composition and input |
+| `HubHomeView.cs` | persistent command hub |
+| `HubPlayView.cs`, `HubQuickPlayView.cs` | deployment choices and Quick Play progress |
+| `HubServerBrowserView.cs` | modern public-server presentation |
+| `ServerBrowserService.cs` | renderer-neutral discovery, best-server policy and joining |
+| `LobbyScreen.cs` | authoritative lobby state presented as Roster / Arena / Match Rules |
+| `HubSettingsView.cs`, `SettingsView.cs` | category landing and transactional settings |
+| `PauseMenuView.cs`, `InGameMenu.cs` | in-match menu stack over the live match |
+| `HubTheme.cs`, `HubNavButton.cs`, `GuiTheme.cs` | FPS palette, typography and shared controls |
+
+The old deck controls remain only as transitional building blocks inside dense
+screens that have not yet been structurally replaced. Detailed notes below about
+deck springs/cards document those controls and past performance failures; they
+are not the target visual language for new hub surfaces.
 
 Painting and controls
 
-- The launcher draws its own controls for a consistent dark theme; only the text
-  boxes and scroll bars are stock, under Fluent dark.
+- Player-facing UI text uses **Inter**. JetBrains Mono is limited to technical
+  metadata/status. Pixelify and Hey November are retained legacy assets, not the
+  current display system.
+- New hub surfaces use flat `HubNavButton` controls and cold dark/cyan tokens.
+  Dense legacy controls consume the same palette/type roles while their layouts
+  migrate.
 - **An animation has to invalidate the surface, not just the control.**
   `InvalidateVisual` marks a visual dirty inside Avalonia and says nothing to
   `UiSurface`, which decides whether the screens are rasterised at all: an
@@ -330,26 +340,19 @@ Painting and controls
   `:focus-visible`, for the reason the reference draws one -- a platform
   tooltip arrives late and in the OS's colours, which on a screen of painted
   controls is the one thing from somewhere else.
-- **The front screen's ground moves, and it is GL's.** The reference's
-  `#backdrop` is a canvas of domain-warped value noise -- a 64x64 random grid,
-  smoothstepped bilinear lookups, the field read at coordinates two more
-  lookups of itself have bent, a radial falloff, six window-points to a cell,
-  thirty a second -- laid over the photograph with `mix-blend-mode: overlay`
-  at `opacity: .62`. `Mods/Render/LauncherNoise.cs` is the field and
-  `Shaders.BackdropVertexShader`/`BackdropFragmentShader` is the blend; the
-  photo quad in `LauncherPhoto.Draw` samples both in one pass.
-  Two things decide where it lives. **It has to be a shader**: overlay is
-  multiply where the backdrop is dark and screen where it is light, decided
-  per pixel *by the destination*, and fixed-function blending can do either
-  but cannot choose. **It must not be in the screens' bitmap**: an animated
-  layer there is a full-window Skia rasterisation thirty times a second for
-  ever, which is the cost `BakedBackdrop` exists to avoid. Here it is a 320x180
-  RGB upload and one quad. A driver that will not build the program logs and
-  falls back to the still picture rather than throwing -- on Windows the
-  binary is a GUI one with no console, so a throw here is a program that
-  starts and shows nothing. `LauncherNoise.cs` is in the Android head's
-  exclude list beside `LauncherPhoto.cs`; that head has no desktop GL and
-  keeps the still backdrop.
+- **The player-facing backdrop is cinematic map art, not the old wireframe JPEG.**
+  `LauncherBackdrop` names the current hub scene and room. Desktop
+  `LauncherPhoto` loads the locally generated thumbnail for that room and
+  draws it as a native-resolution GL quad with a very slow pan/zoom; the old
+  `launcher-bg.jpg` is no longer used by the normal hub. The existing
+  `LauncherNoise` overlay remains at a much lower strength for subtle motion.
+  Android/headless use the same room through `MapShot` and `BakedBackdrop`,
+  so no game-derived backdrop is shipped in the repository.
+  Scene changes come from Home/Play/Multiplayer/Offline/Adventure/Replay/
+  Settings/Create Lobby/Lobby, and Multiplayer/Offline/Replay/Lobby update the
+  room when the player selects one. Missing thumbnails fall back to a graded
+  colour field rather than debug geometry. `Reduce menu motion` freezes the
+  GL drift and `Deck.Still` keeps captures deterministic.
 - **An animation that drives itself is capped at 60, input is not.**
   `UiSurface.Invalidate(animation: true)` is what `RequestFrame` raises, and
   `Tick` gives it `AnimGap` (16 ms) rather than `BusyGap` (0). A wheel notch
@@ -442,9 +445,9 @@ One source image, chroma-keyed and cropped into four files under
 
 | File | What | Used by |
 |---|---|---|
-| `fruity-prime-logo.png` | the wordmark, cherry and text together | the game-files card, the Android screen and the README |
-| `fruity-prime-mark.png` | the cherry alone | the window icon |
-| `fruity-prime.ico`, `fruity-prime-server.ico` | ICO frames for Windows | `ApplicationIcon` |
+| `project-prime-logo.png` | the wordmark, cherry and text together | the game-files card, the Android screen and the README |
+| `project-prime-mark.png` | the cherry alone | the window icon |
+| `project-prime.ico`, `project-prime-server.ico` | ICO frames for Windows | `ApplicationIcon` |
 
 Notes on ICOs: 256×256 is the ICO format's ceiling; the source crop carries
 detail up to ~460 px so 256 is a downsample.

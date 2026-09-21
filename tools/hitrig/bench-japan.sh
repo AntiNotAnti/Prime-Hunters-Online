@@ -9,7 +9,7 @@
 # of somebody else's internet, and every extra arm is another quarter of an
 # hour of a line nobody controls drifting underneath the comparison.
 #
-# The authority is /opt/fruityprime-bench on port 27891 -- not 27890, which is
+# The authority is /opt/projectprime-bench on port 27891 -- not 27890, which is
 # the dev server people join, and not 27888, which is production. Restarting it
 # between arms is what zeroes its counters.
 set -u

@@ -3,12 +3,13 @@ using System.IO;
 using System.Reflection;
 using OpenTK.Graphics.OpenGL;
 using ReFuel.Stb;
+using MphRead.Mods.Launcher;
 
 namespace MphRead.Mods.Render
 {
     /// <summary>
-    /// The launcher's photograph, drawn by GL at the window's own resolution
-    /// instead of being rasterised into the screens' texture with them.
+    /// The launcher's cinematic map scene, drawn by GL at the window's own
+    /// resolution instead of being rasterised into the screens' texture with them.
     ///
     /// **Why it moved.** The screens are rasterised by Skia on the CPU and
     /// uploaded as one texture, and that raster is capped at 1920x1080 and
@@ -18,8 +19,9 @@ namespace MphRead.Mods.Render
     /// measurements). The cap is the right trade for type and rows: they are
     /// redrawn whenever anything moves.
     ///
-    /// The photograph is not like that. It never changes, it is the single
-    /// largest thing on the screen, and it was paying the cap for nothing --
+    /// The cinematic scene is not like that. It changes only when the hub
+    /// destination or selected map changes, and otherwise remains the single
+    /// largest thing on the screen. It was paying the cap for nothing --
     /// on a 1440p or 4K display the launcher's backdrop was a 1080p picture
     /// stretched over the window, which is exactly the softness that was
     /// reported after the launcher stopped being a window of its own (it used
@@ -40,7 +42,9 @@ namespace MphRead.Mods.Render
     /// by construction, and the magnification dithers the steps rather than
     /// showing them.
     ///
-    /// Decoded here rather than through Avalonia, for the reason
+    /// The player-facing scene comes from locally generated map thumbnails,
+    /// so no game-derived backdrop is shipped by this repository. It is
+    /// decoded here rather than through Avalonia, for the reason
     /// <see cref="AppIcon"/> gives: this is GL's side of the window, it is
     /// compiled into builds that have no toolkit, and avares:// needs Avalonia
     /// to read. The JPEG therefore travels as a plain embedded resource as
@@ -72,7 +76,8 @@ namespace MphRead.Mods.Render
         private static int _texture;
         private static int _width;
         private static int _height;
-        private static bool _tried;
+        private static string _loadedKey = "";
+        private static long _lastAttemptAt;
 
         /// <summary>
         /// The program that lays <see cref="LauncherNoise"/> over the picture.
@@ -84,7 +89,7 @@ namespace MphRead.Mods.Render
         private static int _photoUniform = -1, _noiseUniform = -1, _strengthUniform = -1;
 
         /// <summary>`#backdrop { opacity: .62 }`.</summary>
-        private const float Strength = 0.62f;
+        private const float Strength = 0.16f;
 
         /// <summary>
         /// Build the overlay program, once, and never again if it will not
@@ -192,10 +197,23 @@ namespace MphRead.Mods.Render
             {
                 u = (float)(window / picture);
             }
-            float u0 = (1 - u) / 2;
-            float u1 = u0 + u;
-            float v0 = (1 - v) / 2;
-            float v1 = v0 + v;
+            // Keep a little image outside the viewport so the scene can
+            // breathe underneath the UI without ever exposing an edge.
+            float zoom = Math.Clamp(LauncherBackdrop.Zoom, 0.84f, 1f);
+            u *= zoom;
+            v *= zoom;
+            float centreU = 0.5f;
+            float centreV = 0.5f;
+            if (!LauncherPrefs.ReduceMotion)
+            {
+                double seconds = Environment.TickCount64 / 1000.0;
+                centreU += (float)Math.Sin(seconds * 0.075) * (1 - u) * 0.20f;
+                centreV += (float)Math.Cos(seconds * 0.052) * (1 - v) * 0.14f;
+            }
+            float u0 = centreU - u / 2;
+            float u1 = centreU + u / 2;
+            float v0 = centreV - v / 2;
+            float v1 = centreV + v / 2;
             // The moving field over the photograph. Both have to be there:
             // no program, or no field yet, and this is the still picture it
             // has always been.
@@ -292,66 +310,54 @@ namespace MphRead.Mods.Render
         /// </summary>
         private static bool Ensure()
         {
-            if (_tried)
+            string key = LauncherBackdrop.CacheKey;
+            bool same = String.Equals(_loadedKey, key, StringComparison.Ordinal);
+            if (same && _texture != 0)
             {
-                return _texture != 0;
+                return true;
             }
-            _tried = true;
+
+            long now = Environment.TickCount64;
+            if (same && now - _lastAttemptAt < 1000)
+            {
+                return false;
+            }
+
+            _loadedKey = key;
+            _lastAttemptAt = now;
+            _texture = 0;
+            _width = _height = 0;
+
+            string room = LauncherBackdrop.RoomKey;
+            if (room.Length == 0)
+            {
+                Mods.DebugLog.Line("ui",
+                    $"cinematic backdrop {LauncherBackdrop.Scene}: graded field");
+                return false;
+            }
+
             try
             {
-                Assembly assembly = typeof(LauncherPhoto).Assembly;
-                string? name = Array.Find(assembly.GetManifestResourceNames(),
-                    n => n.EndsWith("launcher-bg.jpg", StringComparison.OrdinalIgnoreCase));
-                if (name == null)
+                string path = MphRead.Mods.ThumbnailGenerator.PathFor(room);
+                if (!File.Exists(path))
                 {
-                    Mods.DebugLog.Line("ui", "no backdrop resource in this build");
+                    Mods.DebugLog.Line("ui",
+                        $"cinematic backdrop has no thumbnail for {room}");
                     return false;
                 }
-                using Stream? stream = assembly.GetManifestResourceStream(name);
-                if (stream == null)
-                {
-                    return false;
-                }
+
+                using Stream stream = File.OpenRead(path);
                 using StbImage image = StbImage.Load(stream, StbiImageFormat.Rgba);
                 _width = image.Width;
                 _height = image.Height;
-                if (_width <= 0 || _height <= 0)
+                if (_width <= 0 || _height <= 0 || image.ImagePointer == IntPtr.Zero)
                 {
                     return false;
                 }
-                // Read through ImagePointer, and sized by the format that was
-                // *asked* for.
-                //
-                // Not through AsSpan<byte>(), and not by believing
-                // image.Format. stb_image's req_comp guarantees the buffer it
-                // hands back has the four channels this asked for -- the
-                // loader converts -- but ReFuel.Stb goes on reporting Format
-                // as the file's own three for a JPEG, and sizes AsSpan from
-                // that. Reading a four-channel buffer three channels at a time
-                // walks a quarter of a row further off the start of every line
-                // down the picture: it decodes as the right photograph sheared
-                // into four copies of itself under a red, green and blue comb,
-                // and nothing anywhere raises an error. The bytes were always
-                // correct; only their shape was being misreported.
-                //
-                // Straight from the pointer, so nothing is copied at all: GL
-                // reads the decoder's own buffer, and it is freed by the using
-                // above the moment the upload returns.
-                if (image.ImagePointer == IntPtr.Zero)
-                {
-                    Mods.DebugLog.Line("ui", "the backdrop decoded to nothing");
-                    return false;
-                }
+
                 GL.ActiveTexture(TextureUnit.Texture0);
                 _texture = Name;
                 GL.BindTexture(TextureTarget.Texture2D, _texture);
-                // Every piece of unpack state, said out loud, and not just
-                // the alignment. These are context-wide and whatever ran last
-                // owns them -- the thumbnail sweeps and the screen capture
-                // both read and write rectangles that are not this texture's
-                // shape -- and a ROW_LENGTH left behind by one of them would
-                // start each row of this upload somewhere other than where the
-                // row is.
                 GL.PixelStore(PixelStoreParameter.UnpackAlignment, 4);
                 GL.PixelStore(PixelStoreParameter.UnpackRowLength, 0);
                 GL.PixelStore(PixelStoreParameter.UnpackSkipPixels, 0);
@@ -363,52 +369,42 @@ namespace MphRead.Mods.Render
                 GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba,
                     _width, _height, 0, PixelFormat.Rgba, PixelType.UnsignedByte,
                     image.ImagePointer);
+
                 ErrorCode uploaded = GL.GetError();
                 if (uploaded != ErrorCode.NoError)
                 {
-                    Mods.DebugLog.Line("ui", $"backdrop upload said {uploaded}");
+                    Mods.DebugLog.Line("ui",
+                        $"cinematic backdrop upload said {uploaded}");
                 }
-                // One level, and the sampler told so.
-                //
-                // A mipmapped chain is the textbook answer for a picture
-                // reduced to fit, and it was tried: glGenerateMipmap raised no
-                // error and the levels under the top one came back as noise on
-                // Mesa's software rasteriser, which is what a window narrower
-                // than the photograph then sampled -- a dim, desaturated,
-                // speckled version of the right picture. A backdrop is not
-                // worth a driver-dependent chain: TEXTURE_MAX_LEVEL pins
-                // sampling to the level that was actually uploaded, so a
-                // filter that asks for another one cannot find garbage there.
-                //
-                // What that gives up is small. The quad is drawn at the
-                // window's size, and a window is nearly always *larger* than
-                // the 1732-across picture -- magnification, where a mip chain
-                // does nothing at all. The one case it would have helped is a
-                // window narrower than that, and the worst of those is the
-                // 1024 size floor: a reduction of a third, which linear
-                // filtering handles without anything anybody would point at.
-                GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureBaseLevel, 0);
-                GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMaxLevel, 0);
-                GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter,
+
+                GL.TexParameter(TextureTarget.Texture2D,
+                    TextureParameterName.TextureBaseLevel, 0);
+                GL.TexParameter(TextureTarget.Texture2D,
+                    TextureParameterName.TextureMaxLevel, 0);
+                GL.TexParameter(TextureTarget.Texture2D,
+                    TextureParameterName.TextureMinFilter,
                     (int)TextureMinFilter.Linear);
-                GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter,
+                GL.TexParameter(TextureTarget.Texture2D,
+                    TextureParameterName.TextureMagFilter,
                     (int)TextureMagFilter.Linear);
-                // Clamped on both axes: the quad samples the middle of the
-                // picture, and a filter tap that ran off the edge of a
-                // repeating texture would put the far side of the photograph
-                // along the border of the window.
-                GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS,
+                GL.TexParameter(TextureTarget.Texture2D,
+                    TextureParameterName.TextureWrapS,
                     (int)TextureWrapMode.ClampToEdge);
-                GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT,
+                GL.TexParameter(TextureTarget.Texture2D,
+                    TextureParameterName.TextureWrapT,
                     (int)TextureWrapMode.ClampToEdge);
                 GL.BindTexture(TextureTarget.Texture2D, 0);
-                Mods.DebugLog.Line("ui", $"launcher backdrop {_width}x{_height}");
+
+                Mods.DebugLog.Line("ui",
+                    $"cinematic backdrop {LauncherBackdrop.Scene}: {room} "
+                    + $"{_width}x{_height}");
                 return true;
             }
             catch (Exception ex)
             {
                 _texture = 0;
-                Mods.DebugLog.Line("ui", $"no launcher backdrop: {ex.Message}");
+                Mods.DebugLog.Line("ui",
+                    $"cinematic backdrop could not load {room}: {ex.Message}");
                 return false;
             }
         }

@@ -23,7 +23,7 @@ mkdir -p "$root/nested"
 # the publish jobs separately run the real launcher's rendered window check.
 printf '#include <stdio.h>\nint main(void) { puts("Launcher window check passed."); puts("GLFW extraction path check passed."); puts("Thumbnail window check passed."); return 0; }\n' > "$temp/main.c"
 printf 'int native_probe(void) { return 42; }\n' > "$temp/native.c"
-clang "$temp/main.c" -o "$root/FruityPrime"
+clang "$temp/main.c" -o "$root/ProjectPrime"
 clang -dynamiclib "$temp/native.c" -o "$root/libopenal.1.dylib"
 clang -dynamiclib "$temp/native.c" -o "$root/nested/extensionless-native"
 "$repo/tools/sign-macos.sh" "$root"
@@ -37,9 +37,9 @@ expect_failure() {
     cat "$temp/failure.log"
 }
 expect_failure "$repo/tools/check-macos-build.sh" "$root" unsupported
-chmod -x "$root/FruityPrime"
+chmod -x "$root/ProjectPrime"
 expect_failure "$repo/tools/check-macos-build.sh" "$root" "$rid"
-chmod +x "$root/FruityPrime"
+chmod +x "$root/ProjectPrime"
 mv "$root/libopenal.1.dylib" "$temp/openal"
 expect_failure "$repo/tools/check-macos-build.sh" "$root" "$rid"
 mv "$temp/openal" "$root/libopenal.1.dylib"
@@ -54,10 +54,10 @@ expect_failure "$repo/tools/check-macos-build.sh" "$root" "$rid"
 # any metadata preserved while replacing an existing code signature.
 clang "$temp/main.c" -o "$root/NoJit"
 codesign --force --sign - "$root/NoJit"
-mv "$root/NoJit" "$root/FruityPrime"
+mv "$root/NoJit" "$root/ProjectPrime"
 expect_failure "$repo/tools/check-macos-build.sh" "$root" "$rid"
 printf '<plist version="1.0"><dict><key>com.apple.security.cs.allow-jit</key><false/></dict></plist>' > "$temp/false.plist"
-codesign --force --sign - --entitlements "$temp/false.plist" "$root/FruityPrime"
+codesign --force --sign - --entitlements "$temp/false.plist" "$root/ProjectPrime"
 expect_failure "$repo/tools/check-macos-build.sh" "$root" "$rid"
 # A compatible universal library must pass, including both signed slices.
 clang -arch "$other" -dynamiclib "$temp/native.c" -o "$temp/other.dylib"
@@ -71,15 +71,15 @@ echo 'macOS signing gate regressions passed.'
 # can sign and launch successfully while its enclosing app cannot be signed.
 fixture="$temp/package-input"
 mkdir -p "$fixture/maps"
-cp "$root/FruityPrime" "$root/libopenal.1.dylib" "$fixture/"
+cp "$root/ProjectPrime" "$root/libopenal.1.dylib" "$fixture/"
 # Synthetic data keeps the packaging gate independent of controller feature branches.
 printf '# Controller mapping packaging fixture\n' > "$fixture/gamecontrollerdb.txt"
 printf 'Controller mapping license fixture\n' > "$fixture/gamecontrollerdb.LICENSE"
 printf '{"Name":"PACKAGING TEST"}\n' > "$fixture/maps/fixture.json"
 "$repo/tools/package-macos.sh" "$fixture" "$temp/dist" "$rid" 1.2.3
 mkdir "$temp/unpacked"
-tar -xzf "$temp/dist/FruityPrime-v1.2.3-$rid.tar.gz" -C "$temp/unpacked"
-app="$temp/unpacked/Fruity Prime.app"
+tar -xzf "$temp/dist/ProjectPrime-v1.2.3-$rid.tar.gz" -C "$temp/unpacked"
+app="$temp/unpacked/Project Prime.app"
 [[ -f "$app/Contents/Resources/maps/fixture.json" ]] || exit 1
 [[ ! -e "$app/Contents/MacOS/maps" ]] || exit 1
 for resource in gamecontrollerdb.txt gamecontrollerdb.LICENSE; do

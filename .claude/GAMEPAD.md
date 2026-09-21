@@ -246,7 +246,7 @@ outside a match:
 ## Checking it
 
 ```
-FruityPrime -gamepad [-seconds N]
+ProjectPrime -gamepad [-seconds N]
 ```
 
 Prints the pad's name, every axis as it moves, and **which game action each

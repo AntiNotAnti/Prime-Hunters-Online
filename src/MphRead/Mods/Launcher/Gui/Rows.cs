@@ -465,28 +465,34 @@ namespace MphRead.Mods.Launcher.Gui
             }
         }
 
-        public ButtonToggleRow(string label, bool on = false)
+        public ButtonToggleRow(string label, bool on = false, bool compact = false)
         {
             _on = on;
             ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto");
-            ColumnSpacing = 5;
-            MinHeight = 32;
+            ColumnSpacing = compact ? 4 : 5;
+            MinHeight = compact ? 28 : 32;
 
             var caption = new TextBlock
             {
                 Text = label,
                 FontFamily = GuiTheme.Display,
-                FontSize = 12,
+                FontSize = compact ? 11 : 12,
                 Foreground = GuiTheme.TextDimBrush,
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(4, 0, 8, 0)
+                Margin = new Thickness(4, 0, compact ? 5 : 8, 0)
             };
             Children.Add(caption);
 
             _off = new DeckButton("OFF", Deck.Face.Slate,
-                sizeEms: 0.72, padXEms: 0.62, padYEms: 0.26, lip: 3);
+                sizeEms: compact ? 0.66 : 0.72,
+                padXEms: compact ? 0.48 : 0.62,
+                padYEms: compact ? 0.18 : 0.26,
+                lip: compact ? 2 : 3);
             _onButton = new DeckButton("ON", Deck.Face.Slate,
-                sizeEms: 0.72, padXEms: 0.72, padYEms: 0.26, lip: 3);
+                sizeEms: compact ? 0.66 : 0.72,
+                padXEms: compact ? 0.54 : 0.72,
+                padYEms: compact ? 0.18 : 0.26,
+                lip: compact ? 2 : 3);
             _off.Click += (_, _) => On = false;
             _onButton.Click += (_, _) => On = true;
 

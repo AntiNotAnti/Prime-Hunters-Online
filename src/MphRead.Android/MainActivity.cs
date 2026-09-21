@@ -29,11 +29,11 @@ namespace MphRead.Droid
     /// <see cref="LaunchPlan"/> across a process boundary for no gain.
     /// </summary>
     [Activity(
-        Label = "Fruity Prime",
+        Label = "Project Prime",
         // Must be an AppCompat descendant: Avalonia's activity is an AndroidX
         // AppCompatActivity and throws out of onCreate under anything else.
         // See Resources/values/styles.xml.
-        Theme = "@style/FruityPrime",
+        Theme = "@style/ProjectPrime",
         MainLauncher = true,
         // Landscape, from the icon onwards, and not only for a match.
         //
@@ -923,7 +923,7 @@ namespace MphRead.Droid
                 _endPanelTick = null;
                 return;
             }
-            bool want = MphRead.Mods.EndScreen.Available && !_pauseMenuOpen;
+            bool want = MphRead.Mods.EndScreen.PanelAvailable && !_pauseMenuOpen;
             // The panel going up and down mid-results is what "the 3D model
             // appears and disappears" is: the HUD draws its own picker the
             // moment PanelUp clears. Say which of Available's six clauses moved.
