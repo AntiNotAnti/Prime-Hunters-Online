@@ -525,6 +525,19 @@ namespace MphRead.Mods.Network
             _scratch[1] = (byte)PlayerColors.Clamp(LocalColor);
             name.AsSpan(0, count).CopyTo(_scratch.AsSpan(2));
             _transport.Send(_hostEndPoint, PacketType.Identify, _scratch.AsSpan(0, count + 2));
+#if MPHREAD_AVALONIA
+            // A separate additive packet keeps old Identify/name parsing intact.
+            // Acquisition is asynchronous: the existing identity retry starts
+            // it, then a later pass sends the cached short-lived ticket.
+            if (Launcher.HunterLicenseClient.TryGetCareerTicket(ClientId, out string careerTicket))
+            {
+                int bytes = Math.Min(careerTicket.Length, 768);
+                System.Text.Encoding.ASCII.GetBytes(careerTicket.AsSpan(0, bytes),
+                    _scratch.AsSpan(0, bytes));
+                _transport.Send(_hostEndPoint, PacketType.CareerIdentity,
+                    _scratch.AsSpan(0, bytes));
+            }
+#endif
         }
 
         /// <summary>The hunter this machine plays, announced in Identify.</summary>

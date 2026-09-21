@@ -64,6 +64,7 @@ namespace MphRead.Mods.Network
         MapChunk = 34,      // server -> client, one piece of the .ppmap
         SessionState = 36, LobbyCommand = 37, LobbyCommandResult = 38,
         MatchLoaded = 39, MatchLoadFailed = 40,
+        CareerIdentity = 41, // client -> server, short-lived career attribution ticket
         MapDone = 35,        // client -> server, "I have it and it hashes right"
     }
 

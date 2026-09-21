@@ -389,7 +389,7 @@ namespace MphRead.Mods.Launcher.Gui
                     _ = OpenReplayStudio();
                     break;
                 case HubDestination.HunterLicense:
-                    OpenHunterLicensePlaceholder();
+                    OpenHunterLicense();
                     break;
                 case HubDestination.Settings:
                     _ = OpenSettings();
@@ -544,12 +544,9 @@ namespace MphRead.Mods.Launcher.Gui
             Push(view);
         }
 
-        private void OpenHunterLicensePlaceholder()
+        private void OpenHunterLicense()
         {
-            var view = new HubPlaceholderView(
-                "HUNTER LICENSE",
-                "COMING SOON",
-                "Your Hunter License will bring identity, career stats, match history and progression into one community profile.");
+            var view = new HubHunterLicenseView();
             view.Closed += (_, _) => Pop();
             Push(view);
         }

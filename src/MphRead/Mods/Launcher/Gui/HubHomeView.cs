@@ -163,7 +163,7 @@ namespace MphRead.Mods.Launcher.Gui
                     () => Navigate(HubDestination.MapEditor), accent: HubTheme.Warm),
                 Action("REPLAY STUDIO", "Recordings, clips and cinematic replay tools",
                     () => Navigate(HubDestination.ReplayStudio)),
-                Action("HUNTER LICENSE", "Profile, stats and progression (coming soon)",
+                Action("HUNTER LICENSE", "Profile, career stats, match history and progression",
                     () => Navigate(HubDestination.HunterLicense), accent: HubTheme.Good),
                 Action("SETTINGS", "Video, audio, input and player",
                     () => Navigate(HubDestination.Settings)),
