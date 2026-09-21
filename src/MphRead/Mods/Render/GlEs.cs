@@ -858,7 +858,7 @@ namespace MphRead.Mods.Render
 
         public static void GenerateMipmap(GenerateMipmapTarget target)
         {
-            ES.GL.GenerateMipmap((ES.GenerateMipmapTarget)(int)target);
+            ES.GL.GenerateMipmap((ES.TextureTarget)(int)target);
         }
 
         public static void TexImage2D(TextureTarget target, int level, PixelInternalFormat internalFormat,
