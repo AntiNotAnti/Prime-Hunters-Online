@@ -170,12 +170,13 @@ namespace MphRead.Mods.Network
         /// and the deeper the loss the worse it is. See
         /// <see cref="NetPlayerBridge.ShootPressAge"/>.
         ///
-        /// Off by default and on with <c>-pressage</c>, so the two can be
-        /// measured against each other rather than argued about. It is second
-        /// order next to the ceiling -- it costs nothing on a clean line,
-        /// because on a clean line the age is always zero.
+        /// On by default. A recovered press is objectively older than the
+        /// packet carrying it; ignoring that age resolves the shot against a
+        /// world the shooter did not see. <c>-nopressage</c> remains as the
+        /// A/B control. It costs nothing on a clean line because the age is
+        /// zero there.
         /// </summary>
-        public static bool PressAgeEnabled { get; set; }
+        public static bool PressAgeEnabled { get; set; } = true;
 
         /// <summary>
         /// Shots whose rewind was deepened because their trigger pull had been

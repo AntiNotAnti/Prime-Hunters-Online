@@ -175,8 +175,9 @@ alone never asks for more than 17 frames of rewind and so never reaches the
 400 ms ceiling at all; the Japan server's real distribution is mean 19.6 with
 the worst pinned at exactly 24, which is jitter pushing the tail into it.
 `-netlag 270:60 -netloss 2` reproduces the shape. And without the loss the
-`-pressage` arm has nothing to correct, since a trigger pull is only ever stale
-when the packet that carried it did not arrive.
+`-nopressage` control has nothing to differ on, since a trigger pull is only
+ever stale when the packet that carried it did not arrive. Press-age rewind is
+the default now; `-pressage` remains accepted for older scripts.
 
 ## Reading the table
 

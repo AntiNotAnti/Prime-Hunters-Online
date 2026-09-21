@@ -861,6 +861,19 @@ namespace MphRead.Droid
         }
 
         /// <summary>
+        /// Non-destructive copy of aim movement waiting for the next 60 Hz
+        /// input step. The Android renderer uses it to late-latch the picture
+        /// on display frames where no simulation step was due.
+        /// </summary>
+        public (float X, float Y) PeekAimDelta()
+        {
+            lock (_lock)
+            {
+                return (_aimDeltaX / Density, _aimDeltaY / Density);
+            }
+        }
+
+        /// <summary>
         /// Whether a swipe boost fired since this was last called, and which
         /// way the flick went -- a unit vector in screen terms, X to the
         /// right and Y downwards. Cleared by the call, so a frame that reads

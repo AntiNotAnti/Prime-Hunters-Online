@@ -61,6 +61,10 @@ namespace MphRead.Entities
                 _lifespan = (model.Model.AnimationGroups.Material[0].FrameCount - 1) * 2;
             }
             Transform = data.Transform;
+            // This object came off a free list. Its previous transform belongs
+            // to a different effect lifetime and must never be an interpolation
+            // endpoint for the new one.
+            ModResetDrawState();
             if (data.Type == 0)
             {
                 _scene.SpawnEffect(78, data.Transform.ClearScale()); // iceWave

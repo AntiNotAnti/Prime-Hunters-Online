@@ -1746,6 +1746,10 @@ namespace MphRead.Entities
                 Matrix4 spawnTransform = GetTransformMatrix(beam.Direction, beam.Up);
                 spawnTransform.Row3.Xyz = position;
                 beam.Transform = spawnTransform;
+                // The beam object is pooled. Re-base render history after its
+                // new spawn transform is complete so a nearby reuse cannot
+                // blend from the previous projectile's final frame.
+                beam.ModResetDrawState();
                 if (beam.DrawFuncId == 3)
                 {
                     beam.Flags |= BeamFlags.HasModel;

@@ -167,7 +167,7 @@ else in the log separates them:
 
 | | |
 |---|---|
-| `read` / `buffer` / `newestSnap` | the world this client was **shown**. The playout clock reads a point between two snapshots (`.claude/multiplayer/NETWORK-SMOOTHING.md`); `buffer` climbing means the line is losing datagrams and the client is holding opponents further back to cover it |
+| `read` / `buffer` / `newestSnap` | the world this client was **shown**. The playout clock reads a point between two snapshots (`.claude/multiplayer/NETWORK-SMOOTHING.md`); `buffer` is fractional and follows measured arrival jitter, with temporary extra depth only after a true starvation |
 | `rewound` / `meanRewind` / `ceiling` / `clamped` | the world the authority **resolved against**. `clamped` non-zero is the fault this whole area exists for: those shots were resolved against a world nobody was looking at. Only the machine running the match fills these in |
 | `claims` / `applied` / `dup` / `voidShooter` | what this client **asked for and got** (`NETWORK-HITCLAIMS.md`). `dup` is the healthy majority — the authority found the hit itself; `applied` is a hit it never would have; `voidShooter` is the arbitration saying somebody killed you first |
 | `predicted` / `confirmed` / `denied` | what this client **showed** |

@@ -123,6 +123,31 @@ namespace MphRead
         private Vector3 _priorCameraPos = Vector3.Zero;
         private Vector3 _priorCameraFacing = -Vector3.UnitZ;
         private float _priorCameraFov = MathHelper.DegreesToRadians(78);
+
+        // Mouse/touch movement received after the most recent simulation step.
+        // It is consumed by the next simulation step as normal; until then it
+        // is allowed to move only the rendered camera.
+        private float _lateAimX;
+        private float _lateAimY;
+
+        internal void ModAccumulateLateAim(float x, float y)
+        {
+            _lateAimX += x;
+            _lateAimY += y;
+        }
+
+        internal void ModSetLateAim(float x, float y)
+        {
+            _lateAimX = x;
+            _lateAimY = y;
+        }
+
+        private void ModCommitLateAim()
+        {
+            _lateAimX = 0;
+            _lateAimY = 0;
+        }
+
         public FrustumInfo FrustumInfo { get; } = new FrustumInfo();
 
         private bool _showTextures = true;
@@ -1794,6 +1819,10 @@ namespace MphRead
                 {
                     Mods.Input.GamepadInput.Apply(PlayerEntity.Main);
                 }
+                // Everything accumulated before this step has now entered the
+                // real player aim. Any movement arriving after this point is
+                // presentation-only until the following simulation step.
+                ModCommitLateAim();
                 Mods.Network.NetHooks.AfterInput(this);
                 _room?.UpdateTransition();
             }
@@ -1820,6 +1849,23 @@ namespace MphRead
                 // here is counted in frames. Mods.Network.NetHitClaims.
                 Mods.Network.NetHitClaims.Tick();
                 Mods.Network.NetHooks.AfterSimulation();
+
+                // Capture completed simulation transforms once, after network
+                // reconciliation. Draws between this step and the next may
+                // interpolate these snapshots, but collision and networking
+                // continue to use the live entity transforms.
+                foreach (EntityBase entity in Entities)
+                {
+                    if (entity.Initialized)
+                    {
+                        entity.ModCaptureDrawState();
+                    }
+                }
+                for (int i = 0; i < PlayerEntity.Players.Count; i++)
+                {
+                    PlayerEntity.Players[i].CameraInfo.ModCaptureDrawState();
+                }
+
                 // Ages the predictions the authority has not answered yet and
                 // counts the hit mark down. Outside the network hooks because
                 // the mark is drawn in an offline match too, where there is
@@ -1939,6 +1985,13 @@ namespace MphRead
                 return;
             }
             BeginRenderDiagnostics();
+
+            // Network puppets use the playout clock itself for high-refresh
+            // presentation. Remember the exact sub-frame point drawn here so
+            // the next local input and AckPoint use the same world.
+            Mods.Network.NetSmoothing.PreparePresentation(
+                Mods.Render.FrameTiming.PresentationAlpha);
+
             // The results screen coming up and going away, which the map
             // ballot and the previews on it hang off. In the scene's own draw
             // rather than in the window's frame: every harness client drives
@@ -1989,6 +2042,14 @@ namespace MphRead
             if (ProcessFrame || CameraMode != CameraMode.Player)
             {
                 ModReplayCamera();
+                // Poll once per picture as well as once per game step. Button
+                // edges still belong to BeginFrame at 60 Hz; this refresh is
+                // only so render-time right-stick projection sees the newest
+                // analogue state.
+                if (!Mods.Headless.Active)
+                {
+                    Mods.Input.GamepadDesktop.Poll();
+                }
                 TransformCamera();
                 UpdateCameraPosition();
             }
@@ -2009,7 +2070,8 @@ namespace MphRead
             _viewModelPerspectiveMatrix = GetPerspectiveMatrix(_viewModelFov);
             GL.UniformMatrix4(_shaderLocations.ProjectionMatrix, transpose: false, ref _perspectiveMatrix);
             // update frustum info
-            Vector3 camPos = PlayerEntity.Main.CameraInfo.Position;
+            Vector3 camPos = _cameraMode == CameraMode.Player
+                ? _cameraPosition : PlayerEntity.Main.CameraInfo.Position;
             var camRight = new Vector3(_viewMatrix.Row0.X, _viewMatrix.Row0.Y, -_viewMatrix.Row0.Z);
             var camUp = new Vector3(_viewMatrix.Row1.X, _viewMatrix.Row1.Y, -_viewMatrix.Row1.Z);
             var camFacing = new Vector3(_viewMatrix.Row2.X, _viewMatrix.Row2.Y, -_viewMatrix.Row2.Z);
@@ -2950,9 +3012,30 @@ namespace MphRead
             {
                 if (_cameraMode == CameraMode.Player)
                 {
-                    _viewMatrix = PlayerEntity.Main.CameraInfo.ViewMatrix;
-                    float fov = PlayerEntity.Main.CameraInfo.Fov > 0
-                        ? PlayerEntity.Main.CameraInfo.Fov
+                    PlayerEntity main = PlayerEntity.Main;
+                    CameraInfo camera = main.CameraInfo;
+                    bool interpolatedCamera = Mods.Render.FrameTiming.Active
+                        && (Mods.SpectatorMode.IsSpectating || Mods.Network.DemoPlayback.IsActive);
+                    _viewMatrix = interpolatedCamera
+                        ? camera.ModGetDrawView(Mods.Render.FrameTiming.PresentationAlpha)
+                        : camera.ViewMatrix;
+
+                    if (!interpolatedCamera && !Mods.PauseMenu.Open && !GameState.MenuPause
+                        && !GameState.DialogPause && !Mods.EndScreen.Available)
+                    {
+                        (float padX, float padY) = Mods.Input.GamepadInput.RenderAim(
+                            Mods.Render.FrameTiming.Alpha);
+                        if (_lateAimX != 0 || _lateAimY != 0 || padX != 0 || padY != 0)
+                        {
+                            _viewMatrix = main.ModLateLatchedView(_lateAimX, _lateAimY, padX, padY);
+                        }
+                    }
+
+                    float authoredFov = interpolatedCamera
+                        ? camera.ModGetDrawFov(Mods.Render.FrameTiming.PresentationAlpha)
+                        : camera.Fov;
+                    float fov = authoredFov > 0
+                        ? authoredFov
                         : Mods.RenderOptions.DefaultFov;
                     // Keep the camera-authored projection for first-person
                     // geometry. The player's FOV widens the world, not the arm
@@ -3000,7 +3083,12 @@ namespace MphRead
             }
             else if (_cameraMode == CameraMode.Player)
             {
-                _cameraPosition = PlayerEntity.Main.CameraInfo.Position;
+                CameraInfo camera = PlayerEntity.Main.CameraInfo;
+                bool interpolate = Mods.Render.FrameTiming.Active
+                    && (Mods.SpectatorMode.IsSpectating || Mods.Network.DemoPlayback.IsActive);
+                _cameraPosition = interpolate
+                    ? camera.ModGetDrawPosition(Mods.Render.FrameTiming.PresentationAlpha)
+                    : camera.Position;
             }
         }
 
@@ -8063,6 +8151,16 @@ namespace MphRead
                 return;
             }
 #endif
+            // First-person gameplay keeps a copy of unsimulated mouse
+            // movement for the draw pass. The simulation still consumes the
+            // ordinary MouseState delta at 60 Hz, so this cannot alter shots,
+            // intents or movement.
+            if (Scene.CameraMode == CameraMode.Player && !Scene.IsFreeCam
+                && !Mods.Input.PointerInput.StylusMode && !Mods.Input.PointerDevice.Active)
+            {
+                Scene.ModAccumulateLateAim(e.DeltaX, e.DeltaY);
+            }
+
             // Filtered for the same reason the player's aim is: the free
             // camera is reached from a match, with the same pointer.
             (float deltaX, float deltaY) = Scene.IsFreeCam

@@ -298,7 +298,13 @@ namespace MphRead.Mods.Network
                 && NetRoomChange.GameplayReady && SnapshotPositions
                 && NetSession.RemoteStateValid[slot])
             {
+                Vector3 before = player.Position;
                 NetPlayerBridge.RestoreSnapshotPosition(player, NetSession.RemoteStates[slot]);
+                Vector3 current = player.Position;
+                NetTimingDiagnostics.PreInputPuppetCorrection(before, current);
+                NetPlayerBridge.RestoreSnapshotPresentationPosition(player,
+                    NetSession.RemoteStates[slot]);
+                NetTimingDiagnostics.PresentationCorrection(current, player.Position);
             }
             if (player.LoadFlags.TestFlag(LoadFlags.Active) && NetSession.RemoteIntentValid[slot])
             {

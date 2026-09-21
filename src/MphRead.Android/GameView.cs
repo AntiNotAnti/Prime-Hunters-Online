@@ -881,6 +881,21 @@ namespace MphRead.Droid
                 }
                 RequestFrameRate();
                 if (Mods.Network.ReplayController.IsSeeking) return true;
+
+                // A 90/120 Hz phone often draws a picture between two 60 Hz
+                // simulation steps. Preserve the touch delta for gameplay, but
+                // preview it in the camera now so dragging the view responds at
+                // the panel rate rather than waiting for the next game tick.
+                if (!Mods.SpectatorMode.IsSpectating && !GameState.DialogPause
+                    && !GameState.MenuPause && !_controls.IsHeld(TouchAction.WeaponMenu))
+                {
+                    (float X, float Y) lateAim = _controls.PeekAimDelta();
+                    scene.ModSetLateAim(lateAim.X * AimScale, lateAim.Y * AimScale);
+                }
+                else
+                {
+                    scene.ModSetLateAim(0, 0);
+                }
                 scene.OnDrawFrame();
                 if (!scene.OnRenderFrame())
                 {

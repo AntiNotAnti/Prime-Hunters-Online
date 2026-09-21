@@ -220,9 +220,12 @@ namespace MphRead.Mods.Network
             if (NetSmoothing.AckPoint(out uint readFrame, out byte readSub))
             {
                 line.Append($"read={readFrame}+{readSub / 256.0:0.00} ");
-                line.Append($"buffer={NetSmoothing.Delay}f ");
+                line.Append($"buffer={NetSmoothing.Delay:F2}f ");
+                line.Append($"jitter={NetSmoothing.JitterFrames * 1000.0 / 60.0:F1}ms ");
                 line.Append($"newestSnap={NetSession.LastSnapshotFrame} ");
                 line.Append($"starved={NetSmoothing.Starved} snaps={NetSmoothing.Snaps} ");
+                if (NetSession.StatePacketsCoalesced > 0)
+                    line.Append($"coalesced={NetSession.StatePacketsCoalesced} ");
             }
             else
             {

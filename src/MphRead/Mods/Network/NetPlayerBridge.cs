@@ -1041,6 +1041,28 @@ namespace MphRead.Mods.Network
         /// <see cref="NetHooks.SnapshotOwnsPuppets"/> pins to the snapshot,
         /// because that is what it draws and what its ack names.
         /// </summary>
+        /// <summary>
+        /// Put a remote player at the exact sub-frame world most recently
+        /// presented to this client. Called before local input so collision
+        /// tests the same opponent position the shooter actually aimed at.
+        /// </summary>
+        public static void RestoreSnapshotPresentationPosition(PlayerEntity player,
+            in PlayerState state)
+        {
+            if (FrozenInPlace(player))
+            {
+                return;
+            }
+            if (NetSmoothing.SamplePresentation(player.SlotIndex,
+                    out Vector3 presented, out bool presentedAlt)
+                && Sane(presented) && presented != Vector3.Zero)
+            {
+                Move(player, InForm(player, presented, presentedAlt));
+                return;
+            }
+            RestoreSnapshotPosition(player, state);
+        }
+
         public static void RestoreSnapshotPosition(PlayerEntity player, in PlayerState state)
         {
             if (FrozenInPlace(player))

@@ -102,6 +102,7 @@ export ALSOFT_DRIVERS=null PULSE_SERVER=   # else ALSA retries stall frames
 | `MphRead -netcheck HOST -port N -name X -hunter H -seconds N [-shots DIR] [-size WxH]` | a real client driven by a script, which reports what it saw. Exit code 0 = pass. `-spectate [SEC]` makes it stop playing and watch, `-rejoin SEC` puts it back in -- the one player state the tour cannot reach on its own. `-mapvote N` votes on the results screen's map list -- agreeing with whatever is in front, proposing row N when nothing is -- and is **off** unless asked, since a scripted client that votes changes what a real server plays next and the hard-case batch runs against the public one. `-hudshots` opens a real window and photographs *it*, which is the only capture that carries the HUD: a results screen is HUD and nothing else |
 | `MphRead -netlag MS[:JITTER]` / `-netloss PCT` | play, or run any check, over a line this client makes up: `-netlag 200` adds 200 ms to the round trip (half each way), `-netlag 200:40` gives it jitter, `-netloss 5` eats one datagram in twenty. Works against the real server, on any platform, with no proxy and no `sudo` -- and unlike `hard/run-latency.sh`'s netem it can be given to **one** client while the others stay fast, which is the case a player with a bad line actually is. Every report says so when it is on |
 | `MphRead -nounlagged` | resolve shots against the present, the way every build before lag compensation did. The control for measuring it; on by default. `.claude/multiplayer/NETWORK-UNLAGGED.md` |
+| `MphRead -nopressage` | control arm for recovered trigger pulls: by default a Shoot edge recovered from a later packet is rewound by its own age as well as by that packet's ack. This disables the extra age. `.claude/multiplayer/NETWORK-UNLAGGED.md` |
 | `ProjectPrime -nohitprediction` / `-nohitmarker` | disable local outgoing-hit prediction; or disable only the confirmation marker. Prediction is on by default. Remote lethal hits are always held at 1 HP until authority confirmation; `-deathprediction` and `-nodeathprediction` are accepted compatibility no-ops. Self-damage/self-death remains locally predictable. `.claude/multiplayer/NETWORK-PREDICTION.md` |
 | `MphRead -noclaims` | stop a client telling the authority which of its own shots landed. On by default: a hit the authority's own rewind cannot find -- because the rewind hit its ceiling, because the trigger pull was recovered from a press history, or because **the shooter was killed during the round trip and the authority never ran the shot at all** -- is declared, checked against the authority's own history, and either applied or refused with a reason. That last case is the one a player calls unfair rather than laggy, and the rule it is answered by is: a shot counts unless its shooter had already been put down by a hit aimed at a strictly earlier world, and two shots aimed at the same world both count. Every weapon, not just the Imperialist. `.claude/multiplayer/NETWORK-HITCLAIMS.md` |
 | `MphRead -nointerp` / `-relayedpuppets` | draw remote players by snapping them to whichever snapshot arrived last, the way every build before protocol 7 did, instead of reading them off a playout clock held a few frames behind. Interpolation is on by default and is why opponents on a bad line move instead of stuttering; it costs a few frames of extra rewind and gives nothing up in hit registration, because the read point travels in the intent as a sub-frame ack and the authority rewinds to exactly it. `-relayedpuppets` also hands puppet positions back to the owner's relayed intent, which is the full protocol-6 arm. `.claude/multiplayer/NETWORK-SMOOTHING.md` |
@@ -708,16 +709,15 @@ changes here, because nothing about the simulation does.
   Every harness client calls it -- `NetCheckClient`, `MapAudit`, `WeaponDps`,
   `ThumbnailCapture` -- and is therefore untouched by any of this. So is
   Android, which drives the same call.
-- **Every picture is of the newest simulated state, and nothing is blended.**
-  There was an interpolation pass -- entity transforms and the camera blended
-  between their last two simulated states -- and it is **gone**, deliberately
-  and completely. It bought smoother motion between steps and cost visible
-  wrongness on everything that is pooled and reused: a beam projectile or an
-  impact effect taken off the free list starts its new life holding the last
-  one's transform, and a blend against that draws the shot somewhere between
-  where it used to be and where it is. That is the "artifacts de tirs" and the
-  wall impacts landing nowhere. Do not put it back without an answer for entity
-  reuse.
+- **High-refresh presentation interpolates safely; local aim is late-latched.**
+  Above 60 Hz, entity/camera draw state is blended between completed simulation
+  states. The pooling bug that removed the first version is answered at the
+  lifetime boundary now: initialization, respawn, beam spawn and beam-effect
+  reuse all reset their draw history, and teleports re-base instead of blending.
+  The local first-person hunter does not pay that interpolation delay: mouse,
+  touch and the fractional controller-stick remainder can move the rendered
+  view after the last 60 Hz step without changing gameplay state, shots or
+  intents. At 60 Hz the presentation stays on the current simulated state.
 - **The game's speed no longer depends on the machine.** One call for both
   meant a box managing 40 fps played in slow motion; the accumulator pays what
   it owes, measured at 60.000 Hz with a 40 Hz draw rate.

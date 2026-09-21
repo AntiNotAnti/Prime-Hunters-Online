@@ -74,29 +74,25 @@ namespace MphRead.Mods.Network
         /// <summary>Steps that threw. Non-zero is a bug, not a slow machine.</summary>
         public long StepFailures { get; private set; }
 
-        /// <summary>Steps the accumulator gave up on because it fell behind.</summary>
+        /// <summary>Authority deadlines dropped because the server fell too far behind.</summary>
         public long DroppedSteps { get; private set; }
 
-        /// <summary>Times the accumulator was reset rather than paid off.</summary>
+        /// <summary>Times a long stall forced the absolute schedule to re-base.</summary>
         public long Stalls { get; private set; }
 
-        private double _accumulator;
-        private double _lastAdvance = -1;
+        // Absolute wall-clock deadline for the next 60 Hz step. Advancing the
+        // deadline by a fixed period rather than "now + period" prevents loop
+        // jitter from becoming clock drift.
+        private double _nextStepAt = -1;
 
         /// <summary>
         /// Run whatever steps the wall clock says are owed.
         ///
-        /// The same fixed-step accumulator the game window runs
-        /// (<see cref="Render.FrameTiming"/>) and for the same reason: every
-        /// timer in this engine is counted in frames, so the simulation is
-        /// pinned at exactly 60 Hz whatever the machine underneath it is
-        /// doing. A server's loop is driven by arriving packets rather than by
-        /// a display, so it wakes at no fixed rate at all -- which is
-        /// precisely the case an accumulator exists for.
-        ///
-        /// Its own rather than FrameTiming's: that one is a singleton the
-        /// render window owns, and it also measures the *draw* rate, which
-        /// here would be a measurement of nothing.
+        /// The same fixed 60 Hz contract the game window runs, but scheduled
+        /// against absolute wall-clock deadlines rather than from the time the
+        /// previous loop happened to wake. Advancing `nextStepAt` by exactly
+        /// one period prevents scheduler jitter from turning into long-term
+        /// drift while preserving the engine's frame-counted timers.
         /// </summary>
         public void Advance(double now)
         {
@@ -104,39 +100,43 @@ namespace MphRead.Mods.Network
             {
                 return;
             }
-            if (_lastAdvance < 0)
+            if (_nextStepAt < 0)
             {
-                _lastAdvance = now;
+                _nextStepAt = now + Render.FrameTiming.StepSeconds;
                 return;
             }
-            double elapsed = now - _lastAdvance;
-            _lastAdvance = now;
-            if (elapsed > StallSeconds)
+
+            if (now - _nextStepAt > StallSeconds)
             {
-                // Not a slow pass: a stall. Paying off four seconds of steps
-                // would take longer than four seconds and the debt would grow.
                 Stalls++;
-                _accumulator = 0;
+                _nextStepAt = now + Render.FrameTiming.StepSeconds;
                 return;
             }
-            _accumulator += elapsed;
+
             int steps = 0;
-            while (_accumulator >= Render.FrameTiming.StepSeconds
-                && steps < Render.FrameTiming.MaxCatchUpSteps)
+            while (now >= _nextStepAt && steps < Render.FrameTiming.MaxCatchUpSteps)
             {
-                _accumulator -= Render.FrameTiming.StepSeconds;
                 Step();
+                _nextStepAt += Render.FrameTiming.StepSeconds;
                 steps++;
             }
-            if (_accumulator >= Render.FrameTiming.StepSeconds)
+            if (now >= _nextStepAt)
             {
-                // Owed more than the ceiling allows. Dropped rather than
-                // carried, exactly as the game window drops them: a server
-                // that cannot hold 60 Hz should run slow and say so, not
-                // accumulate a debt it will never pay.
-                DroppedSteps += (long)(_accumulator / Render.FrameTiming.StepSeconds);
-                _accumulator = 0;
+                long dropped = (long)((now - _nextStepAt) / Render.FrameTiming.StepSeconds) + 1;
+                DroppedSteps += dropped;
+                _nextStepAt += dropped * Render.FrameTiming.StepSeconds;
             }
+        }
+
+        /// <summary>
+        /// Time until the next authoritative simulation deadline. The server
+        /// loop uses this only for pacing; Advance remains the sole owner of
+        /// whether a step actually runs.
+        /// </summary>
+        public double SecondsUntilNextStep(double now)
+        {
+            if (_scene == null || _nextStepAt < 0) return 0;
+            return Math.Max(0, _nextStepAt - now);
         }
 
         /// <summary>
@@ -253,8 +253,7 @@ namespace MphRead.Mods.Network
                 StepFailures = 0;
                 DroppedSteps = 0;
                 Stalls = 0;
-                _accumulator = 0;
-                _lastAdvance = -1;
+                _nextStepAt = -1;
                 return true;
             }
             catch (Exception ex)

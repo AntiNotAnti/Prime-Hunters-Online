@@ -32,6 +32,21 @@ namespace MphRead.Entities
         protected Vector3 _rotation = Vector3.Zero;
         protected Vector3 _position = Vector3.Zero;
 
+        // Presentation-only transform history. The simulation, collision and
+        // network code continue to read _transform directly. Keeping the two
+        // worlds separate is what lets a high-refresh display look smooth
+        // without changing a single 60 Hz gameplay decision.
+        private Matrix4 _drawPrevious = Matrix4.Identity;
+        private Matrix4 _drawCurrent = Matrix4.Identity;
+        private bool _drawStateValid;
+
+        /// <summary>
+        /// Local first-person players override this: their camera is late
+        /// latched instead, so their own movement never pays an interpolation
+        /// frame just to make everybody else smoother.
+        /// </summary>
+        protected virtual bool InterpolateDrawTransform => true;
+
         protected Node? _colAttachNode = null;
         private bool _drawColUpdated = true;
         public EntityCollision?[] EntityCollision { get; } = new EntityCollision?[2];
@@ -254,13 +269,89 @@ namespace MphRead.Entities
             }
         }
 
+        /// <summary>
+        /// Reset presentation history to the entity's current transform.
+        /// Pooled objects call this when a new lifetime begins; it is also
+        /// called from Initialize for ordinary entities.
+        /// </summary>
+        internal void ModResetDrawState()
+        {
+            _drawPrevious = _drawCurrent = _transform;
+            _drawStateValid = true;
+        }
+
+        /// <summary>
+        /// Capture the completed simulation state once per 60 Hz step.
+        /// Teleports and respawns are discontinuities, not motion to smear
+        /// across, so a large jump re-bases the visual history immediately.
+        /// </summary>
+        internal void ModCaptureDrawState()
+        {
+            Matrix4 current = _transform;
+            if (!_drawStateValid
+                || (current.Row3.Xyz - _drawCurrent.Row3.Xyz).LengthSquared > 16f)
+            {
+                _drawPrevious = _drawCurrent = current;
+                _drawStateValid = true;
+                return;
+            }
+            _drawPrevious = _drawCurrent;
+            _drawCurrent = current;
+        }
+
+        /// <summary>
+        /// Transform used only by the draw pass. Scale, orientation and
+        /// translation are blended independently so the matrix stays
+        /// orthogonal instead of linearly blending sixteen unrelated values.
+        /// </summary>
+        protected Matrix4 ModDrawTransform()
+        {
+            if (!InterpolateDrawTransform || !Mods.Render.FrameTiming.Active || !_drawStateValid)
+            {
+                return _transform;
+            }
+            float t = (float)Mods.Render.FrameTiming.PresentationAlpha;
+            if (t <= 0) return _drawPrevious;
+            if (t >= 1) return _drawCurrent;
+
+            Vector3 previousScale = _drawPrevious.ExtractScale();
+            Vector3 currentScale = _drawCurrent.ExtractScale();
+            Vector3 scale = Vector3.Lerp(previousScale, currentScale, t);
+
+            Vector3 previousFacing = _drawPrevious.Row2.Xyz;
+            Vector3 currentFacing = _drawCurrent.Row2.Xyz;
+            Vector3 previousUp = _drawPrevious.Row1.Xyz;
+            Vector3 currentUp = _drawCurrent.Row1.Xyz;
+            if (previousFacing.LengthSquared < 0.000001f || currentFacing.LengthSquared < 0.000001f
+                || previousUp.LengthSquared < 0.000001f || currentUp.LengthSquared < 0.000001f)
+            {
+                return _drawCurrent;
+            }
+            Vector3 facing = Vector3.Lerp(previousFacing.Normalized(), currentFacing.Normalized(), t).Normalized();
+            Vector3 up = Vector3.Lerp(previousUp.Normalized(), currentUp.Normalized(), t).Normalized();
+            Vector3 right = Vector3.Cross(up, facing);
+            if (right.LengthSquared < 0.000001f)
+            {
+                return _drawCurrent;
+            }
+            right = right.Normalized();
+            up = Vector3.Cross(facing, right).Normalized();
+
+            Matrix4 result = Matrix4.Identity;
+            result.Row0.Xyz = right * scale.X;
+            result.Row1.Xyz = up * scale.Y;
+            result.Row2.Xyz = facing * scale.Z;
+            result.Row3.Xyz = Vector3.Lerp(_drawPrevious.Row3.Xyz, _drawCurrent.Row3.Xyz, t);
+            return result;
+        }
+
         public virtual void Destroy()
         {
         }
 
         protected virtual Matrix4 GetModelTransform(ModelInstance inst, int index)
         {
-            return Matrix4.CreateScale(inst.Model.Scale) * _transform;
+            return Matrix4.CreateScale(inst.Model.Scale) * ModDrawTransform();
         }
 
         public virtual void GetPosition(out Vector3 position)

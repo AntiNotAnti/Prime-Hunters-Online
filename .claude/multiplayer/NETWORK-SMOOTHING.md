@@ -33,17 +33,21 @@ past everything that has arrived, it is pinned and the puppet holds.
 
 | | |
 |---|---|
-| `Record(frame, states)` | called from `NetSession.HandleSnapshot`, so what is buffered is exactly what the authority said — which is also what its own rewind history holds under that number |
+| `Record(frame, states, arrivedAt)` | called from `NetSession.HandleSnapshot`, so what is buffered is exactly what the authority said — which is also what its own rewind history holds under that number |
 | `Tick()` | `NetHooks.AfterSimulation`, once a simulation frame, before anything reads a position |
 | `Sample(slot)` | `NetPlayerBridge.RestoreSnapshotPosition` |
 | `AckPoint()` | `NetPlayerBridge.CaptureIntent` |
 
 The read point advances one per frame and is steered toward `newest - Delay` by
 a twentieth of the error — which closes half of any gap in fourteen frames at a
-speed-up of at most 5%, under what an eye reads as motion being wrong. Past ten
-frames of error it is put back rather than walked back: ten frames of drift is
-a stall, a rejoin or a rotation, and gliding across it would be four seconds of
-everybody moving at the wrong speed.
+speed-up of at most 5%, under what an eye reads as motion being wrong. `Delay`
+is fractional now: the client measures differential packet transit jitter from
+the snapshot's authority frame and its local arrival timestamp, then keeps about
+2.5 jitter-widths of safety above a 1.25-frame floor. No synchronized clocks are
+needed because the fixed clock offset cancels between consecutive samples.
+Past ten frames of error the read point is put back rather than walked back: ten
+frames of drift is a stall, a rejoin or a rotation, and gliding across it would
+be four seconds of everybody moving at the wrong speed.
 
 ## Why it does not cost hit registration
 
@@ -66,29 +70,38 @@ both cells must hold that player alive, in the same form (a biped's position and
 a morph ball's are measured from different centres), and near enough to be one
 movement rather than a teleport.
 
-That is also why this is not a render-only effect. Drawing a smoothed puppet
-while collision ran against an unsmoothed one would put the hitbox somewhere the
-player is not, which is the oldest mistake in netcode. **The smoothed position
-is the position** — model, hitbox, shadow and shot.
+That is also why smoothing cannot be a render-only guess. At 60 Hz the smoothed
+position is the position — model, hitbox, shadow and shot.
+
+On a high-refresh display there is one extra presentation layer, but it remains
+the same clock rather than a second interpolation system. Each picture chooses a
+fractional point between the playout clock's previous and current read points.
+That exact point is remembered. The next local input restores remote collision
+to the last point actually shown, and `AckPoint` sends that same frame +
+sub-frame to the authority. A 144 Hz picture can therefore show 144 distinct
+opponent positions without reintroducing "model here, hitbox there."
 
 ## What it costs
 
-The delay, added to the rewind depth the authority is asked for. Two frames on a
-line that is behaving, up to eight when it is not.
+The delay, added to the rewind depth the authority is asked for. A clean line now
+starts at **1.25 frames (20.8 ms)** instead of paying two frames unconditionally.
+Measured jitter raises that target continuously, and a true starvation event adds
+a temporary emergency boost. Both fall away smoothly when the line recovers.
 
-The buffer grows by one frame when the read point runs dry and comes back down
-one frame per four clean seconds. Two things about that are deliberate and were
-both wrong in the first version:
+The ceiling remains eight frames (133 ms). Every frame of buffer is a frame of
+rewind on top of the round trip, and a rewind is how far back somebody can be
+shot after breaking line of sight. A line that needs more than that is already
+visibly unhealthy, and hiding more of it in rewind would be the wrong trade.
 
-- **it grows at most once every thirty frames.** A run of starved frames is one
-  event — a datagram that did not arrive, or four — and growing once per frame
-  of it read a tenth of a second of loss as ten separate reasons to buffer more.
-  Measured: a single burst took the delay straight to its ceiling.
-- **the ceiling is eight frames, not twelve.** Every frame of buffer is a frame
-  of rewind on top of the round trip, and a rewind is how far back somebody can
-  be shot after breaking line of sight. A line that wants more than 133 ms of
-  buffering is one where a player will notice something whatever is done, and
-  paying for it in rewind depth is the wrong place.
+Loss itself is not mistaken for jitter: the estimator compares changes in
+`arrivalTime - authorityFrame`, so two snapshots separated by two send frames
+and two arrival frames still describe a steady line. A gap in authority frame
+numbers is explicit loss (or deliberate latest-state coalescing after a local
+hitch) and adds the temporary safety boost immediately. If a draw point would
+still cross a snapshot the client never received, presentation holds the nearest
+recorded world and the sub-frame ack names that held frame exactly. Starvation
+supplies the same kind of temporary depth when the read point actually catches
+the stream.
 
 `-nointerp` turns it off; `-relayedpuppets` turns it off along with the snapshot
 owning puppet positions at all, which is the full protocol-6 arm.
@@ -106,16 +119,20 @@ shots.
 ## Reading the numbers
 
 ```
-puppet smoothing: on, 2 frames of buffer, 6233 interpolated / 199 held,
-                  0 starved, 96 clock snaps; steps mean 0.0642 units,
-                  worst 17.859, 44.7% of frames still (longest run 684)
+puppet smoothing: on, 1.42 frames of buffer, jitter 1.1 ms,
+                  6233 interpolated / 199 held, 0 starved, 96 clock snaps;
+                  steps mean 0.0642 units, worst 17.859,
+                  44.7% of frames still (longest run 684)
 ```
 
 - **interpolated / held** — samples served by blending, against samples that
   held a position because there was nothing on the far side or the far side was
   a jump. Held climbing is the buffer being too shallow.
+- **jitter** — the inter-arrival variation measured from the snapshot stream.
+  It is the normal input to the fractional buffer target.
 - **starved** — frames the read point ran past everything that had arrived.
-  Each one grows the buffer, at most once every thirty frames.
+  Each one adds a temporary safety boost rather than permanently ratcheting the
+  buffer upward.
 - **clock snaps** — read points put back rather than walked back. On a loaded
   box these are mostly *this* client failing to keep 60 Hz, not the line.
 - **steps mean / worst / % still** — how far puppets actually moved per frame.

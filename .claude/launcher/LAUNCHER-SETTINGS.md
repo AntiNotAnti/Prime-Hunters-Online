@@ -65,8 +65,9 @@ Notable toggles
   which is pinned at 60 Hz whatever is chosen. Display is the default and the
   only tear-free entry: a number turns VSync off, because 120 on a 144 Hz
   screen with VSync on gets 72. Saves to `settings.json` as `FrameRateCap`.
-  There is no motion-interpolation row any more, and no interpolation behind
-  it -- see `.claude/render/FRAME-PACING.md` for why it was taken out.
+  There is no motion-interpolation row: high-refresh interpolation and local
+  aim late-latching are automatic presentation behavior, enabled only when the
+  picture is actually running above 60 Hz. See `.claude/render/FRAME-PACING.md`.
 - **The two crosshair rows are children of Pro mode HUD** and are shown only
   while it is on: nothing else in the game draws that crosshair, and the DS HUD
   has its own reticle sprite. **Crosshair size** (Small / Medium / Big) and

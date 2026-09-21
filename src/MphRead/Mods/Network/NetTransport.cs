@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -14,17 +15,28 @@ namespace MphRead.Mods.Network
         public readonly byte[] Data;
         public readonly int Length;
         public readonly long ArrivedAt;
+        internal readonly bool Pooled;
 
-        public ReceivedPacket(IPEndPoint sender, byte[] data, int length, long arrivedAt = 0)
+        public ReceivedPacket(IPEndPoint sender, byte[] data, int length, long arrivedAt = 0,
+            bool pooled = false)
         {
             Sender = sender;
             Data = data;
             Length = length;
             ArrivedAt = arrivedAt == 0 ? Stopwatch.GetTimestamp() : arrivedAt;
+            Pooled = pooled;
         }
 
         public PacketType Type => Length > 0 ? (PacketType)Data[0] : default;
         public ReadOnlySpan<byte> Payload => Data.AsSpan(1, Length - 1);
+
+        internal void Release()
+        {
+            if (Pooled)
+            {
+                ArrayPool<byte>.Shared.Return(Data);
+            }
+        }
     }
 
     /// <summary>
@@ -46,6 +58,18 @@ namespace MphRead.Mods.Network
         private volatile bool _running;
         private int _inboxCount;
         private int _playbackBytes;
+
+        // Real-time clients do not benefit from processing six obsolete
+        // snapshots after a hitch. Keep only the newest full snapshot and the
+        // newest SlotIntent for each remote slot. Control/event traffic remains
+        // ordered in _inbox, and playback/fault-injection never enables this.
+        private volatile bool _coalesceRealtimeState;
+        private readonly object _stateLock = new();
+        private ReceivedPacket? _latestSnapshot;
+        private readonly ReceivedPacket?[] _latestSlotIntent =
+            new ReceivedPacket?[MphRead.Entities.PlayerEntity.SlotCapacity];
+        private long _statePacketsCoalesced;
+        public long StatePacketsCoalesced => Interlocked.Read(ref _statePacketsCoalesced);;
 
         /// <summary>
         /// How many received packets may wait for the game loop.
@@ -93,6 +117,44 @@ namespace MphRead.Mods.Network
         /// bookkeeping, does not.
         /// </summary>
         public void AnswerPingsImmediately() => _autoPong = true;
+
+        public void EnableRealtimeStateCoalescing() => _coalesceRealtimeState = true;
+
+        private bool TryCoalesceRealtimeState(ReceivedPacket packet)
+        {
+            if (!_coalesceRealtimeState || _lagWorker != null)
+            {
+                return false;
+            }
+            lock (_stateLock)
+            {
+                if (packet.Type == PacketType.Snapshot)
+                {
+                    if (_latestSnapshot.HasValue)
+                    {
+                        _latestSnapshot.Value.Release();
+                        Interlocked.Increment(ref _statePacketsCoalesced);
+                    }
+                    _latestSnapshot = packet;
+                    return true;
+                }
+                if (packet.Type == PacketType.SlotIntent && packet.Length > 1)
+                {
+                    int slot = packet.Data[1];
+                    if ((uint)slot < _latestSlotIntent.Length)
+                    {
+                        if (_latestSlotIntent[slot].HasValue)
+                        {
+                            _latestSlotIntent[slot]!.Value.Release();
+                            Interlocked.Increment(ref _statePacketsCoalesced);
+                        }
+                        _latestSlotIntent[slot] = packet;
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
 
         public int LocalPort { get; }
         public long PacketsDropped { get; private set; }
@@ -212,72 +274,86 @@ namespace MphRead.Mods.Network
                     // more. Blocking costs nothing -- the thread exists for
                     // this and does nothing else -- and hands the packet over
                     // the moment the kernel has it.
-                    IPEndPoint sender = any;
-                    byte[] data;
+                    byte[] data = ArrayPool<byte>.Shared.Rent(NetConfig.MaxPacketSize);
+                    bool handedOff = false;
                     try
                     {
-                        data = _socket!.Receive(ref sender);
-                    }
-                    catch (SocketException ex) when (ex.SocketErrorCode == SocketError.TimedOut)
-                    {
-                        continue;
-                    }
-                    if (data.Length == 0 || data.Length > NetConfig.MaxPacketSize)
-                    {
-                        continue;
-                    }
-                    // Answered here rather than from the game loop, when the
-                    // session asked for it.
-                    //
-                    // A Pong needs no game state: it echoes the id back so the
-                    // server can match the reply to the ping it sent. Waiting
-                    // for the next frame to do that added anything up to a
-                    // whole frame -- half of one on average, more when the
-                    // frame ran long -- to a measurement whose entire purpose
-                    // is to describe the network. Every player's ping read
-                    // about a frame worse than their connection.
-                    if (_autoPong && data.Length >= 1 && (PacketType)data[0] == PacketType.Ping)
-                    {
-                        // The reply carries *both* halves of a simulated line.
-                        // This ping was answered here, on the transport
-                        // thread, before the hold below ever looked at it --
-                        // so without the extra half the round trip the server
-                        // measures comes out at half what was asked for, and
-                        // the one number a latency run is read by would be
-                        // describing the instrument.
-                        Send(sender, PacketType.Pong, data.AsSpan(1),
-                            _lagWorker != null ? (long)(NetLag.RoundTripMs / 2.0 * Stopwatch.Frequency / 1000) : 0);
-                        continue;
-                    }
-                    if (Volatile.Read(ref _inboxCount) >= MaxQueuedPackets)
-                    {
-                        // Drop rather than grow -- but drop the *oldest*, not
-                        // this one. In a real-time protocol the newest packet
-                        // is the one worth having: it carries where the player
-                        // is aiming now. Discarding arrivals while a queue of
-                        // stale ones drains is how a backlogged client ends up
-                        // seeing a third of an opponent's turn.
-                        if (_inbox.TryDequeue(out _))
+                        EndPoint remote = any;
+                        int length;
+                        try
                         {
-                            Interlocked.Decrement(ref _inboxCount);
+                            length = _socket!.Client.ReceiveFrom(data, 0, NetConfig.MaxPacketSize,
+                                SocketFlags.None, ref remote);
                         }
-                        PacketsDropped++;
-                        Interlocked.Increment(ref TotalPacketsDropped);
-                    }
-                    // The worker rather than NetLag.Active, so the two
-                    // halves cannot disagree: nothing may be held back unless
-                    // there is something running that lets it out again.
-                    if (_lagWorker != null)
-                    {
-                        lock (_heldLock)
+                        catch (SocketException ex) when (ex.SocketErrorCode == SocketError.TimedOut)
                         {
-                            _heldIn.Enqueue(Stopwatch.GetTimestamp() * 1000.0 / Stopwatch.Frequency,
-                                new ReceivedPacket(sender, data, data.Length));
+                            continue;
                         }
-                        continue;
+                        if (length == 0 || length > NetConfig.MaxPacketSize
+                            || remote is not IPEndPoint sender)
+                        {
+                            continue;
+                        }
+
+                        if (_autoPong && (PacketType)data[0] == PacketType.Ping)
+                        {
+                            Send(sender, PacketType.Pong, data.AsSpan(1, length - 1),
+                                _lagWorker != null
+                                    ? (long)(NetLag.RoundTripMs / 2.0 * Stopwatch.Frequency / 1000)
+                                    : 0);
+                            continue;
+                        }
+
+                        var received = new ReceivedPacket(sender, data, length,
+                            Stopwatch.GetTimestamp(), pooled: true);
+
+                        // The worker rather than NetLag.Active, so the two
+                        // halves cannot disagree: fault-injected traffic keeps
+                        // every datagram and therefore deliberately bypasses
+                        // latest-state coalescing.
+                        if (_lagWorker != null)
+                        {
+                            // NetFaultQueue may deliberately drop or duplicate
+                            // this value. A pooled buffer cannot safely have
+                            // two owners (or no owner), so fault-injected
+                            // traffic keeps an ordinary exact-size array.
+                            byte[] heldCopy = data.AsSpan(0, length).ToArray();
+                            lock (_heldLock)
+                            {
+                                _heldIn.Enqueue(Stopwatch.GetTimestamp() * 1000.0 / Stopwatch.Frequency,
+                                    new ReceivedPacket(sender, heldCopy, heldCopy.Length,
+                                        received.ArrivedAt));
+                            }
+                            continue;
+                        }
+
+                        if (TryCoalesceRealtimeState(received))
+                        {
+                            handedOff = true;
+                            continue;
+                        }
+
+                        if (Volatile.Read(ref _inboxCount) >= MaxQueuedPackets)
+                        {
+                            if (_inbox.TryDequeue(out ReceivedPacket dropped))
+                            {
+                                Interlocked.Decrement(ref _inboxCount);
+                                dropped.Release();
+                            }
+                            PacketsDropped++;
+                            Interlocked.Increment(ref TotalPacketsDropped);
+                        }
+                        Interlocked.Increment(ref _inboxCount);
+                        _inbox.Enqueue(received);
+                        handedOff = true;
                     }
-                    Interlocked.Increment(ref _inboxCount);
-                    _inbox.Enqueue(new ReceivedPacket(sender, data, data.Length));
+                    finally
+                    {
+                        if (!handedOff)
+                        {
+                            ArrayPool<byte>.Shared.Return(data);
+                        }
+                    }
                 }
                 catch (SocketException)
                 {
@@ -302,7 +378,46 @@ namespace MphRead.Mods.Network
             {
                 Interlocked.Decrement(ref _inboxCount);
                 if (_socket == null) _playbackBytes -= packet.Length;
-                yield return packet;
+                try
+                {
+                    yield return packet;
+                }
+                finally
+                {
+                    packet.Release();
+                }
+            }
+
+            if (_coalesceRealtimeState)
+            {
+                for (int slot = 0; slot < _latestSlotIntent.Length; slot++)
+                {
+                    ReceivedPacket? latest;
+                    lock (_stateLock)
+                    {
+                        latest = _latestSlotIntent[slot];
+                        _latestSlotIntent[slot] = null;
+                    }
+                    if (latest.HasValue)
+                    {
+                        ReceivedPacket value = latest.Value;
+                        try { yield return value; }
+                        finally { value.Release(); }
+                    }
+                }
+
+                ReceivedPacket? snapshot;
+                lock (_stateLock)
+                {
+                    snapshot = _latestSnapshot;
+                    _latestSnapshot = null;
+                }
+                if (snapshot.HasValue)
+                {
+                    ReceivedPacket value = snapshot.Value;
+                    try { yield return value; }
+                    finally { value.Release(); }
+                }
             }
         }
 
@@ -320,7 +435,8 @@ namespace MphRead.Mods.Network
                     }
                 }
                 Interlocked.Increment(ref _inboxCount);
-                _inbox.Enqueue(new ReceivedPacket(packet.Sender, packet.Data, packet.Length));
+                _inbox.Enqueue(new ReceivedPacket(packet.Sender, packet.Data, packet.Length,
+                    pooled: packet.Pooled));
             }
         }
 
@@ -401,6 +517,20 @@ namespace MphRead.Mods.Network
             if (_worker != null && !_worker.Join(TimeSpan.FromSeconds(1)))
             {
                 // Background thread; the process can exit regardless.
+            }
+            while (_inbox.TryDequeue(out ReceivedPacket packet))
+            {
+                packet.Release();
+            }
+            lock (_stateLock)
+            {
+                if (_latestSnapshot.HasValue) _latestSnapshot.Value.Release();
+                _latestSnapshot = null;
+                for (int i = 0; i < _latestSlotIntent.Length; i++)
+                {
+                    if (_latestSlotIntent[i].HasValue) _latestSlotIntent[i]!.Value.Release();
+                    _latestSlotIntent[i] = null;
+                }
             }
             _cancel.Dispose();
         }

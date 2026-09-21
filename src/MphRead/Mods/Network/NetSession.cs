@@ -146,6 +146,7 @@ namespace MphRead.Mods.Network
         public static long SnapshotsSent { get; private set; }
         public static long StatesApplied { get; private set; }
         public static long IntentsReceived { get; private set; }
+        public static long StatePacketsCoalesced => _transport?.StatePacketsCoalesced ?? 0;
 
         public static void NoteStatesApplied()
         {
@@ -272,6 +273,7 @@ namespace MphRead.Mods.Network
                 _ownerToken = ownerToken;
                 _lastServerPacket = Clock;
                 _transport = new NetTransport(0);
+                _transport.EnableRealtimeStateCoalescing();
                 // The server measures everyone's round trip by pinging them,
                 // so the reply must not wait for a frame boundary: see
                 // NetTransport.AnswerPingsImmediately.
@@ -625,6 +627,8 @@ namespace MphRead.Mods.Network
             int wasPort = _transport.LocalPort;
             _transport.Dispose();
             _transport = new NetTransport(0);
+            _transport.EnableRealtimeStateCoalescing();
+            _transport.AnswerPingsImmediately();
             Console.WriteLine($"[net] rebound the socket: {wasPort} -> {_transport.LocalPort}");
             SendHello();
             SendIdentify();
@@ -1675,7 +1679,7 @@ namespace MphRead.Mods.Network
             // the whole of why an interpolated position can still be shot at.
             // NetSmoothing.
             NetTimingDiagnostics.Snapshot(packet.ArrivedAt);
-            NetSmoothing.Record(header.Frame, _snapshotScratch.AsSpan(0, count));
+            NetSmoothing.Record(header.Frame, _snapshotScratch.AsSpan(0, count), packet.ArrivedAt);
             NetMatchTimeSync.Receive(payload.Slice(timeOffset, NetMatchTimeSync.Size));
             NetHealthSync.Receive(payload[healthOffset..]);
         }

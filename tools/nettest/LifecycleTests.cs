@@ -23,9 +23,11 @@ namespace MphRead.NetTest
                 RelaySnapshotValidation();
                 StateMachine();
                 LoopbackAdmission();
+                TransportCoalescing();
                 PacketOrdering();
                 Prediction();
                 DamageHistory();
+                PresentationClock();
                 HistoryBoundaries();
                 ClaimBoundaries();
                 FaultStream();
@@ -55,6 +57,7 @@ namespace MphRead.NetTest
 
         private static void Wire()
         {
+            Check(NetUnlagged.PressAgeEnabled, "recovered trigger pulls include their age by default");
             Check(PlayerState.Size == 114, "compact player wire size includes four event history entries");
             Check(1 + SnapshotHeader.Size + PlayerState.Size * PlayerEntity.SlotCapacity <= NetConfig.MaxPacketSize
                 && NetConfig.MaxPacketSize <= 1472, "eight-player snapshot fits one Ethernet UDP datagram");
@@ -326,6 +329,56 @@ namespace MphRead.NetTest
             NetSession.Update(0);
         }
 
+        private static void TransportCoalescing()
+        {
+            using var transport = new NetTransport(0);
+            transport.EnableRealtimeStateCoalescing();
+            using var sender = new System.Net.Sockets.UdpClient(0);
+            var endpoint = new System.Net.IPEndPoint(System.Net.IPAddress.Loopback,
+                transport.LocalPort);
+
+            sender.Send(new byte[] { (byte)PacketType.Snapshot, 1 }, 2, endpoint);
+            sender.Send(new byte[] { (byte)PacketType.Snapshot, 2 }, 2, endpoint);
+            sender.Send(new byte[] { (byte)PacketType.Snapshot, 3 }, 2, endpoint);
+            sender.Send(new byte[] { (byte)PacketType.SlotIntent, 1, 4 }, 3, endpoint);
+            sender.Send(new byte[] { (byte)PacketType.SlotIntent, 1, 5 }, 3, endpoint);
+            sender.Send(new byte[] { (byte)PacketType.Bye }, 1, endpoint);
+
+            Check(System.Threading.SpinWait.SpinUntil(
+                () => transport.StatePacketsCoalesced >= 3, 2000),
+                "transport actually coalesces burst state");
+            // The counter above proves every replaceable packet arrived; give
+            // the ordered Bye immediately behind them one scheduler slice too.
+            System.Threading.Thread.Sleep(20);
+
+            int snapshots = 0, intents = 0, byes = 0;
+            byte newestSnapshot = 0, newestIntent = 0;
+            foreach (ReceivedPacket packet in transport.Drain())
+            {
+                if (packet.Type == PacketType.Snapshot)
+                {
+                    snapshots++;
+                    newestSnapshot = packet.Payload[0];
+                }
+                else if (packet.Type == PacketType.SlotIntent)
+                {
+                    intents++;
+                    newestIntent = packet.Payload[1];
+                }
+                else if (packet.Type == PacketType.Bye)
+                {
+                    byes++;
+                }
+            }
+            Check(snapshots == 1 && newestSnapshot == 3,
+                "latest snapshot wins after a receive burst");
+            Check(intents == 1 && newestIntent == 5,
+                "latest slot intent wins per slot");
+            Check(byes == 1, "control traffic is not coalesced");
+            Check(transport.PacketsDropped == 0,
+                "coalescing burst does not overflow transport queue");
+        }
+
         private static void PacketOrdering()
         {
             Session();
@@ -458,6 +511,63 @@ namespace MphRead.NetTest
             NetDamage.Replay(player, next);
             NetDamage.Replay(player, state);
             Check(NetDamage.Replayed[1] == 5 && NetPlayerLifecycle.OldLifeDamage == 1, "old damage cannot cross life boundary");
+        }
+
+        private static void PresentationClock()
+        {
+            Session();
+            PlayerState a = State(7);
+            a.Position = new Vector3(10, 2, 3);
+            Deliver(Packet(100, a));
+
+            // Rebuild the smoothing history with deterministic 60 Hz arrival
+            // times so this test measures presentation arithmetic, not how
+            // quickly the test process happened to execute three statements.
+            NetSmoothing.Reset();
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            long step = System.Diagnostics.Stopwatch.Frequency / 60;
+            NetSmoothing.Record(100, new[] { a }, now);
+
+            PlayerState b = a;
+            b.Position = new Vector3(11, 2, 3);
+            NetSmoothing.Record(101, new[] { b }, now + step);
+            PlayerState c = a;
+            c.Position = new Vector3(12, 2, 3);
+            NetSmoothing.Record(102, new[] { c }, now + step * 2);
+
+            NetSmoothing.Tick();
+            NetSmoothing.Tick();
+            NetSmoothing.PreparePresentation(.5);
+            Check(NetSmoothing.SamplePresentation(1, out Vector3 presented, out _),
+                "high-refresh playout has a presentation sample");
+            Check(NetSmoothing.AckPoint(out uint ackFrame, out byte ackSub),
+                "presentation playout has an ack");
+            double ackPoint = ackFrame + ackSub / 256.0;
+            double positionPoint = 100 + (presented.X - 10);
+            Check(Math.Abs(ackPoint - positionPoint) < .02,
+                "rendered puppet and sub-frame ack name the same world");
+
+            NetSmoothing.PreparePresentation(1);
+            Check(NetSmoothing.Sample(1, out Vector3 current, out _)
+                && NetSmoothing.SamplePresentation(1, out Vector3 atCurrent, out _)
+                && (current - atCurrent).Length < .0001f,
+                "60 Hz/current presentation keeps the simulation playout point");
+
+            // A missing authority frame must hold a world the client actually
+            // received, and the ack must name that held world rather than the
+            // fractional point the authority could have reconstructed.
+            NetSmoothing.Reset();
+            NetSmoothing.Record(100, new[] { a }, now);
+            NetSmoothing.Record(102, new[] { c }, now + step * 2);
+            NetSmoothing.Tick();
+            NetSmoothing.Tick();
+            NetSmoothing.PreparePresentation(.5);
+            Check(NetSmoothing.SamplePresentation(1, out Vector3 held, out _)
+                && Math.Abs(held.X - 10) < .0001f,
+                "lost snapshot holds the nearest recorded presentation");
+            Check(NetSmoothing.AckPoint(out ackFrame, out ackSub)
+                && ackFrame == 100 && ackSub == 0,
+                "held presentation acks the world the client actually received");
         }
 
         private static void HistoryBoundaries()
