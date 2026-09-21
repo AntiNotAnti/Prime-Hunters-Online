@@ -136,7 +136,10 @@ namespace MphRead
             }
             if (!_modelCache.TryGetValue(name, out Model? model))
             {
-                model = GetRoomModel(meta);
+                if (!Mods.RoomPrewarm.TryGetRoomModel(name, out model))
+                {
+                    model = GetRoomModel(meta);
+                }
                 if (model == null)
                 {
                     return null;
@@ -145,6 +148,8 @@ namespace MphRead
             }
             return new ModelInstance(model);
         }
+
+        internal static Model PrepareRoomModel(RoomMetadata meta) => GetRoomModel(meta);
 
         private static Model GetRoomModel(RoomMetadata meta)
         {
@@ -509,7 +514,7 @@ namespace MphRead
                 return results;
             }
             path = Paths.Combine(firstHunt ? Paths.FhFileSystem : Paths.FileSystem, path);
-            var bytes = new ReadOnlySpan<byte>(File.ReadAllBytes(path));
+            var bytes = new ReadOnlySpan<byte>(ReadFileBytes(path));
             AnimationHeader header = ReadStruct<AnimationHeader>(bytes);
             IReadOnlyList<uint> nodeGroupOffsets = DoOffsets<uint>(bytes, header.NodeGroupOffset, header.Count);
             IReadOnlyList<uint> materialGroupOffsets = DoOffsets<uint>(bytes, header.MaterialGroupOffset, header.Count);
@@ -669,9 +674,20 @@ namespace MphRead
             return results;
         }
 
+        public static byte[] ReadFileBytes(string path)
+        {
+            string fullPath = Path.GetFullPath(path);
+            if (Mods.RoomPrewarm.TryGetFile(fullPath, out byte[]? warmed))
+            {
+                return warmed;
+            }
+            return File.ReadAllBytes(fullPath);
+        }
+
         public static ReadOnlySpan<byte> ReadBytes(string path, bool firstHunt)
         {
-            return new ReadOnlySpan<byte>(File.ReadAllBytes(Paths.Combine(firstHunt ? Paths.FhFileSystem : Paths.FileSystem, path)));
+            return new ReadOnlySpan<byte>(ReadFileBytes(
+                Paths.Combine(firstHunt ? Paths.FhFileSystem : Paths.FileSystem, path)));
         }
 
         private static IReadOnlyList<TextureData> GetTextureData(Texture texture, ReadOnlySpan<byte> textureBytes)

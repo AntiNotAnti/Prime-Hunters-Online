@@ -24,7 +24,8 @@ namespace MphRead.Formats
 
         public static NodeData ReadData(string path, bool firstHunt)
         {
-            var bytes = new ReadOnlySpan<byte>(File.ReadAllBytes(Paths.Combine(firstHunt ? Paths.FhFileSystem : Paths.FileSystem, path)));
+            var bytes = new ReadOnlySpan<byte>(Read.ReadFileBytes(
+                Paths.Combine(firstHunt ? Paths.FhFileSystem : Paths.FileSystem, path)));
             ushort version = Read.SpanReadUshort(bytes, 0);
             if (firstHunt)
             {

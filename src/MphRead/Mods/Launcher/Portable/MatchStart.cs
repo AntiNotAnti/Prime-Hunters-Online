@@ -152,6 +152,7 @@ namespace MphRead.Mods.Launcher
                 ? NetLaunch.RoomPlayerCount
                 : 0);
             window.LoadScene();
+            Mods.RoomPrewarm.Release(roomKey);
             double loadSeconds = NetSession.Clock - loadStarted;
             Console.WriteLine($"[launcher] loaded {roomKey} in {loadSeconds:0.00}s");
             NetSession.MarkMatchLoaded();

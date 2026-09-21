@@ -190,6 +190,7 @@ namespace MphRead.Mods.Network
                     { reason = "The layout must fit the connected roster and server player limit."; return LobbyResultCode.InvalidConfiguration; }
                     bool topologyChanged = proposedLayout != LobbyRules.ResolveTeamLayout(_lobbyMatch);
                     _lobbyMatch = proposed with { RoomKey = room };
+                    if (RunsTheMatch) Mods.RoomPrewarm.Begin(_lobbyMatch.RoomKey);
                     RequireReady = command.Configuration.RequireReady;
                     AllowJoinInProgress = command.Configuration.AllowJoinInProgress;
                     LockTeams = command.Configuration.LockTeams;
@@ -319,6 +320,7 @@ namespace MphRead.Mods.Network
             StopLobbyMatchRuntime(matchEnded);
             CancelMapVote(_now);
             _lobbyMatch = match;
+            if (RunsTheMatch) Mods.RoomPrewarm.Begin(_lobbyMatch.RoomKey);
             _matchEndedAt = -1;
             _expectedLoadedSlots = 0;
             _loadedSlots = 0;

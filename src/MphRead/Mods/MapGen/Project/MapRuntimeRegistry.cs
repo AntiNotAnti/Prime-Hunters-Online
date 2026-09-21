@@ -30,6 +30,7 @@ namespace MphRead
             if(id<0){id=names.Count;names.Add(definition.Name);}
             var room=CustomRooms.MakeMetadata(definition,id);
             Read.InvalidateRoomModel(definition.Name);
+            Mods.RoomPrewarm.Invalidate(definition.Name);
             Formats.Collision.Collision.InvalidateRoom(room.CollisionPath);
             var rooms=RoomList.ToList();int index=rooms.FindIndex(r=>r.Name==definition.Name);
             if(index<0)rooms.Add(room);else rooms[index]=room;

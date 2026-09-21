@@ -122,6 +122,10 @@ namespace MphRead.Mods.Network
                 ResetMatchState(preserveRoomChange: newMatch && state.Phase != SessionPhase.Lobby);
             }
             ServerSession = state;
+            if (state.Policy == ServerSessionPolicy.Lobby && state.Phase == SessionPhase.Lobby)
+            {
+                Mods.RoomPrewarm.Begin(state.Match.RoomKey);
+            }
             if (state.Phase == SessionPhase.Starting && state.StartCountdownMilliseconds > 0)
             {
                 // The server reports time remaining at send-time. Subtract an
@@ -197,6 +201,7 @@ namespace MphRead.Mods.Network
             _rosterRevision = 0; _hasRoster = false; _ownerToken = Guid.Empty;
             _rosterSessionRevision = 0;
             LobbyMessage = ""; _lastLoadAck = _lastIdentity = _startCountdownEndsAt = 0;
+            Mods.RoomPrewarm.Clear();
             Array.Fill(SlotTeamIndex, (sbyte)-1); Array.Clear(SlotLobbyReady);
             Chat.NetChat.Clear();
         }

@@ -241,18 +241,21 @@ namespace MphRead.Mods.MapGen
 
         private static void GenerateIfNeeded(MapDefinition def)
         {
-            try
+            lock (_lock)
             {
-                if (!NeedsGenerating(def))
+                try
                 {
-                    return;
+                    if (!NeedsGenerating(def))
+                    {
+                        return;
+                    }
+                    Console.WriteLine($"[mapgen] building {def.Name}");
+                    MapPacker.Generate(def, ArchiveDirectory(def), EntityDirectory(), NodeDirectory(), verbose: false);
                 }
-                Console.WriteLine($"[mapgen] building {def.Name}");
-                MapPacker.Generate(def, ArchiveDirectory(def), EntityDirectory(), NodeDirectory(), verbose: false);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[mapgen] {def.Name} could not be built: {ex.Message}");
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[mapgen] {def.Name} could not be built: {ex.Message}");
+                }
             }
         }
 
