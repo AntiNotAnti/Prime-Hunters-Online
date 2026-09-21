@@ -319,9 +319,17 @@ namespace MphRead.Mods.Launcher.Gui
             }
             if (!want && EndPanelUp)
             {
+                EndPanelView? closing = _endPanel;
                 _endPanel = null;
                 Mods.EndScreen.PanelUp = false;
-                UiSurface.Current?.Hide();
+                // The lobby or pause menu may already have replaced the
+                // results panel on the shared UiSurface earlier in this frame.
+                // Never hide that newer view while cleaning up the stale panel.
+                UiSurface? surface = UiSurface.Current;
+                if (surface != null && ReferenceEquals(surface.View, closing))
+                {
+                    surface.Hide();
+                }
                 return;
             }
             _endPanel?.Refresh();
