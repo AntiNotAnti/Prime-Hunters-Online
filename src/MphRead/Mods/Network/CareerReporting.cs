@@ -426,10 +426,13 @@ namespace MphRead.Mods.Network
 
         private void CompleteCareerMatch(double now, string reason)
         {
-            EnsureCareerMatchStarted(now);
             CareerMatchState? match = _careerMatch;
             if (match == null || _sim == null)
             {
+                // Never manufacture a zero-stat report by taking the baseline
+                // at the same instant the round ends. If tracking could not
+                // start while gameplay was actually ready, skip this result.
+                Console.WriteLine("[career] no authoritative career baseline; match not reported");
                 _careerMatch = null;
                 return;
             }
