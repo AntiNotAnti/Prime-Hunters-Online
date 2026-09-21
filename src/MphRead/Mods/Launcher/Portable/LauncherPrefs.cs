@@ -199,6 +199,33 @@ namespace MphRead.Mods.Launcher
                     string value = line[(split + 1)..].Trim();
                     switch (key)
                     {
+                        case "bright_skins":
+                            if (Boolean.TryParse(value, out bool brightSkins))
+                            {
+                                RenderOptions.BrightSkins = brightSkins;
+                            }
+                            break;
+                        case "bright_skin_style":
+                            if (Enum.TryParse(value, ignoreCase: true, out PlayerSkinStyle skinStyle)
+                                && Enum.IsDefined(skinStyle))
+                            {
+                                RenderOptions.BrightSkinStyle = skinStyle;
+                            }
+                            break;
+                        case "player_outline":
+                            if (Enum.TryParse(value, ignoreCase: true, out PlayerOutlineStyle outlineStyle)
+                                && Enum.IsDefined(outlineStyle))
+                            {
+                                RenderOptions.PlayerOutline = outlineStyle;
+                            }
+                            break;
+                        case "player_outline_width":
+                            if (Int32.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture,
+                                out int outlineWidth))
+                            {
+                                RenderOptions.PlayerOutlineWidth = outlineWidth;
+                            }
+                            break;
                         case "server_address":
                             ServerAddress = value.Equals(LegacyDefaultServer, StringComparison.OrdinalIgnoreCase)
                                 ? DefaultServer
@@ -409,6 +436,10 @@ namespace MphRead.Mods.Launcher
                     $"last_kind={LastKind.ToString(CultureInfo.InvariantCulture)}",
                     $"auto_update={AutoUpdate.ToString().ToLowerInvariant()}",
                     $"debug_logs={DebugLogs.ToString().ToLowerInvariant()}",
+                    $"bright_skins={RenderOptions.BrightSkins.ToString().ToLowerInvariant()}",
+                    $"bright_skin_style={RenderOptions.BrightSkinStyle.ToString().ToLowerInvariant()}",
+                    $"player_outline={RenderOptions.PlayerOutline.ToString().ToLowerInvariant()}",
+                    $"player_outline_width={RenderOptions.PlayerOutlineWidth.ToString(CultureInfo.InvariantCulture)}",
                     $"reduce_motion={ReduceMotion.ToString().ToLowerInvariant()}",
                     $"replay_storage_gb={ReplayStorageLimitGb.ToString(CultureInfo.InvariantCulture)}",
                     $"replay_auto_prune={ReplayAutoPrune.ToString().ToLowerInvariant()}",

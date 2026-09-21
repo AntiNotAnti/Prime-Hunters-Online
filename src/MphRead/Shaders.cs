@@ -103,6 +103,9 @@ uniform float fog_min;
 uniform float fog_max;
 uniform sampler2D tex;
 uniform bool use_override;
+uniform int textured_player_skin;
+uniform bool player_outline_mask;
+uniform vec3 player_outline_color;
 uniform vec4 override_color;
 uniform bool use_pal_override;
 uniform vec4 pal_override_color;
@@ -169,7 +172,7 @@ void main()
         // rubble only ever produces banded rubble; what makes a picture read
         // as drawn is that the surface is one colour and the line around it
         // carries the shape.
-        if (use_flat && !use_pal_override) {
+        if (use_flat && !use_pal_override && textured_player_skin == 0) {
             texcolor.rgb = flat_color;
         }
         if (mat_mode == 1) {
@@ -188,9 +191,21 @@ void main()
             col = color * vec4(texcolor.rgb, mat_alpha * texcolor.a);
         }
         if (use_override) {
-            col.r = override_color.r;
-            col.g = override_color.g;
-            col.b = override_color.b;
+            if (textured_player_skin > 0) {
+                // Keep the real suit texture and cutouts; lift dark lighting without flattening detail.
+                if (textured_player_skin == 2) {
+                    // Strong suit/team identity, with contrast driven by the original texture.
+                    float detail = smoothstep(0.05, 0.85, dot(texcolor.rgb, vec3(0.2126, 0.7152, 0.0722)));
+                    vec3 tinted = override_color.rgb * (0.25 + 0.75 * detail);
+                    col.rgb = mix(tinted, pow(texcolor.rgb, vec3(0.7)), 0.25);
+                }
+                else {
+                    col.rgb = clamp(mix(col.rgb, texcolor.rgb, 0.8) * 1.25, 0.0, 1.0);
+                }
+            }
+            else {
+                col.rgb = override_color.rgb;
+            }
             col.a *= override_color.a;
         }
     }
@@ -200,6 +215,10 @@ void main()
     else {
         col = mat_mode == 2 ? toon_color(color) : color;
         col.a *= mat_alpha;
+    }
+    if (player_outline_mask) {
+        if (col.a <= 0.01) discard;
+        col.rgb = player_outline_color;
     }
     // Cel shading, on the finished surface colour -- the texture, the vertex
     // colours and the lighting together, which is the only place all three
