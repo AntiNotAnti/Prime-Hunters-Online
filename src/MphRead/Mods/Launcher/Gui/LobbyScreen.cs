@@ -122,8 +122,10 @@ namespace MphRead.Mods.Launcher.Gui
             _customTeams = new PickRow("Custom teams") { IsVisible = false };
             _customTeams.Clicked += (_, _) => OpenCustomTeams();
 
-            _time = new FieldRow("Time limit (minutes)", "7", 92);
+            _time = new FieldRow("Time limit", "7:00", 92);
             _goal = new FieldRow("Score goal", "7", 92);
+            _time.Box.PlaceholderText = "7:00";
+            _goal.Box.PlaceholderText = "25";
             WireRuleField(_time);
             WireRuleField(_goal);
 
@@ -616,11 +618,24 @@ namespace MphRead.Mods.Launcher.Gui
                 _closingLobby = false;
             }
             TryAutoApply();
+            if (_startAfterSave && !NetSession.LobbyCommandPending)
+            {
+                if (NetSession.LobbyMessage.Length > 0)
+                {
+                    _startAfterSave = false;
+                }
+                else if (NetSession.CanEditLobby)
+                {
+                    _startAfterSave = false;
+                    NetSession.SendLobbyCommand(LobbyCommandType.StartMatch);
+                }
+            }
             if (NetSession.ShouldLoadMatch)
             {
                 // Leave a meaningful frame on screen while the synchronous map
                 // build runs. Shell keeps this surface up until the server's
                 // all-clients-loaded barrier releases the match.
+                _startAfterSave = false;
                 _status.Text = "Loading match... waiting for all players.";
                 _ready.IsEnabled = false;
                 _start.IsEnabled = false;
@@ -663,11 +678,11 @@ namespace MphRead.Mods.Launcher.Gui
                 {
                     _players.Children.Add(new LobbyPlayerRow(roster, i, session.OwnerSlot,
                         showTeam: session.Match.Format != MatchFormat.OneVsOne));
-                    if (roster.Slots[i] != NetSession.LocalSlot)
-                    {
-                        _targetSlots.Add(roster.Slots[i]);
-                        names.Add(roster.Names[i]);
-                    }
+                    _targetSlots.Add(roster.Slots[i]);
+                    string team = roster.Teams[i] < 0
+                        ? "AUTO"
+                        : $"TEAM {(char)('A' + roster.Teams[i])}";
+                    names.Add($"{roster.Names[i]}  //  {team}");
                 }
                 _target.SetItems(names, Math.Max(0, _targetSlots.IndexOf(selected)));
             }
@@ -681,9 +696,12 @@ namespace MphRead.Mods.Launcher.Gui
                 SetPreview(_draftRoom);
                 _mode.Index = BaseModeIndex(session.Match.Mode);
                 _format.Index = MatchupIndex(session.Match);
-                _time.Value = Minutes(session.Match.TimeLimitSeconds);
-                _goal.Label = GoalLabel(session.Match.Mode);
-                _goal.Value = GoalDisplay(session.Match.Mode, session.Match.PointGoal);
+                if (!_draftDirty)
+                {
+                    _time.Value = DurationDisplay(session.Match.TimeLimitSeconds);
+                    _goal.Label = GoalLabel(session.Match.Mode);
+                    _goal.Value = GoalDisplay(session.Match.Mode, session.Match.PointGoal);
+                }
                 _fire.On = session.Match.FriendlyFire;
                 _affinity.On = session.Match.AffinityWeapons;
                 _freeze.On = session.Match.ShadowFreeze;
@@ -699,25 +717,16 @@ namespace MphRead.Mods.Launcher.Gui
                     : layout.IsValid ? layout : new TeamLayout(2, 2, 2);
                 _customTeams.Set(_customLayout.ToString());
 
-                string[] teams = Enumerable.Range(0, layout.TeamCount)
-                    .Select(team => $"Team {(char)('A' + team)}")
-                    .Prepend("Auto").ToArray();
-                _team.SetItems(teams, 0);
-                _moveTeam.SetItems(teams, 0);
             }
 
             _ownerControls.IsEnabled = NetSession.CanEditLobby && !NetSession.LobbyCommandPending;
             _closeLobby.IsEnabled = NetSession.CanEditLobby && !NetSession.LobbyCommandPending;
             TeamLayout activeLayout = LobbyRules.ResolveTeamLayout(session.Match);
             bool chooseTeams = PlayerChoosesTeam(session.Match);
-            _team.IsVisible = chooseTeams;
-            if (NetSession.LocalSlot >= 0)
-                _team.Index = NetSession.SlotTeamIndex[NetSession.LocalSlot] + 1;
+            RefreshTeamOrganizer(session, roster, activeLayout, chooseTeams);
             _hunter.IsEnabled = _suit.IsEnabled = NetSession.IsInLobby && !NetSession.LobbyCommandPending;
             _team.IsEnabled = chooseTeams && _hunter.IsEnabled
                 && (!session.LockTeams || NetSession.LocalIsLobbyOwner);
-            _moveTeam.IsVisible = chooseTeams;
-            _moveButton.IsVisible = chooseTeams;
 
             // Ready is a real gate only when the room requires it. Leaving a
             // meaningless READY button on screen when the rule is disabled
@@ -788,11 +797,119 @@ namespace MphRead.Mods.Launcher.Gui
             _chatEntry.Text = "";
         }
 
+        private byte SelectedTargetSlot() =>
+            _target.Index >= 0 && _target.Index < _targetSlots.Count
+                ? _targetSlots[_target.Index]
+                : byte.MaxValue;
+
+        private void AssignSelectedTeam(sbyte team)
+        {
+            byte target = SelectedTargetSlot();
+            if (target != byte.MaxValue)
+                NetSession.SendLobbyCommand(LobbyCommandType.SetTeam, target, team);
+        }
+
         private void Admin(LobbyCommandType type)
         {
-            if (_target.Index < _targetSlots.Count)
-                NetSession.SendLobbyCommand(type, _targetSlots[_target.Index],
-                    (sbyte)(_moveTeam.Index - 1));
+            byte target = SelectedTargetSlot();
+            if (target != byte.MaxValue)
+                NetSession.SendLobbyCommand(type, target, -1);
+        }
+
+        private void RefreshTeamOrganizer(SessionStatePacket session, RosterPacket roster,
+            TeamLayout layout, bool chooseTeams)
+        {
+            _team.IsVisible = chooseTeams;
+            _teamSummary.IsVisible = chooseTeams;
+
+            int[] counts = new int[4];
+            for (int i = 0; i < roster.Count; i++)
+            {
+                int team = roster.Teams[i];
+                if (team >= 0 && team < counts.Length) counts[team]++;
+            }
+
+            string[] choices = Enumerable.Range(0, layout.TeamCount)
+                .Select(team =>
+                {
+                    int capacity = layout.Capacity(team);
+                    return $"Team {(char)('A' + team)}  {counts[team]}/{capacity}";
+                })
+                .Prepend("Auto balance").ToArray();
+
+            int localTeam = NetSession.LocalSlot >= 0
+                ? NetSession.SlotTeamIndex[NetSession.LocalSlot] + 1
+                : 0;
+            _team.SetItems(choices, Math.Clamp(localTeam, 0, Math.Max(0, choices.Length - 1)));
+            if (NetSession.LocalSlot >= 0)
+                _team.Index = Math.Clamp(NetSession.SlotTeamIndex[NetSession.LocalSlot] + 1,
+                    0, Math.Max(0, choices.Length - 1));
+
+            _teamSummary.Text = chooseTeams
+                ? String.Join("   ", Enumerable.Range(0, layout.TeamCount)
+                    .Select(team => $"{(char)('A' + team)} {counts[team]}/{layout.Capacity(team)}"))
+                : "";
+
+            byte selected = SelectedTargetSlot();
+            sbyte selectedTeam = -1;
+            for (int i = 0; i < roster.Count; i++)
+                if (roster.Slots[i] == selected)
+                    selectedTeam = roster.Teams[i];
+
+            _teamAssign[0].IsVisible = chooseTeams;
+            _teamAssign[0].IsEnabled = chooseTeams && selected != byte.MaxValue
+                && NetSession.CanEditLobby && !NetSession.LobbyCommandPending;
+            _teamAssign[0].Label = "AUTO";
+
+            for (int i = 1; i < _teamAssign.Length; i++)
+            {
+                int team = i - 1;
+                bool visible = chooseTeams && team < layout.TeamCount;
+                _teamAssign[i].IsVisible = visible;
+                if (!visible) continue;
+                int capacity = layout.Capacity(team);
+                _teamAssign[i].Label = $"{(char)('A' + team)} {counts[team]}/{capacity}";
+                _teamAssign[i].IsEnabled = selected != byte.MaxValue
+                    && NetSession.CanEditLobby && !NetSession.LobbyCommandPending
+                    && (selectedTeam == team || counts[team] < capacity);
+            }
+
+            bool targetIsOther = selected != byte.MaxValue && selected != NetSession.LocalSlot;
+            _transferButton.IsEnabled = targetIsOther && NetSession.CanEditLobby
+                && !NetSession.LobbyCommandPending;
+            _kickButton.IsEnabled = targetIsOther && NetSession.CanEditLobby
+                && !NetSession.LobbyCommandPending;
+        }
+
+        private void WireRuleField(FieldRow field)
+        {
+            field.Box.TextChanged += (_, _) => DraftChanged();
+            field.Box.LostFocus += (_, _) => TryAutoApply(force: true);
+            field.Box.KeyDown += (_, e) =>
+            {
+                if (e.Key == Key.Enter)
+                {
+                    e.Handled = true;
+                    TryAutoApply(force: true);
+                }
+            };
+        }
+
+        private void StartMatchRequested()
+        {
+            if (!NetSession.CanEditLobby || NetSession.LobbyCommandPending) return;
+            if (_draftDirty)
+            {
+                if (!TryBuildMatch(out _, out string reason))
+                {
+                    _layoutSummary.Text = reason;
+                    return;
+                }
+                _startAfterSave = true;
+                TryAutoApply(force: true);
+                return;
+            }
+            NetSession.SendLobbyCommand(LobbyCommandType.StartMatch);
         }
 
         private void MatchChoiceChanged(bool resetGoal)
@@ -903,14 +1020,17 @@ namespace MphRead.Mods.Launcher.Gui
             return true;
         }
 
-        private void TryAutoApply()
+        private void TryAutoApply(bool force = false)
         {
             if (!_draftDirty || NetSession.LobbyCommandPending || !NetSession.CanEditLobby
-                || NetSession.Clock - _draftChangedAt < 0.25
+                || (!force && NetSession.Clock - _draftChangedAt < 0.25)
                 || NetSession.ServerSession is not { } config)
                 return;
-            if (!TryBuildMatch(out MatchDefinition match, out _))
+            if (!TryBuildMatch(out MatchDefinition match, out string reason))
+            {
+                if (force) _layoutSummary.Text = reason;
                 return;
+            }
 
             config.Match = match;
             config.RuleFlags = match.Rules
