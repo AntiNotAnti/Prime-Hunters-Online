@@ -20,6 +20,7 @@ namespace MphRead.NetTest
             try
             {
                 Wire();
+                PresentationStateSafety();
                 RelaySnapshotValidation();
                 StateMachine();
                 LoopbackAdmission();
@@ -75,11 +76,12 @@ namespace MphRead.NetTest
                 "player and damage event round trip");
             var intent = new IntentPacket { MatchId = 51, AuthorityEpoch = 9, SlotGeneration = 22,
                 LifeId = 65535, Frame = uint.MaxValue, Position = state.Position, Aim = state.Facing,
-                ChargeLevel = 99, ShotFlags = 2, AckSubFrame = 77 };
+                ChargeLevel = 99, ShotFlags = 2, HomingTarget = 0x82, AckSubFrame = 77 };
             intent.Write(buffer);
             IntentPacket input = IntentPacket.Read(buffer.AsSpan(0, IntentPacket.FullSize));
             Check(input.MatchId == 51 && input.AuthorityEpoch == 9 && input.SlotGeneration == 22
-                && input.LifeId == 65535 && input.ChargeLevel == 99 && input.AckSubFrame == 77, "intent round trip");
+                && input.LifeId == 65535 && input.ChargeLevel == 99 && input.HomingTarget == 0x82
+                && input.AckSubFrame == 77, "intent round trip");
             var claim = new HitClaimPacket { MatchId = 51, AuthorityEpoch = 3, ShooterGeneration = 5,
                 ShooterLifeId = 8, VictimGeneration = 10, VictimLifeId = 9, HitPoint = state.Position,
                 ClaimId = 65535, Damage = 127, LaunchFrame = 72,
@@ -99,6 +101,49 @@ namespace MphRead.NetTest
             roster.Write(buffer);
             var people = RosterPacket.Read(buffer);
             Check(people.Generations[1] == 10 && people.Revision == 11 && people.Names[1] == "victim", "roster identity round trip");
+        }
+
+        private static void PresentationStateSafety()
+        {
+            var camera = new CameraInfo();
+            camera.Reset();
+            camera.Position = Vector3.Zero;
+            camera.Target = Vector3.UnitY;
+            camera.UpVector = Vector3.UnitY;
+            camera.Update();
+            Check(Single.IsFinite(camera.Facing.X) && Single.IsFinite(camera.Facing.Y)
+                && Single.IsFinite(camera.Facing.Z) && Single.IsFinite(camera.Field48)
+                && Single.IsFinite(camera.Field4C) && Single.IsFinite(camera.ViewMatrix.Row0.X),
+                "vertical camera basis remains finite");
+
+            camera.Target = camera.Position;
+            camera.Update();
+            Check(Single.IsFinite(camera.ViewMatrix.Row0.X)
+                && Single.IsFinite(camera.ViewMatrix.Row1.Y)
+                && Single.IsFinite(camera.ViewMatrix.Row2.Z),
+                "coincident camera target repairs itself");
+
+            PlayerEntity player = Player(1, 100);
+            FieldInfo frozen = typeof(PlayerEntity).GetField("_frozenTimer",
+                BindingFlags.Instance | BindingFlags.NonPublic)!;
+            FieldInfo frozenGfx = typeof(PlayerEntity).GetField("_frozenGfxTimer",
+                BindingFlags.Instance | BindingFlags.NonPublic)!;
+            frozen.SetValue(player, (ushort)20);
+            frozenGfx.SetValue(player, (ushort)0);
+            typeof(PlayerEntity).GetMethod("ModSetFrozen",
+                BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(player, new object[] { true });
+            Check((ushort)frozenGfx.GetValue(player)! >= 30,
+                "replicated freeze keeps the visible ice alive");
+
+            typeof(PlayerEntity).GetProperty(nameof(PlayerEntity.HudDisruptedState))!
+                .SetValue(player, (byte)2);
+            FieldInfo disruptionTimer = typeof(PlayerEntity).GetField("_hudDisruptedTimer",
+                BindingFlags.Instance | BindingFlags.NonPublic)!;
+            disruptionTimer.SetValue(player, (ushort)0);
+            typeof(PlayerEntity).GetMethod("UpdateDisruptedState",
+                BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(player, Array.Empty<object>());
+            Check(player.HudDisruptedState == 3 && (ushort)disruptionTimer.GetValue(player)! == 0,
+                "zero disruption timer cannot underflow into a stuck distorted HUD");
         }
 
         private static void LoopbackAdmission()

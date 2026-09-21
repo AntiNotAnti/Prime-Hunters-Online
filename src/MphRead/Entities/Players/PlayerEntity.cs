@@ -843,6 +843,7 @@ namespace MphRead.Entities
             _disruptedTimer = 0;
             _burnedBy = null;
             _burnTimer = 0;
+            _modPendingHomingTarget = 0;
             if (IsMainPlayer)
             {
                 ResetRespawnVisualState();
@@ -853,6 +854,33 @@ namespace MphRead.Entities
             {
                 pos = pos.AddY(1);
             }
+            bool facingFinite = Single.IsFinite(facing.X) && Single.IsFinite(facing.Y) && Single.IsFinite(facing.Z);
+            float facingHMagSqr = facing.X * facing.X + facing.Z * facing.Z;
+            if (!facingFinite || facing.LengthSquared < 0.000001f || facingHMagSqr < 0.000001f)
+            {
+                // Player spawns require a horizontal heading. A transient vertical
+                // or zero network facing used to produce zero cross products and
+                // divide-by-zero values that then reached the camera.
+                facing = -Vector3.UnitZ;
+            }
+            else
+            {
+                facing = facing.Normalized();
+            }
+            bool upFinite = Single.IsFinite(up.X) && Single.IsFinite(up.Y) && Single.IsFinite(up.Z);
+            if (!upFinite || up.LengthSquared < 0.000001f)
+            {
+                up = Vector3.UnitY;
+            }
+            else
+            {
+                up = up.Normalized();
+            }
+            if (MathF.Abs(Vector3.Dot(up, facing)) > 0.999f)
+            {
+                up = MathF.Abs(facing.Y) < 0.999f ? Vector3.UnitY : Vector3.UnitZ;
+            }
+
             _upVector = up;
             _facingVector = facing;
             SetTransform(_facingVector, _upVector, pos);

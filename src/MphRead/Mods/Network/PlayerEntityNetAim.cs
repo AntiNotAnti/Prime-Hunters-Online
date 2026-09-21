@@ -943,6 +943,57 @@ namespace MphRead.Entities
         /// The same shape as <see cref="ModSetAmmo"/> and the alt-form state:
         /// whoever is playing a character is the one who knows.
         /// </summary>
+        private byte _modPendingHomingTarget;
+
+        internal void ModSetPendingHomingTarget(byte encodedTarget)
+        {
+            _modPendingHomingTarget = encodedTarget;
+        }
+
+        internal byte ModConsumePendingHomingTarget()
+        {
+            byte target = _modPendingHomingTarget;
+            _modPendingHomingTarget = 0;
+            return target;
+        }
+
+        /// <summary>
+        /// Pick the same non-continuous homing target the owner's shot will use
+        /// before the release is sent. Only the charged affinity Volt Driver
+        /// needs this: different peers independently choosing from slightly
+        /// different snapshot positions made the visible bolt and authority
+        /// resolution bend toward different players.
+        /// </summary>
+        internal byte ModPickNetworkHomingTarget()
+        {
+            WeaponInfo weapon = EquipInfo.Weapon;
+            if (!NetSession.Active || weapon.Beam != BeamType.VoltDriver || !ModChargeReady
+                || !weapon.Afflictions[1].TestFlag(Affliction.Disrupt) || _disruptedTimer > 0)
+            {
+                return 0;
+            }
+            Vector3 direction = _aimPosition - _muzzlePos;
+            if (!Single.IsFinite(direction.X) || !Single.IsFinite(direction.Y) || !Single.IsFinite(direction.Z)
+                || direction.LengthSquared < 0.000001f)
+            {
+                return 0;
+            }
+            EntityBase? target = BeamProjectileEntity.ModFindNonContinuousHomingTarget(
+                this, EquipInfo, _muzzlePos, direction.Normalized(), _scene);
+            if (target == null)
+            {
+                return IntentPacket.HomingTargetValid;
+            }
+            if (target is PlayerEntity player && player.SlotIndex >= 0
+                && player.SlotIndex < IntentPacket.HomingTargetMask)
+            {
+                return (byte)(IntentPacket.HomingTargetValid | (player.SlotIndex + 1));
+            }
+            // The compact field intentionally represents player slots only.
+            // Let non-player targets use the engine's normal local selection.
+            return 0;
+        }
+
         internal void ModSetShotState(int chargeLevel, int boostDamage, bool doubleDamage)
         {
             if (SlotIndex == NetHooks.LocalSlot)
@@ -1175,6 +1226,21 @@ namespace MphRead.Entities
                     // Still frozen where it matters; do not let this copy thaw
                     // a round trip early and start moving again.
                     _frozenTimer = 2;
+                }
+
+                // The authoritative Frozen bit can remain set longer than this
+                // copy's graphics countdown (especially on a quick re-freeze).
+                // Keep the visible ice alive for as long as gameplay says the
+                // player is frozen, then let the engine's normal break/thaw path
+                // run once the authoritative bit clears.
+                ushort gfxFloor = (ushort)Math.Min(UInt16.MaxValue, _frozenTimer + 5 * 2);
+                if (_frozenGfxTimer < gfxFloor)
+                {
+                    _frozenGfxTimer = gfxFloor;
+                }
+                if (IsMainPlayer)
+                {
+                    _drawIceLayer = true;
                 }
             }
             else if (_frozenTimer > 1)
