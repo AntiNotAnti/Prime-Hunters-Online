@@ -346,9 +346,18 @@ namespace MphRead.Mods.Network
             rig.Expect(a, a.Command(LobbyCommandType.StartMatch), LobbyResultCode.PlayersNotReady);
             rig.Expect(a, a.Command(LobbyCommandType.SetReady, true, revision: 0), LobbyResultCode.StaleRevision);
             rig.ReadyAll();
-            var config = a.State.Value; config.Match = config.Match with { RoomKey = Rooms()[1], TimeLimitSeconds = 600, HideOpponentHealth = true };
+            var config = a.State.Value; config.Match = config.Match with
+            {
+                RoomKey = Rooms()[1], TimeLimitSeconds = 600, PointGoal = 25,
+                HideOpponentHealth = true
+            };
             rig.Expect(a, a.Command(LobbyCommandType.UpdateMatch, config: config), LobbyResultCode.Ok);
             Check(a.Roster.LobbyReady.Take(a.Roster.Count).All(r => !r), "configuration clears ready");
+            Check(a.State.Value.Match.TimeLimitSeconds == 600
+                && a.State.Value.Match.PointGoal == 25
+                && b.State!.Value.Match.TimeLimitSeconds == 600
+                && b.State.Value.Match.PointGoal == 25,
+                "time and point goal persist and synchronize to all clients");
             Check(a.State.Value.Match.HideOpponentHealth && b.State!.Value.Match.HideOpponentHealth,
                 "owner hidden-health rule synchronizes to both UDP clients");
             var forbidden = b.State.Value;
