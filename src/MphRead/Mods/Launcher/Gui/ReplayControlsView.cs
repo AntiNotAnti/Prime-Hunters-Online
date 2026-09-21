@@ -733,9 +733,9 @@ namespace MphRead.Mods.Launcher.Gui
             string Name(byte slot) => names.TryGetValue(slot, out string? value)
                 ? value : $"P{slot + 1}";
 
-            void JumpRow(string text, uint frame, Deck.Face face = Deck.Face.Slate)
+            void JumpRow(string text, uint frame, Deck.Face? face = null)
             {
-                var button = new DeckButton(text, face,
+                var button = new DeckButton(text, face ?? Deck.Face.Slate,
                     sizeEms: .84, padXEms: .55, padYEms: .3, lip: 3)
                 {
                     HorizontalAlignment = HorizontalAlignment.Stretch

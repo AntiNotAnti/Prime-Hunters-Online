@@ -53,7 +53,7 @@ namespace MphRead.Mods.Network
                     new ReplayEvent(180, ReplayEventType.Objective, 1),
                     new ReplayEvent(200, ReplayEventType.Damage, 1, 0, 200),
                     new ReplayEvent(210, ReplayEventType.WeaponFired, 0,
-                        value: 7),
+                        Value: 7),
                     new ReplayEvent(300, ReplayEventType.MatchEnded)
                 };
                 var analytics = Replay.ReplayStudio.Analytics(events, 300);

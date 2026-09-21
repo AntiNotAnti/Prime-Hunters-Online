@@ -132,8 +132,8 @@ namespace MphRead.Mods.Replay
                 if (document is not { Version: 1 }) return new ReplayAnnotationDocument();
                 document.Bookmarks ??= new List<ReplayBookmark>();
                 document.Highlights ??= new List<ReplayNamedHighlight>();
-                document.Tags = CleanLabels(document.Tags ?? Array.Empty<string>());
-                document.Collections = CleanLabels(document.Collections ?? Array.Empty<string>());
+                document.Tags = CleanLabels(document.Tags ?? new List<string>());
+                document.Collections = CleanLabels(document.Collections ?? new List<string>());
                 document.Bookmarks.RemoveAll(bookmark =>
                     String.IsNullOrWhiteSpace(bookmark.Name)
                     || bookmark.Frame > ReplayFormatV3.MaxFrame);

@@ -1505,7 +1505,7 @@ namespace MphRead.Entities
                                     else
                                     {
                                         _targetCircleInst.Alpha = Features.ReticleOpacity;
-                                        _scene.DrawHudObject(_targetCircleInst, scale: Crosshair.Scale);
+                                        _scene.DrawHudObject(_targetCircleInst, scale: Mods.Render.Crosshair.Scale);
                                     }
                                     float hitMarker = Mods.Network.NetHitPrediction.MarkerAlpha;
                                     if (hitMarker > 0)
