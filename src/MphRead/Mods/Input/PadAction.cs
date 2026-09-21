@@ -60,7 +60,14 @@ namespace MphRead.Mods.Input
         ReplayFaster,
         ReplayPrevPlayer,
         ReplayNextPlayer,
-        ReplayCameraMode
+        ReplayCameraMode,
+
+        /// <summary>
+        /// Save the rolling instant-replay buffer. Appended after the replay
+        /// actions so every previously persisted PadAction numeric value stays
+        /// exactly where it was.
+        /// </summary>
+        SaveClip
     }
 
 }

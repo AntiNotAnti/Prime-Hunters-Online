@@ -33,11 +33,14 @@ namespace MphRead.Mods.Launcher.Gui
     /// Skia still draws every glyph at the panel's real resolution. It is the
     /// same control the desktop surface uses, for the same reason.
     ///
-    /// What it must *not* do is squeeze them until they fit, which is what the
-    /// first version did -- see the unit note in <see cref="Apply"/>. A phone
-    /// gets 1.0 here, the size the screens were drawn at, and the box it
-    /// leaves is narrower than the widest well; <see cref="UiLayout.WellGutter"/>
-    /// is the other half of that and lets the well give way instead.
+    /// The physical/readability curve is still the preferred size, but it is
+    /// not allowed to make the layout box shorter or narrower than the menu
+    /// system was authored for. A phone is the case where those two goals
+    /// disagree: readable 1.0x type leaves only about 390-420 layout points of
+    /// height, so responsive screens choose their compact/stacked forms and
+    /// then run below the glass. The fit cap below makes the child see at least
+    /// <see cref="UiLayout.MinBoxWidth"/> by <see cref="UiLayout.MinBoxHeight"/>
+    /// whenever the viewport can do so above the shared 0.6 floor.
     /// </summary>
     internal sealed class UiScaleHost : Decorator
     {
@@ -64,8 +67,11 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 return 1;
             }
-            return UiLayout.Factor(widthDips / DipsPerPoint, heightDips / DipsPerPoint)
-                * DipsPerPoint;
+            double readable = UiLayout.Factor(
+                widthDips / DipsPerPoint, heightDips / DipsPerPoint) * DipsPerPoint;
+            double fit = Math.Min(widthDips / UiLayout.MinBoxWidth,
+                heightDips / UiLayout.MinBoxHeight);
+            return Math.Max(0.6, Math.Min(readable, fit));
         }
 
         private readonly LayoutTransformControl _host;
@@ -118,26 +124,12 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 return;
             }
-            // Asked in the screens' own points and then given back in this
-            // platform's, which is the whole of what was wrong with the first
-            // version of this.
-            //
-            // A layout point here is Android's dp, defined as 1/160 inch; the
-            // point the screens are drawn in is the desktop's, 1/96. So the
-            // *same number* is 0.6 of the physical size on a phone that it is
-            // on a monitor, and a curve that treats the two as the same unit
-            // asks a 830-point-wide view to hold a 960-point layout and scales
-            // everything down to 0.6 to make it -- which is 0.36 of the size
-            // the text is on a desktop, on the screen held closest to the
-            // face. That is "bien trop petit", and it is not a taste question:
-            // it is a unit error.
-            //
-            // So the view is converted into the authored unit, the shared
-            // curve is asked about *that*, and the answer is converted back.
-            // A phone lands on the curve's own 0.6 floor, which comes back
-            // here as exactly 1.0 -- the size the screens were drawn at, and
-            // what the last release put on screen. A tablet has more of them
-            // and climbs above it, as a bigger window does on the desktop.
+            // Pick the readable physical size first, then cap it by what can
+            // actually fit the authored box. The second half is essential on
+            // short Android landscapes: without it, the child is measured at
+            // the phone's ~390-420 point height, flips into compact layouts,
+            // and whole cards/footers end up below the screen. The 0.6 floor
+            // keeps transient/inset resizes from collapsing the UI to a speck.
             double factor = UiScaleHost.FactorFor(size.Width, size.Height);
             // Device pixels per layout point, for the one control that cuts
             // its own bitmap. Two multiplications here, not one: the view's

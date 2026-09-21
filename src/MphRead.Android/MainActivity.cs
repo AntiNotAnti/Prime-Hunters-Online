@@ -1040,7 +1040,10 @@ namespace MphRead.Droid
             }
             MphRead.Mods.Launcher.Gui.Deck.Asleep = false;
             GoImmersive(true);
-            AndroidApp.Home?.ShowPauseMenu(ClosePauseMenu, EndMatch, () => Finish());
+            AndroidApp.Home?.ShowPauseMenu(
+                ClosePauseMenu, EndMatch, () => Finish(),
+                () => { _gameView?.RequestSpectate(); },
+                () => { _gameView?.RequestRejoin(); });
         }
 
         private void ClosePauseMenu()

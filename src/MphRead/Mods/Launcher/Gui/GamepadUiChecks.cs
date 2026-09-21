@@ -16,6 +16,19 @@ namespace MphRead.Mods.Launcher.Gui
         public static void Run(string? shots = null)
         {
             GamepadChecks.Check(GuiLauncher.EnsureSetup(), "headless UI initialization");
+
+            // Android's real view is short in density-independent points. The
+            // readable scale must be capped far enough that the authored
+            // 960x600 menu box still fits instead of switching to a stacked
+            // layout and running below the glass.
+            double phoneScale = UiScaleHost.FactorFor(830, 390);
+            GamepadChecks.Check(Math.Abs(phoneScale - 0.65) < 0.001
+                && 830 / phoneScale >= UiLayout.MinBoxWidth
+                && 390 / phoneScale >= UiLayout.MinBoxHeight,
+                "Android phone scale keeps the authored menu box visible");
+            GamepadChecks.Check(UiScaleHost.FactorFor(1280, 720) >= 0.999,
+                "roomy Android landscape keeps readable-size UI");
+
             var panel = new StackPanel();
             var first = new UiWord("First");
             var hidden = new UiWord("Hidden") { IsVisible = false };

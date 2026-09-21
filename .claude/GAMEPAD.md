@@ -86,6 +86,12 @@ table is `PadBindings`, which starts as exactly this.
 | Back | scoreboard |
 | Start | pause menu |
 
+**Save clip** is also a gameplay-context controller action, exposed in the
+Controller button settings and intentionally **unbound by default**. That keeps
+an upgrade from stealing a physical button from an existing layout; players can
+bind any button or chord they want, and it triggers the same rolling-buffer save
+and status message as the keyboard clip key.
+
 Two actions drive two binds each, and have one row apiece rather than two:
 FIRE is both the gun and the alt form's attack (the DS had one attack button
 and the game's own defaults still bind both to it), and JUMP is also the

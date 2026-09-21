@@ -41,12 +41,10 @@ namespace MphRead.Mods
         /// The camera this mode wants, for the render loop to act on: true
         /// for the free one, false for a player's, null for nothing pending.
         ///
-        /// Both callers -- the pause menu's Spectate and Rejoin entries --
-        /// run on the game's own thread, but neither has the scene to hand,
-        /// and the camera is the scene's. So they leave the decision here and
-        /// <c>Scene.OnRenderFrame</c> takes it between frames, the same shape
-        /// <see cref="PauseMenu"/> uses for the window work it cannot do
-        /// from a click handler either.
+        /// Neither pause-menu implementation owns the scene. Desktop invokes
+        /// these changes on the game thread; Android queues Spectate/Rejoin to
+        /// its GL thread first. Both leave the actual camera decision here and
+        /// their scene loop consumes it between input and simulation.
         /// </summary>
         private static bool? _cameraRequest;
 
