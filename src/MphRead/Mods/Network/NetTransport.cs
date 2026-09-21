@@ -69,7 +69,7 @@ namespace MphRead.Mods.Network
         private readonly ReceivedPacket?[] _latestSlotIntent =
             new ReceivedPacket?[MphRead.Entities.PlayerEntity.SlotCapacity];
         private long _statePacketsCoalesced;
-        public long StatePacketsCoalesced => Interlocked.Read(ref _statePacketsCoalesced);;
+        public long StatePacketsCoalesced => Interlocked.Read(ref _statePacketsCoalesced);
 
         /// <summary>
         /// How many received packets may wait for the game loop.
