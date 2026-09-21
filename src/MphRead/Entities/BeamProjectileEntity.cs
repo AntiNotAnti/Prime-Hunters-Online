@@ -1079,6 +1079,13 @@ namespace MphRead.Entities
 
         public override void GetDrawInfo()
         {
+            // KillCam is presenting a historical combat frame. A live
+            // projectile from the current simulation would be chronologically
+            // wrong on top of that rewind, so do not composite it into the
+            // historical view.
+            if (Mods.KillCam.Active)
+                return;
+
             if (DrawFuncId == 0)
             {
                 Draw00();

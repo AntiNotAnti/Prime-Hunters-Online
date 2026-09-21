@@ -92,6 +92,40 @@ namespace MphRead.Entities
         /// </summary>
         private static float EndPreview => 38 * EndScale;
 
+        internal void ModDrawKillCam()
+        {
+            if (!KillCam.TryGetBanner(out bool final, out string killer,
+                    out string victim, out string weapon))
+            {
+                return;
+            }
+
+            float aspect = HudAspectFix;
+            float top = 10;
+            float half = (final ? 60 : 54) * aspect;
+            float bottom = final ? 32 : 34;
+            _scene.DrawHudFlatBox(128 - half, top, 128 + half, bottom,
+                new Vector4(0, 0, 0, 0.72f));
+            _scene.DrawHudFlatBox(128 - half, top, 128 + half, top + 0.7f,
+                final ? new Vector4(1, 0.75f, 0.2f, 0.95f)
+                    : new Vector4(0.35f, 0.95f, 1, 0.95f));
+
+            DrawText2D(128, top + 3, Align.Center, palette: 0,
+                final ? "FINAL KILL" : "KILL CAM",
+                color: _endInk, fontSpacing: 8, scale: 0.58f);
+            DrawText2D(128, top + 14, Align.Center, palette: 0,
+                final ? $"{killer}  >  {victim}"
+                    : weapon.Length == 0 ? $"KILLED BY {killer}"
+                    : $"KILLED BY {killer} · {weapon}",
+                color: _endDim, fontSpacing: 8, scale: 0.43f);
+            if (!final)
+            {
+                DrawText2D(128, top + 23, Align.Center, palette: 0,
+                    "FIRE TO SKIP",
+                    color: _endDim, fontSpacing: 8, scale: 0.38f);
+            }
+        }
+
         internal void ModDrawEndScreen()
         {
             if (!EndScreen.Available || !EndScreen.CharacterChangeEnabled)

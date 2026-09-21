@@ -298,6 +298,7 @@ namespace MphRead
             ForceEndGame = false;
             _tempoChanged = false;
             _stateChanged = false;
+            Mods.KillCam.Reset();
             _lastAlarmTime = 0;
             _nextAlarmIndex = 0;
         }
@@ -319,6 +320,7 @@ namespace MphRead
             _tempoChanged = false;
             _stateChanged = false;
             _matchEndTime = 0;
+            Mods.KillCam.Reset();
             _lastAlarmTime = 0;
             _nextAlarmIndex = 0;
         }
@@ -512,6 +514,11 @@ namespace MphRead
                     scene.SetFade(FadeType.None, length: 0, overwrite: true);
                     _stateChanged = true;
                     _matchEndTime = scene.GlobalElapsedTime;
+                    uint finalFrame = Mods.Network.NetSession.IsClient
+                        && Mods.Network.NetSession.AppliedSnapshotFrame != 0
+                            ? Mods.Network.NetSession.AppliedSnapshotFrame
+                            : Mods.Network.NetSession.NetFrame;
+                    Mods.KillCam.BeginFinal(finalFrame);
                     Sfx.Instance.StopFreeSfxScripts();
                     Sfx.Instance.StopAllSound();
                     PlayerEntity.Main.StopLongSfx();
@@ -541,6 +548,7 @@ namespace MphRead
                 }
                 if (MatchTime == 0)
                 {
+                    Mods.KillCam.EndFinal();
                     MatchState = MatchState.Ending;
                     // Ten seconds of results, where the DS gave five.
                     //

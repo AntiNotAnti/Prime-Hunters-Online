@@ -538,7 +538,7 @@ namespace MphRead.Entities
         {
             if (nodeRef == NodeRef.None
                 || _scene.CameraMode != CameraMode.Player || _scene.ShowInvisibleEntities // skdebug
-                || DemoPlayback.IsActive)
+                || DemoPlayback.IsActive || Mods.KillCam.Active)
             {
                 // The node-ref culling this gates is an optimisation for a
                 // camera that is really walking the map and crossing its

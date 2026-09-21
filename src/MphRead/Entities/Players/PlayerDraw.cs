@@ -11,7 +11,13 @@ namespace MphRead.Entities
     {
         public void Draw()
         {
-            if (Flags2.TestFlag(PlayerFlags2.Spectating))
+            bool historical = Mods.KillCam.TryGetHistoricalPose(
+                SlotIndex, out Mods.KillCamPlayerPose historicalPose);
+            Vector3 drawPosition = historical ? historicalPose.Position : Position;
+            bool drawAltForm = historical ? historicalPose.AltForm : IsAltForm;
+            bool drawAlive = historical ? historicalPose.Health > 0 : _health > 0;
+
+            if (!historical && Flags2.TestFlag(PlayerFlags2.Spectating))
             {
                 // Before the shadow, not after it. A spectator is out of the
                 // match on every machine, and the shadow is drawn from the
@@ -20,12 +26,13 @@ namespace MphRead.Entities
                 // nobody, which is exactly how it was reported.
                 return;
             }
-            DrawShadow();
-            if (IsMainPlayer && ScanVisor)
+            if (!historical)
+                DrawShadow();
+            if (!historical && IsMainPlayer && ScanVisor)
             {
                 DrawScanModels();
             }
-            if (Flags2.TestFlag(PlayerFlags2.HideModel))
+            if (!historical && Flags2.TestFlag(PlayerFlags2.HideModel))
             {
                 return;
             }
@@ -37,7 +44,7 @@ namespace MphRead.Entities
             Vector4? outlineColor = BrightSkins.GetOutlineColor(this);
             int lod = 0;
             Flags2 &= ~PlayerFlags2.Lod1;
-            if (!IsMainPlayer && !Features.MaxPlayerDetail
+            if (!historical && !IsMainPlayer && !Features.MaxPlayerDetail
                 && (Position - Main.CameraInfo.Position).LengthSquared >= 3 * 3)
             {
                 lod = 1;
@@ -51,18 +58,31 @@ namespace MphRead.Entities
             // example issue - Kanden visible for one frame before Data Shrine 03 cam seq starts
             // should be culled because the cam seq frustum info has already been loaded, and is facing away from him,
             // even though the player's view is still what's on the screen (at least that seems to be what's happening)
-            if (IsMainPlayer || IsVisible(NodeRef) || ModNodeUnresolved)
+            if (historical || IsMainPlayer || IsVisible(NodeRef) || ModNodeUnresolved)
             {
-                drawBiped = !IsMainPlayer || CameraType != CameraType.First || CameraSequence.Current != null
-                    || _camSwitchTimer < Values.CamSwitchTime * 2; // todo: FPS stuff
-                if (IsAltForm)
+                drawBiped = historical
+                    ? !Mods.KillCam.IsHistoricalCameraOwner(SlotIndex)
+                    : !IsMainPlayer || CameraType != CameraType.First
+                        || CameraSequence.Current != null
+                        || _camSwitchTimer < Values.CamSwitchTime * 2; // todo: FPS stuff
+                if (drawAltForm)
                 {
-                    _modelTransform.Row3.Xyz = Position;
+                    Matrix4 historicalAltTransform = historical
+                        ? historicalPose.Transform : _modelTransform;
+                    historicalAltTransform.Row3.Xyz = drawPosition;
+                    if (!historical)
+                        _modelTransform.Row3.Xyz = drawPosition;
                     if (_timeSinceDamage < Values.DamageFlashTime * 2) // todo: FPS stuff
                     {
                         PaletteOverride = Metadata.RedPalette;
                     }
-                    if (Hunter == Hunter.Kanden)
+                    if (historical)
+                    {
+                        UpdateTransforms(_altModel, historicalAltTransform, Recolor);
+                        GetDrawItems(_altModel, _altModel.Model.Nodes[0], _curAlpha,
+                            overrideColor: brightSkin, outlineColor: outlineColor);
+                    }
+                    else if (Hunter == Hunter.Kanden)
                     {
                         DrawKandenAlt(brightSkin, outlineColor);
                     }
@@ -76,7 +96,7 @@ namespace MphRead.Entities
                         GetDrawItems(_altModel, _altModel.Model.Nodes[0], _curAlpha, overrideColor: brightSkin, outlineColor: outlineColor);
                     }
                     PaletteOverride = null;
-                    if (_frozenGfxTimer > 0)
+                    if (!historical && _frozenGfxTimer > 0)
                     {
                         float radius = _volume.SphereRadius + 0.2f;
                         Matrix4 transform = Matrix4.CreateScale(radius) * _modelTransform;
@@ -84,11 +104,13 @@ namespace MphRead.Entities
                         UpdateTransforms(_altIceModel, transform, recolor: 0);
                         GetDrawItems(_altIceModel, _altIceModel.Model.Nodes[0], alpha: 1, recolor: 0);
                     }
-                    if (Hunter == Hunter.Samus && !Flags2.TestFlag(PlayerFlags2.Cloaking))
+                    if (!historical && Hunter == Hunter.Samus
+                        && !Flags2.TestFlag(PlayerFlags2.Cloaking))
                     {
                         DrawMorphBallTrail();
                     }
-                    _modelTransform.Row3.Xyz = Vector3.Zero;
+                    if (!historical)
+                        _modelTransform.Row3.Xyz = Vector3.Zero;
                     Flags2 |= PlayerFlags2.DrawnThirdPerson;
                 }
                 else if (drawBiped)
@@ -97,7 +119,7 @@ namespace MphRead.Entities
                     Node spineNode = _spineNodes[lod]!;
                     spineNode.AnimIgnoreChild = true;
                     // todo: we can just figure out the angle directly from the facing vector
-                    Vector3 facing = _facingVector;
+                    Vector3 facing = historical ? historicalPose.Facing : _facingVector;
                     float limit = Fixed.ToFloat(2896);
                     float cos = MathF.Sqrt(1 - facing.Y * facing.Y);
                     float sin = facing.Y;
@@ -115,12 +137,30 @@ namespace MphRead.Entities
                     spineNode.AfterTransform = null;
                     float scale = Metadata.HunterScales[Hunter];
                     float bottom = Fixed.ToFloat(Values.MinPickupHeight);
-                    var lateral = new Vector3(_field70, 0, _field74);
-                    Matrix4 transform = Matrix4.Identity;
-                    transform.Row0.Xyz = -_gunVec2;
-                    transform.Row1.Xyz = Vector3.Cross(lateral, _gunVec2);
-                    transform.Row2.Xyz = -lateral;
-                    transform.Row3.Xyz = Position;
+                    Matrix4 transform;
+                    if (historical)
+                    {
+                        transform = historicalPose.Transform;
+                        Vector3 right = transform.Row0.Xyz;
+                        Vector3 up = transform.Row1.Xyz;
+                        Vector3 forward = transform.Row2.Xyz;
+                        if (right.LengthSquared > 0.000001f) right = right.Normalized();
+                        if (up.LengthSquared > 0.000001f) up = up.Normalized();
+                        if (forward.LengthSquared > 0.000001f) forward = forward.Normalized();
+                        transform.Row0.Xyz = right;
+                        transform.Row1.Xyz = up;
+                        transform.Row2.Xyz = forward;
+                        transform.Row3.Xyz = drawPosition;
+                    }
+                    else
+                    {
+                        var lateral = new Vector3(_field70, 0, _field74);
+                        transform = Matrix4.Identity;
+                        transform.Row0.Xyz = -_gunVec2;
+                        transform.Row1.Xyz = Vector3.Cross(lateral, _gunVec2);
+                        transform.Row2.Xyz = -lateral;
+                        transform.Row3.Xyz = drawPosition;
+                    }
                     transform.Row3.Y += bottom + bottom * (1 - scale);
                     transform.Row0.Xyz *= scale;
                     transform.Row1.Xyz *= scale;
@@ -131,7 +171,7 @@ namespace MphRead.Entities
                         node.Animation *= transform; // todo?: could do this in the shader
                     }
                     model.UpdateMatrixStack();
-                    if (_health > 0)
+                    if (drawAlive)
                     {
                         if (_timeSinceDamage < Values.DamageFlashTime * 2) // todo: FPS stuff
                         {
@@ -147,7 +187,7 @@ namespace MphRead.Entities
                         UpdateMaterials(_bipedModel2, Recolor);
                         GetDrawItems(_bipedModel2, _bipedModel2.Model.Nodes[0], alpha, overrideColor: brightSkin, outlineColor: outlineColor);
                         PaletteOverride = null;
-                        if (_chargeEffect != null || _muzzleEffect != null)
+                        if (!historical && (_chargeEffect != null || _muzzleEffect != null))
                         {
                             Vector3 muzzlePos = Metadata.MuzzleOffests[(int)Hunter];
                             muzzlePos = Matrix.Vec3MultMtx4(muzzlePos, _shootNodes[lod]!.Animation);
@@ -162,7 +202,7 @@ namespace MphRead.Entities
                                 _muzzleEffect.Transform(_gunVec2, _gunVec1, muzzlePos);
                             }
                         }
-                        if (_frozenGfxTimer > 0)
+                        if (!historical && _frozenGfxTimer > 0)
                         {
                             for (int i = 0; i < _bipedIceModel.Model.Nodes.Count; i++)
                             {
@@ -174,8 +214,9 @@ namespace MphRead.Entities
                             GetDrawItems(_bipedIceModel, _bipedIceModel.Model.Nodes[0], alpha: 1, recolor: 0);
                         }
                     }
-                    _modelTransform = transform;
-                    if (_health == 0)
+                    if (!historical)
+                        _modelTransform = transform;
+                    if (!historical && _health == 0)
                     {
                         DrawDeathParticles();
                     }

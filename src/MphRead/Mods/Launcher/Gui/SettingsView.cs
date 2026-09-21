@@ -72,6 +72,8 @@ namespace MphRead.Mods.Launcher.Gui
         private ChoiceRow? _replayStorageRow;
         private ToggleRow? _replayAutoPruneRow;
         private ToggleRow? _replayDeleteClipsRow;
+        private ToggleRow? _killCamRow;
+        private ToggleRow? _finalKillCamRow;
         private static readonly int[] _replayStorageStops = { 0, 5, 10, 25, 50 };
         private SliderRow _resolutionScale = null!;
         private ToggleRow _lightingRow = null!;
@@ -1003,6 +1005,15 @@ namespace MphRead.Mods.Launcher.Gui
                 Math.Max(0, Array.IndexOf(Mods.Network.DemoClip.PostRollLengths,
                     Mods.Network.DemoClip.PostRollSeconds))));
 
+            Heading(page, "Kill cams");
+            _killCamRow = Add(page, new ToggleRow("Kill cam after death",
+                LauncherPrefs.KillCamEnabled));
+            _finalKillCamRow = Add(page, new ToggleRow("Final kill cam",
+                LauncherPrefs.FinalKillCamEnabled));
+            Explain(page, "Kill cams replay buffered presentation history from before the confirmed kill; "
+                + "they never rewind the live network simulation. Release Fire, then press it again "
+                + "to skip your personal kill cam.");
+
             Heading(page, "Replay library");
             Explain(page, "Full recordings, instant clips and recovered sessions appear in "
                 + "REPLAY STUDIO on the main screen. Files are stored in:\n"
@@ -1702,6 +1713,10 @@ namespace MphRead.Mods.Launcher.Gui
                 LauncherPrefs.ReplayAutoPrune = _replayAutoPruneRow.On;
             if (_replayDeleteClipsRow != null)
                 LauncherPrefs.ReplayDeleteClips = _replayDeleteClipsRow.On;
+            if (_killCamRow != null)
+                LauncherPrefs.KillCamEnabled = _killCamRow.On;
+            if (_finalKillCamRow != null)
+                LauncherPrefs.FinalKillCamEnabled = _finalKillCamRow.On;
             GameState.CommitSettings(_settings);
             LauncherPrefs.Save();
             if (LauncherPrefs.ReplayAutoPrune && LauncherPrefs.ReplayStorageLimitGb > 0)

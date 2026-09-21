@@ -1855,6 +1855,7 @@ namespace MphRead
                 // here is counted in frames. Mods.Network.NetHitClaims.
                 Mods.Network.NetHitClaims.Tick();
                 Mods.Network.NetHooks.AfterSimulation();
+                Mods.KillCam.AfterSimulation(this);
 
                 // Capture completed simulation transforms once, after network
                 // reconciliation. Draws between this step and the next may
@@ -3018,39 +3019,58 @@ namespace MphRead
             {
                 if (_cameraMode == CameraMode.Player)
                 {
-                    PlayerEntity main = PlayerEntity.Main;
-                    CameraInfo camera = main.CameraInfo;
-                    bool interpolatedCamera = Mods.Render.FrameTiming.Active
-                        && (Mods.SpectatorMode.IsSpectating || Mods.Network.DemoPlayback.IsActive);
-                    _viewMatrix = interpolatedCamera
-                        ? camera.ModGetDrawView(Mods.Render.FrameTiming.PresentationAlpha)
-                        : camera.ViewMatrix;
-
-                    if (!interpolatedCamera && !Mods.PauseMenu.Open && !GameState.MenuPause
-                        && !GameState.DialogPause && !Mods.EndScreen.Available)
+                    if (Mods.KillCam.TryGetHistoricalCamera(out Mods.KillCamCameraPose killCamera))
                     {
-                        (float padX, float padY) = Mods.Input.GamepadInput.RenderAim(
-                            Mods.Render.FrameTiming.Alpha);
-                        if (_lateAimX != 0 || _lateAimY != 0 || padX != 0 || padY != 0)
-                        {
-                            _viewMatrix = main.ModLateLatchedView(_lateAimX, _lateAimY, padX, padY);
-                        }
+                        Vector3 target = killCamera.Target;
+                        if ((target - killCamera.Position).LengthSquared < 0.000001f)
+                            target = killCamera.Position + Vector3.UnitZ;
+                        Vector3 up = killCamera.Up.LengthSquared < 0.000001f
+                            ? Vector3.UnitY : killCamera.Up;
+                        _viewMatrix = Matrix4.LookAt(killCamera.Position, target, up);
+                        float fov = killCamera.Fov > 0
+                            ? killCamera.Fov : Mods.RenderOptions.DefaultFov;
+                        _viewModelFov = MathHelper.DegreesToRadians(
+                            Math.Clamp(fov, 1f, 175f));
+                        _cameraFov = MathHelper.DegreesToRadians(
+                            Mods.RenderOptions.ScaleCameraFov(fov));
                     }
+                    else
+                    {
+                        PlayerEntity main = PlayerEntity.Main;
+                        CameraInfo camera = main.CameraInfo;
+                        bool interpolatedCamera = Mods.Render.FrameTiming.Active
+                            && (Mods.SpectatorMode.IsSpectating || Mods.Network.DemoPlayback.IsActive);
+                        _viewMatrix = interpolatedCamera
+                            ? camera.ModGetDrawView(Mods.Render.FrameTiming.PresentationAlpha)
+                            : camera.ViewMatrix;
 
-                    float authoredFov = interpolatedCamera
-                        ? camera.ModGetDrawFov(Mods.Render.FrameTiming.PresentationAlpha)
-                        : camera.Fov;
-                    float fov = authoredFov > 0
-                        ? authoredFov
-                        : Mods.RenderOptions.DefaultFov;
-                    // Keep the camera-authored projection for first-person
-                    // geometry. The player's FOV widens the world, not the arm
-                    // cannon attached to the camera.
-                    _viewModelFov = MathHelper.DegreesToRadians(Math.Clamp(fov, 1f, 175f));
-                    // Preserve zoom/scope magnification in projection space,
-                    // where tan(FOV / 2) is the quantity that scales linearly.
-                    fov = Mods.RenderOptions.ScaleCameraFov(fov);
-                    _cameraFov = MathHelper.DegreesToRadians(fov);
+                        if (!interpolatedCamera && !Mods.PauseMenu.Open && !GameState.MenuPause
+                            && !GameState.DialogPause && !Mods.EndScreen.Available)
+                        {
+                            (float padX, float padY) = Mods.Input.GamepadInput.RenderAim(
+                                Mods.Render.FrameTiming.Alpha);
+                            if (_lateAimX != 0 || _lateAimY != 0 || padX != 0 || padY != 0)
+                            {
+                                _viewMatrix = main.ModLateLatchedView(
+                                    _lateAimX, _lateAimY, padX, padY);
+                            }
+                        }
+
+                        float authoredFov = interpolatedCamera
+                            ? camera.ModGetDrawFov(Mods.Render.FrameTiming.PresentationAlpha)
+                            : camera.Fov;
+                        float fov = authoredFov > 0
+                            ? authoredFov
+                            : Mods.RenderOptions.DefaultFov;
+                        // Keep the camera-authored projection for first-person
+                        // geometry. The player's FOV widens the world, not the arm
+                        // cannon attached to the camera.
+                        _viewModelFov = MathHelper.DegreesToRadians(Math.Clamp(fov, 1f, 175f));
+                        // Preserve zoom/scope magnification in projection space,
+                        // where tan(FOV / 2) is the quantity that scales linearly.
+                        fov = Mods.RenderOptions.ScaleCameraFov(fov);
+                        _cameraFov = MathHelper.DegreesToRadians(fov);
+                    }
                 }
                 else
                 {
@@ -3089,12 +3109,19 @@ namespace MphRead
             }
             else if (_cameraMode == CameraMode.Player)
             {
-                CameraInfo camera = PlayerEntity.Main.CameraInfo;
-                bool interpolate = Mods.Render.FrameTiming.Active
-                    && (Mods.SpectatorMode.IsSpectating || Mods.Network.DemoPlayback.IsActive);
-                _cameraPosition = interpolate
-                    ? camera.ModGetDrawPosition(Mods.Render.FrameTiming.PresentationAlpha)
-                    : camera.Position;
+                if (Mods.KillCam.TryGetHistoricalCamera(out Mods.KillCamCameraPose killCamera))
+                {
+                    _cameraPosition = killCamera.Position;
+                }
+                else
+                {
+                    CameraInfo camera = PlayerEntity.Main.CameraInfo;
+                    bool interpolate = Mods.Render.FrameTiming.Active
+                        && (Mods.SpectatorMode.IsSpectating || Mods.Network.DemoPlayback.IsActive);
+                    _cameraPosition = interpolate
+                        ? camera.ModGetDrawPosition(Mods.Render.FrameTiming.PresentationAlpha)
+                        : camera.Position;
+                }
             }
         }
 

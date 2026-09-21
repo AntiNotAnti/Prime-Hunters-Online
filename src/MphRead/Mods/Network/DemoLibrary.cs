@@ -220,6 +220,7 @@ namespace MphRead.Mods.Network
             File.Delete(path + ".camera");
             File.Delete(path + ".analytics.json");
             Replay.ReplayAnnotations.DeleteFor(path);
+            Replay.ReplayReels.DeleteFor(path);
             for (int i = 0; i < 3; i++)
                 File.Delete(path + $".thumb{i}.png");
             Durations.Remove(path);

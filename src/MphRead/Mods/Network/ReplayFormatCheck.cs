@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.IO.Compression;
 using System.Buffers.Binary;
 using System.Collections.Generic;
@@ -70,14 +71,23 @@ namespace MphRead.Mods.Network
                     for (uint frame = 0; frame < 400; frame++)
                     {
                         writer.WriteRecord(frame, packet);
-                        if (frame % 60 == 0) writer.WriteEvent(new(frame, ReplayEventType.ScoreChanged, 0, Value: (int)frame));
+                        if (frame % 60 == 0)
+                            writer.WriteEvent(new(frame, ReplayEventType.ScoreChanged, 0,
+                                Value: (int)frame));
+                        if (frame == 90)
+                            writer.WriteEvent(new(frame, ReplayEventType.WeaponFired, 0,
+                                Value: (int)BeamType.Imperialist));
                     }
                 }
                 Require(File.Exists(clean) && !File.Exists(clean + ".part"), "atomic finalization");
                 using (var reader = DemoReader.Open(clean, out var result))
                 {
                     Require(result == ReplayOpenResult.Success && reader?.Metadata?.DurationFrames == 399, "metadata-only duration");
-                    Require(reader!.Metadata!.Events.Count == 7, "event index");
+                    Require(reader!.Metadata!.Events.Count == 8, "event index");
+                    Require(reader.Metadata.Events.Any(e =>
+                        e.Type == ReplayEventType.WeaponFired
+                        && e.Value == (int)BeamType.Imperialist),
+                        "weapon event roundtrip");
                     uint count = 0;
                     while (reader.ReadNext() is { } record)
                     {
@@ -149,7 +159,11 @@ namespace MphRead.Mods.Network
                 using (var reader = DemoReader.Open(extracted))
                 {
                     Require(reader?.Metadata?.Type == ReplayType.Clip && reader.DurationFrames == 120, "clip metadata");
-                    Require(reader!.Metadata!.Events.Count == 3 && reader.Metadata.Events[0].Frame == 0, "clip event rebase");
+                    Require(reader!.Metadata!.Events.Count == 4
+                        && reader.Metadata.Events[0].Frame == 0
+                        && reader.Metadata.Events.Any(e =>
+                            e.Type == ReplayEventType.WeaponFired && e.Frame == 30),
+                        "clip event rebase");
                     Require(reader.ReadNext()?.Frame == 0, "clip frame rebase");
                 }
                 string interrupted = Path.Combine(directory, "interrupted.ppdemo");

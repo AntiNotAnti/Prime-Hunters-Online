@@ -40,6 +40,15 @@ namespace MphRead.Mods.Replay
         int Joins,
         int Leaves);
 
+    internal readonly record struct ReplayTimeBucket(
+        uint StartFrame,
+        uint EndFrame,
+        int Damage,
+        int Kills,
+        int Objectives);
+
+    internal readonly record struct ReplayWeaponUsage(int Weapon, int Shots);
+
     internal sealed class ReplayAnalyticsSnapshot
     {
         public IReadOnlyList<ReplayPlayerAnalytics> Players { get; init; } = Array.Empty<ReplayPlayerAnalytics>();
@@ -47,6 +56,10 @@ namespace MphRead.Mods.Replay
         public int TotalDamage { get; init; }
         public int ObjectiveEvents { get; init; }
         public uint DurationFrames { get; init; }
+        public IReadOnlyList<ReplayTimeBucket> DamageTimeline { get; init; }
+            = Array.Empty<ReplayTimeBucket>();
+        public IReadOnlyList<ReplayWeaponUsage> WeaponUsage { get; init; }
+            = Array.Empty<ReplayWeaponUsage>();
     }
 
     /// <summary>
@@ -190,6 +203,21 @@ namespace MphRead.Mods.Replay
                 return row;
             }
 
+            const uint bucketFrames = 10 * 60;
+            var timeline = new Dictionary<uint, MutableTimeline>();
+            MutableTimeline Bucket(uint frame)
+            {
+                uint startFrame = frame / bucketFrames * bucketFrames;
+                if (!timeline.TryGetValue(startFrame, out MutableTimeline? bucket))
+                {
+                    bucket = new MutableTimeline();
+                    timeline[startFrame] = bucket;
+                }
+                return bucket;
+            }
+
+            var weapons = new Dictionary<int, int>();
+            bool explicitDeaths = events.Any(e => e.Type == ReplayEventType.PlayerDeath);
             int totalKills = 0;
             int totalDamage = 0;
             int objectives = 0;
@@ -200,19 +228,54 @@ namespace MphRead.Mods.Replay
                     MutableAnalytics actor = Row(e.ActorSlot);
                     switch (e.Type)
                     {
-                        case ReplayEventType.Kill: actor.Kills++; totalKills++; break;
-                        case ReplayEventType.Damage: actor.Damage += Math.Max(0, e.Value); totalDamage += Math.Max(0, e.Value); break;
-                        case ReplayEventType.ScoreChanged: actor.ScoreEvents++; break;
-                        case ReplayEventType.Objective: actor.Objectives++; objectives++; break;
-                        case ReplayEventType.PlayerSpawn: actor.Spawns++; break;
-                        case ReplayEventType.PlayerJoined: actor.Joins++; break;
-                        case ReplayEventType.PlayerLeft: actor.Leaves++; break;
+                        case ReplayEventType.Kill:
+                            actor.Kills++;
+                            totalKills++;
+                            Bucket(e.Frame).Kills++;
+                            break;
+                        case ReplayEventType.Damage:
+                            int damage = Math.Max(0, e.Value);
+                            actor.Damage += damage;
+                            totalDamage += damage;
+                            Bucket(e.Frame).Damage += damage;
+                            break;
+                        case ReplayEventType.ScoreChanged:
+                            actor.ScoreEvents++;
+                            break;
+                        case ReplayEventType.Objective:
+                            actor.Objectives++;
+                            objectives++;
+                            Bucket(e.Frame).Objectives++;
+                            break;
+                        case ReplayEventType.PlayerSpawn:
+                            actor.Spawns++;
+                            break;
+                        case ReplayEventType.PlayerJoined:
+                            actor.Joins++;
+                            break;
+                        case ReplayEventType.PlayerLeft:
+                            actor.Leaves++;
+                            break;
+                        case ReplayEventType.WeaponFired:
+                            if (e.Value >= 0)
+                                weapons[e.Value] = weapons.GetValueOrDefault(e.Value) + 1;
+                            break;
                     }
                 }
-                if (e.Type == ReplayEventType.PlayerDeath && e.ActorSlot != byte.MaxValue)
+
+                if (e.Type == ReplayEventType.PlayerDeath
+                    && e.ActorSlot != byte.MaxValue)
+                {
                     Row(e.ActorSlot).Deaths++;
-                else if (e.Type == ReplayEventType.Kill && e.TargetSlot != byte.MaxValue)
+                }
+                else if (!explicitDeaths && e.Type == ReplayEventType.Kill
+                    && e.TargetSlot != byte.MaxValue)
+                {
+                    // Older recordings may contain Kill without a paired
+                    // PlayerDeath. New recordings write both; count one source
+                    // or the other, never the same death twice.
                     Row(e.TargetSlot).Deaths++;
+                }
             }
 
             var players = rows.OrderBy(p => p.Key)
@@ -220,13 +283,27 @@ namespace MphRead.Mods.Replay
                     p.Value.Damage, p.Value.ScoreEvents, p.Value.Objectives,
                     p.Value.Spawns, p.Value.Joins, p.Value.Leaves))
                 .ToArray();
+            ReplayTimeBucket[] buckets = timeline
+                .OrderBy(pair => pair.Key)
+                .Select(pair => new ReplayTimeBucket(pair.Key,
+                    Math.Min(length, pair.Key + bucketFrames),
+                    pair.Value.Damage, pair.Value.Kills, pair.Value.Objectives))
+                .ToArray();
+            ReplayWeaponUsage[] weaponUsage = weapons
+                .OrderByDescending(pair => pair.Value)
+                .ThenBy(pair => pair.Key)
+                .Select(pair => new ReplayWeaponUsage(pair.Key, pair.Value))
+                .ToArray();
+
             var snapshot = new ReplayAnalyticsSnapshot
             {
                 Players = players,
                 TotalKills = totalKills,
                 TotalDamage = totalDamage,
                 ObjectiveEvents = objectives,
-                DurationFrames = length
+                DurationFrames = length,
+                DamageTimeline = buckets,
+                WeaponUsage = weaponUsage
             };
             if (useCache) _cachedAnalytics = snapshot;
             return snapshot;
@@ -274,6 +351,13 @@ namespace MphRead.Mods.Replay
             public int Spawns;
             public int Joins;
             public int Leaves;
+        }
+
+        private sealed class MutableTimeline
+        {
+            public int Damage;
+            public int Kills;
+            public int Objectives;
         }
     }
 
@@ -377,6 +461,7 @@ namespace MphRead.Mods.Replay
             File.Delete(path);
             File.Delete(path + ".favorite");
             ReplayAnnotations.DeleteFor(path);
+            ReplayReels.DeleteFor(path);
             string cache = CachePath(path);
             File.Delete(cache);
         }
@@ -587,9 +672,11 @@ namespace MphRead.Mods.Replay
         bool CameraTrack,
         string FramePattern,
         string SuggestedOutput,
-        string FfmpegArguments);
+        string FfmpegArguments,
+        IReadOnlyList<ReplayVideoSegment>? Segments = null,
+        string PresetName = "");
 
-    internal static class ReplayVideoExport
+    internal static partial class ReplayVideoExport
     {
         public static ReplayVideoExportManifest CreateManifest(string replay, uint startFrame, uint endFrame,
             ReplayVideoResolution resolution = ReplayVideoResolution.P1080, int fps = 60,

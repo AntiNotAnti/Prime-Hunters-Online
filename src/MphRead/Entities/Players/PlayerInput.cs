@@ -1173,6 +1173,8 @@ namespace MphRead.Entities
                 PlayBeamEmptySfx(EquipInfo.Weapon.Beam);
                 return NetShotDiagnostics.Finish(this, ShotAttemptResult.NoAmmo);
             }
+            Mods.Network.ReplayCapture.Event(Mods.Network.ReplayEventType.WeaponFired,
+                SlotIndex, value: (int)CurrentWeapon);
             NetShotDiagnostics.Finish(this, ShotAttemptResult.Spawned, shotVec, _gunVec1);
             ModControllerFeedback(EquipWeapon.MinCharge > 0 && EquipInfo.ChargeLevel >= EquipWeapon.MinCharge * 2
                 ? Mods.Input.GamepadFeedback.ChargedShot : Mods.Input.GamepadFeedback.Fire);

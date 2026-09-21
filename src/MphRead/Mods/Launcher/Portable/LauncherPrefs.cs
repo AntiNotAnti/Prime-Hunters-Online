@@ -177,6 +177,8 @@ namespace MphRead.Mods.Launcher
         public static bool ReplayAutoPrune { get; set; } = true;
         /// <summary>Full recordings prune first; clips remain protected unless opted in.</summary>
         public static bool ReplayDeleteClips { get; set; }
+        public static bool KillCamEnabled { get; set; } = true;
+        public static bool FinalKillCamEnabled { get; set; } = true;
 
 
         public static void Load()
@@ -371,6 +373,18 @@ namespace MphRead.Mods.Launcher
                                 ReplayDeleteClips = replayDeleteClips;
                             }
                             break;
+                        case "kill_cam":
+                            if (Boolean.TryParse(value, out bool killCam))
+                            {
+                                KillCamEnabled = killCam;
+                            }
+                            break;
+                        case "final_kill_cam":
+                            if (Boolean.TryParse(value, out bool finalKillCam))
+                            {
+                                FinalKillCamEnabled = finalKillCam;
+                            }
+                            break;
                         case "last_kind":
                             if (Int32.TryParse(value, NumberStyles.Integer,
                                 CultureInfo.InvariantCulture, out int kind))
@@ -444,6 +458,8 @@ namespace MphRead.Mods.Launcher
                     $"replay_storage_gb={ReplayStorageLimitGb.ToString(CultureInfo.InvariantCulture)}",
                     $"replay_auto_prune={ReplayAutoPrune.ToString().ToLowerInvariant()}",
                     $"replay_delete_clips={ReplayDeleteClips.ToString().ToLowerInvariant()}",
+                    $"kill_cam={KillCamEnabled.ToString().ToLowerInvariant()}",
+                    $"final_kill_cam={FinalKillCamEnabled.ToString().ToLowerInvariant()}",
                     $"window_mode={(WindowMode == WindowStartMode.BorderlessFullscreen ? "borderless" : "windowed")}",
                     $"window_size={WindowWidth.ToString(CultureInfo.InvariantCulture)}x"
                         + WindowHeight.ToString(CultureInfo.InvariantCulture),

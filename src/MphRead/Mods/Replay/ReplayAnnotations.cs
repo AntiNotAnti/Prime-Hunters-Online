@@ -17,6 +17,8 @@ namespace MphRead.Mods.Replay
         public int Version { get; set; } = 1;
         public List<ReplayBookmark> Bookmarks { get; set; } = new();
         public List<ReplayNamedHighlight> Highlights { get; set; } = new();
+        public List<string> Tags { get; set; } = new();
+        public List<string> Collections { get; set; } = new();
     }
 
     /// <summary>
@@ -47,6 +49,22 @@ namespace MphRead.Mods.Replay
             return document.Highlights
                 .OrderBy(highlight => highlight.StartFrame)
                 .ToArray();
+        }
+
+        public static IReadOnlyList<string> Tags(string? replay = null)
+            => Load(replay ?? DemoPlayback.CurrentPath).Tags.ToArray();
+
+        public static IReadOnlyList<string> Collections(string? replay = null)
+            => Load(replay ?? DemoPlayback.CurrentPath).Collections.ToArray();
+
+        public static void SetOrganization(string replay,
+            IEnumerable<string> tags, IEnumerable<string> collections)
+        {
+            string path = RequireReplay(replay);
+            ReplayAnnotationDocument document = Load(path);
+            document.Tags = CleanLabels(tags);
+            document.Collections = CleanLabels(collections);
+            Save(path, document);
         }
 
         public static ReplayBookmark AddBookmark(string replay, uint frame, string? name)
@@ -114,6 +132,8 @@ namespace MphRead.Mods.Replay
                 if (document is not { Version: 1 }) return new ReplayAnnotationDocument();
                 document.Bookmarks ??= new List<ReplayBookmark>();
                 document.Highlights ??= new List<ReplayNamedHighlight>();
+                document.Tags = CleanLabels(document.Tags ?? new List<string>());
+                document.Collections = CleanLabels(document.Collections ?? new List<string>());
                 document.Bookmarks.RemoveAll(bookmark =>
                     String.IsNullOrWhiteSpace(bookmark.Name)
                     || bookmark.Frame > ReplayFormatV3.MaxFrame);
@@ -155,6 +175,24 @@ namespace MphRead.Mods.Replay
             string value = String.IsNullOrWhiteSpace(name) ? fallback : name.Trim();
             if (value.Length > 80) value = value[..80];
             return value;
+        }
+
+        private static List<string> CleanLabels(IEnumerable<string> values)
+        {
+            var result = new List<string>();
+            foreach (string raw in values)
+            {
+                string value = raw?.Trim() ?? "";
+                if (value.Length == 0)
+                    continue;
+                if (value.Length > 40)
+                    value = value[..40];
+                if (!result.Contains(value, StringComparer.OrdinalIgnoreCase))
+                    result.Add(value);
+                if (result.Count >= 24)
+                    break;
+            }
+            return result;
         }
     }
 }
