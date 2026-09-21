@@ -195,7 +195,7 @@ namespace MphRead.Mods.Launcher.Gui
             // lobby that turns basic team setup into menu bookkeeping. The owner
             // picks a player once and then hits Auto/A/B/C/D directly.
             var administration = new StackPanel { Spacing = 4 };
-            administration.Children.Add(LobbySubhead("TEAM ORGANIZER"));
+            administration.Children.Add(LobbySubhead("MANAGE PLAYER"));
             administration.Children.Add(_target);
             administration.Children.Add(_teamSummary);
 
