@@ -146,11 +146,10 @@ Notable toggles
 - **HUD readouts opacity is no longer a setting.** `Features.HudOpacity` stays
   at 1 and is out of `Load`/`Commit`. It is still read throughout the HUD, so
   it remains the hook for anything that wants to fade the readouts.
-- **Credits carry the fork and a support link.** `Mods.Credits.Author`,
-  `ForkWork` and `SupportUrl` (ko-fi) are the same strings `-credits` prints;
-  the page's button opens the address through `Updater.OpenLink` -- https only,
-  and it puts the address in the row itself when there is no browser to hand it
-  to. `SettingsView.ShowSection` exists so `-uishot` can photograph that page
+- **Credits are attribution, not a support surface.** The page leads with
+  Project Prime's community identity, keeps Livetek under Community contributors,
+  and then lists the upstream projects it is built on. There is no support CTA in
+  Settings. `SettingsView.ShowSection` exists so `-uishot` can photograph that page
   (and any other) from a headless box, where everything but Display is
   otherwise behind a click. It takes a `sub` index too, for the Controls
   page's own Keyboard/Gamepad/Stylus strip: `settings-controls` and
