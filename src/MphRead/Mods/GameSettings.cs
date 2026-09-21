@@ -81,6 +81,8 @@ namespace MphRead.Mods
                 RenderOptions.ParseInt(settings.TextureAnisotropy,
                     RenderOptions.TextureAnisotropy), 1, 16);
             RenderOptions.ShowFps = RenderOptions.ParseOnOff(settings.ShowFps, RenderOptions.ShowFps);
+            RenderOptions.SmoothNativeHud = RenderOptions.ParseOnOff(settings.SmoothNativeHud,
+                RenderOptions.SmoothNativeHud);
             // How often the picture is drawn. It does not touch the
             // simulation, which runs at 60 Hz whatever this says -- see
             // Mods/Render/FrameTiming.cs.
