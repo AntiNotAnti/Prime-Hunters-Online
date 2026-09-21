@@ -102,13 +102,13 @@ namespace MphRead.Mods.Launcher
                 if (name.Length == 0) name = "Player";
                 Hunter preferred = Hunters.Resolve(LauncherPrefs.LastHunter);
                 int hunter = Math.Clamp((int)preferred, 0, 6);
-                _ = await RpcAsync<JsonElement>(
+                _ = await FunctionAsync<JsonElement>(
                     session.AccessToken,
-                    "project_prime_hunter_license",
+                    "hunter-license",
                     new Dictionary<string, object?>
                     {
-                        ["p_display_name"] = name,
-                        ["p_favorite_hunter"] = hunter
+                        ["display_name"] = name,
+                        ["favorite_hunter"] = hunter
                     },
                     CancellationToken.None).ConfigureAwait(false);
 
@@ -195,13 +195,13 @@ namespace MphRead.Mods.Launcher
                 Hunter preferred = Hunters.Resolve(LauncherPrefs.LastHunter);
                 int hunter = Math.Clamp((int)preferred, 0, 6);
 
-                HunterLicenseSnapshot snapshot = await RpcAsync<HunterLicenseSnapshot>(
+                HunterLicenseSnapshot snapshot = await FunctionAsync<HunterLicenseSnapshot>(
                     session.AccessToken,
-                    "project_prime_hunter_license",
+                    "hunter-license",
                     new Dictionary<string, object?>
                     {
-                        ["p_display_name"] = name,
-                        ["p_favorite_hunter"] = hunter
+                        ["display_name"] = name,
+                        ["favorite_hunter"] = hunter
                     },
                     cancellationToken).ConfigureAwait(false);
 
@@ -214,6 +214,7 @@ namespace MphRead.Mods.Launcher
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"[hunter-license] profile load failed: {ex}");
                 HunterLicenseSnapshot fallback = LocalSnapshot();
                 fallback.Status = FriendlyStatus(ex);
                 return fallback;
@@ -478,11 +479,11 @@ namespace MphRead.Mods.Launcher
                 ?? throw new InvalidOperationException("Supabase Auth returned no user.");
         }
 
-        private static async Task<T> RpcAsync<T>(
+        private static async Task<T> FunctionAsync<T>(
             string accessToken, string function, object body, CancellationToken cancellationToken)
         {
             using var request = Request(HttpMethod.Post,
-                $"/rest/v1/rpc/{function}", accessToken, body);
+                $"/functions/v1/{function}", accessToken, body);
             using HttpResponseMessage response = await Http.SendAsync(request, cancellationToken)
                 .ConfigureAwait(false);
             string text = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
@@ -610,7 +611,9 @@ namespace MphRead.Mods.Launcher
                     return "ENABLE SUPABASE ANONYMOUS SIGN-IN";
                 if (http.StatusCode is 401 or 403) return "SUPABASE AUTH REQUIRED";
             }
-            return "OFFLINE // RETRY LATER";
+            string detail = FriendlyAction(ex).ToUpperInvariant();
+            if (detail.Length > 52) detail = detail[..52];
+            return detail.Length == 0 ? "OFFLINE // RETRY LATER" : $"OFFLINE // {detail}";
         }
 
         private static string FriendlyAction(Exception ex)
