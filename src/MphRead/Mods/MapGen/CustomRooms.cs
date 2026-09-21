@@ -213,19 +213,46 @@ namespace MphRead.Mods.MapGen
             }
             foreach (MapDefinition def in definitions)
             {
-                try
+                GenerateIfNeeded(def);
+            }
+        }
+
+        /// <summary>
+        /// Generate only the room about to be loaded. Normal retail rooms are
+        /// not in <see cref="Definitions"/>, so this is effectively free for
+        /// the common online-match path and avoids re-validating every custom
+        /// package each time Start Match is pressed.
+        /// </summary>
+        public static void GenerateMissing(string roomName)
+        {
+            if (String.IsNullOrWhiteSpace(roomName)) return;
+            MapDefinition? definition;
+            try
+            {
+                definition = Definitions.FirstOrDefault(def =>
+                    def.Name.Equals(roomName, StringComparison.OrdinalIgnoreCase));
+            }
+            catch
+            {
+                return;
+            }
+            if (definition != null) GenerateIfNeeded(definition);
+        }
+
+        private static void GenerateIfNeeded(MapDefinition def)
+        {
+            try
+            {
+                if (!NeedsGenerating(def))
                 {
-                    if (!NeedsGenerating(def))
-                    {
-                        continue;
-                    }
-                    Console.WriteLine($"[mapgen] building {def.Name}");
-                    MapPacker.Generate(def, ArchiveDirectory(def), EntityDirectory(), NodeDirectory(), verbose: false);
+                    return;
                 }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[mapgen] {def.Name} could not be built: {ex.Message}");
-                }
+                Console.WriteLine($"[mapgen] building {def.Name}");
+                MapPacker.Generate(def, ArchiveDirectory(def), EntityDirectory(), NodeDirectory(), verbose: false);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[mapgen] {def.Name} could not be built: {ex.Message}");
             }
         }
 

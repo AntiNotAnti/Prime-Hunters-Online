@@ -62,17 +62,6 @@ namespace MphRead.Mods.Launcher
                 return false;
             }
             GameFiles.ApplyPaths();
-            // The custom maps, here rather than only in ModEntry.TryHandle.
-            // A launcher session never reaches TryHandle: the front screen is
-            // dispatched from TryHandleHeadless, which returns as soon as it
-            // has run one, so on Windows -- where double-clicking the binary
-            // *is* the launcher -- nothing ever built the binaries a custom
-            // room is made of. The room is registered from its JSON either
-            // way, so it sat in the map picker and took the process down the
-            // moment somebody picked it. This is the last point before a room
-            // is loaded, and the first at which the game files are known to be
-            // there, which is what generating needs.
-            MapGen.CustomRooms.GenerateMissing();
             if (plan.Kind == LaunchKind.Adventure)
             {
                 return BeginAdventure(window, plan);
@@ -108,6 +97,10 @@ namespace MphRead.Mods.Launcher
                 return false;
             }
 
+            // Only the selected custom room belongs on the critical path.
+            // Scanning every installed custom map before every stock match made
+            // "Start Match" pay filesystem/manifest work for maps nobody chose.
+            MapGen.CustomRooms.GenerateMissing(roomKey);
             // A custom map that failed to build is still a room in the table --
             // the launcher lists it and the picker shows a frame for it -- and
             // loading one reaches for binaries that are not there. On Windows
@@ -120,6 +113,7 @@ namespace MphRead.Mods.Launcher
                 return false;
             }
 
+            double loadStarted = NetSession.Clock;
             EnsureScene(window);
             // The server's rotation decides the mode as well as the map; a
             // client that kept its own menu choice would score a different
@@ -158,6 +152,8 @@ namespace MphRead.Mods.Launcher
                 ? NetLaunch.RoomPlayerCount
                 : 0);
             window.LoadScene();
+            double loadSeconds = NetSession.Clock - loadStarted;
+            Console.WriteLine($"[launcher] loaded {roomKey} in {loadSeconds:0.00}s");
             NetSession.MarkMatchLoaded();
             return true;
         }
@@ -250,6 +246,13 @@ namespace MphRead.Mods.Launcher
                 return false;
             }
             Menu.SaveSlot = 0;
+            MapGen.CustomRooms.GenerateMissing(room.Value.RoomKey);
+            if (MapGen.CustomRooms.WhyUnplayable(room.Value.RoomKey) != null)
+            {
+                Console.WriteLine($"[demo] {room.Value.RoomKey} is not playable on this installation");
+                DemoPlayback.Stop();
+                return false;
+            }
             EnsureScene(window);
             NetLaunch.BuildPlayers(window.Scene, Hunter.Samus, localRecolor: 0,
                 teams: GameState.IsTeamMode(room.Value.Mode), localSlot: -1);

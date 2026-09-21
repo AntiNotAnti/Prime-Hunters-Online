@@ -24,7 +24,7 @@ namespace MphRead.Mods.Network
         // may terminate the server process itself. An ordinary first-player owner on
         // a persistent dedicated server may close/reset the current lobby, not the daemon.
         private uint _processOwnerClientId;
-        private const double StartCountdownSeconds = 3.0;
+        private const double StartCountdownSeconds = 1.5;
         private byte _expectedLoadedSlots, _loadedSlots;
         private double _startDeadline, _startCountdownDeadline;
 
@@ -78,13 +78,18 @@ namespace MphRead.Mods.Network
                 : (ushort)0
         };
 
-        private void BroadcastSessionState()
+        private void BroadcastSessionState(int copies = 1)
         {
+            copies = Math.Clamp(copies, 1, 3);
             var state = BuildSessionState();
             if (_sim != null) NetSession.ApplySessionState(state);
             state.Write(_scratch);
-            foreach (Peer peer in _peers)
-                _transport?.Send(peer.EndPoint, PacketType.SessionState, _scratch.AsSpan(0, SessionStatePacket.Size));
+            for (int copy = 0; copy < copies; copy++)
+            {
+                foreach (Peer peer in _peers)
+                    _transport?.Send(peer.EndPoint, PacketType.SessionState,
+                        _scratch.AsSpan(0, SessionStatePacket.Size));
+            }
         }
 
         private sbyte ChooseTeam(MatchDefinition match, Peer? exclude = null)
@@ -275,6 +280,13 @@ namespace MphRead.Mods.Network
             _matchId = NetLifecycleTracker.Next(_matchId);
             _startDeadline = now + 15;
             SetPhase(SessionPhase.Starting);
+            // StartSimulation is intentionally synchronous and can take several
+            // seconds on a cold server. A client that lost the one Starting
+            // datagram used to sit idle for that entire load and only begin
+            // loading after the authority finished. Redundant tiny control
+            // packets make the parallel-load handoff robust without moving the
+            // engine onto a second thread.
+            BroadcastSessionState(copies: 2);
             try
             {
                 StartSimulation();
@@ -293,9 +305,11 @@ namespace MphRead.Mods.Network
 
             // Preserve the full client grace period even when the authority's
             // own cold load was expensive.
-            _startDeadline += NetSession.Clock - buildStarted;
+            double buildSeconds = NetSession.Clock - buildStarted;
+            _startDeadline += buildSeconds;
             SyncSimulationState(now);
-            Log($"[lobby] waiting for slots mask {_expectedLoadedSlots:X2}");
+            Log($"[lobby] authority loaded {_frozenMatch.RoomKey} in {buildSeconds:0.00}s; "
+                + $"waiting for slots mask {_expectedLoadedSlots:X2}");
             return true;
         }
 
@@ -393,6 +407,10 @@ namespace MphRead.Mods.Network
                 _startCountdownDeadline = 0;
                 _matchStarted = now;
                 SetPhase(SessionPhase.InMatch);
+                // The phase flip is the gate clients use to reveal and unfreeze
+                // gameplay. Send it redundantly so one lost UDP control packet
+                // cannot leave a player a full periodic-broadcast tick behind.
+                BroadcastSessionState(copies: 2);
                 BroadcastMatchState(now);
                 return;
             }
