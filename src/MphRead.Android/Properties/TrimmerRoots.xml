@@ -27,6 +27,19 @@
     <type fullname="MphRead.Mods.MapGen.MapSpawn" preserve="all" />
     <type fullname="MphRead.Mods.MapGen.MapJumpPad" preserve="all" />
     <type fullname="MphRead.Mods.MapGen.MapItem" preserve="all" />
+
+    <!-- Hunter License/Supabase DTOs are reflection-driven JSON too. -->
+    <type fullname="MphRead.Mods.Launcher.HunterLicenseSnapshot" preserve="all" />
+    <type fullname="MphRead.Mods.Launcher.HunterLicenseProfile" preserve="all" />
+    <type fullname="MphRead.Mods.Launcher.HunterLicenseStats" preserve="all" />
+    <type fullname="MphRead.Mods.Launcher.HunterLicenseMatch" preserve="all" />
+    <type fullname="MphRead.Mods.Launcher.HunterLicenseCosmetic" preserve="all" />
+    <type fullname="MphRead.Mods.Launcher.HunterLicenseClient+StoredSession" preserve="all" />
+    <type fullname="MphRead.Mods.Launcher.HunterLicenseClient+AuthSession" preserve="all" />
+    <type fullname="MphRead.Mods.Launcher.HunterLicenseClient+AuthUser" preserve="all" />
+    <type fullname="MphRead.Mods.Launcher.HunterLicenseClient+AuthIdentity" preserve="all" />
+    <type fullname="MphRead.Mods.Launcher.HunterLicenseClient+OAuthAuthorizeResponse" preserve="all" />
+    <type fullname="MphRead.Mods.Launcher.HunterLicenseClient+CareerTicketResponse" preserve="all" />
   </assembly>
   <assembly fullname="OpenTK.Windowing.GraphicsLibraryFramework">
     <type fullname="OpenTK.Windowing.GraphicsLibraryFramework.KeyboardState" preserve="all" />

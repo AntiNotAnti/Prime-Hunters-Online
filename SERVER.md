@@ -157,3 +157,41 @@ A server refuses a client built against a different protocol, at the first packe
 its log. That is deliberate: the wire format does not move between versions, so an old client would
 read every byte correctly and then play a different game. Update the server before handing out a
 client built from a newer release.
+
+## Hunter License career reporting
+
+Career stats are written only by an **authoritative dedicated server**. The
+client never submits its own kills, wins, damage, standings, or rating.
+
+A provisioned server receives a reporter key out of band and stores it in
+`career.env` beside the server binary:
+
+```ini
+PROJECT_PRIME_CAREER_SERVER_KEY=ppsrv_...
+```
+
+The systemd templates load that file with `EnvironmentFile=-...`. It must
+remain private and should be mode 600. Do not put this value in a unit's
+`ExecStart`, a shell history, a release archive, or the repository.
+
+`deploy-server.sh` can install/update the file without exposing it in source:
+
+```bash
+PROJECT_PRIME_CAREER_SERVER_KEY='ppsrv_...' ./deploy-server.sh
+```
+
+When no reporter key is configured, gameplay is unchanged and the server logs
+that career reporting is disabled. A provisioned server writes each completed
+report to a durable local `career-outbox` before making the HTTPS request.
+Transient Supabase/network failures therefore delay stats rather than losing
+them; accepted files are deleted and permanently rejected reports are retained
+with a `.rejected` suffix for diagnosis.
+
+Each player sends only a short-lived, career-only ticket over the game socket.
+The Supabase access/refresh tokens never travel through the UDP protocol. The
+ingestion service verifies the server credential and every participant ticket
+before it can touch the existing `prime` career/rating tables.
+
+Continuous provisioned servers may apply the existing pairwise rating policy.
+Player-created persistent lobbies are career-history only and cannot modify
+rating points.

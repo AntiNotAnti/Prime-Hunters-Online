@@ -96,6 +96,9 @@ namespace MphRead.Mods.Network
             /// before this existed, which gets the old behaviour.
             /// </summary>
             public uint ClientId;
+            /// <summary>Opaque short-lived career attribution ticket. The UDP
+            /// server never trusts or decodes it; HTTPS ingestion verifies it.</summary>
+            public string CareerTicket = "";
             /// <summary>When this player last put a map to the room.</summary>
             public double LastProposal = Double.NegativeInfinity;
         }
@@ -388,6 +391,7 @@ namespace MphRead.Mods.Network
             if (RunsTheMatch)
             {
                 ServerReplayRecorder.Configure(ReplayPolicy);
+                CareerReportOutbox.Start();
             }
             _lobbyMatch = DefinitionFor(_rotation.Current);
             _phase = SessionPolicy == ServerSessionPolicy.Lobby ? SessionPhase.Lobby : SessionPhase.InMatch;
@@ -423,6 +427,7 @@ namespace MphRead.Mods.Network
                     // what arrived before it steps.
                     CheckLoadBarrier(now);
                     if (_phase is SessionPhase.InMatch or SessionPhase.PostMatch) _sim?.Advance(now);
+                    EnsureCareerMatchStarted(now);
 
                     // The server owns the match clock, not the authority client:
                     // that is what lets a joiner adopt a running match's timer
@@ -638,6 +643,7 @@ namespace MphRead.Mods.Network
                 return;
             }
             _matchEndedAt = now;
+            CompleteCareerMatch(now, reason);
             foreach (Peer peer in _peers) peer.PostMatchReady = false;
             CancelMapVote(now);
             SetPhase(SessionPhase.PostMatch);
@@ -928,6 +934,9 @@ namespace MphRead.Mods.Network
                     break;
                 case PacketType.Identify:
                     HandleIdentify(packet, now);
+                    break;
+                case PacketType.CareerIdentity:
+                    HandleCareerIdentity(packet, now);
                     break;
                 case PacketType.Ping:
                     _transport?.Send(packet.Sender, PacketType.Pong, ReadOnlySpan<byte>.Empty);
@@ -1858,6 +1867,7 @@ namespace MphRead.Mods.Network
                 }
                 if (_peers.Count == 0 && SessionPolicy == ServerSessionPolicy.Continuous)
                 {
+                    AbandonCareerMatch();
                     // Restart the match clock for the first arrival. The clock
                     // runs whether or not anybody is connected, so a server
                     // left alone overnight greets its next player with a round
@@ -1884,6 +1894,7 @@ namespace MphRead.Mods.Network
                 _slotLives[slot] = 0;
                 peer = new Peer { EndPoint = packet.Sender, SlotIndex = slot, ClientId = clientId, TeamIndex = team };
                 _peers.Add(peer);
+                CareerPeerJoined(peer);
                 EverOccupied = true;
                 // Slot 0 is the authority's slot, matching what a listen host
                 // would occupy, so clients need no special case for either.
@@ -2032,10 +2043,12 @@ namespace MphRead.Mods.Network
                 return;
             }
             bool firstName = peer.Name.Length == 0;
+            int previousHunter = peer.Hunter;
             if (peer.Hunter != hunter || peer.Color != color) peer.LobbyReady = false;
             peer.Name = name;
             peer.Hunter = hunter;
             peer.Color = color;
+            CareerIdentityChanged(peer, previousHunter);
             Log($"slot {peer.SlotIndex} is \"{name}\" playing {(Hunter)hunter} "
                 + $"in suit {color + 1}");
             if (firstName)
@@ -2340,6 +2353,7 @@ namespace MphRead.Mods.Network
 
         private void Remove(Peer peer, string reason)
         {
+            CareerPeerLeaving(peer);
             _peers.Remove(peer);
             LobbyPeerRemoved(peer);
             BroadcastRoster();

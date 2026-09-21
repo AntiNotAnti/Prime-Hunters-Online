@@ -17,6 +17,8 @@ Wants=network-online.target
 Type=simple
 User=__USER__
 WorkingDirectory=__DIR__
+# Hosted child game servers inherit the private career reporter credential.
+EnvironmentFile=-__DIR__/career.env
 ExecStart=__DIR__/ProjectPrime -masterserver -port 27889
 Restart=always
 RestartSec=5

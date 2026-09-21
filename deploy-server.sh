@@ -27,6 +27,11 @@ STAGE="$ROOT/publish/server-arm64"
 # the existing units still point at until they are rewritten.
 BINARY="ProjectPrime"
 OLD_BINARY="MphRead"
+CAREER_KEY="${PROJECT_PRIME_CAREER_SERVER_KEY:-${MPH_CAREER_SERVER_KEY:-}}"
+if [ -n "$CAREER_KEY" ] && [[ ! "$CAREER_KEY" =~ ^ppsrv_[A-Za-z0-9_-]{32,}$ ]]; then
+  echo "PROJECT_PRIME_CAREER_SERVER_KEY has an invalid format" >&2
+  exit 1
+fi
 
 # sshpass is only used when a password is supplied; a key-based setup skips it.
 ssh_run() {
@@ -65,6 +70,78 @@ test -f "$STAGE/$BINARY" || { echo "build produced no $BINARY" >&2; exit 1; }
 install_unit() {
   local name="$1" template="$ROOT/tools/systemd/$1.service"
   if ssh_run "test -f /etc/systemd/system/$name.service"; then
+    if ! ssh_run "grep -q '^EnvironmentFile=-$REMOTE_DIR/career.env
+      echo "==> $name.service still starts $OLD_BINARY; pointing it at $BINARY"
+      ssh_run "sudo sed -i 's|$REMOTE_DIR/$OLD_BINARY |$REMOTE_DIR/$BINARY |' \
+        /etc/systemd/system/$name.service && sudo systemctl daemon-reload"
+    fi
+    return 0
+  fi
+  echo "==> installing $name.service"
+  sed -e "s|__USER__|$USER|g" -e "s|__DIR__|$REMOTE_DIR|g" "$template" \
+    | ssh_run "cat > /tmp/$name.service"
+  ssh_run "sudo mv /tmp/$name.service /etc/systemd/system/$name.service \
+    && sudo systemctl daemon-reload && sudo systemctl enable $name"
+}
+
+echo "==> stopping $SERVICE"
+ssh_run "sudo systemctl stop $SERVICE" || true
+if [ "$DEPLOY_MASTER" = "1" ]; then
+  ssh_run "sudo systemctl stop $MASTER_SERVICE" || true
+fi
+
+echo "==> uploading"
+scp_put "$STAGE/$BINARY" "$REMOTE_DIR/$BINARY.new"
+ssh_run "chmod +x $REMOTE_DIR/$BINARY.new && mv $REMOTE_DIR/$BINARY.new $REMOTE_DIR/$BINARY"
+
+if [ -n "$CAREER_KEY" ]; then
+  echo "==> installing Hunter License career reporter credential"
+  CAREER_TMP="$(mktemp)"
+  trap 'rm -f "$CAREER_TMP"' EXIT
+  printf 'PROJECT_PRIME_CAREER_SERVER_KEY=%s\n' "$CAREER_KEY" > "$CAREER_TMP"
+  scp_put "$CAREER_TMP" "$REMOTE_DIR/career.env.new"
+  ssh_run "chmod 600 $REMOTE_DIR/career.env.new && mv $REMOTE_DIR/career.env.new $REMOTE_DIR/career.env"
+  rm -f "$CAREER_TMP"
+  trap - EXIT
+fi
+
+# The units have to be pointing at the new binary before the old one is taken
+# away, or a deploy that stops half way leaves a box with neither.
+install_unit "$SERVICE"
+if [ "$DEPLOY_MASTER" = "1" ]; then
+  install_unit "$MASTER_SERVICE"
+fi
+
+if [ "$BINARY" != "$OLD_BINARY" ]; then
+  if ssh_run "test -f $REMOTE_DIR/$OLD_BINARY"; then
+    echo "==> removing the old $OLD_BINARY binary"
+    ssh_run "rm -f $REMOTE_DIR/$OLD_BINARY"
+  fi
+fi
+
+echo "==> starting $SERVICE"
+ssh_run "sudo systemctl start $SERVICE"
+if [ "$DEPLOY_MASTER" = "1" ]; then
+  echo "==> starting $MASTER_SERVICE"
+  ssh_run "sudo systemctl start $MASTER_SERVICE"
+fi
+sleep 3
+ssh_run "systemctl is-active $SERVICE && journalctl -u $SERVICE -n 5 --no-pager | tail -4"
+if [ "$DEPLOY_MASTER" = "1" ]; then
+  ssh_run "systemctl is-active $MASTER_SERVICE \
+    && journalctl -u $MASTER_SERVICE -n 5 --no-pager | tail -4"
+fi
+
+echo "==> done"
+echo
+echo "The browser in the launcher asks 51.161.113.128:27889 by default."
+echo "That name has to resolve to this machine, and UDP 27889 has to reach it,"
+echo "before any server shows up in anybody's list."
+ /etc/systemd/system/$name.service"; then
+      echo "==> adding career.env to $name.service"
+      ssh_run "sudo sed -i '/^WorkingDirectory=/a EnvironmentFile=-$REMOTE_DIR/career.env' /etc/systemd/system/$name.service \
+        && sudo systemctl daemon-reload"
+    fi
     if ssh_run "grep -q '$REMOTE_DIR/$OLD_BINARY ' /etc/systemd/system/$name.service"; then
       echo "==> $name.service still starts $OLD_BINARY; pointing it at $BINARY"
       ssh_run "sudo sed -i 's|$REMOTE_DIR/$OLD_BINARY |$REMOTE_DIR/$BINARY |' \

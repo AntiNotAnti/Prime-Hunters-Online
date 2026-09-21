@@ -1944,6 +1944,8 @@ namespace MphRead.Entities
             {
                 dead = true;
             }
+            Mods.Network.CareerMatchStats.NoteDamage(
+                this, attacker, damage, dead, _scene.FrameCount);
             // todo?: something for wifi
             if (attacker != null)
             {
@@ -2381,6 +2383,7 @@ namespace MphRead.Entities
                                 {
                                     GameState.KillStreak[attacker.SlotIndex]++;
                                 }
+                                Mods.Network.CareerMatchStats.NoteKill(attacker);
                                 if (GameState.KillStreak[attacker.SlotIndex] == 5)
                                 {
                                     _soundSource.QueueStream(VoiceId.VOICE_CONSECUTIVE_KILLS, delay: 1);

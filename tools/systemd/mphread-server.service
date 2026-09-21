@@ -16,6 +16,8 @@ Wants=network-online.target
 Type=simple
 User=__USER__
 WorkingDirectory=__DIR__
+# Optional private Hunter License reporter credential.
+EnvironmentFile=-__DIR__/career.env
 # -servername is what players see in the launcher's server browser. The server
 # lists itself on 51.161.113.128 so that it can be found there; add -nomaster
 # to keep it private, or -master HOST to use a different directory.

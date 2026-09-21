@@ -233,6 +233,7 @@ namespace MphRead.Mods.Network
         /// </summary>
         private void StopLobbyMatchRuntime(bool matchEnded)
         {
+            if (!matchEnded) AbandonCareerMatch();
             ServerReplayRecorder.Stop(matchEnded);
             _sim?.Stop();
             _sim = null;
