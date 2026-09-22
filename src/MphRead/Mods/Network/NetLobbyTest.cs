@@ -388,8 +388,8 @@ namespace MphRead.Mods.Network
             rig.Wait(() => a.State.Value.Phase == SessionPhase.Starting
                 && a.State.Value.StartCountdownMilliseconds > 0,
                 "loaded barrier publishes start countdown");
-            Check(a.State.Value.StartCountdownMilliseconds <= 3000,
-                "countdown remains bounded to three seconds");
+            Check(a.State.Value.StartCountdownMilliseconds <= 1500,
+                "countdown remains bounded to one and a half seconds");
             rig.Wait(() => a.State.Value.Phase == SessionPhase.InMatch, "barrier released after countdown");
             b.EndMatch();
             rig.Wait(() => a.State.Value.Phase == SessionPhase.PostMatch, "results entered");

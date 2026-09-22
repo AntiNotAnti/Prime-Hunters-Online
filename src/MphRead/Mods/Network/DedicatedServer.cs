@@ -390,11 +390,17 @@ namespace MphRead.Mods.Network
             Log($"listening on UDP {_transport.LocalPort}, up to {_maxPlayers} players");
             if (RunsTheMatch)
             {
+                // This process never draws. Enter before lobby prewarm so a
+                // pre-parsed room model skips display-list/texture decode just
+                // like the authoritative scene will.
+                Mods.Headless.Enter();
                 ServerReplayRecorder.Configure(ReplayPolicy);
                 CareerReportOutbox.Start();
             }
             _lobbyMatch = DefinitionFor(_rotation.Current);
             _phase = SessionPolicy == ServerSessionPolicy.Lobby ? SessionPhase.Lobby : SessionPhase.InMatch;
+            if (_phase == SessionPhase.Lobby && RunsTheMatch)
+                Mods.RoomPrewarm.Begin(_lobbyMatch.RoomKey);
             if (_phase == SessionPhase.InMatch) StartSimulation();
             Log(Simulating
                 ? "this server runs the match itself"
@@ -810,6 +816,7 @@ namespace MphRead.Mods.Network
                 throw new ProgramException($"the server could not load \"{entry.RoomKey}\"");
             }
             _sim = sim;
+            Mods.RoomPrewarm.Release(entry.RoomKey);
             // This server arbitrates its clients' hit claims for as long as it
             // is running the match, so it needs a way to answer them.
             // NetHitClaims.

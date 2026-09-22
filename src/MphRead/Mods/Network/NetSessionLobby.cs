@@ -32,6 +32,7 @@ namespace MphRead.Mods.Network
         public static bool SessionTimedOut => IsClient && !DemoPlayback.IsActive && _hostEndPoint != null
             && Clock - _lastServerPacket > NetConfig.TimeoutSeconds;
         public static double Clock => Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
+        private const double LoadAckRetrySeconds = 0.10;
         private static Guid _ownerToken;
         private static uint _nextCommandId;
         private static ushort? _loadedMatch;
@@ -85,7 +86,8 @@ namespace MphRead.Mods.Network
                 pending.Attempts++; pending.SentAt = now;
                 SendLobbyPacket(pending.Packet);
             }
-            if (_loadedMatch == ServerSession?.MatchId && IsStarting && now - _lastLoadAck >= 0.25)
+            if (_loadedMatch == ServerSession?.MatchId && IsStarting
+                && now - _lastLoadAck >= LoadAckRetrySeconds)
                 MarkMatchLoaded();
             // Identity updates are also eventually reliable, without a second identity protocol.
             if (now - _lastIdentity >= 1)
@@ -120,8 +122,23 @@ namespace MphRead.Mods.Network
                 ResetMatchState(preserveRoomChange: newMatch && state.Phase != SessionPhase.Lobby);
             }
             ServerSession = state;
+            if (state.Policy == ServerSessionPolicy.Lobby && state.Phase == SessionPhase.Lobby)
+            {
+                Mods.RoomPrewarm.Begin(state.Match.RoomKey);
+            }
             if (state.Phase == SessionPhase.Starting && state.StartCountdownMilliseconds > 0)
-                _startCountdownEndsAt = Clock + state.StartCountdownMilliseconds / 1000.0;
+            {
+                // The server reports time remaining at send-time. Subtract an
+                // estimated one-way trip so high-ping and low-ping clients show
+                // the same countdown edge instead of each starting their own
+                // full countdown when the packet arrives. Keep a small safety
+                // margin so presentation never races ahead of the authority.
+                double oneWay = LocalSlot >= 0 && LocalSlot < SlotPing.Length
+                    ? Math.Clamp(SlotPing[LocalSlot] / 2000.0, 0, 0.15)
+                    : 0;
+                double remaining = state.StartCountdownMilliseconds / 1000.0;
+                _startCountdownEndsAt = Clock + Math.Max(0, remaining - oneWay + 0.03);
+            }
             else if (state.Phase != SessionPhase.Starting)
                 _startCountdownEndsAt = 0;
             if (ServerMatch == null || ServerMatch.Value.MatchId != state.MatchId
@@ -146,7 +163,8 @@ namespace MphRead.Mods.Network
         public static void MarkMatchLoaded()
         {
             if (!PersistentLobby || ServerSession == null || _hostEndPoint == null) return;
-            if (_loadedMatch == ServerSession.Value.MatchId && Clock - _lastLoadAck < 0.25) return;
+            if (_loadedMatch == ServerSession.Value.MatchId
+                && Clock - _lastLoadAck < LoadAckRetrySeconds) return;
             _loadedMatch = ServerSession.Value.MatchId;
             _lastLoadAck = Clock;
             new MatchLoadedPacket(_loadedMatch.Value).Write(_scratch);
@@ -183,6 +201,7 @@ namespace MphRead.Mods.Network
             _rosterRevision = 0; _hasRoster = false; _ownerToken = Guid.Empty;
             _rosterSessionRevision = 0;
             LobbyMessage = ""; _lastLoadAck = _lastIdentity = _startCountdownEndsAt = 0;
+            Mods.RoomPrewarm.Clear();
             Array.Fill(SlotTeamIndex, (sbyte)-1); Array.Clear(SlotLobbyReady);
             Chat.NetChat.Clear();
         }

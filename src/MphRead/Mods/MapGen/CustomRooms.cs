@@ -213,11 +213,41 @@ namespace MphRead.Mods.MapGen
             }
             foreach (MapDefinition def in definitions)
             {
+                GenerateIfNeeded(def);
+            }
+        }
+
+        /// <summary>
+        /// Generate only the room about to be loaded. Normal retail rooms are
+        /// not in <see cref="Definitions"/>, so this is effectively free for
+        /// the common online-match path and avoids re-validating every custom
+        /// package each time Start Match is pressed.
+        /// </summary>
+        public static void GenerateMissing(string roomName)
+        {
+            if (String.IsNullOrWhiteSpace(roomName)) return;
+            MapDefinition? definition;
+            try
+            {
+                definition = Definitions.FirstOrDefault(def =>
+                    def.Name.Equals(roomName, StringComparison.OrdinalIgnoreCase));
+            }
+            catch
+            {
+                return;
+            }
+            if (definition != null) GenerateIfNeeded(definition);
+        }
+
+        private static void GenerateIfNeeded(MapDefinition def)
+        {
+            lock (_lock)
+            {
                 try
                 {
                     if (!NeedsGenerating(def))
                     {
-                        continue;
+                        return;
                     }
                     Console.WriteLine($"[mapgen] building {def.Name}");
                     MapPacker.Generate(def, ArchiveDirectory(def), EntityDirectory(), NodeDirectory(), verbose: false);
