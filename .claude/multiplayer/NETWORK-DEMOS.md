@@ -39,6 +39,16 @@ This is deterministic reconstruction from packet-visible facts, not a detached
 world checkpoint. Historical objective/effect capture and killcam integration
 remain outstanding.
 
+Detached checkpoint components now include a versioned, bounded replica-decoder
+payload and model animation state. Decoder restore retains packet ordering,
+occupants, death tombstones, input ages, rules, RNG and pickup state, and validates
+into a temporary owner before applying. Animation restore refers to model names
+and group ordinals, never GPU handles or live model references. These components
+are **not** full scene restore points: dynamic entity membership, entity links,
+simulation and effect state must be assembled before they can power a seek or killcam.
+The replica check restores decoder values every frame and deliberately perturbs
+and restores all entity-model animations between batches.
+
 ## Controls and clock
 
 `ReplayController` schedules complete 1/60-second engine steps. Rates are

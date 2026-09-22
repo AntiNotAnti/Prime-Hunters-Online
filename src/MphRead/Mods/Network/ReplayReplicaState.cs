@@ -12,7 +12,7 @@ namespace MphRead.Mods.Network
 
     /// <summary>Packet-visible replica values, with private lifecycle/order tracking.
     /// This decoder deliberately has no NetSession or NetPlayerLifecycle dependency.</summary>
-    internal sealed class ReplayReplicaState
+    internal sealed partial class ReplayReplicaState
     {
         private readonly ReplayOccupant[] _roster = new ReplayOccupant[PlayerEntity.SlotCapacity];
         private readonly PlayerState[] _players = new PlayerState[PlayerEntity.SlotCapacity];
@@ -28,6 +28,7 @@ namespace MphRead.Mods.Network
         public SessionStatePacket? Configuration { get; private set; }
         public uint ServerTick { get; private set; }
         public uint RecordingFrame { get; private set; }
+        public uint MatchRecordingFrame { get; private set; }
         public uint Rng1 { get; private set; } = Rng.Rng1StartValue;
         public uint Rng2 { get; private set; } = Rng.Rng2StartValue;
         private byte[] _worldTail = Array.Empty<byte>();
@@ -65,7 +66,7 @@ namespace MphRead.Mods.Network
             foreach (var life in _lives) life.ResetLife();
             _rosterRevision = null;
             _hasSnapshot = false;
-            ServerTick = RecordingFrame = 0;
+            ServerTick = RecordingFrame = MatchRecordingFrame = 0;
             AcceptedPackets = IgnoredPackets = 0;
             Rng1 = Rng.Rng1StartValue;
             Rng2 = Rng.Rng2StartValue;
@@ -94,6 +95,8 @@ namespace MphRead.Mods.Network
                         Reset();
                     }
                     Match = match;
+                    MatchRecordingFrame = frame;
+                    if (Configuration is { } rules && !Matches(rules.MatchId, rules.AuthorityEpoch)) Configuration = null;
                     accepted = true;
                     break;
                 case PacketType.SessionState:

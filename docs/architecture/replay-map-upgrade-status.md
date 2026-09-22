@@ -39,6 +39,7 @@ No fallback is removed before the plan's runtime acceptance gate.
 ## Remaining replay work
 
 - Complete detached scene restore schema and authoritative world/event capture.
+  Decoder and animation components are implemented; full entity/effect assembly is outstanding.
 - Complete historical presentation/event state and scene service coverage for all modes;
   replica simulation, replication, silent audio and GL resource ownership are implemented.
 - Detached checkpoint seek and consumer attachment for instance-owned passive playback.
@@ -150,7 +151,7 @@ that the missing replay features work.
 
 - Desktop Release build: passes with 18 pre-existing warnings.
 - Timeline: 36 checks.
-- Replay v2/v3 format, metadata, recovery, extraction and malformed input, passive session/scene ownership and projections: 567 checks.
+- Replay v2/v3 format, metadata, recovery, extraction and malformed input, passive session/scene ownership and projections: 578 checks.
 - Network lifecycle: 3,681 assertions.
 - Health/shot behavior: 2,967,760 assertions.
 - Editor/history/cache/build: 88 checks, including projection/ray agreement across DPI scales, real synthetic-texture compilation,
@@ -211,3 +212,11 @@ trails and effect particles. All 1,801 frames agree in headless and OpenGL passe
 linear/reconstructed playback, randomized seeks, rates and EOF also pass schema 3.
 Rendered images remain byte-identical after sibling disposal. Detached checkpoints
 and complete historical objective/effect state are still missing.
+
+The detached decoder component now roundtrips all 1,801 recorded frames, including
+ordering and lifecycle tombstones. The same interleaved run performs 13,568 exact
+model-animation restores after deliberately changing animation frames and active
+flags, in headless and OpenGL modes. Its payloads contain values/asset identities,
+with no live scene/model/GPU references. Invalid decoder payloads fail atomically.
+These component tests do not establish full scene continuation: entity membership,
+links, simulation and effect state are the remaining checkpoint assembly work.
