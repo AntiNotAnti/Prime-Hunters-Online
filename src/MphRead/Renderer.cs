@@ -1994,6 +1994,13 @@ namespace MphRead
                 return;
             }
             BeginRenderDiagnostics();
+            // A first-person pose belongs to exactly one picture. If this draw
+            // skips TransformCamera for any reason, the viewmodel must fall
+            // back to simulation state rather than reusing yesterday's pose.
+            if (PlayerEntity.Players.Count > 0)
+            {
+                PlayerEntity.Main.ModInvalidateFirstPersonRenderPose();
+            }
 
             // Network puppets use the playout clock itself for high-refresh
             // presentation. Remember the exact sub-frame point drawn here so
