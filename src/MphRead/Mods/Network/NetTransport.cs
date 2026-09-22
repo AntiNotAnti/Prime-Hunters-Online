@@ -59,13 +59,15 @@ namespace MphRead.Mods.Network
         private int _inboxCount;
         private int _playbackBytes;
 
-        // Real-time clients do not benefit from processing six obsolete
-        // snapshots after a hitch. Keep only the newest full snapshot and the
-        // newest SlotIntent for each remote slot. Control/event traffic remains
-        // ordered in _inbox, and playback/fault-injection never enables this.
+        // Real-time clients do not benefit from processing obsolete state
+        // after a hitch. Keep only the newest snapshot and newest bundled
+        // observer-input tick (plus legacy per-slot intents). The bundle repeats
+        // recent press events, so replacing an older bundle cannot erase a
+        // one-frame action.
         private volatile bool _coalesceRealtimeState;
         private readonly object _stateLock = new();
         private ReceivedPacket? _latestSnapshot;
+        private ReceivedPacket? _latestIntentBundle;
         private readonly ReceivedPacket?[] _latestSlotIntent =
             new ReceivedPacket?[MphRead.Entities.PlayerEntity.SlotCapacity];
         private long _statePacketsCoalesced;
@@ -136,6 +138,16 @@ namespace MphRead.Mods.Network
                         Interlocked.Increment(ref _statePacketsCoalesced);
                     }
                     _latestSnapshot = packet;
+                    return true;
+                }
+                if (packet.Type == PacketType.IntentBundle)
+                {
+                    if (_latestIntentBundle.HasValue)
+                    {
+                        _latestIntentBundle.Value.Release();
+                        Interlocked.Increment(ref _statePacketsCoalesced);
+                    }
+                    _latestIntentBundle = packet;
                     return true;
                 }
                 if (packet.Type == PacketType.SlotIntent && packet.Length > 1)
@@ -406,11 +418,22 @@ namespace MphRead.Mods.Network
                     }
                 }
 
+                ReceivedPacket? bundle;
                 ReceivedPacket? snapshot;
                 lock (_stateLock)
                 {
+                    bundle = _latestIntentBundle;
+                    _latestIntentBundle = null;
                     snapshot = _latestSnapshot;
                     _latestSnapshot = null;
+                }
+                // Apply controls before the authoritative picture from the same
+                // drain, matching the normal frame order.
+                if (bundle.HasValue)
+                {
+                    ReceivedPacket value = bundle.Value;
+                    try { yield return value; }
+                    finally { value.Release(); }
                 }
                 if (snapshot.HasValue)
                 {
@@ -527,6 +550,8 @@ namespace MphRead.Mods.Network
             {
                 if (_latestSnapshot.HasValue) _latestSnapshot.Value.Release();
                 _latestSnapshot = null;
+                if (_latestIntentBundle.HasValue) _latestIntentBundle.Value.Release();
+                _latestIntentBundle = null;
                 for (int i = 0; i < _latestSlotIntent.Length; i++)
                 {
                     if (_latestSlotIntent[i].HasValue) _latestSlotIntent[i]!.Value.Release();
