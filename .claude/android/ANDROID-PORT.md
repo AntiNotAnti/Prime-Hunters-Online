@@ -110,6 +110,13 @@ Two things come free from owning the context:
   lost to the home button. `GLSurfaceView` only kept it as a favour, through
   `PreserveEGLContextOnPause`; here nothing destroys it until the match ends.
 - **Pausing is a flag**, not a handshake, so `OnPause` cannot block either.
+- **The in-game pause menu does not destroy the game surface.** The `SurfaceView`
+  stays attached and is made fully transparent while the launcher/menu view is
+  brought to the front; Resume restores it and brings the touch overlay forward.
+  Turning the game view `Gone` used to manufacture a `surfaceDestroyed` /
+  `surfaceCreated` cycle for every pause, forcing EGL to tear down and rebuild
+  its window surface around a still-loaded scene. Real devices could lose that
+  rebind race and stop the render thread immediately after Resume.
 
 `surfaceDestroyed` is the one callback that *should* wait -- Android wants the
 surface unused by the time it returns -- and it does, for up to two seconds.
@@ -323,8 +330,12 @@ which appears wherever a thumb lands on the left; aiming is a drag; jump is a
 double tap on the aiming side; boost in the ball is a flick. None of the four is
 a button.
 
-`MainActivity.ClosePauseMenu` calls `TouchControls.ReloadSettings`, since the
-settings are reachable from the pause menu mid-match.
+`MainActivity.StartMatch` calls `TouchControls.ReloadSettings` before the first
+overlay is created, and `ClosePauseMenu` calls it again after in-match settings.
+That first call matters because the activity owns `TouchControls` before
+`AndroidApp.BuildHome` loads `controls.txt`; without the explicit sync, match one
+could draw the constructor-default buttons until some later match/menu state
+happened to rebuild their visibility.
 
 ### A HUD rectangle beats a round button
 
