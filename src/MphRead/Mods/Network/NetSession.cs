@@ -2093,11 +2093,7 @@ namespace MphRead.Mods.Network
 
             bool keyframe = _snapshotKeyframeFrame == 0
                 || NetFrame - _snapshotKeyframeFrame >= SnapshotWire.KeyframeInterval;
-            if (keyframe)
-            {
-                Array.Clear(_snapshotKeyframeValid);
-                _snapshotKeyframeFrame = NetFrame;
-            }
+            uint baselineFrame = keyframe ? NetFrame : _snapshotKeyframeFrame;
 
             int offset = SnapshotHeader.Size + SnapshotWire.StateHeaderSize;
             int entries = 0;
@@ -2116,23 +2112,28 @@ namespace MphRead.Mods.Network
                 state.WriteBase(_scratch.AsSpan(offset, SnapshotWire.PlayerSize));
                 offset += SnapshotWire.PlayerSize;
                 entries++;
-                if (keyframe)
-                {
-                    _snapshotKeyframeBase[slot] = state;
-                    _snapshotKeyframeValid[slot] = true;
-                }
             }
 
             // A keyframe must be complete. Compact bases make this fit with the
             // maximum health tail; refusing a partial keyframe is safer than
-            // publishing a baseline nobody can reconstruct.
-            if (keyframe && entries != currentCount)
+            // publishing a baseline nobody can reconstruct. Commit the new
+            // baseline only after the whole packet is known to fit.
+            if (keyframe)
             {
-                throw new ProgramException("Snapshot keyframe exceeds packet capacity.");
+                if (entries != currentCount)
+                    throw new ProgramException("Snapshot keyframe exceeds packet capacity.");
+                Array.Clear(_snapshotKeyframeValid);
+                for (int i = 0; i < currentCount; i++)
+                {
+                    PlayerState state = _publishSnapshotScratch[i];
+                    _snapshotKeyframeBase[state.SlotIndex] = state;
+                    _snapshotKeyframeValid[state.SlotIndex] = true;
+                }
+                _snapshotKeyframeFrame = NetFrame;
             }
 
             SnapshotWire.WriteStateHeader(_scratch.AsSpan(SnapshotHeader.Size,
-                SnapshotWire.StateHeaderSize), keyframe, activeMask, _snapshotKeyframeFrame);
+                SnapshotWire.StateHeaderSize), keyframe, activeMask, baselineFrame);
 
             int damageCountOffset = offset++;
             int damageGroups = 0;
