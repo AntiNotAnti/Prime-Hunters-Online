@@ -33,7 +33,7 @@ namespace MphRead.Mods.Network
         Roster = 10,        // server -> clients, who is in which slot
         Identify = 11,      // client -> server, my display name and hunter
         Authority = 12,     // server -> client, you are the simulation authority
-        SlotIntent = 13,    // server -> authority, one peer's input, tagged with its slot
+        SlotIntent = 13,    // compatibility relay -> client authority, one tagged peer input
         StatusQuery = 14,   // anyone -> server, "what is running?" -- claims no slot
         StatusReply = 15,   // server -> asker, the running match plus the player cap
         MatchEnd = 16,      // authority -> server, somebody won or the clock ran out
@@ -1207,8 +1207,8 @@ namespace MphRead.Mods.Network
         /// simulation of the shooter -- the same mistake the aim deltas and
         /// the ammo count were fixed by, with the same symptom. The charge is
         /// a count of frames the trigger was held, and this packet is sent
-        /// every *other* frame over a line that reorders and drops, so the
-        /// authority's count is the owner's give or take a few; on a
+        /// every frame over a line that reorders and drops, so an authority
+        /// re-deriving it can still be the owner's give or take a few; on a
         /// partial-charge weapon the damage is a continuous function of that
         /// count, so the two machines put different numbers on the same shot
         /// every time it is fired. Double damage and the Prime Hunter bonus
@@ -2359,8 +2359,9 @@ namespace MphRead.Mods.Network
         /// Version 17 changes high-rate replication. Client intents keep their
         /// full authority-facing layout, but observers receive one compact
         /// IntentBundle per authority tick with continuous state separated from
-        /// redundant rising-edge histories. Snapshots carry 54-byte player
-        /// bases and move four-entry damage histories into short-lived sidecars.
+        /// redundant rising-edge histories. Snapshot state uses a slot bitmask,
+        /// 54-byte player bases and independent deltas against a periodic
+        /// keyframe; four-entry damage histories move into short-lived sidecars.
         /// Mixed v16/v17 peers must be refused because snapshot layout and
         /// server-to-observer packet types changed.
         /// </summary>
