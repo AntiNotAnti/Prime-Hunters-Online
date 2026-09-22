@@ -81,7 +81,10 @@ namespace MphRead.Mods.Network
         private static byte[] Tail(byte[] snapshot)
         {
             if (snapshot.Length < SnapshotHeader.Size) throw new ProgramException("No authoritative snapshot.");
-            int start = SnapshotHeader.Size + SnapshotHeader.Read(snapshot).PlayerCount * PlayerState.Size + NetMatchTimeSync.Size;
+            SnapshotHeader header = SnapshotHeader.Read(snapshot);
+            if (!SnapshotWire.TryLocateTails(snapshot, header, out _, out int timeOffset))
+                throw new ProgramException("Invalid compact snapshot.");
+            int start = timeOffset + NetMatchTimeSync.Size;
             if (snapshot.Length < start || !NetHealthSync.Validate(snapshot.AsSpan(start)))
                 throw new ProgramException("Invalid health snapshot tail.");
             return snapshot.AsSpan(start).ToArray();
