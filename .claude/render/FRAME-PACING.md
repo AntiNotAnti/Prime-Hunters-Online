@@ -135,11 +135,13 @@ important invariant is now enforced explicitly: `TransformCamera` prepares one
 later in `PlayerDraw`. The render-time input delta is calculated once. Camera and
 viewmodel therefore cannot represent different input timestamps.
 
-The arm cannon's own authored motion -- bob and the dynamic weapon drift -- is
-captured once per simulation step in **camera-local space**. On high-refresh
-displays that local pose is interpolated with the same presentation fraction and
-then attached to the prepared camera basis. This smooths the viewmodel without
-putting the local camera itself one simulation frame behind.
+The arm cannon's own authored motion is captured once per simulation step in
+**camera-local space** and then attached to the prepared camera basis. High-refresh
+bob/translation may be interpolated safely. Orientation is deliberately different:
+modern fixed-crosshair aiming uses the current gun orientation plus the shared
+late-latch so the weapon never re-acquires a one-tick aim delay; legacy aiming
+interpolates orientation too because its camera is on that same presentation
+timestamp.
 
 **Legacy / moving-reticle aiming** is different. Its camera intentionally eases
 toward the raw aim at 60 Hz. The first high-refresh implementation bypassed that
