@@ -85,6 +85,7 @@ namespace MphRead.Mods.Network
                     // only before the player spawns: the alternative is
                     // wearing the wrong character for the rest of the map, and
                     // ModSetHunter makes this converge on the next frame.
+                    player.ModPrepareHunterResources(NetSession.SlotHunter[slot]);
                     player.ModSetHunter(NetSession.SlotHunter[slot]);
                     player.Initialize();
                     Console.WriteLine($"[net] slot {slot} is playing {player.Hunter}");
@@ -125,13 +126,16 @@ namespace MphRead.Mods.Network
             // out of range had nothing to say about eight players all
             // correctly holding zero.
             SyncTeam(player, slot);
-            // The hunter comes from the server's roster, not from this
-            // machine's menu: a client that used its own choice for every
-            // slot drew the other player with the right name at the right
-            // place wearing the wrong character.
-            if (slot != NetSession.LocalSlot && NetSession.SlotHunter[slot] != player.Hunter)
+            // The hunter comes from the server roster. Initial loading no
+            // longer uploads every possible hunter, so prepare this slot's
+            // actual hunter before Initialize binds its model resources.
+            Hunter wantedHunter = slot == NetSession.LocalSlot
+                ? player.Hunter
+                : NetSession.SlotHunter[slot];
+            player.ModPrepareHunterResources(wantedHunter);
+            if (slot != NetSession.LocalSlot && wantedHunter != player.Hunter)
             {
-                player.ModSetHunter(NetSession.SlotHunter[slot]);
+                player.ModSetHunter(wantedHunter);
             }
             // Run the engine's own initialisation rather than reproducing
             // it. A slot switched on here never went through Initialize() or

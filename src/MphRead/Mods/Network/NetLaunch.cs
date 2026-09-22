@@ -303,7 +303,12 @@ namespace MphRead.Mods.Network
                 // whatever its own P2 row said while announcing its P1 row,
                 // and two clients sharing a settings file both ended up
                 // showing the same hunter for everybody.
-                Hunter hunter = slot == resolvedSlot ? localHunter : NetSession.SlotHunter[slot];
+                bool occupied = slot == resolvedSlot
+                    || (slot < NetSession.SlotOccupied.Length && NetSession.SlotOccupied[slot]);
+                Hunter hunter = slot == resolvedSlot ? localHunter
+                    : occupied ? NetSession.SlotHunter[slot] : Hunter.Samus;
+                // Empty slots deliberately use the cheap Samus placeholder.
+                // NetSlotManager prepares an arriving hunter before activation.
                 // The suit is only a starting value here. Every slot's choice
                 // -- this machine's from its own preference, everybody else's
                 // from the roster -- is settled by PlayerColors.Resolve, which
