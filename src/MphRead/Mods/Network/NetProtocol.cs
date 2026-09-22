@@ -2308,6 +2308,14 @@ namespace MphRead.Mods.Network
         /// HitClaimPacket. A rescued explosive hit can now preserve the same
         /// directional momentum as the collision that produced the claim.
         /// Mixed v15/v16 peers must be refused because claim entry size changed.
+        ///
+        /// Version 17 changes high-rate replication. Client intents keep their
+        /// full authority-facing layout, but observers receive one compact
+        /// IntentBundle per authority tick with continuous state separated from
+        /// redundant rising-edge histories. Snapshots carry 54-byte player
+        /// bases and move four-entry damage histories into short-lived sidecars.
+        /// Mixed v16/v17 peers must be refused because snapshot layout and
+        /// server-to-observer packet types changed.
         /// </summary>
         public const int ProtocolVersion = 17;
         /// <summary>
