@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Embedding;
@@ -98,6 +99,19 @@ namespace MphRead.Mods.Launcher.Gui
         /// </summary>
         private double _raster = 1;
         private Control? _view;
+        private MapViewport? _mapViewport;
+        internal void PrepareMapRenderer()
+        {
+            var viewport = _view?.GetVisualDescendants().OfType<MapViewport>().FirstOrDefault();
+            if (!ReferenceEquals(viewport, _mapViewport))
+            {
+                _mapViewport?.ReleaseRenderer();
+                _mapViewport = viewport;
+            }
+            _mapViewport?.PrepareRenderer();
+        }
+        internal void DrawMapViewport(int width, int height) => _mapViewport?.DrawInWindow(this, width, height);
+        internal void ReleaseMapRenderer() { _mapViewport?.ReleaseRenderer(); _mapViewport = null; }
         private readonly GamepadNavigation _gamepad = new();
         private Point _pointer;
         private RawInputModifiers _modifiers;

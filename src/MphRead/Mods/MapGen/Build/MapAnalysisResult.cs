@@ -15,6 +15,7 @@ public sealed class MapAnalysisResult
     public IReadOnlyList<MapDiagnostic> Diagnostics { get; }
     public IReadOnlyList<MapBudget> Budgets { get; }
     public ImmutableArray<MapPreviewFace> Faces { get; }
+    public ImmutableArray<MapPreviewFace> CollisionFaces { get; }
     private readonly MapNodePacker.NavigationGraph? _navigation;
     public bool Succeeded => Diagnostics.All(d => d.Severity != MapDiagnosticSeverity.Error);
     internal MapAnalysisResult(string key, MapCompilation compilation, bool navigation)
@@ -24,6 +25,8 @@ public sealed class MapAnalysisResult
         validation.Diagnostics.AddRange(compilation.Validation.Diagnostics);
         validation.Budgets.AddRange(compilation.Validation.Budgets);
         Faces = compilation.Map?.Faces.Select(f => new MapPreviewFace(f.Points.ToImmutableArray(), f.Shade, f.Material))
+            .ToImmutableArray() ?? ImmutableArray<MapPreviewFace>.Empty;
+        CollisionFaces = compilation.Map?.Solid.Select(f => new MapPreviewFace(f.Points.ToImmutableArray(), f.Shade, f.Material))
             .ToImmutableArray() ?? ImmutableArray<MapPreviewFace>.Empty;
         if (navigation && compilation.Map is BuiltMap map)
         {

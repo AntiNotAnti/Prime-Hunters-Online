@@ -4701,6 +4701,9 @@ namespace MphRead
             {
                 return;
             }
+#if MPHREAD_SHELL
+            DisposeEditorMeshes();
+#endif
             if (_ownedTextures != null)
             {
                 foreach (int texture in _ownedTextures) GL.DeleteTexture(texture);

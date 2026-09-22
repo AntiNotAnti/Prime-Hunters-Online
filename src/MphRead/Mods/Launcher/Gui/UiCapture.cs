@@ -170,9 +170,8 @@ namespace MphRead.Mods.Launcher.Gui
                 new HubMultiplayerView(HubBrowserSample()), _phonePortrait);
             yield return ("multiplayer-phone-landscape",
                 new HubMultiplayerView(HubBrowserSample()), _phoneLandscape);
-            yield return ("map-editor-placeholder",
-                new HubPlaceholderView("MAP EDITOR", "WORKSHOP PLACEHOLDER",
-                    "A visual custom-map editor is planned for this hub."),
+            yield return ("map-editor",
+                new MapStudioScreen(),
                 _windowSize);
             yield return ("hub-settings", new HubSettingsView(), _windowSize);
             yield return ("hub-settings-phone-portrait", new HubSettingsView(), _phonePortrait);

@@ -554,6 +554,13 @@ namespace MphRead.Mods
             // window. The one part of this program that could not be looked at
             // from a headless box.
             string? uiShot = ValueAfter(args, "uishot");
+#if MPHREAD_SHELL
+            if (ValueAfter(args, "mapviewportcheck") is string mapViewportCheck)
+            {
+                Environment.ExitCode = Launcher.Gui.MapViewportCheck.Run(mapViewportCheck, ValueAfter(args, "mapproject"));
+                return true;
+            }
+#endif
             if (uiShot != null)
             {
                 Environment.ExitCode = RunUiCapture(uiShot);
