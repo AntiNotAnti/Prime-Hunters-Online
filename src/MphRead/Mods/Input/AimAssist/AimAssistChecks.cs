@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace MphRead.Mods.Input.AimAssist
 {
@@ -67,10 +68,21 @@ namespace MphRead.Mods.Input.AimAssist
             Check(AimInputSourceTracker.Current == AimInputSource.Touch, "touch revokes immediately");
             AimInputSourceTracker.Reset();
             state.Reset();
-            for (int i = 0; i < 1000; i++) Apply();
+            // Warm the same non-capturing measurement method. Keeping this loop
+            // out of Run also excludes its closures and tiered loop transitions.
+            MeasureCoreAllocations(state, targets, profile);
+            long allocated = MeasureCoreAllocations(state, targets, profile);
+            Check(allocated == 0, $"steady-state assist core allocates no managed memory ({allocated} bytes)");
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static long MeasureCoreAllocations(AimAssistState state, AimAssistTarget[] targets,
+            AimAssistWeaponProfile profile)
+        {
             long bytes = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 10000; i++) Apply();
-            Check(GC.GetAllocatedBytesForCurrentThread() == bytes, "steady-state assist core allocates no managed memory");
+            for (int i = 0; i < 10000; i++)
+                AimAssist.Apply(state, targets, new(.1f, .01f), .5f, 0, 1f / 60, true, profile);
+            return GC.GetAllocatedBytesForCurrentThread() - bytes;
         }
     }
 }
