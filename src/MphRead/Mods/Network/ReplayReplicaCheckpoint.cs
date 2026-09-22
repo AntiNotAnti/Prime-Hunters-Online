@@ -8,7 +8,7 @@ namespace MphRead.Mods.Network;
 /// supply entity, simulation and presentation state; this is never one by itself.</summary>
 internal sealed class ReplayReplicaCheckpoint
 {
-    internal const int MaximumBytes = 64 * 1024;
+    internal const int MaximumBytes = 128 * 1024;
     private readonly byte[] _bytes;
     internal ReadOnlySpan<byte> Bytes => _bytes;
     internal ReplayReplicaCheckpoint(ReadOnlySpan<byte> bytes)
@@ -21,7 +21,7 @@ internal sealed class ReplayReplicaCheckpoint
 internal sealed partial class ReplayReplicaState
 {
     private const uint CheckpointMagic = 0x43525050; // PPRC, independent of demo/wire formats
-    private const ushort CheckpointVersion = 1;
+    private const ushort CheckpointVersion = 2;
     internal ReplayReplicaCheckpoint CaptureCheckpoint()
     {
         using var stream = new MemoryStream();
@@ -65,6 +65,9 @@ internal sealed partial class ReplayReplicaState
             writer.Write(_intentReceivedFrame[i]);
         }
         writer.Write(_worldTail.Length); writer.Write(_worldTail);
+        byte[] authority = AuthorityWorld?.Encode() ?? Array.Empty<byte>();
+        writer.Write(authority.Length); writer.Write(authority);
+        writer.Write(AuthorityAppliedTick.HasValue); if (AuthorityAppliedTick is uint applied) writer.Write(applied);
         writer.Flush();
         return new(stream.GetBuffer().AsSpan(0, checked((int)stream.Length)));
     }
@@ -83,8 +86,9 @@ internal sealed partial class ReplayReplicaState
         }
         try
         {
-            if (reader.ReadUInt32() != CheckpointMagic || reader.ReadUInt16() != CheckpointVersion
-                || reader.ReadByte() != NetConfig.ProtocolVersion) throw new InvalidDataException("Incompatible replica checkpoint.");
+            if (reader.ReadUInt32() != CheckpointMagic) throw new InvalidDataException("Incompatible replica checkpoint.");
+            ushort version = reader.ReadUInt16();
+            if (version is < 1 or > CheckpointVersion || reader.ReadByte() != NetConfig.ProtocolVersion) throw new InvalidDataException("Incompatible replica checkpoint.");
             restored.RecordingFrame = reader.ReadUInt32(); restored.MatchRecordingFrame = reader.ReadUInt32();
             restored.ServerTick = reader.ReadUInt32(); restored.Rng1 = reader.ReadUInt32(); restored.Rng2 = reader.ReadUInt32();
             restored.AcceptedPackets = reader.ReadInt64(); restored.IgnoredPackets = reader.ReadInt64();
@@ -138,6 +142,17 @@ internal sealed partial class ReplayReplicaState
                         BinaryPrimitives.ReadUInt16LittleEndian(health[(offset + 5)..]), (sbyte)(((flags >> 2) & 15) - 1)));
                 }
             }
+            if (version >= 2)
+            {
+                byte[] authority = Read(reader.ReadInt32());
+                if (authority.Length > 0)
+                {
+                    restored.AuthorityWorld = ReplayAuthorityWorld.Decode(authority);
+                    if (!restored.Matches(restored.AuthorityWorld.MatchId, restored.AuthorityWorld.Epoch)) throw Malformed();
+                }
+                restored.AuthorityAppliedTick = reader.ReadBoolean() ? reader.ReadUInt32() : null;
+                if (restored.AuthorityAppliedTick.HasValue && (restored.AuthorityWorld == null || restored.AuthorityAppliedTick > restored.AuthorityWorld.Tick)) throw Malformed();
+            }
             if (stream.Position != stream.Length || restored.MatchRecordingFrame > restored.RecordingFrame
                 || restored.AcceptedPackets < 0 || restored.IgnoredPackets < 0) throw Malformed();
         }
@@ -152,7 +167,7 @@ internal sealed partial class ReplayReplicaState
         Array.Copy(restored._hasIntent, _hasIntent, _hasIntent.Length);
         Array.Copy(restored._intentReceivedFrame, _intentReceivedFrame, _intentReceivedFrame.Length);
         for (int i = 0; i < _lives.Length; i++) _lives[i].Restore(restored._lives[i].Capture());
-        _worldTail = restored._worldTail;
+        _worldTail = restored._worldTail; AuthorityWorld = restored.AuthorityWorld; AuthorityAppliedTick = restored.AuthorityAppliedTick; _authorityWire.Reset();
         _healthSpawns.Clear(); foreach (var pair in restored._healthSpawns) _healthSpawns.Add(pair.Key, pair.Value);
     }
 }

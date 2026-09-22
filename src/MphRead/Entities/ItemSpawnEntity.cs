@@ -92,7 +92,8 @@ namespace MphRead.Entities
             {
                 Position = Matrix.Vec3MultMtx4(_invPos, _parent.CollisionTransform);
             }
-            if (_scene.Services.ReplicatesHealthSpawns && Mods.Multiplayer.MapResourceRules.IsHealth(_data.ItemType))
+            if (_scene.Services.ReplicatesHealthSpawns && (Mods.Multiplayer.MapResourceRules.IsHealth(_data.ItemType)
+                || _scene.Services is Mods.Network.ReplaySceneServices { HasAuthorityWorld: true }))
             {
                 if (_scene.Services.TryGetHealthSpawn((short)Id, out var state))
                 {

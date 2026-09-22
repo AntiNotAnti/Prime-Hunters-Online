@@ -391,3 +391,33 @@ a real dedicated-server v4 recording pass; FFmpeg produced and decoded a real
 1280×720, 120 FPS movie. Native 4K HUD images were inspected. Rendered replica tests
 still pass all 1,801 gameplay/presentation frames, seven restored images and 61
 file/clip seeks; controller checks include fractional tracks and discontinuities.
+
+## Authoritative world and semantic coverage
+
+Protocol 16's existing gameplay layouts are unchanged. Optional packet 42 carries
+schema-2 replay-only world values (schema 1 remains readable) at 10 Hz and phase transitions. Old peers ignore
+it; it never mutates a live client scene. Full states cover Prime identity,
+flag/carrier/drop state, node ownership/progress/occupants, all item spawners,
+dropped items and door/portal/collision activation. Actor links fence generation
+and life. Fragment assembly is limited to one 48 KiB state and 512 entries per
+entity category, validates before publication and heals loss with the next state.
+Only complete states enter the common recorder. The private decoder checkpoint
+has an explicit version 2; version 1 remains readable.
+
+Accepted counters and damage produce Headshot, FlagCapture, NodeCapture,
+PrimeChanged and MatchPoint events. They feed Studio markers, analytics and
+highlights. Overtime has an explicit event value but no producer: the current
+game has no overtime rule. Match-ending facts retain a confirmed causal kill or
+identify time/objective/other endings; new-server final killcams require that
+cause. A bounded legacy-server fallback remains for protocol-16 servers that do
+not send the optional world extension.
+
+Validation: 705 format/decoder/network-fragment checks; four 1,801-frame objective
+fixtures (602 flag and 1,204 node facts) with linear/world/checkpoint/file/clip
+comparisons; rendered Capture world restores and seek comparisons; an actual
+9,038-frame server recording with all playback rates and randomized seeks. An
+8-client 100-ms RTT/2%-loss five-minute run completed 32 killcam starts and 3,516
+visible replay frames without capture/playback errors; all eight clients saved
+clips. The general harness's position failures were traced to comparing the old
+fading room against the next match's snapshots before its load barrier. The
+measurement now observes the same GameplayReady fence as state application.

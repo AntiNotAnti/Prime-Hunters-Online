@@ -18,6 +18,7 @@ internal static class KillCam
     private static int _skipRequested;
     private static bool _releaseFire;
     private static bool _finalRequested;
+    private static uint _finalRequestedFrame;
     public static bool Active => UseReplayKillcam ? Controller.Active : LegacyKillCam.Active;
     public static bool IsPersonal => UseReplayKillcam ? Controller.Kind == KillCamKind.Personal : LegacyKillCam.IsPersonal;
     public static bool IsFinal => UseReplayKillcam ? Controller.Kind == KillCamKind.Final : LegacyKillCam.IsFinal;
@@ -55,27 +56,43 @@ internal static class KillCam
         if (Interlocked.Exchange(ref _skipRequested, 0) != 0) { Controller.Skip(); _releaseFire = true; }
         if (_finalRequested)
         {
-            _finalRequested = false;
-            var game = scene.GameState;
-            bool causal = false;
-            if (Controller.Candidate?.Kill is { } kill)
+            var context = Context(scene);
+            var world = ReplayCapture.LatestAuthorityWorld;
+            bool matching = world != null && world.MatchId == context.MatchId && world.Epoch == context.Epoch;
+            if (matching && world!.EndCause != ReplayEndCause.None)
             {
-                int team = scene.Players.Items[kill.KillerSlot].TeamIndex;
-                bool winner = scene.Players.Items[game.ResultSlots[0]].TeamIndex == team;
-                causal = winner && (game.Mode is GameMode.Survival or GameMode.SurvivalTeams
-                    || game.Mode is GameMode.Battle or GameMode.BattleTeams && game.TeamPoints[team] >= game.PointGoal);
+                _finalRequested = false;
+                bool causal = world.EndCause == ReplayEndCause.Kill && world.EndingKill == Controller.Candidate?.Kill;
+                Controller.BeginFinal(scene, context, NetSession.NetFrame, world.EndCause == ReplayEndCause.Time, causal);
             }
-            // Server ending announcements retain a small terminal clock. A
-            // non-causal recent kill is allowed only when the clock expired.
-            bool timed = !causal && NetSession.ServerMatch is { TimeRemaining: <= 3.1f };
-            Controller.BeginFinal(scene, Context(scene), NetSession.NetFrame, timed, causal);
+            else if (NetSession.NetFrame - _finalRequestedFrame >= 30)
+            {
+                _finalRequested = false;
+                // Older protocol-16 servers have no world extension. Keep their
+                // bounded terminal-clock fallback; new authorities must identify
+                // the cause explicitly instead of selecting an unrelated kill.
+                if (!matching)
+                {
+                    var game = scene.GameState;
+                    bool causal = false;
+                    if (Controller.Candidate?.Kill is { } kill)
+                    {
+                        int team = scene.Players.Items[kill.KillerSlot].TeamIndex;
+                        bool winner = scene.Players.Items[game.ResultSlots[0]].TeamIndex == team;
+                        causal = winner && (game.Mode is GameMode.Survival or GameMode.SurvivalTeams
+                            || game.Mode is GameMode.Battle or GameMode.BattleTeams && game.TeamPoints[team] >= game.PointGoal);
+                    }
+                    Controller.BeginFinal(scene, context, NetSession.NetFrame,
+                        !causal && NetSession.ServerMatch is { TimeRemaining: <= 3.1f }, causal);
+                }
+            }
         }
         Controller.Update(scene, Context(scene));
     }
     internal static bool BeginFinal(uint frame)
     {
         if (!UseReplayKillcam) return LegacyKillCam.BeginFinal(frame);
-        _finalRequested = true; return false;
+        _finalRequested = true; _finalRequestedFrame = NetSession.NetFrame; return false;
     }
     internal static void EndFinal()
     {

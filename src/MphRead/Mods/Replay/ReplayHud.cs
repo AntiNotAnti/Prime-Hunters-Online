@@ -57,7 +57,8 @@ namespace MphRead.Mods.Replay
                 {
                     if (marker.Type is not (ReplayEventType.Kill
                         or ReplayEventType.PlayerDeath
-                        or ReplayEventType.Objective
+                        or ReplayEventType.Objective or ReplayEventType.FlagCapture or ReplayEventType.NodeCapture
+                        or ReplayEventType.PrimeChanged or ReplayEventType.Headshot or ReplayEventType.MatchPoint
                         or ReplayEventType.MatchEnded))
                         continue;
                     int at = ReplayController.DurationFrames == 0 ? 0

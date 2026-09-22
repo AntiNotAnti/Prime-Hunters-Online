@@ -4,7 +4,7 @@ using OpenTK.Mathematics;
 
 namespace MphRead.Entities
 {
-    public class OctolithFlagEntity : EntityBase
+    public partial class OctolithFlagEntity : EntityBase
     {
         private readonly OctolithFlagEntityData _data;
         public OctolithFlagEntityData Data => _data;

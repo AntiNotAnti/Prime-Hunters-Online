@@ -18,7 +18,14 @@ namespace MphRead.Mods.Network
         public Multiplayer.MatchWorldProfile? NetworkWorldProfile => State.Configuration?.WorldProfile
             ?? Multiplayer.MatchWorldProfile.Resolve(State.Match?.PlayerCount ?? 2);
         public bool ReplicatesHealthSpawns => true;
-        public bool TryGetHealthSpawn(short id, out HealthSpawnState state) => State.TryGetHealthSpawn(id, out state);
+        public bool TryGetHealthSpawn(short id, out HealthSpawnState state)
+        {
+            if (State.TryGetHealthSpawn(id, out state)) return true;
+            if (State.AuthorityWorld is { } world)
+                foreach (var pickup in world.Pickups) if (pickup.Id == id) { state = pickup.State; return true; }
+            return State.TryGetHealthSpawn(id, out state);
+        }
+        internal bool HasAuthorityWorld => State.AuthorityWorld != null;
         private readonly ushort[] _generations = new ushort[PlayerEntity.SlotCapacity];
         private uint? _rngTick;
         public ReplaySceneServices(ReplayPlaybackSession session, ReplayReplicaState state)
@@ -31,6 +38,12 @@ namespace MphRead.Mods.Network
             if (!string.Equals(scene.Room?.Meta.Name, match.RoomKey, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("The replica scene belongs to a different recorded room.");
             ApplyRules(scene, Session.RecordingFrame);
+            if (State.AuthorityWorld is { } clock)
+            {
+                scene.GameState.MatchState = clock.Phase;
+                scene.GameState.MatchTime = clock.MatchTime < 0 ? -1
+                    : Math.Max(0, clock.MatchTime - Math.Max(0L, (long)State.ServerTick - clock.Tick) / 60f);
+            }
             if (_rngTick != State.ServerTick)
             {
                 _rngTick = State.ServerTick;
@@ -110,6 +123,8 @@ namespace MphRead.Mods.Network
                     }
                     _presentationKnown[slot] = true; _presentationLives[slot] = life;
                 }
+            if (State.AuthorityWorld is { } world && State.AuthorityAppliedTick != world.Tick)
+            { world.Apply(scene, State); State.AuthorityAppliedTick = world.Tick; }
             ReadOnlySpan<byte> tail = State.WorldTail;
             if (tail.Length >= NetMatchTimeSync.Size)
                 for (int i = 0; i < PlayerEntity.SlotCapacity; i++)

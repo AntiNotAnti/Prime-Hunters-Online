@@ -81,7 +81,10 @@ namespace MphRead.Mods.Replay
                         Add(e.ActorSlot, 70 * age, "recent kill");
                         Add(e.TargetSlot, 34 * age, "kill aftermath");
                         break;
-                    case ReplayEventType.Objective:
+                    case ReplayEventType.FlagCapture:
+                        case ReplayEventType.NodeCapture:
+                        case ReplayEventType.PrimeChanged:
+                        case ReplayEventType.Objective:
                         Add(e.ActorSlot, 78 * age, "objective pressure");
                         break;
                     case ReplayEventType.Damage:

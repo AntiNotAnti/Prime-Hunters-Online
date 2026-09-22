@@ -59,6 +59,13 @@ namespace MphRead.Entities
             }
         }
 
+        internal static ItemInstanceEntity CreateReplayDrop(Mods.Network.ReplayDropState drop, Scene scene)
+        {
+            if (!scene.Services.IsReplica) throw new InvalidOperationException("Historical drops require a private scene.");
+            return new(new(drop.Position, drop.Type, drop.DespawnTimer), scene.Room!.GetNodeRefByPosition(drop.Position), scene)
+            { Id = -2 - drop.Identity };
+        }
+
         public override void Initialize()
         {
             base.Initialize();

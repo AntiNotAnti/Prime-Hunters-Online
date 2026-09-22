@@ -172,6 +172,7 @@ namespace MphRead.Mods.Network
         public static uint AppliedSnapshotFrame { get; private set; }
 
         private static SnapshotSink? _snapshotSink;
+        internal static SnapshotSink? ReplayWorldSink { get; set; }
 
         /// <summary>
         /// What "the match this process is simulating is over" does when the
@@ -358,7 +359,7 @@ namespace MphRead.Mods.Network
             _hostEndPoint = null;
             _peers.Clear();
             IsAuthority = false;
-            _snapshotSink = null;
+            _snapshotSink = null; ReplayWorldSink = null;
             _serverMatchEnded = null;
             Role = NetRole.Offline;
             LocalSlot = Math.Clamp(localSlot, 0, PlayerEntity.SlotCapacity - 1);
@@ -444,7 +445,7 @@ namespace MphRead.Mods.Network
             NetPlayerBridge.Reset();
             Chat.ChatBox.Clear();
             IsAuthority = false;
-            _snapshotSink = null;
+            _snapshotSink = null; ReplayWorldSink = null;
             _serverMatchEnded = null;
             if (_transport != null)
             {
@@ -909,6 +910,9 @@ namespace MphRead.Mods.Network
                     break;
                 case PacketType.SlotIntent when Role == NetRole.Client:
                     HandleSlotIntent(packet);
+                    break;
+                case PacketType.ReplayWorld when Role == NetRole.Client && !IsAuthority && !_playback:
+                    ReplayCapture.AcceptWorldPacket(packet.Payload);
                     break;
                 case PacketType.Snapshot when Role == NetRole.Client:
                     HandleSnapshot(packet);
@@ -1849,6 +1853,16 @@ namespace MphRead.Mods.Network
             BinaryPrimitives.WriteUInt16LittleEndian(_scratch, CurrentMatchId);
             BinaryPrimitives.WriteUInt64LittleEndian(_scratch.AsSpan(2), AuthorityEpoch);
             _transport.Send(_hostEndPoint, PacketType.MatchEnd, _scratch.AsSpan(0, 10));
+        }
+
+        internal static void SendReplayWorld(ReplayAuthorityWorld world)
+        {
+            foreach (byte[] packet in ReplayAuthorityWire.Packets(world))
+            {
+                if (Role == NetRole.Server) ReplayWorldSink?.Invoke(packet.AsSpan(1));
+                else if (Role == NetRole.Host)
+                    foreach (var peer in _peers) _transport?.Send(peer.EndPoint, PacketType.ReplayWorld, packet.AsSpan(1));
+            }
         }
 
         /// <summary>Host -> clients: authoritative state for every active player.</summary>

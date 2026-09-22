@@ -32,7 +32,7 @@ internal static class ReplayTimelineArchive
     {
         if (record.RecordingFrame < origin) return;
         uint frame = record.RecordingFrame - origin;
-        if (frame > 0 && record.Kind is ReplayFactKind.Match or ReplayFactKind.Roster or ReplayFactKind.Snapshot or ReplayFactKind.Intent)
+        if (frame > 0 && record.Kind is ReplayFactKind.Match or ReplayFactKind.Roster or ReplayFactKind.Snapshot or ReplayFactKind.Intent or ReplayFactKind.AuthorityWorld)
             writer.WriteRecord(frame, record.Payload);
         if (record.Marker is { } marker)
         {
@@ -73,8 +73,13 @@ internal static class ReplayTimelineArchive
         ReplayMarkerKind.MatchEnd => ReplayEventType.MatchEnded,
         ReplayMarkerKind.MatchStart => ReplayEventType.MatchStarted,
         ReplayMarkerKind.WeaponFired => ReplayEventType.WeaponFired,
-        ReplayMarkerKind.Objective or ReplayMarkerKind.FlagCapture or ReplayMarkerKind.NodeCapture
-            or ReplayMarkerKind.PrimeChange => ReplayEventType.Objective,
+        ReplayMarkerKind.Objective => ReplayEventType.Objective,
+        ReplayMarkerKind.Headshot => ReplayEventType.Headshot,
+        ReplayMarkerKind.FlagCapture => ReplayEventType.FlagCapture,
+        ReplayMarkerKind.NodeCapture => ReplayEventType.NodeCapture,
+        ReplayMarkerKind.PrimeChange => ReplayEventType.PrimeChanged,
+        ReplayMarkerKind.MatchPoint => ReplayEventType.MatchPoint,
+        ReplayMarkerKind.Overtime => ReplayEventType.Overtime,
         _ => null
     };
     // File-only semantic facts retain exact identity even though the legacy

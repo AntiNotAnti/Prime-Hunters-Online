@@ -10,6 +10,7 @@ internal sealed class ReplayRecorder
     internal bool ProducesWorldCheckpoints { get; set; }
     internal event Action<ReplayTimelineRecord>? Accepted;
     internal event Action? Resetting;
+    private readonly ReplayAuthorityWire _worldWire = new();
     private ReplayTimelineRecord? _match, _roster, _snapshot, _configuration;
     private readonly ReplayTimelineRecord?[] _intents = new ReplayTimelineRecord?[RosterPacket.MaxSlots];
     private ushort _matchId;
@@ -19,6 +20,7 @@ internal sealed class ReplayRecorder
     public void Reset()
     {
         Resetting?.Invoke();
+        _worldWire.Reset();
         Timeline.Reset(); _match = _roster = _snapshot = _configuration = null;
         Array.Clear(_intents);
         _matchId = 0; _epoch = 0; _room = null; _lastRestore = 0;
@@ -98,6 +100,16 @@ internal sealed class ReplayRecorder
         // Keep the snapshot in the sequential stream too: a clip starting from an
         // earlier baseline must not omit the snapshot at a later index boundary.
         Publish(_snapshot);
+    }
+    internal void AcceptWorldPacket(ReadOnlySpan<byte> payload, uint frame)
+    {
+        if (_worldWire.Accept(payload, _matchId, _epoch) is { } world) AcceptWorld(world, frame);
+    }
+    internal void AcceptWorld(ReplayAuthorityWorld world, uint frame)
+    {
+        if (world.MatchId != _matchId || world.Epoch != _epoch) return;
+        foreach (byte[] packet in ReplayAuthorityWire.Packets(world))
+            Publish(new(frame, world.Tick, ReplayFactKind.AuthorityWorld, packet));
     }
     public void Marker(uint frame, uint tick, ReplayMarker marker)
     {

@@ -146,7 +146,12 @@ namespace MphRead.Mods.Replay
                     };
                     AddMerged(result, Make(e.Frame, length, kind, e.ActorSlot, e.TargetSlot, score, label));
                 }
-                else if (e.Type == ReplayEventType.Objective)
+                else if (e.Type is ReplayEventType.Headshot or ReplayEventType.MatchPoint)
+                {
+                    AddMerged(result, Make(e.Frame, length, ReplayHighlightKind.Kill,
+                        e.ActorSlot, e.TargetSlot, 75, e.Type == ReplayEventType.Headshot ? "Headshot" : "Match point"));
+                }
+                else if (e.Type is ReplayEventType.Objective or ReplayEventType.FlagCapture or ReplayEventType.NodeCapture or ReplayEventType.PrimeChanged)
                 {
                     AddMerged(result, Make(e.Frame, length, ReplayHighlightKind.Objective,
                         e.ActorSlot, e.TargetSlot, 82, "Objective play"));
@@ -242,6 +247,9 @@ namespace MphRead.Mods.Replay
                         case ReplayEventType.ScoreChanged:
                             actor.ScoreEvents++;
                             break;
+                        case ReplayEventType.FlagCapture:
+                        case ReplayEventType.NodeCapture:
+                        case ReplayEventType.PrimeChanged:
                         case ReplayEventType.Objective:
                             actor.Objectives++;
                             objectives++;

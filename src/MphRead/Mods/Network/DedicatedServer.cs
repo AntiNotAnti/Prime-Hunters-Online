@@ -814,6 +814,10 @@ namespace MphRead.Mods.Network
                 throw new ProgramException($"the server could not load \"{entry.RoomKey}\"");
             }
             _sim = sim;
+            NetSession.ReplayWorldSink = payload =>
+            {
+                foreach (var peer in _peers) _transport?.Send(peer.EndPoint, PacketType.ReplayWorld, payload);
+            };
             Mods.RoomPrewarm.Release(entry.RoomKey);
             // This server arbitrates its clients' hit claims for as long as it
             // is running the match, so it needs a way to answer them.

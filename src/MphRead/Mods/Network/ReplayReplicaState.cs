@@ -31,6 +31,9 @@ namespace MphRead.Mods.Network
         public uint MatchRecordingFrame { get; private set; }
         public uint Rng1 { get; private set; } = Rng.Rng1StartValue;
         public uint Rng2 { get; private set; } = Rng.Rng2StartValue;
+        private readonly ReplayAuthorityWire _authorityWire = new();
+        internal ReplayAuthorityWorld? AuthorityWorld { get; private set; }
+        internal uint? AuthorityAppliedTick { get; set; }
         private byte[] _worldTail = Array.Empty<byte>();
         public ReadOnlySpan<byte> WorldTail => _worldTail;
         public bool TryGetHealthSpawn(short id, out HealthSpawnState state) => _healthSpawns.TryGetValue(id, out state);
@@ -71,7 +74,7 @@ namespace MphRead.Mods.Network
             Rng1 = Rng.Rng1StartValue;
             Rng2 = Rng.Rng2StartValue;
             _worldTail = Array.Empty<byte>();
-            _healthSpawns.Clear();
+            _healthSpawns.Clear(); AuthorityWorld = null; AuthorityAppliedTick = null; _authorityWire.Reset();
         }
         private bool Matches(ushort match, ulong authority) => Match is MatchStatePacket current
             && current.MatchId == match && current.AuthorityEpoch == authority;
@@ -126,6 +129,11 @@ namespace MphRead.Mods.Network
                     }
                     for (int i = 0; i < present.Length; i++) if (!present[i]) SetOccupant(i, default);
                     accepted = true;
+                    break;
+                case PacketType.ReplayWorld:
+                    if (Match is { } currentWorld && _authorityWire.Accept(payload, currentWorld.MatchId, currentWorld.AuthorityEpoch, strict: true) is { } world)
+                    { if (AuthorityWorld == null || NetLifecycleTracker.Newer(world.Tick, AuthorityWorld.Tick))
+                        { AuthorityWorld = world; accepted = true; } }
                     break;
                 case PacketType.Snapshot:
                     accepted = AcceptSnapshot(payload);

@@ -1816,6 +1816,12 @@ namespace MphRead.Mods
                 Environment.ExitCode = Network.ReplayLiveCaptureCheck.Run(liveSource);
                 return true;
             }
+            if (ValueAfter(args, "replayauthoritycheck") is string authoritySources)
+            {
+                Environment.ExitCode = Network.ReplayAuthoritySceneCheck.Run(authoritySources, ValueAfter(args, "output")
+                    ?? System.IO.Path.Combine(System.IO.Path.GetTempPath(), "prime-authority-check"));
+                return true;
+            }
             if (ValueAfter(args, "replayworldcheck") is string worldSource)
             {
                 Environment.ExitCode = Network.ReplayWorldCoverageCheck.Run(worldSource, ValueAfter(args, "output"));

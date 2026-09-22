@@ -59,7 +59,7 @@ namespace MphRead.Mods.Network
         {
             if (!_live || _started && frame != _frame + 1) throw new InvalidOperationException("Live replica frames must be contiguous.");
             foreach (var record in records)
-                if (record.Kind is ReplayFactKind.Match or ReplayFactKind.Roster or ReplayFactKind.Snapshot or ReplayFactKind.Intent)
+                if (record.Kind is ReplayFactKind.Match or ReplayFactKind.Roster or ReplayFactKind.Snapshot or ReplayFactKind.Intent or ReplayFactKind.AuthorityWorld)
                     _host.Inject(record.Payload.ToArray(), record.RecordingFrame);
             _frame = LastFrame = frame; _started = true;
         }
@@ -356,7 +356,7 @@ namespace MphRead.Mods.Network
                 while (_clipIndex < _clip.Records.Count && _clip.Records[_clipIndex].RecordingFrame <= _frame)
                 {
                     var record = _clip.Records[_clipIndex++];
-                    if (record.Kind is ReplayFactKind.Match or ReplayFactKind.Roster or ReplayFactKind.Snapshot or ReplayFactKind.Intent)
+                    if (record.Kind is ReplayFactKind.Match or ReplayFactKind.Roster or ReplayFactKind.Snapshot or ReplayFactKind.Intent or ReplayFactKind.AuthorityWorld)
                         _host.Inject(record.Payload.ToArray(), record.RecordingFrame);
                 }
                 _host.Advance(_frame / 60.0);

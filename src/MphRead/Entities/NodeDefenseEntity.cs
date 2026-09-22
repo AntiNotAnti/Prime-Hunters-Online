@@ -8,7 +8,7 @@ using OpenTK.Mathematics;
 
 namespace MphRead.Entities
 {
-    public class NodeDefenseEntity : EntityBase
+    public partial class NodeDefenseEntity : EntityBase
     {
         private readonly NodeDefenseEntityData _data;
         private readonly Matrix4 _circleScale;

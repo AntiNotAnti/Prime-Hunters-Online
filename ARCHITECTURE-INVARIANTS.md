@@ -110,3 +110,9 @@ This file is the short, machine-oriented source of truth for architectural assum
 
 - Replay pose lookahead is bounded and presentation-only; it never advances simulation/RNG or uses live receive jitter. Do not blend across occupant/life, spawn/death, form or teleport boundaries.
 - Export stays at 60 Hz gameplay. A 120 FPS movie renders deterministic half-frame samples, never duplicate-frame conversion or 120 Hz physics. Camera paths and export collision anchors use recorded time. Native-size world/HUD targets belong to the scene and release on its GL owner.
+
+- Optional protocol-16 packet 42 is a replay-only authoritative world extension;
+  it never changes live gameplay. Its explicit bounded value schema and atomic
+  fragment assembly must validate before recording. Replays apply it only inside
+  private scenes; actor links fence occupant generation and life. New-server final
+  killcams use the confirmed ending cause and exact kill identity.
