@@ -133,7 +133,8 @@ namespace MphRead.NetTest
             {
                 const int timeSyncSize = PlayerEntity.SlotCapacity * sizeof(float) * 2;
                 ushort matchId = LastState?.MatchId ?? 0;
-                int damageCountOffset = SnapshotHeader.Size + SnapshotWire.PlayerSize;
+                int damageCountOffset = SnapshotHeader.Size + SnapshotWire.StateHeaderSize
+                    + SnapshotWire.PlayerSize;
                 int timeOffset = damageCountOffset + 1;
                 int healthOffset = timeOffset + timeSyncSize;
                 byte[] payload = new byte[healthOffset + NetHealthSync.HeaderSize];
@@ -160,7 +161,10 @@ namespace MphRead.NetTest
                     CurrentWeapon = 0,
                     Team = 0
                 };
-                state.WriteBase(payload.AsSpan(SnapshotHeader.Size, SnapshotWire.PlayerSize));
+                SnapshotWire.WriteStateHeader(payload.AsSpan(SnapshotHeader.Size,
+                    SnapshotWire.StateHeaderSize), keyframe: true, (byte)(1 << slot), frame);
+                state.WriteBase(payload.AsSpan(SnapshotHeader.Size + SnapshotWire.StateHeaderSize,
+                    SnapshotWire.PlayerSize));
                 payload[damageCountOffset] = 0;
                 BinaryPrimitives.WriteUInt16LittleEndian(payload.AsSpan(healthOffset), matchId);
                 Send(PacketType.Snapshot, payload);
@@ -225,10 +229,11 @@ namespace MphRead.NetTest
                             IsAuthority = true;
                         }
                         else if (type == PacketType.Snapshot
-                            && payload.Length >= SnapshotHeader.Size + SnapshotWire.PlayerSize + 1)
+                            && payload.Length >= SnapshotHeader.Size + SnapshotWire.StateHeaderSize
+                                + SnapshotWire.PlayerSize + 1)
                         {
                             SnapshotHeader header = SnapshotHeader.Read(payload);
-                            int offset = SnapshotHeader.Size;
+                            int offset = SnapshotHeader.Size + SnapshotWire.StateHeaderSize;
                             for (int i = 0; i < header.PlayerCount; i++)
                             {
                                 if (offset + SnapshotWire.PlayerSize > payload.Length)
