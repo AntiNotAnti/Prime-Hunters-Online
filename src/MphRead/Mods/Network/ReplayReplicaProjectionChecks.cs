@@ -112,6 +112,21 @@ internal static class ReplayReplicaProjectionChecks
             _ => { }, () => { }, new ReplaySceneServices(session, new ReplayReplicaState()), initializeRuntime: false);
         try
         {
+            var clock = new MatchStatePacket { Mode = (byte)GameMode.Defender, PointGoal = 90, TimeRemaining = 120,
+                RoomKey = match.RoomKey, MatchId = 7, AuthorityEpoch = 9 };
+            require(ReplaySceneServices.HistoricalMatchTime(clock, null, 130, 100) == 119.5f,
+                "replica match clock advances between accepted packets");
+            require(ReplaySceneServices.HistoricalMatchTime(clock, configuration, 130, 100) == -1,
+                "replica unlimited clock uses the engine sentinel");
+            clock.Flags |= MatchStatePacket.FlagEnding;
+            require(ReplaySceneServices.HistoricalMatchTime(clock, configuration, 130, 100) == 120,
+                "recorded match ending retains its accepted sequence clock");
+            var rulesState = new ReplayReplicaState();
+            byte[] rules = new byte[1 + MatchStatePacket.Size]; rules[0] = (byte)PacketType.MatchState; clock.Write(rules.AsSpan(1));
+            rulesState.Accept(rules, 0);
+            new ReplaySceneServices(session, rulesState).ApplyRules(scene, 0);
+            require(scene.GameState.TimeGoal == 90 && scene.GameState.Mode == GameMode.Defender,
+                "time-scored replica mode adopts its time goal");
             string empty = ReplayStateHash.Compute(scene, 0);
             var beam = new BeamProjectileEntity(scene) { Position = new(1, 2, 3), Velocity = Vector3.UnitX,
                 Owner = scene.Players.Items[0], Lifespan = 3, Damage = 12 };

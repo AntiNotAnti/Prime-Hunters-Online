@@ -30,13 +30,7 @@ namespace MphRead.Mods.Network
             if (State.Match is not MatchStatePacket match) return;
             if (!string.Equals(scene.Room?.Meta.Name, match.RoomKey, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("The replica scene belongs to a different recorded room.");
-            scene.GameState.Mode = (GameMode)match.Mode;
-            scene.GameState.PointGoal = match.PointGoal;
-            scene.GameState.FriendlyFire = (match.Flags & MatchStatePacket.FlagFriendlyFire) != 0;
-            scene.GameState.ShadowFreeze = (match.Flags & MatchStatePacket.FlagNoShadowFreeze) == 0;
-            scene.GameState.Teams = scene.GameState.IsTeamMode((GameMode)match.Mode);
-            scene.GameState.MatchTime = match.TimeRemaining;
-            scene.GameState.MatchState = (match.Flags & MatchStatePacket.FlagEnding) != 0 ? MatchState.Ending : MatchState.InProgress;
+            ApplyRules(scene, Session.CurrentFrame);
             if (_rngTick != State.ServerTick)
             {
                 _rngTick = State.ServerTick;
@@ -73,6 +67,29 @@ namespace MphRead.Mods.Network
                 NetHooks.TryApplyRemoteInput(player, slot);
             }
             scene.Players.PlayerCount = scene.GameState.ActivePlayers = active;
+        }
+
+        internal void ApplyRules(Scene scene, uint frame)
+        {
+            if (State.Match is not MatchStatePacket match) return;
+            scene.GameState.Mode = (GameMode)match.Mode;
+            if (MatchGoalRules.UsesTimeTarget((GameMode)match.Mode)) scene.GameState.TimeGoal = match.PointGoal;
+            else scene.GameState.PointGoal = match.PointGoal;
+            scene.GameState.FriendlyFire = match.FriendlyFire;
+            scene.GameState.ShadowFreeze = match.ShadowFreeze;
+            if (match.StatesRules) scene.GameState.AffinityWeapons = match.AffinityWeapons;
+            else if (State.Configuration is { } configuration) scene.GameState.AffinityWeapons = configuration.Match.AffinityWeapons;
+            scene.GameState.Teams = scene.GameState.IsTeamMode((GameMode)match.Mode);
+            scene.GameState.MatchTime = HistoricalMatchTime(match, State.Configuration, frame, State.MatchRecordingFrame);
+            scene.GameState.MatchState = match.Ending ? MatchState.Ending : MatchState.InProgress;
+        }
+
+        internal static float HistoricalMatchTime(MatchStatePacket match, SessionStatePacket? configuration,
+            uint frame, uint acceptedAt)
+        {
+            if (!match.Ending && configuration is { Match.TimeLimitSeconds: 0 } || match.TimeRemaining < 0) return -1;
+            uint elapsed = frame >= acceptedAt && !match.Ending ? frame - acceptedAt : 0;
+            return Math.Max(0, match.TimeRemaining - elapsed / 60f);
         }
 
         public void AfterSimulation(Scene scene)

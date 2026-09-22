@@ -87,6 +87,7 @@ This file is the short, machine-oriented source of truth for architectural assum
 - Each scene owns its player registry, match state, random streams, camera sequences and enemy/platform beam pools. Legacy static facades refer only to the foreground scene. Replica construction and cleanup never rebind those facades. Replica scenes use an explicit fixed-step entry, instance replication/lifecycle histories, silent sound routing and private HUD queues. They cannot author outgoing input or resolve combat. Texture names are GL allocated and scene owned; shared model display lists have scene leases. Full historical checkpoints and killcam replacement remain gated on acceptance.
 - Exact kill markers fence match, authority, event, server tick, occupant generations and victim life. Ambiguous cumulative deaths are not exact kill candidates.
 - Timeline intent baselines must match the recorded occupant generation and life. Submitted local input is presentation evidence, never accepted hit/damage authority. Versioned gameplay hashes include world/projectile state; animation/effect projections are checked separately.
+- Effect checkpoint assets use effect ID plus element ordinal; element names are not unique. Match rules apply before room construction; timed objective targets and the recorded clock retain their mode-specific meaning.
 - Keep current replay/Studio/killcam paths until isolated scene and runtime acceptance gates pass. See `docs/architecture/replay-map-upgrade-status.md` for remaining work.
 
 ## Map Studio ownership

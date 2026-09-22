@@ -152,7 +152,7 @@ that the missing replay features work.
 
 - Desktop Release build: passes with 18 pre-existing warnings.
 - Timeline: 36 checks.
-- Replay v2/v3 format, metadata, recovery, extraction and malformed input, passive session/scene ownership and projections: 582 checks.
+- Replay v2/v3 format, metadata, recovery, extraction and malformed input, passive session/scene ownership and projections: 586 checks.
 - Network lifecycle: 3,681 assertions.
 - Health/shot behavior: 2,967,760 assertions.
 - Editor/history/cache/build: 88 checks, including projection/ray agreement across DPI scales, real synthetic-texture compilation,
@@ -225,6 +225,18 @@ comparisons. Seven immediate restored OpenGL images match the linear source byte
 for byte. The clip starts at frame 1,150 after 250 warmup steps split across host
 updates, ends at 1,200, supports a backward seek and survives source timeline reset.
 EOF remains frozen. These fixtures do not establish all-mode or live combat acceptance.
+
+`-replayworldcheck FILE [-output DIR]` generates synthetic eight-actor recordings
+in the source file's room for all 12 multiplayer modes. It exercises all seven
+hunters, weapon and alt-form transitions, freeze/disruption/burn, death and respawn.
+All 21,612 frames pass the interleaved gameplay/presentation, detached restore,
+continued simulation and file/frozen-clip seek checks. This exposed non-unique
+effect-element names: checkpoint resource binding now uses the asset's element
+ordinal and verifies its name. Timed objective modes apply their time goal before
+room construction; recorded match clocks advance between accepted updates and
+preserve unlimited/ending semantics. Synthetic coverage is not live combat acceptance.
+The eight-actor Battle fixture also passes the rendered check, including seven
+byte-identical checkpoint images and unchanged output after sibling disposal.
 
 ## Detached world checkpoints and passive seeking
 

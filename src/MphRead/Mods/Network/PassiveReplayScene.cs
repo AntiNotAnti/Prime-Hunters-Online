@@ -65,6 +65,7 @@ namespace MphRead.Mods.Network
             {
                 Scene.GameState.Mode = (GameMode)match.Mode;
                 if (Scene.GameState.SinglePlayer) throw new InvalidDataException("Passive reconstruction requires a recorded multiplayer world.");
+                ((ReplaySceneServices)Scene.Services).ApplyRules(Scene, 0);
                 for (int slot = 0; slot < PlayerEntity.SlotCapacity; slot++)
                 {
                     var occupant = State.Occupant(slot);
@@ -73,6 +74,7 @@ namespace MphRead.Mods.Network
                 }
                 Scene.AddRoom(match.RoomKey, (GameMode)match.Mode,
                     playerCount: Scene.Services.NetworkWorldProfile?.EntityLayerPlayers ?? match.PlayerCount);
+                ((ReplaySceneServices)Scene.Services).ApplyRules(Scene, 0);
                 Scene.OnLoad();
                 CheckpointBindings = new(Scene);
             }

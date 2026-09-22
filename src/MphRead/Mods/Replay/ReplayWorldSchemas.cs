@@ -878,6 +878,7 @@ internal static class ReplayWorldSchemas
             "<EffectId>k__BackingField",
             "<EffectName>k__BackingField",
             "<ElementName>k__BackingField",
+            "<DefinitionIndex>k__BackingField",
             "<CreationTime>k__BackingField",
             "<ExpirationTime>k__BackingField",
             "<DrainTime>k__BackingField",
