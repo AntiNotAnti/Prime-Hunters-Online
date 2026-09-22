@@ -1,9 +1,14 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import postgres from "npm:postgres@3.4.7";
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 const MAX_BYTES = 512 * 1024;
+const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, {
+  prepare: false,
+  max: 1,
+  idle_timeout: 20,
+});
 
 function json(status: number, value: unknown) {
   return new Response(JSON.stringify(value), {
@@ -76,12 +81,42 @@ function integer(value: unknown, min = 0, max = Number.MAX_SAFE_INTEGER) {
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method !== "POST") return json(405, { error: "method_not_allowed" });
+  if (req.method !== "POST" && req.method !== "GET")
+    return json(405, { error: "method_not_allowed" });
 
   const authorization = req.headers.get("authorization") ?? "";
   if (!authorization.startsWith("Bearer ")) return json(401, { error: "server_auth_required" });
   const serverKey = authorization.slice(7).trim();
   if (serverKey.length < 32 || serverKey.length > 256) return json(401, { error: "invalid_server_key" });
+
+  if (req.method === "GET") {
+    const serverHash = await sha256(serverKey);
+    try {
+      const rows = await sql`
+        select server_id, display_name, trust_class, enabled
+        from public.project_prime_career_reporters
+        where key_hash = ${serverHash}
+        limit 1
+      `;
+      const reporter = rows[0] as any;
+      if (!reporter?.enabled) return json(401, { error: "unknown_server" });
+      await sql`
+        update public.project_prime_career_reporters
+           set last_seen_at = now(), last_result = 'probe',
+               updated_at = updated_at
+         where server_id = ${reporter.server_id}::uuid
+      `;
+      return json(200, {
+        ok: true,
+        server_id: reporter.server_id,
+        display_name: reporter.display_name,
+        trust_class: reporter.trust_class,
+      });
+    } catch (error) {
+      console.error("career reporter probe failed", error);
+      return json(500, { error: "reporter_probe_failed" });
+    }
+  }
 
   const raw = await req.text();
   if (enc.encode(raw).length > MAX_BYTES) return json(413, { error: "report_too_large" });
@@ -93,20 +128,44 @@ Deno.serve(async (req: Request) => {
     return json(400, { error: "invalid_json" });
   }
 
-  const url = Deno.env.get("SUPABASE_URL")!;
-  const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const admin = createClient(url, service, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
   const serverHash = await sha256(serverKey);
-  const { data: reporter, error: reporterError } = await admin
-    .from("project_prime_career_reporters")
-    .select("server_id,trust_class,enabled")
-    .eq("key_hash", serverHash)
-    .maybeSingle();
-  if (reporterError) return json(500, { error: "reporter_lookup_failed" });
+  let reporter: { server_id: string; trust_class: number; enabled: boolean } | undefined;
+  try {
+    const rows = await sql`
+      select server_id, trust_class, enabled
+      from public.project_prime_career_reporters
+      where key_hash = ${serverHash}
+      limit 1
+    `;
+    reporter = rows[0] as typeof reporter;
+  } catch (error) {
+    console.error("career reporter lookup failed", error);
+    return json(500, { error: "reporter_lookup_failed" });
+  }
   if (!reporter?.enabled) return json(401, { error: "unknown_server" });
+
+  const mark = async (result: string, accepted = false) => {
+    try {
+      if (accepted) {
+        await sql`
+          update public.project_prime_career_reporters
+             set last_seen_at = now(), last_report_at = now(), last_result = ${result},
+                 updated_at = updated_at
+           where server_id = ${reporter!.server_id}::uuid
+        `;
+      } else {
+        await sql`
+          update public.project_prime_career_reporters
+             set last_seen_at = now(), last_result = ${result},
+                 updated_at = updated_at
+           where server_id = ${reporter!.server_id}::uuid
+        `;
+      }
+    } catch (error) {
+      console.error("career reporter status update failed", error);
+    }
+  };
+  await mark("received");
 
   if (incoming?.version !== 1 || typeof incoming.match_id !== "string"
     || typeof incoming.server_incarnation !== "string"
@@ -225,16 +284,24 @@ Deno.serve(async (req: Request) => {
   const normalizedText = JSON.stringify(normalized);
   const payloadHash = (await sha256(normalizedText)).toUpperCase();
 
-  const { data, error } = await admin.rpc("ingest_project_prime_career_match", {
-    p_report: normalized,
-    p_server_id: reporter.server_id,
-    p_trust_class: effectiveTrust,
-    p_payload_hash: payloadHash,
-    p_original_report: normalizedText,
-  });
-
-  if (error) {
-    const message = error.message ?? "ingestion_failed";
+  try {
+    const rows = await sql`
+      select public.ingest_project_prime_career_match(
+        ${normalizedText}::jsonb,
+        ${reporter.server_id}::uuid,
+        ${effectiveTrust}::integer,
+        ${payloadHash}::text,
+        ${normalizedText}::text
+      ) as value
+    `;
+    const data = rows[0]?.value as any;
+    const status = data?.status === "duplicate" ? "duplicate" : "accepted";
+    await mark(status, true);
+    return json(status === "duplicate" ? 200 : 201, data);
+  } catch (error) {
+    const message = String((error as any)?.message ?? error ?? "ingestion_failed");
+    console.error("career ingestion failed", error);
+    await mark(("error: " + message).slice(0, 240));
     if (message.toLowerCase().includes("match id conflict")) {
       return json(409, { error: "match_id_conflict" });
     }
@@ -243,9 +310,6 @@ Deno.serve(async (req: Request) => {
       || message.toLowerCase().includes("duplicate")) {
       return json(400, { error: message });
     }
-    console.error("career ingestion failed", error);
     return json(500, { error: "ingestion_failed" });
   }
-
-  return json(data?.status === "duplicate" ? 200 : 201, data);
 });

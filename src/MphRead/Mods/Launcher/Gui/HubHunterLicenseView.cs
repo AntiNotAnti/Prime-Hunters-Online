@@ -38,7 +38,6 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly TextBlock _player = new();
         private readonly TextBlock _hunterId = new();
         private readonly TextBlock _status = new();
-        private readonly TextBlock _rank = new();
         private readonly TextBlock _accountBadge = new();
         private readonly HunterStand _stand;
         private readonly Dictionary<Face, HubNavButton> _nav = new();
@@ -230,9 +229,6 @@ namespace MphRead.Mods.Launcher.Gui
             _accountButton.Label = snapshot.Account.IsSecure ? "ACCOUNT" : "SECURE LICENSE";
             _stand.Name2 = HunterName(p.FavoriteHunter);
             _stand.Suit = Math.Clamp(LauncherPrefs.LastColor, 0, 3);
-            _rank.Text = p.RatingTier.HasValue
-                ? $"TIER {p.RatingTier.Value}  //  {p.RatingPoints:N0} RP"
-                : p.RatingPoints > 0 ? $"{p.RatingPoints:N0} RP" : "UNRANKED";
         }
 
         private void Show(Face face)
@@ -583,10 +579,13 @@ namespace MphRead.Mods.Launcher.Gui
             };
             var ratingCopy = new StackPanel { Spacing = 4 };
             ratingCopy.Children.Add(HubChrome.Kicker("RANK"));
-            _rank.FontFamily = HubTheme.DataBold;
-            _rank.FontSize = 14;
-            _rank.Foreground = HubTheme.AccentSoftBrush;
-            ratingCopy.Children.Add(_rank);
+            ratingCopy.Children.Add(new TextBlock
+            {
+                Text = RankText(p),
+                FontFamily = HubTheme.DataBold,
+                FontSize = 14,
+                Foreground = HubTheme.AccentSoftBrush
+            });
             rating.Child = ratingCopy;
             Grid.SetColumn(rating, 1);
             hero.Children.Add(rating);
@@ -1011,6 +1010,11 @@ namespace MphRead.Mods.Launcher.Gui
             int clamped = Math.Clamp(value, 0, 6);
             return ((Hunter)clamped).ToString();
         }
+
+        private static string RankText(HunterLicenseProfile profile)
+            => profile.RatingTier.HasValue
+                ? $"TIER {profile.RatingTier.Value}  //  {profile.RatingPoints:N0} RP"
+                : profile.RatingPoints > 0 ? $"{profile.RatingPoints:N0} RP" : "UNRANKED";
 
         private static string Ratio(long kills, long deaths)
             => deaths == 0 ? (kills == 0 ? "0.00" : "∞")
