@@ -105,7 +105,9 @@ namespace MphRead.Mods.Network
                 ReplayEventType.ScoreChanged => ReplayMarkerKind.Score,
                 ReplayEventType.PlayerJoined => ReplayMarkerKind.Join,
                 ReplayEventType.PlayerLeft => ReplayMarkerKind.Leave,
-                ReplayEventType.Objective => ReplayMarkerKind.Objective,
+                // Entity-local objective notifications may precede authority on a
+                // client. Preserve legacy annotations, but not as timeline truth.
+                ReplayEventType.Objective when NetSession.IsAuthority => ReplayMarkerKind.Objective,
                 ReplayEventType.MatchEnded => ReplayMarkerKind.MatchEnd,
                 _ => null
             };
