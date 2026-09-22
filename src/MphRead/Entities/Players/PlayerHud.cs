@@ -20,6 +20,15 @@ namespace MphRead.Entities
         private HudObject _targetCircleObj = null!;
         private HudObject _sniperCircleObj = null!;
         private HudObjectInstance _targetCircleInst = null!;
+        // The gameplay reticle still advances at the 60 Hz simulation rate.
+        // Keep three simulation samples so high-refresh presentation can extend
+        // the observed motion into the fractional part of the next step instead
+        // of showing the same reticle position for two pictures on a 120 Hz phone.
+        private Vector2 _reticleOlderPosition = new Vector2(0.5f, 0.5f);
+        private Vector2 _reticlePreviousPosition = new Vector2(0.5f, 0.5f);
+        private Vector2 _reticleCurrentPosition = new Vector2(0.5f, 0.5f);
+        private bool _reticlePresentationValid;
+        private bool _reticleHistoryFixedWeapon;
         private HudObjectInstance _cloakInst = null!;
         private HudObjectInstance _doubleDamageInst = null!;
         private readonly HudObjectInstance[] _weaponSelectInsts = new HudObjectInstance[6];
@@ -174,8 +183,7 @@ namespace MphRead.Entities
             // read for where to draw the flat crosshair and the hit mark now,
             // and a default of zero puts both in the top-left corner for the
             // frames before the first aim update.
-            _targetCircleInst.PositionX = 0.5f;
-            _targetCircleInst.PositionY = 0.5f;
+            RebaseReticlePresentation(new Vector2(0.5f, 0.5f));
             HudObject cloak = HudInfo.GetHudObject(_hudObjects.Cloaking);
             _cloakInst = new HudObjectInstance(cloak.Width, cloak.Height);
             _cloakInst.SetCharacterData(cloak.CharacterData, _scene);
@@ -1070,6 +1078,98 @@ namespace MphRead.Entities
             _smallReticleTimer = 0;
         }
 
+        private void RebaseReticlePresentation(Vector2 position)
+        {
+            if (!Single.IsFinite(position.X) || !Single.IsFinite(position.Y))
+            {
+                position = new Vector2(0.5f, 0.5f);
+            }
+            _reticleOlderPosition = position;
+            _reticlePreviousPosition = position;
+            _reticleCurrentPosition = position;
+            _reticlePresentationValid = true;
+            _reticleHistoryFixedWeapon = Features.FixedWeapon;
+            _targetCircleInst.PositionX = position.X;
+            _targetCircleInst.PositionY = position.Y;
+        }
+
+        private void CaptureReticlePosition(Vector2 position)
+        {
+            if (!Single.IsFinite(position.X) || !Single.IsFinite(position.Y))
+            {
+                RebaseReticlePresentation(new Vector2(0.5f, 0.5f));
+                return;
+            }
+
+            bool fixedWeapon = Features.FixedWeapon;
+            Vector2 step = position - _reticleCurrentPosition;
+            // A mode switch, respawn/camera cut, or a projection discontinuity
+            // is not motion to predict. Rebase rather than letting one stale
+            // sample fling the presentation reticle across the screen.
+            if (!_reticlePresentationValid || fixedWeapon != _reticleHistoryFixedWeapon
+                || step.LengthSquared > 0.04f)
+            {
+                RebaseReticlePresentation(position);
+                return;
+            }
+
+            _reticleOlderPosition = _reticlePreviousPosition;
+            _reticlePreviousPosition = _reticleCurrentPosition;
+            _reticleCurrentPosition = position;
+            _reticleHistoryFixedWeapon = fixedWeapon;
+            _targetCircleInst.PositionX = position.X;
+            _targetCircleInst.PositionY = position.Y;
+        }
+
+        private Vector2 GetReticlePresentationPosition()
+        {
+            if (!_reticlePresentationValid || _reticleHistoryFixedWeapon
+                || !Mods.Render.FrameTiming.HighRefreshPresentation)
+            {
+                return _reticleCurrentPosition;
+            }
+
+            float alpha = (float)Math.Clamp(Mods.Render.FrameTiming.Alpha, 0.0, 1.0);
+            Vector2 step = _reticleCurrentPosition - _reticlePreviousPosition;
+
+            // Legacy moving-reticle aim now renders its camera from the
+            // previous/current camera history. Keep the reticle on that same
+            // presentation timestamp instead of predicting it forward while
+            // the camera is deliberately interpolating behind the simulation.
+            if (!Features.FixedCrosshair)
+            {
+                return _reticlePreviousPosition + step * alpha;
+            }
+
+            float stepLengthSquared = step.LengthSquared;
+            if (stepLengthSquared <= 0.0000000001f)
+            {
+                return _reticleCurrentPosition;
+            }
+
+            // Modern/fixed-camera presentation stays latency-oriented: at a
+            // steady reticle velocity, extend only the fractional remainder of
+            // the next simulation step. When the reticle is slowing down,
+            // reduce prediction; when direction changes, stop it entirely.
+            float confidence = 1f;
+            Vector2 priorStep = _reticlePreviousPosition - _reticleOlderPosition;
+            float priorLengthSquared = priorStep.LengthSquared;
+            if (priorLengthSquared > 0.0000000001f)
+            {
+                if (step.X * priorStep.X + step.Y * priorStep.Y <= 0)
+                {
+                    return _reticleCurrentPosition;
+                }
+                if (stepLengthSquared < priorLengthSquared)
+                {
+                    confidence = Math.Clamp(
+                        MathF.Sqrt(stepLengthSquared / priorLengthSquared), 0f, 1f);
+                }
+            }
+
+            return _reticleCurrentPosition + step * (alpha * confidence);
+        }
+
         private void UpdateReticle()
         {
             if (_smallReticleTimer > 0 && !_sniperReticle)
@@ -1083,6 +1183,7 @@ namespace MphRead.Entities
                     _smallReticle = false;
                 }
             }
+            Vector2 reticlePosition;
             if (Features.FixedWeapon)
             {
                 // Screen-dead-centre, not reprojected from _aimPosition: aim
@@ -1102,15 +1203,23 @@ namespace MphRead.Entities
                 // what "Dynamic (Metroid) does nothing under Pro mode" was:
                 // the gun drifted, and the thing the player actually looks at
                 // did not.
-                _targetCircleInst.PositionX = 0.5f;
-                _targetCircleInst.PositionY = 0.5f;
+                reticlePosition = new Vector2(0.5f, 0.5f);
             }
             else
             {
-                Matrix.ProjectPosition(_aimPosition, _scene.ViewMatrix, _scene.PerspectiveMatrix, out Vector2 pos);
-                _targetCircleInst.PositionX = MathF.Round(pos.X, 5);
-                _targetCircleInst.PositionY = MathF.Round(pos.Y, 5);
+                // UpdateHud runs on the 60 Hz simulation pass. Scene.ViewMatrix
+                // belongs to the draw pass and may contain mouse/touch input
+                // that was late-latched after that simulation step. Feeding it
+                // back here makes the next reticle sample depend on whichever
+                // presentation frame happened to run last, which shows up as a
+                // tiny sawtooth on high-refresh displays. Project against the
+                // simulation camera instead; presentation gets its own history
+                // below and never changes gameplay state.
+                Matrix.ProjectPosition(_aimPosition, CameraInfo.ViewMatrix,
+                    _scene.PerspectiveMatrix, out Vector2 pos);
+                reticlePosition = new Vector2(MathF.Round(pos.X, 5), MathF.Round(pos.Y, 5));
             }
+            CaptureReticlePosition(reticlePosition);
             _targetCircleInst.Enabled = true;
             _targetCircleInst.ProcessAnimation(_scene);
         }
@@ -1498,11 +1607,16 @@ namespace MphRead.Entities
                                 float reticleScale = _scene.PushHudScale(1f);
                                 try
                                 {
-                                    // Wherever UpdateReticle put it: dead centre under
-                                    // a static weapon, and the reprojected aim point
-                                    // under a dynamic one.
-                                    float reticleX = _targetCircleInst.PositionX;
-                                    float reticleY = _targetCircleInst.PositionY;
+                                    // Static stays welded to centre. Dynamic keeps the
+                                    // authoritative 60 Hz samples, but on a faster
+                                    // display the draw pass predicts only the fractional
+                                    // remainder of the next sample so the reticle does
+                                    // not advance in visible 16.7 ms stair-steps.
+                                    Vector2 reticlePosition = GetReticlePresentationPosition();
+                                    float reticleX = reticlePosition.X;
+                                    float reticleY = reticlePosition.Y;
+                                    _targetCircleInst.PositionX = reticleX;
+                                    _targetCircleInst.PositionY = reticleY;
                                     if (Features.CustomCrosshair)
                                     {
                                         _scene.DrawCustomCrosshair(GetCrosshairColor(), reticleX, reticleY);

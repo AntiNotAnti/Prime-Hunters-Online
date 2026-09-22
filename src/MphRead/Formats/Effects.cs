@@ -584,6 +584,13 @@ namespace MphRead.Effects
         public int EffectId { get; set; }
         public List<EffectElementEntry> Elements { get; } = new List<EffectElementEntry>(); // todo: pre-size?
 
+        // Presentation-only emitter transform. This is cleared at the start of
+        // every draw and never participates in ProcessEffects, spawning,
+        // collision, or persistence. Camera-attached first-person effects use
+        // it so a late-latched view cannot leave their emitter at the previous
+        // 60 Hz pose.
+        internal Matrix4? DrawTransformOverride { get; set; }
+
         public bool IsFinished
         {
             get
@@ -735,6 +742,21 @@ namespace MphRead.Effects
         public int DrawType { get; set; }
         public Matrix4 OwnTransform { get; set; }
         public Matrix4 Transform { get; set; }
+        internal Matrix4 PresentationTransform
+        {
+            get
+            {
+                if (EffectEntry?.DrawTransformOverride is Matrix4 drawTransform)
+                {
+                    // Match ProcessEffects' normal transform composition in case
+                    // a linked emitter also has an entity-collision parent.
+                    return EntityCollision != null
+                        ? drawTransform * EntityCollision.Transform
+                        : drawTransform;
+                }
+                return Transform;
+            }
+        }
         public Vector3 Acceleration { get; set; }
         public bool Func39Called { get; set; }
         public float ParticleAmount { get; set; }
@@ -1134,7 +1156,7 @@ namespace MphRead.Effects
                 Vector3 ev1 = EffectVec1 * Scale;
                 Vector3 ev2 = EffectVec2 * Scale;
 
-                Vector3 position = Matrix.Vec3MultMtx4(Position, Owner.Transform.ClearTranslation());
+                Vector3 position = Matrix.Vec3MultMtx4(Position, Owner.PresentationTransform.ClearTranslation());
                 float v19 = position.X + (-ev1.X / 2) + (ev2.X / 2);
                 float v22 = position.Y + (-ev1.Y / 2) + (ev2.Y / 2);
                 float v23 = position.Z + (-ev1.Z / 2) + (ev2.Z / 2);
@@ -1211,7 +1233,7 @@ namespace MphRead.Effects
                 float v28 = (vec1.Y * sin1 + vec2.Y * cos1) * Scale;
                 float v29 = (vec1.Z * sin1 + vec2.Z * cos1) * Scale;
 
-                Vector3 position = Matrix.Vec3MultMtx4(Position, Owner.Transform.ClearTranslation());
+                Vector3 position = Matrix.Vec3MultMtx4(Position, Owner.PresentationTransform.ClearTranslation());
                 float v27 = position.X + (-v20 / 2) + (v26 / 2);
                 float v30 = position.Y + (-v24 / 2) + (v28 / 2);
                 float v31 = position.Z + (-v25 / 2) + (v29 / 2);
@@ -1270,7 +1292,7 @@ namespace MphRead.Effects
                 Vector4 ev4;
                 if (Owner.Flags.TestFlag(EffElemFlags.UseTransform))
                 {
-                    ev4 = new Vector4(Position + Owner.Transform.Row3.Xyz, 1);
+                    ev4 = new Vector4(Position + Owner.PresentationTransform.Row3.Xyz, 1);
                 }
                 else
                 {
@@ -1435,12 +1457,12 @@ namespace MphRead.Effects
                 {
                     if (BillboardMode != BillboardMode.None)
                     {
-                        Vector3 position = Matrix.Vec3MultMtx4(Position, Owner.Transform.ClearTranslation());
-                        transform = Matrix4.CreateTranslation(position + Owner.Transform.Row3.Xyz);
+                        Vector3 position = Matrix.Vec3MultMtx4(Position, Owner.PresentationTransform.ClearTranslation());
+                        transform = Matrix4.CreateTranslation(position + Owner.PresentationTransform.Row3.Xyz);
                     }
                     else
                     {
-                        transform = Matrix4.CreateTranslation(Position) * Owner.Transform;
+                        transform = Matrix4.CreateTranslation(Position) * Owner.PresentationTransform;
                     }
                 }
                 else

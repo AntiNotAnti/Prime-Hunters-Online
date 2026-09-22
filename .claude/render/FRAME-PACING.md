@@ -123,25 +123,66 @@ restores remote collision to it, and the intent's sub-frame ack names it. That
 keeps the existing invariant that the opponent drawn is the opponent shot at
 even while a 144 Hz display receives intermediate poses.
 
-### Late-latched local aim
+### Local first-person presentation
 
-The local first-person hunter is deliberately not transform-interpolated. Mouse
-movement received after the last simulation step is accumulated separately and
-used only to build the next rendered view matrix; the next 60 Hz step consumes
-the same mouse state normally and clears the presentation delta. Android does the
-same thing non-destructively with the touch aim accumulator.
+There are two local camera behaviors, and treating them as one was the high-refresh
+regression.
 
-A held controller stick is projected through the fractional remainder of the
-current simulation step. The projection uses the exact controller state and
-runtime configuration captured by `GamepadInput.BeginFrame`; the draw pass does
-not poll or publish controller hardware on its own. Button edges, aim assist,
-shooting and intent capture still happen only in the simulation step. This keeps
-held-stick presentation smooth without creating a second unsynchronised camera
-input stream or changing the wire/authoritative aim used for a shot.
+**Fixed-crosshair / modern aiming** keeps the current 60 Hz camera pose and may
+late-latch pointer/touch input that arrived after the last simulation step. The
+important invariant is now enforced explicitly: `TransformCamera` prepares one
+`FirstPersonRenderPose` per picture, and the arm cannon consumes that exact pose
+later in `PlayerDraw`. The render-time input delta is calculated once. Camera and
+viewmodel therefore cannot represent different input timestamps.
 
-Spectator and replay cameras use the captured camera history instead, because
-they have no local input to late-latch and benefit from smooth high-refresh
-motion.
+The arm cannon's own authored motion is captured once per simulation step in
+**camera-local space** and then attached to the prepared camera basis. High-refresh
+bob/translation may be interpolated safely. Orientation is deliberately different:
+modern fixed-crosshair aiming uses the current gun orientation plus the shared
+late-latch so the weapon never re-acquires a one-tick aim delay; legacy aiming
+interpolates orientation too because its camera is on that same presentation
+timestamp.
+
+**Legacy / moving-reticle aiming** is different. Its camera intentionally eases
+toward the raw aim at 60 Hz. The first high-refresh implementation bypassed that
+rule on draw-only frames by building the late-latched view directly from
+`_gunVec1`. A 120/240/540 Hz display could therefore show raw aim on an extra
+picture and snap back to the eased `CameraInfo.Facing` at the next simulation
+step. That can look like whole-scene shimmer or ghosting. High-refresh legacy
+aiming now uses `CameraInfo.ModGetDrawPose(PresentationAlpha)` instead, so its
+camera, viewmodel and ordinary presentation interpolation advance on one
+timestamp rather than fighting the simulation's easing.
+
+The moving reticle has the same simulation/presentation separation. Its
+authoritative screen position is sampled only by the 60 Hz HUD update, and that
+update projects through `CameraInfo.ViewMatrix`, never the draw pass's prepared
+view matrix. Legacy moving-reticle aim interpolates the previous/current reticle
+at the same `PresentationAlpha` as its eased camera. Modern fixed-camera aiming
+keeps the latency-oriented forward presentation: it extends only the fractional
+remainder of stable motion, reduces prediction while decelerating, and stops it
+on direction reversal. Static/Quake crosshairs remain exactly screen-centre.
+
+The first-person gun smoke is emitted directly from the prepared viewmodel
+transform. Linked charge and muzzle `EffectEntry` particles use a per-draw
+emitter override derived from that same pose. The override is cleared at the
+start of every picture and is never read by `ProcessEffects`, so effect
+spawning, lifetime, particle simulation and collision remain 60 Hz state while
+their camera-attached origin cannot trail a late-latched barrel.
+
+A held controller stick is projected from the exact state accepted by
+`GamepadInput.BeginFrame`; the draw pass never publishes a second hardware
+sample. Android uses the same non-destructive touch accumulator. Button edges,
+aim assist, shooting, networking and authoritative aim still happen only in the
+60 Hz simulation step.
+
+Remote players remain on `NetSmoothing`'s playout clock. Spectator and replay
+cameras remain on captured camera history. Those are separate presentation
+domains by design; neither is driven from the local first-person render pose.
+
+`-frametimingcheck` now includes a 540 Hz case and a first-person basis
+invariant: after a render-time camera rotation, the arm cannon must keep exactly
+the same camera-local transform. That catches the camera/gun timestamp split
+without game assets or a high-refresh monitor.
 
 ## Timers that live in the draw pass
 

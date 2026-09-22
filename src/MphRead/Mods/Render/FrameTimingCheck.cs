@@ -1,4 +1,6 @@
 using System;
+using MphRead.Entities;
+using OpenTK.Mathematics;
 
 namespace MphRead.Mods.Render
 {
@@ -54,6 +56,15 @@ namespace MphRead.Mods.Render
                 },
                 new Case
                 {
+                    // Reported high-refresh ghosting was easiest to see here:
+                    // nine pictures may be drawn between two simulation steps.
+                    Name = "540 Hz display",
+                    Seconds = 120,
+                    FrameTime = _ => 1 / 540.0,
+                    MaxStepsInOneFrame = 1
+                },
+                new Case
+                {
                     Name = "165 Hz display (not a multiple of 60)",
                     Seconds = 300,
                     FrameTime = _ => 1 / 165.0,
@@ -95,6 +106,7 @@ namespace MphRead.Mods.Render
             }
             failures += RunStallCase() ? 0 : 1;
             failures += RunPresentationAlphaCase() ? 0 : 1;
+            failures += RunFirstPersonPresentationCase() ? 0 : 1;
             failures += RunLockjawNoiseCases();
             Console.WriteLine(failures == 0
                 ? "FRAMETIMING all cases pass"
@@ -175,6 +187,39 @@ namespace MphRead.Mods.Render
                 FrameTiming.Reset();
                 FrameTiming.ResetDiagnostics();
             }
+        }
+
+        /// <summary>
+        /// A render-time camera rotation must preserve the arm cannon's
+        /// camera-local transform exactly. This is the invariant that prevents
+        /// the late-latched camera from running ahead of a 60 Hz viewmodel.
+        /// </summary>
+        private static bool RunFirstPersonPresentationCase()
+        {
+            Vector3 fromFacing = -Vector3.UnitZ;
+            Vector3 up = Vector3.UnitY;
+            Vector3 toFacing = -Vector3.UnitX;
+
+            // In MPH's basis, right is cross(up, facing). For -Z that is -X;
+            // after a 90-degree left turn to -X it is +Z.
+            Vector3 gunOffset = new Vector3(-0.25f, 0.10f, -0.50f);
+            Vector3 expectedOffset = new Vector3(-0.50f, 0.10f, 0.25f);
+
+            bool offsetMapped = PlayerEntity.ModRotatePresentationVector(
+                gunOffset, fromFacing, up, toFacing, up, out Vector3 mappedOffset);
+            bool facingMapped = PlayerEntity.ModRotatePresentationVector(
+                fromFacing, fromFacing, up, toFacing, up, out Vector3 mappedFacing);
+
+            bool offsetOk = offsetMapped
+                && (mappedOffset - expectedOffset).LengthSquared < 0.000001f;
+            bool facingOk = facingMapped
+                && (mappedFacing - toFacing).LengthSquared < 0.000001f;
+            bool ok = offsetOk && facingOk;
+
+            Console.WriteLine($"FRAMETIMING {(ok ? "ok  " : "FAIL")} first-person shared pose"
+                + $" | offset error {(mappedOffset - expectedOffset).Length:0.000000}"
+                + $" | facing error {(mappedFacing - toFacing).Length:0.000000}");
+            return ok;
         }
 
         /// <summary>

@@ -1870,7 +1870,9 @@ namespace MphRead
                 }
                 for (int i = 0; i < PlayerEntity.Players.Count; i++)
                 {
-                    PlayerEntity.Players[i].CameraInfo.ModCaptureDrawState();
+                    PlayerEntity player = PlayerEntity.Players[i];
+                    player.CameraInfo.ModCaptureDrawState();
+                    player.ModCaptureFirstPersonDrawState();
                 }
 
                 // Ages the predictions the authority has not answered yet and
@@ -1992,6 +1994,24 @@ namespace MphRead
                 return;
             }
             BeginRenderDiagnostics();
+            // A first-person pose belongs to exactly one picture. If this draw
+            // skips TransformCamera for any reason, the viewmodel must fall
+            // back to simulation state rather than reusing yesterday's pose.
+            if (PlayerEntity.Players.Count > 0)
+            {
+                PlayerEntity.Main.ModInvalidateFirstPersonRenderPose();
+            }
+            // EffectEntry.OwnTransform is simulation state. Any camera-attached
+            // visual override is presentation-only and must be renewed by this
+            // picture's PlayerDraw pass, never carried into another draw.
+            for (int i = 0; i < _activeElements.Count; i++)
+            {
+                EffectEntry? entry = _activeElements[i].EffectEntry;
+                if (entry != null)
+                {
+                    entry.DrawTransformOverride = null;
+                }
+            }
 
             // Network puppets use the playout clock itself for high-refresh
             // presentation. Remember the exact sub-frame point drawn here so
@@ -3033,6 +3053,7 @@ namespace MphRead
                     {
                         PlayerEntity main = PlayerEntity.Main;
                         CameraInfo camera = main.CameraInfo;
+                        main.ModInvalidateFirstPersonRenderPose();
                         double presentationAlpha = Mods.Render.FrameTiming.PresentationAlpha;
                         bool replayCamera = main.ModReplayPresentationCamera(
                             presentationAlpha, out Matrix4 replayView,
@@ -3046,16 +3067,25 @@ namespace MphRead
                                 ? camera.ModGetDrawView(presentationAlpha)
                                 : camera.ViewMatrix;
 
+                        bool firstPersonPose = false;
+                        float firstPersonFov = camera.Fov;
                         if (!replayCamera && !interpolatedCamera
                             && !Mods.PauseMenu.Open && !GameState.MenuPause
                             && !GameState.DialogPause && !Mods.EndScreen.Available)
                         {
+                            // One preparation call owns the render-time pointer/stick
+                            // delta for both the camera and the camera-attached arm
+                            // cannon. The gun draw later consumes the pose cached here;
+                            // it does not poll input or calculate another delta.
                             (float padX, float padY) = Mods.Input.GamepadInput.RenderAim(
                                 Mods.Render.FrameTiming.Alpha);
-                            if (_lateAimX != 0 || _lateAimY != 0 || padX != 0 || padY != 0)
+                            if (main.ModPrepareFirstPersonRenderPose(
+                                    presentationAlpha, _lateAimX, _lateAimY, padX, padY,
+                                    out Matrix4 firstPersonView, out _, out float renderFov))
                             {
-                                _viewMatrix = main.ModLateLatchedView(
-                                    _lateAimX, _lateAimY, padX, padY);
+                                _viewMatrix = firstPersonView;
+                                firstPersonFov = renderFov;
+                                firstPersonPose = true;
                             }
                         }
 
@@ -3063,7 +3093,7 @@ namespace MphRead
                             ? replayFov
                             : interpolatedCamera
                                 ? camera.ModGetDrawFov(presentationAlpha)
-                                : camera.Fov;
+                                : firstPersonPose ? firstPersonFov : camera.Fov;
                         float fov = authoredFov > 0
                             ? authoredFov
                             : Mods.RenderOptions.DefaultFov;
@@ -3127,6 +3157,14 @@ namespace MphRead
                         out _, out Vector3 replayPosition, out _))
                     {
                         _cameraPosition = replayPosition;
+                    }
+                    else if (main.ModGetFirstPersonRenderCameraPosition(
+                        out Vector3 firstPersonPosition))
+                    {
+                        // TransformCamera prepared this exact position together
+                        // with the view matrix. Frustum/culling must not silently
+                        // fall back to a different simulation timestamp.
+                        _cameraPosition = firstPersonPosition;
                     }
                     else
                     {
@@ -4401,7 +4439,7 @@ namespace MphRead
                         Matrix4 matrix = _viewMatrix;
                         if (particle.Owner.Flags.TestFlag(EffElemFlags.UseTransform) && !particle.Owner.Flags.TestFlag(EffElemFlags.UseMesh))
                         {
-                            matrix = particle.Owner.Transform * matrix;
+                            matrix = particle.Owner.PresentationTransform * matrix;
                         }
                         particle.InvokeSetVecsFunc(matrix);
                         particle.InvokeDrawFunc(1);

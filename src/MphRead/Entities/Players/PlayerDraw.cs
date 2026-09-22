@@ -263,7 +263,13 @@ namespace MphRead.Entities
                     _scene.BeginViewModelItems();
                     try
                     {
-                        Matrix4 transform = GetTransformMatrix(_aimVec, _upVector, _gunDrawPos);
+                        // TransformCamera prepared a camera-local first-person pose
+                        // before entity drawing. Consume that exact pose here so a
+                        // 90/120/240/540 Hz late-latched camera can never leave the
+                        // arm cannon sitting at the previous 60 Hz orientation.
+                        Matrix4 transform = ModGetFirstPersonGunTransform(out Matrix4 renderTransform)
+                            ? renderTransform
+                            : GetTransformMatrix(_aimVec, _upVector, _gunDrawPos);
                         UpdateTransforms(_gunModel, transform, Recolor);
                         GetDrawItems(_gunModel, _gunModel.Model.Nodes[0], _curAlpha);
                         if (Flags1.TestFlag(PlayerFlags1.DrawGunSmoke))
@@ -273,6 +279,21 @@ namespace MphRead.Entities
                             transform.Row3.Xyz = drawPos;
                             UpdateTransforms(_gunSmokeModel, transform, recolor: 0);
                             GetDrawItems(_gunSmokeModel, _gunSmokeModel.Model.Nodes[0], _smokeAlpha, recolor: 0);
+                        }
+                        if (ModGetFirstPersonEffectTransform(out Matrix4 effectTransform))
+                        {
+                            // These EffectEntry transforms remain simulation-owned.
+                            // Only their particle draw reads this one-picture override,
+                            // so charge/muzzle visuals follow the same late-latched
+                            // barrel without changing spawning or effect lifetime.
+                            if (_chargeEffect != null)
+                            {
+                                _chargeEffect.DrawTransformOverride = effectTransform;
+                            }
+                            if (_muzzleEffect != null)
+                            {
+                                _muzzleEffect.DrawTransformOverride = effectTransform;
+                            }
                         }
                     }
                     finally

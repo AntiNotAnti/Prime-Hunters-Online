@@ -1062,6 +1062,7 @@ namespace MphRead.Entities
             // spawn happens to be close to where the previous body died.
             ModResetDrawState();
             CameraInfo.ModResetDrawState();
+            ModResetFirstPersonDrawState();
         }
 
         public void InitEnemyHunter()
