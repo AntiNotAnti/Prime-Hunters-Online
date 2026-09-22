@@ -63,10 +63,11 @@ namespace MphRead.NetTest
             Check(NetUnlagged.PressAgeEnabled, "recovered trigger pulls include their age by default");
             Check(PlayerState.Size == 114 && PlayerState.BaseSize == 54,
                 "full player state and compact snapshot base sizes");
+            const int matchTimeSyncSize = PlayerEntity.SlotCapacity * sizeof(float) * 2;
             Check(1 + SnapshotHeader.Size + SnapshotWire.StateHeaderSize
                 + SnapshotWire.PlayerSize * PlayerEntity.SlotCapacity + 1
                 + SnapshotWire.DamageGroupSize * PlayerEntity.SlotCapacity
-                + NetMatchTimeSync.Size + NetHealthSync.HeaderSize <= NetConfig.MaxPacketSize
+                + matchTimeSyncSize + NetHealthSync.HeaderSize <= NetConfig.MaxPacketSize
                 && NetConfig.MaxPacketSize <= 1472, "worst-case eight-player snapshot fits one UDP datagram");
             byte[] buffer = new byte[NetConfig.MaxPacketSize];
             var state = State(ushort.MaxValue, 99, 65400);
