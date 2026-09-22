@@ -2001,6 +2001,17 @@ namespace MphRead
             {
                 PlayerEntity.Main.ModInvalidateFirstPersonRenderPose();
             }
+            // EffectEntry.OwnTransform is simulation state. Any camera-attached
+            // visual override is presentation-only and must be renewed by this
+            // picture's PlayerDraw pass, never carried into another draw.
+            for (int i = 0; i < _activeElements.Count; i++)
+            {
+                EffectEntry? entry = _activeElements[i].EffectEntry;
+                if (entry != null)
+                {
+                    entry.DrawTransformOverride = null;
+                }
+            }
 
             // Network puppets use the playout clock itself for high-refresh
             // presentation. Remember the exact sub-frame point drawn here so
@@ -4428,7 +4439,7 @@ namespace MphRead
                         Matrix4 matrix = _viewMatrix;
                         if (particle.Owner.Flags.TestFlag(EffElemFlags.UseTransform) && !particle.Owner.Flags.TestFlag(EffElemFlags.UseMesh))
                         {
-                            matrix = particle.Owner.Transform * matrix;
+                            matrix = particle.Owner.PresentationTransform * matrix;
                         }
                         particle.InvokeSetVecsFunc(matrix);
                         particle.InvokeDrawFunc(1);
