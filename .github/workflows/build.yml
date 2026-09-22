@@ -55,6 +55,10 @@ jobs:
       - name: deterministic pointer and stylus checks
         run: dotnet run --project src/MphRead/MphRead.csproj -c Release -- -pointercheck
 
+      - name: high-refresh frame timing and first-person pose checks
+        if: matrix.os == 'windows-latest'
+        run: dotnet run --project src/MphRead/MphRead.csproj -c Release -- -frametimingcheck
+
   build:
     name: ${{ matrix.id }}
     needs: assets
