@@ -170,7 +170,7 @@ namespace MphRead.Mods.Network
             if (payload.Length < SnapshotHeader.Size) return false;
             SnapshotHeader header = SnapshotHeader.Read(payload);
             if (header.PlayerCount > RosterPacket.MaxSlots) return false;
-            int timeOffset = SnapshotHeader.Size + header.PlayerCount * PlayerState.Size;
+            if (!SnapshotWire.TryLocateTails(payload, header, out _, out int timeOffset)) return false;
             int healthOffset = timeOffset + NetMatchTimeSync.Size;
             if (healthOffset > payload.Length) return false;
             ReadOnlySpan<byte> health = payload[healthOffset..];
