@@ -58,6 +58,14 @@ public sealed class MapViewportCache
             face.Shade, face.Material, true)).ToArray());
         ImportedRebuildCount++;
     }
+
+    public void SetImported(MapAnalysisResult analysis)
+    {
+        ImportedFaces = Array.AsReadOnly(analysis.Faces.Select(face => new MapViewportFace(Guid.Empty,
+            face.Points.Select(p => new System.Numerics.Vector3(p.X, p.Y, p.Z)).ToArray(),
+            face.Shade, face.Material, true)).ToArray());
+        ImportedRebuildCount++;
+    }
 }
 
 /// <summary>One logical/pixel rectangle contract for rendering, picking and capture.</summary>

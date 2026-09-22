@@ -95,6 +95,10 @@ namespace MphRead.Mods.MapGen
             if(definition.Assets==null)throw new InvalidDataException("Missing asset list.");
             foreach(var asset in definition.Assets)
                 if(asset==null||!_entries.ContainsKey(CanonicalName(asset.Path)))throw new InvalidDataException("Packaged asset is missing.");
+            if (definition.Materials == null || definition.Materials.Any(m => m == null))
+                throw new InvalidDataException("Missing material list.");
+            foreach (string asset in MapDependencyAnalyzer.PackageAssets(definition))
+                if (!_entries.ContainsKey(CanonicalName(asset))) throw new InvalidDataException("Packaged asset is missing.");
             if (definition.Collision is { } collision)
             {
                 if (string.IsNullOrEmpty(collision.Source)

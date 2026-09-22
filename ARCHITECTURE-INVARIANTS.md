@@ -92,3 +92,6 @@ This file is the short, machine-oriented source of truth for architectural assum
 - Selection, entity edits and camera movement do not rebuild unrelated geometry.
 - Build workers receive detached snapshots; cancelling one waiter must not cancel shared work.
 - Runtime cache publication validates content fingerprints and output integrity. Cache files contain locally generated content and are never release inputs.
+
+- Runtime builds, validation, navigation and packaging share a bounded queue and private compiled geometry cache. Editor consumers receive immutable geometry or detached navigation; cached compiler graphs never escape to mutable UI state. Synchronous runtime/server preparation must not hold catalog locks while waiting on a worker.
+- One dependency analyzer defines content identities and portable assets for fingerprints, packages, package reference checks and Save As. Cartridge dependencies affect builds but are never packaged.

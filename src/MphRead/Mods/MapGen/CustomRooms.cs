@@ -241,21 +241,20 @@ namespace MphRead.Mods.MapGen
 
         private static void GenerateIfNeeded(MapDefinition def)
         {
-            lock (_lock)
+            // Compilation can resolve catalog metadata on a worker. Do not hold
+            // the catalog monitor while waiting for that worker to finish.
+            try
             {
-                try
+                if (!NeedsGenerating(def))
                 {
-                    if (!NeedsGenerating(def))
-                    {
-                        return;
-                    }
-                    Console.WriteLine($"[mapgen] building {def.Name}");
-                    MapPacker.Generate(def, ArchiveDirectory(def), EntityDirectory(), NodeDirectory(), verbose: false);
+                    return;
                 }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[mapgen] {def.Name} could not be built: {ex.Message}");
-                }
+                Console.WriteLine($"[mapgen] building {def.Name}");
+                MapPacker.Generate(def, ArchiveDirectory(def), EntityDirectory(), NodeDirectory(), verbose: false);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[mapgen] {def.Name} could not be built: {ex.Message}");
             }
         }
 

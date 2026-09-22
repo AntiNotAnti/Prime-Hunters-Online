@@ -11,6 +11,14 @@ public sealed record MapDependency(string Kind, string Name, string ContentHash)
 /// <summary>Content identities used by build/cache validation, independent of source timestamps.</summary>
 public static class MapDependencyAnalyzer
 {
+    /// <summary>Portable, declared map assets shared by fingerprints, packaging and Save As.
+    /// Cartridge references are intentionally excluded.</summary>
+    public static IReadOnlyList<string> PackageAssets(MapDefinition definition) => Array.AsReadOnly(
+        definition.Assets.Select(a => a.Path)
+            .Concat(definition.Materials.Where(m => m.Texture != null).Select(m => m.Texture!))
+            .Concat(definition.Audio?.Music is { } music ? new[] { music } : Array.Empty<string>())
+            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray());
+
     public static IReadOnlyList<MapDependency> Analyze(MapDefinition definition)
     {
         var dependencies = new List<MapDependency>();
@@ -26,11 +34,7 @@ public static class MapDependencyAnalyzer
                 if (!string.IsNullOrEmpty(import.Textures)) FileDependency("textures", import.Textures, import.ResolveTextures());
             }
             if (definition.Collision is { } collision) FileDependency("collision", collision.Source, collision.Resolve());
-            var assets = definition.Assets.Select(a => a.Path)
-                .Concat(definition.Materials.Where(m => m.Texture != null).Select(m => m.Texture!))
-                .Concat(definition.Audio?.Music is { } music ? new[] { music } : Array.Empty<string>())
-                .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal);
-            foreach (var asset in assets)
+            foreach (var asset in PackageAssets(definition))
             {
                 string hash;
                 try { hash = Convert.ToHexString(SHA256.HashData(MapAssets.Read(definition, asset))).ToLowerInvariant(); }

@@ -106,10 +106,15 @@ processes. Corrupt/incomplete entries are rebuilt. External dependency changes
 during a job reject publication; cached installs also verify input identity and
 output integrity. Import/base-content reader access is serialized.
 
-Map Studio runtime Build and Playtest use this scheduler. Validation/navigation,
-package generation and existing synchronous server preparation still use their
-current detached compiler paths; unifying those consumers remains outstanding.
-The cache is per-user and is not part of release packaging.
+Map Studio Build, Playtest, validation, navigation and packaging use this scheduler,
+as do the CLI, package installer and synchronous client/server room preparation.
+Different consumers reuse a private compiler cache capped at eight entries and
+128 MiB of estimated retention; returned geometry is immutable and navigation is
+copied for each consumer. Fingerprints, packages, package reference checks and
+Save As share the analyzer's portable asset set. Independent scheduler owners wait
+for file publication; installation is also serialized. The cache is per-user and
+is not part of release packaging. The raw collision diagnostic deliberately reads
+geometry outside the publishing validation gate.
 
 ## Scope and acceptance status
 
@@ -130,8 +135,8 @@ that the missing replay features work.
 | P2B viewport | Per-object native mesh and independent imported/entity/selection invalidation implemented |
 | P2C renderer viewport | Logical/pixel layout contract added; game-renderer backend outstanding |
 | P2D snapshots | Detached graph snapshots implemented |
-| P2E/F scheduler/cache | Runtime Build/Playtest integrated with bounded single-flight worker and integrity-checked content cache |
-| P2G dependencies | Fingerprint/runtime-manifest analyzer implemented; all-consumer consolidation outstanding |
+| P2E/F scheduler/cache | Runtime Build/Playtest, validation, navigation, packaging, installer and synchronous room preparation share a bounded queue, compiler cache and integrity-checked runtime cache |
+| P2G dependencies | Content analyzer and portable asset set shared by build/cache, packaging, package reader and Save As |
 | P2H hub | Desktop already opens the real editor on target main; preserved |
 | P3 diagnostics/profiling | Timeline/cache/history counters, automated checks and editor microbenchmark added; gameplay/runtime profiling outstanding |
 | Cleanup | No replay fallback or feature removed; removal remains gated on replacement acceptance |
@@ -143,9 +148,10 @@ that the missing replay features work.
 - Replay v2/v3 format, metadata, recovery, extraction and malformed input, passive session/scene ownership: 556 checks.
 - Network lifecycle: 3,681 assertions.
 - Health/shot behavior: 2,967,760 assertions.
-- Editor/history/cache/build: 58 checks, including real synthetic-texture compilation,
+- Editor/history/cache/build: 69 checks, including real synthetic-texture compilation,
   package roundtrip, five-file output, dependency changes, cache corruption,
-  cancellation and two-worker concurrency.
+  deterministic packages, cancellation, mixed queue bounds, shared compilation,
+  independent scheduler publication and two-worker concurrency.
 - Map Studio rendered successfully at 1440×900 and 960×600.
 - A fresh 1,800-frame protocol-16 recording passes linear/reset-forward gameplay
   hashes, sampled scalar state, randomized seeks, all playback rates and frozen EOF.

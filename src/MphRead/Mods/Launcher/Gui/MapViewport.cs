@@ -55,6 +55,11 @@ namespace MphRead.Mods.Launcher.Gui
         {
             Cache.SetImported(map); InvalidateVisual();
         }
+
+        public void SetImported(MapAnalysisResult analysis)
+        {
+            Cache.SetImported(analysis); InvalidateVisual();
+        }
         public void FrameAll()
         {
             var points=Faces.SelectMany(f=>f.Points).ToArray();
