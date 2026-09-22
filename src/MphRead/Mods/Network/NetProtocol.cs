@@ -1880,7 +1880,7 @@ namespace MphRead.Mods.Network
             keyframe = (flags & FlagKeyframe) != 0;
             activeMask = payload[at + 1];
             baselineFrame = BinaryPrimitives.ReadUInt32LittleEndian(payload[(at + 2)..]);
-            return baselineFrame != 0;
+            return true;
         }
 
         public static bool IsKeyframe(ReadOnlySpan<byte> payload) =>
