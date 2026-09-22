@@ -131,6 +131,16 @@ used only to build the next rendered view matrix; the next 60 Hz step consumes
 the same mouse state normally and clears the presentation delta. Android does the
 same thing non-destructively with the touch aim accumulator.
 
+The moving reticle has the same separation now. Its authoritative screen position
+is sampled only by the 60 Hz HUD update, and that update projects through
+`CameraInfo.ViewMatrix`, never the draw pass's late-latched `Scene.ViewMatrix`.
+On a display above 60 Hz the draw pass keeps the last three reticle samples and
+extends the latest observed motion only through `FrameTiming.Alpha`. Constant
+motion therefore lands on the intermediate 90/120/144 Hz pictures without adding
+a simulation frame of aim latency. A direction reversal disables that prediction,
+and deceleration reduces it, so stopping the stylus does not turn into a long
+filter tail. Static/Quake crosshairs remain exactly screen-centre.
+
 A held controller stick is projected through the fractional remainder of the
 current simulation step. The projection uses the exact controller state and
 runtime configuration captured by `GamepadInput.BeginFrame`; the draw pass does
