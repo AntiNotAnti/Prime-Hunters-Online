@@ -3062,7 +3062,7 @@ namespace MphRead
                             (float padX, float padY) = Mods.Input.GamepadInput.RenderAim(
                                 Mods.Render.FrameTiming.Alpha);
                             if (main.ModPrepareFirstPersonRenderPose(
-                                    _lateAimX, _lateAimY, padX, padY,
+                                    presentationAlpha, _lateAimX, _lateAimY, padX, padY,
                                     out Matrix4 firstPersonView, out _, out float renderFov))
                             {
                                 _viewMatrix = firstPersonView;
