@@ -280,6 +280,21 @@ namespace MphRead.Entities
                             UpdateTransforms(_gunSmokeModel, transform, recolor: 0);
                             GetDrawItems(_gunSmokeModel, _gunSmokeModel.Model.Nodes[0], _smokeAlpha, recolor: 0);
                         }
+                        if (ModGetFirstPersonEffectTransform(out Matrix4 effectTransform))
+                        {
+                            // These EffectEntry transforms remain simulation-owned.
+                            // Only their particle draw reads this one-picture override,
+                            // so charge/muzzle visuals follow the same late-latched
+                            // barrel without changing spawning or effect lifetime.
+                            if (_chargeEffect != null)
+                            {
+                                _chargeEffect.DrawTransformOverride = effectTransform;
+                            }
+                            if (_muzzleEffect != null)
+                            {
+                                _muzzleEffect.DrawTransformOverride = effectTransform;
+                            }
+                        }
                     }
                     finally
                     {
