@@ -1031,12 +1031,13 @@ namespace MphRead.Droid
             // surface. Resuming then has to race Android's replacement surface
             // through EGL release/create/make-current while the loaded scene is
             // still alive. Some devices lose that race and the render thread
-            // dies immediately after Resume. Alpha hides the media-overlay
-            // surface without changing its lifetime, so pausing is now just a
-            // composition change instead of an EGL teardown/rebuild cycle.
+            // dies immediately after Resume. Park the still-live surface just
+            // beyond the right edge instead. SurfaceView translation is kept
+            // in sync with the view hierarchy from Android N onward, which is
+            // exactly this project's minimum Android version.
             if (_gameView != null)
             {
-                _gameView.Alpha = 0f;
+                _gameView.TranslationX = Math.Max(1, _gameView.Width);
             }
             if (_launcherView != null)
             {
@@ -1071,7 +1072,7 @@ namespace MphRead.Droid
             MphRead.Mods.Launcher.Gui.Deck.Asleep = true;
             if (_gameView != null)
             {
-                _gameView.Alpha = 1f;
+                _gameView.TranslationX = 0f;
             }
             if (_overlay != null)
             {
