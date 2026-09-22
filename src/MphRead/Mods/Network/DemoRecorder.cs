@@ -163,15 +163,12 @@ namespace MphRead.Mods.Network
         /// </summary>
         internal static void RecordOwnSnapshot(ReadOnlySpan<byte> payload)
         {
-            if (_writer == null && !DemoClip.Active)
-            {
-                return;
-            }
             Span<byte> buffer = stackalloc byte[1 + payload.Length];
             buffer[0] = (byte)PacketType.Snapshot;
             payload.CopyTo(buffer[1..]);
             DemoClip.Add(buffer);
             ReplayCapture.Observe(buffer);
+            ReplayCapture.AcceptedSnapshot(buffer, NetSession.NetFrame);
             Write(buffer);
         }
 

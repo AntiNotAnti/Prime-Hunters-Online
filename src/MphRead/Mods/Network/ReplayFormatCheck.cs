@@ -48,8 +48,7 @@ namespace MphRead.Mods.Network
                 // the player array. The replay validator must accept the same wire
                 // packet the live session accepts.
                 const uint bootstrapFrame = 1;
-                int damageCountOffset = SnapshotHeader.Size + SnapshotWire.StateHeaderSize;
-                int timeOffset = damageCountOffset + 1;
+                int timeOffset = SnapshotHeader.Size;
                 int healthOffset = timeOffset + NetMatchTimeSync.Size;
                 byte[] snapshotPayload = new byte[healthOffset + NetHealthSync.HeaderSize];
                 new SnapshotHeader
@@ -59,16 +58,29 @@ namespace MphRead.Mods.Network
                     Frame = bootstrapFrame,
                     PlayerCount = 0
                 }.Write(snapshotPayload);
-                SnapshotWire.WriteStateHeader(
-                    snapshotPayload.AsSpan(SnapshotHeader.Size, SnapshotWire.StateHeaderSize),
-                    keyframe: true, activeMask: 0, baselineFrame: bootstrapFrame);
-                snapshotPayload[damageCountOffset] = 0;
                 NetMatchTimeSync.Write(snapshotPayload.AsSpan(timeOffset, NetMatchTimeSync.Size));
                 BinaryPrimitives.WriteUInt16LittleEndian(snapshotPayload.AsSpan(healthOffset), match.MatchId);
                 snapshotPayload[healthOffset + 2] = 0;
                 byte[] snapshotBytes = new byte[1 + snapshotPayload.Length];
                 snapshotBytes[0] = (byte)PacketType.Snapshot;
                 snapshotPayload.CopyTo(snapshotBytes.AsSpan(1));
+                var timelineRecorder = new ReplayRecorder();
+                timelineRecorder.AcceptMatch(match, 0);
+                var timelineRoster = RosterPacket.Create();
+                timelineRoster.MatchId = match.MatchId;
+                timelineRoster.AuthorityEpoch = match.AuthorityEpoch;
+                timelineRecorder.AcceptRoster(timelineRoster, 0);
+                timelineRecorder.AcceptSnapshot(snapshotBytes, 1, bootstrapFrame);
+                Require(timelineRecorder.Timeline.RestorePointCount == 1, "accepted facts create baseline");
+                Require(timelineRecorder.Timeline.TryFreeze(1, 1, out var timelineClip)
+                    && timelineClip!.RestorePoint.Kind == ReplayRestoreKind.NetworkBaseline,
+                    "network baseline is not a full scene checkpoint");
+                var nextMatch = match; nextMatch.MatchId++;
+                timelineRecorder.AcceptMatch(nextMatch, 2);
+                Require(timelineRecorder.Timeline.NeedsRestorePoint, "match transition clears baseline");
+                timelineRecorder.AcceptRoster(timelineRoster, 2);
+                timelineRecorder.AcceptSnapshot(snapshotBytes, 3, 3);
+                Require(timelineRecorder.Timeline.NeedsRestorePoint, "old roster cannot bootstrap new match");
                 var currentSnapshotMetadata = new ReplayMetadata { RoomKey = match.RoomKey, Mode = GameMode.Battle,
                     Bootstrap = new ReplayBootstrap { Packets = new[] { sessionBytes, matchBytes, snapshotBytes } } };
                 string currentSnapshot = Path.Combine(directory, "current-snapshot.ppdemo");

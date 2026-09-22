@@ -5,6 +5,7 @@ namespace MphRead.Mods.Network
 {
     internal static class ReplayCapture
     {
+        internal static ReplayRecorder Recorder { get; } = new();
         private static readonly byte[] Snapshot = new byte[NetConfig.MaxPacketSize];
         private static int _snapshotLength;
         private static string? _room;
@@ -16,6 +17,7 @@ namespace MphRead.Mods.Network
         {
             _snapshotLength = 0; _room = null; _mapHash = 0;
             Array.Clear(Known);
+            Recorder.Reset();
             DemoClip.Purge();
         }
 
@@ -72,6 +74,21 @@ namespace MphRead.Mods.Network
             };
         }
 
+        internal static void AcceptedMatch(in MatchStatePacket state)
+        {
+            if (!DemoPlayback.IsActive) Recorder.AcceptMatch(state, NetSession.NetFrame);
+        }
+
+        internal static void AcceptedRoster(in RosterPacket roster)
+        {
+            if (!DemoPlayback.IsActive) Recorder.AcceptRoster(roster, NetSession.NetFrame);
+        }
+
+        internal static void AcceptedSnapshot(ReadOnlySpan<byte> packet, uint tick)
+        {
+            if (!DemoPlayback.IsActive) Recorder.AcceptSnapshot(packet, NetSession.NetFrame, tick);
+        }
+
         public static void Event(ReplayEventType type, int actor = -1, int target = -1, int value = 0)
         {
             if (!NetSession.Active || DemoPlayback.IsActive) return;
@@ -80,6 +97,20 @@ namespace MphRead.Mods.Network
             DemoRecorder.RecordEvent(e);
             ServerReplayRecorder.RecordEvent(e);
             DemoClip.AddEvent(e);
+            ReplayMarkerKind? marker = type switch
+            {
+                ReplayEventType.PlayerSpawn => ReplayMarkerKind.Spawn,
+                ReplayEventType.PlayerDeath => ReplayMarkerKind.Death,
+                ReplayEventType.Damage => ReplayMarkerKind.Damage,
+                ReplayEventType.ScoreChanged => ReplayMarkerKind.Score,
+                ReplayEventType.PlayerJoined => ReplayMarkerKind.Join,
+                ReplayEventType.PlayerLeft => ReplayMarkerKind.Leave,
+                ReplayEventType.Objective => ReplayMarkerKind.Objective,
+                ReplayEventType.MatchEnded => ReplayMarkerKind.MatchEnd,
+                _ => null
+            };
+            if (marker is { } kind) Recorder.Marker(NetSession.NetFrame,
+                Recorder.Timeline.LastServerTick ?? NetSession.NetFrame, new(kind, Actor(actor), Actor(target), value));
         }
 
         // Called where authoritative state is accepted, after normal validation. Annotations
@@ -88,7 +119,7 @@ namespace MphRead.Mods.Network
         {
             int slot = state.SlotIndex;
             if (DemoPlayback.IsActive || slot >= Known.Length) return;
-            if (Known[slot])
+            if (Known[slot] && Previous[slot].SlotGeneration == state.SlotGeneration)
             {
                 var old = Previous[slot];
                 if (old.Points != state.Points) Event(ReplayEventType.ScoreChanged, slot, value: state.Points);
@@ -99,6 +130,20 @@ namespace MphRead.Mods.Network
                     Event(ReplayEventType.PlayerDeath, slot, state.AttackerSlot);
                     if (state.AttackerSlot < RosterPacket.MaxSlots && state.AttackerSlot != slot)
                         Event(ReplayEventType.Kill, state.AttackerSlot, slot);
+                    ushort attackerGeneration = 0;
+                    for (int i = 0; i < PlayerState.DamageHistory; i++)
+                    {
+                        var damage = state.EventAt(i);
+                        if (damage.EventId == state.DamageEventId && damage.AttackerSlot == state.AttackerSlot)
+                        { attackerGeneration = damage.AttackerGeneration; break; }
+                    }
+                    uint tick = authoritativeFrame ?? NetSession.NetFrame;
+                    var identity = new ReplayKillIdentity(NetSession.CurrentMatchId, NetSession.AuthorityEpoch,
+                        tick, state.DamageEventId, state.AttackerSlot, attackerGeneration,
+                        state.SlotIndex, state.SlotGeneration, state.LifeId);
+                    Recorder.Marker(NetSession.NetFrame, tick, new(ReplayMarkerKind.Kill,
+                        state.AttackerSlot, state.SlotIndex, Kill: identity,
+                        Weapon: state.DamageBeam, DamageFlags: state.DamageFlags));
                     MphRead.Mods.KillCam.NoteDeath(slot, state.AttackerSlot,
                         authoritativeFrame ?? NetSession.NetFrame);
                 }
