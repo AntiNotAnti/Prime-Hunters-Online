@@ -734,6 +734,8 @@ namespace MphRead.Effects
         public int EffectId { get; set; }
         public string EffectName { get; set; } = "";
         public string ElementName { get; set; } = "";
+        // Names are not unique within an effect (e.g. alt-form emitters).
+        internal int DefinitionIndex { get; set; } = -1;
         public float CreationTime { get; set; }
         public float ExpirationTime { get; set; }
         public float DrainTime { get; set; }

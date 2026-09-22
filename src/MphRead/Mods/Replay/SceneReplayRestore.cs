@@ -28,8 +28,10 @@ public partial class Scene
             element.Definition = null; element.Model = null!;
             if (element.ElementName.Length == 0) continue;
             var effect = Read.GetEffect(element.EffectId) ?? Read.LoadEffect(element.EffectId, persistent: true);
-            var definition = effect.Elements.SingleOrDefault(e => e.Name == element.ElementName)
-                ?? throw new InvalidDataException("Missing historical effect asset.");
+            if ((uint)element.DefinitionIndex >= (uint)effect.Elements.Count
+                || effect.Elements[element.DefinitionIndex].Name != element.ElementName)
+                throw new InvalidDataException("Missing historical effect asset.");
+            var definition = effect.Elements[element.DefinitionIndex];
             element.Definition = definition; element.Funcs = definition.Funcs; element.Actions = definition.Actions;
             element.ParticleDefinitions.AddRange(definition.Particles);
             foreach (Particle particle in definition.Particles)

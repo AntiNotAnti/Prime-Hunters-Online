@@ -1,5 +1,13 @@
 # Replay system
 
+`-replayworldcheck FILE [-output DIR]` generates asset-backed synthetic fixtures
+for all 12 multiplayer modes with eight actors and all seven hunters. Detached
+restores, continuation, interleaved worlds and frozen-clip seeks run through
+weapons, alt forms, afflictions, death and respawn. Effect asset binding uses
+element ordinals because names may repeat. Timed goals apply before room loading;
+historical match clocks interpolate between accepted updates, preserving no-limit
+and ending behavior. This is synthetic coverage, not live combat acceptance.
+
 New recordings and instant clips use `.ppdemo` v3. Version 2 remains readable;
 its binary layout is unchanged. The foreground viewer owns an instance `ReplayPlaybackSession` and `ReplayTransport`;
 `DemoPlayback` and `ReplayController` are compatibility facades. Its explicit

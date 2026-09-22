@@ -3439,6 +3439,9 @@ namespace MphRead
             entry.EffectId = effect.Id;
             entry.EffectName = effect.Name;
             entry.ElementName = element.Name;
+            entry.DefinitionIndex = -1;
+            for (int i = 0; i < effect.Elements.Count; i++)
+                if (ReferenceEquals(effect.Elements[i], element)) { entry.DefinitionIndex = i; break; }
             entry.BufferTime = element.BufferTime;
             // todo: FPS stuff
             entry.CreationTime = _elapsedTime + (child ? (1 / 60f) : 0);
