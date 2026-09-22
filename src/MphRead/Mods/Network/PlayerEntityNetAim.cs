@@ -341,8 +341,8 @@ namespace MphRead.Entities
             _fpHistoryFixedWeapon = fixedWeapon;
         }
 
-        private bool ModInterpolatedFirstPersonLocalPose(out Vector3 position,
-            out Vector3 facing, out Vector3 up)
+        private bool ModInterpolatedFirstPersonLocalPose(double presentationAlpha,
+            out Vector3 position, out Vector3 facing, out Vector3 up)
         {
             if (!_fpDrawStateValid)
             {
@@ -350,7 +350,7 @@ namespace MphRead.Entities
             }
 
             float t = Mods.Render.FrameTiming.HighRefreshPresentation
-                ? (float)Math.Clamp(Mods.Render.FrameTiming.PresentationAlpha, 0.0, 1.0)
+                ? (float)Math.Clamp(presentationAlpha, 0.0, 1.0)
                 : 1f;
             position = Vector3.Lerp(
                 _fpPreviousGunLocalPosition, _fpCurrentGunLocalPosition, t);
@@ -435,9 +435,9 @@ namespace MphRead.Entities
         /// late-latched input exactly once. Gameplay fields remain untouched;
         /// the following 60 Hz step still consumes the ordinary input stream.
         /// </summary>
-        internal bool ModPrepareFirstPersonRenderPose(float pointerX, float pointerY,
-            float controllerX, float controllerY, out Matrix4 view,
-            out Vector3 cameraPosition, out float fov)
+        internal bool ModPrepareFirstPersonRenderPose(double presentationAlpha,
+            float pointerX, float pointerY, float controllerX, float controllerY,
+            out Matrix4 view, out Vector3 cameraPosition, out float fov)
         {
             _fpRenderPoseValid = false;
             view = CameraInfo.ViewMatrix;
@@ -449,13 +449,45 @@ namespace MphRead.Entities
                 return false;
             }
 
-            ModRenderAimDelta(pointerX, pointerY, controllerX, controllerY,
-                out float x, out float y);
-            Vector3 renderFacing = ModLateLatchedFacing(x, y);
-            Vector3 upHint = ModCameraUpHint();
+            Vector3 renderFacing;
+            Vector3 upHint;
+            // The original DS camera intentionally eases toward the raw aim
+            // when FixedCrosshair is off. Late-latching raw _gunVec1 on top of
+            // that smoothed camera bypasses the easing on extra draw frames and
+            // then snaps back at the next simulation step. That is the whole-
+            // scene high-refresh shimmer. In that mode, interpolate the camera
+            // history at the same timestamp as the viewmodel/world instead.
+            bool smoothLegacyCamera = !Features.FixedCrosshair
+                && Mods.Render.FrameTiming.HighRefreshPresentation
+                && CameraInfo.ModGetDrawPose(presentationAlpha,
+                    out Vector3 drawCameraPosition, out Vector3 drawCameraTarget,
+                    out Vector3 drawCameraUp, out float drawCameraFov);
+            if (smoothLegacyCamera)
+            {
+                Vector3 drawFacing = drawCameraTarget - drawCameraPosition;
+                if (!ModFinite(drawFacing) || drawFacing.LengthSquared < 0.000001f)
+                {
+                    return false;
+                }
+                cameraPosition = drawCameraPosition;
+                fov = drawCameraFov;
+                renderFacing = drawFacing.Normalized();
+                upHint = drawCameraUp;
+            }
+            else
+            {
+                // Fixed-crosshair / modern first-person aiming is intentionally
+                // low latency. Apply only unsimulated input on top of the current
+                // simulation pose and attach the gun to the exact same basis.
+                ModRenderAimDelta(pointerX, pointerY, controllerX, controllerY,
+                    out float x, out float y);
+                renderFacing = ModLateLatchedFacing(x, y);
+                upHint = ModCameraUpHint();
+            }
+
             if (!ModPresentationBasis(renderFacing, upHint,
                     out Vector3 renderRight, out Vector3 renderUp, out Vector3 renderForward)
-                || !ModInterpolatedFirstPersonLocalPose(
+                || !ModInterpolatedFirstPersonLocalPose(presentationAlpha,
                     out Vector3 gunLocalPosition, out Vector3 gunLocalFacing,
                     out Vector3 gunLocalUp))
             {
