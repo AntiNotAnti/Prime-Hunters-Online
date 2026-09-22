@@ -27,6 +27,7 @@ namespace MphRead.NetTest
                 TransportCoalescing();
                 PacketOrdering();
                 SnapshotDeltaStream();
+                IntentBundleDelivery();
                 Prediction();
                 DamageHistory();
                 PresentationClock();
@@ -459,8 +460,6 @@ namespace MphRead.NetTest
             Check(NetSession.RemoteStates[1].Position == baseState.Position,
                 "snapshot keyframe establishes delta baseline");
 
-            PlayerState missed = baseState;
-            missed.Position = new Vector3(11, 2, 3);
             // Deliberately do not deliver frame 101. Frame 102 is independent
             // of frame 101 because both describe changes against keyframe 100.
             PlayerState newest = baseState;
@@ -473,6 +472,64 @@ namespace MphRead.NetTest
             Deliver(DeltaPacket(103, 99, newest));
             Check(NetSession.LastSnapshotFrame == 102,
                 "delta naming an unavailable baseline is rejected");
+        }
+
+        private static void IntentBundleDelivery()
+        {
+            Session();
+            Deliver(Packet(100, State(7)));
+
+            var intent = new IntentPacket
+            {
+                MatchId = 51,
+                AuthorityEpoch = 4,
+                SlotGeneration = 10,
+                LifeId = 7,
+                Frame = 700,
+                Buttons = IntentButtons.Shoot | IntentButtons.InPlayState,
+                Aim = Vector3.UnitZ,
+                Position = new Vector3(10, 2, 4),
+                WeaponSelect = 1,
+                AmmoUa = 90,
+                AmmoMissiles = 5,
+                AckFrame = 100,
+                HasState = true,
+                ChargeLevel = 33,
+                ShotFlags = IntentPacket.FlagDoubleDamage
+            };
+            intent.Presses[0] = (uint)IntentButtons.Shoot;
+
+            int payloadSize = IntentBundlePacket.SizeFor(1, 1);
+            byte[] bytes = new byte[1 + payloadSize];
+            bytes[0] = (byte)PacketType.IntentBundle;
+            new IntentBundleHeader
+            {
+                MatchId = 51,
+                AuthorityEpoch = 4,
+                AuthorityFrame = 101,
+                StateCount = 1,
+                EventCount = 1
+            }.Write(bytes.AsSpan(1));
+
+            int offset = 1 + IntentBundleHeader.Size;
+            bytes[offset++] = 1;
+            ObserverIntentState.FromIntent(intent)
+                .Write(bytes.AsSpan(offset, ObserverIntentState.Size));
+            offset += ObserverIntentState.Size;
+            bytes[offset++] = 1;
+            for (int i = 0; i < IntentPacket.PressHistory; i++)
+            {
+                BinaryPrimitives.WriteUInt32LittleEndian(
+                    bytes.AsSpan(offset + i * 4), intent.Presses[i]);
+            }
+
+            Deliver(bytes);
+            Check(NetSession.RemoteIntentValid[1]
+                && NetSession.RemoteIntents[1].Frame == 700
+                && NetSession.RemoteIntents[1].Presses[0] == (uint)IntentButtons.Shoot
+                && NetSession.RemoteIntents[1].ChargeLevel == 33
+                && NetSession.RemoteIntents[1].Position == intent.Position,
+                "intent bundle reconstructs observer state and redundant event history");
         }
 
         private static void TransportCoalescing()
