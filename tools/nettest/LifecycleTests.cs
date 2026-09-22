@@ -282,7 +282,7 @@ namespace MphRead.NetTest
                 byte activeMask = 0;
                 for (int i = 0; i < states.Length; i++) activeMask |= (byte)(1 << states[i].SlotIndex);
                 SnapshotWire.WriteStateHeader(body.AsSpan(SnapshotHeader.Size,
-                    SnapshotWire.StateHeaderSize), keyframe: true, activeMask, frame);
+                    SnapshotWire.StateHeaderSize), true, activeMask, frame);
                 for (int i = 0; i < states.Length; i++)
                     states[i].WriteBase(body.AsSpan(
                         SnapshotHeader.Size + SnapshotWire.StateHeaderSize
@@ -403,7 +403,7 @@ namespace MphRead.NetTest
             new SnapshotHeader { MatchId = match, AuthorityEpoch = epoch, Frame = frame, PlayerCount = 1 }
                 .Write(bytes.AsSpan(1));
             SnapshotWire.WriteStateHeader(bytes.AsSpan(1 + SnapshotHeader.Size,
-                SnapshotWire.StateHeaderSize), keyframe: true, (byte)(1 << state.SlotIndex), frame);
+                SnapshotWire.StateHeaderSize), true, (byte)(1 << state.SlotIndex), frame);
             state.WriteBase(bytes.AsSpan(1 + SnapshotHeader.Size + SnapshotWire.StateHeaderSize,
                 SnapshotWire.PlayerSize));
             bytes[damageCountOffset] = (byte)damageGroups;
