@@ -111,12 +111,15 @@ Two things come free from owning the context:
   `PreserveEGLContextOnPause`; here nothing destroys it until the match ends.
 - **Pausing is a flag**, not a handshake, so `OnPause` cannot block either.
 - **The in-game pause menu does not destroy the game surface.** The `SurfaceView`
-  stays attached and is made fully transparent while the launcher/menu view is
-  brought to the front; Resume restores it and brings the touch overlay forward.
-  Turning the game view `Gone` used to manufacture a `surfaceDestroyed` /
-  `surfaceCreated` cycle for every pause, forcing EGL to tear down and rebuild
-  its window surface around a still-loaded scene. Real devices could lose that
-  rebind race and stop the render thread immediately after Resume.
+  stays attached and is translated just beyond the right edge while the
+  launcher/menu view is brought to the front; Resume moves it back and brings
+  the touch overlay forward. Android N is the minimum supported platform and is
+  also where `SurfaceView` translation became synchronized with normal view
+  rendering. Turning the game view `Gone` used to manufacture a
+  `surfaceDestroyed` / `surfaceCreated` cycle for every pause, forcing EGL to
+  tear down and rebuild its window surface around a still-loaded scene. Real
+  devices could lose that rebind race and stop the render thread immediately
+  after Resume.
 
 `surfaceDestroyed` is the one callback that *should* wait -- Android wants the
 surface unused by the time it returns -- and it does, for up to two seconds.
