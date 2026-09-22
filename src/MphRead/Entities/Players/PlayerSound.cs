@@ -503,8 +503,8 @@ namespace MphRead.Entities
             // todo: the game stops music here, but I think we have other cases covered, and need to not stop for teleporters
             _soundSource.StopFreeSfxScripts();
             _soundSource.StopFreeSfx(SfxId.FAST_SCROLL_UP_LOOP);
-            Sfx.Instance.StopEnvironmentSfx();
-            Sfx.Instance.StopAllSound(force: false);
+            if (_scene.Services.AllowsPresentationSideEffects) Sfx.Instance.StopEnvironmentSfx();
+            if (_scene.Services.AllowsPresentationSideEffects) Sfx.Instance.StopAllSound(force: false);
         }
 
         public void PlayTimedSfx(SfxId id)
@@ -533,14 +533,14 @@ namespace MphRead.Entities
                 // the game also suspends the weapon alarm SFX here
                 UpdateScanSfx(index: -1, enable: true);
             }
-            Sfx.TimedSfxMute++;
+            if (_scene.Services.AllowsPresentationSideEffects) Sfx.TimedSfxMute++;
         }
 
         public void RestartTimedSfx(bool force = false)
         {
             if (force || --Sfx.TimedSfxMute <= 0)
             {
-                Sfx.TimedSfxMute = 0;
+                if (_scene.Services.AllowsPresentationSideEffects) Sfx.TimedSfxMute = 0;
                 _dblDamageSfxMuted = false;
                 _cloakSfxMuted = false;
                 if (_flagCarrySfxMuted)
@@ -557,10 +557,10 @@ namespace MphRead.Entities
             StopTimedSfx();
             if (Sfx.LongSfxMute == 0)
             {
-                Sfx.SfxMute = true;
-                Sfx.Instance.StopEnvironmentSfx();
+                if (_scene.Services.AllowsPresentationSideEffects) Sfx.SfxMute = true;
+            if (_scene.Services.AllowsPresentationSideEffects) Sfx.Instance.StopEnvironmentSfx();
             }
-            Sfx.LongSfxMute++;
+            if (_scene.Services.AllowsPresentationSideEffects) Sfx.LongSfxMute++;
         }
 
         public void RestartLongSfx(bool force = false)
@@ -568,10 +568,8 @@ namespace MphRead.Entities
             RestartTimedSfx(force);
             if (force || --Sfx.LongSfxMute <= 0)
             {
-                Sfx.LongSfxMute = 0;
-                // the game does this along with the timed SFX,
-                // even though it's the long SFX suppression that sets this true
-                Sfx.SfxMute = false;
+                if (_scene.Services.AllowsPresentationSideEffects) Sfx.LongSfxMute = 0;
+                if (_scene.Services.AllowsPresentationSideEffects) Sfx.SfxMute = false;
             }
         }
 
@@ -640,15 +638,15 @@ namespace MphRead.Entities
             {
                 if (Music.MusicEncounterSuspension != 0)
                 {
-                    Music.MusicToResume = musicId;
+                    if (_scene.Services.AllowsPresentationSideEffects) Music.MusicToResume = musicId;
                 }
                 else if (Sfx.TimedSfxMute > 0)
                 {
-                    Music.UpdateMusicIdIfPaused(musicId);
+                    if (_scene.Services.AllowsPresentationSideEffects) Music.UpdateMusicIdIfPaused(musicId);
                 }
                 else
                 {
-                    Music.PlayMusic(musicId);
+                    if (_scene.Services.AllowsPresentationSideEffects) Music.PlayMusic(musicId);
                 }
             }
             // sfxtodo: escape sequence and pause stuff

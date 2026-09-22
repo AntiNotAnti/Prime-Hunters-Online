@@ -44,15 +44,12 @@ question only the launcher has to ask.
 
 ## Traps, all of them paid for
 
-- **The engine names its own textures.** `Scene._textureCount` counts up from
-  one and the number *is* the texture name (`glBindTexture` creates the object
-  on first bind, which is legal and what upstream relies on). So a name from
-  `glGenTextures` is a name the next scene will count its way onto: the
-  overlay was handed name 1, the first hunter model loaded took name 1 as
-  well, and the pause menu came out as a 128×128 piece of somebody's armour
-  stretched over the window. The overlay takes name 1,000,000 and never gives
-  it back — the counter restarts at one with every match, so a freed name
-  would collide again.
+- **Texture names belong to the GL context.** Scenes and launcher overlays now
+  allocate names with `GL.GenTexture`. Each scene tracks and releases its own
+  model/HUD/movie textures. Shared model display lists use reference-counted
+  leases so closing a replica does not erase a foreground or sibling scene.
+  The former per-scene counters collided when two worlds shared one context;
+  reserved high-numbered UI names are no longer needed.
 - **The fixed-function state belongs to whoever touched it last.** The overlay
   draws with `UseProgram(0)`, and the frame it draws over has left the active
   texture unit on 1 (the visor mask), a current colour that is not white, and

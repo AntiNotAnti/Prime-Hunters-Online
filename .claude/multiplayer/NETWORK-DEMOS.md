@@ -6,16 +6,27 @@ its binary layout is unchanged. The foreground viewer owns an instance `ReplayPl
 `TheatreReplaySessionHost` feeds legacy packets through `NetSession.StartPlayback`,
 `InjectPlaybackPacket`, and the normal session handlers. Passive hosts instead
 decode into their own packet-visible replica values and never touch live session
-state; their scene integration remains under migration. Local intent and authority snapshot synthesis are
+state; `PassiveReplayScene` owns a scene and reader together. Local intent and authority snapshot synthesis are
 preserved. Protocol mismatch is refused before packet playback.
 
 Scenes now own player allocation, match arrays/rules, RNG, camera sequences,
 rotating-item state and enemy/platform projectile pools. Creating another scene
 allocates fresh actors; a passive scene never changes foreground facade bindings.
 Entity/effect randomness comes from the owning scene. Controller aim processing
-is skipped for puppets and replica actors. The passive scene's normal foreground
-step entry point throws until the remaining live network/presentation services
-have been replaced; this ownership extraction does not yet enable killcam scenes.
+is skipped for puppets and replica actors. The passive scene uses its own fixed step and replication bridge, health-spawn
+state, continuous-weapon phases, HUD queue and silent sound backend. It never
+polls live input or resolves damage. Replica rendering uploads an explicit camera
+and excludes foreground HUD/Studio side effects. Scene texture allocations and
+shared model leases allow both worlds to coexist in one context.
+
+`-replayreplicacheck FILE [-shots DIR]` compares two scenes interleaved at different
+rates and checks foreground network/RNG/player/bridge sentinels every frame and
+through teardown. With screenshots it additionally requires identical pictures
+before and after disposing the sibling. On a 1,801-frame protocol-16 recording,
+357 frames contained projectiles and all checks passed on macOS OpenGL 2.1.
+This is deterministic reconstruction from packet-visible facts, not a detached
+world checkpoint. Historical objective/effect capture and killcam integration
+remain outstanding.
 
 ## Controls and clock
 

@@ -196,7 +196,9 @@ namespace MphRead
         // map each model's texture ID/palette ID combinations to the bound OpenGL texture ID and "onlyOpaque" boolean
         // Texture names handed out by BindTexture/BindGetTexture, not a live-object count.
         // Never decrement: a freed name can precede another target that is still alive.
-        private int _textureCount = 0;
+        private int _lastTextureId = 0;
+        private readonly HashSet<int> _ownedTextures = new();
+        private readonly HashSet<Model> _modelLeases = new();
         private readonly Dictionary<int, TextureMap> _texPalMap = new Dictionary<int, TextureMap>();
         private readonly HashSet<int> _mipmappedTextures = new();
         private int _maxTextureAnisotropy = -1;
@@ -299,6 +301,7 @@ namespace MphRead
             Action<string> setTitle, Action close, ISceneServices? services = null, bool initializeRuntime = true)
         {
             Services = services ?? LiveSceneServices.Instance;
+            PlayerReplication = new Mods.Network.PlayerReplicationBridge(Services.PlayerReplication);
             Players = new ScenePlayerRegistry
             {
                 MaxPlayers = Services.IsReplica ? PlayerEntity.SlotCapacity : PlayerEntity.LegacyRegistry.MaxPlayers
@@ -376,8 +379,8 @@ namespace MphRead
             SceneSetup.LoadPlatformResources(this);
             SceneSetup.LoadEnemyResources(this);
             this.GameState.Setup(this);
-            PlayerEntity.PlayerAiData.InitializeGlobals();
-            if (this.GameState.Multiplayer)
+            if (!Services.IsReplica) PlayerEntity.PlayerAiData.InitializeGlobals();
+            if (!Services.IsReplica && this.GameState.Multiplayer)
             {
                 Menu.ApplyMultiplayerSettings();
                 // The same job for the launcher's path, which never runs the
@@ -412,7 +415,7 @@ namespace MphRead
             // UpdateNodeRefVolume. Roam makes IsMainPlayer false everywhere,
             // so the server treats all eight slots identically -- which is
             // exactly what a machine playing none of them should do.
-            _cameraMode = Mods.Headless.Active ? CameraMode.Roam
+            _cameraMode = Services.IsReplica || Mods.Headless.Active ? CameraMode.Roam
                 : this.Players.Main.LoadFlags.TestFlag(LoadFlags.Active) ? CameraMode.Player : CameraMode.Roam;
             _inputMode = _cameraMode == CameraMode.Player ? InputMode.All : InputMode.CameraOnly;
             if (this.GameState.SinglePlayer && !meta.FirstHunt && this.Players.PlayerCount > 0 && !Cheats.SkipPlanetIntros)
@@ -636,7 +639,7 @@ namespace MphRead
                     }
                 }
             }
-            if (!Mods.Headless.Active && !SideScene && !Mods.ThumbnailMode.Active
+            if (Services.AllowsPresentationSideEffects && !Mods.Headless.Active && !SideScene && !Mods.ThumbnailMode.Active
                 && !Console.IsOutputRedirected && !Console.IsInputRedirected && ConsoleOutputEnabled)
             {
                 // The console prompt, which is a question put to a person.
@@ -656,7 +659,7 @@ namespace MphRead
                 // exception, from the same line, with nobody to prompt again.
                 OutputStart();
             }
-            GC.Collect(generation: 2, GCCollectionMode.Forced, blocking: true, compacting: true);
+            if (!Services.IsReplica) GC.Collect(generation: 2, GCCollectionMode.Forced, blocking: true, compacting: true);
             // Android's runtime throws PlatformNotSupported for this, which took
             // every match on that head down before a room had finished loading.
             // It is a hint to the collector, so going without it costs nothing.
@@ -907,7 +910,7 @@ namespace MphRead
             _frameBuffer = GL.GenFramebuffer();
             GL.BindFramebuffer(FramebufferTarget.Framebuffer, _frameBuffer);
             _screenTexture = GL.GenTexture();
-            _textureCount = Math.Max(_textureCount, _screenTexture);
+
             Vector2i renderTarget = RenderSize;
             GL.ActiveTexture(TextureUnit.Texture0);
             GL.BindTexture(TextureTarget.Texture2D, _screenTexture);
@@ -928,7 +931,7 @@ namespace MphRead
             // The ink pass's copy of the scene. Same size and same filtering;
             // it is only ever sampled texel for texel.
             _celTexture = GL.GenTexture();
-            _textureCount = Math.Max(_textureCount, _celTexture);
+
             GL.BindTexture(TextureTarget.Texture2D, _celTexture);
             GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgb, renderTarget.X, renderTarget.Y, 0,
                 PixelFormat.Rgb, PixelType.UnsignedByte, IntPtr.Zero);
@@ -1380,6 +1383,7 @@ namespace MphRead
             {
                 return;
             }
+            if (_modelLeases.Add(model)) Mods.Render.SharedModelResources.Retain(model);
             if (_texPalMap.ContainsKey(model.Id))
             {
                 return;
@@ -1424,7 +1428,7 @@ namespace MphRead
                 foreach ((int textureId, int paletteId, int recolorId) in combos)
                 {
                     bool onlyOpaque = BindTexture(model, textureId, paletteId, recolorId);
-                    map.Add(textureId, paletteId, recolorId, _textureCount, onlyOpaque);
+                    map.Add(textureId, paletteId, recolorId, _lastTextureId, onlyOpaque);
                 }
                 _texPalMap.Add(model.Id, map);
             }
@@ -1443,12 +1447,26 @@ namespace MphRead
                 return value.Get(textureId, paletteId, recolorId).BindingId;
             }
             BindTexture(model, textureId, paletteId, recolorId);
-            return _textureCount;
+            return _lastTextureId;
+        }
+
+        // GL owns the name namespace across foreground, replica and UI scenes.
+        // Every scene deletes only the resources it allocated.
+        private int AllocateTexture()
+        {
+            int texture = GL.GenTexture();
+            _ownedTextures.Add(texture);
+            return texture;
+        }
+
+        private void ReleaseTexture(int texture)
+        {
+            if (_ownedTextures.Remove(texture)) GL.DeleteTexture(texture);
         }
 
         private bool BindTexture(Model model, int textureId, int paletteId, int recolorId)
         {
-            _textureCount++;
+            _lastTextureId = AllocateTexture();
             bool onlyOpaque = true;
             var pixels = new List<uint>();
             var average = new FlatColor();
@@ -1459,15 +1477,15 @@ namespace MphRead
                 average.Add(pixel);
             }
             Texture texture = model.Recolors[recolorId].Textures[textureId];
-            GL.BindTexture(TextureTarget.Texture2D, _textureCount);
+            GL.BindTexture(TextureTarget.Texture2D, _lastTextureId);
             GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba, texture.Width, texture.Height, 0,
                 PixelFormat.Rgba, PixelType.UnsignedByte, pixels.ToArray());
             // Mipmaps are generated lazily if/when the player enables them.
             // The default DS/competitive path therefore pays no extra upload
             // time or GPU memory simply because the option exists.
-            _mipmappedTextures.Remove(_textureCount);
+            _mipmappedTextures.Remove(_lastTextureId);
             GL.BindTexture(TextureTarget.Texture2D, 0);
-            _flatColors[_textureCount] = average.Result;
+            _flatColors[_lastTextureId] = average.Result;
             return onlyOpaque;
         }
 
@@ -1535,14 +1553,14 @@ namespace MphRead
 
         public int BindGetTexture(IReadOnlyList<ColorRgba> data, int width, int height)
         {
-            _textureCount++;
-            GL.BindTexture(TextureTarget.Texture2D, _textureCount);
+            _lastTextureId = AllocateTexture();
+            GL.BindTexture(TextureTarget.Texture2D, _lastTextureId);
             GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba, width, height, 0,
                 PixelFormat.Rgba, PixelType.UnsignedByte, data.ToArray());
-            _mipmappedTextures.Remove(_textureCount);
+            _mipmappedTextures.Remove(_lastTextureId);
             GL.BindTexture(TextureTarget.Texture2D, 0);
-            _flatColors[_textureCount] = AverageOf(data);
-            return _textureCount;
+            _flatColors[_lastTextureId] = AverageOf(data);
+            return _lastTextureId;
         }
 
         public void BindTexture(IReadOnlyList<ColorRgba> data, int width, int height, int bindingId)
@@ -2037,7 +2055,7 @@ namespace MphRead
             // Network puppets use the playout clock itself for high-refresh
             // presentation. Remember the exact sub-frame point drawn here so
             // the next local input and AckPoint use the same world.
-            Mods.Network.NetSmoothing.PreparePresentation(
+            if (!Services.IsReplica) Mods.Network.NetSmoothing.PreparePresentation(
                 Mods.Render.FrameTiming.PresentationAlpha);
 
             // The results screen coming up and going away, which the map
@@ -2047,8 +2065,8 @@ namespace MphRead
             // RenderWindow, so bookkeeping put there runs for a player and for
             // nobody else -- which is how the previews came out blank under
             // -netcheck while the ballot beside them was correct.
-            Mods.EndScreen.Tick(_room?.Meta.Name ?? "", _globalElapsedTime);
-            Mods.Render.MapThumbnail.BeginFrame();
+            if (!Services.IsReplica) Mods.EndScreen.Tick(_room?.Meta.Name ?? "", _globalElapsedTime);
+            if (!Services.IsReplica) Mods.Render.MapThumbnail.BeginFrame();
             GL.ActiveTexture(TextureUnit.Texture0);
             GL.BindFramebuffer(FramebufferTarget.Framebuffer, _frameBuffer);
             // The scene's own target, which the resolution scale may have made
@@ -2087,7 +2105,7 @@ namespace MphRead
             // positions they had then, until the 200-entry table filled up and
             // started dropping the new ones.
             _singleParticleCount = 0;
-            if (ProcessFrame || CameraMode != CameraMode.Player)
+            if (!Services.IsReplica && (ProcessFrame || CameraMode != CameraMode.Player))
             {
                 ModReplayCamera();
                 // Controller hardware is polled by the simulation input step only.
@@ -2096,6 +2114,8 @@ namespace MphRead
                 TransformCamera();
                 UpdateCameraPosition();
             }
+            if (Services.IsReplica)
+                GL.UniformMatrix4(_shaderLocations.ViewMatrix, transpose: false, ref _viewMatrix);
             UpdateProjection();
             GetDrawItems();
         }
@@ -2113,7 +2133,7 @@ namespace MphRead
             _viewModelPerspectiveMatrix = GetPerspectiveMatrix(_viewModelFov);
             GL.UniformMatrix4(_shaderLocations.ProjectionMatrix, transpose: false, ref _perspectiveMatrix);
             // update frustum info
-            Vector3 camPos = _cameraMode == CameraMode.Player
+            Vector3 camPos = Services.IsReplica || _cameraMode == CameraMode.Player
                 ? _cameraPosition : this.Players.Main.CameraInfo.Position;
             var camRight = new Vector3(_viewMatrix.Row0.X, _viewMatrix.Row0.Y, -_viewMatrix.Row0.Z);
             var camUp = new Vector3(_viewMatrix.Row1.X, _viewMatrix.Row1.Y, -_viewMatrix.Row1.Z);
@@ -2326,7 +2346,7 @@ namespace MphRead
                 return;
             }
             _depthTexture = GL.GenTexture();
-            _textureCount = Math.Max(_textureCount, _depthTexture);
+
             GL.BindTexture(TextureTarget.Texture2D, _depthTexture);
             GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Depth24Stencil8,
                 target.X, target.Y, 0, PixelFormat.DepthStencil, PixelType.UnsignedInt248, IntPtr.Zero);
@@ -2842,7 +2862,7 @@ namespace MphRead
             // After the world and before the window: the preview is a corner
             // of the scene target with its own camera in it, so the HUD's own
             // panel is drawn over it afterwards with a hole where this lands.
-            ModDrawPreview();
+            if (!Services.IsReplica) ModDrawPreview();
             if (this.Players.Main.LoadFlags.TestFlag(LoadFlags.Active) && CameraMode == CameraMode.Player)
             {
                 SetHudLayerUniforms();
@@ -2925,8 +2945,11 @@ namespace MphRead
             // Replay controls and timeline belong to the presentation, not to
             // a particular hunter's visor. Keep them visible in chase, orbit
             // and free-camera modes as well as first-person playback.
-            Mods.Replay.ReplayHud.Draw(this);
-            Mods.Input.AimAssist.AimAssistDebug.Draw(this);
+            if (!Services.IsReplica)
+            {
+                Mods.Replay.ReplayHud.Draw(this);
+                Mods.Input.AimAssist.AimAssistDebug.Draw(this);
+            }
             if (_movieFrameIndex != -1)
             {
                 DrawMovieFrame();
@@ -3024,17 +3047,14 @@ namespace MphRead
                 {
                     foreach (KeyValuePair<int, (int BindingId, bool OnlyOpaque)> kvp in map)
                     {
-                        GL.DeleteTexture(kvp.Value.BindingId);
+                        ReleaseTexture(kvp.Value.BindingId);
                         _mipmappedTextures.Remove(kvp.Value.BindingId);
                     }
                     _texPalMap.Remove(model.Id);
                 }
-                foreach (Mesh mesh in model.Meshes)
-                {
-                    GL.DeleteLists(mesh.ListId, 1);
-                }
+                if (_modelLeases.Remove(model)) Mods.Render.SharedModelResources.Release(model);
             }
-            Read.RemoveModel(model.Name, model.FirstHunt);
+            if (!Services.IsReplica) Read.RemoveModel(model.Name, model.FirstHunt);
         }
 
         private void TransformCamera()
@@ -4351,7 +4371,7 @@ namespace MphRead
                         RemoveEntity(entity);
                     }
                 }
-                PlayerEntity.PlayerAiData.UpdateVisibilityAndGlobals(this);
+                if (!Services.IsReplica) PlayerEntity.PlayerAiData.UpdateVisibilityAndGlobals(this);
                 for (int i = 0; i < this.Players.Items.Count; i++)
                 {
                     this.Players.Items[i].ClosestNode = null;
@@ -4486,7 +4506,7 @@ namespace MphRead
             }
             // Last, and on its own: nothing else may add an item while the
             // preview is being collected.
-            ModCollectPreview();
+            if (!Services.IsReplica) ModCollectPreview();
         }
 
         private void UpdateUniforms()
@@ -4681,27 +4701,19 @@ namespace MphRead
             {
                 return;
             }
-            foreach (TextureMap map in _texPalMap.Values)
+            if (_ownedTextures != null)
             {
-                foreach (KeyValuePair<int, (int BindingId, bool OnlyOpaque)> kvp in map)
-                {
-                    GL.DeleteTexture(kvp.Value.BindingId);
-                }
+                foreach (int texture in _ownedTextures) GL.DeleteTexture(texture);
+                _ownedTextures.Clear();
             }
             _texPalMap.Clear();
-            _mipmappedTextures.Clear();
-            foreach (Model model in Read.CachedModels)
+            _mipmappedTextures?.Clear();
+            if (_modelLeases != null)
             {
-                foreach (Mesh mesh in model.Meshes)
-                {
-                    if (mesh.ListId != 0)
-                    {
-                        GL.DeleteLists(mesh.ListId, 1);
-                        mesh.ListId = 0;
-                    }
-                }
+                foreach (Model model in _modelLeases) Mods.Render.SharedModelResources.Release(model);
+                _modelLeases.Clear();
             }
-            Read.ClearCache();
+            if (Services?.IsReplica != true) Read.ClearCache();
             DisposePlayerOutlines();
             // The cel target also owns a reference to _screenTexture. Release
             // it before deleting that texture in the shell's persistent context.
@@ -6092,9 +6104,9 @@ namespace MphRead
         /// somebody watching from the map is exactly who wants to read one,
         /// so this is the one thing that reaches past that.
         /// </summary>
-        private static bool ScoreboardOverFreeCamera => Mods.SpectatorMode.FreeCamera
+        private bool ScoreboardOverFreeCamera => !Services.IsReplica && Mods.SpectatorMode.FreeCamera
             && Mods.SpectatorMode.ShowScoreboard
-            && PlayerEntity.Main.LoadFlags.TestFlag(LoadFlags.Active);
+            && Players.Main.LoadFlags.TestFlag(LoadFlags.Active);
 
 
         /// <summary>

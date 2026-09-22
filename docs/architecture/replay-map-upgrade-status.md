@@ -37,9 +37,9 @@ No fallback is removed before the plan's runtime acceptance gate.
 ## Remaining replay work
 
 - Complete detached scene restore schema and authoritative world/event capture.
-- Finish network, AI, sound, input and renderer-resource services isolation;
-  player registries, GameState, RNG and camera/pool ownership are scene-local.
-- Scene attachment for instance-owned passive playback and deterministic checkpoint seek.
+- Complete historical presentation/event state and scene service coverage for all modes;
+  replica simulation, replication, silent audio and GL resource ownership are implemented.
+- Detached checkpoint seek and consumer attachment for instance-owned passive playback.
 - Replay-based personal/final killcams and audio/input/HUD ownership.
 - Migrate full playback, instant clips, Studio, thumbnails and video export.
 - Desktop/Android runtime stress and determinism/performance acceptance.
@@ -122,7 +122,7 @@ that the missing replay features work.
 | --- | --- |
 | P0A timeline | Implemented bounded immutable records/segments, freeze and identity mapping; complete scene restore schema still missing |
 | P0B recorder | Accepted match/roster/player snapshots and existing semantic events integrated; full world/objective/presentation event capture missing |
-| P0C isolated session/services | Instance reader/transport/hosts and passive decoder implemented; scene-owned players, match state, RNG, camera sequences and pools extracted; network/presentation/resource services and passive stepping remain |
+| P0C isolated session/services | Instance reader/transport/hosts and passive decoder implemented; scene-owned players, match state, RNG, camera sequences and pools extracted; private replication, silent audio, fixed stepping and GL rendering implemented; complete world checkpoints remain |
 | P0D/P0E personal/final killcams | Existing implementation retained; replay-scene replacement and runtime acceptance outstanding |
 | P1 playback/seek/interpolation | Studio facades now delegate reader/clock/transport to a session; seeks schedule at most 120 steps; isolated scenes/checkpoints/interpolation migration outstanding |
 | P1 shared clips/highlights/export | Existing functionality retained; shared-timeline migration outstanding |
@@ -140,7 +140,7 @@ that the missing replay features work.
 
 - Desktop Release build: passes with 18 pre-existing warnings.
 - Timeline: 36 checks.
-- Replay v2/v3 format, metadata, recovery, extraction and malformed input, passive session/scene ownership: 550 checks.
+- Replay v2/v3 format, metadata, recovery, extraction and malformed input, passive session/scene ownership: 556 checks.
 - Network lifecycle: 3,681 assertions.
 - Health/shot behavior: 2,967,760 assertions.
 - Editor/history/cache/build: 58 checks, including real synthetic-texture compilation,
@@ -182,5 +182,7 @@ pipeline and Studio presentation singletons. `PassiveReplaySessionHost` decodes
 packet-visible values with its own roster, lifecycle trackers, player states,
 intents and clocks; it ignores connection-control traffic. Opening, advancing,
 seeking and disposing passive sessions is tested against foreground identity,
-RNG and transport sentinels. The passive decoder does not yet render a scene and
-does not claim to reconstruct missing world/projectile state.
+RNG and transport sentinels. `PassiveReplayScene` loads and renders a private world; two interleaved 1,801-frame
+passes (357 frames with projectiles) agree and preserve foreground sentinels.
+Rendered images remain byte-identical after sibling disposal. Detached checkpoints
+and complete historical objective/effect state are still missing.

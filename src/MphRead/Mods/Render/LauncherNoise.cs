@@ -49,14 +49,6 @@ namespace MphRead.Mods.Render
     /// </summary>
     public static class LauncherNoise
     {
-        /// <summary>
-        /// The texture name, chosen rather than asked for, one above
-        /// <see cref="LauncherPhoto"/>'s. See the note there: the engine
-        /// counts its own names up from one, so a name from GenTextures is a
-        /// name the next match will draw a hunter into.
-        /// </summary>
-        private const int Name = 1_000_002;
-
         private static readonly NoiseField _field = new();
 
         private static int _texture;
@@ -106,7 +98,7 @@ namespace MphRead.Mods.Render
                 bool fresh = _texture == 0;
                 if (fresh)
                 {
-                    _texture = Name;
+                    _texture = GL.GenTexture();
                 }
                 GL.BindTexture(TextureTarget.Texture2D, _texture);
                 // Every piece of unpack state said out loud, for the reason

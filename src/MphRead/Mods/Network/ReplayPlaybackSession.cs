@@ -309,7 +309,7 @@ namespace MphRead.Mods.Network
             catch (InvalidDataException ex)
             {
                 LastResult = ReplayOpenResult.Corrupt;
-                LastError = "Replay stopped: " + ex.Message;
+                LastError = $"Replay stopped at frame {_frame}: " + ex.Message;
                 _pending = null;
                 return;
             }

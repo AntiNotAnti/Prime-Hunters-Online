@@ -550,7 +550,7 @@ namespace MphRead.Entities
                     _soundSource.PlayFreeSfx(SfxId.RETURN_TO_SHIP_YES);
                     _drawPauseState = 0;
                     ResetPauseQuitDisplay();
-                    Music.Stop(20 / 30f);
+                    if (_scene.Services.AllowsPresentationSideEffects) Music.Stop(20 / 30f);
                     _scene.SetFade(FadeType.FadeOutBlack, 20 / 30f, overwrite: true, AfterFade.Exit);
                     return;
                 }

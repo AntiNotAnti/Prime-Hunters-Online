@@ -318,7 +318,7 @@ namespace MphRead
             ForceEndGame = false;
             _tempoChanged = false;
             _stateChanged = false;
-            Mods.KillCam.Reset();
+            if (Owner?.Services.IsReplica != true) Mods.KillCam.Reset();
             _lastAlarmTime = 0;
             _nextAlarmIndex = 0;
         }
@@ -340,7 +340,7 @@ namespace MphRead
             _tempoChanged = false;
             _stateChanged = false;
             _matchEndTime = 0;
-            Mods.KillCam.Reset();
+            if (Owner?.Services.IsReplica != true) Mods.KillCam.Reset();
             _lastAlarmTime = 0;
             _nextAlarmIndex = 0;
         }
@@ -1503,7 +1503,10 @@ namespace MphRead
         }
 
         private StorySave _cleanStorySave = null!;
-        public StorySave StorySave { get; private set; } = null!;
+        private StorySave? _storySave;
+        // Asset-free state fixtures must not load logbook tables. A replica
+        // creates its private save only if a room entity actually needs it.
+        public StorySave StorySave { get => _storySave ??= new StorySave(); private set => _storySave = value; }
 
         public void UpdateCleanSave(bool force)
         {

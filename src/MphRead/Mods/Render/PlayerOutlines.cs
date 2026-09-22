@@ -163,7 +163,7 @@ namespace MphRead
             {
                 _playerOutlineFramebuffer = GL.GenFramebuffer();
                 _playerOutlineTexture = GL.GenTexture();
-                _textureCount = Math.Max(_textureCount, _playerOutlineTexture);
+
             }
             GL.BindFramebuffer(FramebufferTarget.Framebuffer, _playerOutlineFramebuffer);
             bool targetChanged = _playerOutlineSize != _targetSize || _playerOutlineDepth != _depthTexture;

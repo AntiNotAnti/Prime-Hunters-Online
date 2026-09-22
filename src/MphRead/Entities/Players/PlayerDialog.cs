@@ -354,7 +354,7 @@ namespace MphRead.Entities
             _messageBoxInst.SetAnimation(start: 0, target: 65, frames: 66, afterAnim: 65);
             if (_eventType == EventType.EnergyTank || _eventType == EventType.MissileTank || _eventType == EventType.UATank)
             {
-                Music.FadeVolume(50 / 127f, 5 / 30f);
+                if (_scene.Services.AllowsPresentationSideEffects) Music.FadeVolume(50 / 127f, 5 / 30f);
                 _soundSource.PlayFreeSfx(SfxId.GET_ITEM);
                 _dialogConfirmTimer = 60 / 30f;
                 // todo?: it's lame that UA tank is the only pickup without a frame/icon
@@ -365,15 +365,15 @@ namespace MphRead.Entities
             }
             else if (_eventType >= EventType.VoltDriver && _eventType <= EventType.ShockCoil)
             {
-                Music.Pause();
-                Music.PlaySeq(SeqId.GET_WEAPON);
+                if (_scene.Services.AllowsPresentationSideEffects) Music.Pause();
+                if (_scene.Services.AllowsPresentationSideEffects) Music.PlaySeq(SeqId.GET_WEAPON);
                 _soundSource.PlayFreeSfx(SfxId.WEAPON_POWER_UP);
                 _dialogConfirmTimer = 150 / 30f;
                 _dialogPickupInst.SetIndex((int)_eventType, _scene);
             }
             else if (_eventType == EventType.OmegaCannon || _eventType == EventType.Artifact)
             {
-                Music.FadeVolume(50 / 127f, 5 / 30f);
+                if (_scene.Services.AllowsPresentationSideEffects) Music.FadeVolume(50 / 127f, 5 / 30f);
                 _soundSource.PlayFreeSfx(SfxId.GET_ITEM2);
                 _dialogConfirmTimer = 60 / 30f;
                 if (_eventType == EventType.OmegaCannon)
@@ -384,8 +384,8 @@ namespace MphRead.Entities
             }
             else if (_eventType == EventType.Octolith)
             {
-                Music.Pause();
-                Music.PlaySeq(SeqId.GET_OCTOLITH);
+                if (_scene.Services.AllowsPresentationSideEffects) Music.Pause();
+                if (_scene.Services.AllowsPresentationSideEffects) Music.PlaySeq(SeqId.GET_OCTOLITH);
                 _dialogCrystalInst.SetAnimation(start: 0, target: 35, frames: 36, loop: true);
                 _dialogConfirmTimer = 150 / 30f;
             }
@@ -488,11 +488,11 @@ namespace MphRead.Entities
                         {
                             if (Music.IsPaused)
                             {
-                                Music.PlayPausedMusic();
+                                if (_scene.Services.AllowsPresentationSideEffects) Music.PlayPausedMusic();
                             }
                             else
                             {
-                                Music.FadeVolume(1, 5 / 30f);
+                                if (_scene.Services.AllowsPresentationSideEffects) Music.FadeVolume(1, 5 / 30f);
                             }
                             RestartLongSfx();
                             _scene.GameState.PausePrevented = false;

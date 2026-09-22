@@ -412,7 +412,7 @@ namespace MphRead.Entities
                 }
                 if (NetLog.Enabled)
                 {
-                    NetDamage.PlayerChecks[player.SlotIndex]++;
+                    if (!_scene.Services.IsReplica) NetDamage.PlayerChecks[player.SlotIndex]++;
                 }
                 bool hasHalfturret = player.Hunter == Hunter.Weavel && player.Flags2.TestFlag(PlayerFlags2.Halfturret);
                 if ((Owner == player || hasHalfturret && Owner == player.Halfturret)
@@ -465,11 +465,11 @@ namespace MphRead.Entities
                 }
                 if (hitPlayer && playerRes.Distance < minDist)
                 {
-                    NetDamage.NotePlayerOverlap(Owner, player);
+                    if (!_scene.Services.IsReplica) NetDamage.NotePlayerOverlap(Owner, player);
                     if (NetLog.Enabled)
                     {
-                        NetDamage.PlayerOverlaps[player.SlotIndex]++;
-                        NetDamage.PlayerAccepted[player.SlotIndex]++;
+                        if (!_scene.Services.IsReplica) NetDamage.PlayerOverlaps[player.SlotIndex]++;
+                        if (!_scene.Services.IsReplica) NetDamage.PlayerAccepted[player.SlotIndex]++;
                     }
                     minDist = playerRes.Distance;
                     anyRes = playerRes;
@@ -479,7 +479,7 @@ namespace MphRead.Entities
                 }
                 else if (hitPlayer && NetLog.Enabled)
                 {
-                    NetDamage.PlayerOverlaps[player.SlotIndex]++;
+                    if (!_scene.Services.IsReplica) NetDamage.PlayerOverlaps[player.SlotIndex]++;
                 }
                 // todo?: else wifi check
                 if (hasHalfturret && Owner != player.Halfturret)
@@ -632,7 +632,7 @@ namespace MphRead.Entities
                                     // granted would float the bar above what
                                     // the authority is about to report. See
                                     // Mods.Network.NetHitPrediction.NoteDrain.
-                                    Mods.Network.NetHitPrediction.NoteDrain(ownerPlayer,
+                                    if (!_scene.Services.IsReplica) Mods.Network.NetHitPrediction.NoteDrain(ownerPlayer,
                                         ownerPlayer.Health - before);
                                 }
                             }
@@ -1083,7 +1083,7 @@ namespace MphRead.Entities
             // projectile from the current simulation would be chronologically
             // wrong on top of that rewind, so do not composite it into the
             // historical view.
-            if (Mods.KillCam.Active)
+            if (!_scene.Services.IsReplica && Mods.KillCam.Active)
                 return;
 
             if (DrawFuncId == 0)
@@ -1419,7 +1419,7 @@ namespace MphRead.Entities
         public static BeamResultFlags Spawn(EntityBase owner, EquipInfo equip, Vector3 position, Vector3 direction,
             BeamSpawnFlags spawnFlags, NodeRef nodeRef, Scene scene, BeamProjectileEntity? parent = null)
         {
-            if (NetSession.Active && parent != null && !NetPlayerLifecycle.CurrentProjectile(parent))
+            if (!scene.Services.IsReplica && NetSession.Active && parent != null && !NetPlayerLifecycle.CurrentProjectile(parent))
                 return BeamResultFlags.NoSpawn;
             BeamResultFlags result = BeamResultFlags.Spawned;
             WeaponInfo weapon = equip.Weapon;
@@ -1448,7 +1448,7 @@ namespace MphRead.Entities
                 return chargePct <= 0 ? unchargedAmt : minChargeAmt + ((fullChargeAmt - minChargeAmt) * chargePct);
             }
             byte syncedHomingTarget = 0;
-            if (NetSession.Active && charged && weapon.Beam == BeamType.VoltDriver
+            if (scene.Services.PlayerReplication.Active && charged && weapon.Beam == BeamType.VoltDriver
                 && weapon.Afflictions[1].TestFlag(Affliction.Disrupt) && owner is PlayerEntity homingOwner)
             {
                 // Consume at the attempt, not after the beam is allocated: a
@@ -1461,18 +1461,12 @@ namespace MphRead.Entities
             if (weapon.Flags.TestFlag(WeaponFlags.Continuous) && owner is PlayerEntity firingPlayer)
             {
                 int slot = firingPlayer.SlotIndex;
-                bool remoteSlot = slot >= 0 && slot < NetSession.RemoteIntents.Length;
-                // NetFrame advances before input and Spawn. The owner's intent is
-                // captured on that same step; a remote intent supplies its own
-                // frame plus the number of local steps since it arrived.
-                phase = NetSession.ContinuousPhase.Resolve(slot, scene.FrameCount,
-                    NetSession.Active && !firingPlayer.IsBot,
-                    NetSession.LocalSlot >= 0 && slot == NetSession.LocalSlot,
-                    NetSession.NetFrame,
-                    remoteSlot && NetSession.RemoteIntentValid[slot],
-                    remoteSlot ? NetSession.RemoteIntents[slot].Frame : 0,
-                    remoteSlot ? NetSession.RemoteIntentAge(slot) : uint.MaxValue,
-                    out sharedPhase);
+                var replication = scene.Services.PlayerReplication;
+                bool hasIntent = replication.TryGetIntent(slot, out var intent);
+                phase = scene.WeaponPhase.Resolve(slot, scene.FrameCount,
+                    replication.Active && !firingPlayer.IsBot,
+                    replication.LocalSlot >= 0 && slot == replication.LocalSlot,
+                    replication.Frame, hasIntent, intent.Frame, replication.IntentAge(slot), out sharedPhase);
             }
             if (weapon.Flags.TestFlag(WeaponFlags.Continuous))
             {
@@ -1681,10 +1675,10 @@ namespace MphRead.Entities
                 beam.Owner = owner;
                 beam.ModContinuousPhase = phase;
                 beam.ModHasSharedContinuousPhase = sharedPhase;
-                NetPlayerLifecycle.StampProjectile(beam, parent);
+                if (!scene.Services.IsReplica) NetPlayerLifecycle.StampProjectile(beam, parent);
                 beam.Beam = weapon.Beam;
                 beam.BeamKind = weapon.BeamKind;
-                if (NetLog.Enabled) NetShotDiagnostics.Trace("spawn", beam.ModLaunchKey, beam.Beam);
+                if (!scene.Services.IsReplica && NetLog.Enabled) NetShotDiagnostics.Trace("spawn", beam.ModLaunchKey, beam.Beam);
                 beam.Flags = flags;
                 beam.NodeRef = nodeRef;
                 beam.Age = 0;
@@ -1808,7 +1802,7 @@ namespace MphRead.Entities
                     {
                         result |= BeamResultFlags.Homing;
                     }
-                    if (beam.Beam == BeamType.ShockCoil && owner.Type == EntityType.Player)
+                    if (!scene.Services.IsReplica && beam.Beam == BeamType.ShockCoil && owner.Type == EntityType.Player)
                     {
                         var ownerPlayer = (PlayerEntity)owner;
                         if ((scene.GameState.Multiplayer || !ownerPlayer.IsBot) && ownerPlayer.ShockCoilTarget == beam.Target
@@ -1835,7 +1829,7 @@ namespace MphRead.Entities
                 // and says nothing about it: no hit, no miss, no entry in any
                 // count this file already keeps. Recorded here, at the one
                 // moment the answer is known.
-                if (beam.Beam == BeamType.ShockCoil && owner.Type == EntityType.Player)
+                if (!scene.Services.IsReplica && beam.Beam == BeamType.ShockCoil && owner.Type == EntityType.Player)
                 {
                     NetDamage.ShockCoilSpawned++;
                     if (beam.Target != null)
@@ -1843,7 +1837,7 @@ namespace MphRead.Entities
                         NetDamage.ShockCoilAcquired++;
                     }
                 }
-                if (NetSession.Active && weapon.Flags.TestFlag(WeaponFlags.Continuous))
+                if (!scene.Services.IsReplica && NetSession.Active && weapon.Flags.TestFlag(WeaponFlags.Continuous))
                     NetShotDiagnostics.Continuous(beam, cost);
                 beam._soundSource.Update(beam.Position, rangeIndex: 0);
                 scene.AddEntity(beam);

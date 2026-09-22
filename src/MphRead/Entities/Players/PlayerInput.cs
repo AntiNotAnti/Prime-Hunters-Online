@@ -17,19 +17,15 @@ namespace MphRead.Entities
 
         private void ProcessInput()
         {
-            if (Mods.Network.NetSession.Active && !IsBot)
+            var replication = _scene.Services.PlayerReplication;
+            if (replication.Active && !IsBot)
             {
-                bool local = SlotIndex == Mods.Network.NetSession.LocalSlot
-                    && Mods.Network.NetSession.LocalSlot >= 0;
-                bool fresh = local || (SlotIndex >= 0
-                    && SlotIndex < Mods.Network.NetSession.RemoteIntentValid.Length
-                    && Mods.Network.NetSession.RemoteIntentValid[SlotIndex]
-                    && Mods.Network.NetSession.RemoteIntents[SlotIndex].Frame != 0
-                    && Mods.Network.NetSession.RemoteIntentAge(SlotIndex)
+                bool local = SlotIndex == replication.LocalSlot && replication.LocalSlot >= 0;
+                bool fresh = local || (replication.TryGetIntent(SlotIndex, out var intent)
+                    && intent.Frame != 0 && replication.IntentAge(SlotIndex)
                         <= Mods.Network.ContinuousWeaponPhase.MaxIntentAge);
-                Mods.Network.NetSession.ContinuousPhase.Observe(SlotIndex, _scene.FrameCount,
-                    EquipWeapon.Flags.TestFlag(WeaponFlags.Continuous) && Controls.Shoot.IsDown,
-                    fresh);
+                _scene.WeaponPhase.Observe(SlotIndex, _scene.FrameCount,
+                    EquipWeapon.Flags.TestFlag(WeaponFlags.Continuous) && Controls.Shoot.IsDown, fresh);
             }
             if (_health > 0)
             {
@@ -360,7 +356,7 @@ namespace MphRead.Entities
             {
                 return false;
             }
-            WeaponInfo info = Weapons.Current[(int)beam];
+            WeaponInfo info = _scene.WeaponRules[(int)beam];
             int ammo = _ammo[info.AmmoType];
             return beam == BeamType.PowerBeam || ammo == -1 || ammo >= info.AmmoCost;
         }
@@ -383,7 +379,7 @@ namespace MphRead.Entities
             }
             Flags1 &= ~PlayerFlags1.NoAimInput;
             Flags1 &= ~PlayerFlags1.WeaponMenuOpen;
-            Mods.Input.WeaponWheel.Close();
+            if (!_scene.Services.IsReplica) Mods.Input.WeaponWheel.Close();
             return selected;
         }
 
@@ -1145,7 +1141,7 @@ namespace MphRead.Entities
             if (IsPrimeHunter)
             {
                 // todo?: make this more solid to avoid e.g. the battlehammer ammo cost thing
-                EquipInfo.Weapon = Weapons.Current[(int)CurrentWeapon + 9];
+                EquipInfo.Weapon = _scene.WeaponRules[(int)CurrentWeapon + 9];
             }
             if (IsBot && _scene.GameState.SinglePlayer)
             {
@@ -1173,7 +1169,7 @@ namespace MphRead.Entities
                 PlayBeamEmptySfx(EquipInfo.Weapon.Beam);
                 return NetShotDiagnostics.Finish(this, ShotAttemptResult.NoAmmo);
             }
-            Mods.Network.ReplayCapture.Event(Mods.Network.ReplayEventType.WeaponFired,
+            if (!_scene.Services.IsReplica) Mods.Network.ReplayCapture.Event(Mods.Network.ReplayEventType.WeaponFired,
                 SlotIndex, value: (int)CurrentWeapon);
             NetShotDiagnostics.Finish(this, ShotAttemptResult.Spawned, shotVec, _gunVec1);
             ModControllerFeedback(EquipWeapon.MinCharge > 0 && EquipInfo.ChargeLevel >= EquipWeapon.MinCharge * 2
@@ -1929,7 +1925,7 @@ namespace MphRead.Entities
 
         private void SpawnBomb()
         {
-            Mods.Network.NetDamage.BombSpawnCalls++;
+            if (!_scene.Services.IsReplica) Mods.Network.NetDamage.BombSpawnCalls++;
             // todo?: wi-fi condition and alternate function for spawning Lockjaw bombs
             Matrix4 transform = Matrix4.Identity;
             if (Hunter == Hunter.Kanden)
@@ -1963,10 +1959,10 @@ namespace MphRead.Entities
                     }
                     if (detonated)
                     {
-                        Mods.Network.NetDamage.BombSpawnDetonated++;
+                        if (!_scene.Services.IsReplica) Mods.Network.NetDamage.BombSpawnDetonated++;
                         return;
                     }
-                    Mods.Network.NetDamage.BombSpawnStaleCount++;
+                    if (!_scene.Services.IsReplica) Mods.Network.NetDamage.BombSpawnStaleCount++;
                     SyluxBombCount = 0;
                 }
                 transform = GetTransformMatrix(Vector3.UnitZ, Vector3.UnitY, Position.AddY(Fixed.ToFloat(-1000)));
@@ -1974,11 +1970,11 @@ namespace MphRead.Entities
             var bomb = BombEntity.Spawn(this, transform, _scene);
             if (bomb == null)
             {
-                Mods.Network.NetDamage.BombSpawnPoolEmpty++;
+                if (!_scene.Services.IsReplica) Mods.Network.NetDamage.BombSpawnPoolEmpty++;
             }
             if (bomb != null)
             {
-                Mods.Network.NetDamage.BombSpawnMade++;
+                if (!_scene.Services.IsReplica) Mods.Network.NetDamage.BombSpawnMade++;
                 if (Hunter == Hunter.Sylux)
                 {
                     SyluxBombs[SyluxBombCount] = bomb;

@@ -107,7 +107,7 @@ namespace MphRead.Entities
                         {
                             if (Sfx.ForceFieldSfxMute > 0)
                             {
-                                Sfx.ForceFieldSfxMute--;
+                                if (_scene.Services.AllowsPresentationSideEffects) Sfx.ForceFieldSfxMute--;
                             }
                         }
                         if ((sfxData & 0x8000) != 0)
@@ -125,7 +125,7 @@ namespace MphRead.Entities
                             && (musicValue & 0x4000) == 0
                             && (musicValue & 0x8000) == 0)
                         {
-                            Music.PlayPausedMusic();
+                            if (_scene.Services.AllowsPresentationSideEffects) Music.PlayPausedMusic();
                         }
                         _active = false;
                         Sequence.End();
@@ -156,11 +156,11 @@ namespace MphRead.Entities
                 {
                     if ((sfxData & 0x2000) != 0)
                     {
-                        Sfx.Instance.StopSoundById((int)SfxId.CHIME1);
+                        if (_scene.Services.AllowsPresentationSideEffects) Sfx.Instance.StopSoundById((int)SfxId.CHIME1);
                     }
                     if ((sfxData & 0x4000) != 0)
                     {
-                        Sfx.ForceFieldSfxMute++;
+                        if (_scene.Services.AllowsPresentationSideEffects) Sfx.ForceFieldSfxMute++;
                     }
                     if ((sfxData & 0x8000) != 0)
                     {
@@ -173,7 +173,7 @@ namespace MphRead.Entities
                 }
                 if (hasMusic && (musicValue & 0x4000) == 0)
                 {
-                    Music.Pause();
+                    if (_scene.Services.AllowsPresentationSideEffects) Music.Pause();
                 }
             }
             _delayTimer++;
@@ -184,27 +184,27 @@ namespace MphRead.Entities
                     int musicOrSeqId = musicValue & 0x3FF;
                     if ((musicValue & 0x800) != 0)
                     {
-                        Music.MusicToResume = (MusicId)musicOrSeqId;
+                        if (_scene.Services.AllowsPresentationSideEffects) Music.MusicToResume = (MusicId)musicOrSeqId;
                     }
                     else if ((musicValue & 0x1000) != 0 && _scene.GameState.EscapeTimer != -1 && _scene.GameState.EscapeState == EscapeState.Escape)
                     {
-                        Music.PlayMusic(MusicId.SEQ_OREGANO_M55);
-                        Music.UpdateEscapeMusic();
+                        if (_scene.Services.AllowsPresentationSideEffects) Music.PlayMusic(MusicId.SEQ_OREGANO_M55);
+                        if (_scene.Services.AllowsPresentationSideEffects) Music.UpdateEscapeMusic();
                     }
                     else if ((musicValue & 0x4000) != 0)
                     {
-                        Music.PlayMusic((MusicId)musicOrSeqId);
+                        if (_scene.Services.AllowsPresentationSideEffects) Music.PlayMusic((MusicId)musicOrSeqId);
                     }
                     else
                     {
-                        Music.PlaySeq((SeqId)musicOrSeqId);
+                        if (_scene.Services.AllowsPresentationSideEffects) Music.PlaySeq((SeqId)musicOrSeqId);
                     }
                 }
                 int scriptId = sfxData & 0x1FFF;
                 if (scriptId != 0)
                 {
-                    Sfx.Instance.StopFreeSfxScripts();
-                    Sfx.Instance.PlayScript(scriptId | 0x4000, source: null,
+                    if (_scene.Services.AllowsPresentationSideEffects) Sfx.Instance.StopFreeSfxScripts();
+                    if (_scene.Services.AllowsPresentationSideEffects) Sfx.Instance.PlayScript(scriptId | 0x4000, source: null,
                         noUpdate: false, recency: -1, sourceOnly: false, cancellable: false);
                 }
                 Start();

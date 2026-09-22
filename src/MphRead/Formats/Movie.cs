@@ -138,8 +138,8 @@ namespace MphRead
             }
             if (_topMovieBinding == -1)
             {
-                _topMovieBinding = ++_textureCount;
-                _botMovieBinding = ++_textureCount;
+                _topMovieBinding = AllocateTexture();
+                _botMovieBinding = AllocateTexture();
             }
             GL.BindTexture(TextureTarget.Texture2D, _topMovieBinding);
             GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgb, _frameWidth, _frameHeight, 0,

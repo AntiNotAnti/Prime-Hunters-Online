@@ -11,14 +11,15 @@ namespace MphRead.Entities
     {
         public void Draw()
         {
-            bool historical = Mods.KillCam.TryGetHistoricalPose(
-                SlotIndex, out Mods.KillCamPlayerPose historicalPose);
+            Mods.KillCamPlayerPose historicalPose = default;
+            bool historical = !_scene.Services.IsReplica && Mods.KillCam.TryGetHistoricalPose(
+                SlotIndex, out historicalPose);
 
             Vector3 presentedPosition = default;
             Vector3 presentedFacing = _facingVector;
             bool presentedAlt = false;
             bool networkPresented = false;
-            if (!historical && Mods.Network.NetSession.Active
+            if (!_scene.Services.IsReplica && !historical && Mods.Network.NetSession.Active
                 && SlotIndex != Mods.Network.NetHooks.LocalSlot)
             {
                 if (Mods.Network.DemoPlayback.IsActive)

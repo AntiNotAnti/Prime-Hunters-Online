@@ -182,7 +182,7 @@ namespace MphRead.Entities
                     {
                         if (!_inProgress && _progress >= 10 / 30f)
                         {
-                            Music.PlayRoomMusic(_scene.RoomId, track: 2);
+                            if (_scene.Services.AllowsPresentationSideEffects) Music.PlayRoomMusic(_scene.RoomId, track: 2);
                             value1 = 1;
                             _inProgress = true;
                         }
@@ -203,7 +203,7 @@ namespace MphRead.Entities
             {
                 if (prevOccupiedBy[_scene.Players.Main.SlotIndex])
                 {
-                    Music.PlayRoomMusic(_scene.RoomId, track: 0);
+                    if (_scene.Services.AllowsPresentationSideEffects) Music.PlayRoomMusic(_scene.RoomId, track: 0);
                     if (value1 != 2)
                     {
                         value1 = 3;
@@ -320,7 +320,7 @@ namespace MphRead.Entities
                 if (_occupiedBy[i])
                 {
                     _scene.GameState.NodesCaptured[i]++;
-                    Mods.Network.ReplayCapture.Event(Mods.Network.ReplayEventType.Objective, i,
+                    if (!_scene.Services.IsReplica) Mods.Network.ReplayCapture.Event(Mods.Network.ReplayEventType.Objective, i,
                         value: _scene.GameState.NodesCaptured[i]);
                     if (player.LoadFlags.TestFlag(LoadFlags.Active))
                     {
@@ -344,7 +344,7 @@ namespace MphRead.Entities
             _scoreTimer = 150 / 30f;
             if (_currentTeam == _scene.Players.Main.TeamIndex)
             {
-                Music.PlayRoomMusic(_scene.RoomId, track: 0);
+                    if (_scene.Services.AllowsPresentationSideEffects) Music.PlayRoomMusic(_scene.RoomId, track: 0);
                 dest1 = 2;
             }
             else

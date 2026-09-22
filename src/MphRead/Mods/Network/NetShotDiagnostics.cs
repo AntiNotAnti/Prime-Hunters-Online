@@ -54,6 +54,7 @@ namespace MphRead.Mods.Network
         // Exactly one outcome for every TryFireWeapon invocation, including early returns.
         public static bool Finish(PlayerEntity shooter, ShotAttemptResult result, Vector3 shot = default, Vector3 aim = default)
         {
+            if (shooter.SceneServices.IsReplica) return result == ShotAttemptResult.Spawned;
             if (NetSession.Active)
             {
                 Outcomes[Bucket(shooter.CurrentWeapon), (int)result]++;
