@@ -563,6 +563,13 @@ namespace MphRead.Droid
             AndroidHunterShot.Current?.Retire();
             var input = new AndroidInput();
             _controls.ReleaseEverything();
+            // TouchControls is created with the activity, before AndroidApp
+            // loads controls.txt. Its buttons therefore start with their
+            // constructor defaults even when the saved master switch (or an
+            // individual button) is off. Apply the loaded settings before the
+            // very first overlay is ever drawn instead of waiting for some
+            // later state change or a pause-menu round trip to do it.
+            _controls.ReloadSettings();
             // The controls object outlives a match -- it is a field here, not
             // the view's -- so a match left while spectating would hand the
             // next one a screen of NEXT and VIEW buttons.
@@ -1018,24 +1025,28 @@ namespace MphRead.Droid
             {
                 _overlay.Visibility = ViewStates.Gone;
             }
-            // The game's surface goes away rather than being drawn over.
+            // Keep the game's SurfaceView attached while the menu is up.
             //
-            // Two surfaces in one window have no z-order between them except
-            // the one asked for when they are attached, and asking again later
-            // does nothing -- SetZOrderMediaOverlay is read when the surface is
-            // created, so a menu on the launcher's surface simply never
-            // appeared. Hiding the game's surface is the way round it, and it
-            // costs nothing: the render loop already survives losing its
-            // surface, because that is what happens every time the app goes to
-            // the background, and it keeps the loaded scene while it waits.
-            // The match resumes on the frame the surface comes back.
+            // Setting a SurfaceView to Gone destroys its native window
+            // surface. Resuming then has to race Android's replacement surface
+            // through EGL release/create/make-current while the loaded scene is
+            // still alive. Some devices lose that race and the render thread
+            // dies immediately after Resume. Park the still-live surface just
+            // beyond the right edge instead. SurfaceView translation is kept
+            // in sync with the view hierarchy from Android N onward, which is
+            // exactly this project's minimum Android version.
             if (_gameView != null)
             {
-                _gameView.Visibility = ViewStates.Gone;
+                _gameView.TranslationX = Math.Max(1, _gameView.Width);
             }
             if (_launcherView != null)
             {
                 _launcherView.Visibility = ViewStates.Visible;
+                // The transparent SurfaceView is still a live Android child.
+                // Put the launcher above it in the view hierarchy as well so
+                // touch events land on the pause menu rather than the hidden
+                // game view.
+                _launcherView.BringToFront();
                 MphRead.Mods.Input.GamepadContexts.MenuVisible = true;
             }
             MphRead.Mods.Launcher.Gui.Deck.Asleep = false;
@@ -1061,11 +1072,15 @@ namespace MphRead.Droid
             MphRead.Mods.Launcher.Gui.Deck.Asleep = true;
             if (_gameView != null)
             {
-                _gameView.Visibility = ViewStates.Visible;
+                _gameView.TranslationX = 0f;
             }
             if (_overlay != null)
             {
                 _overlay.Visibility = ViewStates.Visible;
+                // Restore the gameplay touch layer to the top of the Android
+                // view hierarchy after the launcher was brought forward for
+                // the pause menu.
+                _overlay.BringToFront();
             }
             _controls.ReleaseEverything();
             // Settings are reachable from the pause menu, and one of the pages
