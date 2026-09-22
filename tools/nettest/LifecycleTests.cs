@@ -100,6 +100,25 @@ namespace MphRead.NetTest
                 "observer intent compact round trip");
             Check(IntentBundlePacket.SizeFor(PlayerEntity.SlotCapacity, PlayerEntity.SlotCapacity)
                 < NetConfig.MaxPacketSize, "worst-case intent bundle exceeds datagram budget");
+
+            Check(NetConfig.ProtocolVersion == 18, "server-authoritative movement protocol version");
+            SnapshotWire.WriteStateHeader(buffer.AsSpan(SnapshotHeader.Size,
+                SnapshotWire.StateHeaderSize), keyframe: true, activeMask: 0xFF, baselineFrame: 1234);
+            SnapshotWire.WriteInputFrame(buffer.AsSpan(SnapshotHeader.Size,
+                SnapshotWire.StateHeaderSize), 3, 5678);
+            Check(SnapshotWire.ReadInputFrame(buffer, 3) == 5678,
+                "snapshot input-frame acknowledgement round trip");
+
+            Check(Math.Abs(NetUnlagged.PolicyRewindFrames(10) - 10) < 0.001
+                && Math.Abs(NetUnlagged.PolicyRewindFrames(15) - 15) < 0.001,
+                "ordinary latency is fully compensated");
+            Check(Math.Abs(NetUnlagged.PolicyRewindFrames(24) - 19.5) < 0.001
+                && Math.Abs(NetUnlagged.PolicyRewindFrames(30) - 21) < 0.001
+                && Math.Abs(NetUnlagged.PolicyRewindFrames(45) - 21) < 0.001,
+                "old views taper under defender-aware rewind policy");
+            Check(NetUnlagged.PolicyFrame(100, 76) == 80
+                && NetUnlagged.PolicyFrame(100, 70) == 79,
+                "hit claims use the same tapered historical frame");
             var claim = new HitClaimPacket { MatchId = 51, AuthorityEpoch = 3, ShooterGeneration = 5,
                 ShooterLifeId = 8, VictimGeneration = 10, VictimLifeId = 9, HitPoint = state.Position,
                 ClaimId = 65535, Damage = 127, LaunchFrame = 72,

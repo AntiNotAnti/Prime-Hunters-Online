@@ -20,12 +20,15 @@ launcher hosting.
   match alone.
 - **No normal player is simulation authority.** The historical first-client
   authority/hand-over path is compatibility coverage only.
-- **Combat, health, score, match state and match end are server authoritative.**
-  Movement position still comes from the owner's `IntentPacket.Position`; this
-  is not a fully server-derived movement model.
-- **Outgoing-hit responsiveness is client predicted.** `NetHitPrediction`
-  presents the shooter's own hit immediately and reconciles later. Remote
-  lethal damage is held for authority; self-damage/self-death can be local.
+- **Combat, movement, health, score, match state and match end are server
+  authoritative.** Remote controls run through the same engine movement and
+  collision code on the server. `IntentPacket.Position` remains telemetry and
+  an observer fallback only; it cannot place an authoritative player or muzzle.
+- **Responsiveness is predicted locally.** A player's own movement still runs
+  immediately on their client. Snapshots echo the newest owner input frame the
+  server actually simulated, and the client reconciles position/velocity
+  against its recorded prediction for that exact input frame. `NetHitPrediction`
+  does the analogous job for outgoing hit feedback.
 
 ## Historical transition
 
@@ -281,9 +284,12 @@ not select them.
   server without them exits with an actionable error instead of falling back to
   client authority. Historical pruning measured the headless subset at roughly
   52 MB of extracted data, but that measurement is not a packaging contract.
-- **Movement authority remains client-reported.** `IntentPacket.Position` is
-  still the owner's position claim. Converting that into fully server-derived
-  movement would be a separate prediction/reconciliation project.
+- **Movement prediction is intentionally client-side; movement authority is
+  not.** The local player moves without waiting for the round trip, while the
+  server derives canonical position/velocity from controls and collision.
+  Reconciliation uses the snapshot's per-slot processed-input frame rather than
+  a ping estimate, so a delayed authority state is compared with the local
+  prediction from the same instant.
 - **Real Windows authoritative gameplay still deserves manual coverage with
   extracted data.** CI validates the Windows server binary/startup contract,
   but cannot ship proprietary game files into Actions.

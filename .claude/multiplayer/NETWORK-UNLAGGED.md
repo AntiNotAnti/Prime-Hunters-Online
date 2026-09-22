@@ -39,13 +39,19 @@ amount they are behind it.
 | `NetUnlagged.BeginShot` / `EndShot` | wrap the single `BeamProjectileEntity.Spawn` call in `PlayerInput.cs`, next to the existing `NetDamage.NoteFired` |
 | `PlayerEntity.ModPlaceAt` | position + hitbox + room node, in `PlayerEntityNetAim.cs` |
 
-Rewind depth = `authority NetFrame − (AckFrame + AckSubFrame/256)`, clamped to
-`MaxRewindFrames` (**default 45 = 750 ms** since protocol 7, movable with
-`-maxrewind N`; it was 24 = 400 ms up to protocol 6). History is
-`HistoryFrames` **128 ≈ 2.13 s**, which is deeper than Zandronum's
-`UNLAGGEDTICS 35` because this ring has to cover the round trip *plus* whatever
-a client is holding its puppets back by to smooth them, with the ceiling
-comfortably inside it rather than against its edge.
+Raw rewind depth = `authority NetFrame − (AckFrame + AckSubFrame/256)`.
+Protocol 18 applies a defender-aware curve instead of granting that entire age:
+
+- **0-15 frames (0-250 ms):** full compensation.
+- **15-24 frames (250-400 ms):** additional age is compensated at 50%.
+- **beyond 24 frames:** additional age is compensated at 25%.
+- **30 frames (500 ms) raw** is the default request ceiling, so the default
+  maximum *served* rewind is 21 frames = **350 ms**.
+
+`-maxrewind N` changes the raw request ceiling for A/B work; it does not turn
+the tapered regions back into full compensation. History remains
+`HistoryFrames` **128 ≈ 2.13 s**, comfortably deeper than every served rewind
+and still useful for diagnostics and validated claim history.
 
 **The sub-frame is protocol 7's.** A client that interpolates its puppets
 (`NETWORK-SMOOTHING.md`) is not drawing any one snapshot: it draws a point
@@ -56,7 +62,7 @@ world — more exactly than before, since an integer ack was itself a rounding o
 up to a frame. Zero from a client that does not interpolate, which is what
 every build before 7 was.
 
-### The ceiling is ours, and it is 2.5x tighter than Q-Zandronum's
+### The fairness curve is ours
 
 Worth stating plainly, because it was not: **Q-Zandronum has no second clamp.**
 `UNLAGGED_Gametic` bounds the rewind by the history and by nothing else --
@@ -88,20 +94,16 @@ The distribution's **mode is two frames past the ceiling**. Nine shots in ten
 were resolved against a world their shooter never saw; the shooter's own machine
 resolved 16 of the 26 hits the authority credited it with, so four shots in ten
 landed with nothing happening on the screen that fired them, and two headshots
-in ten came back as body shots. Protocol 7 moved the default to **45 frames
-(750 ms)**: past that distribution with room for the smoothing delay on top,
-still inside a history twice as deep, and still under the one second
-Q-Zandronum allows. The same scenario at 45 reads **clamped 0, worst asked 42**.
-`NetUnlagged.LegacyMaxRewindFrames` is the old number, for the baseline arm.
+in ten came back as body shots. Protocol 7 therefore moved the historical
+default to **45 frames (750 ms)**; that removed the shooter-side clamp almost
+entirely, but it also allowed very old views to remain fully authoritative long
+after a defender had reached cover.
 
-**45 is adequate at 320 ms and no more than adequate.** The jump-pad arm at
-320 +- 80 with 2% loss reads `clamped 1 (1.4%), worst asked 45` -- one shot in
-seventy reached the new ceiling exactly. At the top of the 250-400 ms band this
-work is about, or with a client buffering more than three frames, it will start
-folding again. If that shows up, raise it rather than wonder: the history is
-128 frames and `MaxRewindCeiling` allows 120, so there is room. What bounds the
-number is not the ring, it is how far back a player is willing to be shot after
-breaking line of sight.
+Protocol 18 keeps that measurement as the reason ordinary latency is compensated,
+but changes the tradeoff: full compensation ends at 250 ms and older views taper
+toward the defender's newer server-owned position. `PreviousMaxRewindFrames`
+retains 45 for diagnostics and `LegacyMaxRewindFrames` retains the older 24.
+The ring is still 128 frames deep; its size is no longer the fairness policy.
 
 Two smaller differences in the same function, for the record: Q-Zandronum
 rewinds to `lastServerGametic + 1`, one tic *shallower* than the raw ack -- the
@@ -157,20 +159,19 @@ the `Spawn` call: the pool is picked from by exactly that test
   an upstream field and an upstream branch in `BeamProjectileEntity.Process`
   to save the beam being one frame further down range than asked for, which is
   within the error the whole mechanism is correcting.
-- **Client-side prediction with input replay.** Zandronum's `cl_pred.cpp`
-  rewinds the local player to the server's position and replays stored
-  `ticcmd`s. This game does not need it and could not use it as written: a
-  player's own position is *sent*, not derived (`IntentPacket.Position` —
-  "whoever is playing a character is the one who knows where it is"), so there
-  is no server correction to replay against. The existing `DesyncDistance`
-  backstop covers corruption.
+- **Client-side movement prediction/reconciliation.** Protocol 18 makes the
+  server's engine movement authoritative while preserving immediate local
+  control. Each snapshot echoes the newest owner input frame actually simulated
+  for every slot. The client keeps exact position/velocity history by input
+  frame, compares the authority with the prediction from that same frame, and
+  carries the historical error forward into the current prediction. Small
+  errors are eased; collision/teleport-scale errors snap. No ping-derived
+  "where was I probably?" comparison is used.
 
-  **This is about movement, and only movement.** Predicting a client's own
-  *hits* is a different question with a different answer, and it is
-  implemented — `NETWORK-PREDICTION.md`. It is possible precisely because of
-  the rewind described above: the authority resolves against the frame the
-  shooter had applied, which is the world the shooter's machine already holds,
-  so the client can run the same test itself and be right.
+  **Hit prediction remains separate.** `NETWORK-PREDICTION.md` still handles
+  immediate outgoing-hit feedback. Normal authority shots and hit-claim rescue
+  now both use this document's same tapered rewind policy, so the claim path
+  cannot resurrect a raw old-world hit that the authority intentionally refused.
 
 ## Measuring it
 

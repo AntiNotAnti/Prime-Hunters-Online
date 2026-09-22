@@ -88,17 +88,18 @@ namespace MphRead.Mods.Network
         /// </summary>
         public static long NodeLookupsUnresolved;
 
-        /// <summary>
-        /// How far this machine's own player may be from the authority's copy
-        /// of it before it is pulled back.
-        ///
-        /// Wide on purpose. The authority's copy is this client's own report
-        /// from a round trip ago, so under boost across a bad line the two
-        /// are several units apart while nothing at all is wrong, and a
-        /// threshold tight enough to call that a desync is a threshold that
-        /// fires constantly. This is here for corruption, not for latency.
-        /// </summary>
-        private const float DesyncDistance = 30f;
+        // Local movement is predicted immediately and reconciled when a
+        // snapshot names the exact owner-input frame the authority processed.
+        private const float PredictionDeadzone = 0.03f;
+        private const float PredictionSnapDistance = 2.0f;
+        private const float PredictionCorrectionRate = 0.5f;
+        private const float PredictionMaxCorrection = 0.35f;
+
+        public static long PredictionCorrections { get; private set; }
+        public static long PredictionSnaps { get; private set; }
+        public static long PredictionHistoryMisses { get; private set; }
+        public static double PredictionErrorSum { get; private set; }
+        public static float PredictionWorstError { get; private set; }
 
         /// <summary>
         /// The fastest a puppet may be said to be travelling, in units per
@@ -708,8 +709,8 @@ namespace MphRead.Mods.Network
         /// are the match, and a client that decided them for itself was
         /// playing a different one -- but keeps its facing, because aim has to
         /// answer the mouse now rather than after a round trip, and keeps its
-        /// own position -- see the isLocal branch, and
-        /// <see cref="DesyncDistance"/> for the one case that overrides it.
+        /// own position immediately. The isLocal branch reconciles that
+        /// prediction against the exact owner-input frame echoed by the server.
         /// </summary>
         private static readonly ushort[] _appliedLifeId = new ushort[PlayerEntity.SlotCapacity];
         private static readonly bool[] _lifeApplied = new bool[PlayerEntity.SlotCapacity];
@@ -764,6 +765,10 @@ namespace MphRead.Mods.Network
                 GameState.Kills[slot] = state.Kills;
                 GameState.Deaths[slot] = state.Deaths;
             }
+            // Preserve the local prediction before damage replay potentially
+            // applies authoritative knockback for feedback. Reconciliation
+            // rebuilds velocity from this value so the impulse is not doubled.
+            Vector3 predictedCurrentSpeed = isLocal ? player.Speed : default;
             NetDamage.Replay(player, state);
             if (!spawned)
             {
@@ -789,11 +794,10 @@ namespace MphRead.Mods.Network
             }
             else
             {
-                if (!fresh && NetRoomChange.GameplayReady && Diverged(player, state, slot))
+                if (!fresh && NetRoomChange.GameplayReady)
                 {
-                    Move(player, state.Position);
-                    player.Speed = state.Speed;
-                    _divergedFrames[slot] = 0;
+                    ReconcileLocalMovement(player, state, slot, predictedCurrentSpeed);
+                    ApplyForm(player, (state.Flags & PlayerState.FlagAltForm) != 0);
                 }
                 player.Health = NetHitPrediction.LocalHealthFor(player, state.Health);
             }
@@ -846,56 +850,77 @@ namespace MphRead.Mods.Network
             => slot < 0 || slot >= _formReconciliation.Length ? FormCorrection.None
                 : _formReconciliation[slot].Step(frame, desiredAlt, actualAlt, morphing, unmorphing, ping);
 
-        private static readonly int[] _divergedFrames = new int[PlayerEntity.SlotCapacity];
+        private static readonly uint[] _lastPredictionAck =
+            new uint[PlayerEntity.SlotCapacity];
 
-        /// <summary>
-        /// How long this machine's own player must look wrong before it is
-        /// moved. Long enough that nothing latency can produce survives it.
-        /// </summary>
-        private const int DivergedFramesBeforeCorrecting = 60;
-
-        /// <summary>
-        /// Whether the authority's copy of this machine's own player is
-        /// somewhere it cannot be explained by the trip.
-        ///
-        /// Comparing it against where the player is *now* is the wrong
-        /// question, and asking it that way was a bug of its own. The
-        /// authority's copy is this client's own report from a round trip
-        /// ago, so under anything fast the two are legitimately far apart:
-        /// a player falling out of the level covers thirty units in the half
-        /// second a 250 ms link takes to answer, and correcting that hauled it
-        /// back up out of the fall, over and over, so it could never die.
-        /// Seventy-seven of those in one run, and the peers watching saw a
-        /// player jumping 64 units at a time.
-        ///
-        /// So compare it against where this player *was* when the authority
-        /// was looking -- its own recorded position, a ping's worth of frames
-        /// back. That is the same instant, and a difference then is a real
-        /// disagreement rather than a stale reading. It still has to persist,
-        /// because one bad snapshot is not a desync.
-        /// </summary>
-        private static bool Diverged(PlayerEntity player, in PlayerState state, int slot)
+        private static void ReconcileLocalMovement(PlayerEntity player,
+            in PlayerState state, int slot, Vector3 predictedCurrentSpeed)
         {
-            if (slot < 0 || slot >= _divergedFrames.Length)
+            if ((uint)slot >= _lastPredictionAck.Length)
             {
-                return false;
+                return;
             }
-            Vector3 then = player.Position;
-            int lagFrames = slot < NetSession.SlotPing.Length
-                ? Math.Clamp(NetSession.SlotPing[slot] * 60 / 1000, 0, 100)
-                : 0;
-            if (lagFrames > 0 && NetSession.NetFrame > (uint)lagFrames
-                && player.ModGetNetworkPosition(NetSession.NetFrame - (uint)lagFrames, out Vector3 past))
+            uint ack = NetSession.RemoteInputFrames[slot];
+            if (ack == 0 || (_lastPredictionAck[slot] != 0
+                && !NetLifecycleTracker.Newer(ack, _lastPredictionAck[slot])))
             {
-                then = past;
+                return;
             }
-            if ((state.Position - then).LengthSquared <= DesyncDistance * DesyncDistance)
+
+            bool authorityAlt = (state.Flags & PlayerState.FlagAltForm) != 0;
+            if (player.IsMorphing || player.IsUnmorphing || player.IsAltForm != authorityAlt)
             {
-                _divergedFrames[slot] = 0;
-                return false;
+                return;
             }
-            _divergedFrames[slot]++;
-            return _divergedFrames[slot] >= DivergedFramesBeforeCorrecting;
+
+            // A snapshot can arrive before this frame's local movement has
+            // been recorded. Leave the ack unconsumed so AfterSimulation can
+            // retry the same snapshot after the exact prediction exists.
+            if (!player.ModGetNetworkPrediction(ack,
+                    out Vector3 predictedPosition, out Vector3 predictedSpeed))
+            {
+                PredictionHistoryMisses++;
+                return;
+            }
+            _lastPredictionAck[slot] = ack;
+
+            Vector3 error = state.Position - predictedPosition;
+            if (!Sane(error))
+            {
+                RejectedUpdates++;
+                return;
+            }
+
+            float distance = error.Length;
+            PredictionErrorSum += distance;
+            PredictionWorstError = Math.Max(PredictionWorstError, distance);
+
+            if (distance > PredictionDeadzone)
+            {
+                Vector3 correction;
+                if (distance >= PredictionSnapDistance)
+                {
+                    correction = error;
+                    PredictionSnaps++;
+                }
+                else
+                {
+                    float amount = Math.Min(distance * PredictionCorrectionRate,
+                        PredictionMaxCorrection);
+                    correction = error * (amount / distance);
+                }
+                Move(player, player.Position + correction);
+                PredictionCorrections++;
+            }
+
+            // Authority velocity at ack plus the local predicted change since
+            // ack. predictedCurrentSpeed was captured before damage replay so
+            // an authoritative knockback event is not applied twice.
+            Vector3 targetSpeed = state.Speed + (predictedCurrentSpeed - predictedSpeed);
+            if (Sane(targetSpeed))
+            {
+                player.Speed = targetSpeed;
+            }
         }
 
         /// <summary>
@@ -909,7 +934,7 @@ namespace MphRead.Mods.Network
             Array.Clear(_formReconciliation);
             Array.Clear(_lifeApplied);
             Array.Clear(_reportSeen);
-            Array.Clear(_divergedFrames);
+            Array.Clear(_lastPredictionAck);
         }
 
         public static void Reset()
@@ -932,7 +957,12 @@ namespace MphRead.Mods.Network
             Array.Clear(ShootPressAge);
             Array.Clear(_pressHistory);
             _hasLatch = false;
-            Array.Clear(_divergedFrames);
+            Array.Clear(_lastPredictionAck);
+            PredictionCorrections = 0;
+            PredictionSnaps = 0;
+            PredictionHistoryMisses = 0;
+            PredictionErrorSum = 0;
+            PredictionWorstError = 0;
             Array.Clear(_lastReportPosition);
             Array.Clear(_lastReportFrame);
             Array.Clear(_reportSeen);
@@ -983,7 +1013,7 @@ namespace MphRead.Mods.Network
                 _hasLatch = false;
                 _latchedCharge = _latchedBoostDamage = 0;
             }
-            _divergedFrames[slot] = 0;
+            _lastPredictionAck[slot] = 0;
             _lastReportPosition[slot] = Vector3.Zero;
             _lastReportFrame[slot] = 0;
             _reportSeen[slot] = false;

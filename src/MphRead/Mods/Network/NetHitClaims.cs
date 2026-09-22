@@ -1041,7 +1041,9 @@ namespace MphRead.Mods.Network
                 return NetSession.NetFrame;
             }
             uint ack = NetSession.RemoteIntents[slot].AckFrame;
-            return ack == 0 || ack > NetSession.NetFrame ? NetSession.NetFrame : ack;
+            return ack == 0 || ack > NetSession.NetFrame
+                ? NetSession.NetFrame
+                : NetUnlagged.PolicyFrame(NetSession.NetFrame, ack);
         }
 
         /// <summary>
@@ -1183,10 +1185,12 @@ namespace MphRead.Mods.Network
                     + $"{claim.Beam}, outside that weapon's impulse limit");
                 return HitVerdictPacket.ResultImpulseLimit;
             }
-            // Where the authority itself had the victim, at the frame the
-            // shooter was looking at. This is the claim's only evidence and
-            // the authority's own record of it.
-            if (!NetUnlagged.PositionAt(victimSlot, claim.AckFrame, claim.VictimGeneration, claim.VictimLifeId, out Vector3 was))
+            // Claims obey the same defender-aware rewind budget as the
+            // authority's own shot. Validating against the raw old AckFrame
+            // would let the rescue path bring back a behind-cover hit that
+            // normal lag compensation intentionally refused.
+            uint policyFrame = NetUnlagged.PolicyFrame(now, claim.AckFrame);
+            if (!NetUnlagged.PositionAt(victimSlot, policyFrame, claim.VictimGeneration, claim.VictimLifeId, out Vector3 was))
             {
                 // Either the victim was not in play in that world, or the ring
                 // no longer holds it. Both mean there is nothing to check.
@@ -1198,8 +1202,8 @@ namespace MphRead.Mods.Network
                 Vector3 offset = claim.HitPoint - was;
                 RefusedHere++;
                 NetLog.Event($"slot {shooterSlot} claimed a hit on slot {victimSlot} at "
-                    + $"{claim.HitPoint}, {offset.Length:F2} units from where frame "
-                    + $"{claim.AckFrame} put them");
+                    + $"{claim.HitPoint}, {offset.Length:F2} units from policy frame "
+                    + $"{policyFrame} (raw ack {claim.AckFrame})");
                 return HitVerdictPacket.ResultGeometry;
             }
             PlayerEntity victim = PlayerEntity.Players[victimSlot];
@@ -1438,7 +1442,7 @@ namespace MphRead.Mods.Network
                 Beam = claim.Beam,
                 Damage = claim.Damage,
                 Flags = claim.Flags,
-                AckFrame = claim.AckFrame,
+                AckFrame = NetUnlagged.PolicyFrame(NetSession.NetFrame, claim.AckFrame),
                 LaunchFrame = claim.LaunchFrame,
                 HitPoint = claim.HitPoint,
                 Direction = claim.Direction,

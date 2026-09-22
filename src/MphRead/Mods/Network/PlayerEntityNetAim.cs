@@ -96,6 +96,7 @@ namespace MphRead.Entities
 
         private const int NetworkHistoryLength = 120;
         private readonly Vector3[] _networkPositionHistory = new Vector3[NetworkHistoryLength];
+        private readonly Vector3[] _networkSpeedHistory = new Vector3[NetworkHistoryLength];
         private readonly uint[] _networkPositionFrames = new uint[NetworkHistoryLength];
         private int _networkPositionHistoryCount;
 
@@ -110,9 +111,11 @@ namespace MphRead.Entities
             for (int i = count; i > 0; i--)
             {
                 _networkPositionHistory[i] = _networkPositionHistory[i - 1];
+                _networkSpeedHistory[i] = _networkSpeedHistory[i - 1];
                 _networkPositionFrames[i] = _networkPositionFrames[i - 1];
             }
             _networkPositionHistory[0] = Position;
+            _networkSpeedHistory[0] = Speed;
             _networkPositionFrames[0] = frame;
             _networkPositionHistoryCount = Math.Min(count + 1, NetworkHistoryLength);
         }
@@ -128,6 +131,23 @@ namespace MphRead.Entities
                 }
             }
             position = default;
+            return false;
+        }
+
+        internal bool ModGetNetworkPrediction(uint frame, out Vector3 position,
+            out Vector3 speed)
+        {
+            for (int i = 0; i < _networkPositionHistoryCount; i++)
+            {
+                if (_networkPositionFrames[i] == frame)
+                {
+                    position = _networkPositionHistory[i];
+                    speed = _networkSpeedHistory[i];
+                    return true;
+                }
+            }
+            position = default;
+            speed = default;
             return false;
         }
 
