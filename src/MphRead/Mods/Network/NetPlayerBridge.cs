@@ -170,12 +170,11 @@ namespace MphRead.Mods.Network
         /// Record this frame's rising edges, whether or not a packet goes out
         /// this frame.
         ///
-        /// Separate from building the packet because the two happen at
-        /// different rates: edges have to be caught every frame -- a one-frame
-        /// press exists only on the frame it happens -- while packets are sent
-        /// less often to keep the relay from drowning. Folding this into the
-        /// packet build meant a slower send rate silently dropped half of all
-        /// morphs and weapon switches.
+        /// Separate from building the packet because the history is also the
+        /// loss-recovery lane: a one-frame press exists only on the frame it
+        /// happens, while each 60 Hz packet repeats the last few rising edges.
+        /// The dedicated server then carries those edges in the bundle's
+        /// separate redundant event section rather than relaying raw intents.
         /// </summary>
         public static void RecordPresses(PlayerEntity player)
         {
@@ -212,10 +211,8 @@ namespace MphRead.Mods.Network
             // The charge that will be spent by the shot this frame fires, and
             // the ram that will be spent by the boost it releases.
             //
-            // Sampled here rather than in CaptureIntent because this runs
-            // every frame and that one does not: a packet goes out every other
-            // frame, so the current value at capture time is the charge as it
-            // stands *after* the release, which is zero. What the authority
+            // Sampled here before capture so a release observes the charge as
+            // it stood on the firing frame, before gameplay spends it. What the authority
             // needs is the value the trigger was let go on, so it is latched
             // on the frame of the release and held until a packet carries it.
             // Nothing is latched on a frame with no release, and the current
