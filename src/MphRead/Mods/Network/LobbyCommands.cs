@@ -247,7 +247,9 @@ namespace MphRead.Mods.Network
             ServerReplayRecorder.Stop(matchEnded);
             _sim?.Stop();
             _sim = null;
-            _lastSnapshot = null;
+            _lastSnapshotLength = 0;
+            _lastKeyframeSnapshotLength = 0;
+            _relaySnapshotBaselineFrame = 0;
             NetHitClaims.VerdictSink = null;
         }
 
@@ -264,9 +266,14 @@ namespace MphRead.Mods.Network
             _frozenWorldProfile = LobbyRules.ResolveWorldProfile(_frozenMatch, _maxPlayers);
 
             _snapshotSeen = false;
+            _relaySnapshotBaselineFrame = 0;
             Array.Clear(_slotLives);
             foreach (Peer connected in _peers)
+            {
                 connected.LastIntentFrame = 0;
+                connected.HasIntent = false;
+                connected.LatestIntent = default;
+            }
             _matchEndedAt = -1;
             _expectedLoadedSlots = 0;
             _loadedSlots = 0;
@@ -369,6 +376,7 @@ namespace MphRead.Mods.Network
             _startCountdownDeadline = 0;
             _matchEndedAt = -1;
             _snapshotSeen = false;
+            _relaySnapshotBaselineFrame = 0;
             Array.Clear(_slotLives);
 
             if (stopProcess)
