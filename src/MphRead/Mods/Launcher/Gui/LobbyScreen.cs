@@ -246,9 +246,9 @@ namespace MphRead.Mods.Launcher.Gui
             _closeLobby.HorizontalAlignment = HorizontalAlignment.Stretch;
             administration.Children.Add(_closeLobby);
 
-            // Match rules are deliberately settings-only. Four compact rows of
-            // toggles plus the two numeric limits fit in the panel without
-            // scrolling, leaving owner administration in the roster column.
+            // Four compact rows of toggles plus the two numeric limits keep
+            // the match panel dense enough to share its column with team and
+            // lobby administration, freeing the roster column for players.
             _ownerControls.Children.Add(limits);
             _ownerControls.Children.Add(toggles);
             _ownerControls.Children.Add(_layoutSummary);
