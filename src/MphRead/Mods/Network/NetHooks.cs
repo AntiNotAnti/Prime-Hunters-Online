@@ -446,6 +446,11 @@ namespace MphRead.Mods.Network
                 : null;
             if (player != null && player.LoadFlags.TestFlag(LoadFlags.Active))
             {
+                // A hard authority correction is queued when a snapshot is
+                // adopted. Apply it here, before this frame's simulation and
+                // collision sweep, never after physics has already finished.
+                NetPlayerBridge.ApplyPendingLocalCorrection(player);
+
                 // Between the input step and the intent capture, so a
                 // scripted player's keys reach both the local simulation and
                 // the wire -- the same order a person's keys travel in.

@@ -894,6 +894,22 @@ namespace MphRead.Mods.Network
 
         private static readonly uint[] _lastPredictionAck =
             new uint[PlayerEntity.SlotCapacity];
+        private static readonly bool[] _pendingLocalCorrection =
+            new bool[PlayerEntity.SlotCapacity];
+        private static readonly Vector3[] _pendingLocalPosition =
+            new Vector3[PlayerEntity.SlotCapacity];
+
+        internal static void ApplyPendingLocalCorrection(PlayerEntity player)
+        {
+            int slot = player.SlotIndex;
+            if ((uint)slot >= _pendingLocalCorrection.Length
+                || !_pendingLocalCorrection[slot] || player.Health <= 0)
+            {
+                return;
+            }
+            _pendingLocalCorrection[slot] = false;
+            Move(player, _pendingLocalPosition[slot]);
+        }
 
         private static void ReconcileLocalMovement(PlayerEntity player,
             in PlayerState state, int slot, Vector3 predictedCurrentSpeed)
@@ -953,7 +969,8 @@ namespace MphRead.Mods.Network
                 // remains collision-swept. Snap to a position the authority
                 // actually occupied, not to a synthetic current+historical
                 // error point that may lie through nearby geometry.
-                Move(player, state.Position);
+                _pendingLocalPosition[slot] = state.Position;
+                _pendingLocalCorrection[slot] = true;
                 PredictionCorrections++;
                 PredictionSnaps++;
             }
@@ -987,6 +1004,8 @@ namespace MphRead.Mods.Network
             Array.Clear(_lifeApplied);
             Array.Clear(_reportSeen);
             Array.Clear(_lastPredictionAck);
+            Array.Clear(_pendingLocalCorrection);
+            Array.Clear(_pendingLocalPosition);
         }
 
         public static void Reset()
@@ -1010,6 +1029,8 @@ namespace MphRead.Mods.Network
             Array.Clear(_pressHistory);
             _hasLatch = false;
             Array.Clear(_lastPredictionAck);
+            Array.Clear(_pendingLocalCorrection);
+            Array.Clear(_pendingLocalPosition);
             PredictionCorrections = 0;
             PredictionSnaps = 0;
             PredictionHistoryMisses = 0;
@@ -1067,6 +1088,8 @@ namespace MphRead.Mods.Network
                 _latchedCharge = _latchedBoostDamage = 0;
             }
             _lastPredictionAck[slot] = 0;
+            _pendingLocalCorrection[slot] = false;
+            _pendingLocalPosition[slot] = Vector3.Zero;
             _lastReportPosition[slot] = Vector3.Zero;
             _lastReportFrame[slot] = 0;
             _reportSeen[slot] = false;
