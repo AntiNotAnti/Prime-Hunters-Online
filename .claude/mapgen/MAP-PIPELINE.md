@@ -1,5 +1,14 @@
 # Custom maps: the generator and the Quake 3 importer
 
+Runtime preparation, editor validation/navigation, package generation and package
+installation share `MapBuildScheduler`. Synchronous `MapPacker.Generate(def, ...)`
+is a compatibility entry point into its bounded queue and content cache; only the
+worker uses the `BuiltMap` packer overload. Do not hold the custom-room catalog
+lock while waiting for a worker, because compiler dependency resolution reads
+catalog metadata. See [MAP-STUDIO.md](MAP-STUDIO.md) for cache and cancellation
+ownership. The raw collision diagnostic `-mapcheck` intentionally inspects shapes
+without the publishing compiler's validation gate.
+
 ## What ships: one file
 
 **A map is handed out as a `.ppmap` bundle** -- the recipe, the level and the

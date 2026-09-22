@@ -53,9 +53,10 @@ namespace MphRead.Mods.MapGen
         public static void Generate(MapDefinition def, string archiveDir, string entityDir, string nodeDir,
             bool verbose = true)
         {
-            MapCompilation compilation = MapCompiler.Compile(def);
-            MapCompiler.ThrowIfInvalid(compilation.Validation);
-            Generate(compilation.Map!, archiveDir, entityDir, nodeDir, verbose);
+            var result = MapBuildScheduler.Shared.BuildAsync(MapBuildSnapshot.Capture(def)).GetAwaiter().GetResult();
+            MapCompiler.ThrowIfInvalid(result.Validation());
+            MapBuildScheduler.Install(result, def, archiveDir, entityDir, nodeDir);
+            if (verbose) Console.WriteLine($"{def.Name}: {(result.CacheHit ? "cached" : "compiled")} runtime files ({result.Milliseconds:0} ms)");
         }
 
         /// <summary>

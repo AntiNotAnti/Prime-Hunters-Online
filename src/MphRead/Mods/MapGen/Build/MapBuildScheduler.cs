@@ -12,6 +12,8 @@ namespace MphRead.Mods.MapGen;
 public interface IMapBuildScheduler
 {
     Task<MapBuildResult> BuildAsync(MapBuildSnapshot snapshot, CancellationToken cancellation = default);
+    Task<MapAnalysisResult> AnalyzeAsync(MapBuildSnapshot snapshot, bool navigation = false, CancellationToken cancellation = default);
+    Task<string> PackageAsync(MapBuildSnapshot snapshot, string destination, CancellationToken cancellation = default);
 }
 public sealed record MapBuildResult(string Fingerprint, MapOutputSet? Outputs,
     IReadOnlyList<MapDiagnostic> Diagnostics, IReadOnlyList<MapBudget> Budgets, bool CacheHit, double Milliseconds)
@@ -23,26 +25,26 @@ public sealed record MapBuildResult(string Fingerprint, MapOutputSet? Outputs,
     }
 }
 
-/// <summary>Bounded single-flight runtime builds. Cancelling one waiter never cancels shared work.</summary>
+/// <summary>Bounded single-flight map work. Cancelling one waiter never cancels shared work.</summary>
 public sealed class MapBuildScheduler : IMapBuildScheduler
 {
-    private readonly object _sync = new();
-    private readonly Dictionary<string, Task<MapBuildResult>> _jobs = new(StringComparer.Ordinal);
-    private readonly SemaphoreSlim _workers;
+    private readonly MapWorkQueue _queue;
+    private readonly MapCompilationCache _compilations = new();
     private readonly string _cacheRoot;
-    private readonly Func<MapDefinition, string, MapValidationResult> _build;
-    private readonly int _maximumPending;
+    private readonly Func<MapDefinition, string, MapValidationResult>? _build;
     public static MapBuildScheduler Shared { get; } = new(Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ProjectPrime", "map-cache"));
-    private long _sharedRequests;
-    public long SharedRequests => Interlocked.Read(ref _sharedRequests);
-    public int PendingCount { get { lock (_sync) return _jobs.Count; } }
+    public long SharedRequests => _queue.Shared;
+    public int PendingCount => _queue.Count;
+    public int CompiledCacheCount => _compilations.Count;
+    public long CompiledCacheBytes => _compilations.Bytes;
+    public long CompilationCount => _compilations.Compilations;
     public MapBuildScheduler(string cacheRoot, int concurrency = 2, int maximumPending = 32,
         Func<MapDefinition, string, MapValidationResult>? build = null)
     {
-        if (concurrency < 1 || maximumPending < concurrency) throw new ArgumentOutOfRangeException(nameof(concurrency));
-        _cacheRoot = Path.GetFullPath(cacheRoot); _workers = new(concurrency, concurrency);
-        _maximumPending = maximumPending; _build = build ?? BuildRuntime;
+        _queue = new(concurrency, maximumPending);
+        _cacheRoot = Path.GetFullPath(cacheRoot);
+        _build = build;
     }
     public async Task<MapBuildResult> BuildAsync(MapBuildSnapshot snapshot, CancellationToken cancellation = default)
     {
@@ -51,41 +53,83 @@ public sealed class MapBuildScheduler : IMapBuildScheduler
         (MapDefinition Definition, MapBuildFingerprint Fingerprint) input;
         try
         {
-            input = await Task.Run(() =>
-            {
-                var definition = snapshot.CreateDefinition();
-                return (definition, MapBuildFingerprint.Create(definition));
-            }, cancellation).ConfigureAwait(false);
+            input = await Prepare(snapshot, cancellation).ConfigureAwait(false);
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex) { return Failure("", ex.Message); }
         cancellation.ThrowIfCancellationRequested();
         string key = input.Fingerprint.ContentKey;
-        Task<MapBuildResult> job;
-        lock (_sync)
+        try
         {
-            if (!_jobs.TryGetValue(key, out job!))
-            {
-                if (_jobs.Count >= _maximumPending) return Failure(key, "Map build queue is full.");
-                var completion = new TaskCompletionSource<MapBuildResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-                job = completion.Task; _jobs.Add(key, job);
-                _ = Run(input.Definition, input.Fingerprint, completion);
-            }
-            else Interlocked.Increment(ref _sharedRequests);
+            return await _queue.Schedule("runtime:" + key,
+                () => Execute(input.Definition, input.Fingerprint), cancellation).ConfigureAwait(false);
         }
-        return await job.WaitAsync(cancellation).ConfigureAwait(false);
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex) { return Failure(key, ex.Message); }
     }
-    private async Task Run(MapDefinition definition, MapBuildFingerprint fingerprint, TaskCompletionSource<MapBuildResult> completion)
+
+    public async Task<MapAnalysisResult> AnalyzeAsync(MapBuildSnapshot snapshot, bool navigation = false,
+        CancellationToken cancellation = default)
     {
-        string key = fingerprint.ContentKey;
-        await _workers.WaitAsync().ConfigureAwait(false);
-        MapBuildResult result;
-        try { result = await Task.Run(() => Execute(definition, fingerprint)).ConfigureAwait(false); }
-        catch (Exception ex) { result = Failure(key, ex.Message); }
-        finally { _workers.Release(); }
-        lock (_sync) _jobs.Remove(key);
-        completion.TrySetResult(result);
+        string key = "";
+        try
+        {
+            var input = await Prepare(snapshot, cancellation).ConfigureAwait(false);
+            key = input.Fingerprint.ContentKey;
+            return await _queue.Schedule((navigation ? "navigation:" : "analysis:") + key, () =>
+            {
+                MapCompilation compilation = _compilations.Get(key, input.Definition);
+                var result = new MapAnalysisResult(key, compilation, navigation);
+                RequireUnchanged(input.Definition, input.Fingerprint);
+                return result;
+            }, cancellation).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            var validation = new MapValidationResult();
+            validation.Error("FP-MAP-BUILD", ex.Message);
+            return new MapAnalysisResult(key, new(null, validation), navigation: false);
+        }
     }
+
+    public async Task<string> PackageAsync(MapBuildSnapshot snapshot, string destination,
+        CancellationToken cancellation = default)
+    {
+        var input = await Prepare(snapshot, cancellation).ConfigureAwait(false);
+        string path = Path.GetFullPath(destination), key = input.Fingerprint.ContentKey;
+        return await _queue.Schedule("package:" + key + ":" + path, () =>
+        {
+            var compilation = _compilations.Get(key, input.Definition);
+            MapCompiler.ThrowIfInvalid(compilation.Validation);
+            string staging = path + "." + Guid.NewGuid().ToString("N") + ".staging";
+            try
+            {
+                MapPackageBuilder.WriteValidated(input.Definition, staging);
+                RequireUnchanged(input.Definition, input.Fingerprint);
+                File.Move(staging, path, overwrite: true);
+                return path;
+            }
+            finally { if (File.Exists(staging)) File.Delete(staging); }
+        }, cancellation).ConfigureAwait(false);
+    }
+
+    private static Task<(MapDefinition Definition, MapBuildFingerprint Fingerprint)> Prepare(
+        MapBuildSnapshot snapshot, CancellationToken cancellation) => Task.Run(() =>
+    {
+        var definition = snapshot.CreateDefinition();
+        return (definition, MapBuildFingerprint.Create(definition));
+    }, cancellation);
+
+    private void RequireUnchanged(MapDefinition definition, MapBuildFingerprint fingerprint)
+    {
+        if (MapBuildFingerprint.Create(definition) != fingerprint)
+        {
+            _compilations.Remove(fingerprint.ContentKey, definition);
+            throw new IOException("Map dependencies changed while building. Build again using the updated inputs.");
+        }
+    }
+
     private MapBuildResult Execute(MapDefinition definition, MapBuildFingerprint fingerprint)
     {
         var watch = Stopwatch.StartNew();
@@ -93,8 +137,7 @@ public sealed class MapBuildScheduler : IMapBuildScheduler
         Directory.CreateDirectory(_cacheRoot);
         // FileShare.None fences cache publication across independent application
         // processes as well as this scheduler's single-flight dictionary.
-        using var lease = new FileStream(Path.Combine(_cacheRoot, key + ".lock"),
-            FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        using var lease = AcquireLease(Path.Combine(_cacheRoot, key + ".lock"));
         var outputs = MapOutputSet.Create(definition, directory, directory, directory);
         string manifest = Path.Combine(directory, "cache.json");
         var cached = ReadCache(manifest, key, outputs);
@@ -104,13 +147,12 @@ public sealed class MapBuildScheduler : IMapBuildScheduler
         Directory.CreateDirectory(staging);
         try
         {
-            var validation = _build(definition, staging);
+            var validation = _build?.Invoke(definition, staging) ?? BuildRuntime(definition, staging, key);
             if (!validation.IsValid) return new(key, null, Array.AsReadOnly(validation.Diagnostics.ToArray()),
                 Array.AsReadOnly(validation.Budgets.ToArray()), false, watch.Elapsed.TotalMilliseconds);
             // External files are not the editor graph. Detect changes during a build
             // rather than publishing output under a fingerprint of different bytes.
-            if (MapBuildFingerprint.Create(definition) != fingerprint)
-                return Failure(key, "Map dependencies changed while building. Build again using the updated inputs.");
+            RequireUnchanged(definition, fingerprint);
             var staged = MapOutputSet.Create(definition, staging, staging, staging);
             if (!staged.Complete) return Failure(key, "Compiler did not produce a complete map output set.");
             var cache = new CacheManifest(key, staged.Files.Select(MapBuildFingerprint.HashFile).ToArray(),
@@ -145,23 +187,41 @@ public sealed class MapBuildScheduler : IMapBuildScheduler
     private static MapBuildResult Failure(string key, string message) => new(key, null,
         Array.AsReadOnly(new[] { new MapDiagnostic("FP-MAP-BUILD", MapDiagnosticSeverity.Error, message) }),
         Array.Empty<MapBudget>(), false, 0);
-    private static MapValidationResult BuildRuntime(MapDefinition definition, string directory)
+    private MapValidationResult BuildRuntime(MapDefinition definition, string directory, string key)
     {
-        var compilation = MapCompiler.Compile(definition);
+        var compilation = _compilations.Get(key, definition);
         if (compilation.Map != null) MapPacker.Generate(compilation.Map, directory, directory, directory, verbose: false);
         return compilation.Validation;
     }
+    private static FileStream AcquireLease(string path)
+    {
+        var timeout = Stopwatch.StartNew();
+        while (true)
+        {
+            try { return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
+            catch (IOException) when (timeout.Elapsed < TimeSpan.FromSeconds(30))
+            {
+                // Only bounded workers wait here; independent application processes
+                // can finish publishing the same immutable cache entry.
+                Thread.Sleep(25);
+            }
+        }
+    }
+
     public static void Install(MapBuildResult result, MapDefinition definition, string archive, string entities, string nodes)
     {
         if (!result.Succeeded || result.Outputs == null) throw new InvalidOperationException("Cannot install a failed map build.");
         // A build requested before an external source edit must not install stale binaries.
-        if (MapBuildFingerprint.Create(definition).ContentKey != result.Fingerprint)
+        var fingerprint = MapBuildFingerprint.Create(definition);
+        if (fingerprint.ContentKey != result.Fingerprint)
             throw new IOException("Map inputs changed after the build. Build again before installing.");
         if (ReadCache(Path.Combine(Path.GetDirectoryName(result.Outputs.Model)!, "cache.json"), result.Fingerprint, result.Outputs) == null)
             throw new IOException("Cached map outputs failed integrity validation. Build again.");
         var destination = MapOutputSet.Create(definition, archive, entities, nodes);
+        Directory.CreateDirectory(Path.GetDirectoryName(destination.Manifest)!);
+        using var lease = AcquireLease(destination.Manifest + ".lock");
         if (File.Exists(destination.Manifest)) File.Delete(destination.Manifest);
         foreach (var pair in result.Outputs.Files.Zip(destination.Files)) AtomicFile.Write(pair.Second, File.ReadAllBytes(pair.First));
-        MapBuildManifest.Write(definition, destination);
+        MapBuildManifest.Write(definition, destination, fingerprint);
     }
 }

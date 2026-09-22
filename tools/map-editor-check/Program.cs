@@ -180,10 +180,86 @@ try
     realDefinition.Spawns.Add(new(){Position=new[]{0f,2,0}});
     var realSnapshot=MapBuildSnapshot.Capture(realDefinition);
     var realScheduler=new MapBuildScheduler(Path.Combine(root,"real-cache"));
+    var analysis=await realScheduler.AnalyzeAsync(realSnapshot);
+    var navigation=await realScheduler.AnalyzeAsync(realSnapshot,navigation:true);
+    Check(analysis.Succeeded && analysis.Faces.Length>0 && navigation.CreateNavigation()!=null,
+        "validation and navigation share scheduler without game files");
+    var graph=navigation.CreateNavigation()!;
+    byte originalNode=graph.Bytes[0];graph.Bytes[0]^=255;
+    Check(navigation.CreateNavigation()!.Bytes[0]==originalNode,"navigation views are detached between consumers");
     var realBuild=await realScheduler.BuildAsync(realSnapshot);
     Check(realBuild.Succeeded,"real native compile/pack: "+string.Join(";",realBuild.Diagnostics.Select(d=>d.Message)));
     Check(realBuild.Outputs!.Files.All(f=>new FileInfo(f).Length>0),"real build produces all five binaries");
     Check((await realScheduler.BuildAsync(realSnapshot)).CacheHit,"real build cache hit");
+    string scheduledPackage=await realScheduler.PackageAsync(realSnapshot,Path.Combine(root,"scheduled.ppmap"));
+    Check(File.Exists(scheduledPackage) && realScheduler.CompilationCount==1,
+        "validation, navigation, runtime and packaging reuse one compilation");
+    string repeatedPackage=MapPackageBuilder.Build(realDefinition,Path.Combine(root,"repeated.ppmap"));
+    Check(File.ReadAllBytes(scheduledPackage).SequenceEqual(File.ReadAllBytes(repeatedPackage)),
+        "scheduled and synchronous package entry points produce identical bytes");
+    Check(MapDependencyAnalyzer.PackageAssets(realDefinition).SequenceEqual(new[]{"test.tex"}),
+        "packaging and cache use one asset dependency set");
+    var borrowed=MapProjectSerializer.Clone(realDefinition);borrowed.Materials[0].Texture=null;
+    borrowed.Assets.Clear();borrowed.Name="BORROWED_VALIDATION";
+    Check((await realScheduler.AnalyzeAsync(MapBuildSnapshot.Capture(borrowed))).Succeeded,
+        "validation does not require cartridge textures used only by packing");
+    for(int i=0;i<12;i++)
+    {
+        var retained=MapProjectSerializer.Clone(realDefinition);retained.Name="RETAINED_"+i;
+        await realScheduler.AnalyzeAsync(MapBuildSnapshot.Capture(retained));
+    }
+    Check(realScheduler.CompiledCacheCount<=8 && realScheduler.CompiledCacheBytes<=128L*1024*1024,
+        "shared compiled geometry cache is bounded");
+    using var mixedRelease=new ManualResetEventSlim();
+    var mixedEntered=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var mixed=new MapBuildScheduler(Path.Combine(root,"mixed"),concurrency:1,maximumPending:2,build:(map,directory)=>
+    {
+        mixedEntered.TrySetResult();
+        if(!mixedRelease.Wait(TimeSpan.FromSeconds(10)))throw new TimeoutException();
+        foreach(var file in MapOutputSet.Create(map,directory,directory,directory).Files)File.WriteAllText(file,map.Name);
+        return new();
+    });
+    var mixedBuild=mixed.BuildAsync(realSnapshot);
+    await mixedEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    using var analysisCancel=new CancellationTokenSource();
+    var cancelledAnalysis=mixed.AnalyzeAsync(realSnapshot,cancellation:analysisCancel.Token);
+    timeout=DateTime.UtcNow.AddSeconds(10);
+    while(mixed.PendingCount<2&&DateTime.UtcNow<timeout)await Task.Delay(1);
+    var sharedAnalysis=mixed.AnalyzeAsync(realSnapshot);
+    timeout=DateTime.UtcNow.AddSeconds(10);
+    while(mixed.SharedRequests==0&&DateTime.UtcNow<timeout)await Task.Delay(1);
+    var fullQueue=await mixed.AnalyzeAsync(realSnapshot,navigation:true);
+    Check(!fullQueue.Succeeded&&fullQueue.Diagnostics.Any(d=>d.Message.Contains("queue is full")),
+        "analysis and runtime jobs share the same queue capacity");
+    analysisCancel.Cancel();
+    try{await cancelledAnalysis;throw new Exception("analysis cancellation did not propagate");}
+    catch(OperationCanceledException){checks++;}
+    mixedRelease.Set();
+    Check((await mixedBuild).Succeeded&&(await sharedAnalysis).Succeeded&&mixed.CompilationCount==1&&mixed.PendingCount==0,
+        "cancelling an analysis waiter preserves shared queued work");
+    // Independent scheduler owners share the same persistent content cache.
+    using var otherRelease=new ManualResetEventSlim();
+    var otherEntered=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    int otherBuilds=0;
+    MapValidationResult OtherBuild(MapDefinition map,string directory)
+    {
+        Interlocked.Increment(ref otherBuilds);otherEntered.TrySetResult();
+        if(!otherRelease.Wait(TimeSpan.FromSeconds(10)))throw new TimeoutException();
+        foreach(var file in MapOutputSet.Create(map,directory,directory,directory).Files)File.WriteAllText(file,map.Name);
+        return new();
+    }
+    var ownerA=new MapBuildScheduler(Path.Combine(root,"shared-owner"),build:OtherBuild);
+    var ownerB=new MapBuildScheduler(Path.Combine(root,"shared-owner"),build:OtherBuild);
+    var ownerFirst=ownerA.BuildAsync(realSnapshot);
+    await otherEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    var ownerSecond=ownerB.BuildAsync(realSnapshot);
+    timeout=DateTime.UtcNow.AddSeconds(10);
+    while(ownerB.PendingCount==0&&DateTime.UtcNow<timeout)await Task.Delay(1);
+    await Task.Delay(60);
+    otherRelease.Set();
+    var ownerResults=await Task.WhenAll(ownerFirst,ownerSecond);
+    Check(otherBuilds==1&&ownerResults.All(r=>r.Succeeded)&&ownerResults.Any(r=>r.CacheHit),
+        "independent schedulers wait for publication instead of failing or compiling twice");
     string beforeAssetChange=MapBuildFingerprint.Create(realDefinition).ContentKey;
     using(var texture=File.Open(texturePath,FileMode.Open,FileAccess.Write)){texture.Position=18;texture.WriteByte(0);}
     Check(MapBuildFingerprint.Create(realDefinition).ContentKey!=beforeAssetChange,"asset content changes fingerprint");

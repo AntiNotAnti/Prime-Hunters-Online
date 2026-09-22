@@ -468,13 +468,18 @@ namespace MphRead.Mods.Launcher.Gui
             AddButton(_inspector,"Apply",()=>{try{float g=Number(grid.Text??""),a=Number(angle.Text??""),s=Number(scale.Text??"");if(g<0||g>100||a<1||a>180||s<=0||s>10)throw new FormatException("Use grid spacing 0–100, rotation step 1–180 and scale step above 0 through 10.");_viewport.Snap=g;_viewport.AngleSnap=a;_viewport.ScaleSnap=s;_viewport.LocalAxes=local.IsChecked==true;}catch(Exception ex){Failure(ex);}});
         }
         private Task Validate()=>Work("Validating",async(p,token)=>
-        {var result=await Task.Run(()=>MapCompiler.Compile(p,token),token);token.ThrowIfCancellationRequested();Problems(result.Validation);if(result.Map!=null&&p.Definition.Import!=null)_viewport?.SetImported(result.Map);});
+        {
+            var result=await MapBuildScheduler.Shared.AnalyzeAsync(MapBuildSnapshot.Capture(p),cancellation:token);
+            token.ThrowIfCancellationRequested();Problems(result.Validation());
+            if(result.Succeeded&&p.Definition.Import!=null)_viewport?.SetImported(result);
+        });
         private Task Navigation()=>Work("Generating navigation",async(p,token)=>
         {
-            var result=await Task.Run(()=>MapCompiler.Compile(p,token),token);Problems(result.Validation);if(result.Map==null)return;
-            var graph=await Task.Run(()=>MapNodePacker.Analyze(result.Map.Solid,result.Map.Definition.NavigationLinks),token);token.ThrowIfCancellationRequested();if(_viewport!=null){_viewport.Navigation=graph;_viewport.InvalidateVisual();}
+            var result=await MapBuildScheduler.Shared.AnalyzeAsync(MapBuildSnapshot.Capture(p),navigation:true,cancellation:token);
+            token.ThrowIfCancellationRequested();Problems(result.Validation());if(!result.Succeeded)return;
+            var graph=result.CreateNavigation();if(graph==null)return;
+            if(_viewport!=null){_viewport.Navigation=graph;_viewport.InvalidateVisual();}
             int components=graph.Components.Distinct().Count();_status.Text=$"{graph.Positions.Length} navigation nodes · {graph.Edges} edges · {components} connected regions";
-            if(components>1){result.Validation.Warning("FP-MAP-007",$"Navigation contains {components} disconnected regions.");Problems(result.Validation);}
         });
         private Task Build(bool package)
         {
@@ -484,7 +489,8 @@ namespace MphRead.Mods.Launcher.Gui
             if(package)
             {
                 string output=Path.ChangeExtension(_path.Text??Path.Combine(CustomRooms.MapDirectory,p.Definition.Name),".ppmap");
-                string path=await Task.Run(()=>{token.ThrowIfCancellationRequested();return MapPackageBuilder.Build(p.Definition,output);},token);_status.Text="Package built: "+path;
+                string path=await MapBuildScheduler.Shared.PackageAsync(MapBuildSnapshot.Capture(p),output,token);
+                token.ThrowIfCancellationRequested();_status.Text="Package built: "+path;
             }
             else
             {

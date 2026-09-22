@@ -67,9 +67,9 @@ namespace MphRead.Mods.MapGen
             }
         }
 
-        public static void Write(MapDefinition definition, MapOutputSet outputs)
+        public static void Write(MapDefinition definition, MapOutputSet outputs, MapBuildFingerprint? fingerprint = null)
         {
-            var manifest = new MapBuildManifest { Fingerprint = MapBuildFingerprint.Create(definition) };
+            var manifest = new MapBuildManifest { Fingerprint = fingerprint ?? MapBuildFingerprint.Create(definition) };
             manifest.OutputHashes = System.Linq.Enumerable.ToArray(
                 System.Linq.Enumerable.Select(outputs.Files, file => MapBuildFingerprint.HashFile(file)));
             AtomicFile.Write(outputs.Manifest, Encoding.UTF8.GetBytes(JsonSerializer.Serialize(manifest)));
