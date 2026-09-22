@@ -1853,7 +1853,9 @@ namespace MphRead.Mods.Network
     public static class SnapshotWire
     {
         public const int PlayerSize = PlayerState.BaseSize;
-        public const int StateHeaderSize = 6; // flags, active-slot mask, keyframe baseline
+        private const int BaseStateHeaderSize = 6; // flags, active-slot mask, keyframe baseline
+        public const int InputFrameSize = sizeof(uint) * PlayerEntity.SlotCapacity;
+        public const int StateHeaderSize = BaseStateHeaderSize + InputFrameSize;
         public const byte FlagKeyframe = 1 << 0;
         public const int KeyframeInterval = 15;
         public const int DamageGroupSize = 1 + DamageEvent.Size * PlayerState.DamageHistory;
@@ -1862,9 +1864,36 @@ namespace MphRead.Mods.Network
         public static void WriteStateHeader(Span<byte> dest, bool keyframe,
             byte activeMask, uint baselineFrame)
         {
+            if (dest.Length < StateHeaderSize)
+                throw new ArgumentException("Snapshot state header is too small.", nameof(dest));
+            dest[..StateHeaderSize].Clear();
             dest[0] = keyframe ? FlagKeyframe : (byte)0;
             dest[1] = activeMask;
             BinaryPrimitives.WriteUInt32LittleEndian(dest[2..], baselineFrame);
+        }
+
+        /// <summary>
+        /// The newest owner input frame the authority actually simulated for
+        /// one slot before composing this snapshot. Kept outside PlayerState
+        /// so changing every frame does not defeat snapshot delta compression.
+        /// </summary>
+        public static void WriteInputFrame(Span<byte> stateHeader, int slot, uint frame)
+        {
+            if ((uint)slot >= PlayerEntity.SlotCapacity || stateHeader.Length < StateHeaderSize)
+                return;
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                stateHeader[(BaseStateHeaderSize + slot * sizeof(uint))..], frame);
+        }
+
+        public static uint ReadInputFrame(ReadOnlySpan<byte> payload, int slot)
+        {
+            if ((uint)slot >= PlayerEntity.SlotCapacity
+                || payload.Length < SnapshotHeader.Size + StateHeaderSize)
+            {
+                return 0;
+            }
+            int at = SnapshotHeader.Size + BaseStateHeaderSize + slot * sizeof(uint);
+            return BinaryPrimitives.ReadUInt32LittleEndian(payload[at..]);
         }
 
         public static bool TryReadStateHeader(ReadOnlySpan<byte> payload,
@@ -2364,8 +2393,14 @@ namespace MphRead.Mods.Network
         /// keyframe; four-entry damage histories move into short-lived sidecars.
         /// Mixed v16/v17 peers must be refused because snapshot layout and
         /// server-to-observer packet types changed.
+        ///
+        /// Version 18 makes movement authoritative on the simulation machine.
+        /// Snapshot state headers now echo the last owner input frame actually
+        /// simulated for every slot so clients can reconcile immediate local
+        /// prediction against the authority at the same input instant.
+        /// Mixed v17/v18 peers must be refused because StateHeaderSize changed.
         /// </summary>
-        public const int ProtocolVersion = 17;
+        public const int ProtocolVersion = 18;
         /// <summary>
         /// Frames between intent packets. One, so every frame.
         ///

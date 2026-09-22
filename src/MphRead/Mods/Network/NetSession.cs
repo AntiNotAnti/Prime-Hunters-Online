@@ -99,6 +99,31 @@ namespace MphRead.Mods.Network
         public static readonly PlayerState[] RemoteStates = new PlayerState[PlayerEntity.SlotCapacity];
         public static readonly bool[] RemoteStateValid = new bool[PlayerEntity.SlotCapacity];
 
+        /// <summary>
+        /// Per slot, the newest owner input frame the authority says it had
+        /// actually simulated when it composed the accepted snapshot.
+        /// Clients use this to reconcile local prediction against the same
+        /// instant rather than comparing today's position with a round-trip-old one.
+        /// </summary>
+        public static readonly uint[] RemoteInputFrames = new uint[PlayerEntity.SlotCapacity];
+
+        /// <summary>
+        /// Authority-side counterpart to <see cref="RemoteInputFrames"/>.
+        /// Updated only when a remote intent is actually handed to the engine.
+        /// </summary>
+        private static readonly uint[] _simulatedInputFrames = new uint[PlayerEntity.SlotCapacity];
+
+        internal static void MarkInputSimulated(int slot, uint frame)
+        {
+            if ((uint)slot < _simulatedInputFrames.Length
+                && (_simulatedInputFrames[slot] == 0
+                    || NetLifecycleTracker.Newer(frame, _simulatedInputFrames[slot])
+                    || frame == _simulatedInputFrames[slot]))
+            {
+                _simulatedInputFrames[slot] = frame;
+            }
+        }
+
         /// <summary>Latest intent per slot, consumed by the host's input step.</summary>
         public static readonly IntentPacket[] RemoteIntents = new IntentPacket[PlayerEntity.SlotCapacity];
         public static readonly bool[] RemoteIntentValid = new bool[PlayerEntity.SlotCapacity];
@@ -391,6 +416,8 @@ namespace MphRead.Mods.Network
             _snapshotKeyframeFrame = 0;
             Array.Clear(_lastSlotIntentFrame);
             Array.Clear(RemoteStateValid);
+            Array.Clear(RemoteInputFrames);
+            Array.Clear(_simulatedInputFrames);
             Array.Clear(RemoteIntentValid);
             SnapshotsReceived = 0;
             SnapshotsSent = 0;
@@ -469,6 +496,8 @@ namespace MphRead.Mods.Network
             ConnectionLost = false;
             LocalSlot = 0;
             Array.Clear(RemoteStateValid);
+            Array.Clear(RemoteInputFrames);
+            Array.Clear(_simulatedInputFrames);
             Array.Clear(RemoteIntentValid);
             Array.Clear(RemoteIntentArrived);
             ContinuousPhase.Reset();
@@ -1458,6 +1487,8 @@ namespace MphRead.Mods.Network
             RemoteIntentArrived[slot] = 0;
             RemoteStateValid[slot] = false;
             RemoteStates[slot] = default;
+            RemoteInputFrames[slot] = 0;
+            _simulatedInputFrames[slot] = 0;
             for (int i = 0; i < _peers.Count; i++)
             {
                 if (_peers[i].SlotIndex == slot)
@@ -1662,6 +1693,8 @@ namespace MphRead.Mods.Network
                 Array.Clear(_lastSlotIntentFrame);
                 Array.Clear(RemoteIntentValid);
                 Array.Clear(RemoteStateValid);
+                Array.Clear(RemoteInputFrames);
+                Array.Clear(_simulatedInputFrames);
                 NetSmoothing.NoteRoomChanged();
                 NetUnlagged.Reset();
                 NetHitPrediction.ForgetPending();
@@ -1838,6 +1871,13 @@ namespace MphRead.Mods.Network
                     break;
                 }
                 damageOffset += SnapshotWire.DamageGroupSize;
+            }
+
+            for (int slot = 0; slot < PlayerEntity.SlotCapacity; slot++)
+            {
+                RemoteInputFrames[slot] = (activeMask & (1 << slot)) != 0
+                    ? SnapshotWire.ReadInputFrame(payload, slot)
+                    : 0;
             }
 
             _hasSnapshot = true;
@@ -2132,8 +2172,17 @@ namespace MphRead.Mods.Network
                 _snapshotKeyframeFrame = NetFrame;
             }
 
-            SnapshotWire.WriteStateHeader(_scratch.AsSpan(SnapshotHeader.Size,
-                SnapshotWire.StateHeaderSize), keyframe, activeMask, baselineFrame);
+            Span<byte> stateHeader = _scratch.AsSpan(SnapshotHeader.Size,
+                SnapshotWire.StateHeaderSize);
+            SnapshotWire.WriteStateHeader(stateHeader, keyframe, activeMask, baselineFrame);
+            for (int slot = 0; slot < PlayerEntity.SlotCapacity; slot++)
+            {
+                if ((activeMask & (1 << slot)) == 0) continue;
+                uint inputFrame = slot == LocalSlot && LocalSlot >= 0
+                    ? NetFrame
+                    : _simulatedInputFrames[slot];
+                SnapshotWire.WriteInputFrame(stateHeader, slot, inputFrame);
+            }
 
             int damageCountOffset = offset++;
             int damageGroups = 0;

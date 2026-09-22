@@ -43,12 +43,13 @@ namespace MphRead.Mods.Network
     /// damage is deliberately held for the authority, while self-damage and
     /// self-death can resolve locally.
     ///
-    /// Nor does it make the server authoritative over *movement*:
-    /// <see cref="IntentPacket.Position"/> is still where its sender says they
-    /// are, exactly as it was when a client held this role. That is a
-    /// deliberate non-change -- deriving position from buttons is what the
-    /// intent stream was built to stop doing, and undoing it needs client
-    /// prediction first. See <c>.claude/multiplayer/NETWORK-SERVERAUTH.md</c>.
+    /// Movement is authoritative here as well. Clients still predict their
+    /// own controls immediately, but <see cref="IntentPacket.Position"/> is no
+    /// longer trusted to place a player or their muzzle. The server runs the
+    /// real movement/collision step from the input stream and snapshots echo
+    /// the newest owner input frame actually processed, which lets each client
+    /// reconcile its prediction against the same instant without adding input
+    /// latency. See <c>.claude/multiplayer/NETWORK-SERVERAUTH.md</c>.
     /// </summary>
     public sealed class ServerSim
     {

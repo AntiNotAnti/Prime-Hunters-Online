@@ -291,20 +291,21 @@ namespace MphRead.Mods
                 }
             }
 
-            // How far back the rewind may ever be taken, in frames. The one
-            // number an A/B against a real line has to be able to move
-            // without moving anything else: the default 24 (400 ms) was
-            // measured against Japan running into its own ceiling, and a run
-            // that raises it has to be otherwise identical to the run that
-            // did not. Read on the machine that simulates the match, which is
-            // the only one that rewinds anything.
+            // Hard bound on how old a requested view may influence a shot.
+            // Rewind inside that bound is defender-aware: full through 250 ms,
+            // half-strength from 250-400 ms and quarter-strength beyond that.
+            // -maxrewind remains an A/B lever for the raw request ceiling; it
+            // no longer means every millisecond up to the ceiling is granted
+            // one-for-one.
             string? maxRewind = ValueAfter(args, "maxrewind");
             if (maxRewind != null)
             {
                 if (Network.NetUnlagged.ConfigureMaxRewind(maxRewind))
                 {
-                    Console.WriteLine("[net] rewind ceiling "
-                        + $"{Network.NetUnlagged.MaxRewindFrames} frames "
+                    Console.WriteLine("[net] rewind policy: full through "
+                        + $"{Network.NetUnlagged.FullCompensationFrames}f, taper through "
+                        + $"{Network.NetUnlagged.SoftCompensationFrames}f, raw ceiling "
+                        + $"{Network.NetUnlagged.MaxRewindFrames}f "
                         + $"({Network.NetUnlagged.MaxRewindFrames * 1000 / 60} ms)");
                 }
                 else
