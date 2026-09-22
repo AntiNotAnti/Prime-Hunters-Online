@@ -61,7 +61,8 @@ namespace MphRead.NetTest
             Check(NetUnlagged.PressAgeEnabled, "recovered trigger pulls include their age by default");
             Check(PlayerState.Size == 114 && PlayerState.BaseSize == 54,
                 "full player state and compact snapshot base sizes");
-            Check(1 + SnapshotHeader.Size + SnapshotWire.PlayerSize * PlayerEntity.SlotCapacity + 1
+            Check(1 + SnapshotHeader.Size + SnapshotWire.StateHeaderSize
+                + SnapshotWire.PlayerSize * PlayerEntity.SlotCapacity + 1
                 + SnapshotWire.DamageGroupSize * PlayerEntity.SlotCapacity
                 + NetMatchTimeSync.Size + NetHealthSync.HeaderSize <= NetConfig.MaxPacketSize
                 && NetConfig.MaxPacketSize <= 1472, "worst-case eight-player snapshot fits one UDP datagram");
@@ -270,16 +271,22 @@ namespace MphRead.NetTest
                 int damageGroups = 0;
                 for (int i = 0; i < states.Length; i++)
                     if (states[i].DamageEventId != 0) damageGroups++;
-                int damageCountOffset = SnapshotHeader.Size + states.Length * SnapshotWire.PlayerSize;
+                int damageCountOffset = SnapshotHeader.Size + SnapshotWire.StateHeaderSize
+                    + states.Length * SnapshotWire.PlayerSize;
                 int damageOffset = damageCountOffset + 1;
                 int timeOffset = damageOffset + damageGroups * SnapshotWire.DamageGroupSize;
                 byte[] body = new byte[timeOffset + timeSyncSize + NetHealthSync.HeaderSize];
                 ushort matchId = Field<ushort>("_matchId");
                 new SnapshotHeader { MatchId = matchId, AuthorityEpoch = Field<ulong>("_authorityEpoch"),
                     Frame = frame, PlayerCount = (byte)states.Length }.Write(body);
+                byte activeMask = 0;
+                for (int i = 0; i < states.Length; i++) activeMask |= (byte)(1 << states[i].SlotIndex);
+                SnapshotWire.WriteStateHeader(body.AsSpan(SnapshotHeader.Size,
+                    SnapshotWire.StateHeaderSize), keyframe: true, activeMask, frame);
                 for (int i = 0; i < states.Length; i++)
                     states[i].WriteBase(body.AsSpan(
-                        SnapshotHeader.Size + i * SnapshotWire.PlayerSize, SnapshotWire.PlayerSize));
+                        SnapshotHeader.Size + SnapshotWire.StateHeaderSize
+                            + i * SnapshotWire.PlayerSize, SnapshotWire.PlayerSize));
                 body[damageCountOffset] = (byte)damageGroups;
                 for (int i = 0; i < states.Length; i++)
                 {
@@ -386,7 +393,8 @@ namespace MphRead.NetTest
         {
             const int timeSyncSize = PlayerEntity.SlotCapacity * sizeof(float) * 2;
             int damageGroups = state.DamageEventId == 0 ? 0 : 1;
-            int damageCountOffset = 1 + SnapshotHeader.Size + SnapshotWire.PlayerSize;
+            int damageCountOffset = 1 + SnapshotHeader.Size + SnapshotWire.StateHeaderSize
+                + SnapshotWire.PlayerSize;
             int damageOffset = damageCountOffset + 1;
             int timeOffset = damageOffset + damageGroups * SnapshotWire.DamageGroupSize;
             int healthOffset = timeOffset + timeSyncSize;
@@ -394,7 +402,10 @@ namespace MphRead.NetTest
             bytes[0] = (byte)PacketType.Snapshot;
             new SnapshotHeader { MatchId = match, AuthorityEpoch = epoch, Frame = frame, PlayerCount = 1 }
                 .Write(bytes.AsSpan(1));
-            state.WriteBase(bytes.AsSpan(1 + SnapshotHeader.Size, SnapshotWire.PlayerSize));
+            SnapshotWire.WriteStateHeader(bytes.AsSpan(1 + SnapshotHeader.Size,
+                SnapshotWire.StateHeaderSize), keyframe: true, (byte)(1 << state.SlotIndex), frame);
+            state.WriteBase(bytes.AsSpan(1 + SnapshotHeader.Size + SnapshotWire.StateHeaderSize,
+                SnapshotWire.PlayerSize));
             bytes[damageCountOffset] = (byte)damageGroups;
             if (damageGroups != 0)
                 SnapshotWire.WriteDamageGroup(state.SlotIndex, state,
