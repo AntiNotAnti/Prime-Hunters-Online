@@ -105,7 +105,9 @@ namespace MphRead.Mods.Network
                 ReplayEventType.ScoreChanged => ReplayMarkerKind.Score,
                 ReplayEventType.PlayerJoined => ReplayMarkerKind.Join,
                 ReplayEventType.PlayerLeft => ReplayMarkerKind.Leave,
-                ReplayEventType.Objective => ReplayMarkerKind.Objective,
+                // Entity-local objective notifications may precede authority on a
+                // client. Preserve legacy annotations, but not as timeline truth.
+                ReplayEventType.Objective when NetSession.IsAuthority => ReplayMarkerKind.Objective,
                 ReplayEventType.MatchEnded => ReplayMarkerKind.MatchEnd,
                 _ => null
             };
@@ -141,9 +143,15 @@ namespace MphRead.Mods.Network
                     var identity = new ReplayKillIdentity(NetSession.CurrentMatchId, NetSession.AuthorityEpoch,
                         tick, state.DamageEventId, state.AttackerSlot, attackerGeneration,
                         state.SlotIndex, state.SlotGeneration, state.LifeId);
-                    Recorder.Marker(NetSession.NetFrame, tick, new(ReplayMarkerKind.Kill,
-                        state.AttackerSlot, state.SlotIndex, Kill: identity,
-                        Weapon: state.DamageBeam, DamageFlags: state.DamageFlags));
+                    // A later-life snapshot or a jump in cumulative deaths does not
+                    // identify the exact death. Keep the coarse Studio annotation,
+                    // but never advertise it as a fenced killcam candidate.
+                    if (state.LifeId == old.LifeId && state.Health == 0
+                        && state.Deaths == old.Deaths + 1 && attackerGeneration != 0
+                        && state.AttackerSlot < RosterPacket.MaxSlots && state.AttackerSlot != slot)
+                        Recorder.Marker(NetSession.NetFrame, tick, new(ReplayMarkerKind.Kill,
+                            state.AttackerSlot, state.SlotIndex, Kill: identity,
+                            Weapon: state.DamageBeam, DamageFlags: state.DamageFlags));
                     MphRead.Mods.KillCam.NoteDeath(slot, state.AttackerSlot,
                         authoritativeFrame ?? NetSession.NetFrame);
                 }

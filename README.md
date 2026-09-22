@@ -97,3 +97,6 @@ list with what each one is for, and the Settings screen shows it too.
 
 Metroid Prime Hunters is Nintendo's. No game data is included with this program: it comes from your
 own cartridge dump.
+
+Replay and Map Studio architecture migration: [implementation status, validation,
+and remaining work](docs/architecture/replay-map-upgrade-status.md).

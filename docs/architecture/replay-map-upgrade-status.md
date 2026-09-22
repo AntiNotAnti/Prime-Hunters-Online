@@ -110,3 +110,59 @@ Map Studio runtime Build and Playtest use this scheduler. Validation/navigation,
 package generation and existing synchronous server preparation still use their
 current detached compiler paths; unifying those consumers remains outstanding.
 The cache is per-user and is not part of release packaging.
+
+## Scope and acceptance status
+
+The initiative is **not complete**. The full requested plan is preserved in
+[replay-map-upgrade-plan.md](replay-map-upgrade-plan.md). This table separates
+shipped foundations from unfinished architecture; passing builds are not evidence
+that the missing replay features work.
+
+| Plan area | Status |
+| --- | --- |
+| P0A timeline | Implemented bounded immutable records/segments, freeze and identity mapping; complete scene restore schema still missing |
+| P0B recorder | Accepted match/roster/player snapshots and existing semantic events integrated; full world/objective/presentation event capture missing |
+| P0C isolated session/services | Not implemented; PlayerEntity, GameState, RNG, network and presentation ownership require extraction |
+| P0D/P0E personal/final killcams | Existing implementation retained; replay-scene replacement and runtime acceptance outstanding |
+| P1 playback/seek/interpolation | Existing Studio and compatibility paths retained; migration outstanding |
+| P1 shared clips/highlights/export | Existing functionality retained; shared-timeline migration outstanding |
+| P2A history | State IDs, bounded delta commands and transaction coalescing implemented for common actions |
+| P2B viewport | Per-object native mesh and independent imported/entity/selection invalidation implemented |
+| P2C renderer viewport | Logical/pixel layout contract added; game-renderer backend outstanding |
+| P2D snapshots | Detached graph snapshots implemented |
+| P2E/F scheduler/cache | Runtime Build/Playtest integrated with bounded single-flight worker and integrity-checked content cache |
+| P2G dependencies | Fingerprint/runtime-manifest analyzer implemented; all-consumer consolidation outstanding |
+| P2H hub | Desktop already opens the real editor on target main; preserved |
+| P3 diagnostics/profiling | Timeline/cache/history counters, automated checks and editor microbenchmark added; gameplay/runtime profiling outstanding |
+| Cleanup | No replay fallback or feature removed; removal remains gated on replacement acceptance |
+
+### Local validation (macOS arm64, .NET 10.0.401)
+
+- Desktop Release build: passes with 18 pre-existing warnings.
+- Timeline: 36 checks.
+- Replay v2/v3 format, metadata, recovery, extraction and malformed input: 531 checks.
+- Network lifecycle: 3,681 assertions.
+- Health/shot behavior: 2,967,760 assertions.
+- Editor/history/cache/build: 58 checks, including real synthetic-texture compilation,
+  package roundtrip, five-file output, dependency changes, cache corruption,
+  cancellation and two-worker concurrency.
+- Map Studio rendered successfully at 1440×900 and 960×600.
+- Live-match replay/killcam visual correctness and Android gameplay/pause-resume
+  acceptance have not been tested for the proposed replacement (it is not implemented).
+
+### Reproducible editor microbenchmark
+
+Run `dotnet run --project tools/map-editor-check -c Release -- --benchmark`.
+The fixture uses 1,000 native objects. Its legacy path reproduces target-main's
+serialized dirty check and clone/compare/replace transform algorithm. The current
+path measures document commands without attaching the UI/viewport. These numbers
+are not end-to-end frame times or a promise of the same speedup on every machine.
+
+| Operation | Legacy ms/op | Current ms/op | Legacy allocated/op | Current allocated/op |
+| --- | ---: | ---: | ---: | ---: |
+| Dirty check (100 iterations) | 3.110 | below 0.001 | 1,456,223 B | 0 B |
+| One-object transform (20 iterations) | 38.214 | 0.004 | 11,780,501 B | 3,876 B |
+
+The benchmark exposed full-map wrapper allocation in the initial delta path.
+Direct identity lookup removed it; geometry vertices are never copied by numeric
+transform commands. Timings vary with JIT, GC and machine load.

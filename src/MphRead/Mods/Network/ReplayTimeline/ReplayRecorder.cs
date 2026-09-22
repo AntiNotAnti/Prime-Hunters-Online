@@ -10,16 +10,17 @@ internal sealed class ReplayRecorder
     private ReplayTimelineRecord? _match, _roster, _snapshot;
     private ushort _matchId;
     private ulong _epoch;
+    private string? _room;
     private uint _lastRestore;
     public void Reset()
     {
         Timeline.Reset(); _match = _roster = _snapshot = null;
-        _matchId = 0; _epoch = 0; _lastRestore = 0;
+        _matchId = 0; _epoch = 0; _room = null; _lastRestore = 0;
     }
     public void AcceptMatch(in MatchStatePacket match, uint frame)
     {
-        if (_matchId != match.MatchId || _epoch != match.AuthorityEpoch) Reset();
-        _matchId = match.MatchId; _epoch = match.AuthorityEpoch;
+        if (_matchId != match.MatchId || _epoch != match.AuthorityEpoch || _room != match.RoomKey) Reset();
+        _matchId = match.MatchId; _epoch = match.AuthorityEpoch; _room = match.RoomKey;
         byte[] bytes = new byte[1 + MatchStatePacket.Size];
         bytes[0] = (byte)PacketType.MatchState; match.Write(bytes.AsSpan(1));
         _match = new(frame, Timeline.LastServerTick ?? frame, ReplayFactKind.Match, bytes);
@@ -35,6 +36,9 @@ internal sealed class ReplayRecorder
     }
     public void AcceptSnapshot(ReadOnlySpan<byte> packet, uint frame, uint tick)
     {
+        if (packet.Length < 1 + SnapshotHeader.Size || packet[0] != (byte)PacketType.Snapshot) return;
+        var header = SnapshotHeader.Read(packet[1..]);
+        if (_matchId == 0 || header.MatchId != _matchId || header.AuthorityEpoch != _epoch || header.Frame != tick) return;
         _snapshot = new(frame, tick, ReplayFactKind.Snapshot, packet);
         if (Timeline.NeedsRestorePoint || frame - _lastRestore >= 300)
         {

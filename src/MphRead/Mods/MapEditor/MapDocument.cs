@@ -32,7 +32,7 @@ namespace MphRead.Mods.MapEditor
             if (path != null) History.MarkSaved();
             History.Changed += change =>
             {
-                Selection.IntersectWith(MapObjects.All(Project.Definition).Select(o => o.Id));
+                Selection.RemoveWhere(id => MapObjects.Find(Project.Definition, id) == null);
                 LastEditUtc = DateTime.UtcNow;
                 Invalidated?.Invoke(change); Changed?.Invoke();
             };
@@ -79,7 +79,7 @@ namespace MphRead.Mods.MapEditor
                 if (replacement.Collision != null) { replacement.Collision.BaseDirectory = replacement.BaseDirectory; replacement.Collision.BundlePath = null; }
             }
             Project = new(replacement);
-            Selection.IntersectWith(MapObjects.All(Project.Definition).Select(o => o.Id));
+            Selection.RemoveWhere(id => MapObjects.Find(Project.Definition, id) == null);
 
         }
 
@@ -164,6 +164,17 @@ namespace MphRead.Mods.MapEditor
 
     public static class MapObjects
     {
+        public static MapObject? Find(MapDefinition d, Guid id)
+        {
+            foreach (var g in d.Geometry) if (g.Id == id) return new(g.Id,"Geometry",g.Label,g,value=>g.Id=value);
+            foreach (var b in d.Brushes) if (b.Id == id) return new(b.Id,"Box",b.Label??"Legacy box",b,value=>b.Id=value);
+            foreach (var s in d.Spawns) if (s.Id == id) return new(s.Id,"Spawn",s.Label??"Player spawn",s,value=>s.Id=value);
+            foreach (var item in d.Items) if (item.Id == id) return new(item.Id,"Pickup",item.Label??item.Type,item,value=>item.Id=value);
+            foreach (var p in d.JumpPads) if (p.Id == id) return new(p.Id,"Jump pad",p.Label??"Jump pad",p,value=>p.Id=value);
+            foreach (var n in d.NavigationLinks) if (n.Id == id) return new(n.Id,"Navigation",n.Kind.ToString(),n,value=>n.Id=value);
+            return null;
+        }
+
         public static IEnumerable<MapObject> All(MapDefinition d)
         {
             foreach(var g in d.Geometry) yield return new(g.Id,"Geometry",g.Label,g,id=>g.Id=id);

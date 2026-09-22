@@ -187,7 +187,21 @@ try
     string beforeAssetChange=MapBuildFingerprint.Create(realDefinition).ContentKey;
     using(var texture=File.Open(texturePath,FileMode.Open,FileAccess.Write)){texture.Position=18;texture.WriteByte(0);}
     Check(MapBuildFingerprint.Create(realDefinition).ContentKey!=beforeAssetChange,"asset content changes fingerprint");
+    string package=MapPackageBuilder.Build(realDefinition,Path.Combine(root,"real.ppmap"));
+    var importedPackage=MapDefinition.Load(package);
+    Check(importedPackage.FormatVersion==2 && importedPackage.MapId!=Guid.Empty,"legacy project packages with stable upgraded identity");
+    var packageResult=await realScheduler.BuildAsync(MapBuildSnapshot.Capture(importedPackage));
+    Check(packageResult.Succeeded,"existing ppmap package compiles through scheduler");
+    var changedScheduler=new MapBuildScheduler(Path.Combine(root,"changed-cache"),build:(map,directory)=>
+    {
+        File.AppendAllText(texturePath,"changed while building");
+        foreach(var file in MapOutputSet.Create(map,directory,directory,directory).Files)File.WriteAllText(file,map.Name);
+        return new MapValidationResult();
+    });
+    var changedResult=await changedScheduler.BuildAsync(realSnapshot);
+    Check(!changedResult.Succeeded && changedResult.Diagnostics.Any(d=>d.Message.Contains("dependencies changed")),"changing dependency cannot poison cache");
     Console.WriteLine($"Map editor: {checks} checks passed.");
+    if (args.Contains("--benchmark")) Benchmarks.Run();
 }
 finally { Directory.Delete(root, true); }
 sealed class Counter(Action execute, Action undo, long bytes) : IMapEditCommand
