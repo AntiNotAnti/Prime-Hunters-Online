@@ -342,7 +342,8 @@ namespace MphRead.Entities
         }
 
         private bool ModInterpolatedFirstPersonLocalPose(double presentationAlpha,
-            out Vector3 position, out Vector3 facing, out Vector3 up)
+            bool interpolateOrientation, out Vector3 position,
+            out Vector3 facing, out Vector3 up)
         {
             if (!_fpDrawStateValid)
             {
@@ -352,11 +353,19 @@ namespace MphRead.Entities
             float t = Mods.Render.FrameTiming.HighRefreshPresentation
                 ? (float)Math.Clamp(presentationAlpha, 0.0, 1.0)
                 : 1f;
+            // Bob/translation is visual-only and safe to smooth in both modes.
+            // Orientation is different: in modern fixed-crosshair mode the
+            // camera is current + late latch, so using previous/current aim
+            // interpolation here would recreate the one-tick gun lag we are
+            // eliminating. Legacy mode interpolates its camera too, so there
+            // both orientation and position use the same timestamp.
             position = Vector3.Lerp(
                 _fpPreviousGunLocalPosition, _fpCurrentGunLocalPosition, t);
+            float orientationT = interpolateOrientation ? t : 1f;
             facing = Vector3.Lerp(
-                _fpPreviousGunLocalFacing, _fpCurrentGunLocalFacing, t);
-            up = Vector3.Lerp(_fpPreviousGunLocalUp, _fpCurrentGunLocalUp, t);
+                _fpPreviousGunLocalFacing, _fpCurrentGunLocalFacing, orientationT);
+            up = Vector3.Lerp(
+                _fpPreviousGunLocalUp, _fpCurrentGunLocalUp, orientationT);
             if (!ModFinite(position) || !ModFinite(facing) || !ModFinite(up)
                 || facing.LengthSquared < 0.000001f || up.LengthSquared < 0.000001f)
             {
@@ -493,7 +502,8 @@ namespace MphRead.Entities
 
             if (!ModPresentationBasis(renderFacing, upHint,
                     out Vector3 renderRight, out Vector3 renderUp, out Vector3 renderForward)
-                || !ModInterpolatedFirstPersonLocalPose(presentationAlpha,
+                || !ModInterpolatedFirstPersonLocalPose(
+                    presentationAlpha, smoothLegacyCamera,
                     out Vector3 gunLocalPosition, out Vector3 gunLocalFacing,
                     out Vector3 gunLocalUp))
             {
