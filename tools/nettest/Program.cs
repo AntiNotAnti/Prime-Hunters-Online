@@ -162,7 +162,7 @@ namespace MphRead.NetTest
                     Team = 0
                 };
                 SnapshotWire.WriteStateHeader(payload.AsSpan(SnapshotHeader.Size,
-                    SnapshotWire.StateHeaderSize), keyframe: true, (byte)(1 << slot), frame);
+                    SnapshotWire.StateHeaderSize), true, (byte)(1 << slot), frame);
                 state.WriteBase(payload.AsSpan(SnapshotHeader.Size + SnapshotWire.StateHeaderSize,
                     SnapshotWire.PlayerSize));
                 payload[damageCountOffset] = 0;
