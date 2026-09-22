@@ -99,7 +99,7 @@ public static class DemoPlayback
             SpectatorMode.Start(watchSomeone: true);
             var main = current.Players.Main;
             if (!Headless.Active && main.LoadFlags.TestFlag(LoadFlags.Active) && !main.HudReady) main.SetUpHud();
-            if (!Headless.Active && !silent) Sound.Sfx.Update(1f / 60);
+            if (!Headless.Active && !silent) MphRead.Sound.Sfx.Update(1f / 60);
         }
     }
     internal static Scene? PreparePresentation(Scene shell)
