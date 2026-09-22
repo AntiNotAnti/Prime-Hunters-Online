@@ -1337,6 +1337,7 @@ namespace MphRead.Mods.Network
             RemoteIntentValid[slot] = true;
             RemoteIntentArrived[slot] = Math.Max(NetFrame, 1);
             IntentsReceived++;
+            ReplayCapture.AcceptedIntent(slot, intent);
             if (NetLog.Enabled && intent.Buttons.HasFlag(IntentButtons.Shoot))
                 NetShotDiagnostics.Trace("intent", ShotKey.For(slot, intent.AckFrame), (BeamType)intent.WeaponSelect,
                     $"intentFrame={intent.Frame} intentLife={intent.LifeId} inPlay={intent.Buttons.HasFlag(IntentButtons.InPlayState)} shoot=true");
@@ -1809,6 +1810,7 @@ namespace MphRead.Mods.Network
             if (LocalSlot >= 0)
             {
                 DemoRecorder.RecordOwnIntent(LocalSlot, _scratch.AsSpan(0, IntentPacket.FullSize));
+                ReplayCapture.AcceptedIntent(LocalSlot, intent);
             }
             // And whatever this machine has resolved for itself that the
             // authority has not answered yet. Its own datagram rather than a

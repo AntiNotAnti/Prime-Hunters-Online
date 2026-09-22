@@ -80,7 +80,7 @@ namespace MphRead.Entities
         public float RicochetLossV { get; set; }
         public float CylinderRadius { get; set; }
 
-        private static readonly EquipInfo _ricochetEquip = new EquipInfo();
+        private readonly EquipInfo _ricochetEquip = new EquipInfo();
 
         private ModelInstance? _trailModel;
         private int _bindingId = 0;

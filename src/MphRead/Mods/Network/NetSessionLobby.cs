@@ -122,6 +122,7 @@ namespace MphRead.Mods.Network
                 ResetMatchState(preserveRoomChange: newMatch && state.Phase != SessionPhase.Lobby);
             }
             ServerSession = state;
+            ReplayCapture.AcceptedConfiguration(state);
             if (state.Policy == ServerSessionPolicy.Lobby && state.Phase == SessionPhase.Lobby)
             {
                 Mods.RoomPrewarm.Begin(state.Match.RoomKey);

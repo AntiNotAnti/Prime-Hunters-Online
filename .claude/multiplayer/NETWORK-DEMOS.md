@@ -19,11 +19,22 @@ polls live input or resolves damage. Replica rendering uploads an explicit camer
 and excludes foreground HUD/Studio side effects. Scene texture allocations and
 shared model leases allow both worlds to coexist in one context.
 
+The rolling recorder also retains accepted remote intents, submitted local input
+for presentation and recorded session rules. Network baselines include held input
+only for the matching occupant generation and life. Local input is never evidence
+of a confirmed hit. Ricochet scratch equipment belongs to each projectile.
+
 `-replayreplicacheck FILE [-shots DIR]` compares two scenes interleaved at different
 rates and checks foreground network/RNG/player/bridge sentinels every frame and
 through teardown. With screenshots it additionally requires identical pictures
 before and after disposing the sibling. On a 1,801-frame protocol-16 recording,
 357 frames contained projectiles and all checks passed on macOS OpenGL 2.1.
+Gameplay hash schema 3 covers gameplay RNG, projectile/bomb membership and state,
+pickups, scores, players and objectives. A separate presentation projection checks
+model animation, projectile trails and effect particles. Presentation-only changes
+do not invalidate gameplay hashes; older hash schemas are explicitly skipped while
+their replay packets remain readable. The check compares both projections on every
+frame, including when the sibling scene runs in batches.
 This is deterministic reconstruction from packet-visible facts, not a detached
 world checkpoint. Historical objective/effect capture and killcam integration
 remain outstanding.

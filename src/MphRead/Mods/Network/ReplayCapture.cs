@@ -76,7 +76,20 @@ namespace MphRead.Mods.Network
 
         internal static void AcceptedMatch(in MatchStatePacket state)
         {
-            if (!DemoPlayback.IsActive) Recorder.AcceptMatch(state, NetSession.NetFrame);
+            if (DemoPlayback.IsActive) return;
+            Recorder.AcceptMatch(state, NetSession.NetFrame);
+            if (NetSession.ServerSession is { } configuration)
+                Recorder.AcceptConfiguration(configuration, NetSession.NetFrame);
+        }
+
+        internal static void AcceptedConfiguration(in SessionStatePacket state)
+        {
+            if (!DemoPlayback.IsActive) Recorder.AcceptConfiguration(state, NetSession.NetFrame);
+        }
+
+        internal static void AcceptedIntent(int slot, in IntentPacket intent)
+        {
+            if (!DemoPlayback.IsActive) Recorder.AcceptIntent(slot, intent, NetSession.NetFrame);
         }
 
         internal static void AcceptedRoster(in RosterPacket roster)

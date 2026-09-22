@@ -11,7 +11,7 @@ namespace MphRead.Mods.Network
     // identities and reflection-discovered fields are intentionally not part of it.
     internal static class ReplayStateHash
     {
-        internal const ushort Schema = 2;
+        internal const ushort Schema = 3;
         internal static readonly string BuildId = typeof(ReplayStateHash).Assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
 
@@ -31,6 +31,7 @@ namespace MphRead.Mods.Network
             writer.Write((int)scene.GameState.MatchState);
             writer.Write(scene.GameState.MatchTime);
             writer.Write(scene.GameState.PrimeHunter);
+            writer.Write(scene.Random.Rng1);
             for (int slot = 0; slot < PlayerEntity.SlotCapacity; slot++)
             {
                 writer.Write(slot);
@@ -63,7 +64,42 @@ namespace MphRead.Mods.Network
                     writer.Write(node.CapturedPlayer?.SlotIndex ?? -1);
                     foreach (bool occupied in node.OccupiedBy) writer.Write(occupied);
                 }
+                else if (entity is BeamProjectileEntity beam)
+                {
+                    writer.Write((int)beam.Type);
+                    WriteIdentity(writer, beam.Owner); WriteIdentity(writer, beam.Target);
+                    writer.Write(beam.ModLaunchFrame); writer.Write(beam.ModLaunchMatch);
+                    writer.Write(beam.ModLaunchAuthority); writer.Write(beam.ModLaunchGeneration); writer.Write(beam.ModLaunchLife);
+                    writer.Write((int)beam.Beam); writer.Write((int)beam.BeamKind); writer.Write((int)beam.Flags);
+                    Write(writer, beam.Position); Write(writer, beam.Velocity); Write(writer, beam.Acceleration);
+                    Write(writer, beam.SpawnPosition); Write(writer, beam.Direction);
+                    writer.Write(beam.Age); writer.Write(beam.Lifespan); writer.Write(beam.Speed);
+                    writer.Write(beam.Homing); writer.Write(beam.Damage); writer.Write(beam.HeadshotDamage);
+                    writer.Write(beam.SplashDamage); writer.Write(beam.SplashRadius); writer.Write(beam.CylinderRadius);
+                    writer.Write(beam.ModContinuousPhase); writer.Write(beam.ModHasSharedContinuousPhase);
+                }
+                else if (entity is BombEntity bomb)
+                {
+                    writer.Write((int)bomb.Type); WriteIdentity(writer, bomb.Owner);
+                    writer.Write((int)bomb.BombType); writer.Write((int)bomb.Flags);
+                    Write(writer, bomb.Position); writer.Write(bomb.Countdown); writer.Write(bomb.BombIndex);
+                    writer.Write(bomb.Radius); writer.Write(bomb.SelfRadius);
+                    writer.Write(bomb.Damage); writer.Write(bomb.EnemyDamage);
+                }
+                else if (entity is ItemSpawnEntity spawn)
+                {
+                    writer.Write((int)spawn.Type); writer.Write(spawn.Id); Write(writer, spawn.Position);
+                    var state = spawn.ModHealthState;
+                    writer.Write(state.Available); writer.Write(state.Active); writer.Write(state.Cooldown);
+                    writer.Write(state.SpawnCount); writer.Write(state.PickerSlot);
+                }
+                else if (entity is ItemInstanceEntity item)
+                {
+                    writer.Write((int)item.Type); writer.Write((int)item.ItemType); Write(writer, item.Position);
+                    writer.Write(item.ParentId); writer.Write(item.Owner?.Id ?? -1); writer.Write(item.DespawnTimer);
+                }
             }
+            writer.Write(-1); // terminates the ordered world entity projection
             writer.Flush();
             return Convert.ToHexString(SHA256.HashData(stream.GetBuffer().AsSpan(0, (int)stream.Length)));
         }
@@ -71,6 +107,12 @@ namespace MphRead.Mods.Network
         private static void Write(BinaryWriter writer, Vector3 vector)
         {
             writer.Write(vector.X); writer.Write(vector.Y); writer.Write(vector.Z);
+        }
+
+        private static void WriteIdentity(BinaryWriter writer, EntityBase? entity)
+        {
+            writer.Write(entity == null ? -1 : (int)entity.Type);
+            writer.Write(entity is PlayerEntity player ? player.SlotIndex : entity?.Id ?? -1);
         }
     }
 
