@@ -1870,7 +1870,9 @@ namespace MphRead
                 }
                 for (int i = 0; i < PlayerEntity.Players.Count; i++)
                 {
-                    PlayerEntity.Players[i].CameraInfo.ModCaptureDrawState();
+                    PlayerEntity player = PlayerEntity.Players[i];
+                    player.CameraInfo.ModCaptureDrawState();
+                    player.ModCaptureFirstPersonDrawState();
                 }
 
                 // Ages the predictions the authority has not answered yet and
@@ -3033,6 +3035,7 @@ namespace MphRead
                     {
                         PlayerEntity main = PlayerEntity.Main;
                         CameraInfo camera = main.CameraInfo;
+                        main.ModInvalidateFirstPersonRenderPose();
                         double presentationAlpha = Mods.Render.FrameTiming.PresentationAlpha;
                         bool replayCamera = main.ModReplayPresentationCamera(
                             presentationAlpha, out Matrix4 replayView,
@@ -3046,16 +3049,25 @@ namespace MphRead
                                 ? camera.ModGetDrawView(presentationAlpha)
                                 : camera.ViewMatrix;
 
+                        bool firstPersonPose = false;
+                        float firstPersonFov = camera.Fov;
                         if (!replayCamera && !interpolatedCamera
                             && !Mods.PauseMenu.Open && !GameState.MenuPause
                             && !GameState.DialogPause && !Mods.EndScreen.Available)
                         {
+                            // One preparation call owns the render-time pointer/stick
+                            // delta for both the camera and the camera-attached arm
+                            // cannon. The gun draw later consumes the pose cached here;
+                            // it does not poll input or calculate another delta.
                             (float padX, float padY) = Mods.Input.GamepadInput.RenderAim(
                                 Mods.Render.FrameTiming.Alpha);
-                            if (_lateAimX != 0 || _lateAimY != 0 || padX != 0 || padY != 0)
+                            if (main.ModPrepareFirstPersonRenderPose(
+                                    _lateAimX, _lateAimY, padX, padY,
+                                    out Matrix4 firstPersonView, out _, out float renderFov))
                             {
-                                _viewMatrix = main.ModLateLatchedView(
-                                    _lateAimX, _lateAimY, padX, padY);
+                                _viewMatrix = firstPersonView;
+                                firstPersonFov = renderFov;
+                                firstPersonPose = true;
                             }
                         }
 
@@ -3063,7 +3075,7 @@ namespace MphRead
                             ? replayFov
                             : interpolatedCamera
                                 ? camera.ModGetDrawFov(presentationAlpha)
-                                : camera.Fov;
+                                : firstPersonPose ? firstPersonFov : camera.Fov;
                         float fov = authoredFov > 0
                             ? authoredFov
                             : Mods.RenderOptions.DefaultFov;
