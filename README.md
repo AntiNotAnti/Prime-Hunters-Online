@@ -33,10 +33,6 @@ Project Prime is a **Metroid Prime Hunters fork for the community, by the commun
 - **In-app update checks and verified Windows/Linux/Android updates**
 - **All roms are compatible**
 
-## Support
-
-If you enjoy it: **[ko-fi.com/livetek](https://ko-fi.com/livetek)** ☕
-
 
 ## Getting started
 
@@ -88,8 +84,7 @@ line option, and the test harness, are in [`CLAUDE.md`](CLAUDE.md).
 Project Prime is a community fork built on [MphRead](https://github.com/NoneGiven/MphRead) by **NoneGiven** —
 the model viewer, renderer, format parsers and recreation of the game itself are theirs.
 
-**Livetek** is credited for Project Prime development including multiplayer, the dedicated server,
-the launcher, custom maps, Android support and the pro HUD.
+**Livetek** is credited for Fruity Prime development. 
 That work is in turn built on **dsgraph**, [chmcl95](https://gitlab.com/ch-mcl/metroid-prime-hunters-file-document),
 [McKay42](https://github.com/McKay42), [Barubary](https://github.com/Barubary/dsdecmp),
 [loveemu](https://github.com/loveemu/loveemu-lab), **Gericom**,

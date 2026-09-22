@@ -49,7 +49,7 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly DispatcherTimer _timer;
         private readonly Grid _root = new();
         private readonly Control _mainPage;
-        private readonly StackPanel _players = new() { Spacing = 2 };
+        private readonly StackPanel _players = new() { Spacing = 1 };
         private readonly StackPanel _ownerControls = new() { Spacing = 2 };
         private readonly Note _status = new("");
         private readonly Note _chat = new("", lines: 0);
@@ -69,8 +69,8 @@ namespace MphRead.Mods.Launcher.Gui
         {
             PlaceholderText = "Message",
             MaxLength = ChatPacket.MaxTextBytes,
-            Height = 32,
-            MinHeight = 32,
+            Height = 28,
+            MinHeight = 28,
             FontFamily = HubTheme.Ui,
             FontSize = 11,
             Foreground = HubTheme.TextBrush,
@@ -246,25 +246,32 @@ namespace MphRead.Mods.Launcher.Gui
             _closeLobby.HorizontalAlignment = HorizontalAlignment.Stretch;
             administration.Children.Add(_closeLobby);
 
-            // Match rules are deliberately settings-only. Four compact rows of
-            // toggles plus the two numeric limits fit in the panel without
-            // scrolling, leaving owner administration in the roster column.
+            // Four compact rows of toggles plus the two numeric limits keep
+            // the match panel dense enough to share its column with team and
+            // lobby administration, freeing the roster column for players.
             _ownerControls.Children.Add(limits);
             _ownerControls.Children.Add(toggles);
             _ownerControls.Children.Add(_layoutSummary);
 
-            var arenaPanel = LobbyPanel("ARENA", arena, HubTheme.Accent);
-            var rulesPanel = LobbyPanel("MATCH RULES", _ownerControls, HubTheme.Warm);
-
-            var rosterContent = new StackPanel { Spacing = 4 };
-            var playerScroll = new ScrollViewer
+            // Match settings and team/lobby administration share the third
+            // column. The roster column is reserved for the complete roster and
+            // local hunter controls so eight players never disappear behind an
+            // inner scrollbar on a normal desktop window.
+            var ruleContent = new StackPanel { Spacing = 5 };
+            ruleContent.Children.Add(_ownerControls);
+            ruleContent.Children.Add(new Border
             {
-                Content = _players,
-                MaxHeight = 190,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto
-            };
-            rosterContent.Children.Add(playerScroll);
+                Height = 1,
+                Background = HubTheme.EdgeBrush,
+                Margin = new Thickness(0, 4, 0, 2)
+            });
+            ruleContent.Children.Add(administration);
+
+            var arenaPanel = LobbyPanel("ARENA", arena, HubTheme.Accent);
+            var rulesPanel = LobbyPanel("MATCH & TEAMS", ruleContent, HubTheme.Warm);
+
+            var rosterContent = new StackPanel { Spacing = 3 };
+            rosterContent.Children.Add(_players);
             rosterContent.Children.Add(new Border
             {
                 Height = 1,
@@ -275,13 +282,6 @@ namespace MphRead.Mods.Launcher.Gui
             rosterContent.Children.Add(_hunter);
             rosterContent.Children.Add(_suit);
             rosterContent.Children.Add(_team);
-            rosterContent.Children.Add(new Border
-            {
-                Height = 1,
-                Background = HubTheme.EdgeBrush,
-                Margin = new Thickness(0, 5, 0, 3)
-            });
-            rosterContent.Children.Add(administration);
             var rosterPanel = LobbyPanel("ROSTER", rosterContent, HubTheme.Good);
 
             // A real three-column lobby on desktop: roster, arena and rules.
@@ -301,8 +301,8 @@ namespace MphRead.Mods.Launcher.Gui
             _chatHistory = new ScrollViewer
             {
                 Content = _chat,
-                Height = 46,
-                MinHeight = 46,
+                Height = 32,
+                MinHeight = 32,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto
             };
@@ -310,7 +310,7 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 ColumnDefinitions = new ColumnDefinitions("*,Auto"),
                 ColumnSpacing = 6,
-                Height = 30
+                Height = 28
             };
             chatInput.Children.Add(_chatEntry);
             var send = new HubNavButton("SEND", compact: true);
@@ -327,7 +327,7 @@ namespace MphRead.Mods.Launcher.Gui
             };
             var chatBody = new Grid
             {
-                RowDefinitions = new RowDefinitions("46,30"),
+                RowDefinitions = new RowDefinitions("32,28"),
                 RowSpacing = 4
             };
             chatBody.Children.Add(_chatHistory);
@@ -455,7 +455,10 @@ namespace MphRead.Mods.Launcher.Gui
             // settings surface visible at once.
             frame.SizeChanged += (_, e) =>
             {
-                bool compact = e.NewSize.Width < 900 || e.NewSize.Height < 560;
+                bool compact = e.NewSize.Width < 980 || e.NewSize.Height < 640;
+                mainScroll.VerticalScrollBarVisibility = compact
+                    ? ScrollBarVisibility.Auto
+                    : ScrollBarVisibility.Disabled;
                 if (compact)
                 {
                     columns.ColumnDefinitions = new ColumnDefinitions("*");
@@ -468,7 +471,6 @@ namespace MphRead.Mods.Launcher.Gui
                     Grid.SetRow(rulesPanel, 2);
                     columns.RowSpacing = 10;
                     _preview.Height = 112;
-                    playerScroll.MaxHeight = 210;
                 }
                 else
                 {
@@ -485,8 +487,7 @@ namespace MphRead.Mods.Launcher.Gui
                     Grid.SetColumn(rulesPanel, 2);
                     Grid.SetRow(rulesPanel, 0);
                     columns.RowSpacing = 0;
-                    _preview.Height = e.NewSize.Height < 650 ? 104 : 124;
-                    playerScroll.MaxHeight = e.NewSize.Height < 650 ? 150 : 190;
+                    _preview.Height = e.NewSize.Height < 700 ? 104 : 124;
                 }
             };
 
@@ -753,7 +754,7 @@ namespace MphRead.Mods.Launcher.Gui
                 {
                     byte slot = roster.Slots[i];
                     var playerRow = new LobbyPlayerRow(roster, i, session.OwnerSlot,
-                        showTeam: session.Match.Format != MatchFormat.OneVsOne,
+                        showTeam: GameState.IsTeamMode(session.Match.Mode),
                         selected: slot == selected);
                     playerRow.Cursor = new Cursor(StandardCursorType.Hand);
                     playerRow.PointerPressed += (_, e) =>
@@ -1021,6 +1022,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         private void WireRuleField(FieldRow field)
         {
+            field.Box.MaxLength = 8;
             field.Box.TextChanged += (_, _) => DraftChanged();
             field.Box.LostFocus += (_, _) => TryAutoApply(force: true);
             field.Box.KeyDown += (_, e) =>
@@ -1114,13 +1116,10 @@ namespace MphRead.Mods.Launcher.Gui
             _layoutSummary.Text = !valid
                 ? reason
                 : _draftDirty
-                    ? "Changes save automatically."
+                    ? "Changes save when you finish editing."
                     : layout.TeamCount == 0
                         ? "Free for all"
-                        : $"Teams: {layout} · "
-                            + (LobbyRules.ExactTeams(configured)
-                                ? $"{layout.TotalPlayers} players"
-                                : "flexible roster");
+                        : $"Teams: {layout} · up to {layout.TotalPlayers} players · flexible start";
             _customTeams.Set(_customLayout.ToString());
             if (!valid) _start.IsEnabled = false;
         }
@@ -1164,7 +1163,8 @@ namespace MphRead.Mods.Launcher.Gui
         private void TryAutoApply(bool force = false)
         {
             if (!_draftDirty || NetSession.LobbyCommandPending || !NetSession.CanEditLobby
-                || (!force && NetSession.Clock - _draftChangedAt < 0.25)
+                || (!force && (_time.Box.IsFocused || _goal.Box.IsFocused))
+                || (!force && NetSession.Clock - _draftChangedAt < 0.35)
                 || NetSession.ServerSession is not { } config)
                 return;
             if (!TryBuildMatch(out MatchDefinition match, out string reason))
@@ -1283,7 +1283,7 @@ namespace MphRead.Mods.Launcher.Gui
                 return true;
             }
 
-            if (!double.TryParse(text, NumberStyles.Float,
+            if (!double.TryParse(text, NumberStyles.AllowDecimalPoint,
                     CultureInfo.InvariantCulture, out double decimalMinutes)
                 || !Double.IsFinite(decimalMinutes)
                 || decimalMinutes < 0 || (!allowZero && decimalMinutes <= 0)
@@ -1299,11 +1299,9 @@ namespace MphRead.Mods.Launcher.Gui
 
         private static bool PlayerChoosesTeam(MatchDefinition match)
         {
-            // 1v1 has one player per side, so choosing or locking teams adds no
-            // decision. Every other team matchup benefits from explicit team
-            // choice, including fixed 2v2/3v3/4v4 and four-team layouts.
-            return GameState.IsTeamMode(match.Mode)
-                && match.Format != MatchFormat.OneVsOne;
+            // Every team mode exposes the player's team choice, including 1v1.
+            // The server still enforces the configured per-team capacity.
+            return GameState.IsTeamMode(match.Mode);
         }
 
         private static string GoalLabel(GameMode mode) => mode switch
