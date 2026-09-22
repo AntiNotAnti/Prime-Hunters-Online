@@ -47,11 +47,20 @@ namespace MphRead.Mods.Network
                 // Current snapshots append match-time and health-sync state after
                 // the player array. The replay validator must accept the same wire
                 // packet the live session accepts.
-                int timeOffset = SnapshotHeader.Size;
+                const uint bootstrapFrame = 1;
+                int timeOffset = SnapshotHeader.Size + SnapshotWire.StateHeaderSize;
                 int healthOffset = timeOffset + NetMatchTimeSync.Size;
                 byte[] snapshotPayload = new byte[healthOffset + NetHealthSync.HeaderSize];
-                new SnapshotHeader { MatchId = match.MatchId, AuthorityEpoch = match.AuthorityEpoch,
-                    PlayerCount = 0 }.Write(snapshotPayload);
+                new SnapshotHeader
+                {
+                    MatchId = match.MatchId,
+                    AuthorityEpoch = match.AuthorityEpoch,
+                    Frame = bootstrapFrame,
+                    PlayerCount = 0
+                }.Write(snapshotPayload);
+                SnapshotWire.WriteStateHeader(
+                    snapshotPayload.AsSpan(SnapshotHeader.Size, SnapshotWire.StateHeaderSize),
+                    keyframe: true, activeMask: 0, baselineFrame: bootstrapFrame);
                 NetMatchTimeSync.Write(snapshotPayload.AsSpan(timeOffset, NetMatchTimeSync.Size));
                 BinaryPrimitives.WriteUInt16LittleEndian(snapshotPayload.AsSpan(healthOffset), match.MatchId);
                 snapshotPayload[healthOffset + 2] = 0;
