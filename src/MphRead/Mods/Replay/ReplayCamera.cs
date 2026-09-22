@@ -146,12 +146,12 @@ namespace MphRead
                 Mods.Replay.ReplayCamera.BookmarkRequested = false;
                 // In first-person the scene's auxiliary facing may be stale; capture
                 // the camera actually shown, without writing back into the hunter.
-                Mods.Replay.ReplayCamera.SaveKeyframe(_freeCam ? _cameraPosition : PlayerEntity.Main.CameraInfo.Position,
-                    _freeCam ? _cameraFacing : PlayerEntity.Main.CameraInfo.Facing,
+                Mods.Replay.ReplayCamera.SaveKeyframe(_freeCam ? _cameraPosition : this.Players.Main.CameraInfo.Position,
+                    _freeCam ? _cameraFacing : this.Players.Main.CameraInfo.Facing,
                     _freeCam ? _cameraFov : MathHelper.DegreesToRadians(
                         Mods.RenderOptions.ScaleCameraFov(
-                            PlayerEntity.Main.CameraInfo.Fov > 0
-                                ? PlayerEntity.Main.CameraInfo.Fov
+                            this.Players.Main.CameraInfo.Fov > 0
+                                ? this.Players.Main.CameraInfo.Fov
                                 : Mods.RenderOptions.DefaultFov)));
             }
             if (Mods.Replay.ReplayCamera.RestoreRequested)
@@ -182,7 +182,7 @@ namespace MphRead
                     Mods.Replay.ReplayCamera.FieldOfView, 20, 140));
             }
             if (mode is not (Mods.Replay.ReplayCameraMode.Chase or Mods.Replay.ReplayCameraMode.Orbit)) return;
-            var player = PlayerEntity.Main;
+            var player = this.Players.Main;
             if (!player.LoadFlags.TestFlag(LoadFlags.Spawned)) return;
             SetFreeCamera(true);
 
@@ -240,9 +240,9 @@ namespace MphRead
             if (Math.Abs(key.Roll) > 0.00001f)
                 _cameraUp = Vector3.Transform(_cameraUp,
                     Quaternion.FromAxisAngle(_cameraFacing, key.Roll)).Normalized();
-            if (key.LookAtSlot >= 0 && key.LookAtSlot < PlayerEntity.Players.Count)
+            if (key.LookAtSlot >= 0 && key.LookAtSlot < this.Players.Items.Count)
             {
-                var target = PlayerEntity.Players[key.LookAtSlot];
+                var target = this.Players.Items[key.LookAtSlot];
                 if (target.LoadFlags.TestFlag(LoadFlags.Active) && target.LoadFlags.TestFlag(LoadFlags.Spawned))
                 {
                     Vector3 direction = target.Position + Vector3.UnitY - _cameraPosition;

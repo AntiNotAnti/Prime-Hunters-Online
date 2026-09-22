@@ -37,9 +37,9 @@ namespace MphRead.Entities
             _beamTransform = GetTransformMatrix(beamVector, beamVector.X != 0 || beamVector.Z != 0 ? Vector3.UnitY : Vector3.UnitX);
             _beamTransform.Row3.Y = 0.25f;
             _beamVector = Matrix.Vec3MultMtx3(beamVector, Transform) * _data.Speed.FloatValue;
-            if (GameState.Mode == GameMode.SinglePlayer)
+            if (_scene.GameState.Mode == GameMode.SinglePlayer)
             {
-                Active = GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: data.Active != 0) != 0;
+                Active = _scene.GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: data.Active != 0) != 0;
             }
             else
             {
@@ -126,9 +126,9 @@ namespace MphRead.Entities
             if (info.Message == Message.Activate)
             {
                 Active = true;
-                if (GameState.Mode == GameMode.SinglePlayer)
+                if (_scene.GameState.Mode == GameMode.SinglePlayer)
                 {
-                    GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
+                    _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
                 }
             }
             else if (info.Message == Message.SetActive)
@@ -136,17 +136,17 @@ namespace MphRead.Entities
                 if ((int)info.Param1 != 0)
                 {
                     Active = true;
-                    if (GameState.Mode == GameMode.SinglePlayer)
+                    if (_scene.GameState.Mode == GameMode.SinglePlayer)
                     {
-                        GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
+                        _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
                     }
                 }
                 else
                 {
                     Active = false;
-                    if (GameState.Mode == GameMode.SinglePlayer)
+                    if (_scene.GameState.Mode == GameMode.SinglePlayer)
                     {
-                        GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
+                        _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
                     }
                 }
             }

@@ -202,8 +202,8 @@ namespace MphRead.Entities
                 if (_target != null)
                 {
                     Vector3 muzzlePos = Position.AddY(0.4f);
-                    int encounter = GameState.EncounterState[Owner.SlotIndex];
-                    if (Owner.IsBot && GameState.SinglePlayer
+                    int encounter = _scene.GameState.EncounterState[Owner.SlotIndex];
+                    if (Owner.IsBot && _scene.GameState.SinglePlayer
                         && (encounter == 1 || encounter == 3 || encounter == 4))
                     {
                         if (_cooldownTimer > 0)
@@ -228,7 +228,7 @@ namespace MphRead.Entities
                     }
                     if (Owner.TimeSinceShot >= cooldown * 2 && _cooldownTimer < 60 * 2) // todo: FPS stuff
                     {
-                        if (Owner.IsBot && GameState.SinglePlayer
+                        if (Owner.IsBot && _scene.GameState.SinglePlayer
                             && (encounter == 1 || encounter == 3 || encounter == 4))
                         {
                             // no need to set infinite ammo since we don't have an ammo getter/setter
@@ -263,7 +263,7 @@ namespace MphRead.Entities
             {
                 _timeSinceDamage++;
             }
-            if (Owner == PlayerEntity.Main)
+            if (Owner == _scene.Players.Main)
             {
                 string message = Text.Strings.GetHudMessage(233); // turret energy: %d
                 // hide during dialog pause to prevent overlap -- the game doesn't do this, and also can't play as Weavel in 1P anyway

@@ -30,7 +30,7 @@ namespace MphRead.Entities
 
             // Match Spawn's camera-reset condition. Scripted single-player
             // cameras retain their authored shake and transition timing.
-            if (!GameState.SinglePlayer || CameraSequence.Current == null)
+            if (!_scene.GameState.SinglePlayer || CameraSequence.Current == null)
             {
                 CameraInfo.Shake = 0;
             }

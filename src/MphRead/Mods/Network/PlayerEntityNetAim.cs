@@ -1936,7 +1936,7 @@ namespace MphRead.Entities
         /// </summary>
         internal (int Rows, float Height) ModScoreboardSize()
         {
-            return (GameState.ActivePlayers, GetScoreboardHeight());
+            return (_scene.GameState.ActivePlayers, GetScoreboardHeight());
         }
 
         /// <summary>
@@ -2006,7 +2006,8 @@ namespace MphRead.Entities
         /// </summary>
         private void ApplyGamepadAim()
         {
-            if (IsBot || SlotIndex != PlayerEntity.MainPlayerIndex
+            if (_scene.Services.IsReplica || NetHooks.IsPuppet(this)
+                || IsBot || SlotIndex != _scene.Players.MainPlayerIndex
                 || Mods.SpectatorMode.IsSpectating
                 || Flags1.TestFlag(PlayerFlags1.NoAimInput))
             {

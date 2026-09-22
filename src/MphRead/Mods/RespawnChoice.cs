@@ -79,7 +79,7 @@ namespace MphRead.Mods
         /// </summary>
         public static void ApplyOnSpawn(PlayerEntity player)
         {
-            if (player != PlayerEntity.Main || !GameState.Multiplayer)
+            if (player != player.OwningScene.Players.Main || !player.OwningScene.GameState.Multiplayer)
             {
                 return;
             }

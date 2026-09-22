@@ -67,7 +67,7 @@ namespace MphRead.Entities.Enemies
             Metadata.LoadEffectiveness(_values.Effectiveness, BeamEffectiveness);
             _scanId = _values.ScanId;
             _rangeVolume = CollisionVolume.Move(_spawner.Data.Fields.S06.Volume1, Position);
-            _shotCount = (ushort)(_values.MinShots + Rng.GetRandomInt2(_values.MaxShots + 1 - _values.MinShots));
+            _shotCount = (ushort)(_values.MinShots + _scene.Random.GetRandomInt2(_values.MaxShots + 1 - _values.MinShots));
             _shotTimer = (ushort)(_values.ShotCooldown * 2); // todo: FPS stuff
             _rotNode = inst.Model.GetNodeByName("Door_Rot")!;
             _rotNodePos = Position;
@@ -195,8 +195,8 @@ namespace MphRead.Entities.Enemies
             {
                 foreach (PlayerEntity player in _scene.GetPlayerEntities())
                 {
-                    if (player.IsBot && GameState.SinglePlayer || player.Health == 0 || !_rangeVolume.TestPoint(player.Position)
-                        || GameState.Mode == GameMode.BountyTeams && GameState.TeamCount == 2 && player.TeamIndex == 0)
+                    if (player.IsBot && _scene.GameState.SinglePlayer || player.Health == 0 || !_rangeVolume.TestPoint(player.Position)
+                        || _scene.GameState.Mode == GameMode.BountyTeams && _scene.GameState.TeamCount == 2 && player.TeamIndex == 0)
                     {
                         continue;
                     }
@@ -238,7 +238,7 @@ namespace MphRead.Entities.Enemies
             {
                 // bug?: condition to ignore 1P bots is missing
                 if (player.Health == 0 || !_rangeVolume.TestPoint(player.Position)
-                    || GameState.Mode == GameMode.BountyTeams && GameState.TeamCount == 2 && player.TeamIndex == 0)
+                    || _scene.GameState.Mode == GameMode.BountyTeams && _scene.GameState.TeamCount == 2 && player.TeamIndex == 0)
                 {
                     continue;
                 }
@@ -247,7 +247,7 @@ namespace MphRead.Entities.Enemies
             }
             _targetVec = _initialFacing;
             _aimSteps = 20 * 2; // todo: FPS stuff
-            _shotCount = (ushort)(_values.MinShots + Rng.GetRandomInt2(_values.MaxShots + 1 - _values.MinShots));
+            _shotCount = (ushort)(_values.MinShots + _scene.Random.GetRandomInt2(_values.MaxShots + 1 - _values.MinShots));
             float angle = MathHelper.RadiansToDegrees(MathF.Acos(Vector3.Dot(_aimVec, _targetVec)));
             _aimAngleStep = angle / _aimSteps;
             _crossVec = Vector3.Cross(_aimVec, _targetVec).Normalized();
@@ -261,7 +261,7 @@ namespace MphRead.Entities.Enemies
             {
                 return false;
             }
-            _shotCount = (ushort)(_values.MinShots + Rng.GetRandomInt2(_values.MaxShots + 1 - _values.MinShots));
+            _shotCount = (ushort)(_values.MinShots + _scene.Random.GetRandomInt2(_values.MaxShots + 1 - _values.MinShots));
             return true;
         }
 

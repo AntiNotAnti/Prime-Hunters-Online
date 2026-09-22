@@ -37,7 +37,7 @@ namespace MphRead.Entities.Enemies
         // todo: identical to Zoomer except for a few values
         protected override void EnemyInitialize()
         {
-            var facing = new Vector3(Rng.GetRandomInt2(4096) / 4096f, 0, Rng.GetRandomInt2(4096) / 4096f);
+            var facing = new Vector3(_scene.Random.GetRandomInt2(4096) / 4096f, 0, _scene.Random.GetRandomInt2(4096) / 4096f);
             if (facing.X == 0 && facing.Z == 0)
             {
                 facing = _spawner.Transform.Row2.Xyz;
@@ -53,9 +53,9 @@ namespace MphRead.Entities.Enemies
             SetUpModel(Metadata.EnemyModelNames[12], animIndex: 2);
             _extendTimer = 60 * 2; // todo: FPS stuff
             _field19C = _field1A8 = up;
-            _angleInc = Fixed.ToFloat(Rng.GetRandomInt2(0x7000)) + 3;
+            _angleInc = Fixed.ToFloat(_scene.Random.GetRandomInt2(0x7000)) + 3;
             _angleInc /= 2; // todo: FPS stuff
-            _maxAngle = Fixed.ToFloat(Rng.GetRandomInt2(0)) + 60;
+            _maxAngle = Fixed.ToFloat(_scene.Random.GetRandomInt2(0)) + 60;
             _angleCos = MathF.Cos(MathHelper.DegreesToRadians(_angleInc));
             _homeVolume = CollisionVolume.Move(SpawnFields.Volume1, _spawner.Data.Header.Position.ToFloatVector());
             _direction = Vector3.Cross(facing, up).Normalized();
@@ -72,8 +72,8 @@ namespace MphRead.Entities.Enemies
             var anim = (GeemerAnim)_models[0].AnimInfo.Index[0];
             if (anim == GeemerAnim.WiggleRetracted)
             {
-                float radii = PlayerEntity.Main.Volume.SphereRadius + 1.5f;
-                if ((Position - PlayerEntity.Main.Volume.SpherePosition).LengthSquared < radii * radii)
+                float radii = _scene.Players.Main.Volume.SphereRadius + 1.5f;
+                if ((Position - _scene.Players.Main.Volume.SpherePosition).LengthSquared < radii * radii)
                 {
                     _soundSource.PlaySfx(SfxId.GEEMER_EXTEND);
                     SetAnimation(GeemerAnim.Extend, AnimFlags.NoLoop);
@@ -84,8 +84,8 @@ namespace MphRead.Entities.Enemies
             }
             else if (anim == GeemerAnim.WiggleExtended)
             {
-                float radii = PlayerEntity.Main.Volume.SphereRadius + 1.5f;
-                if ((Position - PlayerEntity.Main.Volume.SpherePosition).LengthSquared >= radii * radii)
+                float radii = _scene.Players.Main.Volume.SphereRadius + 1.5f;
+                if ((Position - _scene.Players.Main.Volume.SpherePosition).LengthSquared >= radii * radii)
                 {
                     _soundSource.PlaySfx(SfxId.GEEMER_RETRACT);
                     _speed = Vector3.Zero;

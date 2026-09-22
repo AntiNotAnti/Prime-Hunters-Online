@@ -218,10 +218,10 @@ namespace MphRead.Entities.Enemies
         // todo: this is similar to Psycho Bit (cylinder only)
         protected void PickRoamTarget()
         {
-            float dist = Fixed.ToFloat(Rng.GetRandomInt2(Fixed.ToInt(_homeVolume.CylinderRadius)));
+            float dist = Fixed.ToFloat(_scene.Random.GetRandomInt2(Fixed.ToInt(_homeVolume.CylinderRadius)));
             var vec = new Vector3(dist, 0, 0);
             _roamAngleSign *= -1;
-            float angle = Fixed.ToFloat(Rng.GetRandomInt2(0xB4000)) * _roamAngleSign; // [0-180)
+            float angle = Fixed.ToFloat(_scene.Random.GetRandomInt2(0xB4000)) * _roamAngleSign; // [0-180)
             var rotY = Matrix4.CreateRotationY(MathHelper.DegreesToRadians(angle));
             vec = Matrix.Vec3MultMtx3(vec, rotY);
             var moveTarget = new Vector3(_homeVolume.CylinderPosition.X + vec.X, Position.Y, _homeVolume.CylinderPosition.Z + vec.Z);
@@ -288,7 +288,7 @@ namespace MphRead.Entities.Enemies
 
         private void State2()
         {
-            Vector3 facing = (PlayerEntity.Main.Position - Position).WithY(0).Normalized();
+            Vector3 facing = (_scene.Players.Main.Position - Position).WithY(0).Normalized();
             SetTransform(facing, Vector3.UnitY, Position);
             CallSubroutine(Metadata.Enemy35Subroutines, this);
         }
@@ -312,7 +312,7 @@ namespace MphRead.Entities.Enemies
             if (_handledRamCol && _ramDamageNeeded)
             {
                 // pretty sure this can't be true, as when _handledRamCol is set true, _ramDamageNeeded is set false
-                PlayerEntity.Main.TakeDamage(15, DamageFlags.NoDmgInvuln, null, this);
+                _scene.Players.Main.TakeDamage(15, DamageFlags.NoDmgInvuln, null, this);
                 _ramDamageNeeded = false;
             }
             else
@@ -383,11 +383,11 @@ namespace MphRead.Entities.Enemies
                 _ramDelay--;
                 return false;
             }
-            Vector3 facing = (PlayerEntity.Main.Position - Position).WithY(0).Normalized();
+            Vector3 facing = (_scene.Players.Main.Position - Position).WithY(0).Normalized();
             SetTransform(facing, Vector3.UnitY, Position);
             _timeInAir = 0;
             _airborne = false;
-            _moveTarget = PlayerEntity.Main.Position.WithY(Position.Y);
+            _moveTarget = _scene.Players.Main.Position.WithY(Position.Y);
             _targetVec = _moveTarget - Position;
             _moveDistSqr = _targetVec.LengthSquared;
             _moveDistSqrHalf = _moveDistSqr / 2;
@@ -402,9 +402,9 @@ namespace MphRead.Entities.Enemies
         private bool Behavior04()
         {
             bool collided = HandleCollision();
-            if (!_handledRamCol && HitPlayers[PlayerEntity.Main.SlotIndex])
+            if (!_handledRamCol && HitPlayers[_scene.Players.Main.SlotIndex])
             {
-                PlayerEntity.Main.TakeDamage(15, DamageFlags.NoDmgInvuln, null, this);
+                _scene.Players.Main.TakeDamage(15, DamageFlags.NoDmgInvuln, null, this);
                 _handledRamCol = true;
                 _ramDamageNeeded = false;
                 _speed = -_speed;
@@ -442,13 +442,13 @@ namespace MphRead.Entities.Enemies
 
         private bool Behavior06()
         {
-            if (PlayerEntity.Main.Health == 0)
+            if (_scene.Players.Main.Health == 0)
             {
                 return false;
             }
-            Vector3 between = (PlayerEntity.Main.Position - Position).Normalized();
+            Vector3 between = (_scene.Players.Main.Position - Position).Normalized();
             // as with Psycho Bit, the dot product check could facilitate a vision angle range, but as written it's pointless
-            if (Vector3.Dot(FacingVector, between) <= -1 || !_homeVolume.TestPoint(PlayerEntity.Main.Position))
+            if (Vector3.Dot(FacingVector, between) <= -1 || !_homeVolume.TestPoint(_scene.Players.Main.Position))
             {
                 return false;
             }

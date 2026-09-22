@@ -69,16 +69,16 @@ namespace MphRead.Entities.Enemies
 
         private void CheckPlayerCollision(float factor, int damage)
         {
-            if (!HitPlayers[PlayerEntity.Main.SlotIndex])
+            if (!HitPlayers[_scene.Players.Main.SlotIndex])
             {
                 return;
             }
-            Vector3 between = (PlayerEntity.Main.Position - Position).WithY(0);
+            Vector3 between = (_scene.Players.Main.Position - Position).WithY(0);
             between = between.LengthSquared > 1 / 128f
                 ? between.Normalized()
                 : FacingVector;
-            PlayerEntity.Main.Speed += between * factor;
-            PlayerEntity.Main.TakeDamage(damage, DamageFlags.None, null, this);
+            _scene.Players.Main.Speed += between * factor;
+            _scene.Players.Main.TakeDamage(damage, DamageFlags.None, null, this);
         }
 
         protected override bool EnemyTakeDamage(EntityBase? source)

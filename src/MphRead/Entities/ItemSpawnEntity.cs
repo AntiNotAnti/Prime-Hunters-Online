@@ -32,9 +32,9 @@ namespace MphRead.Entities
             Id = data.Header.EntityId;
             Position = data.Header.Position.ToFloatVector(); // vecs from header are not used
             AlwaysActive = data.AlwaysActive != 0;
-            if (GameState.Mode == GameMode.SinglePlayer)
+            if (_scene.GameState.Mode == GameMode.SinglePlayer)
             {
-                int state = GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: data.Enabled != 0);
+                int state = _scene.GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: data.Enabled != 0);
                 if (AlwaysActive)
                 {
                     Active = data.Enabled != 0;
@@ -103,9 +103,9 @@ namespace MphRead.Entities
                     {
                         int localSlot = Mods.Network.NetSession.LocalSlot;
                         if (Item.DespawnTimer != 0 && state.PickerSlot == localSlot
-                            && localSlot >= 0 && localSlot < PlayerEntity.Players.Count)
+                            && localSlot >= 0 && localSlot < _scene.Players.Items.Count)
                         {
-                            PlayerEntity.Players[localSlot].PlayHealthPickupSfx(Item.ItemType);
+                            _scene.Players.Items[localSlot].PlayHealthPickupSfx(Item.ItemType);
                         }
                         Item.DespawnTimer = 0;
                     }
@@ -172,17 +172,17 @@ namespace MphRead.Entities
             {
                 Active = true;
                 _playKeySfx = true;
-                if (GameState.Mode == GameMode.SinglePlayer)
+                if (_scene.GameState.Mode == GameMode.SinglePlayer)
                 {
-                    GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
+                    _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
                 }
             }
             else if (info.Message == Message.SetActive && (int)info.Param1 == 0)
             {
                 Active = false;
-                if (GameState.Mode == GameMode.SinglePlayer)
+                if (_scene.GameState.Mode == GameMode.SinglePlayer)
                 {
-                    GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
+                    _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
                 }
                 if (Item != null)
                 {
@@ -245,7 +245,7 @@ namespace MphRead.Entities
                 return null;
             }
             ItemInstanceEntity? item = null;
-            if (type != ItemType.None && (!chance.HasValue || Rng.GetRandomInt2(100) < chance.Value))
+            if (type != ItemType.None && (!chance.HasValue || scene.Random.GetRandomInt2(100) < chance.Value))
             {
                 item = new ItemInstanceEntity(new ItemInstanceEntityData(position, type, despawnTime), nodeRef, scene);
                 scene.AddEntity(item);

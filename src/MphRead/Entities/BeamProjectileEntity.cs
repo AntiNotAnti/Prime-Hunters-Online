@@ -497,7 +497,7 @@ namespace MphRead.Entities
                     }
                 }
             }
-            if (GameState.SinglePlayer)
+            if (_scene.GameState.SinglePlayer)
             {
                 foreach (BeamProjectileEntity other in _scene.GetBeamProjectileEntities())
                 {
@@ -548,7 +548,7 @@ namespace MphRead.Entities
                         DamageFlags damageFlags = DamageFlags.NoDmgInvuln;
                         if (player.BeamEffectiveness[(int)Beam] == Effectiveness.Zero)
                         {
-                            if (GameState.SinglePlayer && Owner == PlayerEntity.Main)
+                            if (_scene.GameState.SinglePlayer && Owner == _scene.Players.Main)
                             {
                                 Matrix4 transform = GetTransformMatrix(Vector3.UnitX, Vector3.UnitY, player.Position);
                                 EffectEntry? effect = _scene.SpawnEffectGetEntry(115, transform); // ineffectivePsycho
@@ -699,13 +699,13 @@ namespace MphRead.Entities
                                     {
                                         door.Unlock(updateState: true, noLockAnimSfx: true);
                                     }
-                                    else if (GameState.SinglePlayer)
+                                    else if (_scene.GameState.SinglePlayer)
                                     {
                                         // todo: handle messages like this
                                         _scene.SendMessage(Message.ShowWarning, this, null, 40, 90 * 2, 5 * 2); // todo: FPS stuff
                                     }
                                 }
-                                if (!GameState.InRoomTransition)
+                                if (!_scene.GameState.InRoomTransition)
                                 {
                                     door.Flags |= DoorFlags.ShotOpen;
                                 }
@@ -742,7 +742,7 @@ namespace MphRead.Entities
                         {
                             _soundSource.PlaySfx(SfxId.BIGEYE_ATTACK1C, noUpdate: true);
                             ItemType item = ItemType.None;
-                            uint rand = Rng.GetRandomInt2(100);
+                            uint rand = _scene.Random.GetRandomInt2(100);
                             if (_scene.AreaId == 0) // Slench 1 (Alinos 1)
                             {
                                 // 5% small missile, 5% medium health, 90% nothing
@@ -882,7 +882,7 @@ namespace MphRead.Entities
                 float amountA;
                 if (Beam == BeamType.Judicator)
                 {
-                    amountA = Rng.GetRandomInt1(0xFFFF);
+                    amountA = _scene.Random.GetRandomInt1(0xFFFF);
                 }
                 else
                 {
@@ -937,9 +937,9 @@ namespace MphRead.Entities
                     if (Owner.Type == EntityType.Player)
                     {
                         var player = (PlayerEntity)Owner;
-                        if (player.IsBot && GameState.SinglePlayer && player.Hunter == Hunter.Spire)
+                        if (player.IsBot && _scene.GameState.SinglePlayer && player.Hunter == Hunter.Spire)
                         {
-                            int encounter = GameState.EncounterState[player.SlotIndex];
+                            int encounter = _scene.GameState.EncounterState[player.SlotIndex];
                             ushort damage = 3;
                             if (encounter == 2 || encounter == 0 && player.BotLevel > 0)
                             {
@@ -992,7 +992,7 @@ namespace MphRead.Entities
 
                 void OmegaCannonFlash()
                 {
-                    if (Beam == BeamType.OmegaCannon && player == PlayerEntity.Main)
+                    if (Beam == BeamType.OmegaCannon && player == _scene.Players.Main)
                     {
                         _scene.SetFade(FadeType.FadeInWhite, 15 / 30f, overwrite: false);
                     }
@@ -1185,7 +1185,7 @@ namespace MphRead.Entities
                 {
                     DrawTrail4(height: 0.15f, range: 0.5f, segments: 10);
                 }
-                else if (Owner == PlayerEntity.Main)
+                else if (Owner == _scene.Players.Main)
                 {
                     DrawTrail4(height: 0.025f, range: 0.35f, segments: 5);
                 }
@@ -1724,7 +1724,7 @@ namespace MphRead.Entities
                 if (owner.Type == EntityType.Player)
                 {
                     var ownerPlayer = (PlayerEntity)owner;
-                    GameState.BeamDamageMax[ownerPlayer.SlotIndex] += damage;
+                    scene.GameState.BeamDamageMax[ownerPlayer.SlotIndex] += damage;
                 }
                 if (instantAoe)
                 {
@@ -1738,8 +1738,8 @@ namespace MphRead.Entities
                 }
                 if (maxSpread > 0)
                 {
-                    float angle1 = MathHelper.DegreesToRadians(Rng.GetRandomInt2((uint)maxSpread) / 4096f);
-                    float angle2 = MathHelper.DegreesToRadians(Rng.GetRandomInt2(0x168000) / 4096f);
+                    float angle1 = MathHelper.DegreesToRadians(scene.Random.GetRandomInt2((uint)maxSpread) / 4096f);
+                    float angle2 = MathHelper.DegreesToRadians(scene.Random.GetRandomInt2(0x168000) / 4096f);
                     float sin1 = MathF.Sin(angle1);
                     float cos1 = MathF.Cos(angle1);
                     float sin2 = MathF.Sin(angle2);
@@ -1811,7 +1811,7 @@ namespace MphRead.Entities
                     if (beam.Beam == BeamType.ShockCoil && owner.Type == EntityType.Player)
                     {
                         var ownerPlayer = (PlayerEntity)owner;
-                        if ((GameState.Multiplayer || !ownerPlayer.IsBot) && ownerPlayer.ShockCoilTarget == beam.Target
+                        if ((scene.GameState.Multiplayer || !ownerPlayer.IsBot) && ownerPlayer.ShockCoilTarget == beam.Target
                             && phase % 2 == 0) // todo: FPS stuff
                         {
                             // todo: FPS stuff
@@ -2168,10 +2168,10 @@ namespace MphRead.Entities
             // the angle would still leave the wave reaching twice its range at
             // the edge of the cone, since what it was measuring is the
             // distance with the height taken out of it.
-            float reach = GameState.ShadowFreeze ? mag : full.Length;
+            float reach = _scene.GameState.ShadowFreeze ? mag : full.Length;
             if (reach < MaxDistance && reach > 0)
             {
-                Vector3 toward = GameState.ShadowFreeze ? between / mag : full / reach;
+                Vector3 toward = _scene.GameState.ShadowFreeze ? between / mag : full / reach;
                 if (Vector3.Dot(toward, Direction) > angleCos)
                 {
                     Vector3 dir = GetDamageDirection(Position, player.Position);
@@ -2239,7 +2239,7 @@ namespace MphRead.Entities
         {
             if (CollisionEffect != 255)
             {
-                if (PlayerEntity.PlayerCount > 2 && CollisionEffect == 4)
+                if (_scene.Players.PlayerCount > 2 && CollisionEffect == 4)
                 {
                     // powerBeam (4 - 3 = 1)
                     noSplat = true;
@@ -2259,7 +2259,7 @@ namespace MphRead.Entities
                 Matrix4 transform = GetTransformMatrix(facing, up);
                 transform.Row3.Xyz = spawnPos;
                 // the game uses BeamKind against "511" bits which accomplish the same thing as this terrain type check
-                if (!GameState.SinglePlayer || colRes.Terrain <= Terrain.Lava)
+                if (!_scene.GameState.SinglePlayer || colRes.Terrain <= Terrain.Lava)
                 {
                     var ent = BeamEffectEntity.Create(
                         new BeamEffectEntityData(CollisionEffect, noSplat, transform, colRes.EntityCollision), _scene);
@@ -2274,7 +2274,7 @@ namespace MphRead.Entities
                 }
                 // there are actually effect IDs to cover platform/enemy beams in these arrays (although most are 255)
                 byte splatEffect = _terSplat1P[(int)BeamKind][(int)colRes.Terrain];
-                if (GameState.SinglePlayer && splatEffect != 255)
+                if (_scene.GameState.SinglePlayer && splatEffect != 255)
                 {
                     splatEffect += 3;
                     var ent = BeamEffectEntity.Create(
@@ -2309,7 +2309,7 @@ namespace MphRead.Entities
                 // 28 - sniperCol (unintended)
                 effectId = (int)Beam + 20;
             }
-            else if (GameState.SinglePlayer)
+            else if (_scene.GameState.SinglePlayer)
             {
                 // 12 - effectiveHitPB
                 // 13 - effectiveHitElectric

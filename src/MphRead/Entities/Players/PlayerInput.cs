@@ -48,7 +48,7 @@ namespace MphRead.Entities
                 {
                     ProcessTouchInput();
                     // todo: actual pause menu should require pressed
-                    if (GameState.Multiplayer && !Flags1.TestFlag(PlayerFlags1.WeaponMenuOpen) && Controls.Pause.IsDown)
+                    if (_scene.GameState.Multiplayer && !Flags1.TestFlag(PlayerFlags1.WeaponMenuOpen) && Controls.Pause.IsDown)
                     {
                         _showScoreboard = true;
                     }
@@ -94,7 +94,7 @@ namespace MphRead.Entities
             }
             else
             {
-                _showScoreboard = GameState.Multiplayer && Controls.Pause.IsDown;
+                _showScoreboard = _scene.GameState.Multiplayer && Controls.Pause.IsDown;
             }
             if (IsAltForm || IsMorphing)
             {
@@ -176,7 +176,7 @@ namespace MphRead.Entities
         private void ProcessTouchInput()
         {
             // the game explicitly checks for Samus, and doesn't check if the weapon menu is open
-            if (GameState.SinglePlayer && Controls.ScanVisor.IsPressed && !Flags1.TestFlag(PlayerFlags1.WeaponMenuOpen)
+            if (_scene.GameState.SinglePlayer && Controls.ScanVisor.IsPressed && !Flags1.TestFlag(PlayerFlags1.WeaponMenuOpen)
                 && !IsAltForm && !IsMorphing)
             {
                 if (ScanVisor)
@@ -192,7 +192,7 @@ namespace MphRead.Entities
             }
             bool weaponMenuDown = Controls.WeaponMenu.IsDown
                 || (IsMainPlayer && Input.StylusWeaponMenuDown);
-            if ((GameState.Multiplayer || _weaponSlots[2] != BeamType.OmegaCannon) && weaponMenuDown)
+            if ((_scene.GameState.Multiplayer || _weaponSlots[2] != BeamType.OmegaCannon) && weaponMenuDown)
             {
                 Flags1 |= PlayerFlags1.NoAimInput;
                 Flags1 |= PlayerFlags1.WeaponMenuOpen;
@@ -557,7 +557,7 @@ namespace MphRead.Entities
 
         private void ProcessBiped()
         {
-            if (IsMainPlayer && GameState.SinglePlayer && CameraSequence.Current != null)
+            if (IsMainPlayer && _scene.GameState.SinglePlayer && _scene.CameraSequences.Current != null)
             {
                 _timeIdle = 0;
             }
@@ -609,7 +609,7 @@ namespace MphRead.Entities
                         * (Mods.InputSettings.InvertMouseY ? -1 : 1);
                     float aimX = -Input.MouseDeltaX / 4f * Mods.InputSettings.MouseSensitivity
                         * (Mods.InputSettings.InvertMouseX ? -1 : 1);
-                    if (CameraSequence.Current?.Flags.TestFlag(CamSeqFlags.BlockInput) == true
+                    if (_scene.CameraSequences.Current?.Flags.TestFlag(CamSeqFlags.BlockInput) == true
                         || _scene.FrameAdvance || _scene.FrameAdvanceLastFrame) // skdebug
                     {
                         aimX = aimY = 0;
@@ -942,7 +942,7 @@ namespace MphRead.Entities
                         {
                             UpdateZoom(!EquipInfo.Zoomed);
                         }
-                        if (EquipInfo.Zoomed && CameraSequence.Current == null)
+                        if (EquipInfo.Zoomed && _scene.CameraSequences.Current == null)
                         {
                             // note: the game does this during cam seqs, resulting in the FOV thrashing a bit, but it has no visible effect
                             // since the sin/cos values for projection are set aside in the cam info update that's already occurred above.
@@ -1017,7 +1017,7 @@ namespace MphRead.Entities
                     // the game doesn't require pressed here, but presumably the control scheme would have the pressed flag
                     // todo: use the ability flag for the morph touch button too, even though the game doesn't
                     if (!Flags2.TestFlag(PlayerFlags2.BipedStuck) && _abilities.TestFlag(AbilityFlags.AltForm)
-                        && Controls.Morph.IsPressed || IsMainPlayer && CameraSequence.Current?.ForceAlt == true)
+                        && Controls.Morph.IsPressed || IsMainPlayer && _scene.CameraSequences.Current?.ForceAlt == true)
                     {
                         if (TrySwitchForms() && IsMainPlayer && IsMorphing)
                         {
@@ -1136,9 +1136,9 @@ namespace MphRead.Entities
             if (_disruptedTimer > 0)
             {
                 // random values between -3 and 3
-                shotVec.X += Fixed.ToFloat((int)Rng.GetRandomInt2(24576) - 12288);
-                shotVec.Y += Fixed.ToFloat((int)Rng.GetRandomInt2(24576) - 12288);
-                shotVec.Z += Fixed.ToFloat((int)Rng.GetRandomInt2(24576) - 12288);
+                shotVec.X += Fixed.ToFloat((int)_scene.Random.GetRandomInt2(24576) - 12288);
+                shotVec.Y += Fixed.ToFloat((int)_scene.Random.GetRandomInt2(24576) - 12288);
+                shotVec.Z += Fixed.ToFloat((int)_scene.Random.GetRandomInt2(24576) - 12288);
             }
             shotVec = shotVec.Normalized();
             WeaponInfo curWeapon = EquipInfo.Weapon;
@@ -1147,7 +1147,7 @@ namespace MphRead.Entities
                 // todo?: make this more solid to avoid e.g. the battlehammer ammo cost thing
                 EquipInfo.Weapon = Weapons.Current[(int)CurrentWeapon + 9];
             }
-            if (IsBot && GameState.SinglePlayer)
+            if (IsBot && _scene.GameState.SinglePlayer)
             {
                 UpdateAdventureModeBotWeapon();
             }
@@ -1253,7 +1253,7 @@ namespace MphRead.Entities
 
         private void UpdateAdventureModeBotWeapon()
         {
-            int encounter = GameState.EncounterState[SlotIndex];
+            int encounter = _scene.GameState.EncounterState[SlotIndex];
             if (encounter == 1 || encounter == 3 || encounter == 4)
             {
                 if (Hunter == Hunter.Kanden)
@@ -1391,7 +1391,7 @@ namespace MphRead.Entities
                             * (Mods.InputSettings.InvertMouseY ? -1 : 1);
                         float aimX = -Input.MouseDeltaX / 4f * Mods.InputSettings.MouseSensitivity
                             * (Mods.InputSettings.InvertMouseX ? -1 : 1);
-                        if (CameraSequence.Current?.Flags.TestFlag(CamSeqFlags.BlockInput) == true
+                        if (_scene.CameraSequences.Current?.Flags.TestFlag(CamSeqFlags.BlockInput) == true
                             || _scene.FrameAdvance || _scene.FrameAdvanceLastFrame) // skdebug
                         {
                             aimX = aimY = 0;
@@ -1662,7 +1662,7 @@ namespace MphRead.Entities
                             Flags2 |= PlayerFlags2.AltAttack;
                             float attackHSpeed = Fixed.ToFloat(Values.LungeHSpeed);
                             float attackVSpeed = Fixed.ToFloat(Values.LungeVSpeed);
-                            if (IsBot && GameState.SinglePlayer && GameState.EncounterState[SlotIndex] == 1)
+                            if (IsBot && _scene.GameState.SinglePlayer && _scene.GameState.EncounterState[SlotIndex] == 1)
                             {
                                 attackHSpeed = 0.3f;
                                 attackVSpeed = 0.45f;
@@ -1902,7 +1902,7 @@ namespace MphRead.Entities
                 // the game doesn't require pressed here, but presumably the control scheme would have the pressed flag
                 // the game also doesn't check the ability flag here
                 if (_abilities.TestFlag(AbilityFlags.AltForm) && Controls.Morph.IsPressed
-                    || IsMainPlayer && CameraSequence.Current?.ForceBiped == true)
+                    || IsMainPlayer && _scene.CameraSequences.Current?.ForceBiped == true)
                 {
                     TrySwitchForms();
                 }
@@ -1990,9 +1990,9 @@ namespace MphRead.Entities
                 bomb.SelfRadius = Fixed.ToFloat(Values.BombSelfRadius);
                 bomb.Damage = (ushort)Values.BombDamage;
                 bomb.EnemyDamage = (ushort)Values.BombEnemyDamage;
-                if (IsBot && GameState.SinglePlayer && (Hunter == Hunter.Kanden || Hunter == Hunter.Sylux))
+                if (IsBot && _scene.GameState.SinglePlayer && (Hunter == Hunter.Kanden || Hunter == Hunter.Sylux))
                 {
-                    int encounter = GameState.EncounterState[SlotIndex];
+                    int encounter = _scene.GameState.EncounterState[SlotIndex];
                     if (encounter == 1 || encounter == 3 || encounter == 4
                         || encounter == 0 && BotLevel == 0)
                     {
@@ -2045,7 +2045,7 @@ namespace MphRead.Entities
             {
                 if (Flags2.TestFlag(PlayerFlags2.AltAttack))
                 {
-                    if (IsBot && GameState.SinglePlayer && GameState.EncounterState[SlotIndex] == 1)
+                    if (IsBot && _scene.GameState.SinglePlayer && _scene.GameState.EncounterState[SlotIndex] == 1)
                     {
                         _altAttackCooldown = 10 * 2; // todo: FPS stuff
                     }
@@ -2510,7 +2510,7 @@ namespace MphRead.Entities
                         }
                         else if (control.Type == ButtonType.Mouse)
                         {
-                            if (GameState.DialogPause)
+                            if (global::MphRead.GameState.DialogPause)
                             {
                                 continue;
                             }
@@ -2579,7 +2579,7 @@ namespace MphRead.Entities
                 }
                 // todo?: besides the code duplication, input processing like this should work even if
                 // there's no player or the player is not active (will need to revisit this for menus)
-                if (i == 0 && player._scene.MoviePlaying)
+                if (i == 0 && player.OwningScene.MoviePlaying)
                 {
                     bool skipMovie = false;
                     Keybind skipControl = player.Controls.Shoot;
@@ -2608,7 +2608,7 @@ namespace MphRead.Entities
                     }
                     if (skipMovie)
                     {
-                        player._scene.SkipMovie();
+                        player.OwningScene.SkipMovie();
                     }
                 }
             }

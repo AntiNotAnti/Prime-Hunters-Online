@@ -145,6 +145,13 @@ namespace MphRead.Mods.Network
                 using (var second = new ReplayPlaybackSession(passiveB))
                 {
                     Require(first.Join(clean) && second.Join(clean), "independent passive readers open");
+                    second.Transport.ContinueSeek(0, resume: false);
+                    Require(second.Transport.IsSeeking && second.Transport.FramesDue() == 1,
+                        "initial frame-zero seek must apply frame-zero facts");
+                    second.PumpFrame();
+                    second.Transport.AfterFrame();
+                    Require(second.Transport.IsPaused && second.CurrentFrame == 0,
+                        "frame-zero seek completes after exactly one step");
                     first.Transport.SetPlaybackRate(.25f);
                     second.Transport.Pause();
                     for (int i = 0; i < 12; i++) first.PumpFrame();
@@ -168,6 +175,32 @@ namespace MphRead.Mods.Network
                     Require(Rng.Rng1 == 12345 && Rng.Rng2 == 67890, "passive readers preserve live RNG");
                     Require(ReplayController.PlaybackRate == 2 && ReplayController.State == ReplayState.Playing,
                         "passive readers preserve Studio transport");
+                    var sceneA = new Scene(new OpenTK.Mathematics.Vector2i(256, 192),
+                        Input.SyntheticInput.CreateKeyboard(), Input.SyntheticInput.CreateMouse(), _ => { }, () => { },
+                        new ReplaySceneServices(first, passiveA.State));
+                    var sceneB = new Scene(new OpenTK.Mathematics.Vector2i(256, 192),
+                        Input.SyntheticInput.CreateKeyboard(), Input.SyntheticInput.CreateMouse(), _ => { }, () => { },
+                        new ReplaySceneServices(second, passiveB.State));
+                    sceneA.GameState.Points[0] = 99;
+                    sceneA.GameState.Mode = GameMode.Capture;
+                    sceneA.Random.SetRng1(123);
+                    sceneA.Random.GetRandomInt1(100);
+                    Require(sceneB.GameState.Points[0] == 0 && GameState.Points[0] != 99,
+                        "replica match arrays are scene owned");
+                    Require(sceneB.GameState.Mode != GameMode.Capture && GameState.Mode != GameMode.Capture,
+                        "replica match rules are scene owned");
+                    Require(sceneB.Random.Rng1 == Rng.Rng1StartValue && Rng.Rng1 == 12345,
+                        "replica random streams are scene owned");
+                    Require(!ReferenceEquals(sceneA.Players.Items[0], sceneB.Players.Items[0])
+                        && !ReferenceEquals(sceneA.Players.Items[0], Entities.PlayerEntity.Players[0]),
+                        "replica player registry does not reuse foreground entities");
+                    sceneA.Players.MainPlayerIndex = 3;
+                    Require(sceneB.Players.MainPlayerIndex == 0 && Entities.PlayerEntity.MainPlayerIndex != 3,
+                        "replica perspective does not change foreground ownership");
+                    sceneA.DoCleanup();
+                    Require(sceneB.Players.Items[0] != null && NetSession.Active && Rng.Rng1 == 12345,
+                        "replica cleanup preserves other worlds and foreground state");
+                    sceneB.DoCleanup();
                 }
                 NetSession.Stop();
                 ReplayController.Stop();

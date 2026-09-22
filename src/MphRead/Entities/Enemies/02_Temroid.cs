@@ -104,20 +104,20 @@ namespace MphRead.Entities.Enemies
                 _models[0].SetAnimation(11, AnimFlags.NoLoop);
                 _field1B8 = 0;
                 _field1BC = Position;
-                Vector3 facing = (PlayerEntity.Main.Position - Position).AddY(0.5f).Normalized();
+                Vector3 facing = (_scene.Players.Main.Position - Position).AddY(0.5f).Normalized();
                 SetTransform(facing, UpVector, Position);
                 _speed = -(facing * 0.3f).WithY(0) / 2; // todo: FPS stuff
             }
             else if (_state2 == 4)
             {
                 _models[0].SetAnimation(12, AnimFlags.NoLoop);
-                Vector3 facing = (PlayerEntity.Main.Position - Position).AddY(0.5f).Normalized();
+                Vector3 facing = (_scene.Players.Main.Position - Position).AddY(0.5f).Normalized();
                 _speed = (facing * 0.3f).WithY(0) / 2; // todo: FPS stuff
             }
             else if (_state2 == 5)
             {
                 _models[0].SetAnimation(3);
-                Vector3 facing = (PlayerEntity.Main.Position - Position).AddY(0.5f).Normalized();
+                Vector3 facing = (_scene.Players.Main.Position - Position).AddY(0.5f).Normalized();
                 _speed = facing / 2 / 2; // todo: FPS stuff
                 _field170 = 20 * 2; // todo: FPS stuff
             }
@@ -139,8 +139,8 @@ namespace MphRead.Entities.Enemies
             else if (_state2 == 8)
             {
                 Vector3 facing;
-                Vector3 playerFacing = PlayerEntity.Main.FacingVector;
-                if (PlayerEntity.Main.IsAltForm)
+                Vector3 playerFacing = _scene.Players.Main.FacingVector;
+                if (_scene.Players.Main.IsAltForm)
                 {
                     _models[0].SetAnimation(7);
                     facing = -playerFacing.WithY(0);
@@ -212,9 +212,9 @@ namespace MphRead.Entities.Enemies
 
         protected override void Detach()
         {
-            if (PlayerEntity.Main.AttachedEnemy == this)
+            if (_scene.Players.Main.AttachedEnemy == this)
             {
-                PlayerEntity.Main.AttachedEnemy = null;
+                _scene.Players.Main.AttachedEnemy = null;
             }
             _field1D0 = false;
         }
@@ -321,15 +321,15 @@ namespace MphRead.Entities.Enemies
 
         private void State01()
         {
-            Func216469C(PlayerEntity.Main.Position, Position, sign: 1);
+            Func216469C(_scene.Players.Main.Position, Position, sign: 1);
             State02();
         }
 
         private void State02()
         {
-            if (HitPlayers[PlayerEntity.Main.SlotIndex])
+            if (HitPlayers[_scene.Players.Main.SlotIndex])
             {
-                PlayerEntity.Main.TakeDamage(15, DamageFlags.None, direction: null, this);
+                _scene.Players.Main.TakeDamage(15, DamageFlags.None, direction: null, this);
             }
             if (CallSubroutine(Metadata.Enemy02Subroutines, this))
             {
@@ -386,9 +386,9 @@ namespace MphRead.Entities.Enemies
         {
             int animId = _models[0].AnimInfo.Index[0];
             Vector3 facing = FacingVector;
-            Vector3 playerPos = PlayerEntity.Main.Position;
-            Vector3 playerFacing = PlayerEntity.Main.FacingVector;
-            if (PlayerEntity.Main.IsMorphing)
+            Vector3 playerPos = _scene.Players.Main.Position;
+            Vector3 playerFacing = _scene.Players.Main.FacingVector;
+            if (_scene.Players.Main.IsMorphing)
             {
                 if (facing.Y != 0)
                 {
@@ -403,7 +403,7 @@ namespace MphRead.Entities.Enemies
                 }
                 SetTransform(facing.Normalized(), UpVector, playerPos.AddY(0.625f));
             }
-            else if (PlayerEntity.Main.IsUnmorphing)
+            else if (_scene.Players.Main.IsUnmorphing)
             {
                 if (facing.Y == 0)
                 {
@@ -416,11 +416,11 @@ namespace MphRead.Entities.Enemies
                 AnimationInfo animInfo = _models[0].AnimInfo;
                 int frameCount = animInfo.FrameCount[0];
                 int animFrame = animInfo.Frame[0];
-                Vector3 cameraPos = PlayerEntity.Main.CameraInfo.Position;
+                Vector3 cameraPos = _scene.Players.Main.CameraInfo.Position;
                 Vector3 postion = (playerPos.AddY(0.625f) * (frameCount - animFrame) + (cameraPos + playerFacing / 2) * animFrame) / frameCount;
                 SetTransform(facing.Normalized(), UpVector, postion);
             }
-            else if (PlayerEntity.Main.IsAltForm)
+            else if (_scene.Players.Main.IsAltForm)
             {
                 if (facing.Y != 0)
                 {
@@ -453,12 +453,12 @@ namespace MphRead.Entities.Enemies
             }
             else
             {
-                PlayerEntity.Main.TakeDamage(2, DamageFlags.NoDmgInvuln, direction: null, this);
+                _scene.Players.Main.TakeDamage(2, DamageFlags.NoDmgInvuln, direction: null, this);
                 _drainDamageTimer = 8 * 2; // todo: FPS stuff
             }
             if (CallSubroutine(Metadata.Enemy02Subroutines, this))
             {
-                PlayerEntity.Main.AttachedEnemy = null;
+                _scene.Players.Main.AttachedEnemy = null;
                 Func21648A4();
             }
         }
@@ -483,7 +483,7 @@ namespace MphRead.Entities.Enemies
 
         private bool Behavior01()
         {
-            return PlayerEntity.Main.AttachedEnemy == null;
+            return _scene.Players.Main.AttachedEnemy == null;
         }
 
         private bool Behavior02()
@@ -498,11 +498,11 @@ namespace MphRead.Entities.Enemies
 
         private bool Behavior03()
         {
-            if (_health == 0 || !HitPlayers[PlayerEntity.Main.SlotIndex] || PlayerEntity.Main.AttachedEnemy != null)
+            if (_health == 0 || !HitPlayers[_scene.Players.Main.SlotIndex] || _scene.Players.Main.AttachedEnemy != null)
             {
                 return false;
             }
-            PlayerEntity.Main.AttachedEnemy = this;
+            _scene.Players.Main.AttachedEnemy = this;
             return true;
         }
 
@@ -514,11 +514,11 @@ namespace MphRead.Entities.Enemies
         private bool Behavior05()
         {
             CollisionResult result = default;
-            if (CollisionDetection.CheckBetweenPoints(Position, PlayerEntity.Main.Position, TestFlags.None, _scene, ref result))
+            if (CollisionDetection.CheckBetweenPoints(Position, _scene.Players.Main.Position, TestFlags.None, _scene, ref result))
             {
                 return false;
             }
-            Vector3 between = PlayerEntity.Main.Position - Position;
+            Vector3 between = _scene.Players.Main.Position - Position;
             return between.LengthSquared < 6.5f * 6.5f;
         }
 
@@ -540,29 +540,29 @@ namespace MphRead.Entities.Enemies
 
         private bool Behavior08()
         {
-            return PlayerEntity.Main.Health == 0;
+            return _scene.Players.Main.Health == 0;
         }
 
         private bool Behavior09()
         {
             CollisionResult result = default;
-            return CollisionDetection.CheckBetweenPoints(Position, PlayerEntity.Main.Position, TestFlags.None, _scene, ref result);
+            return CollisionDetection.CheckBetweenPoints(Position, _scene.Players.Main.Position, TestFlags.None, _scene, ref result);
         }
 
         private bool Behavior10()
         {
-            Vector3 between = PlayerEntity.Main.Position - Position;
+            Vector3 between = _scene.Players.Main.Position - Position;
             return between.LengthSquared < 100;
         }
 
         private bool Behavior11()
         {
-            return PlayerEntity.Main.AttachedEnemy != null;
+            return _scene.Players.Main.AttachedEnemy != null;
         }
 
         private bool Behavior12()
         {
-            Vector3 between = PlayerEntity.Main.Position - Position;
+            Vector3 between = _scene.Players.Main.Position - Position;
             return between.LengthSquared < 25;
         }
 

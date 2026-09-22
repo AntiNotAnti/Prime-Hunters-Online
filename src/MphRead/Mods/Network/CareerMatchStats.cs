@@ -120,11 +120,11 @@ namespace MphRead.Mods.Network
 
         public static void NoteKill(PlayerEntity attacker)
         {
-            if (!GameState.Multiplayer || !NetSession.IsAuthority) return;
+            if (!attacker.OwningScene.GameState.Multiplayer || !NetSession.IsAuthority) return;
             int slot = attacker.SlotIndex;
             if ((uint)slot >= Slots) return;
             LongestKillStreak[slot] = Math.Max(LongestKillStreak[slot],
-                GameState.KillStreak[slot]);
+                attacker.OwningScene.GameState.KillStreak[slot]);
         }
     }
 }

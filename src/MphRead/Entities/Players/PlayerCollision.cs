@@ -155,9 +155,9 @@ namespace MphRead.Entities
                         dir.Z = z / factor;
                     }
                     ushort damage = attacker.Values.AltAttackDamage;
-                    if (attacker.IsBot && GameState.SinglePlayer)
+                    if (attacker.IsBot && attacker.OwningScene.GameState.SinglePlayer)
                     {
-                        int encounter = GameState.EncounterState[attacker.SlotIndex];
+                        int encounter = attacker.OwningScene.GameState.EncounterState[attacker.SlotIndex];
                         if (encounter == 1 || encounter == 3 || encounter == 4
                             || encounter == 0 && attacker.BotLevel == 0)
                         {
@@ -205,9 +205,9 @@ namespace MphRead.Entities
                         target.Acceleration = dir;
                         target._accelerationTimer = 8 * 2; // todo: FPS stuff
                         ushort damage = attacker.Values.AltAttackDamage;
-                        if (attacker.IsBot && GameState.SinglePlayer)
+                        if (attacker.IsBot && attacker.OwningScene.GameState.SinglePlayer)
                         {
-                            int encounter = GameState.EncounterState[attacker.SlotIndex];
+                            int encounter = attacker.OwningScene.GameState.EncounterState[attacker.SlotIndex];
                             if (encounter == 1 || encounter == 3 || encounter == 4
                                 || encounter == 0 && attacker.BotLevel == 0)
                             {
@@ -263,9 +263,9 @@ namespace MphRead.Entities
                 target._accelerationTimer = (ushort)(attacker.Values.AltAttackKnockbackTime * 2); // todo: FPS stuff
             }
             ushort damage = attacker.Values.AltAttackDamage;
-            if (attacker.IsBot && GameState.SinglePlayer)
+            if (attacker.IsBot && attacker.OwningScene.GameState.SinglePlayer)
             {
-                int encounter = GameState.EncounterState[attacker.SlotIndex];
+                int encounter = attacker.OwningScene.GameState.EncounterState[attacker.SlotIndex];
                 if (encounter == 1 || encounter == 3 || encounter == 4)
                 {
                     damage = (ushort)(attacker.Hunter == Hunter.Trace ? 15 : 10);
@@ -439,7 +439,7 @@ namespace MphRead.Entities
                     MathF.Max(MathF.Max(Single.MinValue, point1.Z), point2.Z) + margin
                 );
             }
-            bool includeEntities = GameState.TransitionState == TransitionState.None; // handled differently in-game
+            bool includeEntities = _scene.GameState.TransitionState == TransitionState.None; // handled differently in-game
             // point1/point2/margin aren't used, but point1 has to be passed in order to include entities
             IReadOnlyList<CollisionCandidate> candidates
                 = CollisionDetection.GetCandidatesForLimits(point1, point2, margin, limitMin, limitMax, includeEntities, _scene);
@@ -890,7 +890,7 @@ namespace MphRead.Entities
                     {
                         climbing = false;
                     }
-                    else if (_scene.RoomId == 80 && CameraSequence.Current != null) // Frost Labyrinth
+                    else if (_scene.RoomId == 80 && _scene.CameraSequences.Current != null) // Frost Labyrinth
                     {
                         climbing = false;
                     }

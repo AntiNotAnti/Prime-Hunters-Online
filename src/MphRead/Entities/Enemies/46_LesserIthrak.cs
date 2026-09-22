@@ -124,7 +124,7 @@ namespace MphRead.Entities.Enemies
             }
             else if (_state1 == 3 || _state1 == 4 || _state1 == 5 || _state1 == 6 || _state1 == 8)
             {
-                Vector3 facing = (PlayerEntity.Main.Position - Position).WithY(0).Normalized();
+                Vector3 facing = (_scene.Players.Main.Position - Position).WithY(0).Normalized();
                 SetTransform(facing, Vector3.UnitY, Position);
             }
             if (_state1 != 0 && _state1 != 1 && _state1 != 2)
@@ -164,10 +164,10 @@ namespace MphRead.Entities.Enemies
             {
                 float radius = volume.Type == VolumeType.Cylinder ? volume.CylinderRadius : volume.SphereRadius;
                 Vector3 pos = volume.Type == VolumeType.Cylinder ? volume.CylinderPosition : volume.SpherePosition;
-                float dist = Fixed.ToFloat(Rng.GetRandomInt2(Fixed.ToInt(radius)));
+                float dist = Fixed.ToFloat(_scene.Random.GetRandomInt2(Fixed.ToInt(radius)));
                 var vec = new Vector3(dist, 0, 0);
                 _dropAngleSign *= -1;
-                float randAngle = Fixed.ToFloat(Rng.GetRandomInt2(0xB4000)) * _dropAngleSign; // [0-180)
+                float randAngle = Fixed.ToFloat(_scene.Random.GetRandomInt2(0xB4000)) * _dropAngleSign; // [0-180)
                 var rotY = Matrix4.CreateRotationY(MathHelper.DegreesToRadians(randAngle));
                 vec = Matrix.Vec3MultMtx3(vec, rotY);
                 moveTarget = new Vector3(
@@ -179,8 +179,8 @@ namespace MphRead.Entities.Enemies
             else
             {
                 Debug.Assert(volume.Type == VolumeType.Box);
-                float distX = Fixed.ToFloat(Rng.GetRandomInt2(Fixed.ToInt(volume.BoxDot1)));
-                float distZ = Fixed.ToFloat(Rng.GetRandomInt2(Fixed.ToInt(volume.BoxDot3)));
+                float distX = Fixed.ToFloat(_scene.Random.GetRandomInt2(Fixed.ToInt(volume.BoxDot1)));
+                float distZ = Fixed.ToFloat(_scene.Random.GetRandomInt2(Fixed.ToInt(volume.BoxDot3)));
                 moveTarget = new Vector3(
                     volume.BoxVector1.X * distX + volume.BoxVector3.X * distZ + volume.BoxPosition.X,
                     Position.Y - 20,
@@ -300,7 +300,7 @@ namespace MphRead.Entities.Enemies
             }
             else if (_delayTimer == 0)
             {
-                PlayerEntity.Main.TakeDamage(10, DamageFlags.NoDmgInvuln, _speed * 2, this); // todo: FPS stuff
+                _scene.Players.Main.TakeDamage(10, DamageFlags.NoDmgInvuln, _speed * 2, this); // todo: FPS stuff
                 _delayTimer = 30 * 2; // todo: FPS stuff
             }
             if (_delayTimer > 0)
@@ -405,7 +405,7 @@ namespace MphRead.Entities.Enemies
                 return false;
             }
             SetNodeAnim(13);
-            Vector3 facing = (PlayerEntity.Main.Position - Position).WithY(0).Normalized();
+            Vector3 facing = (_scene.Players.Main.Position - Position).WithY(0).Normalized();
             SetTransform(facing, Vector3.UnitY, Position);
             _speed = new Vector3(facing.X * 0.15f, 0, facing.Z * 0.15f);
             _speed /= 2; // todo: FPS stuff
@@ -416,7 +416,7 @@ namespace MphRead.Entities.Enemies
         // player in warning range
         protected bool Behavior02()
         {
-            if (!_warnVolume.TestPoint(PlayerEntity.Main.Position))
+            if (!_warnVolume.TestPoint(_scene.Players.Main.Position))
             {
                 return false;
             }
@@ -495,7 +495,7 @@ namespace MphRead.Entities.Enemies
                 return false;
             }
             SetNodeAnim(16);
-            _targetVec = (PlayerEntity.Main.Position - Position).WithY(0).Normalized();
+            _targetVec = (_scene.Players.Main.Position - Position).WithY(0).Normalized();
             float angle = MathHelper.RadiansToDegrees(MathF.Acos(Vector3.Dot(FacingVector, _targetVec)));
             _stepCount = 10 * 2; // todo: FPS stuff
             _aimAngleStep = angle / _stepCount;
@@ -552,7 +552,7 @@ namespace MphRead.Entities.Enemies
 
         protected bool Behavior11()
         {
-            PlayerEntity mainPlayer = PlayerEntity.Main;
+            PlayerEntity mainPlayer = _scene.Players.Main;
             CollisionVolume playerCol = mainPlayer.Volume;
             Debug.Assert(playerCol.Type == VolumeType.Sphere);
             playerCol.SpherePosition.Y += Fixed.ToFloat(1000);
@@ -586,7 +586,7 @@ namespace MphRead.Entities.Enemies
 
         protected bool Behavior13()
         {
-            Vector3 playerPos = PlayerEntity.Main.Position;
+            Vector3 playerPos = _scene.Players.Main.Position;
             if (!_rangeVolume.TestPoint(playerPos) || !_rangeVolume.TestPoint(Position))
             {
                 return false;
@@ -603,7 +603,7 @@ namespace MphRead.Entities.Enemies
 
         protected bool Behavior14()
         {
-            if (_warnVolume.TestPoint(PlayerEntity.Main.Position))
+            if (_warnVolume.TestPoint(_scene.Players.Main.Position))
             {
                 return false;
             }
@@ -613,7 +613,7 @@ namespace MphRead.Entities.Enemies
 
         protected bool Behavior15()
         {
-            if (!_rangeVolume.TestPoint(PlayerEntity.Main.Position))
+            if (!_rangeVolume.TestPoint(_scene.Players.Main.Position))
             {
                 return false;
             }
@@ -633,7 +633,7 @@ namespace MphRead.Entities.Enemies
             Vector3 facing = FacingVector;
             var vec = new Vector3(-facing.X * factor, 0, -facing.Z * factor);
             _recoilAngleSign *= -1;
-            float randAngle = (Fixed.ToFloat(Rng.GetRandomInt2(0x1E000)) + 30) * _recoilAngleSign; // [30-60)
+            float randAngle = (Fixed.ToFloat(_scene.Random.GetRandomInt2(0x1E000)) + 30) * _recoilAngleSign; // [30-60)
             var rotY = Matrix4.CreateRotationY(MathHelper.DegreesToRadians(randAngle));
             vec = Matrix.Vec3MultMtx3(vec, rotY);
             _speed = new Vector3(vec.X, Fixed.ToFloat(1000), vec.Z);
@@ -642,7 +642,7 @@ namespace MphRead.Entities.Enemies
 
         protected bool Behavior16()
         {
-            if ((Position - PlayerEntity.Main.Position).LengthSquared >= 1.5f * 1.5f)
+            if ((Position - _scene.Players.Main.Position).LengthSquared >= 1.5f * 1.5f)
             {
                 return false;
             }
@@ -676,7 +676,7 @@ namespace MphRead.Entities.Enemies
 
         protected bool Behavior18()
         {
-            Vector3 between = Position - PlayerEntity.Main.Position;
+            Vector3 between = Position - _scene.Players.Main.Position;
             float distSqr = between.LengthSquared;
             if (distSqr <= 1.5f * 1.5f || distSqr >= 2 * 2)
             {
@@ -724,7 +724,7 @@ namespace MphRead.Entities.Enemies
             SetNodeAnim(16);
             _soundSource.StopSfx(SfxId.HANGING_TERROR_WALK);
             _speed = Vector3.Zero;
-            _targetVec = (PlayerEntity.Main.Position - Position).WithY(0).Normalized();
+            _targetVec = (_scene.Players.Main.Position - Position).WithY(0).Normalized();
             float angle = MathHelper.RadiansToDegrees(MathF.Acos(Vector3.Dot(FacingVector, _targetVec)));
             _stepCount = 10 * 2; // todo: FPS stuff
             _aimAngleStep = angle / _stepCount;
@@ -734,12 +734,12 @@ namespace MphRead.Entities.Enemies
 
         protected bool Behavior21()
         {
-            if (_delayTimer > 0 || (Position - PlayerEntity.Main.Position).LengthSquared <= 2 * 2)
+            if (_delayTimer > 0 || (Position - _scene.Players.Main.Position).LengthSquared <= 2 * 2)
             {
                 return false;
             }
             SetNodeAnim(13);
-            Vector3 facing = (PlayerEntity.Main.Position - Position).WithY(0).Normalized();
+            Vector3 facing = (_scene.Players.Main.Position - Position).WithY(0).Normalized();
             SetTransform(facing, Vector3.UnitY, Position);
             _speed = new Vector3(facing.X * 0.15f, 0, facing.Z * 0.15f);
             _speed /= 2; // todo: FPS stuff
@@ -751,7 +751,7 @@ namespace MphRead.Entities.Enemies
         {
             // todo: FPS stuff
             // --> in addition to the timer, we have to halve the random chance
-            if (_delayTimer < 15 * 2 || Rng.GetRandomInt2(0x64000) >= 2048 / 2)
+            if (_delayTimer < 15 * 2 || _scene.Random.GetRandomInt2(0x64000) >= 2048 / 2)
             {
                 return false;
             }
@@ -774,7 +774,7 @@ namespace MphRead.Entities.Enemies
 
         protected bool Behavior24()
         {
-            Vector3 between = Position - PlayerEntity.Main.Position;
+            Vector3 between = Position - _scene.Players.Main.Position;
             float distSqr = between.LengthSquared;
             if (distSqr <= 3.5f * 3.5f || distSqr >= 5 * 5)
             {
@@ -790,7 +790,7 @@ namespace MphRead.Entities.Enemies
 
         protected bool Behavior25()
         {
-            if (_rangeVolume.TestPoint(Position) && _rangeVolume.TestPoint(PlayerEntity.Main.Position))
+            if (_rangeVolume.TestPoint(Position) && _rangeVolume.TestPoint(_scene.Players.Main.Position))
             {
                 return false;
             }

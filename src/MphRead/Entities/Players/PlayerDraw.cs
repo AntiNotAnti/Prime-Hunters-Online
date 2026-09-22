@@ -76,7 +76,7 @@ namespace MphRead.Entities
             int lod = 0;
             Flags2 &= ~PlayerFlags2.Lod1;
             if (!historical && !IsMainPlayer && !Features.MaxPlayerDetail
-                && (Position - Main.CameraInfo.Position).LengthSquared >= 3 * 3)
+                && (Position - _scene.Players.Main.CameraInfo.Position).LengthSquared >= 3 * 3)
             {
                 lod = 1;
                 Flags2 |= PlayerFlags2.Lod1;
@@ -94,7 +94,7 @@ namespace MphRead.Entities
                 drawBiped = historical
                     ? !Mods.KillCam.IsHistoricalCameraOwner(SlotIndex)
                     : !IsMainPlayer || CameraType != CameraType.First
-                        || CameraSequence.Current != null
+                        || _scene.CameraSequences.Current != null
                         || _camSwitchTimer < Values.CamSwitchTime * 2; // todo: FPS stuff
                 if (drawAltForm)
                 {
@@ -209,7 +209,7 @@ namespace MphRead.Entities
                             PaletteOverride = Metadata.RedPalette;
                         }
                         float alpha = _curAlpha;
-                        if (IsMainPlayer && CameraSequence.Current == null
+                        if (IsMainPlayer && _scene.CameraSequences.Current == null
                             && _bipedModel1.AnimInfo.Index[0] == (int)PlayerAnimation.Unmorph)
                         {
                             alpha -= alpha * _bipedModel1.AnimInfo.Frame[0] / _bipedModel1.AnimInfo.FrameCount[0];
@@ -313,8 +313,8 @@ namespace MphRead.Entities
                     _muzzleEffect.SetDrawEnabled(false);
                 }
             }
-            if (GameState.SinglePlayer && IsMainPlayer && _deathCountdown > 0 && _deathCountdown <= 119 / 30f
-                && System.Numerics.BitOperations.PopCount(GameState.StorySave.CurrentOctoliths) > 0)
+            if (_scene.GameState.SinglePlayer && IsMainPlayer && _deathCountdown > 0 && _deathCountdown <= 119 / 30f
+                && System.Numerics.BitOperations.PopCount(_scene.GameState.StorySave.CurrentOctoliths) > 0)
             {
                 Matrix4 transform = Matrix4.Identity;
                 transform.Row3.Xyz = _lostOctolithDrawPos;

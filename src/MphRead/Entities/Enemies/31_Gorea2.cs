@@ -120,7 +120,7 @@ namespace MphRead.Entities.Enemies
                     _field236--;
                 }
             }
-            if (CheckFacingAngle(-1, PlayerEntity.Main.Position))
+            if (CheckFacingAngle(-1, _scene.Players.Main.Position))
             {
                 _sealSphere.UpdateVisibility();
             }
@@ -136,13 +136,13 @@ namespace MphRead.Entities.Enemies
 
         private void CheckPlayerCollision()
         {
-            if (!HitPlayers[PlayerEntity.Main.SlotIndex])
+            if (!HitPlayers[_scene.Players.Main.SlotIndex])
             {
                 return;
             }
-            Vector3 between = PlayerEntity.Main.Position - Position;
-            PlayerEntity.Main.Speed += between / 4 / 2; // todo: FPS stuff
-            PlayerEntity.Main.TakeDamage(10, DamageFlags.None, direction: null, source: this);
+            Vector3 between = _scene.Players.Main.Position - Position;
+            _scene.Players.Main.Speed += between / 4 / 2; // todo: FPS stuff
+            _scene.Players.Main.TakeDamage(10, DamageFlags.None, direction: null, source: this);
         }
 
         private void CreateTeleportEffect(bool useNode)
@@ -281,10 +281,10 @@ namespace MphRead.Entities.Enemies
                 return;
             }
             UpdateAnimFrames(_laserModel);
-            Vector3 posToPlayer = PlayerEntity.Main.Position - _laserTargetPos;
+            Vector3 posToPlayer = _scene.Players.Main.Position - _laserTargetPos;
             if (posToPlayer.Length <= 0.125f)
             {
-                _laserTargetPos = PlayerEntity.Main.Position;
+                _laserTargetPos = _scene.Players.Main.Position;
                 GoreaFlags |= Gorea2Flags.LaserOnTarget;
             }
             else
@@ -330,7 +330,7 @@ namespace MphRead.Entities.Enemies
                     // bugfix?: doesn't this mean a hit would regitser if the laser were immediately blocked by a wall?
                     laserHit = true;
                 }
-                else if (CollisionDetection.CheckCylinderOverlapVolume(PlayerEntity.Main.Volume,
+                else if (CollisionDetection.CheckCylinderOverlapVolume(_scene.Players.Main.Volume,
                     spherePos, _laserTargetPos, radius: 0.5f, ref discard))
                 {
                     laserHit = true;
@@ -339,13 +339,13 @@ namespace MphRead.Entities.Enemies
             if (laserHit)
             {
                 Vector3? direction = null;
-                Vector3 between = Func204D518(_laserTargetPos - spherePos, PlayerEntity.Main.UpVector);
+                Vector3 between = Func204D518(_laserTargetPos - spherePos, _scene.Players.Main.UpVector);
                 if (between.LengthSquared > 1 / 128f)
                 {
                     between = between.Normalized();
                     direction = between * (1 / 30f);
                 }
-                PlayerEntity.Main.TakeDamage(55, DamageFlags.None, direction, this);
+                _scene.Players.Main.TakeDamage(55, DamageFlags.None, direction, this);
             }
         }
 
@@ -462,7 +462,7 @@ namespace MphRead.Entities.Enemies
                 GoreaFlags |= Gorea2Flags.Bit5;
                 _field22C = 15 * 2; // todo: FPS stuff
                 _field20C = _teleportDestination;
-                Vector3 facing = (PlayerEntity.Main.Position - _field20C).WithY(0);
+                Vector3 facing = (_scene.Players.Main.Position - _field20C).WithY(0);
                 if (facing.LengthSquared > 1 / 128f)
                 {
                     facing = facing.Normalized();
@@ -563,11 +563,11 @@ namespace MphRead.Entities.Enemies
             {
                 _field240 -= 360;
             }
-            float rand1 = ((int)Rng.GetRandomInt2(227) - 113) / 4096f;
+            float rand1 = ((int)_scene.Random.GetRandomInt2(227) - 113) / 4096f;
             var mtx = Matrix4.CreateFromAxisAngle(FacingVector, MathHelper.DegreesToRadians(_field240));
             Vector3 vec = Matrix.Vec3MultMtx3(Vector3.Cross(UpVector, FacingVector), mtx);
             Position = _field20C + vec * (v6 - 1.5f - rand1);
-            float rand2 = ((int)Rng.GetRandomInt2(227) - 113) / 4096f;
+            float rand2 = ((int)_scene.Random.GetRandomInt2(227) - 113) / 4096f;
             vec = Matrix.Vec3MultMtx3(UpVector, mtx);
             Position += vec * (v5 - rand2);
         }
@@ -759,7 +759,7 @@ namespace MphRead.Entities.Enemies
             }
             if (_field236 == 0)
             {
-                uint timer = Rng.GetRandomInt2(300) + 300;
+                uint timer = _scene.Random.GetRandomInt2(300) + 300;
                 _field236 = (int)timer * 2; // todo: FPS stuff
                 SearchAndTeleport(mode: 1, checkCollision: false);
             }
@@ -814,9 +814,9 @@ namespace MphRead.Entities.Enemies
                     continue;
                 }
                 Vector3 triggerPos = trigger.Data.Header.Position.ToFloatVector();
-                Vector3 between = PlayerEntity.Main.Position - triggerPos;
+                Vector3 between = _scene.Players.Main.Position - triggerPos;
                 float lengthSquared = between.LengthSquared;
-                bool randomChance = (Rng.GetRandomInt2(255) & 1) != 0;
+                bool randomChance = (_scene.Random.GetRandomInt2(255) & 1) != 0;
                 if (value != 1 || triggerPos.Y >= _spawnerField38)
                 {
                     if (lengthSquared < minDist)
@@ -852,7 +852,7 @@ namespace MphRead.Entities.Enemies
             {
                 Vector3 chosenPos = chosen.Data.Header.Position.ToFloatVector();
                 CollisionResult discard = default;
-                if (checkCollision && CollisionDetection.CheckBetweenPoints(chosenPos, PlayerEntity.Main.Position,
+                if (checkCollision && CollisionDetection.CheckBetweenPoints(chosenPos, _scene.Players.Main.Position,
                     TestFlags.None, _scene, ref discard))
                 {
                     return null;
@@ -867,7 +867,7 @@ namespace MphRead.Entities.Enemies
             if (CallSubroutine(Metadata.Enemy31Subroutines, this))
             {
                 SearchAndTeleport(mode: 1, checkCollision: false);
-                uint timer = Rng.GetRandomInt2(300) + 300;
+                uint timer = _scene.Random.GetRandomInt2(300) + 300;
                 _field236 = (int)timer * 2; // todo: FPS stuff
                 GoreaFlags |= Gorea2Flags.Bit13;
                 GoreaFlags |= Gorea2Flags.Bit17;
@@ -1015,7 +1015,7 @@ namespace MphRead.Entities.Enemies
             }
             Vector3 toPos = (_field20C - _spawnerField28).Normalized();
             _field20C = _spawnerField28 + toPos * _spawnerField34; // sktodo: FPS stuff?
-            Vector3 toPlayer = Position - PlayerEntity.Main.Position;
+            Vector3 toPlayer = Position - _scene.Players.Main.Position;
             if (toPlayer.LengthSquared > 1 / 128f)
             {
                 toPlayer = toPlayer.Normalized();
@@ -1070,7 +1070,7 @@ namespace MphRead.Entities.Enemies
         // todo: member name
         private void Func213D974(Vector3 toPlayer)
         {
-            if (!PlayerEntity.Main.Field6D0)
+            if (!_scene.Players.Main.Field6D0)
             {
                 toPlayer = -toPlayer;
             }
@@ -1085,7 +1085,7 @@ namespace MphRead.Entities.Enemies
         // todo: member name
         private Vector3 Func21405FC()
         {
-            Vector3 toPos = PlayerEntity.Main.Position - _spawnerField28;
+            Vector3 toPos = _scene.Players.Main.Position - _spawnerField28;
             if (toPos.LengthSquared <= 1 / 128f)
             {
                 // the game might return an uninitialized/previous value here
@@ -1306,7 +1306,7 @@ namespace MphRead.Entities.Enemies
             int value = (int)(GoreaFlags & (Gorea2Flags.Bit14 | Gorea2Flags.Bit15)) >> 14;
             if (value != 0 && GoreaFlags.TestFlag(Gorea2Flags.Bit9))
             {
-                return PlayerEntity.Main.CurrentWeapon == BeamType.OmegaCannon;
+                return _scene.Players.Main.CurrentWeapon == BeamType.OmegaCannon;
             }
             return false;
         }
@@ -1340,8 +1340,8 @@ namespace MphRead.Entities.Enemies
             }
             if (_field230 == 0)
             {
-                float dist = (PlayerEntity.Main.Position - Position).Length;
-                if (dist < (PlayerEntity.Main.Field6D0 ? 130 : 50))
+                float dist = (_scene.Players.Main.Position - Position).Length;
+                if (dist < (_scene.Players.Main.Field6D0 ? 130 : 50))
                 {
                     return true;
                 }
@@ -1408,7 +1408,7 @@ namespace MphRead.Entities.Enemies
         {
             int animId = 3;
             GoreaFlags &= ~Gorea2Flags.Bit8;
-            if (Rng.GetRandomInt2(2) == 1)
+            if (_scene.Random.GetRandomInt2(2) == 1)
             {
                 GoreaFlags |= Gorea2Flags.Bit8;
                 animId = 2;

@@ -149,7 +149,7 @@ namespace MphRead.Entities.Enemies
 
         private void State1()
         {
-            Vector3 playerPos = PlayerEntity.Main.Position;
+            Vector3 playerPos = _scene.Players.Main.Position;
             if (Position != playerPos)
             {
                 SetTransform((playerPos - Position).Normalized(), Vector3.UnitY, Position);
@@ -169,9 +169,9 @@ namespace MphRead.Entities.Enemies
 
         private void State4()
         {
-            if (HitPlayers[PlayerEntity.Main.SlotIndex])
+            if (HitPlayers[_scene.Players.Main.SlotIndex])
             {
-                PlayerEntity.Main.TakeDamage(25, DamageFlags.None, direction: null, this);
+                _scene.Players.Main.TakeDamage(25, DamageFlags.None, direction: null, this);
                 _stepCount = 0;
             }
             CallSubroutine(Metadata.Enemy00Subroutines, this);
@@ -179,9 +179,9 @@ namespace MphRead.Entities.Enemies
 
         private void State5()
         {
-            if (HitPlayers[PlayerEntity.Main.SlotIndex])
+            if (HitPlayers[_scene.Players.Main.SlotIndex])
             {
-                PlayerEntity.Main.TakeDamage(25, DamageFlags.None, direction: null, this);
+                _scene.Players.Main.TakeDamage(25, DamageFlags.None, direction: null, this);
             }
             CallSubroutine(Metadata.Enemy00Subroutines, this);
         }
@@ -264,7 +264,7 @@ namespace MphRead.Entities.Enemies
 
         private bool Behavior03()
         {
-            if (_movementType == 3 || !_homeVolume.TestPoint(PlayerEntity.Main.Position))
+            if (_movementType == 3 || !_homeVolume.TestPoint(_scene.Players.Main.Position))
             {
                 return false;
             }
@@ -304,7 +304,7 @@ namespace MphRead.Entities.Enemies
                 return false;
             }
             _speed = Vector3.Zero;
-            Vector3 playerPos = PlayerEntity.Main.Position;
+            Vector3 playerPos = _scene.Players.Main.Position;
             Vector3 facing = playerPos - Position;
             if (Position != playerPos)
             {
@@ -326,7 +326,7 @@ namespace MphRead.Entities.Enemies
 
         private bool Behavior08()
         {
-            if (_homeVolume.TestPoint(PlayerEntity.Main.Position))
+            if (_homeVolume.TestPoint(_scene.Players.Main.Position))
             {
                 return false;
             }
@@ -370,7 +370,7 @@ namespace MphRead.Entities.Enemies
                 _attackDelay--;
                 return false;
             }
-            _attackTarget = PlayerEntity.Main.Position;
+            _attackTarget = _scene.Players.Main.Position;
             _stepCount = 40 * 2; // todo: FPS stuff
             _models[0].SetAnimation(3, AnimFlags.NoLoop);
             _soundSource.PlaySfx(SfxId.WASP_ATTACK_SCR);
@@ -380,7 +380,7 @@ namespace MphRead.Entities.Enemies
         private bool Behavior10()
         {
             CollisionResult res = default;
-            if (!CollisionDetection.CheckBetweenPoints(Position, PlayerEntity.Main.Position, TestFlags.None, _scene, ref res))
+            if (!CollisionDetection.CheckBetweenPoints(Position, _scene.Players.Main.Position, TestFlags.None, _scene, ref res))
             {
                 return false;
             }

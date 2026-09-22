@@ -80,7 +80,7 @@ namespace MphRead.Entities
         private readonly int _sfxRangeIndex;
         private readonly MoveSfxInfo _moveSfx;
 
-        private static BeamProjectileEntity[] _beams = null!;
+        private BeamProjectileEntity[] _beams { get => _scene.PlatformBeams; set => _scene.PlatformBeams = value; }
 
         public PlatformEntityData Data => _data;
         public Vector3 Velocity => _velocity;
@@ -184,10 +184,10 @@ namespace MphRead.Entities
                 destoryed: new SfxData(Metadata.PlatformSfx[_data.ModelId, 3])
             );
             _animFlags |= PlatAnimFlags.Draw;
-            Debug.Assert(GameState.Mode == GameMode.SinglePlayer);
+            Debug.Assert(_scene.GameState.Mode == GameMode.SinglePlayer);
             if (Flags.TestFlag(PlatformFlags.UseRoomState) && !Flags.TestFlag(PlatformFlags.PersistRoomState))
             {
-                int state = GameState.StorySave.GetRoomState(scene.RoomId, Id);
+                int state = _scene.GameState.StorySave.GetRoomState(scene.RoomId, Id);
                 if (state == 1)
                 {
                     _fromIndex = _data.PositionCount - 1;
@@ -202,7 +202,7 @@ namespace MphRead.Entities
             {
                 SleepWake(wake: true, instant: true);
                 _currentAnimState = -2;
-                if (GameState.StorySave.CheckVisitedRoom(scene.RoomId))
+                if (_scene.GameState.StorySave.CheckVisitedRoom(scene.RoomId))
                 {
                     SetPlatAnimation(PlatAnimId.InstantWake, AnimFlags.None);
                 }
@@ -228,7 +228,7 @@ namespace MphRead.Entities
                 }
                 if (Flags.TestFlag(PlatformFlags.PersistRoomState))
                 {
-                    if (GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: _data.Active != 0) != 0)
+                    if (_scene.GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: _data.Active != 0) != 0)
                     {
                         _animFlags |= PlatAnimFlags.Active;
                     }
@@ -269,9 +269,9 @@ namespace MphRead.Entities
             }
         }
 
-        public static void DestroyBeams()
+        public static void DestroyBeams(Scene scene)
         {
-            _beams = null!;
+            scene.PlatformBeams = null!;
         }
 
         public override void Initialize()
@@ -404,7 +404,7 @@ namespace MphRead.Entities
         public override void OnScanned()
         {
             if (_data.ScanMessage != Message.None && _scanMessageTarget != null
-                && !GameState.StorySave.CheckLogbook(GetScanId()))
+                && !_scene.GameState.StorySave.CheckLogbook(GetScanId()))
             {
                 _scene.SendMessage(_data.ScanMessage, this, _scanMessageTarget, -1, 0);
             }
@@ -477,7 +477,7 @@ namespace MphRead.Entities
                     {
                         _soundSource.StopAllSfx();
                     }
-                    GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
+                    _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
                 }
             }
         }
@@ -487,13 +487,13 @@ namespace MphRead.Entities
             _animFlags |= PlatAnimFlags.Active;
             if (Flags.TestFlag(PlatformFlags.UseRoomState) && Flags.TestFlag(PlatformFlags.PersistRoomState))
             {
-                GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
+                _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
             }
             if (_state == PlatformState.Inactive)
             {
                 if (Flags.TestFlag(PlatformFlags.DripMoat))
                 {
-                    _scene.SendMessage(Message.DripMoatPlatform, this, PlayerEntity.Main, 1, 0);
+                    _scene.SendMessage(Message.DripMoatPlatform, this, _scene.Players.Main, 1, 0);
                 }
                 if (_data.PositionCount >= 2)
                 {
@@ -534,11 +534,11 @@ namespace MphRead.Entities
                 _animFlags &= ~PlatAnimFlags.Active;
                 if (Flags.TestFlag(PlatformFlags.UseRoomState) && Flags.TestFlag(PlatformFlags.PersistRoomState))
                 {
-                    GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
+                    _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
                 }
                 if (Flags.TestFlag(PlatformFlags.DripMoat))
                 {
-                    _scene.SendMessage(Message.DripMoatPlatform, this, PlayerEntity.Main, 0, 0);
+                    _scene.SendMessage(Message.DripMoatPlatform, this, _scene.Players.Main, 0, 0);
                 }
             }
         }
@@ -680,7 +680,7 @@ namespace MphRead.Entities
                         Debug.Assert(_parentEntCol != null);
                         if (turretAiming)
                         {
-                            PlayerEntity mainPlayer = PlayerEntity.Main;
+                            PlayerEntity mainPlayer = _scene.Players.Main;
                             target = new Vector3(
                                 mainPlayer.Position.X - _visiblePosition.X,
                                 mainPlayer.Position.Y + 1 - _visiblePosition.Y,
@@ -695,7 +695,7 @@ namespace MphRead.Entities
                     }
                     else
                     {
-                        PlayerEntity mainPlayer = PlayerEntity.Main;
+                        PlayerEntity mainPlayer = _scene.Players.Main;
                         target = new Vector3(
                             mainPlayer.Position.X - _visiblePosition.X,
                             0,
@@ -733,10 +733,10 @@ namespace MphRead.Entities
                         _movePercent += _moveIncrement;
                         _curRotation = ComputeRotationSin(_fromRotation, _toRotation, _movePercent);
                     }
-                    if (_animFlags.TestFlag(PlatAnimFlags.SeekPlayerHeight) && PlayerEntity.PlayerCount > 0)
+                    if (_animFlags.TestFlag(PlatAnimFlags.SeekPlayerHeight) && _scene.Players.PlayerCount > 0)
                     {
                         // also never true in-game
-                        PlayerEntity mainPlayer = PlayerEntity.Main;
+                        PlayerEntity mainPlayer = _scene.Players.Main;
                         float offset = (mainPlayer.Position.Y - _curPosition.Y) * Fixed.ToFloat(20);
                         _curPosition.Y += offset;
                     }
@@ -1129,11 +1129,11 @@ namespace MphRead.Entities
                     {
                         if (_fromIndex == 0)
                         {
-                            GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
+                            _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
                         }
                         else if (_fromIndex == _data.PositionCount - 1)
                         {
-                            GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 2);
+                            _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 2);
                         }
                     }
                     if (_state != PlatformState.Inactive)

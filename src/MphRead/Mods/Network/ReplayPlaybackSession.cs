@@ -29,6 +29,7 @@ namespace MphRead.Mods.Network
         public IReadOnlyList<ReplayEvent> Events => _reader?.Metadata?.Events ?? Array.Empty<ReplayEvent>();
         internal ReplayMetadata? Metadata => _reader?.Metadata;
         public uint CurrentFrame => _frame;
+        internal bool HasSimulatedFrame => _started;
         public uint LastFrame { get; private set; }
         public ReplayOpenResult LastResult { get; private set; }
         public double CurrentSeconds => _frame / 60.0;

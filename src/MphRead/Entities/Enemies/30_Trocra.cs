@@ -39,7 +39,7 @@ namespace MphRead.Entities.Enemies
         {
             if (Flags.TestFlag(EnemyFlags.Visible))
             {
-                if (_health > 0 && HitPlayers[PlayerEntity.Main.SlotIndex])
+                if (_health > 0 && HitPlayers[_scene.Players.Main.SlotIndex])
                 {
                     DieAndSpawnEffect(164); // goreaCrystalHit
                 }
@@ -59,7 +59,7 @@ namespace MphRead.Entities.Enemies
         private void DieAndSpawnEffect(int effectId)
         {
             SpawnEffect(effectId, Position);
-            Vector3 between = PlayerEntity.Main.Position - Position;
+            Vector3 between = _scene.Players.Main.Position - Position;
             float distance = between.Length;
             if (distance < 2) // 8192
             {
@@ -72,7 +72,7 @@ namespace MphRead.Entities.Enemies
                 {
                     int damage = 15;
                     float force = 1;
-                    if (!HitPlayers[PlayerEntity.Main.SlotIndex])
+                    if (!HitPlayers[_scene.Players.Main.SlotIndex])
                     {
                         float factor = Math.Clamp(distance / 2, 0, 1);
                         damage -= (int)MathF.Round(damage - 15 * factor);
@@ -86,7 +86,7 @@ namespace MphRead.Entities.Enemies
                     {
                         between = Vector3.UnitY * force;
                     }
-                    PlayerEntity.Main.TakeDamage(damage, DamageFlags.NoDmgInvuln, between, this);
+                    _scene.Players.Main.TakeDamage(damage, DamageFlags.NoDmgInvuln, between, this);
                 }
             }
             _soundSource.PlaySfx(SfxId.GOREA_ATTACK3B, sourceOnly: true);
@@ -110,7 +110,7 @@ namespace MphRead.Entities.Enemies
                 }
                 bool spawn = false;
                 ItemType itemType = ItemType.None;
-                uint rand = Rng.GetRandomInt2(190);
+                uint rand = _scene.Random.GetRandomInt2(190);
                 if (rand < 10)
                 {
                     spawn = true;

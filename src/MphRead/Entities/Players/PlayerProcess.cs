@@ -59,14 +59,14 @@ namespace MphRead.Entities
 
         public bool ProcessPlayer()
         {
-            if (GameState.Multiplayer && !LoadFlags.TestFlag(LoadFlags.Connected) && LoadFlags.TestFlag(LoadFlags.WasConnected))
+            if (_scene.GameState.Multiplayer && !LoadFlags.TestFlag(LoadFlags.Connected) && LoadFlags.TestFlag(LoadFlags.WasConnected))
             {
                 LoadFlags |= LoadFlags.Disconnected;
                 LoadFlags &= ~LoadFlags.Active;
             }
             if (!LoadFlags.TestFlag(LoadFlags.Active))
             {
-                if (GameState.Multiplayer)
+                if (_scene.GameState.Multiplayer)
                 {
                     // Returning false here makes Scene.UpdateScene destroy the
                     // entity and drop it from the entity list, and AddPlayer is
@@ -113,7 +113,7 @@ namespace MphRead.Entities
                 if (AiData.Flags3.TestFlag(AiFlags3.Bit1))
                 {
                     // spawnEffectMP or spawnEffect
-                    int effectId = GameState.Multiplayer && PlayerCount > 2 && !Features.MaxPlayerDetail ? 33 : 31;
+                    int effectId = _scene.GameState.Multiplayer && _scene.Players.PlayerCount > 2 && !Features.MaxPlayerDetail ? 33 : 31;
                     _scene.SpawnEffect(effectId, Vector3.UnitX, Vector3.UnitY, Position);
                     PlayHunterSfx(HunterSfx.Spawn);
                     AiData.Flags3 &= ~AiFlags3.Bit1;
@@ -143,7 +143,7 @@ namespace MphRead.Entities
                 Debug.Assert(LoadFlags.TestFlag(LoadFlags.Active));
             }
             // display swap update happens here for main player
-            if (IsMainPlayer && CameraSequence.Current?.BlockInput == true)
+            if (IsMainPlayer && _scene.CameraSequences.Current?.BlockInput == true)
             {
                 Controls.ClearAll();
             }
@@ -162,8 +162,8 @@ namespace MphRead.Entities
             if (_respawnTimer > 0)
             {
                 _respawnTimer--;
-                if ((GameState.Mode == GameMode.Survival || GameState.Mode == GameMode.SurvivalTeams)
-                    && GameState.TeamDeaths[SlotIndex] > GameState.PointGoal)
+                if ((_scene.GameState.Mode == GameMode.Survival || _scene.GameState.Mode == GameMode.SurvivalTeams)
+                    && _scene.GameState.TeamDeaths[SlotIndex] > _scene.GameState.PointGoal)
                 {
                     if (IsMainPlayer)
                     {
@@ -199,7 +199,7 @@ namespace MphRead.Entities
                             }
                             Spawn(targetTeleporter.Position, targetTeleporter.FacingVector,
                                 targetTeleporter.UpVector, targetTeleporter.NodeRef, respawn: true);
-                            if (GameState.TransitionAltForm)
+                            if (_scene.GameState.TransitionAltForm)
                             {
                                 TrySwitchForms(force: true);
                                 UpdateForm(altForm: true);
@@ -235,17 +235,17 @@ namespace MphRead.Entities
                             }
                         }
                         _scene.Room.LoadEntityId = -1;
-                        GameState.TransitionAltForm = false;
+                        _scene.GameState.TransitionAltForm = false;
                     }
                     else
                     {
                         int time = GetTimeUntilRespawn();
-                        if (IsMainPlayer && GameState.Multiplayer) // todo: and some global is not set
+                        if (IsMainPlayer && _scene.GameState.Multiplayer) // todo: and some global is not set
                         {
                             // press FIRE to begin / press FIRE to respawn
-                            int messageId = CameraSequence.Current?.IsIntro == true ? 245 : 244;
+                            int messageId = _scene.CameraSequences.Current?.IsIntro == true ? 245 : 244;
                             if (!Bugfixes.NoStrayRespawnText || time > 0
-                                || GameState.Mode != GameMode.Survival && GameState.Mode != GameMode.SurvivalTeams)
+                                || _scene.GameState.Mode != GameMode.Survival && _scene.GameState.Mode != GameMode.SurvivalTeams)
                             {
                                 QueueHudMessage(128, 162, 1 / 1000f, 0, messageId);
                                 if (time < 150 * 2) // todo: FPS stuff
@@ -256,7 +256,7 @@ namespace MphRead.Entities
                                 }
                             }
                         }
-                        if (GameState.SinglePlayer || Controls.Shoot.IsDown
+                        if (_scene.GameState.SinglePlayer || Controls.Shoot.IsDown
                             || Mods.Network.NetPlayerBridge.RespawnRequested(SlotIndex) || time <= 0 || IsBot
                             || Mods.Network.NetHooks.ForceSpawn(this)) // todo: or forced
                         {
@@ -284,7 +284,7 @@ namespace MphRead.Entities
             else
             {
                 int rangeIndex = 1;
-                if (GameState.SinglePlayer && Hunter == Hunter.Guardian) // todo: MP1P
+                if (_scene.GameState.SinglePlayer && Hunter == Hunter.Guardian) // todo: MP1P
                 {
                     rangeIndex = 21;
                 }
@@ -310,7 +310,7 @@ namespace MphRead.Entities
             {
                 _disruptedTimer--;
             }
-            if (GameState.Mode == GameMode.Survival || GameState.Mode == GameMode.SurvivalTeams)
+            if (_scene.GameState.Mode == GameMode.Survival || _scene.GameState.Mode == GameMode.SurvivalTeams)
             {
                 if (Flags2.TestFlag(PlayerFlags2.RadarReveal))
                 {
@@ -323,7 +323,7 @@ namespace MphRead.Entities
                 }
                 else
                 {
-                    if (GameState.RadarPlayers)
+                    if (_scene.GameState.RadarPlayers)
                     {
                         if (IsMainPlayer)
                         {
@@ -333,7 +333,7 @@ namespace MphRead.Entities
                     }
                     else
                     {
-                        int revealTime = (PlayerCount > 2 ? 600 : 300) * 2; // todo: FPS stuff
+                        int revealTime = (_scene.Players.PlayerCount > 2 ? 600 : 300) * 2; // todo: FPS stuff
                         Vector3 moved = Position - IdlePosition;
                         if (moved.LengthSquared >= 25)
                         {
@@ -903,8 +903,8 @@ namespace MphRead.Entities
                 if (_timeSinceInput == swayStart)
                 {
                     _field40C = 0;
-                    float factor1 = (Rng.GetRandomInt2(Values.SwayLimit) - Values.SwayLimit / 2) / 4096f;
-                    float factor2 = (Rng.GetRandomInt2(Values.SwayLimit) - Values.SwayLimit / 2) / 4096f;
+                    float factor1 = (_scene.Random.GetRandomInt2(Values.SwayLimit) - Values.SwayLimit / 2) / 4096f;
+                    float factor2 = (_scene.Random.GetRandomInt2(Values.SwayLimit) - Values.SwayLimit / 2) / 4096f;
                     _field410 = _facingVector;
                     _field41C = _field410;
                     _field428 = _field410;
@@ -916,8 +916,8 @@ namespace MphRead.Entities
                     if (_field40C >= 1)
                     {
                         _field40C = 0;
-                        float factor1 = (Rng.GetRandomInt2(Values.SwayLimit) - Values.SwayLimit / 2) / 4096f;
-                        float factor2 = (Rng.GetRandomInt2(Values.SwayLimit) - Values.SwayLimit / 2) / 4096f;
+                        float factor1 = (_scene.Random.GetRandomInt2(Values.SwayLimit) - Values.SwayLimit / 2) / 4096f;
+                        float factor2 = (_scene.Random.GetRandomInt2(Values.SwayLimit) - Values.SwayLimit / 2) / 4096f;
                         _field410 = _field41C;
                         _field41C = _field428;
                         _field41C += _gunVec2 * factor1 + _upVector * factor2;
@@ -981,7 +981,7 @@ namespace MphRead.Entities
                 {
                     _timeSinceDead++;
                 }
-                if (GameState.SinglePlayer && IsMainPlayer && _deathCountdown > 0)
+                if (_scene.GameState.SinglePlayer && IsMainPlayer && _deathCountdown > 0)
                 {
                     _deathCountdown -= _scene.FrameTime;
                     float pct = (150 / 30f - _deathCountdown) / (150 / 30f);
@@ -1037,20 +1037,20 @@ namespace MphRead.Entities
                         Flags1 &= ~PlayerFlags1.Unmorphing;
                         if (_lostOctolithEnemyIndex != -1)
                         {
-                            int octolithCount = System.Numerics.BitOperations.PopCount(GameState.StorySave.CurrentOctoliths);
-                            uint lostNum = Rng.GetRandomInt2(octolithCount);
+                            int octolithCount = System.Numerics.BitOperations.PopCount(_scene.GameState.StorySave.CurrentOctoliths);
+                            uint lostNum = _scene.Random.GetRandomInt2(octolithCount);
                             uint curNum = 0;
                             for (int i = 0; i < 8; i++)
                             {
-                                if ((GameState.StorySave.CurrentOctoliths & (1 << i)) != 0)
+                                if ((_scene.GameState.StorySave.CurrentOctoliths & (1 << i)) != 0)
                                 {
                                     if (curNum == lostNum)
                                     {
                                         int hunter = (int)_players[_lostOctolithEnemyIndex].Hunter;
-                                        GameState.StorySave.CurrentOctoliths &= (ushort)~(1 << i);
-                                        GameState.StorySave.LostOctoliths = GameState.StorySave.LostOctoliths
+                                        _scene.GameState.StorySave.CurrentOctoliths &= (ushort)~(1 << i);
+                                        _scene.GameState.StorySave.LostOctoliths = _scene.GameState.StorySave.LostOctoliths
                                             & (uint)(~(15 << (4 * i)) | (hunter << (4 * i)));
-                                        GameState.StorySave.AreaHunters[_scene.AreaId / 2] &= (byte)~(1 << hunter);
+                                        _scene.GameState.StorySave.AreaHunters[_scene.AreaId / 2] &= (byte)~(1 << hunter);
                                         break;
                                     }
                                     curNum++;
@@ -1064,7 +1064,7 @@ namespace MphRead.Entities
                     Flags2 |= PlayerFlags2.HideModel;
                 }
             }
-            if (!EquipInfo.Zoomed && CameraSequence.Current == null)
+            if (!EquipInfo.Zoomed && _scene.CameraSequences.Current == null)
             {
                 // note: the game does this during cam seqs, resulting in the FOV thrashing a bit, but it has no visible effect
                 // since the sin/cos values for projection are set aside in the cam info update that's already occurred above.
@@ -1090,9 +1090,9 @@ namespace MphRead.Entities
                 }
                 else if (IsUnmorphing)
                 {
-                    if (IsMainPlayer && CameraSequence.Current != null)
+                    if (IsMainPlayer && _scene.CameraSequences.Current != null)
                     {
-                        CameraSequence.Current.InitialCamInfo.NodeRef = NodeRef;
+                        _scene.CameraSequences.Current.InitialCamInfo.NodeRef = NodeRef;
                     }
                     else
                     {
@@ -1148,7 +1148,7 @@ namespace MphRead.Entities
                 // the freeze needs a real point-in-node test against the node
                 // data, not this one.
                 NodeRef = _scene.UpdateNodeRef(NodeRef, prevPos, curPos);
-                if (CameraSequence.Current == null || !IsMainPlayer)
+                if (_scene.CameraSequences.Current == null || !IsMainPlayer)
                 {
                     if (CameraType == CameraType.Free)
                     {
@@ -1172,7 +1172,7 @@ namespace MphRead.Entities
                 TakeDamage(1, flags, direction: null, source: null);
             }
             Debug.Assert(_scene.Room != null);
-            if (GameState.Multiplayer && _scene.Room.Meta.HasLimits)
+            if (_scene.GameState.Multiplayer && _scene.Room.Meta.HasLimits)
             {
                 if (Position.Y < _scene.Room.Meta.PlayerMin.Y)
                 {
@@ -1242,7 +1242,7 @@ namespace MphRead.Entities
                 }
                 if (_burnEffect != null)
                 {
-                    if (CameraSequence.Current?.BlockInput == true)
+                    if (_scene.CameraSequences.Current?.BlockInput == true)
                     {
                         _scene.UnlinkEffectEntry(_burnEffect);
                         _burnEffect = null;
@@ -1299,8 +1299,8 @@ namespace MphRead.Entities
 
         private void PickUpItems()
         {
-            if (_health == 0 || (IsBot && GameState.SinglePlayer) || IgnoreItemPickups
-                || IsMainPlayer && CameraSequence.Current?.BlockInput == true)
+            if (_health == 0 || (IsBot && _scene.GameState.SinglePlayer) || IgnoreItemPickups
+                || IsMainPlayer && _scene.CameraSequences.Current?.BlockInput == true)
             {
                 return;
             }
@@ -1367,12 +1367,12 @@ namespace MphRead.Entities
                     int amount;
                     if (item.ItemType == ItemType.UABig || item.ItemType == ItemType.MissileBig)
                     {
-                        amount = GameState.Multiplayer ? 100 : 250;
+                        amount = _scene.GameState.Multiplayer ? 100 : 250;
                         PlaySfx(SfxId.AMMO_POWER_UP2);
                     }
                     else
                     {
-                        amount = GameState.Multiplayer ? 50 : 100;
+                        amount = _scene.GameState.Multiplayer ? 50 : 100;
                         PlaySfx(SfxId.AMMO_POWER_UP1);
                     }
                     _ammo[slot] += amount;
@@ -1435,7 +1435,7 @@ namespace MphRead.Entities
                         _timeSincePickup = 0;
                         _healthMax += Values.EnergyTank;
                         _healthRecovery = _healthMax - _health;
-                        GameState.StorySave.HealthMax = _healthMax;
+                        _scene.GameState.StorySave.HealthMax = _healthMax;
                         if (IsMainPlayer)
                         {
                             // ENERGY TANK FOUND the POWER SUIT can now store 100 more UNITS of energy.
@@ -1450,7 +1450,7 @@ namespace MphRead.Entities
                         _timeSincePickup = 0;
                         _ammoMax[1] += 100;
                         _ammoRecovery[1] = _ammoMax[1] - _ammo[1];
-                        GameState.StorySave.AmmoMax[1] = _ammoMax[1];
+                        _scene.GameState.StorySave.AmmoMax[1] = _ammoMax[1];
                         if (IsMainPlayer)
                         {
                             // MISSILE EXPANSION FOUND your MISSILE capacity is increased by 10 UNITS.
@@ -1465,7 +1465,7 @@ namespace MphRead.Entities
                         _timeSincePickup = 0;
                         _ammoMax[0] += 300;
                         _ammoRecovery[0] = _ammoMax[0] - _ammo[0];
-                        GameState.StorySave.AmmoMax[0] = _ammoMax[0];
+                        _scene.GameState.StorySave.AmmoMax[0] = _ammoMax[0];
                         if (IsMainPlayer)
                         {
                             // UA EXPANSION FOUND your UNIVERSAL AMMO capacity is increased by 30 UNITS.
@@ -1535,9 +1535,9 @@ namespace MphRead.Entities
             {
                 return;
             }
-            if (GameState.SinglePlayer && (GameState.StorySave.Weapons & (1 << (int)weapon)) == 0)
+            if (_scene.GameState.SinglePlayer && (_scene.GameState.StorySave.Weapons & (1 << (int)weapon)) == 0)
             {
-                GameState.StorySave.Weapons |= (ushort)(1 << (int)weapon);
+                _scene.GameState.StorySave.Weapons |= (ushort)(1 << (int)weapon);
                 int weaponId = (int)weapon;
                 string value1 = Metadata.WeaponNamesUpper[weaponId];
                 string value2 = "";
@@ -1636,7 +1636,7 @@ namespace MphRead.Entities
                     || !IsAltForm && Flags2.TestFlag(PlayerFlags2.BipedStuck)
                     || IsAltForm && MorphCamera != null))
             {
-                if (IsMainPlayer && (CameraSequence.Current == null || !CameraSequence.Current.BlockInput))
+                if (IsMainPlayer && (_scene.CameraSequences.Current == null || !_scene.CameraSequences.Current.BlockInput))
                 {
                     _soundSource.PlayFreeSfx(SfxId.BEAM_SWITCH_FAIL);
                 }
@@ -2199,7 +2199,7 @@ namespace MphRead.Entities
                     limit++;
                     continue;
                 }
-                if (GameState.Mode == GameMode.Capture && candidate.Data.TeamIndex != -1
+                if (_scene.GameState.Mode == GameMode.Capture && candidate.Data.TeamIndex != -1
                     && candidate.Data.TeamIndex != TeamIndex)
                 {
                     limit++;
@@ -2266,13 +2266,13 @@ namespace MphRead.Entities
         {
             // todo: FPS stuff
             int count = 0;
-            if (GameState.Mode != GameMode.Survival && GameState.Mode != GameMode.SurvivalTeams)
+            if (_scene.GameState.Mode != GameMode.Survival && _scene.GameState.Mode != GameMode.SurvivalTeams)
             {
-                if (PlayerCount > 3)
+                if (_scene.Players.PlayerCount > 3)
                 {
                     count = 900 * 2 - _timeSinceDead;
                 }
-                else if (PlayerCount > 2)
+                else if (_scene.Players.PlayerCount > 2)
                 {
                     count = 600 * 2 - _timeSinceDead;
                 }

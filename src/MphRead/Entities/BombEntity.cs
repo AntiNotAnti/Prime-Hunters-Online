@@ -81,7 +81,7 @@ namespace MphRead.Entities
             else if (BombType == BombType.MorphBall)
             {
                 Countdown = 43 * 2;
-                effectId = GameState.Multiplayer && PlayerEntity.PlayerCount > 2 ? 119 : 9; // bombStartMP or bombStart
+                effectId = _scene.GameState.Multiplayer && _scene.Players.PlayerCount > 2 ? 119 : 9; // bombStartMP or bombStart
             }
             if (effectId != 0)
             {
@@ -420,9 +420,9 @@ namespace MphRead.Entities
                         Debug.Assert(bomb != null);
                         bomb.Damage = 60;
                         bomb.EnemyDamage = 60;
-                        if (Owner.IsBot && GameState.SinglePlayer)
+                        if (Owner.IsBot && _scene.GameState.SinglePlayer)
                         {
-                            int encounter = GameState.EncounterState[Owner.SlotIndex];
+                            int encounter = _scene.GameState.EncounterState[Owner.SlotIndex];
                             if (encounter == 1 || encounter == 3 || encounter == 4
                                 || encounter == 0 && Owner.BotLevel == 0)
                             {
@@ -458,9 +458,9 @@ namespace MphRead.Entities
                 Debug.Assert(!lineHitHalfturret);
                 hitEntity = player;
                 uint damage = 20;
-                if (Owner.IsBot && GameState.SinglePlayer)
+                if (Owner.IsBot && _scene.GameState.SinglePlayer)
                 {
-                    int encounter = GameState.EncounterState[Owner.SlotIndex];
+                    int encounter = _scene.GameState.EncounterState[Owner.SlotIndex];
                     if (encounter == 1 || encounter == 3 || encounter == 4
                         || encounter == 0 && Owner.BotLevel == 0)
                     {
@@ -573,7 +573,7 @@ namespace MphRead.Entities
         public override void GetDrawInfo()
         {
             uint rngBefore = ModAuditLockjawDrawRng && BombType == BombType.Lockjaw
-                ? Rng.Rng1 : 0;
+                ? _scene.Random.Rng1 : 0;
             if (BombType == BombType.Lockjaw)
             {
                 if (BombIndex == 1)
@@ -591,7 +591,7 @@ namespace MphRead.Entities
             }
             base.GetDrawInfo();
             if (ModAuditLockjawDrawRng && BombType == BombType.Lockjaw
-                && Rng.Rng1 != rngBefore)
+                && _scene.Random.Rng1 != rngBefore)
             {
                 ModLockjawDrawRngChanges++;
             }

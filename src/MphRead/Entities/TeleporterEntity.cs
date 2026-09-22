@@ -44,7 +44,7 @@ namespace MphRead.Entities
             _data = data;
             Id = data.Header.EntityId;
             SetTransform(data.Header.FacingVector, data.Header.UpVector, data.Header.Position);
-            bool multiplayer = GameState.Multiplayer || forceMultiplayer;
+            bool multiplayer = _scene.GameState.Multiplayer || forceMultiplayer;
             if (data.Invisible != 0)
             {
                 AddPlaceholderModel();
@@ -80,9 +80,9 @@ namespace MphRead.Entities
                     }
                 }
             }
-            if (GameState.Mode == GameMode.SinglePlayer)
+            if (_scene.GameState.Mode == GameMode.SinglePlayer)
             {
-                int state = GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: data.Active != 0);
+                int state = _scene.GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: data.Active != 0);
                 Active = state != 0;
             }
             else
@@ -119,17 +119,17 @@ namespace MphRead.Entities
             {
                 if (_big)
                 {
-                    Debug.Assert(GameState.Mode == GameMode.SinglePlayer);
-                    bool active = GameState.StorySave.CountFoundArtifacts(data.ArtifactId) > 2;
-                    if (active && (GameState.EscapeTimer == -1 || GameState.EscapeState != EscapeState.Escape))
+                    Debug.Assert(_scene.GameState.Mode == GameMode.SinglePlayer);
+                    bool active = _scene.GameState.StorySave.CountFoundArtifacts(data.ArtifactId) > 2;
+                    if (active && (_scene.GameState.EscapeTimer == -1 || _scene.GameState.EscapeState != EscapeState.Escape))
                     {
                         Active = true;
-                        GameState.StorySave.SetRoomState(scene.RoomId, Id, state: 3);
+                        _scene.GameState.StorySave.SetRoomState(scene.RoomId, Id, state: 3);
                     }
                     else
                     {
                         Active = false;
-                        GameState.StorySave.SetRoomState(scene.RoomId, Id, state: 1);
+                        _scene.GameState.StorySave.SetRoomState(scene.RoomId, Id, state: 1);
                     }
                 }
                 if (Active)
@@ -170,9 +170,9 @@ namespace MphRead.Entities
                 }
                 else if (_big && !Active)
                 {
-                    bool active = GameState.StorySave.CountFoundArtifacts(_data.ArtifactId) > 2;
-                    if (active && PlayerEntity.Main.Health > 0
-                        && (GameState.EscapeTimer == -1 || GameState.EscapeState != EscapeState.Escape))
+                    bool active = _scene.GameState.StorySave.CountFoundArtifacts(_data.ArtifactId) > 2;
+                    if (active && _scene.Players.Main.Health > 0
+                        && (_scene.GameState.EscapeTimer == -1 || _scene.GameState.EscapeState != EscapeState.Escape))
                     {
                         Activate();
                     }
@@ -193,7 +193,7 @@ namespace MphRead.Entities
             Vector3 testPos = Position.AddY(1);
             foreach (PlayerEntity player in _scene.GetPlayerEntities())
             {
-                if (player.Health == 0 || player.IsBot && !GameState.Multiplayer)
+                if (player.Health == 0 || player.IsBot && !_scene.GameState.Multiplayer)
                 {
                     continue;
                 }
@@ -216,17 +216,17 @@ namespace MphRead.Entities
                                 {
                                     player.Teleport(_targetPos.AddY(0.5f), FacingVector, _targetNodeRef);
                                 }
-                                else if (GameState.TransitionRoomId == -1) // the game doesn't do this check
+                                else if (_scene.GameState.TransitionRoomId == -1) // the game doesn't do this check
                                 {
                                     Debug.Assert(_scene.Room != null);
                                     if (_soundSource.CountPlayingSfx(SfxId.TELEPORT_OUT) == 0)
                                     {
                                         _soundSource.PlayFreeSfx(SfxId.TELEPORT_OUT);
                                     }
-                                    GameState.TransitionAltForm = PlayerEntity.Main.IsAltForm;
-                                    GameState.TransitionRoomId = _targetRoomId;
+                                    _scene.GameState.TransitionAltForm = _scene.Players.Main.IsAltForm;
+                                    _scene.GameState.TransitionRoomId = _targetRoomId;
                                     _scene.Room.LoadEntityId = _data.TargetIndex;
-                                    GameState.PausePrevented = true;
+                                    _scene.GameState.PausePrevented = true;
                                     _scene.SetFade(FadeType.FadeOutBlack, length: 10 / 30f, overwrite: true, AfterFade.LoadRoom);
                                 }
                                 player.Speed = new Vector3(0, player.Speed.Y, 0);
@@ -285,9 +285,9 @@ namespace MphRead.Entities
                     Active = false;
                     _scanId = 25;
                     _bool4 = true;
-                    if (GameState.Mode == GameMode.SinglePlayer)
+                    if (_scene.GameState.Mode == GameMode.SinglePlayer)
                     {
-                        GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
+                        _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
                     }
                 }
             }
@@ -401,7 +401,7 @@ namespace MphRead.Entities
         {
             if (_models.Count == 4)
             {
-                StorySave save = GameState.StorySave;
+                StorySave save = _scene.GameState.StorySave;
                 _models[1].Active = save.CheckFoundArtifact(artifactId: 0, _data.ArtifactId);
                 _models[2].Active = save.CheckFoundArtifact(artifactId: 1, _data.ArtifactId);
                 _models[3].Active = save.CheckFoundArtifact(artifactId: 2, _data.ArtifactId);

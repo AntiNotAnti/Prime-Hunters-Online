@@ -24,7 +24,7 @@ namespace MphRead.Entities
             public PlayerAiData(PlayerEntity player)
             {
                 _player = player;
-                _scene = player._scene;
+                _scene = player.OwningScene;
             }
 
             public AiPersonalityData1 Personality { get; set; } = null!;
@@ -248,8 +248,8 @@ namespace MphRead.Entities
                 // was probably also added to make them even less frequent, but was ultimately not needed.
                 _playerVisibility[_visIndex1, _visIndex2] = false;
                 _playerVisibility[_visIndex2, _visIndex1] = false;
-                PlayerEntity player1 = Players[_visIndex1];
-                PlayerEntity player2 = Players[_visIndex2];
+                PlayerEntity player1 = scene.Players.Items[_visIndex1];
+                PlayerEntity player2 = scene.Players.Items[_visIndex2];
                 if (player1.Health != 0 && player1.LoadFlags.TestFlag(LoadFlags.Active)
                     && player2.Health != 0 && player2.LoadFlags.TestFlag(LoadFlags.Active)
                     && (player1.IsBot || player2.IsBot))
@@ -272,7 +272,7 @@ namespace MphRead.Entities
                 // slots this match has. Players is always SlotCapacity long,
                 // so visiting a slot nobody is in is safe and is what the
                 // original did with fewer than four players anyway.
-                int slots = Math.Clamp(PlayerEntity.MaxPlayers, 2, PlayerEntity.SlotCapacity);
+                int slots = Math.Clamp(scene.Players.MaxPlayers, 2, PlayerEntity.SlotCapacity);
                 if (++_visIndex1 >= slots)
                 {
                     if (++_visIndex2 >= slots - 1)
@@ -327,7 +327,7 @@ namespace MphRead.Entities
                 }
                 _nodeData = _scene.Room.NodeData;
                 SetClosestNodeList(_player.Position);
-                if (GameState.Mode == GameMode.Capture)
+                if (_scene.GameState.Mode == GameMode.Capture)
                 {
                     foreach (EntityBase entity in _scene.Entities)
                     {
@@ -362,7 +362,7 @@ namespace MphRead.Entities
                         _forceDisable = true;
                     }
                 }
-                else if (GameState.Mode == GameMode.Bounty || GameState.Mode == GameMode.BountyTeams)
+                else if (_scene.GameState.Mode == GameMode.Bounty || _scene.GameState.Mode == GameMode.BountyTeams)
                 {
                     foreach (EntityBase entity in _scene.Entities)
                     {
@@ -509,7 +509,7 @@ namespace MphRead.Entities
 
             private void InitializeSub()
             {
-                if (GameState.SinglePlayer && GameState.EncounterState[_player.SlotIndex] != 0)
+                if (_scene.GameState.SinglePlayer && _scene.GameState.EncounterState[_player.SlotIndex] != 0)
                 {
                     _field102C = 0;
                     _field1030 = 0;
@@ -772,7 +772,7 @@ namespace MphRead.Entities
             {
                 _entityRefs.Clear();
                 UpdateAggro();
-                if (GameState.Mode == GameMode.PrimeHunter && GameState.PrimeHunter == _player.SlotIndex
+                if (_scene.GameState.Mode == GameMode.PrimeHunter && _scene.GameState.PrimeHunter == _player.SlotIndex
                     && Flags2.TestFlag(AiFlags2.TargetItem) && _itemC8 != null && (_itemC8.ItemType == ItemType.HealthSmall
                     || _itemC8.ItemType == ItemType.HealthMedium || _itemC8.ItemType == ItemType.HealthBig))
                 {
@@ -802,8 +802,8 @@ namespace MphRead.Entities
                     {
                         continue;
                     }
-                    if (other.CurAlpha >= 1 || other.Flags2.TestFlag(PlayerFlags2.RadarReveal) || GameState.RadarPlayers
-                        || other.OctolithFlag != null || GameState.PrimeHunter == other.SlotIndex)
+                    if (other.CurAlpha >= 1 || other.Flags2.TestFlag(PlayerFlags2.RadarReveal) || _scene.GameState.RadarPlayers
+                        || other.OctolithFlag != null || _scene.GameState.PrimeHunter == other.SlotIndex)
                     {
                         AggroFunc214864C(6, 1, 2, null, other, 0, 30, 10, 3);
                     }
@@ -828,7 +828,7 @@ namespace MphRead.Entities
                         {
                             div = 4;
                         }
-                        if (Rng.GetRandomInt2((31 - alpha + rand) / div) != 0)
+                        if (_scene.Random.GetRandomInt2((31 - alpha + rand) / div) != 0)
                         {
                             // sktodo-ai: same as above
                             return;
@@ -2161,7 +2161,7 @@ namespace MphRead.Entities
                         }
                     }
                 }
-                int randIdx = (int)Rng.GetRandomInt2(seenCount * (sawAffinity ? 2 : 1));
+                int randIdx = (int)_scene.Random.GetRandomInt2(seenCount * (sawAffinity ? 2 : 1));
                 if (randIdx < seenCount)
                 {
                     _findWeaponIndex = seenItems[randIdx];
@@ -2213,7 +2213,7 @@ namespace MphRead.Entities
                     }
                 }
                 // if the affinity weapon is available, give a 50% chance to switch to that instead of using the random candidates
-                int randIdx = (int)Rng.GetRandomInt2(candidateCount * (affinityIndex != 0 ? 2 : 1));
+                int randIdx = (int)_scene.Random.GetRandomInt2(candidateCount * (affinityIndex != 0 ? 2 : 1));
                 int noChargeChanceOneIn;
                 if (randIdx < candidateCount)
                 {
@@ -2227,7 +2227,7 @@ namespace MphRead.Entities
                 }
                 if (CheckCharge(GetBeamType(_weapon2)) && _player.BotLevel > 0)
                 {
-                    if (Rng.GetRandomInt2(noChargeChanceOneIn) == 0)
+                    if (_scene.Random.GetRandomInt2(noChargeChanceOneIn) == 0)
                     {
                         Flags4 &= ~AiFlags4.Bit1;
                     }
@@ -2700,14 +2700,14 @@ namespace MphRead.Entities
             private void Func1_21492DC()
             {
                 // note: for MP, the game finds the first player object, rather than the main player.
-                if (PlayerEntity.Main == null)
+                if (_scene.Players.Main == null)
                 {
                     Flags2 |= AiFlags2.Bit9;
                 }
                 else
                 {
                     Flags2 &= ~AiFlags2.Bit9;
-                    Func21356C0(PlayerEntity.Main);
+                    Func21356C0(_scene.Players.Main);
                 }
             }
 
@@ -2751,7 +2751,7 @@ namespace MphRead.Entities
             private void Func1_214925C()
             {
                 // delegates to otherwise unused helper 2135400 in-game
-                if (GameState.PrimeHunter == -1 || _player.SlotIndex == GameState.PrimeHunter)
+                if (_scene.GameState.PrimeHunter == -1 || _player.SlotIndex == _scene.GameState.PrimeHunter)
                 {
                     FindEntityRef(AiEntRefType.Type32);
                     Func21356C0(_entityRefs.Field32);
@@ -2759,7 +2759,7 @@ namespace MphRead.Entities
                 else
                 {
                     Flags2 &= ~AiFlags2.Bit9;
-                    Func21356C0(PlayerEntity.Players[GameState.PrimeHunter]);
+                    Func21356C0(_scene.Players.Items[_scene.GameState.PrimeHunter]);
                 }
             }
 
@@ -2927,7 +2927,7 @@ namespace MphRead.Entities
                 }
                 else
                 {
-                    int offset = (int)Rng.GetRandomInt2((ushort)(specIndex - navIndex));
+                    int offset = (int)_scene.Random.GetRandomInt2((ushort)(specIndex - navIndex));
                     _field30 = (int)_nodeList[navIndex + offset].Field4;
                 }
             }
@@ -2947,7 +2947,7 @@ namespace MphRead.Entities
                     Span<int> offsets = stackalloc int[10];
                     while (offsetCount < 10 && i < specIndex - navIndex)
                     {
-                        if (GameState.Mode == GameMode.Capture && _player.TeamIndex == 1)
+                        if (_scene.GameState.Mode == GameMode.Capture && _player.TeamIndex == 1)
                         {
                             uint field4 = _nodeList[navIndex + i].Field4;
                             if (field4 > 100 && field4 <= 110)
@@ -2961,7 +2961,7 @@ namespace MphRead.Entities
                         }
                         i++;
                     }
-                    int offset = offsets[(int)Rng.GetRandomInt2(offsetCount)];
+                    int offset = offsets[(int)_scene.Random.GetRandomInt2(offsetCount)];
                     _field30 = (int)_nodeList[navIndex + offset].Field4;
                 }
             }
@@ -3411,7 +3411,7 @@ namespace MphRead.Entities
                         if (_buttons.L.FramesUp > _field102E)
                         {
                             _buttons.L.IsDown = true;
-                            _field102E = _field102C + Rng.GetRandomInt2(_field102C / 2); // note: FPS stuff when _field102C is set
+                            _field102E = _field102C + _scene.Random.GetRandomInt2(_field102C / 2); // note: FPS stuff when _field102C is set
                         }
                     }
 
@@ -3442,7 +3442,7 @@ namespace MphRead.Entities
                         if (_player._altAttackTime > 0 || _buttons.L.FramesUp > _field102E)
                         {
                             _buttons.L.IsDown = true;
-                            _field102E = _field102C + Rng.GetRandomInt2(_field102C / 2); // note: FPS stuff when _field102C is set
+                            _field102E = _field102C + _scene.Random.GetRandomInt2(_field102C / 2); // note: FPS stuff when _field102C is set
                         }
                     }
                     else if (context.FieldF == 68)
@@ -3455,7 +3455,7 @@ namespace MphRead.Entities
                     }
                     else if (context.FieldF == 69)
                     {
-                        if (Rng.GetRandomInt2(15 * _player.SyluxBombCount + 10) == 0 // sktodo-ai: FPS stuff if this is called repeatedly
+                        if (_scene.Random.GetRandomInt2(15 * _player.SyluxBombCount + 10) == 0 // sktodo-ai: FPS stuff if this is called repeatedly
                             && _player._abilities.TestFlag(AbilityFlags.Bombs)
                             && _player._bombAmmo > 0 && _player._bombCooldown == 0)
                         {
@@ -3504,7 +3504,7 @@ namespace MphRead.Entities
                 {
                     PressButton(_buttons.L, 5);
                 }
-                if (Flags2.TestFlag(AiFlags2.Bit21) && Rng.GetRandomInt2(10) == 0 // sktodo-ai: FPS stuff if this is called repeatedly
+                if (Flags2.TestFlag(AiFlags2.Bit21) && _scene.Random.GetRandomInt2(10) == 0 // sktodo-ai: FPS stuff if this is called repeatedly
                     && !_player.IsAltForm && !_player.IsMorphing && !_player.Flags1.TestFlag(PlayerFlags1.UsedJump))
                 {
                     PressButton(_buttons.L, 5);
@@ -3577,7 +3577,7 @@ namespace MphRead.Entities
                         if (_player.SyluxBombCount == 0)
                         {
                             spawnBomb = true;
-                            if (Rng.GetRandomInt2(2) == 0)
+                            if (_scene.Random.GetRandomInt2(2) == 0)
                             {
                                 Flags2 &= ~AiFlags2.Bit12;
                             }
@@ -3639,7 +3639,7 @@ namespace MphRead.Entities
                             && _player._bombCooldown == 0 && _buttons.L.FramesUp > _field102E)
                         {
                             _buttons.L.IsDown = true;
-                            _field102E = _field102C + Rng.GetRandomInt2(_field102C / 2); // note: FPS stuff when _field102C is set
+                            _field102E = _field102C + _scene.Random.GetRandomInt2(_field102C / 2); // note: FPS stuff when _field102C is set
                         }
                     }
                 }
@@ -3843,9 +3843,9 @@ namespace MphRead.Entities
                 Debug.Assert(_targetPlayer != null);
                 _targetPlayer.GetPosition(out _field1048);
                 _field1048 = new Vector3(
-                    _field1048.X + (Rng.GetRandomInt2(8192) / 4096f - 1), // -1.0f to 1.0f // todo: accuracy?
+                    _field1048.X + (_scene.Random.GetRandomInt2(8192) / 4096f - 1), // -1.0f to 1.0f // todo: accuracy?
                     _field1048.Y + (_targetPlayer.IsAltForm ? _targetPlayer.Values.AltColYPos : 0.5f),
-                    _field1048.Z + (Rng.GetRandomInt2(8192) / 4096f - 1)
+                    _field1048.Z + (_scene.Random.GetRandomInt2(8192) / 4096f - 1)
                 );
                 if (!Func213842C())
                 {
@@ -3965,7 +3965,7 @@ namespace MphRead.Entities
                             context.Field34 = _player.Position;
                             _field78 = 0;
                             Flags2 &= ~AiFlags2.Bit15;
-                            float x = Rng.GetRandomInt2(4096) / 4096f;
+                            float x = _scene.Random.GetRandomInt2(4096) / 4096f;
                             _fieldA0 = new Vector3(x * MathF.Sign(toDefense.X), 0, MathF.Sqrt(1 - x * x) * MathF.Sign(toDefense.Z));
                             _fieldA0 *= radius;
                             _fieldA0 += _targetDefense.Position;
@@ -3976,7 +3976,7 @@ namespace MphRead.Entities
                     }
                     Func21436D8();
                 }
-                if (Flags2.TestFlag(AiFlags2.Bit10) && Rng.GetRandomInt2(10) == 0 && !_player.IsAltForm && !_player.IsMorphing
+                if (Flags2.TestFlag(AiFlags2.Bit10) && _scene.Random.GetRandomInt2(10) == 0 && !_player.IsAltForm && !_player.IsMorphing
                     && !_player.Flags1.TestFlag(PlayerFlags1.UsedJump) && _buttons.L.FramesUp > 5 * 2) // todo: FPS stuff
                 {
                     _buttons.L.IsDown = true;
@@ -4016,7 +4016,7 @@ namespace MphRead.Entities
                 if (!_player.Flags1.TestFlag(PlayerFlags1.UsedJump) && _buttons.L.FramesUp > _field1034)
                 {
                     _buttons.L.IsDown = true;
-                    _field1034 = Rng.GetRandomInt2(75 * 2) + 15 * 2; // todo: FPS stuff
+                    _field1034 = _scene.Random.GetRandomInt2(75 * 2) + 15 * 2; // todo: FPS stuff
                 }
             }
 
@@ -4078,7 +4078,7 @@ namespace MphRead.Entities
                 if (!_player.Flags1.TestFlag(PlayerFlags1.UsedJump) && _buttons.L.FramesUp > _field1034)
                 {
                     _buttons.L.IsDown = true;
-                    _field1034 = Rng.GetRandomInt2(75 * 2) + 15 * 2; // todo: FPS stuff
+                    _field1034 = _scene.Random.GetRandomInt2(75 * 2) + 15 * 2; // todo: FPS stuff
                 }
             }
 
@@ -4118,7 +4118,7 @@ namespace MphRead.Entities
                 if (!_player.Flags1.TestFlag(PlayerFlags1.UsedJump) && _buttons.L.FramesUp > _field1034)
                 {
                     _buttons.L.IsDown = true;
-                    _field1034 = Rng.GetRandomInt2(75 * 2) + 15 * 2; // todo: FPS stuff
+                    _field1034 = _scene.Random.GetRandomInt2(75 * 2) + 15 * 2; // todo: FPS stuff
                 }
             }
 
@@ -4338,9 +4338,9 @@ namespace MphRead.Entities
             private int Func3_213D388(AiContext context, AiPersonalityData5 param)
             {
                 PlayerEntity? player = null;
-                if (GameState.Mode == GameMode.SinglePlayer)
+                if (_scene.GameState.Mode == GameMode.SinglePlayer)
                 {
-                    player = PlayerEntity.Main;
+                    player = _scene.Players.Main;
                 }
                 else
                 {
@@ -4740,7 +4740,7 @@ namespace MphRead.Entities
             {
                 if (_player.Hunter == Hunter.Spire)
                 {
-                    return _player._health < (GameState.EncounterState[_player.SlotIndex] == 4 ? 270 : 500) ? 1 : 0;
+                    return _player._health < (_scene.GameState.EncounterState[_player.SlotIndex] == 4 ? 270 : 500) ? 1 : 0;
                 }
                 if (_player.Hunter == Hunter.Weavel)
                 {
@@ -5170,7 +5170,7 @@ namespace MphRead.Entities
 
             private int Func3_213B690(AiContext context, AiPersonalityData5 param)
             {
-                if (GameState.Mode == GameMode.Capture)
+                if (_scene.GameState.Mode == GameMode.Capture)
                 {
                     return 0;
                 }
@@ -5490,17 +5490,17 @@ namespace MphRead.Entities
 
             private int Func3_213AE14(AiContext context, AiPersonalityData5 param)
             {
-                return GameState.Mode == GameMode.Capture ? 1 : 0;
+                return _scene.GameState.Mode == GameMode.Capture ? 1 : 0;
             }
 
             private int Func3_213ADF8(AiContext context, AiPersonalityData5 param)
             {
-                return GameState.Mode != GameMode.Capture ? 1 : 0; // inverted
+                return _scene.GameState.Mode != GameMode.Capture ? 1 : 0; // inverted
             }
 
             private int Func3_213ADC4(AiContext context, AiPersonalityData5 param)
             {
-                return GameState.Mode == GameMode.PrimeHunter && _player.IsPrimeHunter ? 1 : 0;
+                return _scene.GameState.Mode == GameMode.PrimeHunter && _player.IsPrimeHunter ? 1 : 0;
             }
 
             private int Func3_213ADA0(AiContext context, AiPersonalityData5 param)
@@ -5520,7 +5520,7 @@ namespace MphRead.Entities
 
             private int Func3_213ACE8(AiContext context, AiPersonalityData5 param)
             {
-                if (GameState.Mode == GameMode.Capture && _player.TeamIndex == 0 && _field30 > 100) // sktodo-ai: FPS stuff?
+                if (_scene.GameState.Mode == GameMode.Capture && _player.TeamIndex == 0 && _field30 > 100) // sktodo-ai: FPS stuff?
                 {
                     return 1;
                 }
@@ -5634,7 +5634,7 @@ namespace MphRead.Entities
                     return 0;
                 }
                 // todo-ai: need to confirm what's done with this alpha value and if it needs (re)normalization
-                if (GameState.RadarPlayers)
+                if (_scene.GameState.RadarPlayers)
                 {
                     return 31;
                 }
@@ -5653,7 +5653,7 @@ namespace MphRead.Entities
                     return 31;
                 }
                 // todo-ai: need to confirm what's done with this alpha value and if it needs (re)normalization
-                if (GameState.RadarPlayers)
+                if (_scene.GameState.RadarPlayers)
                 {
                     return 0;
                 }
@@ -5766,7 +5766,7 @@ namespace MphRead.Entities
 
             private int Func3_213A660(AiContext context, AiPersonalityData5 param)
             {
-                return param.Param1 + (int)Rng.GetRandomInt2(param.Param2 - param.Param1);
+                return param.Param1 + (int)_scene.Random.GetRandomInt2(param.Param2 - param.Param1);
             }
 
             private int Func3_213A650(AiContext context, AiPersonalityData5 param)
@@ -5873,17 +5873,17 @@ namespace MphRead.Entities
                     }
                     else if (context.FieldB == 25)
                     {
-                        float x = Rng.GetRandomInt2(4096) / 4096f - 0.5f;
-                        float y = Rng.GetRandomInt2(4096) / 4096f - 0.5f;
-                        float z = Rng.GetRandomInt2(4096) / 4096f - 0.5f;
+                        float x = _scene.Random.GetRandomInt2(4096) / 4096f - 0.5f;
+                        float y = _scene.Random.GetRandomInt2(4096) / 4096f - 0.5f;
+                        float z = _scene.Random.GetRandomInt2(4096) / 4096f - 0.5f;
                         _field1038 = new Vector3(x, y, z);
                     }
                     else if (context.FieldB == 26)
                     {
-                        float x = Rng.GetRandomInt2(4096) / 4096f - 0.5f;
-                        float z = Rng.GetRandomInt2(4096) / 4096f - 0.5f;
+                        float x = _scene.Random.GetRandomInt2(4096) / 4096f - 0.5f;
+                        float z = _scene.Random.GetRandomInt2(4096) / 4096f - 0.5f;
                         float length = MathF.Sqrt(x * x + z * z);
-                        float y = Rng.GetRandomInt2(Fixed.ToInt(length)) / 4096f - length / 2;
+                        float y = _scene.Random.GetRandomInt2(Fixed.ToInt(length)) / 4096f - length / 2;
                         _field1038 = new Vector3(x, y, z);
                     }
                     else if (context.FieldB == 27)
@@ -6278,7 +6278,7 @@ namespace MphRead.Entities
             {
                 context.Field40 = 0;
                 context.Field34 = _player.Position;
-                if (Rng.GetRandomInt2(2) == 0)
+                if (_scene.Random.GetRandomInt2(2) == 0)
                 {
                     Flags2 &= ~AiFlags2.Bit12;
                 }
@@ -6387,7 +6387,7 @@ namespace MphRead.Entities
                     if (radius > 0.5f)
                     {
                         Vector3 toDefense = (_targetDefense.Position - _player.Position).WithY(0);
-                        float x = Rng.GetRandomInt2(4096) / 4096f;
+                        float x = _scene.Random.GetRandomInt2(4096) / 4096f;
                         _fieldA0 = new Vector3(x * MathF.Sign(toDefense.X), 0, MathF.Sqrt(1 - x * x) * MathF.Sign(toDefense.Z));
                         _fieldA0 *= radius;
                         _fieldA0 += _targetDefense.Position;
@@ -6629,7 +6629,7 @@ namespace MphRead.Entities
                     }
                     if (_field1020 < _player._disruptedTimer)
                     {
-                        _field1020 += (int)Rng.GetRandomInt2(_player._disruptedTimer - _field1020);
+                        _field1020 += (int)_scene.Random.GetRandomInt2(_player._disruptedTimer - _field1020);
                     }
                     int field1020Diff = _field1020 - prevField1020;
                     if (Flags4.TestFlag(AiFlags4.Bit3) && field1020Diff > 0 && _player.BotLevel > 0)
@@ -6808,25 +6808,25 @@ namespace MphRead.Entities
                     }
                     int v61 = (int)(v52 * 4096);
                     int v62 = (int)(v66 * 4096);
-                    float rand1 = (Rng.GetRandomInt2(v61 * 2) - v61) / 4096f;
-                    float rand2 = (Rng.GetRandomInt2(v62 * 2) - v62) / 4096f;
+                    float rand1 = (_scene.Random.GetRandomInt2(v61 * 2) - v61) / 4096f;
+                    float rand2 = (_scene.Random.GetRandomInt2(v62 * 2) - v62) / 4096f;
                     if (_player._disruptedTimer == 0)
                     {
                         if (rand1 > 6)
                         {
-                            rand1 = Rng.GetRandomInt2(8192) / 4096f + 4;
+                            rand1 = _scene.Random.GetRandomInt2(8192) / 4096f + 4;
                         }
                         else if (rand1 < -6)
                         {
-                            rand1 = -4 - Rng.GetRandomInt2(9182) / 4096f;
+                            rand1 = -4 - _scene.Random.GetRandomInt2(9182) / 4096f;
                         }
                         if (rand2 > 6)
                         {
-                            rand2 = Rng.GetRandomInt2(8192) / 4096f + 4;
+                            rand2 = _scene.Random.GetRandomInt2(8192) / 4096f + 4;
                         }
                         else if (rand2 < -6)
                         {
-                            rand2 = -4 - Rng.GetRandomInt2(9182) / 4096f;
+                            rand2 = -4 - _scene.Random.GetRandomInt2(9182) / 4096f;
                         }
                     }
                     _field1048 += camVec * rand1 + _player.CameraInfo.UpVector * rand2;
@@ -6981,7 +6981,7 @@ namespace MphRead.Entities
 
                 void SetRandomDelay()
                 {
-                    _shotDelay = weapon.ShotCooldown * 2 + (int)Rng.GetRandomInt2(shotDelay); // todo: FPS stuff
+                    _shotDelay = weapon.ShotCooldown * 2 + (int)_scene.Random.GetRandomInt2(shotDelay); // todo: FPS stuff
                 }
 
                 if (beam == BeamType.PowerBeam)
@@ -7013,7 +7013,7 @@ namespace MphRead.Entities
                     else
                     {
                         _buttons.R.IsDown = true;
-                        _shotDelay = (int)Rng.GetRandomInt2(weapon.FullCharge * 2); // todo: FPS stuff
+                        _shotDelay = (int)_scene.Random.GetRandomInt2(weapon.FullCharge * 2); // todo: FPS stuff
                     }
                 }
                 else if (beam == BeamType.Missile)
@@ -7159,7 +7159,7 @@ namespace MphRead.Entities
                     Debug.Assert(_targetPlayer != null);
                     Vector3 toTarget = _targetPlayer.Position - _player.Position;
                     float distSqr = toTarget.LengthSquared;
-                    if (GameState.SinglePlayer || distSqr <= 15 * 15 || !_player.AvailableWeapons[BeamType.PowerBeam])
+                    if (_scene.GameState.SinglePlayer || distSqr <= 15 * 15 || !_player.AvailableWeapons[BeamType.PowerBeam])
                     {
                         if (!_player.AvailableWeapons[beam])
                         {
@@ -7190,7 +7190,7 @@ namespace MphRead.Entities
                     else
                     {
                         _buttons.R.IsDown = true;
-                        _shotDelay = (int)Rng.GetRandomInt2(weapon.FullCharge * 2); // todo: FPS stuff
+                        _shotDelay = (int)_scene.Random.GetRandomInt2(weapon.FullCharge * 2); // todo: FPS stuff
                     }
                 }
                 else if (beam == BeamType.OmegaCannon)
@@ -8104,7 +8104,7 @@ namespace MphRead.Entities
                 {
                     if (_framesWithTouch == 0 && _framesWithoutTouch > _field1032)
                     {
-                        _field1032 = (int)(_field1030 + Rng.GetRandomInt2(_field1030 / 2)); // note: FPS stuff when _field1030 is set
+                        _field1032 = (int)(_field1030 + _scene.Random.GetRandomInt2(_field1030 / 2)); // note: FPS stuff when _field1030 is set
                         _hasTouch = true;
                         _touchAimX = (ushort)((int)(50 * cross.Y) + 128);
                         _touchAimY = (ushort)((int)(50 * dot) + 100);
@@ -10185,13 +10185,13 @@ namespace MphRead.Entities
                     // later index (vantage) is the same as earlier (aerial), so there are no aerial nodes
                     return GetRandomNavigationNode();
                 }
-                int index = aerialIndex + (int)Rng.GetRandomInt2(vantageIndex - aerialIndex);
+                int index = aerialIndex + (int)_scene.Random.GetRandomInt2(vantageIndex - aerialIndex);
                 return _nodeList[index];
             }
 
             private NodeData3 GetRandomNavigationNode()
             {
-                int index = (int)Rng.GetRandomInt2(_nodeTypeIndex[(int)NodeType.Navigation]);
+                int index = (int)_scene.Random.GetRandomInt2(_nodeTypeIndex[(int)NodeType.Navigation]);
                 return _nodeList[index];
             }
 
@@ -10223,7 +10223,7 @@ namespace MphRead.Entities
                 {
                     return GetRandomNavigationNode();
                 }
-                int index = navIndex + (int)Rng.GetRandomInt2(endIndex - navIndex);
+                int index = navIndex + (int)_scene.Random.GetRandomInt2(endIndex - navIndex);
                 return _nodeList[index];
             }
 
@@ -10505,7 +10505,7 @@ namespace MphRead.Entities
                         continue;
                     }
                     if ((!checkNeeded || !IsItemNotNeeded(itemSpawn.Data.ItemType))
-                        && (GameState.Mode != GameMode.PrimeHunter || GameState.PrimeHunter != _player.SlotIndex || !IsHealth(itemSpawn))
+                        && (_scene.GameState.Mode != GameMode.PrimeHunter || _scene.GameState.PrimeHunter != _player.SlotIndex || !IsHealth(itemSpawn))
                         && (result == null || result.Item == null || itemSpawn.Item != null)
                         && (itemSpawn.Item == null || !Func21377FC(itemSpawn.Item)))
                     {
@@ -10570,7 +10570,7 @@ namespace MphRead.Entities
                 foreach (ItemInstanceEntity item in _scene.GetItemInstanceEntities())
                 {
                     if ((!checkNeeded || !IsItemNotNeeded(item.ItemType))
-                        && (GameState.Mode != GameMode.PrimeHunter || GameState.PrimeHunter != _player.SlotIndex || !IsHealth(item))
+                        && (_scene.GameState.Mode != GameMode.PrimeHunter || _scene.GameState.PrimeHunter != _player.SlotIndex || !IsHealth(item))
                         && item.DespawnTimer != 0
                         && !Func21377FC(item))
                     {
@@ -10621,7 +10621,7 @@ namespace MphRead.Entities
             {
                 // MP1 SANCTORUS (Data Shrine), or
                 // MP6 HEADSHOT (Head Shot) and currently carrying flag DC
-                return GameState.IsOctolithMode && (_scene.RoomId == 93 || _scene.RoomId == 99 && _octolithFlagDC?.Carrier == _player);
+                return _scene.GameState.IsOctolithMode && (_scene.RoomId == 93 || _scene.RoomId == 99 && _octolithFlagDC?.Carrier == _player);
             }
 
             private bool IsItemNotNeeded(ItemType itemType)
@@ -10671,7 +10671,7 @@ namespace MphRead.Entities
             private bool Func21377FC(ItemInstanceEntity item)
             {
                 // UNIT 4 ARCTERRA BASE (Arcterra Gateway)
-                return GameState.IsOctolithMode && _scene.RoomId == 117
+                return _scene.GameState.IsOctolithMode && _scene.RoomId == 117
                     && _octolithFlagDC?.Carrier == _player && item.Owner?.Id == 53;
             }
 
@@ -10730,7 +10730,7 @@ namespace MphRead.Entities
                             playerList[playerCount++] = player;
                         }
                     }
-                    PlayerEntity? chosenPlayer = playerList[Rng.GetRandomInt2(playerCount)];
+                    PlayerEntity? chosenPlayer = playerList[_scene.Random.GetRandomInt2(playerCount)];
                     foreach (NodeDefenseEntity defense in _scene.GetNodeDefenseEntities())
                     {
                         if (resultCount < 10 && defense.CapturedPlayer == chosenPlayer)
@@ -10751,7 +10751,7 @@ namespace MphRead.Entities
                 }
                 if (resultCount > 0)
                 {
-                    return resultList[Rng.GetRandomInt2(resultCount)];
+                    return resultList[_scene.Random.GetRandomInt2(resultCount)];
                 }
                 return firstResult;
             }

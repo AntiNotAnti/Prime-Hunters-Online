@@ -13,6 +13,15 @@ namespace MphRead
 {
     public partial class Scene
     {
+        public ISceneServices Services { get; }
+        public SceneGameState GameState { get; }
+        public ScenePlayerRegistry Players { get; }
+        public MatchRandom Random { get; }
+        internal ushort NextItemRotation { get; set; }
+        public SceneCameraSequences CameraSequences => GameState.CameraSequences;
+        internal BeamProjectileEntity[] EnemyBeams { get; set; } = null!;
+        internal BeamProjectileEntity[] PlatformBeams { get; set; } = null!;
+
         private readonly LinkedList<EntityBase> _entities = new LinkedList<EntityBase>();
         public LinkedListIterator<EntityBase> Entities => new LinkedListIterator<EntityBase>(_entities);
 
@@ -122,7 +131,7 @@ namespace MphRead
             {
                 return;
             }
-            BossFlags bossFlags = GameState.StorySave.BossFlags;
+            BossFlags bossFlags = this.GameState.StorySave.BossFlags;
             int layerId = ((int)bossFlags >> (2 * areaId)) & 3;
             var rooms = new List<NavMapRoomSymbols>();
             for (int i = 1; i <= 35; i++)

@@ -174,7 +174,7 @@ namespace MphRead.Entities
 
         private int ProHealthSpan()
         {
-            if (GameState.Multiplayer)
+            if (_scene.GameState.Multiplayer)
             {
                 return Math.Max(Values.EnergyTank - 1, 1);
             }
@@ -242,7 +242,7 @@ namespace MphRead.Entities
         /// them, at ten a shot. So one big pickup is what "full" means here,
         /// and the spawn loadout reads full, which is what it is.
         /// </summary>
-        private static int ProAmmoFull => GameState.Multiplayer ? 100 : 250;
+        private int ProAmmoFull => GameState.Multiplayer ? 100 : 250;
 
         /// <summary>How full the ammo pool is, against <see cref="ProAmmoFull"/>.</summary>
         private float ProAmmoFraction()
@@ -333,7 +333,7 @@ namespace MphRead.Entities
         {
             string label = Strings.GetHudMessage(ProScoreMessageId());
             ProNumber(x, y, align, label, ProHudDim, 0.55f);
-            ProNumber(x, y + 8, align, FormatModeScore(MainPlayerIndex), ProHudInk, scale);
+            ProNumber(x, y + 8, align, FormatModeScore(_scene.Players.MainPlayerIndex), ProHudInk, scale);
         }
 
         /// <summary>
@@ -342,7 +342,7 @@ namespace MphRead.Entities
         /// the label does not quietly become "points" in a mode that counts
         /// octoliths.
         /// </summary>
-        private static int ProScoreMessageId()
+        private int ProScoreMessageId()
         {
             switch (GameState.Mode)
             {

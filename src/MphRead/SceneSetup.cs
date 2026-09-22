@@ -22,7 +22,7 @@ namespace MphRead
             {
                 throw new ProgramException("No room with this name is known.");
             }
-            GameMode mode = GameState.Mode;
+            GameMode mode = scene.GameState.Mode;
             if (mode == GameMode.None)
             {
                 mode = metadata.Multiplayer ? GameMode.Battle : GameMode.SinglePlayer;
@@ -34,9 +34,9 @@ namespace MphRead
             }
             else
             {
-                Weapons.Current = GameState.Multiplayer ? Weapons.WeaponsMP : Weapons.Weapons1P;
+                Weapons.Current = scene.GameState.Multiplayer ? Weapons.WeaponsMP : Weapons.Weapons1P;
             }
-            GameState.Mode = mode;
+            scene.GameState.Mode = mode;
             if (mode == GameMode.SinglePlayer)
             {
                 Menu.ApplyAdventureSettings();
@@ -47,28 +47,28 @@ namespace MphRead
             // so reset the RNG when loading a different save slot from the previous
             if (Menu.SaveSlot != Menu.PreviousSaveSlot)
             {
-                Rng.SetRng1(Rng.Rng1StartValue);
-                Rng.SetRng2(Rng.Rng2StartValue);
+                scene.Random.SetRng1(Rng.Rng1StartValue);
+                scene.Random.SetRng2(Rng.Rng2StartValue);
                 Menu.PreviousSaveSlot = Menu.SaveSlot;
             }
-            CamSeqEntity.ClearData();
-            CamSeqEntity.Current = null;
-            CameraSequence.Current = null;
-            CameraSequence.Intro = null;
-            if (GameState.Multiplayer && PlayerEntity.PlayerCount > 0)
+            CamSeqEntity.ClearData(scene);
+            scene.CameraSequences.Entity = null;
+            scene.CameraSequences.Current = null;
+            scene.CameraSequences.Intro = null;
+            if (scene.GameState.Multiplayer && scene.Players.PlayerCount > 0)
             {
                 int seqId = roomId - 93 + 172;
                 if (seqId >= 172 && seqId < 199)
                 {
-                    CameraSequence.Intro = CameraSequence.Load(seqId, scene);
+                    scene.CameraSequences.Intro = CameraSequence.Load(seqId, scene);
                 }
             }
             Sound.Sfx.Load(scene);
             var room = new RoomEntity(scene);
             (CollisionInstance collision, IReadOnlyList<EntityBase> entities) = SetUpRoom(mode, playerCount,
                 bossFlags, nodeLayerMask, entityLayerId, metadata, room, scene, isRoomTransition: false);
-            Music.TryPlayRoomMusic(room.RoomId, GameState.SinglePlayer && (((int)GameState.StorySave.BossFlags >> (2 * scene.AreaId)) & 3) != 0 ? 1 : 0);
-            if (GameState.SinglePlayer)
+            Music.TryPlayRoomMusic(room.RoomId, scene.GameState.SinglePlayer && (((int)scene.GameState.StorySave.BossFlags >> (2 * scene.AreaId)) & 3) != 0 ? 1 : 0);
+            if (scene.GameState.SinglePlayer)
             {
                 UpdateAreaHunters();
                 InitHunterSpawns(scene, entities, initialize: false); // see: "probably revisit this"
@@ -76,7 +76,7 @@ namespace MphRead
             }
             AiPersonality.LoadAll(mode);
             room.SetNodeData(LoadNodeData(metadata.NodePath, room.RoomId, mode, entities, metadata.FirstHunt));
-            GameState.StorySave.CheckpointRoomId = room.RoomId;
+            scene.GameState.StorySave.CheckpointRoomId = room.RoomId;
             return (room, metadata, collision, entities);
         }
 
@@ -218,32 +218,32 @@ namespace MphRead
 
         public static void InitHunterSpawns(Scene scene, IReadOnlyList<EntityBase> entities, bool initialize)
         {
-            for (int i = 1; i < PlayerEntity.MaxPlayers; i++)
+            for (int i = 1; i < scene.Players.MaxPlayers; i++)
             {
-                PlayerEntity player = PlayerEntity.Players[i];
+                PlayerEntity player = scene.Players.Items[i];
                 player.LoadFlags &= ~LoadFlags.Active;
                 player.LoadFlags &= ~LoadFlags.SlotActive;
                 player.IsBot = false;
                 player.BotLevel = 0;
                 player.ResetAdventureModeBotWeapon();
             }
-            PlayerEntity.PlayerCount = 1;
-            PlayerEntity.PlayersCreated = 1;
-            Array.Fill(GameState.EncounterState, 0);
+            scene.Players.PlayerCount = 1;
+            scene.Players.PlayersCreated = 1;
+            Array.Fill(scene.GameState.EncounterState, 0);
             if (scene.AreaId >= 8) // handled differently in-game
             {
                 return;
             }
-            if (GameState.GetAreaState(scene.AreaId) != AreaState.Clear
+            if (scene.GameState.GetAreaState(scene.AreaId) != AreaState.Clear
                 || scene.RoomId != 50 // Data Shrine 02 (UNIT2_RM2)
-                || PlayerEntity.Main.AvailableWeapons[BeamType.Battlehammer])
+                || scene.Players.Main.AvailableWeapons[BeamType.Battlehammer])
             {
-                int randomHunters = GameState.StorySave.AreaHunters[scene.AreaId / 2] & 0x7E; // ignore Samus and Guardian
+                int randomHunters = scene.GameState.StorySave.AreaHunters[scene.AreaId / 2] & 0x7E; // ignore Samus and Guardian
                 int randomHunterCount = System.Numerics.BitOperations.PopCount((uint)randomHunters);
                 int extraCount = 0; // extra index to roll Guardian if at least one hunter has already been rolled
                 for (int i = 0; i < entities.Count; i++)
                 {
-                    if (PlayerEntity.PlayerCount >= PlayerEntity.MaxPlayers)
+                    if (scene.Players.PlayerCount >= scene.Players.MaxPlayers)
                     {
                         break;
                     }
@@ -258,21 +258,21 @@ namespace MphRead
                         continue;
                     }
                     if (spawner.Data.Fields.S09.HunterId == 8 && (Cheats.NoRandomEncounters || Features.NoRepeatEncounters
-                        && scene.RoomId >= 27 && scene.RoomId <= 92 && GameState.CompletedRandomEncounterRooms[scene.RoomId - 27]))
+                        && scene.RoomId >= 27 && scene.RoomId <= 92 && scene.GameState.CompletedRandomEncounterRooms[scene.RoomId - 27]))
                     {
                         return;
                     }
-                    if (Rng.GetRandomInt2(100) >= spawner.Data.Fields.S09.HunterChance)
+                    if (scene.Random.GetRandomInt2(100) >= spawner.Data.Fields.S09.HunterChance)
                     {
                         continue;
                     }
-                    PlayerEntity player = PlayerEntity.Players[PlayerEntity.PlayerCount];
+                    PlayerEntity player = scene.Players.Items[scene.Players.PlayerCount];
                     player.IsBot = true;
                     player.EnemySpawner = spawner;
                     Hunter hunter;
                     if (spawner.Data.Fields.S09.HunterId == 8) // random
                     {
-                        uint rand = Rng.GetRandomInt2(randomHunterCount + extraCount);
+                        uint rand = scene.Random.GetRandomInt2(randomHunterCount + extraCount);
                         if (rand < randomHunterCount)
                         {
                             // todo?: determine bot level based on octoliths (unused)
@@ -313,10 +313,10 @@ namespace MphRead
                         randomHunterCount--;
                     }
                     int suitColor = spawner.Data.Fields.S09.HunterColor;
-                    if (hunter == PlayerEntity.Main.Hunter && suitColor == PlayerEntity.Main.Recolor
+                    if (hunter == scene.Players.Main.Hunter && suitColor == scene.Players.Main.Recolor
                         && Features.AlternateHunters1P)
                     {
-                        suitColor = PlayerEntity.Main.Recolor == 0 ? 1 : 0;
+                        suitColor = scene.Players.Main.Recolor == 0 ? 1 : 0;
                     }
                     PlayerEntity.Create(hunter, suitColor);
                     if (initialize)
@@ -325,17 +325,17 @@ namespace MphRead
                         player.Initialized = false;
                         scene.AddEntity(player);
                     }
-                    GameState.EncounterState[PlayerEntity.PlayerCount] = (int)spawner.Data.Fields.S09.EncounterType;
+                    scene.GameState.EncounterState[scene.Players.PlayerCount] = (int)spawner.Data.Fields.S09.EncounterType;
                     player.BotLevel = 1;
-                    PlayerEntity.PlayerCount++;
+                    scene.Players.PlayerCount++;
                 }
             }
-            for (int i = 1; i < PlayerEntity.MaxPlayers; i++)
+            for (int i = 1; i < scene.Players.MaxPlayers; i++)
             {
-                PlayerEntity player = PlayerEntity.Players[i];
+                PlayerEntity player = scene.Players.Items[i];
                 if (player.IsBot)
                 {
-                    int dropId = GameState.StorySave.GetEnemyOctolithDrop((int)player.Hunter);
+                    int dropId = scene.GameState.StorySave.GetEnemyOctolithDrop((int)player.Hunter);
                     if (dropId < 8)
                     {
                         var header = new EntityDataHeader((ushort)EntityType.Artifact, entityId: -1,
@@ -356,7 +356,7 @@ namespace MphRead
         {
             if (playerCount == 0)
             {
-                playerCount = PlayerEntity.PlayerCount;
+                playerCount = scene.Players.PlayerCount;
             }
             if (entityLayerId < 0 || entityLayerId > 15)
             {
@@ -364,7 +364,7 @@ namespace MphRead
                 {
                     if (bossFlags == BossFlags.Unspecified)
                     {
-                        bossFlags = GameState.StorySave.BossFlags;
+                        bossFlags = scene.GameState.StorySave.BossFlags;
                     }
                     entityLayerId = ((int)bossFlags >> (2 * scene.AreaId)) & 3;
                 }
@@ -568,7 +568,7 @@ namespace MphRead
             {
                 if (Paths.IsMphJapan || Paths.IsMphKorea)
                 {
-                    (int count, byte[] charData) = Read.ReadKanjiFont(GameState.SinglePlayer);
+                    (int count, byte[] charData) = Read.ReadKanjiFont(scene.GameState.SinglePlayer);
                     byte[] widths = new byte[count];
                     if (Paths.IsMphJapan)
                     {
@@ -603,12 +603,12 @@ namespace MphRead
             if (Mods.ThumbnailMode.Active)
                 return;
 
-            if (GameState.Multiplayer)
+            if (scene.GameState.Multiplayer)
             {
-                for (int slot = 0; slot < PlayerEntity.MaxPlayers; slot++)
+                for (int slot = 0; slot < scene.Players.MaxPlayers; slot++)
                 {
-                    PlayerEntity? player = slot < PlayerEntity.Players.Count
-                        ? PlayerEntity.Players[slot]
+                    PlayerEntity? player = slot < scene.Players.Items.Count
+                        ? scene.Players.Items[slot]
                         : null;
                     if (player != null && player.LoadFlags.TestFlag(LoadFlags.Active)
                         && loaded.Add(player.Hunter))
@@ -653,7 +653,7 @@ namespace MphRead
             Strings.ReadStringTable(StringTables.HudMsgsCommon);
             Strings.ReadStringTable(StringTables.HudMessagesSP);
             Strings.ReadStringTable(StringTables.HudMessagesMP);
-            if (GameState.SinglePlayer)
+            if (scene.GameState.SinglePlayer)
             {
                 Strings.ReadStringTable(StringTables.ScanLog);
             }
@@ -798,7 +798,7 @@ namespace MphRead
             scene.LoadEffect(239, persistent: true); // enemyCol1
             scene.LoadModel(Read.GetSingleParticle(SingleType.Death).Model);
             scene.LoadModel(Read.GetSingleParticle(SingleType.Fuzzball).Model);
-            if (GameState.SinglePlayer)
+            if (scene.GameState.SinglePlayer)
             {
                 scene.LoadModel(Read.GetModelInstance("icons", dir: MetaDir.Hud).Model);
             }
@@ -1098,7 +1098,7 @@ namespace MphRead
         public static void LoadItemResources(Scene scene)
         {
             // todo: pre-allocate
-            if (GameState.Multiplayer)
+            if (scene.GameState.Multiplayer)
             {
                 LoadItem(ItemType.UASmall, scene);
                 LoadItem(ItemType.UABig, scene);
@@ -1163,8 +1163,8 @@ namespace MphRead
         private static IReadOnlyList<EntityBase> GetExtraEntities(int roomId, IReadOnlyList<EntityBase> entities, Scene scene)
         {
             // todo: load entities into unused rooms to make them playable
-            Hunter hunter = PlayerEntity.Main.Hunter;
-            if (!GameState.SinglePlayer || hunter == Hunter.Samus || !Features.AlternateHunters1P)
+            Hunter hunter = scene.Players.Main.Hunter;
+            if (!scene.GameState.SinglePlayer || hunter == Hunter.Samus || !Features.AlternateHunters1P)
             {
                 return entities;
             }

@@ -153,7 +153,6 @@ namespace MphRead.Mods.Replay
             public EntityBase[] Membership { get; init; } = Array.Empty<EntityBase>();
             public ObjectSnapshot Scene { get; init; } = null!;
             public ObjectSnapshot GameState { get; init; } = null!;
-            public ObjectSnapshot SpinningState { get; init; } = null!;
             public ObjectSnapshot PlayerStaticState { get; init; } = null!;
             public ObjectSnapshot[] Entities { get; init; } = Array.Empty<ObjectSnapshot>();
 
@@ -166,14 +165,13 @@ namespace MphRead.Mods.Replay
                 {
                     Frame = frame,
                     NetFrame = NetSession.NetFrame,
-                    Rng1 = Rng.Rng1,
-                    Rng2 = Rng.Rng2,
+                    Rng1 = scene.Random.Rng1,
+                    Rng2 = scene.Random.Rng2,
                     Hash = hash,
                     Membership = entities,
                     Scene = ObjectSnapshot.Capture(scene),
-                    GameState = ObjectSnapshot.CaptureStatic(typeof(GameState)),
-                    SpinningState = ObjectSnapshot.CaptureStatic(typeof(SpinningEntityBase)),
-                    PlayerStaticState = ObjectSnapshot.CaptureStatic(typeof(PlayerEntity)),
+                    GameState = ObjectSnapshot.Capture(scene.GameState),
+                    PlayerStaticState = ObjectSnapshot.Capture(scene.Players),
                     Entities = entities.Select(ObjectSnapshot.Capture).ToArray()
                 };
             }
@@ -189,13 +187,12 @@ namespace MphRead.Mods.Replay
             public void Restore(Scene scene)
             {
                 Scene.Restore(scene);
-                GameState.Restore(null);
-                SpinningState.Restore(null);
-                PlayerStaticState.Restore(null);
+                GameState.Restore(scene.GameState);
+                PlayerStaticState.Restore(scene.Players);
                 for (int i = 0; i < Entities.Length; i++)
                     Entities[i].Restore(Membership[i]);
-                Rng.SetRng1(Rng1);
-                Rng.SetRng2(Rng2);
+                scene.Random.SetRng1(Rng1);
+                scene.Random.SetRng2(Rng2);
             }
         }
 

@@ -66,9 +66,9 @@ namespace MphRead.Entities.Enemies
         {
             Vector3 position = _data.Spawner.Position;
             Vector3 facing = Vector3.UnitZ;
-            if (position != PlayerEntity.Main.Position)
+            if (position != _scene.Players.Main.Position)
             {
-                facing = (PlayerEntity.Main.Position - position).WithY(0).Normalized();
+                facing = (_scene.Players.Main.Position - position).WithY(0).Normalized();
             }
             Matrix4 transform = GetTransformMatrix(facing, Vector3.UnitY);
             transform.Row3.Xyz = position;
@@ -317,9 +317,9 @@ namespace MphRead.Entities.Enemies
                 }
                 _eyeBurnUpdateTimer = 1 / 30f;
             }
-            if (HitPlayers[PlayerEntity.Main.SlotIndex])
+            if (HitPlayers[_scene.Players.Main.SlotIndex])
             {
-                PlayerEntity.Main.TakeDamage(10, DamageFlags.None, direction: FacingVector, this);
+                _scene.Players.Main.TakeDamage(10, DamageFlags.None, direction: FacingVector, this);
             }
             CallStateProcess();
             // the game does this in the draw function
@@ -347,7 +347,7 @@ namespace MphRead.Entities.Enemies
                     Debug.Assert(eye != null);
                     eye.UpdateState(Values.Phase0EyeState[i]);
                     eye.BeamType = Values.Phase0BeamType[i];
-                    uint rand = Rng.GetRandomInt2(Values.Phase0BeamSpawnMax[i] + 1 - Values.Phase0BeamSpawnMin[i]);
+                    uint rand = _scene.Random.GetRandomInt2(Values.Phase0BeamSpawnMax[i] + 1 - Values.Phase0BeamSpawnMin[i]);
                     eye.BeamSpawnCount = (ushort)(Values.Phase0BeamSpawnMin[i] + rand);
                     eye.BeamSpawnCooldown = Values.Phase0BeamCooldown[i] * 2; // todo: FPS stuff
                     eye.BeamSpawnTimer = eye.BeamSpawnCooldown;
@@ -361,7 +361,7 @@ namespace MphRead.Entities.Enemies
                     Debug.Assert(eye != null);
                     eye.UpdateState(Values.Phase1EyeState[i]);
                     eye.BeamType = Values.Phase1BeamType[i];
-                    uint rand = Rng.GetRandomInt2(Values.Phase1BeamSpawnMax[i] + 1 - Values.Phase1BeamSpawnMin[i]);
+                    uint rand = _scene.Random.GetRandomInt2(Values.Phase1BeamSpawnMax[i] + 1 - Values.Phase1BeamSpawnMin[i]);
                     eye.BeamSpawnCount = (ushort)(Values.Phase1BeamSpawnMin[i] + rand);
                     eye.BeamSpawnCooldown = Values.Phase1BeamCooldown[i] * 2; // todo: FPS stuff
                     eye.BeamSpawnTimer = eye.BeamSpawnCooldown;
@@ -375,7 +375,7 @@ namespace MphRead.Entities.Enemies
                     Debug.Assert(eye != null);
                     eye.UpdateState(Values.Phase2EyeState[i]);
                     eye.BeamType = Values.Phase2BeamType[i];
-                    uint rand = Rng.GetRandomInt2(Values.Phase2BeamSpawnMax[i] + 1 - Values.Phase2BeamSpawnMin[i]);
+                    uint rand = _scene.Random.GetRandomInt2(Values.Phase2BeamSpawnMax[i] + 1 - Values.Phase2BeamSpawnMin[i]);
                     eye.BeamSpawnCount = (ushort)(Values.Phase2BeamSpawnMin[i] + rand);
                     eye.BeamSpawnCooldown = Values.Phase2BeamCooldown[i] * 2; // todo: FPS stuff
                     eye.BeamSpawnTimer = eye.BeamSpawnCooldown;
@@ -388,17 +388,17 @@ namespace MphRead.Entities.Enemies
             int index = eye.EyeIndex;
             if (PhaseIndex == 0)
             {
-                uint rand = Rng.GetRandomInt2(Values.Phase0BeamSpawnMax[index] + 1 - Values.Phase0BeamSpawnMin[index]);
+                uint rand = _scene.Random.GetRandomInt2(Values.Phase0BeamSpawnMax[index] + 1 - Values.Phase0BeamSpawnMin[index]);
                 eye.BeamSpawnCount = (ushort)(Values.Phase0BeamSpawnMin[index] + rand);
             }
             else if (PhaseIndex == 1)
             {
-                uint rand = Rng.GetRandomInt2(Values.Phase1BeamSpawnMax[index] + 1 - Values.Phase1BeamSpawnMin[index]);
+                uint rand = _scene.Random.GetRandomInt2(Values.Phase1BeamSpawnMax[index] + 1 - Values.Phase1BeamSpawnMin[index]);
                 eye.BeamSpawnCount = (ushort)(Values.Phase1BeamSpawnMin[index] + rand);
             }
             else if (PhaseIndex == 2)
             {
-                uint rand = Rng.GetRandomInt2(Values.Phase2BeamSpawnMax[index] + 1 - Values.Phase2BeamSpawnMin[index]);
+                uint rand = _scene.Random.GetRandomInt2(Values.Phase2BeamSpawnMax[index] + 1 - Values.Phase2BeamSpawnMin[index]);
                 eye.BeamSpawnCount = (ushort)(Values.Phase2BeamSpawnMin[index] + rand);
             }
         }
@@ -445,7 +445,7 @@ namespace MphRead.Entities.Enemies
                     _soundSource.PlaySfx(SfxId.CYLINDER_BOSS_DIE); // empty
                     _soundSource.PlaySfx(SfxId.CYLINDER_BOSS_CRYSTAL_SCR); // empty
                 }
-                if (PlayerEntity.Main.Health > 0 && GameState.SinglePlayer)
+                if (_scene.Players.Main.Health > 0 && _scene.GameState.SinglePlayer)
                 {
                     _scene.StartMovie(_deathMovieIds[_subtype], FadeType.FadeOutInWhite, 40 / 30f, FadeType.FadeOutInWhite, 5 / 30f);
                 }
@@ -571,7 +571,7 @@ namespace MphRead.Entities.Enemies
 
         private bool Behavior05()
         {
-            return Vector3.DistanceSquared(PlayerEntity.Main.Position, Position) < Fixed.ToFloat(610352);
+            return Vector3.DistanceSquared(_scene.Players.Main.Position, Position) < Fixed.ToFloat(610352);
         }
 
         private bool Behavior06()

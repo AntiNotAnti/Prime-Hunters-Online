@@ -430,8 +430,8 @@ namespace MphRead.Mods.Network
                 return;
             }
             int local = NetSession.LocalSlot;
-            PlayerEntity? player = local < PlayerEntity.Players.Count
-                ? PlayerEntity.Players[local]
+            PlayerEntity? player = local < scene.Players.Items.Count
+                ? scene.Players.Items[local]
                 : null;
             if (player != null && player.LoadFlags.TestFlag(LoadFlags.Active))
             {

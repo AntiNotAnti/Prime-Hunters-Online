@@ -120,7 +120,7 @@ namespace MphRead.Mods.Replay
                 {
                     if (other == player || other.Health <= 0
                         || !other.LoadFlags.TestFlag(LoadFlags.Spawned)
-                        || (GameState.Teams && other.TeamIndex == player.TeamIndex))
+                        || (scene.GameState.Teams && other.TeamIndex == player.TeamIndex))
                         continue;
                     float distance = (other.Position - player.Position).Length;
                     closest = Math.Min(closest, distance);
@@ -154,9 +154,9 @@ namespace MphRead.Mods.Replay
             if (bestSlot < 0)
                 return;
 
-            bool currentValid = _currentSlot >= 0 && _currentSlot < PlayerEntity.Players.Count
-                && PlayerEntity.Players[_currentSlot].LoadFlags.TestFlag(LoadFlags.Spawned)
-                && PlayerEntity.Players[_currentSlot].Health > 0;
+            bool currentValid = _currentSlot >= 0 && _currentSlot < scene.Players.Items.Count
+                && scene.Players.Items[_currentSlot].LoadFlags.TestFlag(LoadFlags.Spawned)
+                && scene.Players.Items[_currentSlot].Health > 0;
             bool holdExpired = frame < _lastSwitchFrame || frame - _lastSwitchFrame >= MinimumHoldFrames;
             bool clearlyBetter = bestSlot != _currentSlot && bestScore >= _currentScore + SwitchMargin;
 

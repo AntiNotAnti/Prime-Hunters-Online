@@ -51,8 +51,8 @@ namespace MphRead.Entities.Enemies
             _weaveOffset = Fixed.ToFloat(_spawner.Data.Fields.S04.WeaveOffset);
             _field188 = facing;
             _field194 = facing;
-            _bobOffset = Fixed.ToFloat(Rng.GetRandomInt2(0x1AAB) + 1365) / 2; // [0.1667, 1)
-            _bobSpeed = Fixed.ToFloat(Rng.GetRandomInt2(0x6000)) + 1; // [1, 7)
+            _bobOffset = Fixed.ToFloat(_scene.Random.GetRandomInt2(0x1AAB) + 1365) / 2; // [0.1667, 1)
+            _bobSpeed = Fixed.ToFloat(_scene.Random.GetRandomInt2(0x6000)) + 1; // [1, 7)
             UpdateState();
         }
 
@@ -121,7 +121,7 @@ namespace MphRead.Entities.Enemies
             float ySin = MathF.Sin(MathHelper.DegreesToRadians(_bobAngle));
             _speed.Y = _initialPos.Y + ySin * _bobOffset - Position.Y;
             _speed /= 2; // todo: FPS stuff
-            Vector3 between = PlayerEntity.Main.Position - Position;
+            Vector3 between = _scene.Players.Main.Position - Position;
             if (between.LengthSquared >= 7 * 7)
             {
                 _field194 = _field188.WithY(0).Normalized();
@@ -172,9 +172,9 @@ namespace MphRead.Entities.Enemies
         private void State1()
         {
             UpdateMovement();
-            if (HitPlayers[PlayerEntity.Main.SlotIndex])
+            if (HitPlayers[_scene.Players.Main.SlotIndex])
             {
-                PlayerEntity.Main.TakeDamage(12, DamageFlags.None, FacingVector, this);
+                _scene.Players.Main.TakeDamage(12, DamageFlags.None, FacingVector, this);
             }
             AnimationInfo animInfo = _models[0].AnimInfo;
             if (animInfo.Index[0] != 0 && animInfo.Flags[0].TestFlag(AnimFlags.Ended))

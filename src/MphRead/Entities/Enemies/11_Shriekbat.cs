@@ -33,7 +33,7 @@ namespace MphRead.Entities.Enemies
             Flags |= EnemyFlags.Visible;
             Flags |= EnemyFlags.OnRadar;
             Vector3 position = _spawner.Data.Header.Position.ToFloatVector();
-            SetTransform((PlayerEntity.Main.Position - position).Normalized(), Vector3.UnitY, position);
+            SetTransform((_scene.Players.Main.Position - position).Normalized(), Vector3.UnitY, position);
             _boundingRadius = 1;
             _hurtVolumeInit = new CollisionVolume(_spawner.Data.Fields.S02.Volume0);
             _rangeVolume = CollisionVolume.Move(_spawner.Data.Fields.S02.Volume1, position);
@@ -54,7 +54,7 @@ namespace MphRead.Entities.Enemies
 
         protected override void EnemyProcess()
         {
-            Vector3 facing = (PlayerEntity.Main.Position - Position).Normalized();
+            Vector3 facing = (_scene.Players.Main.Position - Position).Normalized();
             SetTransform(facing, Vector3.UnitY, Position);
             if (_effect != null)
             {
@@ -111,8 +111,8 @@ namespace MphRead.Entities.Enemies
                 _moveTimer--;
                 return false;
             }
-            Vector3 target = -PlayerEntity.Main.FacingVector + PlayerEntity.Main.Position;
-            target.Y = PlayerEntity.Main.Position.Y + 0.5f;
+            Vector3 target = -_scene.Players.Main.FacingVector + _scene.Players.Main.Position;
+            target.Y = _scene.Players.Main.Position.Y + 0.5f;
             _speed = target - Position;
             float mag = _speed.Length;
             // _moveTimer is not used again after this
@@ -142,7 +142,7 @@ namespace MphRead.Entities.Enemies
         // start moving down to starting position for attack
         private bool Behavior03()
         {
-            if (!_activeVolume.TestPoint(PlayerEntity.Main.Position))
+            if (!_activeVolume.TestPoint(_scene.Players.Main.Position))
             {
                 return false;
             }
@@ -162,7 +162,7 @@ namespace MphRead.Entities.Enemies
         // wait for player to be in range
         private bool Behavior04()
         {
-            if (!_rangeVolume.TestPoint(PlayerEntity.Main.Position))
+            if (!_rangeVolume.TestPoint(_scene.Players.Main.Position))
             {
                 return false;
             }

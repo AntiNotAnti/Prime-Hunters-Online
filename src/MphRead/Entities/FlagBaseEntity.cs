@@ -23,7 +23,7 @@ namespace MphRead.Entities
             _volume = CollisionVolume.Move(_data.Volume, Position);
             // note: an explicit mode check is necessary because e.g. Sic Transit has OctolithFlags/FlagBases
             // enabled in Defender mode according to their layer masks, but they don't appear in-game
-            GameMode mode = GameState.Mode;
+            GameMode mode = _scene.GameState.Mode;
             if (mode == GameMode.Capture)
             {
                 AddPlaceholderModel();
@@ -48,9 +48,9 @@ namespace MphRead.Entities
                 {
                     if (_capture && !CheckOwnOctolith(player))
                     {
-                        if (player == PlayerEntity.Main)
+                        if (player == _scene.Players.Main)
                         {
-                            PlayerEntity.Main.QueueHudMessage(128, 50, 1 / 1000f, 0, 232); // your octolith is missing!
+                            _scene.Players.Main.QueueHudMessage(128, 50, 1 / 1000f, 0, 232); // your octolith is missing!
                         }
                         continue;
                     }

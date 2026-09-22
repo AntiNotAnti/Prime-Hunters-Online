@@ -62,8 +62,8 @@ namespace MphRead.Entities.Enemies
             SetTransform(facing, Vector3.UnitY, position);
             _field194 = facing;
             _field1A0 = facing;
-            _bobOffset = Fixed.ToFloat(Rng.GetRandomInt2(0x1800) + 2048) / 2; // [0.25, 1)
-            _bobSpeed = Fixed.ToFloat(Rng.GetRandomInt2(0x6000)) + 1; // [1, 7)
+            _bobOffset = Fixed.ToFloat(_scene.Random.GetRandomInt2(0x1800) + 2048) / 2; // [0.25, 1)
+            _bobSpeed = Fixed.ToFloat(_scene.Random.GetRandomInt2(0x6000)) + 1; // [1, 7)
             _field170 = _field172 = 20 * 2; // todo: FPS stuff
             UpdateState();
         }
@@ -135,11 +135,11 @@ namespace MphRead.Entities.Enemies
             float sin = MathF.Sin(MathHelper.DegreesToRadians(_bobAngle));
             _speed.Y = _initialPos.Y + sin * _bobOffset - Position.Y;
             _speed.Y /= 2; // todo: FPS stuff
-            if (HitPlayers[PlayerEntity.Main.SlotIndex])
+            if (HitPlayers[_scene.Players.Main.SlotIndex])
             {
-                PlayerEntity.Main.TakeDamage(12, DamageFlags.None, FacingVector, this);
+                _scene.Players.Main.TakeDamage(12, DamageFlags.None, FacingVector, this);
             }
-            Vector3 between = PlayerEntity.Main.Position - Position;
+            Vector3 between = _scene.Players.Main.Position - Position;
             if (between.LengthSquared >= 7 * 7)
             {
                 _field1A0 = _field194.WithY(0).Normalized();

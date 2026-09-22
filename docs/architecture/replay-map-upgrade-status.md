@@ -37,8 +37,8 @@ No fallback is removed before the plan's runtime acceptance gate.
 ## Remaining replay work
 
 - Complete detached scene restore schema and authoritative world/event capture.
-- Move PlayerEntity registries, GameState, RNG, scene services and presentation
-  ownership out of process globals before creating simultaneous replay scenes.
+- Finish network, AI, sound, input and renderer-resource services isolation;
+  player registries, GameState, RNG and camera/pool ownership are scene-local.
 - Scene attachment for instance-owned passive playback and deterministic checkpoint seek.
 - Replay-based personal/final killcams and audio/input/HUD ownership.
 - Migrate full playback, instant clips, Studio, thumbnails and video export.
@@ -122,7 +122,7 @@ that the missing replay features work.
 | --- | --- |
 | P0A timeline | Implemented bounded immutable records/segments, freeze and identity mapping; complete scene restore schema still missing |
 | P0B recorder | Accepted match/roster/player snapshots and existing semantic events integrated; full world/objective/presentation event capture missing |
-| P0C isolated session/services | Instance reader, transport and explicit theatre/passive hosts implemented; passive packet decoder has independent lifecycle state; PlayerEntity, GameState, RNG and presentation ownership still require extraction |
+| P0C isolated session/services | Instance reader/transport/hosts and passive decoder implemented; scene-owned players, match state, RNG, camera sequences and pools extracted; network/presentation/resource services and passive stepping remain |
 | P0D/P0E personal/final killcams | Existing implementation retained; replay-scene replacement and runtime acceptance outstanding |
 | P1 playback/seek/interpolation | Studio facades now delegate reader/clock/transport to a session; seeks schedule at most 120 steps; isolated scenes/checkpoints/interpolation migration outstanding |
 | P1 shared clips/highlights/export | Existing functionality retained; shared-timeline migration outstanding |
@@ -140,13 +140,19 @@ that the missing replay features work.
 
 - Desktop Release build: passes with 18 pre-existing warnings.
 - Timeline: 36 checks.
-- Replay v2/v3 format, metadata, recovery, extraction and malformed input and passive session isolation: 542 checks.
+- Replay v2/v3 format, metadata, recovery, extraction and malformed input, passive session/scene ownership: 550 checks.
 - Network lifecycle: 3,681 assertions.
 - Health/shot behavior: 2,967,760 assertions.
 - Editor/history/cache/build: 58 checks, including real synthetic-texture compilation,
   package roundtrip, five-file output, dependency changes, cache corruption,
   cancellation and two-worker concurrency.
 - Map Studio rendered successfully at 1440×900 and 960×600.
+- A fresh 1,800-frame protocol-16 recording passes linear/reset-forward gameplay
+  hashes, sampled scalar state, randomized seeks, all playback rates and frozen EOF.
+- Replay controls/camera/Studio checks and 406 controller checks pass.
+- Two rendered network clients completed 30 seconds and recorded replays. The
+  harness reported missing damage coverage (neither actor took a hit on Sanctorus),
+  so this run is not combat acceptance. The harness now uses the game's macOS GL setup.
 - Live-match replay/killcam visual correctness and Android gameplay/pause-resume
   acceptance have not been tested for the proposed replacement (it is not implemented).
 

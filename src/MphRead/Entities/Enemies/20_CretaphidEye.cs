@@ -314,7 +314,7 @@ namespace MphRead.Entities.Enemies
             equipInfo.SplashDamage = damage;
             equipInfo.HeadshotDamage = damage;
             Vector3 facing = FacingVector;
-            Vector3 spawnDir = (PlayerEntity.Main.Position.AddY(0.5f) - Position).Normalized();
+            Vector3 spawnDir = (_scene.Players.Main.Position.AddY(0.5f) - Position).Normalized();
             if (Vector3.Dot(facing, spawnDir) < -1)
             {
                 spawnDir = facing;
@@ -328,7 +328,7 @@ namespace MphRead.Entities.Enemies
             {
                 return;
             }
-            PlayerEntity player = PlayerEntity.Main;
+            PlayerEntity player = _scene.Players.Main;
             Vector3 beamCylTop = Position + _beamTransform.Row2.Xyz;
             float radii = player.Volume.SphereRadius + Fixed.ToFloat(_cretaphid.Values.CollisionRadius);
             CollisionResult discard = default;
@@ -363,7 +363,7 @@ namespace MphRead.Entities.Enemies
                 Enemy19Values values = _cretaphid.Values;
                 int chanceTotal = values.ItemChanceHealth + values.ItemChanceMissile
                     + values.ItemChanceUa + values.ItemChanceNone;
-                uint rand = Rng.GetRandomInt2(chanceTotal);
+                uint rand = _scene.Random.GetRandomInt2(chanceTotal);
                 if (rand < values.ItemChanceHealth)
                 {
                     itemType = ItemType.HealthMedium;
