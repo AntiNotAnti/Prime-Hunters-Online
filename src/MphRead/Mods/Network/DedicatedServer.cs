@@ -43,6 +43,8 @@ namespace MphRead.Mods.Network
             public int SlotIndex = -1;
             public double LastSeen;
             public uint LastIntentFrame;
+            public IntentPacket LatestIntent;
+            public bool HasIntent;
             public string Name = "";
             public byte Hunter;
             /// <summary>The suit this player asked for, 0-3. See PlayerColors.</summary>
@@ -176,6 +178,9 @@ namespace MphRead.Mods.Network
 
         private readonly List<Peer> _peers = new();
         private readonly byte[] _scratch = new byte[NetConfig.MaxPacketSize];
+        private readonly byte[] _intentBundleScratch = new byte[NetConfig.MaxPacketSize];
+        private readonly byte[] _lastSnapshot = new byte[NetConfig.MaxPacketSize];
+        private int _lastSnapshotLength;
         private readonly int _port;
         private readonly int _maxPlayers;
         private readonly MapRotation _rotation;
@@ -186,7 +191,6 @@ namespace MphRead.Mods.Network
         /// RunsTheMatch=false compatibility/test path.
         /// </summary>
         private ServerSim? _sim;
-        private byte[]? _lastSnapshot;
         private volatile bool _running;
         private double _matchStarted;
         /// <summary>
@@ -834,12 +838,75 @@ namespace MphRead.Mods.Network
         /// </summary>
         private void SendSnapshot(ReadOnlySpan<byte> payload)
         {
-            _lastSnapshot = payload.ToArray();
+            payload.CopyTo(_lastSnapshot);
+            _lastSnapshotLength = payload.Length;
             EnsureCanonicalReplay(payload);
             ServerReplayRecorder.Record(PacketType.Snapshot, payload);
+
+            // Observer input is emitted once per authority tick, immediately
+            // before the snapshot for that tick. One datagram replaces the
+            // N*(N-1) SlotIntent fan-out while preserving full 60 Hz state.
+            if (payload.Length >= SnapshotHeader.Size)
+            {
+                SendIntentBundle(SnapshotHeader.Read(payload).Frame);
+            }
+
             for (int i = 0; i < _peers.Count; i++)
             {
                 _transport?.Send(_peers[i].EndPoint, PacketType.Snapshot, payload);
+            }
+        }
+
+        private void SendIntentBundle(uint authorityFrame)
+        {
+            if (!Simulating || _transport == null || _peers.Count == 0) return;
+
+            int offset = IntentBundleHeader.Size;
+            int states = 0;
+            for (int i = 0; i < _peers.Count; i++)
+            {
+                Peer peer = _peers[i];
+                if (!peer.HasIntent) continue;
+                if (offset + IntentBundlePacket.StateEntrySize > NetConfig.MaxPacketSize) break;
+                _intentBundleScratch[offset++] = (byte)peer.SlotIndex;
+                ObserverIntentState.FromIntent(peer.LatestIntent)
+                    .Write(_intentBundleScratch.AsSpan(offset, ObserverIntentState.Size));
+                offset += ObserverIntentState.Size;
+                states++;
+            }
+
+            int events = 0;
+            for (int i = 0; i < _peers.Count; i++)
+            {
+                Peer peer = _peers[i];
+                if (!peer.HasIntent || !peer.LatestIntent.Presses.Any) continue;
+                if (offset + IntentBundlePacket.EventEntrySize > NetConfig.MaxPacketSize) break;
+                _intentBundleScratch[offset++] = (byte)peer.SlotIndex;
+                for (int p = 0; p < IntentPacket.PressHistory; p++)
+                {
+                    BinaryPrimitives.WriteUInt32LittleEndian(
+                        _intentBundleScratch.AsSpan(offset + p * 4),
+                        peer.LatestIntent.Presses[p]);
+                }
+                offset += IntentPacket.PressHistory * 4;
+                events++;
+            }
+
+            if (states == 0) return;
+            new IntentBundleHeader
+            {
+                MatchId = _matchId,
+                AuthorityEpoch = _authorityEpoch,
+                AuthorityFrame = authorityFrame,
+                StateCount = (byte)states,
+                EventCount = (byte)events
+            }.Write(_intentBundleScratch);
+
+            ReadOnlySpan<byte> bundle = _intentBundleScratch.AsSpan(0, offset);
+            ServerReplayRecorder.Record(PacketType.IntentBundle, bundle);
+            for (int i = 0; i < _peers.Count; i++)
+            {
+                _transport.Send(_peers[i].EndPoint, PacketType.IntentBundle, bundle);
             }
         }
 
@@ -1889,7 +1956,7 @@ namespace MphRead.Mods.Network
                     CloseBallot();
                     _matchId = NetLifecycleTracker.Next(_matchId);
                     _snapshotSeen = false;
-                    _lastSnapshot = null;
+                    _lastSnapshotLength = 0;
                     Array.Clear(_slotLives);
                 }
                 if (_phase == SessionPhase.InMatch && !AllowJoinInProgress)
@@ -1924,13 +1991,11 @@ namespace MphRead.Mods.Network
                 else
                 {
                     Log($"{packet.Sender} joined as slot {slot}");
-                    if (Simulating && _lastSnapshot != null)
+                    if (Simulating && _lastSnapshotLength > 0)
                     {
                         // A world to stand in before the next one is composed.
-                        // Without it a joiner sees an empty room for a frame,
-                        // which is the same gap NotifyAuthority closes for the
-                        // client it promotes.
-                        _transport?.Send(peer.EndPoint, PacketType.Snapshot, _lastSnapshot);
+                        _transport?.Send(peer.EndPoint, PacketType.Snapshot,
+                            _lastSnapshot.AsSpan(0, _lastSnapshotLength));
                     }
                 }
             }
@@ -2088,18 +2153,19 @@ namespace MphRead.Mods.Network
             RosterPacket roster = BuildRoster();
             roster.Write(_scratch);
             _transport?.Send(peer.EndPoint, PacketType.Roster, _scratch.AsSpan(0, RosterPacket.Size));
-            if (_lastSnapshot != null)
+            if (_lastSnapshotLength > 0)
             {
-                SnapshotHeader header = SnapshotHeader.Read(_lastSnapshot);
+                SnapshotHeader header = SnapshotHeader.Read(_lastSnapshot.AsSpan(0, _lastSnapshotLength));
                 if (header.MatchId == _matchId)
                 {
                     // Seed the successor from the last world, in its new stream.
-                    // Frame zero cannot block its own local simulation clock.
-                    byte[] seed = (byte[])_lastSnapshot.Clone();
+                    // Reuse the server scratch rather than allocating a clone.
+                    _lastSnapshot.AsSpan(0, _lastSnapshotLength).CopyTo(_scratch);
                     header.AuthorityEpoch = _authorityEpoch;
                     header.Frame = 0;
-                    header.Write(seed);
-                    _transport?.Send(peer.EndPoint, PacketType.Snapshot, seed);
+                    header.Write(_scratch);
+                    _transport?.Send(peer.EndPoint, PacketType.Snapshot,
+                        _scratch.AsSpan(0, _lastSnapshotLength));
                 }
             }
             _scratch[0] = (byte)peer.SlotIndex;
@@ -2225,6 +2291,8 @@ namespace MphRead.Mods.Network
                 ushort life = _sim != null ? NetPlayerLifecycle.Get(peer.SlotIndex) : _slotLives[peer.SlotIndex];
                 if (intent.MatchId != _matchId || intent.AuthorityEpoch != _authorityEpoch
                     || intent.SlotGeneration != _slotGenerations[peer.SlotIndex] || intent.LifeId != life) return;
+                peer.LatestIntent = intent;
+                peer.HasIntent = true;
                 if (_sim != null)
                 {
                     // Straight into the simulation, one hop earlier than a
@@ -2259,25 +2327,22 @@ namespace MphRead.Mods.Network
                 // and a client that sets it early is simply ready early.
                 peer.PostMatchReady = intent.Buttons.HasFlag(IntentButtons.ReadyState);
             }
-            // Tag with the sender's slot. A receiver is a client with no peer
-            // list, so it cannot work out who an endpoint belongs to; without
-            // this the authority dropped every relayed intent and simulated
-            // nobody.
-            _scratch[0] = (byte)peer.SlotIndex;
-            packet.Payload.CopyTo(_scratch.AsSpan(1));
-            for (int i = 0; i < _peers.Count; i++)
+            // A simulating server publishes one compact IntentBundle beside
+            // each authoritative snapshot. Keep the old immediate SlotIntent
+            // relay only for the explicit client-authority compatibility path,
+            // where the remote authority needs the input before it can produce
+            // that snapshot.
+            if (!Simulating)
             {
-                // To everyone, not just the authority. Input is what makes a
-                // player do anything visible -- fire, morph, lay a bomb, swing
-                // an alt attack -- and a client that only ever received
-                // positions drew opponents that slid around the level in
-                // silence: no beams, no morph animation, no bombs. Position
-                // still comes from the authority's snapshot; this is what
-                // fills in everything a position cannot express.
-                if (_peers[i] != peer)
+                _scratch[0] = (byte)peer.SlotIndex;
+                packet.Payload.CopyTo(_scratch.AsSpan(1));
+                for (int i = 0; i < _peers.Count; i++)
                 {
-                    _transport?.Send(_peers[i].EndPoint, PacketType.SlotIntent,
-                        _scratch.AsSpan(0, packet.Payload.Length + 1));
+                    if (_peers[i] != peer)
+                    {
+                        _transport?.Send(_peers[i].EndPoint, PacketType.SlotIntent,
+                            _scratch.AsSpan(0, packet.Payload.Length + 1));
+                    }
                 }
             }
         }
@@ -2303,7 +2368,7 @@ namespace MphRead.Mods.Network
             }
             if (packet.Payload.Length < SnapshotHeader.Size) return;
             SnapshotHeader header = SnapshotHeader.Read(packet.Payload);
-            int timeOffset = SnapshotHeader.Size + header.PlayerCount * PlayerState.Size;
+            if (!SnapshotWire.TryLocateTails(packet.Payload, header, out _, out int timeOffset)) return;
             int healthOffset = timeOffset + NetMatchTimeSync.Size;
             if (header.MatchId != _matchId || header.AuthorityEpoch != _authorityEpoch
                 || header.PlayerCount > PlayerEntity.SlotCapacity
@@ -2315,7 +2380,8 @@ namespace MphRead.Mods.Network
             int occupied = 0;
             for (int i = 0; i < header.PlayerCount; i++)
             {
-                PlayerState state = PlayerState.Read(packet.Payload[(SnapshotHeader.Size + i * PlayerState.Size)..]);
+                PlayerState state = PlayerState.ReadBase(
+                    packet.Payload[(SnapshotHeader.Size + i * SnapshotWire.PlayerSize)..]);
                 if (state.SlotIndex >= _slotLives.Length || (occupied & (1 << state.SlotIndex)) != 0
                     || state.SlotGeneration != _slotGenerations[state.SlotIndex]) return;
                 occupied |= 1 << state.SlotIndex;
@@ -2323,12 +2389,14 @@ namespace MphRead.Mods.Network
             // Commit only after the entire packet has passed validation.
             for (int i = 0; i < header.PlayerCount; i++)
             {
-                PlayerState state = PlayerState.Read(packet.Payload[(SnapshotHeader.Size + i * PlayerState.Size)..]);
+                PlayerState state = PlayerState.ReadBase(
+                    packet.Payload[(SnapshotHeader.Size + i * SnapshotWire.PlayerSize)..]);
                 _slotLives[state.SlotIndex] = state.LifeId;
             }
             _snapshotSeen = true;
             _snapshotFrame = header.Frame;
-            _lastSnapshot = packet.Payload.ToArray();
+            packet.Payload.CopyTo(_lastSnapshot);
+            _lastSnapshotLength = packet.Payload.Length;
             for (int i = 0; i < _peers.Count; i++)
             {
                 if (_peers[i] != peer)
