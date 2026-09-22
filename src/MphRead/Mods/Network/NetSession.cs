@@ -472,6 +472,7 @@ namespace MphRead.Mods.Network
             Array.Clear(_lastSlotIntentFrame);
             Array.Clear(_publishedDamageSequence);
             Array.Clear(_damageRepeatFrames);
+            _damageSidecarCursor = 0;
             Array.Clear(_snapshotKeyframeValid);
             _snapshotKeyframeFrame = 0;
             Array.Clear(_snapshotBaselineValid);
@@ -2022,6 +2023,7 @@ namespace MphRead.Mods.Network
             new ushort[PlayerEntity.SlotCapacity];
         private static readonly byte[] _damageRepeatFrames =
             new byte[PlayerEntity.SlotCapacity];
+        private static int _damageSidecarCursor;
 
         /// <summary>Host -> clients: authoritative state for every active player.</summary>
         public static void BroadcastSnapshot()
@@ -2130,8 +2132,10 @@ namespace MphRead.Mods.Network
 
             int damageCountOffset = offset++;
             int damageGroups = 0;
-            for (int i = 0; i < currentCount; i++)
+            for (int step = 0; step < currentCount; step++)
             {
+                int i = currentCount == 0 ? 0
+                    : (_damageSidecarCursor + step) % currentCount;
                 PlayerState state = _publishSnapshotScratch[i];
                 int slot = state.SlotIndex;
                 if (_damageRepeatFrames[slot] == 0 || state.DamageEventId == 0) continue;
@@ -2146,6 +2150,8 @@ namespace MphRead.Mods.Network
                 damageGroups++;
                 _damageRepeatFrames[slot]--;
             }
+            if (currentCount > 0)
+                _damageSidecarCursor = (_damageSidecarCursor + 1) % currentCount;
             _scratch[damageCountOffset] = (byte)damageGroups;
 
             NetMatchTimeSync.Write(_scratch.AsSpan(offset));
