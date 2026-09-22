@@ -88,6 +88,7 @@ This file is the short, machine-oriented source of truth for architectural assum
 - Exact kill markers fence match, authority, event, server tick, occupant generations and victim life. Ambiguous cumulative deaths are not exact kill candidates.
 - Timeline intent baselines must match the recorded occupant generation and life. Submitted local input is presentation evidence, never accepted hit/damage authority. Versioned gameplay hashes include world/projectile state; animation/effect projections are checked separately.
 - Effect checkpoint assets use effect ID plus element ordinal; element names are not unique. Match rules apply before room construction; timed objective targets and the recorded clock retain their mode-specific meaning.
+- Live checkpoint production consumes immutable accepted facts in a canonical private replica. Pending facts are bounded; gaps/failure invalidate history rather than yielding incomplete clips. Capture and private scene resource lifetime run on the scene owner; network callbacks never allocate or dispose GL resources. History cannot claim knowledge of projectiles predating capture.
 - Keep current replay/Studio/killcam paths until isolated scene and runtime acceptance gates pass. See `docs/architecture/replay-map-upgrade-status.md` for remaining work.
 
 ## Map Studio ownership

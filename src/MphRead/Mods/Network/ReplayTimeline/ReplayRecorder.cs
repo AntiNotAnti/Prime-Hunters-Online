@@ -7,6 +7,9 @@ namespace MphRead.Mods.Network;
 internal sealed class ReplayRecorder
 {
     public RollingReplayTimeline Timeline { get; } = new();
+    internal bool ProducesWorldCheckpoints { get; set; }
+    internal event Action<ReplayTimelineRecord>? Accepted;
+    internal event Action? Resetting;
     private ReplayTimelineRecord? _match, _roster, _snapshot, _configuration;
     private readonly ReplayTimelineRecord?[] _intents = new ReplayTimelineRecord?[RosterPacket.MaxSlots];
     private ushort _matchId;
@@ -18,6 +21,7 @@ internal sealed class ReplayRecorder
         Timeline.Reset(); _match = _roster = _snapshot = _configuration = null;
         Array.Clear(_intents);
         _matchId = 0; _epoch = 0; _room = null; _lastRestore = 0;
+        Resetting?.Invoke();
     }
     public void AcceptMatch(in MatchStatePacket match, uint frame)
     {
@@ -26,7 +30,7 @@ internal sealed class ReplayRecorder
         byte[] bytes = new byte[1 + MatchStatePacket.Size];
         bytes[0] = (byte)PacketType.MatchState; match.Write(bytes.AsSpan(1));
         _match = new(frame, Timeline.LastServerTick ?? frame, ReplayFactKind.Match, bytes);
-        if (!Timeline.NeedsRestorePoint) Timeline.Append(_match);
+        Publish(_match);
     }
     public void AcceptRoster(in RosterPacket roster, uint frame)
     {
@@ -34,7 +38,7 @@ internal sealed class ReplayRecorder
         byte[] bytes = new byte[1 + RosterPacket.Size];
         bytes[0] = (byte)PacketType.Roster; roster.Write(bytes.AsSpan(1));
         _roster = new(frame, Timeline.LastServerTick ?? frame, ReplayFactKind.Roster, bytes);
-        if (!Timeline.NeedsRestorePoint) Timeline.Append(_roster);
+        Publish(_roster);
     }
     public void AcceptConfiguration(in SessionStatePacket configuration, uint frame)
     {
@@ -42,7 +46,7 @@ internal sealed class ReplayRecorder
         byte[] bytes = new byte[1 + SessionStatePacket.Size];
         bytes[0] = (byte)PacketType.SessionState; configuration.Write(bytes.AsSpan(1));
         _configuration = new(frame, Timeline.LastServerTick ?? frame, ReplayFactKind.Match, bytes);
-        if (!Timeline.NeedsRestorePoint) Timeline.Append(_configuration);
+        Publish(_configuration);
     }
     // Remote callers enter after lifecycle/order acceptance. A local caller records
     // the submitted input for presentation, never a hit or a damage decision.
@@ -61,7 +65,7 @@ internal sealed class ReplayRecorder
         intent.Write(bytes.AsSpan(2));
         var record = new ReplayTimelineRecord(frame, Timeline.LastServerTick ?? frame, ReplayFactKind.Intent, bytes);
         _intents[slot] = record;
-        if (!Timeline.NeedsRestorePoint) Timeline.Append(record);
+        Publish(record);
     }
     public void AcceptSnapshot(ReadOnlySpan<byte> packet, uint frame, uint tick)
     {
@@ -71,7 +75,7 @@ internal sealed class ReplayRecorder
             || packet.Length < 1 + SnapshotHeader.Size + header.PlayerCount * PlayerState.Size) return;
         if (_matchId == 0 || header.MatchId != _matchId || header.AuthorityEpoch != _epoch || header.Frame != tick) return;
         _snapshot = new(frame, tick, ReplayFactKind.Snapshot, packet);
-        if (Timeline.NeedsRestorePoint || frame - _lastRestore >= 300)
+        if (!ProducesWorldCheckpoints && (Timeline.NeedsRestorePoint || frame - _lastRestore >= 300))
         {
             if (_match != null && _roster != null)
             {
@@ -93,11 +97,27 @@ internal sealed class ReplayRecorder
         }
         // Keep the snapshot in the sequential stream too: a clip starting from an
         // earlier baseline must not omit the snapshot at a later index boundary.
-        if (!Timeline.NeedsRestorePoint) Timeline.Append(_snapshot);
+        Publish(_snapshot);
     }
     public void Marker(uint frame, uint tick, ReplayMarker marker)
     {
-        if (!Timeline.NeedsRestorePoint)
-            Timeline.Append(new(frame, tick, ReplayFactKind.Event, ReadOnlySpan<byte>.Empty, marker));
+        Publish(new(frame, tick, ReplayFactKind.Event, ReadOnlySpan<byte>.Empty, marker));
+    }
+
+    private void Publish(ReplayTimelineRecord record)
+    {
+        if (!Timeline.NeedsRestorePoint) Timeline.Append(record);
+        Accepted?.Invoke(record);
+    }
+
+    internal bool AppendWorldCheckpoint(uint frame, uint tick, ReadOnlySpan<byte> bytes)
+    {
+        if (_match == null || _roster == null || _snapshot == null) return false;
+        // Packet baselines remain available to metadata/compatibility tools. Only
+        // the World record is allowed to restore a replica scene.
+        var records = new List<ReplayTimelineRecord> { _match, _roster, _snapshot };
+        if (_configuration != null) records.Insert(0, _configuration);
+        records.Add(new(frame, tick, ReplayFactKind.World, bytes));
+        return Timeline.AppendRestorePoint(new(frame, tick, ReplayRestoreKind.ReplicaCheckpoint, records));
     }
 }

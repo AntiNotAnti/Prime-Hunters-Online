@@ -1796,6 +1796,11 @@ namespace MphRead.Mods
                 return true;
             }
 #endif
+            if (ValueAfter(args, "replaylivecheck") is string liveSource)
+            {
+                Environment.ExitCode = Network.ReplayLiveCaptureCheck.Run(liveSource);
+                return true;
+            }
             if (ValueAfter(args, "replayworldcheck") is string worldSource)
             {
                 Environment.ExitCode = Network.ReplayWorldCoverageCheck.Run(worldSource, ValueAfter(args, "output"));

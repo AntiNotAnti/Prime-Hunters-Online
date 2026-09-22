@@ -6,12 +6,26 @@ namespace MphRead.Mods.Network
     internal static class ReplayCapture
     {
         internal static ReplayRecorder Recorder { get; } = new();
+        internal static ReplayLiveWorld WorldCapture { get; private set; } = new(Recorder);
         private static readonly byte[] Snapshot = new byte[NetConfig.MaxPacketSize];
         private static int _snapshotLength;
         private static string? _room;
         private static ulong _mapHash;
         private static readonly PlayerState[] Previous = new PlayerState[RosterPacket.MaxSlots];
         private static readonly bool[] Known = new bool[RosterPacket.MaxSlots];
+
+        internal static void AfterSimulation(Scene scene)
+        {
+            if (scene.Services.IsReplica || DemoPlayback.IsActive || !NetSession.Active || !scene.GameState.Multiplayer) return;
+            Recorder.Timeline.SetHistoryFrames((uint)Math.Max(45, DemoClip.Seconds + DemoClip.PostRollSeconds) * 60);
+            WorldCapture.Advance(NetSession.NetFrame, scene.Size);
+        }
+
+        internal static void ReleaseWorld()
+        {
+            WorldCapture.Dispose(); WorldCapture = new(Recorder);
+            Recorder.Reset();
+        }
 
         public static void Reset()
         {

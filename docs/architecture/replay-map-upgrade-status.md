@@ -38,9 +38,9 @@ No fallback is removed before the plan's runtime acceptance gate.
 
 ## Remaining replay work
 
-- Complete authoritative world/event capture and attach live capture to detached
-  world checkpoints. Explicit entity/effect/clock/link assembly and file/frozen-clip
-  restoration are implemented; broader mode and combat acceptance remains.
+- Complete authoritative world/event and presentation coverage. Live accepted facts
+  now drive a canonical private world and detached timeline checkpoints; live combat
+  acceptance and consumer attachment remain.
 - Complete historical presentation/event state and scene service coverage for all modes;
   replica simulation, replication, silent audio and GL resource ownership are implemented.
 - Attach the instance-owned passive player and bounded checkpoint seeking to consumers.
@@ -132,7 +132,7 @@ that the missing replay features work.
 
 | Plan area | Status |
 | --- | --- |
-| P0A timeline | Bounded immutable records/segments, freeze and identity mapping; detached world restore implemented for passive scenes, live checkpoint production remains |
+| P0A timeline | Bounded immutable records/segments, freeze and identity mapping; detached world restore and live canonical checkpoint production implemented |
 | P0B recorder | Accepted match/configuration/roster/player snapshots, remote intents, submitted local input and existing semantic events integrated; full world/objective/presentation event capture missing |
 | P0C isolated session/services | Instance reader/transport/hosts, private replication, silent audio, fixed stepping, GL rendering and detached world checkpoints implemented; broader mode/combat acceptance remains |
 | P0D/P0E personal/final killcams | Existing implementation retained; replay-scene replacement and runtime acceptance outstanding |
@@ -237,6 +237,30 @@ room construction; recorded match clocks advance between accepted updates and
 preserve unlimited/ending semantics. Synthetic coverage is not live combat acceptance.
 The eight-actor Battle fixture also passes the rendered check, including seven
 byte-identical checkpoint images and unchanged output after sibling disposal.
+
+## Live canonical world
+
+`ReplayLiveWorld` subscribes to accepted recorder facts and advances a private
+replica once per live simulation frame. Its state is reconstructed from those
+facts, never copied from mutable live entities. It writes a complete checkpoint
+every 300 frames and markers for quiet frames. The production timeline therefore
+contains `ReplicaCheckpoint` segments rather than advertising network baselines
+as worlds. Initialization cannot recover projectiles predating the first accepted
+facts, so history begins with this recorder's reconstruction.
+
+Pending facts are bounded to 8,192 records/4 MiB. Failure invalidates the timeline
+and disables capture until reset; it does not terminate the match. Scene resources
+are created, advanced and disposed on the simulation/GL owner. A match reset clears
+pending facts and schedules private-world disposal. Scene shutdown releases it.
+The shared retention target remains 45 seconds and grows for the existing 60/120
+second clip preferences, with the same 64 MiB hard cap.
+
+`-replaylivecheck FILE` feeds accepted protocol facts through the production owner,
+freezes a world clip, resets the source match and compares every visible replay
+frame with the captured world. The eight-actor fixture passes 1,801 source frames,
+seven checkpoints, 251 clip frames and backward seeking, preserving foreground
+sentinels. It retained 7,594,747 timeline bytes; the sampled last capture was 9.05 ms
+and its replica step 0.394 ms on this machine. These are component timings.
 
 ## Detached world checkpoints and passive seeking
 

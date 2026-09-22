@@ -1,5 +1,13 @@
 # Replay system
 
+`ReplayLiveWorld` now produces the live timeline's world checkpoints from a private
+canonical replica, using accepted facts rather than live scene references. It steps
+on the scene owner and captures every 300 frames. Pending values are bounded to
+8,192 records/4 MiB; capture failure invalidates history until reset. Quiet frames
+advance clip availability. `-replaylivecheck FILE` verifies frozen playback through
+a source match reset and backward seek. Initial reconstruction only knows facts
+captured since joining; it cannot reconstruct projectiles predating that boundary.
+
 `-replayworldcheck FILE [-output DIR]` generates asset-backed synthetic fixtures
 for all 12 multiplayer modes with eight actors and all seven hunters. Detached
 restores, continuation, interleaved worlds and frozen-clip seeks run through
