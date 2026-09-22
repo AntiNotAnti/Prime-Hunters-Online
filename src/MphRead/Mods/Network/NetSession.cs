@@ -470,6 +470,8 @@ namespace MphRead.Mods.Network
             ContinuousPhase.Reset();
             Array.Clear(SlotPing);
             Array.Clear(_lastSlotIntentFrame);
+            Array.Clear(_publishedDamageSequence);
+            Array.Clear(_damageRepeatFrames);
             _lastServerPacket = 0;
             ReAnnouncements = 0;
             LongestServerSilence = 0;
@@ -912,6 +914,9 @@ namespace MphRead.Mods.Network
                 case PacketType.SlotIntent when Role == NetRole.Client:
                     HandleSlotIntent(packet);
                     break;
+                case PacketType.IntentBundle when Role == NetRole.Client:
+                    HandleIntentBundle(packet);
+                    break;
                 case PacketType.Snapshot when Role == NetRole.Client:
                     HandleSnapshot(packet);
                     break;
@@ -1309,6 +1314,78 @@ namespace MphRead.Mods.Network
             AcceptSlotIntent(slot, IntentPacket.Read(packet.Payload[1..]));
         }
 
+        private static readonly ObserverIntentState[] _bundleStateScratch =
+            new ObserverIntentState[PlayerEntity.SlotCapacity];
+        private static readonly byte[] _bundleSlotScratch =
+            new byte[PlayerEntity.SlotCapacity];
+        private static readonly PressHistoryBuffer[] _bundlePressScratch =
+            new PressHistoryBuffer[PlayerEntity.SlotCapacity];
+        private static readonly bool[] _bundlePressValid =
+            new bool[PlayerEntity.SlotCapacity];
+
+        /// <summary>
+        /// Server-to-observer state for one authority tick. Continuous state is
+        /// compacted per slot while rising-edge histories live in a separate
+        /// redundant section. A lost bundle therefore costs state freshness,
+        /// not a one-frame morph/weapon/attack press.
+        /// </summary>
+        private static void HandleIntentBundle(ReceivedPacket packet)
+        {
+            ReadOnlySpan<byte> payload = packet.Payload;
+            if (payload.Length < IntentBundleHeader.Size) return;
+            IntentBundleHeader header = IntentBundleHeader.Read(payload);
+            if (header.StateCount > PlayerEntity.SlotCapacity
+                || header.EventCount > PlayerEntity.SlotCapacity
+                || IntentBundlePacket.SizeFor(header.StateCount, header.EventCount) != payload.Length
+                || !MatchesStream(header.MatchId, header.AuthorityEpoch))
+            {
+                return;
+            }
+
+            int offset = IntentBundleHeader.Size;
+            int occupied = 0;
+            for (int i = 0; i < header.StateCount; i++)
+            {
+                int slot = payload[offset++];
+                if ((uint)slot >= PlayerEntity.SlotCapacity || (occupied & (1 << slot)) != 0) return;
+                occupied |= 1 << slot;
+                _bundleSlotScratch[i] = (byte)slot;
+                _bundleStateScratch[i] = ObserverIntentState.Read(
+                    payload.Slice(offset, ObserverIntentState.Size));
+                offset += ObserverIntentState.Size;
+            }
+
+            Array.Clear(_bundlePressValid);
+            for (int i = 0; i < header.EventCount; i++)
+            {
+                int slot = payload[offset++];
+                if ((uint)slot >= PlayerEntity.SlotCapacity
+                    || (occupied & (1 << slot)) == 0
+                    || _bundlePressValid[slot])
+                {
+                    return;
+                }
+                var history = new PressHistoryBuffer();
+                for (int p = 0; p < IntentPacket.PressHistory; p++)
+                {
+                    history[p] = BinaryPrimitives.ReadUInt32LittleEndian(payload[(offset + p * 4)..]);
+                }
+                offset += IntentPacket.PressHistory * 4;
+                _bundlePressScratch[slot] = history;
+                _bundlePressValid[slot] = true;
+            }
+
+            for (int i = 0; i < header.StateCount; i++)
+            {
+                int slot = _bundleSlotScratch[i];
+                PressHistoryBuffer history = _bundlePressValid[slot]
+                    ? _bundlePressScratch[slot]
+                    : default;
+                AcceptSlotIntent(slot,
+                    _bundleStateScratch[i].ToIntent(header.MatchId, header.AuthorityEpoch, history));
+            }
+        }
+
         /// <summary>
         /// Take one peer's input for one slot, whatever carried it here.
         ///
@@ -1625,29 +1702,61 @@ namespace MphRead.Mods.Network
         {
             if (FreezeGameplay) return;
             ReadOnlySpan<byte> payload = packet.Payload;
-            if (payload.Length < SnapshotHeader.Size)
+            if (payload.Length < SnapshotHeader.Size) return;
+
+            SnapshotHeader header = SnapshotHeader.Read(payload);
+            if (header.PlayerCount > PlayerEntity.SlotCapacity
+                || !SnapshotWire.TryLocateTails(payload, header,
+                    out int damageCountOffset, out int timeOffset))
             {
                 return;
             }
-            SnapshotHeader header = SnapshotHeader.Read(payload);
-            int timeOffset = SnapshotHeader.Size + header.PlayerCount * PlayerState.Size;
             int healthOffset = timeOffset + NetMatchTimeSync.Size;
-            // The snapshot header owns stream identity. Check it before
-            // validating stream-specific tails so an old match/authority is
-            // rejected for the right lifecycle reason and cannot hide behind
-            // a secondary health-tail mismatch.
-            if (header.PlayerCount > PlayerEntity.SlotCapacity || healthOffset > payload.Length
-                || !MatchesStream(header.MatchId, header.AuthorityEpoch)) return;
-            if (!NetMatchTimeSync.Validate(payload.Slice(timeOffset, NetMatchTimeSync.Size))
+            if (healthOffset > payload.Length
+                || !MatchesStream(header.MatchId, header.AuthorityEpoch)
+                || !NetMatchTimeSync.Validate(payload.Slice(timeOffset, NetMatchTimeSync.Size))
                 || !NetHealthSync.Validate(payload[healthOffset..])
-                || !NetHealthSync.IsCurrentMatch(payload[healthOffset..])) return;
+                || !NetHealthSync.IsCurrentMatch(payload[healthOffset..]))
+            {
+                return;
+            }
+
             int occupied = 0;
             for (int i = 0; i < header.PlayerCount; i++)
             {
-                int slot = payload[SnapshotHeader.Size + i * PlayerState.Size];
+                PlayerState state = PlayerState.ReadBase(
+                    payload[(SnapshotHeader.Size + i * SnapshotWire.PlayerSize)..]);
+                int slot = state.SlotIndex;
                 if (slot >= RemoteStates.Length || (occupied & (1 << slot)) != 0) return;
                 occupied |= 1 << slot;
+                _snapshotReadScratch[i] = state;
             }
+
+            int damageGroups = payload[damageCountOffset];
+            int damageOffset = damageCountOffset + 1;
+            int damageSeen = 0;
+            for (int i = 0; i < damageGroups; i++)
+            {
+                ReadOnlySpan<byte> group = payload.Slice(damageOffset, SnapshotWire.DamageGroupSize);
+                int slot = group[0];
+                if ((uint)slot >= PlayerEntity.SlotCapacity
+                    || (occupied & (1 << slot)) == 0
+                    || (damageSeen & (1 << slot)) != 0)
+                {
+                    return;
+                }
+                damageSeen |= 1 << slot;
+                for (int s = 0; s < header.PlayerCount; s++)
+                {
+                    if (_snapshotReadScratch[s].SlotIndex != slot) continue;
+                    PlayerState state = _snapshotReadScratch[s];
+                    SnapshotWire.ApplyDamageGroup(group, ref state);
+                    _snapshotReadScratch[s] = state;
+                    break;
+                }
+                damageOffset += SnapshotWire.DamageGroupSize;
+            }
+
             if (_hasSnapshot && !NetLifecycleTracker.Newer(header.Frame, _lastSnapshotFrame))
             {
                 SnapshotsOutOfOrder++;
@@ -1658,52 +1767,29 @@ namespace MphRead.Mods.Network
             SnapshotArrived = Math.Max(NetFrame, 1);
             ReplayCapture.Observe(packet.Data.AsSpan(0, packet.Length));
             SnapshotsReceived++;
-            // Rng.cs reproduces the game's original LCG and its state is
-            // global, so adopting the host's words keeps every random
-            // consumer agreeing without replicating each one individually.
             Rng.SetRng1(header.Rng1);
             Rng.SetRng2(header.Rng2);
-            int offset = SnapshotHeader.Size;
+
             int count = 0;
             Array.Clear(RemoteStateValid);
             for (int i = 0; i < header.PlayerCount; i++)
             {
-                if (offset + PlayerState.Size > payload.Length)
-                {
-                    break;
-                }
-                PlayerState state = PlayerState.Read(payload[offset..]);
-                offset += PlayerState.Size;
-                if (state.SlotIndex < RemoteStates.Length && NetPlayerLifecycle.AcceptState(state, header.Frame))
-                {
-                    ReplayCapture.AcceptedState(state, header.Frame);
-                    RemoteStates[state.SlotIndex] = state;
-                    RemoteStateValid[state.SlotIndex] = true;
-                    if (count < _snapshotScratch.Length)
-                    {
-                        _snapshotScratch[count++] = state;
-                    }
-                }
+                PlayerState state = _snapshotReadScratch[i];
+                if (!NetPlayerLifecycle.AcceptState(state, header.Frame)) continue;
+                ReplayCapture.AcceptedState(state, header.Frame);
+                RemoteStates[state.SlotIndex] = state;
+                RemoteStateValid[state.SlotIndex] = true;
+                _snapshotScratch[count++] = state;
             }
-            // File the lot under the frame it names, for the playout clock
-            // that draws puppets between snapshots rather than on them. Here
-            // rather than where the states are handed to the players, because
-            // what has to be buffered is what the authority *said* -- which is
-            // also what its own rewind history holds under this number, and
-            // the whole of why an interpolated position can still be shot at.
-            // NetSmoothing.
+
             NetTimingDiagnostics.Snapshot(packet.ArrivedAt);
             NetSmoothing.Record(header.Frame, _snapshotScratch.AsSpan(0, count), packet.ArrivedAt);
             NetMatchTimeSync.Receive(payload.Slice(timeOffset, NetMatchTimeSync.Size));
             NetHealthSync.Receive(payload[healthOffset..]);
         }
 
-        /// <summary>
-        /// The states of one snapshot, gathered so they can be handed to
-        /// <see cref="NetSmoothing"/> in one call. A field rather than a
-        /// stack array because this is on the receive path of every snapshot,
-        /// sixty times a second.
-        /// </summary>
+        private static readonly PlayerState[] _snapshotReadScratch =
+            new PlayerState[PlayerEntity.SlotCapacity];
         private static readonly PlayerState[] _snapshotScratch =
             new PlayerState[PlayerEntity.SlotCapacity];
 
@@ -1844,43 +1930,41 @@ namespace MphRead.Mods.Network
             _transport.Send(_hostEndPoint, PacketType.MatchEnd, _scratch.AsSpan(0, 10));
         }
 
+        private static readonly PlayerState[] _publishSnapshotScratch =
+            new PlayerState[PlayerEntity.SlotCapacity];
+        private static readonly ushort[] _publishedDamageSequence =
+            new ushort[PlayerEntity.SlotCapacity];
+        private static readonly byte[] _damageRepeatFrames =
+            new byte[PlayerEntity.SlotCapacity];
+
         /// <summary>Host -> clients: authoritative state for every active player.</summary>
         public static void BroadcastSnapshot()
         {
             if (!NetRoomChange.GameplayReady) return;
             bool asServer = Role == NetRole.Server && _snapshotSink != null;
-            if (_transport == null && !asServer)
-            {
-                return;
-            }
+            if (_transport == null && !asServer) return;
             bool asHost = Role == NetRole.Host && _peers.Count > 0;
             bool asAuthority = Role == NetRole.Client && IsAuthority && _hostEndPoint != null;
-            if (!asHost && !asAuthority && !asServer)
-            {
-                return;
-            }
+            if (!asHost && !asAuthority && !asServer) return;
+
             int count = 0;
             int offset = SnapshotHeader.Size;
             for (int i = 0; i < PlayerEntity.Players.Count; i++)
             {
                 PlayerEntity player = PlayerEntity.Players[i];
-                if (!player.LoadFlags.TestFlag(LoadFlags.Active))
-                {
-                    continue;
-                }
-                if (offset + PlayerState.Size > NetConfig.MaxPacketSize - 1)
+                if (!player.LoadFlags.TestFlag(LoadFlags.Active)) continue;
+                if (offset + SnapshotWire.PlayerSize + 1 + NetMatchTimeSync.Size
+                    + NetHealthSync.HeaderSize > NetConfig.MaxPacketSize - 1)
                 {
                     break;
                 }
                 if (!Single.IsFinite(player.Position.X) || !Single.IsFinite(player.Position.Y)
                     || !Single.IsFinite(player.Position.Z))
                 {
-                    // Publishing this would hand the corruption to everyone
-                    // else, and they would hand it back as an authoritative
-                    // correction. Skip the slot until it makes sense again.
                     NetLog.Event($"slot {i} not published: position is {player.Position}");
                     continue;
                 }
+
                 var state = new PlayerState
                 {
                     SlotIndex = (byte)i,
@@ -1905,12 +1989,43 @@ namespace MphRead.Mods.Network
                 state.Kills = (ushort)Math.Clamp(GameState.Kills[i], 0, UInt16.MaxValue);
                 state.Deaths = (ushort)Math.Clamp(GameState.Deaths[i], 0, UInt16.MaxValue);
                 NetDamage.Write(i, ref state);
+
+                if (_publishedDamageSequence[i] != state.DamageEventId)
+                {
+                    _publishedDamageSequence[i] = state.DamageEventId;
+                    _damageRepeatFrames[i] = state.DamageEventId == 0
+                        ? (byte)0
+                        : (byte)SnapshotWire.DamageRepeatFrames;
+                }
+
                 ReplayCapture.AcceptedState(state, NetFrame);
                 NetPlayerLifecycle.AcceptState(state, NetFrame);
-                state.Write(_scratch.AsSpan(offset));
-                offset += PlayerState.Size;
+                _publishSnapshotScratch[count] = state;
+                state.WriteBase(_scratch.AsSpan(offset, SnapshotWire.PlayerSize));
+                offset += SnapshotWire.PlayerSize;
                 count++;
             }
+
+            int damageCountOffset = offset++;
+            int damageGroups = 0;
+            for (int i = 0; i < count; i++)
+            {
+                PlayerState state = _publishSnapshotScratch[i];
+                int slot = state.SlotIndex;
+                if (_damageRepeatFrames[slot] == 0 || state.DamageEventId == 0) continue;
+                if (offset + SnapshotWire.DamageGroupSize + NetMatchTimeSync.Size
+                    + NetHealthSync.HeaderSize > NetConfig.MaxPacketSize - 1)
+                {
+                    break;
+                }
+                SnapshotWire.WriteDamageGroup((byte)slot, state,
+                    _scratch.AsSpan(offset, SnapshotWire.DamageGroupSize));
+                offset += SnapshotWire.DamageGroupSize;
+                damageGroups++;
+                _damageRepeatFrames[slot]--;
+            }
+            _scratch[damageCountOffset] = (byte)damageGroups;
+
             NetMatchTimeSync.Write(_scratch.AsSpan(offset));
             offset += NetMatchTimeSync.Size;
             offset += NetHealthSync.Write(_scratch.AsSpan(offset, NetConfig.MaxPacketSize - 1 - offset));
@@ -1925,32 +2040,17 @@ namespace MphRead.Mods.Network
             };
             header.Write(_scratch);
             SnapshotsSent++;
-            // Where everybody was, filed under the frame number this snapshot
-            // carries. It has to be recorded here rather than anywhere else in
-            // the frame: a client's ack names a snapshot, and the rewind is
-            // the claim that cell `Frame` holds the picture that client saw.
             NetUnlagged.Record(header.Frame);
-            // A demo only ever contains what this client *received*, and the
-            // server forwards a snapshot to every peer except the one that
-            // sent it -- so the authority's own demo had no snapshots in it
-            // at all, which is every spawn, every hit and the whole
-            // scoreboard. Same trick as the intent below.
             DemoRecorder.RecordOwnSnapshot(_scratch.AsSpan(0, offset));
+
             if (asServer)
             {
-                // Straight to the relay in this same process, which fans it
-                // out to every peer. No loopback datagram: the sender and the
-                // sender's server are the same program.
                 _snapshotSink!(_scratch.AsSpan(0, offset));
                 return;
             }
-            // Past the server branch there is always a socket: asHost and
-            // asAuthority both require one. Said with a local rather than a
-            // `!` at each use, because the reason is the same both times.
             NetTransport transport = _transport!;
             if (asAuthority)
             {
-                // One send to the server, which relays to every other peer.
                 transport.Send(_hostEndPoint!, PacketType.Snapshot, _scratch.AsSpan(0, offset));
                 return;
             }
