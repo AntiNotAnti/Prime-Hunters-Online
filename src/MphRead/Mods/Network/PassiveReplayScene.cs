@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using MphRead.Entities;
@@ -19,6 +20,8 @@ namespace MphRead.Mods.Network
         internal bool HasStepped { get; private set; }
         private bool _disposed;
         public PassiveReplayScene(string path, Vector2i size) : this(Open(path), size) { }
+        internal PassiveReplayScene(ReplayReplicaCheckpoint initial, uint frame, ulong mapHash, Vector2i size)
+            : this(OpenLive(initial, frame, mapHash), size) { }
         public PassiveReplayScene(ReplayTimelineClip clip, Vector2i size) : this(Open(clip), size)
         {
             try
@@ -44,6 +47,12 @@ namespace MphRead.Mods.Network
             var session = new ReplayPlaybackSession(new PassiveReplaySessionHost());
             if (session.Join(path)) return session;
             session.Dispose(); throw new InvalidDataException(session.LastError);
+        }
+        private static ReplayPlaybackSession OpenLive(ReplayReplicaCheckpoint initial, uint frame, ulong mapHash)
+        {
+            var session = new ReplayPlaybackSession(new PassiveReplaySessionHost());
+            try { session.JoinLive(initial, frame, mapHash); return session; }
+            catch { session.Dispose(); throw; }
         }
         private static ReplayPlaybackSession Open(ReplayTimelineClip clip)
         {
@@ -90,6 +99,12 @@ namespace MphRead.Mods.Network
             HasStepped = true;
             Session.Transport.AfterFrame();
             return true;
+        }
+        internal void StepLive(uint frame, IReadOnlyList<ReplayTimelineRecord> records)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            Session.AdvanceLive(frame, records);
+            Scene.StepReplica(); HasStepped = true;
         }
         public void Dispose()
         {

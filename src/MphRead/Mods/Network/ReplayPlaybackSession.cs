@@ -22,6 +22,8 @@ namespace MphRead.Mods.Network
         private DemoRecord? _pending;
         private ReplayTimelineClip? _clip;
         private int _clipIndex;
+        private bool _live;
+        private ReplayMetadata? _liveMetadata;
         /// <summary>The frame of the recording about to be replayed.</summary>
         private uint _frame;
         private bool _started;
@@ -29,7 +31,7 @@ namespace MphRead.Mods.Network
         public bool IsActive { get; private set; }
         public string? CurrentPath { get; private set; }
         public IReadOnlyList<ReplayEvent> Events => _reader?.Metadata?.Events ?? Array.Empty<ReplayEvent>();
-        internal ReplayMetadata? Metadata => _reader?.Metadata;
+        internal ReplayMetadata? Metadata => _reader?.Metadata ?? _liveMetadata;
         public uint CurrentFrame => _frame;
         internal bool HasSimulatedFrame => _started;
         public uint LastFrame { get; private set; }
@@ -38,7 +40,25 @@ namespace MphRead.Mods.Network
         public double DurationSeconds => LastFrame / 60.0;
 
         /// <summary>True once the file has no more records -- the scene holds on the last state rather than closing itself.</summary>
-        public bool AtEnd => IsActive && (_clip != null ? _started && _frame >= LastFrame : _pending == null);
+        public bool AtEnd => IsActive && !_live && (_clip != null ? _started && _frame >= LastFrame : _pending == null);
+
+        internal void JoinLive(ReplayReplicaCheckpoint construction, uint frame, ulong mapHash)
+        {
+            if (_host is not PassiveReplaySessionHost passive) throw new InvalidOperationException("Live capture requires a private replica.");
+            Stop(); _host.Start(); passive.State.RestoreCheckpoint(construction);
+            _frame = frame; _live = true; _started = false; IsActive = true; LastFrame = frame;
+            _liveMetadata = new ReplayMetadata { MapHash = mapHash, RoomKey = passive.State.Match?.RoomKey ?? "" };
+            LastResult = ReplayOpenResult.Success; LastError = null;
+        }
+
+        internal void AdvanceLive(uint frame, IReadOnlyList<ReplayTimelineRecord> records)
+        {
+            if (!_live || _started && frame != _frame + 1) throw new InvalidOperationException("Live replica frames must be contiguous.");
+            foreach (var record in records)
+                if (record.Kind is ReplayFactKind.Match or ReplayFactKind.Roster or ReplayFactKind.Snapshot or ReplayFactKind.Intent)
+                    _host.Inject(record.Payload.ToArray(), record.RecordingFrame);
+            _frame = LastFrame = frame; _started = true;
+        }
 
         internal void Join(ReplayTimelineClip clip, ReplayReplicaCheckpoint construction)
         {
@@ -381,6 +401,7 @@ namespace MphRead.Mods.Network
         public void Stop()
         {
             _clip = null; _clipIndex = 0;
+            _live = false; _liveMetadata = null;
             _host.Stop();
             Transport.Stop();
             CloseReader();

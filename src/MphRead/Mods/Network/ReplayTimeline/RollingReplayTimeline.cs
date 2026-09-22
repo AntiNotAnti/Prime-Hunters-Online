@@ -16,7 +16,7 @@ public sealed class RollingReplayTimeline : IReplayTimeline
         public Segment(ReplayRestorePoint restore) { Restore = restore; Bytes = restore.PayloadBytes; }
     }
     private readonly LinkedList<Segment> _segments = new();
-    private readonly uint _historyFrames;
+    private uint _historyFrames;
     private readonly long _maximumBytes;
     private uint? _frontier;
     public long PayloadBytes { get; private set; }
@@ -36,6 +36,12 @@ public sealed class RollingReplayTimeline : IReplayTimeline
         if (historyFrames == 0) throw new ArgumentOutOfRangeException(nameof(historyFrames));
         if (maximumBytes < 1 || maximumBytes > DefaultMaximumBytes) throw new ArgumentOutOfRangeException(nameof(maximumBytes));
         _historyFrames = historyFrames; _maximumBytes = maximumBytes;
+    }
+
+    internal void SetHistoryFrames(uint frames)
+    {
+        _historyFrames = Math.Clamp(frames, DefaultHistoryFrames, 125 * 60);
+        TrimAge();
     }
 
     public bool Append(ReplayTimelineRecord record)

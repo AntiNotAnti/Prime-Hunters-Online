@@ -1894,6 +1894,7 @@ namespace MphRead
                 // here is counted in frames. Mods.Network.NetHitClaims.
                 Mods.Network.NetHitClaims.Tick();
                 Mods.Network.NetHooks.AfterSimulation();
+                Mods.Network.ReplayCapture.AfterSimulation(this);
                 Mods.KillCam.AfterSimulation(this);
 
                 // Capture completed simulation transforms once, after network
@@ -4670,6 +4671,8 @@ namespace MphRead
             {
                 _exiting = true;
                 _room?.CancelTransition();
+                if (!Services.IsReplica && !SideScene && ReferenceEquals(MphRead.GameState.Current, this.GameState))
+                    Mods.Network.ReplayCapture.ReleaseWorld();
                 PlatformEntity.DestroyBeams(this);
                 EnemyInstanceEntity.DestroyBeams(this);
                 if (Services.AllowsPresentationSideEffects) Sound.Sfx.ShutDown();
