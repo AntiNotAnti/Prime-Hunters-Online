@@ -743,7 +743,20 @@ namespace MphRead.Effects
         public Matrix4 OwnTransform { get; set; }
         public Matrix4 Transform { get; set; }
         internal Matrix4 PresentationTransform
-            => EffectEntry?.DrawTransformOverride ?? Transform;
+        {
+            get
+            {
+                if (EffectEntry?.DrawTransformOverride is Matrix4 drawTransform)
+                {
+                    // Match ProcessEffects' normal transform composition in case
+                    // a linked emitter also has an entity-collision parent.
+                    return EntityCollision != null
+                        ? drawTransform * EntityCollision.Transform
+                        : drawTransform;
+                }
+                return Transform;
+            }
+        }
         public Vector3 Acceleration { get; set; }
         public bool Func39Called { get; set; }
         public float ParticleAmount { get; set; }
