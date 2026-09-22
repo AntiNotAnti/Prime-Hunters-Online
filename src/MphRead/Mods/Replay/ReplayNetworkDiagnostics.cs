@@ -76,6 +76,11 @@ namespace MphRead.Mods.Replay
             {
                 _intents++;
             }
+            else if (type == PacketType.IntentBundle
+                && packet.Length >= 1 + IntentBundleHeader.Size)
+            {
+                _intents += IntentBundleHeader.Read(packet[1..]).StateCount;
+            }
         }
 
         public static ReplayNetworkSnapshot Snapshot()
