@@ -687,6 +687,8 @@ namespace MphRead.Mods.Network
             _matchId = NetLifecycleTracker.Next(_matchId);
             _snapshotSeen = false;
             _relaySnapshotBaselineFrame = 0;
+            _lastSnapshotLength = 0;
+            _lastKeyframeSnapshotLength = 0;
             Array.Clear(_slotLives);
             foreach (Peer connected in _peers)
             {
@@ -1972,7 +1974,7 @@ namespace MphRead.Mods.Network
                     CloseBallot();
                     _matchId = NetLifecycleTracker.Next(_matchId);
                     _snapshotSeen = false;
-            _relaySnapshotBaselineFrame = 0;
+                    _relaySnapshotBaselineFrame = 0;
                     _lastSnapshotLength = 0;
                     _lastKeyframeSnapshotLength = 0;
                     Array.Clear(_slotLives);
@@ -2003,7 +2005,7 @@ namespace MphRead.Mods.Network
                     _authority = peer;
                     _authorityEpoch++;
                     _snapshotSeen = false;
-            _relaySnapshotBaselineFrame = 0;
+                    _relaySnapshotBaselineFrame = 0;
                     Log($"{packet.Sender} joined as slot {slot} (authority)");
                     NotifyAuthority(peer);
                 }
