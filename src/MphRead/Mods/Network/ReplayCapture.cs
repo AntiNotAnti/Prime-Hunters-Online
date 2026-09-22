@@ -22,8 +22,14 @@ namespace MphRead.Mods.Network
         public static void Observe(ReadOnlySpan<byte> packet)
         {
             if (DemoPlayback.IsActive || packet.Length < 1) return;
-            if ((PacketType)packet[0] == PacketType.Snapshot && packet.Length <= Snapshot.Length)
+            if ((PacketType)packet[0] == PacketType.Snapshot
+                && packet.Length <= Snapshot.Length
+                && SnapshotWire.IsKeyframe(packet[1..]))
             {
+                // Replay bootstrap must be independently decodable. Every
+                // later delta points back to this keyframe, so retaining the
+                // newest keyframe is both smaller and safer than caching the
+                // newest packet blindly.
                 packet.CopyTo(Snapshot);
                 _snapshotLength = packet.Length;
             }
