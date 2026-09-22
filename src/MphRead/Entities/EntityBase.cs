@@ -140,6 +140,7 @@ namespace MphRead.Entities
 
         protected bool _anyLighting = false;
         protected readonly List<ModelInstance> _models = new List<ModelInstance>();
+        internal IReadOnlyList<ModelInstance> ReplayModels => _models;
 
         protected virtual bool UseNodeTransform => true;
         protected virtual Vector4? OverrideColor { get; } = null;

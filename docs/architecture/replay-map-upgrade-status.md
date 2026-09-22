@@ -21,7 +21,9 @@ record overhead, including empty markers. Byte eviction removes complete
 segments. If even the current segment cannot fit, it is invalidated and capture
 waits for a new baseline: missing facts never masquerade as a complete clip.
 
-Accepted match, roster and filtered snapshot facts feed a single recorder. Kill
+Accepted match, configuration, roster, filtered snapshot and remote intent facts,
+plus submitted local input for presentation, feed a single recorder. Baselines
+retain held input only for their occupant generation and life. Kill
 markers fence match, authority epoch, server tick, damage event, both occupants
 and victim life. An attacker generation of zero means attribution was unavailable;
 consumers must not substitute the current occupant of that slot.
@@ -129,7 +131,7 @@ that the missing replay features work.
 | Plan area | Status |
 | --- | --- |
 | P0A timeline | Implemented bounded immutable records/segments, freeze and identity mapping; complete scene restore schema still missing |
-| P0B recorder | Accepted match/roster/player snapshots and existing semantic events integrated; full world/objective/presentation event capture missing |
+| P0B recorder | Accepted match/configuration/roster/player snapshots, remote intents, submitted local input and existing semantic events integrated; full world/objective/presentation event capture missing |
 | P0C isolated session/services | Instance reader/transport/hosts and passive decoder implemented; scene-owned players, match state, RNG, camera sequences and pools extracted; private replication, silent audio, fixed stepping and GL rendering implemented; complete world checkpoints remain |
 | P0D/P0E personal/final killcams | Existing implementation retained; replay-scene replacement and runtime acceptance outstanding |
 | P1 playback/seek/interpolation | Studio facades now delegate reader/clock/transport to a session; seeks schedule at most 120 steps; isolated scenes/checkpoints/interpolation migration outstanding |
@@ -148,7 +150,7 @@ that the missing replay features work.
 
 - Desktop Release build: passes with 18 pre-existing warnings.
 - Timeline: 36 checks.
-- Replay v2/v3 format, metadata, recovery, extraction and malformed input, passive session/scene ownership: 556 checks.
+- Replay v2/v3 format, metadata, recovery, extraction and malformed input, passive session/scene ownership and projections: 567 checks.
 - Network lifecycle: 3,681 assertions.
 - Health/shot behavior: 2,967,760 assertions.
 - Editor/history/cache/build: 88 checks, including projection/ray agreement across DPI scales, real synthetic-texture compilation,
@@ -203,5 +205,9 @@ intents and clocks; it ignores connection-control traffic. Opening, advancing,
 seeking and disposing passive sessions is tested against foreground identity,
 RNG and transport sentinels. `PassiveReplayScene` loads and renders a private world; two interleaved 1,801-frame
 passes (357 frames with projectiles) agree and preserve foreground sentinels.
+Gameplay hash schema 3 covers projectiles, bombs, pickups and gameplay RNG as well
+as players/objectives. Separate per-frame presentation hashes cover animation,
+trails and effect particles. All 1,801 frames agree in headless and OpenGL passes;
+linear/reconstructed playback, randomized seeks, rates and EOF also pass schema 3.
 Rendered images remain byte-identical after sibling disposal. Detached checkpoints
 and complete historical objective/effect state are still missing.

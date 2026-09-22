@@ -22,6 +22,7 @@ namespace MphRead.Mods.Network
             }
             try
             {
+                ReplayReplicaProjectionChecks.Run(Require);
                 var match = new MatchStatePacket { RoomKey = "MP1 SANCTORUS", NextRoomKey = "",
                     Mode = (byte)GameMode.Battle, TimeRemaining = 300, Flags = MatchStatePacket.FlagInProgress,
                     MatchId = 1, AuthorityEpoch = 1 };
