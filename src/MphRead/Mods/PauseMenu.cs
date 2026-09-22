@@ -41,6 +41,7 @@ namespace MphRead.Mods
         /// </summary>
         public static bool HandleEscape(NativeWindow window)
         {
+            if (KillCam.RequestSkip()) return true;
 #if MPHREAD_AVALONIA
             if (!Launcher.Gui.GuiLauncher.EnsureSetup())
             {

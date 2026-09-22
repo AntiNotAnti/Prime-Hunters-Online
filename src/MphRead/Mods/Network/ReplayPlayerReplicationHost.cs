@@ -25,7 +25,7 @@ namespace MphRead.Mods.Network
         public bool TryGetState(int slot, out PlayerState state) => _state.TryGetPlayer(slot, out state);
         public uint IntentAge(int slot) => _state.IntentAge(slot);
         public void OnSpawn(PlayerEntity player) => player.OwningScene.ContinuousPhase.ResetSlot(player.SlotIndex);
-        public void BeginLife(PlayerEntity player, in PlayerState state) { }
+        public void BeginLife(PlayerEntity player, in PlayerState state) => player.ModBeginReplicaLife(state);
         public void Spawn(PlayerEntity player, in PlayerState state)
         {
             bool previous = _applyingSpawn;
@@ -34,8 +34,8 @@ namespace MphRead.Mods.Network
             finally { _applyingSpawn = previous; }
         }
         // Accepted state controls health; reconstruction never runs damage resolution.
-        // Transient damage presentation is supplied separately by the replay event stream.
-        public void ReplayDamage(PlayerEntity player, in PlayerState state) { }
+        // Redundant accepted damage events drive effects once; never resolve a hit.
+        public void ReplayDamage(PlayerEntity player, in PlayerState state) => player.ModAcceptReplicaDamage(state);
         public void ReplayDeath(PlayerEntity player) => player.ModAcceptReplicaDeath();
         public void NoteDeath(int slot) { }
         public int HealthFor(PlayerEntity player, int health, bool local) => health;

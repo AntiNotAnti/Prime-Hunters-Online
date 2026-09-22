@@ -124,6 +124,9 @@ namespace MphRead.Entities
                     "FIRE TO SKIP",
                     color: _endDim, fontSpacing: 8, scale: 0.38f);
             }
+            _scene.DrawHudFlatBox(128 - half, bottom - .7f,
+                128 - half + half * 2 * KillCam.Progress, bottom,
+                new Vector4(.35f, .95f, 1, .95f));
         }
 
         internal void ModDrawEndScreen()

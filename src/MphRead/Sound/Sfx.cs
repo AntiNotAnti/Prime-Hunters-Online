@@ -341,6 +341,7 @@ namespace MphRead.Sound
 
         public static void Load(Scene scene)
         {
+            Mods.Replay.ReplayAudioOwner.Reset();
             if (Mods.ThumbnailMode.Active || Mods.Headless.Active)
             {
                 // Reading and decoding every sample in the game, plus the
@@ -590,6 +591,7 @@ namespace MphRead.Sound
         public override IReadOnlyList<Sound3dEntry> RangeData => _rangeData;
 
         private Scene? _scene = null;
+        public override void SetListenerScene(Scene? scene) => _scene = scene;
 
         public override Vector3 GetListenerPosition()
         {
@@ -599,7 +601,7 @@ namespace MphRead.Sound
             }
             if (_scene.CameraMode == CameraMode.Player)
             {
-                return PlayerEntity.Main.CameraInfo.Position;
+                return _scene.Players.Main.CameraInfo.Position;
             }
             return _scene.CameraPosition;
         }
@@ -612,7 +614,7 @@ namespace MphRead.Sound
             }
             if (_scene.CameraMode == CameraMode.Player)
             {
-                return PlayerEntity.Main.CameraInfo.TrueUp;
+                return _scene.Players.Main.CameraInfo.TrueUp;
             }
             return _scene.ViewMatrix.Row1.Xyz.Normalized();
         }
@@ -625,7 +627,7 @@ namespace MphRead.Sound
             }
             if (_scene.CameraMode == CameraMode.Player)
             {
-                return PlayerEntity.Main.CameraInfo.Facing;
+                return _scene.Players.Main.CameraInfo.Facing;
             }
             return _scene.ViewMatrix.Row2.Xyz.Normalized();
         }
@@ -1666,6 +1668,7 @@ namespace MphRead.Sound
 
     public class SfxInstanceBase
     {
+        public virtual void SetListenerScene(Scene? scene) { }
         internal virtual Task ShutdownCompletion => Task.CompletedTask;
         public virtual IReadOnlyList<Sound3dEntry> RangeData { get; } = new List<Sound3dEntry>();
 

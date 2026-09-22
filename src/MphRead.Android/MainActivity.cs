@@ -487,6 +487,7 @@ namespace MphRead.Droid
         {
             if (InMatch)
             {
+                if (Mods.KillCam.RequestSkip()) return;
                 // Back used to end the match outright, which is a gesture a
                 // phone makes by accident and an hour of adventure mode thrown
                 // away. It is what Escape is on the desktop now: the menu,
@@ -1007,6 +1008,7 @@ namespace MphRead.Droid
         /// </summary>
         internal void TogglePauseMenu()
         {
+            if (Mods.KillCam.RequestSkip()) return;
             if (!InMatch)
             {
                 return;

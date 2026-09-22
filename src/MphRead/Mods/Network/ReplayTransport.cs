@@ -19,6 +19,8 @@ namespace MphRead.Mods.Network
         public double DurationSeconds => DurationFrames / 60.0;
         public long LastInteraction { get; private set; }
         private float _fraction;
+        internal float PresentationAlpha(double hostAlpha) => IsPaused || AtEnd || IsSeeking ? 1
+            : Math.Clamp(_fraction + (float)hostAlpha * PlaybackRate, 0, 1);
         private int _steps;
         private uint? _rebuild;
         private uint? _target;

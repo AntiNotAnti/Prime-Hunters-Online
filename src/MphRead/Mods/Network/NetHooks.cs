@@ -491,6 +491,7 @@ namespace MphRead.Mods.Network
                 // the server relays N*(N-1) updates per frame, and at six
                 // players that was losing enough of them to leave visible
                 // gaps in everyone's position stream.
+                Mods.KillCam.FilterInput(scene);
                 NetPlayerBridge.RecordPresses(player);
                 if (NetSession.NetFrame % NetConfig.IntentSendInterval == 0)
                 {

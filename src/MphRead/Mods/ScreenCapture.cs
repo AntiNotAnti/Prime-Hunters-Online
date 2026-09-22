@@ -42,6 +42,7 @@ namespace MphRead.Mods
 
         public static bool Save(Scene scene, string path)
         {
+            scene = KillCam.Presentation(scene) ?? scene;
             return Save(scene, path, scene.ReadSceneTarget);
         }
 

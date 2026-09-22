@@ -114,7 +114,8 @@ internal static class ReplayWorldCoverageCheck
                         CurrentWeapon = (byte)(slot % 8), Team = (byte)(slot % 2),
                         Deaths = (ushort)(frame >= 1602 ? 1 : 0), DamageEventId = (ushort)(frame >= 1602 ? 2 : frame >= 1500 ? 1 : 0),
                         AttackerSlot = (byte)((slot + 1) % 8), DamageBeam = (byte)(slot % 8),
-                        Damage0 = new DamageEvent { EventId = 2, AttackerGeneration = 1, AttackerSlot = (byte)((slot + 1) % 8),
+                        Damage0 = frame < 1500 ? default : new DamageEvent { EventId = (ushort)(frame >= 1602 ? 2 : 1),
+                            AttackerGeneration = 1, AttackerSlot = (byte)((slot + 1) % 8),
                             Beam = (byte)(slot % 8), Damage = 90, Direction = Vector3.UnitZ * .1f }
                     }.Write(snapshot.AsSpan(1 + SnapshotHeader.Size + slot * PlayerState.Size));
                 }

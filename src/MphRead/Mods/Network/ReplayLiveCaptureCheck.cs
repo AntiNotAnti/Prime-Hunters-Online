@@ -73,7 +73,7 @@ internal static class ReplayLiveCaptureCheck
         finally { live.DoCleanup(); }
     }
 
-    private static void Accept(ReplayRecorder recorder, ReadOnlySpan<byte> packet, uint frame)
+    internal static void Accept(ReplayRecorder recorder, ReadOnlySpan<byte> packet, uint frame)
     {
         switch ((PacketType)packet[0])
         {

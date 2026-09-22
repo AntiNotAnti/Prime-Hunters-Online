@@ -41,6 +41,7 @@ internal static class ReplayWorldSchemas
             "_useRoomLights",
         ],
         ["MphRead.Entities.PlayerEntity"] = [
+            "_replicaLastDamage",
             "<BotLevel>k__BackingField",
             "<CameraInfo>k__BackingField",
             "<CameraType>k__BackingField",

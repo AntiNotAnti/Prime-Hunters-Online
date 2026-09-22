@@ -102,3 +102,5 @@ This file is the short, machine-oriented source of truth for architectural assum
 
 - Runtime builds, validation, navigation and packaging share a bounded queue and private compiled geometry cache. Editor consumers receive immutable geometry or detached navigation; cached compiler graphs never escape to mutable UI state. Synchronous runtime/server preparation must not hold catalog locks while waiting on a worker.
 - One dependency analyzer defines content identities and portable assets for fingerprints, packages, package reference checks and Save As. Cartridge dependencies affect builds but are never packaged.
+
+- Replay killcams own a frozen timeline clip, passive player, scene, HUD and versioned audio lease. They never replace live players or send replay input. UI/Android skip callbacks queue requests; GL disposal stays on the scene owner. Respawn and match/epoch/occupant/life changes invalidate the presentation.

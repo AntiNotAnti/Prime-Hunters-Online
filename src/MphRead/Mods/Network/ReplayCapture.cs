@@ -176,9 +176,13 @@ namespace MphRead.Mods.Network
                     if (state.LifeId == old.LifeId && state.Health == 0
                         && state.Deaths == old.Deaths + 1 && attackerGeneration != 0
                         && state.AttackerSlot < RosterPacket.MaxSlots && state.AttackerSlot != slot)
-                        Recorder.Marker(NetSession.NetFrame, tick, new(ReplayMarkerKind.Kill,
+                    {
+                        var marker = new ReplayMarker(ReplayMarkerKind.Kill,
                             state.AttackerSlot, state.SlotIndex, Kill: identity,
-                            Weapon: state.DamageBeam, DamageFlags: state.DamageFlags));
+                            Weapon: state.DamageBeam, DamageFlags: state.DamageFlags);
+                        Recorder.Marker(NetSession.NetFrame, tick, marker);
+                        Mods.KillCam.NoteKill(marker, NetSession.NetFrame);
+                    }
                     MphRead.Mods.KillCam.NoteDeath(slot, state.AttackerSlot,
                         authoritativeFrame ?? NetSession.NetFrame);
                 }

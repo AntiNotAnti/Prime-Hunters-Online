@@ -44,7 +44,7 @@ No fallback is removed before the plan's runtime acceptance gate.
 - Complete historical presentation/event state and scene service coverage for all modes;
   replica simulation, replication, silent audio and GL resource ownership are implemented.
 - Attach the instance-owned passive player and bounded checkpoint seeking to consumers.
-- Replay-based personal/final killcams and audio/input/HUD ownership.
+- Complete killcam stress acceptance on larger matches and Android; private-scene controllers and audio/input/HUD ownership are implemented.
 - Migrate full playback, instant clips, Studio, thumbnails and video export.
 - Desktop/Android runtime stress and determinism/performance acceptance.
 
@@ -135,7 +135,7 @@ that the missing replay features work.
 | P0A timeline | Bounded immutable records/segments, freeze and identity mapping; detached world restore and live canonical checkpoint production implemented |
 | P0B recorder | Accepted match/configuration/roster/player snapshots, remote intents, submitted local input and existing semantic events integrated; full world/objective/presentation event capture missing |
 | P0C isolated session/services | Instance reader/transport/hosts, private replication, silent audio, fixed stepping, GL rendering and detached world checkpoints implemented; broader mode/combat acceptance remains |
-| P0D/P0E personal/final killcams | Existing implementation retained; replay-scene replacement and runtime acceptance outstanding |
+| P0D/P0E personal/final killcams | Instance controller and private replay presentation implemented; two-client personal/final combat checked with latency/loss; larger matches and Android runtime acceptance remain |
 | P1 playback/seek/interpolation | Studio facades delegate reader/clock/transport to a session; passive file/frozen-clip player uses detached checkpoints and at most 120 seek steps; foreground/interpolation migration outstanding |
 | P1 shared clips/highlights/export | Existing functionality retained; shared-timeline migration outstanding |
 | P2A history | State IDs, bounded delta commands and transaction coalescing implemented for common actions |
@@ -286,3 +286,35 @@ overhead. Warm headless capture took approximately 10–14 ms; fresh scene creat
 plus restore took 22–33 ms in this run. Seeking to frame 1,799 from checkpoint
 1,500 required 299 steps over three updates. These are component measurements,
 not a claim about live killcam startup or Android frame time.
+
+## Replay killcam presentation
+
+`KillcamController` consumes immutable frozen world clips. The live scene keeps
+receiving snapshots and simulating while a private scene owns the picture. Kill
+identity fences match/epoch, occupant generation and victim life; respawn, slot
+reuse, disconnect and match changes cancel presentation. A queued Android/back
+skip is consumed on the scene owner. Shoot must be released before it can skip,
+and input is cleared before intent serialization.
+
+Personal playback uses two seconds of pre-roll and a quarter-second terminal
+hold to fit the existing three-second respawn. Final playback uses up to five
+seconds at 2× within the existing three-second GameOver window. Causal score/
+survival kills must be within two seconds; timed endings accept a kill within
+eight seconds. No stale kill is substituted. The temporary developer fallback
+remains until the full acceptance matrix passes.
+
+The camera follows a generation-checked historical attacker (victim fallback)
+with collision clipping. The private scene owns its banner font and render
+interpolation fraction. Versioned audio leases rebind the listener and prevent a
+stale release from stopping a newer presentation/device. Accepted damage events
+now drive private flinch/death presentation without resolving combat again.
+
+Validation: `-replaykillcamcheck FILE [-shots DIR]` passes 358 checks including
+24 death/skip/respawn/disconnect cycles, 134 historical frame comparisons, resize,
+match reset, final eligibility, frozen source reset and audio handoff. Rendered
+checks pass. All 12 eight-actor mode fixtures pass 21,612 frames after the damage
+presentation change, and all 586 format checks pass. Two real clients in TEST
+ARENA showed personal and final replay scenes under 100 ms round-trip latency
+and 2% packet loss; HUD captures were inspected. One retry was needed after GLFW
+crashed querying a missing macOS monitor before either client loaded a scene.
+The network harness now includes fatal health drops in its damage counter.

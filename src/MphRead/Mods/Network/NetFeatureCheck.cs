@@ -346,7 +346,9 @@ namespace MphRead.Mods.Network
                     }
                     record.LastWeapon = player.CurrentWeapon;
                 }
-                if (record.LastHealth > 0 && player.Health > 0 && player.Health < record.LastHealth)
+                // A lethal hit is still damage. Excluding zero health made an
+                // otherwise valid one-shot duel fail the damage-coverage check.
+                if (record.LastHealth > 0 && player.Health < record.LastHealth)
                 {
                     record.DamageEvents++;
                     if (player.IsAltForm)

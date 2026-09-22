@@ -39,7 +39,7 @@ namespace MphRead.Entities
                 : networkPresented
                     ? Mods.Network.NetPlayerBridge.InFormFor(
                         this, presentedPosition, presentedAlt)
-                    : Position;
+                    : _scene.Services.IsReplica ? ReplayDrawTransform.Row3.Xyz : Position;
             bool drawAltForm = historical ? historicalPose.AltForm : IsAltForm;
             bool drawAlive = historical ? historicalPose.Health > 0 : _health > 0;
 

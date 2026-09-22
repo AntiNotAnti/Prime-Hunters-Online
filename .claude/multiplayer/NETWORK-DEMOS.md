@@ -467,3 +467,5 @@ relative to the binary, not to the shell. Pass an absolute one.
   and only a dedicated server sends one. Every path the launcher offers goes
   through a dedicated server, in-process or otherwise, so this is a note
   rather than a bug.
+
+Killcams now freeze the canonical world timeline and present through an instance-owned `KillcamController`. Personal and final replay scenes have been exercised with two real clients, latency and packet loss. `-replaykillcamcheck FILE [-shots DIR]` verifies cancellation, bounded warmup, historical frames, source reset, resize, input release and versioned audio ownership. Full playback/Studio, disk clips and larger-match/Android acceptance are still migration work.

@@ -88,6 +88,8 @@ namespace MphRead.Mods.Network
         private readonly RemoteView[] _remotes = new RemoteView[PlayerEntity.MaxPlayers];
         private int _frame;
         private int _shots;
+        private int _killcamFrames, _killcamStarts;
+        private bool _killcamWasVisible;
         private int _duelShots;
         private int _lastDuelShotFrame = -1000;
         private bool _opponentInView;
@@ -162,6 +164,20 @@ namespace MphRead.Mods.Network
                 return;
             }
             _frame++;
+            bool killcamVisible = Mods.KillCam.Presentation(Scene) != null;
+            if (killcamVisible)
+            {
+                _killcamFrames++;
+                if (!_killcamWasVisible)
+                {
+                    _killcamStarts++;
+                    Console.WriteLine($"[netcheck] replay killcam start {_killcamStarts} at live frame {NetSession.NetFrame}");
+                    if (_shotDirectory != null) Capture(Path.Combine(_shotDirectory, $"{_name}-killcam-{_killcamStarts:00}.png"));
+                }
+            }
+            else if (_killcamWasVisible)
+                Console.WriteLine($"[netcheck] replay killcam ended: {Mods.KillCam.EndReason}");
+            _killcamWasVisible = killcamVisible;
             UpdateSpectating();
             DriveVoteTest();
             DriveRebindTest();
@@ -641,6 +657,7 @@ namespace MphRead.Mods.Network
 
         private void Report()
         {
+            Console.WriteLine($"[netcheck] replay killcams: {_killcamStarts} starts, {_killcamFrames} visible frames; capture error={ReplayCapture.WorldCapture.LastError ?? "none"}, playback error={Mods.KillCam.LastError ?? "none"}");
             Console.WriteLine($"  ran {_frame} frame(s) in "
                 + $"{_wallClock.Elapsed.TotalSeconds:0.0} s -- {FramesPerSecond:0.0} fps");
             int local = Math.Max(NetSession.LocalSlot, 0);

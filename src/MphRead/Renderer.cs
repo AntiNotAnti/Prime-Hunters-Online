@@ -1965,7 +1965,7 @@ namespace MphRead
                 Mods.Render.FrameTiming.MaxCatchUpSteps);
             _pendingFadeSteps = Math.Min(_pendingFadeSteps + 1,
                 Mods.Render.FrameTiming.MaxCatchUpSteps);
-            if (Mods.Headless.Active || Mods.Network.DemoPlayback.IsActive)
+            if (Mods.Headless.Active || Mods.Network.DemoPlayback.IsActive || Mods.KillCam.Active)
             {
                 ModStepDrawPassTimers();
             }
@@ -2029,6 +2029,12 @@ namespace MphRead
         /// </summary>
         public void OnDrawFrame()
         {
+            if (Mods.KillCam.Presentation(this) is { } historical)
+            {
+                try { historical.OnDrawFrame(); return; }
+                catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+                { Mods.KillCam.FailPresentation(ex); }
+            }
             if (Size.X <= 0 || Size.Y <= 0)
             {
                 return;
@@ -2753,6 +2759,12 @@ namespace MphRead
 
         public bool OnRenderFrame()
         {
+            if (Mods.KillCam.Presentation(this) is { } historical)
+            {
+                try { return historical.OnRenderFrame(); }
+                catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+                { Mods.KillCam.FailPresentation(ex); OnDrawFrame(); }
+            }
             if (Size.X <= 0 || Size.Y <= 0)
             {
                 return !_exiting;
@@ -2909,6 +2921,11 @@ namespace MphRead
 
             BeginHudPass();
             GL.Uniform4(_shaderLocations.FadeColor, _fadeColor, _fadeColor, _fadeColor, 0);
+            if (Services.IsReplica && ReplayPresentationHud != null)
+            {
+                ReplayPresentationHud(this);
+                return true;
+            }
             if (this.Players.Main.LoadFlags.TestFlag(LoadFlags.Active) && CameraMode == CameraMode.Player)
             {
                 if (this.GameState.MenuPause)
@@ -4672,7 +4689,10 @@ namespace MphRead
                 _exiting = true;
                 _room?.CancelTransition();
                 if (!Services.IsReplica && !SideScene && ReferenceEquals(MphRead.GameState.Current, this.GameState))
+                {
+                    Mods.KillCam.Reset();
                     Mods.Network.ReplayCapture.ReleaseWorld();
+                }
                 PlatformEntity.DestroyBeams(this);
                 EnemyInstanceEntity.DestroyBeams(this);
                 if (Services.AllowsPresentationSideEffects) Sound.Sfx.ShutDown();

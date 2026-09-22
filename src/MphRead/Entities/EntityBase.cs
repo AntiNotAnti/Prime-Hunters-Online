@@ -313,13 +313,14 @@ namespace MphRead.Entities
         /// translation are blended independently so the matrix stays
         /// orthogonal instead of linearly blending sixteen unrelated values.
         /// </summary>
+        internal Matrix4 ReplayDrawTransform => ModDrawTransform();
         protected Matrix4 ModDrawTransform()
         {
-            if (!InterpolateDrawTransform || !Mods.Render.FrameTiming.Active || !_drawStateValid)
+            if (!InterpolateDrawTransform || !_scene.Services.IsReplica && !Mods.Render.FrameTiming.Active || !_drawStateValid)
             {
                 return _transform;
             }
-            float t = (float)Mods.Render.FrameTiming.PresentationAlpha;
+            float t = _scene.Services.IsReplica ? _scene.ReplayRenderAlpha : (float)Mods.Render.FrameTiming.PresentationAlpha;
             if (t <= 0) return _drawPrevious;
             if (t >= 1) return _drawCurrent;
 
