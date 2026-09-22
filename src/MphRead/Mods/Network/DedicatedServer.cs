@@ -903,7 +903,6 @@ namespace MphRead.Mods.Network
             }.Write(_intentBundleScratch);
 
             ReadOnlySpan<byte> bundle = _intentBundleScratch.AsSpan(0, offset);
-            ServerReplayRecorder.Record(PacketType.IntentBundle, bundle);
             for (int i = 0; i < _peers.Count; i++)
             {
                 _transport.Send(_peers[i].EndPoint, PacketType.IntentBundle, bundle);
