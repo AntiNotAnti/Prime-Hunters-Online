@@ -181,6 +181,8 @@ namespace MphRead.Mods.Network
         private readonly byte[] _intentBundleScratch = new byte[NetConfig.MaxPacketSize];
         private readonly byte[] _lastSnapshot = new byte[NetConfig.MaxPacketSize];
         private int _lastSnapshotLength;
+        private readonly byte[] _lastKeyframeSnapshot = new byte[NetConfig.MaxPacketSize];
+        private int _lastKeyframeSnapshotLength;
         private readonly int _port;
         private readonly int _maxPlayers;
         private readonly MapRotation _rotation;
@@ -845,7 +847,15 @@ namespace MphRead.Mods.Network
         {
             payload.CopyTo(_lastSnapshot);
             _lastSnapshotLength = payload.Length;
-            EnsureCanonicalReplay(payload);
+            bool keyframe = SnapshotWire.IsKeyframe(payload);
+            if (keyframe)
+            {
+                payload.CopyTo(_lastKeyframeSnapshot);
+                _lastKeyframeSnapshotLength = payload.Length;
+                // A replay bootstrap must be independently decodable. Delta
+                // snapshots intentionally depend on this cached keyframe.
+                EnsureCanonicalReplay(payload);
+            }
             ServerReplayRecorder.Record(PacketType.Snapshot, payload);
 
             // Observer input is emitted once per authority tick, immediately
@@ -1961,6 +1971,7 @@ namespace MphRead.Mods.Network
                     _matchId = NetLifecycleTracker.Next(_matchId);
                     _snapshotSeen = false;
                     _lastSnapshotLength = 0;
+                    _lastKeyframeSnapshotLength = 0;
                     Array.Clear(_slotLives);
                 }
                 if (_phase == SessionPhase.InMatch && !AllowJoinInProgress)
@@ -1995,11 +2006,13 @@ namespace MphRead.Mods.Network
                 else
                 {
                     Log($"{packet.Sender} joined as slot {slot}");
-                    if (Simulating && _lastSnapshotLength > 0)
+                    if (Simulating && _lastKeyframeSnapshotLength > 0)
                     {
-                        // A world to stand in before the next one is composed.
+                        // Seed from an independent baseline. Sending the newest
+                        // delta to a fresh client would give it nothing to
+                        // apply that delta against.
                         _transport?.Send(peer.EndPoint, PacketType.Snapshot,
-                            _lastSnapshot.AsSpan(0, _lastSnapshotLength));
+                            _lastKeyframeSnapshot.AsSpan(0, _lastKeyframeSnapshotLength));
                     }
                 }
             }
@@ -2157,19 +2170,20 @@ namespace MphRead.Mods.Network
             RosterPacket roster = BuildRoster();
             roster.Write(_scratch);
             _transport?.Send(peer.EndPoint, PacketType.Roster, _scratch.AsSpan(0, RosterPacket.Size));
-            if (_lastSnapshotLength > 0)
+            if (_lastKeyframeSnapshotLength > 0)
             {
-                SnapshotHeader header = SnapshotHeader.Read(_lastSnapshot.AsSpan(0, _lastSnapshotLength));
+                SnapshotHeader header = SnapshotHeader.Read(
+                    _lastKeyframeSnapshot.AsSpan(0, _lastKeyframeSnapshotLength));
                 if (header.MatchId == _matchId)
                 {
-                    // Seed the successor from the last world, in its new stream.
-                    // Reuse the server scratch rather than allocating a clone.
-                    _lastSnapshot.AsSpan(0, _lastSnapshotLength).CopyTo(_scratch);
+                    // Compatibility-only client authority handoff starts from
+                    // the last independent baseline, never a dependent delta.
+                    _lastKeyframeSnapshot.AsSpan(0, _lastKeyframeSnapshotLength).CopyTo(_scratch);
                     header.AuthorityEpoch = _authorityEpoch;
                     header.Frame = 0;
                     header.Write(_scratch);
                     _transport?.Send(peer.EndPoint, PacketType.Snapshot,
-                        _scratch.AsSpan(0, _lastSnapshotLength));
+                        _scratch.AsSpan(0, _lastKeyframeSnapshotLength));
                 }
             }
             _scratch[0] = (byte)peer.SlotIndex;
@@ -2401,6 +2415,11 @@ namespace MphRead.Mods.Network
             _snapshotFrame = header.Frame;
             packet.Payload.CopyTo(_lastSnapshot);
             _lastSnapshotLength = packet.Payload.Length;
+            if (SnapshotWire.IsKeyframe(packet.Payload))
+            {
+                packet.Payload.CopyTo(_lastKeyframeSnapshot);
+                _lastKeyframeSnapshotLength = packet.Payload.Length;
+            }
             for (int i = 0; i < _peers.Count; i++)
             {
                 if (_peers[i] != peer)
