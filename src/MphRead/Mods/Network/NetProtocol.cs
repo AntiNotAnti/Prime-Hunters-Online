@@ -1853,19 +1853,66 @@ namespace MphRead.Mods.Network
     public static class SnapshotWire
     {
         public const int PlayerSize = PlayerState.BaseSize;
+        public const int StateHeaderSize = 6; // flags, active-slot mask, keyframe baseline
+        public const byte FlagKeyframe = 1 << 0;
+        public const int KeyframeInterval = 15;
         public const int DamageGroupSize = 1 + DamageEvent.Size * PlayerState.DamageHistory;
         public const int DamageRepeatFrames = 12;
+
+        public static void WriteStateHeader(Span<byte> dest, bool keyframe,
+            byte activeMask, uint baselineFrame)
+        {
+            dest[0] = keyframe ? FlagKeyframe : (byte)0;
+            dest[1] = activeMask;
+            BinaryPrimitives.WriteUInt32LittleEndian(dest[2..], baselineFrame);
+        }
+
+        public static bool TryReadStateHeader(ReadOnlySpan<byte> payload,
+            out bool keyframe, out byte activeMask, out uint baselineFrame)
+        {
+            keyframe = false;
+            activeMask = 0;
+            baselineFrame = 0;
+            if (payload.Length < SnapshotHeader.Size + StateHeaderSize) return false;
+            int at = SnapshotHeader.Size;
+            byte flags = payload[at];
+            if ((flags & ~FlagKeyframe) != 0) return false;
+            keyframe = (flags & FlagKeyframe) != 0;
+            activeMask = payload[at + 1];
+            baselineFrame = BinaryPrimitives.ReadUInt32LittleEndian(payload[(at + 2)..]);
+            return baselineFrame != 0;
+        }
+
+        public static bool IsKeyframe(ReadOnlySpan<byte> payload) =>
+            TryReadStateHeader(payload, out bool keyframe, out _, out _) && keyframe;
 
         public static bool TryLocateTails(ReadOnlySpan<byte> payload, in SnapshotHeader header,
             out int damageCountOffset, out int timeOffset)
         {
-            damageCountOffset = SnapshotHeader.Size + header.PlayerCount * PlayerSize;
+            damageCountOffset = SnapshotHeader.Size + StateHeaderSize
+                + header.PlayerCount * PlayerSize;
             timeOffset = 0;
             if (damageCountOffset >= payload.Length) return false;
             int damageGroups = payload[damageCountOffset];
             timeOffset = damageCountOffset + 1 + damageGroups * DamageGroupSize;
             return timeOffset <= payload.Length;
         }
+
+        public static bool BaseEquals(in PlayerState a, in PlayerState b) =>
+            a.SlotIndex == b.SlotIndex
+            && a.Flags == b.Flags
+            && a.Position == b.Position
+            && a.Speed == b.Speed
+            && a.Facing == b.Facing
+            && a.Health == b.Health
+            && a.CurrentWeapon == b.CurrentWeapon
+            && a.Team == b.Team
+            && a.Points == b.Points
+            && a.Kills == b.Kills
+            && a.Deaths == b.Deaths
+            && a.SlotGeneration == b.SlotGeneration
+            && a.LifeId == b.LifeId
+            && a.DamageEventId == b.DamageEventId;
 
         public static void WriteDamageGroup(byte slot, in PlayerState state, Span<byte> dest)
         {
