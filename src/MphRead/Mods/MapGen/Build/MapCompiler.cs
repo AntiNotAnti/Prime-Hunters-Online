@@ -9,6 +9,7 @@ namespace MphRead.Mods.MapGen
 
     public static class MapCompiler
     {
+        internal static object ContentReadLock { get; } = new();
         public static MapCompilation Compile(MapProject project, CancellationToken cancellation = default)
             => Compile(project.ToDefinition(), cancellation);
 
@@ -21,7 +22,9 @@ namespace MphRead.Mods.MapGen
             {
                 // Import can bake a missing texture pack, so fingerprint only after it completes.
                 var snapshot = MapProjectSerializer.Clone(definition);
-                BuiltMap map = snapshot.Import == null ? MapBuilder.Build(snapshot) : Q3Import.Build(snapshot, false);
+                BuiltMap map;
+                if (snapshot.Import == null) map = MapBuilder.Build(snapshot);
+                else lock (ContentReadLock) map = Q3Import.Build(snapshot, false);
                 MapPacker.ApplyCollision(map, snapshot, verbose: false);
                 map.SourceDefinition = definition;
                 cancellation.ThrowIfCancellationRequested();

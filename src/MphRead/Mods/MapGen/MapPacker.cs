@@ -26,7 +26,8 @@ namespace MphRead.Mods.MapGen
             MapOutputSet outputs = MapOutputSet.Create(def, archiveDir, entityDir, nodeDir);
             Directory.CreateDirectory(archiveDir);
             Directory.CreateDirectory(entityDir);
-            (byte[] model, int vertices) = BuildModel(map);
+            byte[] model; int vertices;
+            lock (MapCompiler.ContentReadLock) (model, vertices) = BuildModel(map);
             byte[] collision = BuildCollision(map);
             byte[] entities = Repack.PackEntities(map.Entities);
             (byte[] nodes, int nodeCount, int edges) = MapNodePacker.Pack(map.Solid,def.NavigationLinks);
