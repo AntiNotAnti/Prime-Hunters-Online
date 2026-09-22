@@ -97,6 +97,32 @@ try
     var layout = new MapViewportLayout(800, 600, 1.5);
     Check(layout.PixelWidth == 1200 && layout.PixelHeight == 900 && layout.Normalize(400, 300) == (0d, 0d), "DPI layout contract");
     Check(new MapViewportLayout(0, 0).PixelWidth == 0, "empty viewport safe");
+    var meshIdentities = cache.Meshes.ToDictionary(m => m.ObjectId);
+    doc.SelectionChanged();
+    Check(cache.Meshes.All(m => ReferenceEquals(m,meshIdentities[m.ObjectId])), "selection preserves GPU mesh identities");
+    var pickMap = new MapDefinition();
+    var nearBrush = new MapBox { Transform = new() { Position = new[] { 0f, 0, 2f }, Scale = new[] { 2f, 1, .5f } } };
+    var farBrush = new MapBox { Transform = new() { Position = new[] { 0f, 0, -5f } } };
+    pickMap.Geometry.Add(farBrush);pickMap.Geometry.Add(nearBrush);
+    var pickCache = new MapViewportCache();pickCache.Invalidate(pickMap,new(MapChangeDomain.All));
+    foreach (double dpi in new[] { 1d, 1.5, 2 })
+    foreach (bool perspective in new[] { true, false })
+    {
+        var pickLayout = new MapViewportLayout(800,450,dpi,120,80);
+        var camera = new MapViewportCamera(new(0,0,10),Vector3.Zero,perspective);
+        var frame = new MapRenderFrame(pickLayout,camera,pickCache.Meshes,new System.Collections.Generic.HashSet<Guid>(),
+            new System.Collections.Generic.Dictionary<Guid,Matrix4x4>(),false,false);
+        Check(MapViewportPicking.Pick(frame,400,225)==nearBrush.Id,"nearest world-space picking at DPI "+dpi+" perspective "+perspective);
+        var point = new Vector3(1, .5f, 0);
+        var screen = camera.Project(pickLayout,point)!.Value;
+        var ray = camera.Ray(pickLayout,screen.X,screen.Y);
+        Check(Vector3.Cross(Vector3.Normalize(point-ray.Origin),ray.Direction).Length()<.00001f,
+            "projection and pointer ray agree");
+        var view = Matrix4x4.CreateLookAt(camera.Position,camera.Target,camera.Basis().Up);
+        var clip = Vector4.Transform(new Vector4(point,1),view*camera.Projection(pickLayout));
+        Check(Math.Abs((clip.X/clip.W+1)*400-screen.X)<.001&&Math.Abs((1-clip.Y/clip.W)*225-screen.Y)<.001,
+            "renderer projection matches overlay coordinates");
+    }
     var original = MapBuildSnapshot.Capture(doc.Project);
     float snapshotX = original.CreateDefinition().Geometry[0].Transform.Position[0];
     doc.Project.Definition.Geometry[0].Transform.Position[0] += 10;

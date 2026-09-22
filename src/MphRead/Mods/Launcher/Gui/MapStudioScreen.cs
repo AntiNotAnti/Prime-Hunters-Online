@@ -141,7 +141,7 @@ namespace MphRead.Mods.Launcher.Gui
         private void WithUnsaved(Action action)
         {if(_document?.IsDirty==true)Confirm("Discard unsaved changes? A recovery copy will remain available.",()=>{_document.Autosave(CustomRooms.MapDirectory);action();});else action();}
         private void Close()=>WithUnsaved(()=>Closed?.Invoke(this,EventArgs.Empty));
-        private void Load(MapProject project,string? path=null)
+        internal void Load(MapProject project,string? path=null)
         {
             if(_document!=null)_document.Changed-=Changed;
             _document=new(project,path);_document.Changed+=Changed;_viewport=new(_document);_viewport.SelectionChanged+=()=>{RefreshHierarchy();Inspect();};
@@ -437,8 +437,12 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 using var bitmap=new Avalonia.Media.Imaging.RenderTargetBitmap(new PixelSize((int)_viewport.Bounds.Width,(int)_viewport.Bounds.Height),new Avalonia.Vector(96,96));
                 bitmap.Render(_viewport);using var stream=new MemoryStream();bitmap.Save(stream);
+                byte[] preview = stream.ToArray();
+#if MPHREAD_SHELL
+                preview = _viewport.CaptureGpuPreview(preview);
+#endif
                 _document.Edit("Replace preview",d=>d.Assets.RemoveAll(a=>a.Kind=="preview"));
-                StoreAsset("preview",".png",stream.ToArray());_status.Text="Preview captured.";
+                StoreAsset("preview",".png",preview);_status.Text="Preview captured.";
             }
             catch(Exception ex){Failure(ex);}
         }

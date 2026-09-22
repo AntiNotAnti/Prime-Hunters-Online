@@ -90,6 +90,7 @@ This file is the short, machine-oriented source of truth for architectural assum
 - Dirty state is a document state-ID comparison, not project serialization or history depth.
 - Common transforms and edits use bounded delta history; undo-to-save and branching preserve state identity.
 - Selection, entity edits and camera movement do not rebuild unrelated geometry.
+- The editor submits stable CPU meshes to the existing scene renderer. GPU resources belong to the viewport lifetime; selection, camera and overlay changes reuse them. The shared logical/pixel camera contract drives projection, world-ray picking and captures. UI overlays composite above geometry; normal frames require no GPU readback.
 - Build workers receive detached snapshots; cancelling one waiter must not cancel shared work.
 - Runtime cache publication validates content fingerprints and output integrity. Cache files contain locally generated content and are never release inputs.
 

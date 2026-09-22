@@ -86,8 +86,11 @@ The viewport subscribes to typed invalidations instead of rebuilding on every
 objects alone are recompiled. Imported architecture has a separate cache and is
 cleared only when import inputs change. Entity representations, selection,
 overlays and navigation carry independent counters. Save and camera navigation
-leave geometry caches alone. The CPU drawing backend is retained; migration to
-the game renderer is still outstanding.
+leave geometry caches alone. Stable CPU meshes now feed the existing game renderer
+through `MapRenderFrame`. Per-object GPU meshes survive camera, selection, overlay
+and layout changes. World-ray picking and captures share the camera/layout contract;
+Avalonia overlays composite above GPU geometry. Readback occurs only for explicit
+preview capture. Headless screenshots and renderer failure retain the CPU fallback.
 
 ## Runtime map build migration
 
@@ -133,7 +136,7 @@ that the missing replay features work.
 | P1 shared clips/highlights/export | Existing functionality retained; shared-timeline migration outstanding |
 | P2A history | State IDs, bounded delta commands and transaction coalescing implemented for common actions |
 | P2B viewport | Per-object native mesh and independent imported/entity/selection invalidation implemented |
-| P2C renderer viewport | Logical/pixel layout contract added; game-renderer backend outstanding |
+| P2C renderer viewport | Existing game renderer consumes stable meshes; DPI/picking/capture contract, overlay composition and viewport resource lifetime verified |
 | P2D snapshots | Detached graph snapshots implemented |
 | P2E/F scheduler/cache | Runtime Build/Playtest, validation, navigation, packaging, installer and synchronous room preparation share a bounded queue, compiler cache and integrity-checked runtime cache |
 | P2G dependencies | Content analyzer and portable asset set shared by build/cache, packaging, package reader and Save As |
@@ -148,11 +151,14 @@ that the missing replay features work.
 - Replay v2/v3 format, metadata, recovery, extraction and malformed input, passive session/scene ownership: 556 checks.
 - Network lifecycle: 3,681 assertions.
 - Health/shot behavior: 2,967,760 assertions.
-- Editor/history/cache/build: 69 checks, including real synthetic-texture compilation,
+- Editor/history/cache/build: 88 checks, including projection/ray agreement across DPI scales, real synthetic-texture compilation,
   package roundtrip, five-file output, dependency changes, cache corruption,
   deterministic packages, cancellation, mixed queue bounds, shared compilation,
   independent scheduler publication and two-worker concurrency.
 - Map Studio rendered successfully at 1440×900 and 960×600.
+- Renderer viewport: 28 GL integration checks including three window sizes, Retina
+  pointer selection, overlays, preview readback, imported collision meshes, resource
+  cleanup and foreground ownership. Native and DUST2 captures inspected visually.
 - A fresh 1,800-frame protocol-16 recording passes linear/reset-forward gameplay
   hashes, sampled scalar state, randomized seeks, all playback rates and frozen EOF.
 - Replay controls/camera/Studio checks and 406 controller checks pass.
@@ -178,6 +184,13 @@ are not end-to-end frame times or a promise of the same speedup on every machine
 The benchmark exposed full-map wrapper allocation in the initial delta path.
 Direct identity lookup removed it; geometry vertices are never copied by numeric
 transform commands. Timings vary with JIT, GC and machine load.
+
+The renderer microbenchmark (`-mapviewportcheck DIR -mapproject FILE`) used DUST2
+with 11,056 render faces and 1,902 collision faces on macOS arm64. Average GPU draw
+including driver completion was 1.453 ms over 20 draws; the CPU fallback's Avalonia
+polygon raster averaged 51.603 ms over five renders. Upload is excluded. These are
+component costs rather than end-to-end editor frame times. Selection, camera and
+collision changes reused all GPU meshes; moving one native object uploaded one mesh.
 
 ## Playback session ownership
 

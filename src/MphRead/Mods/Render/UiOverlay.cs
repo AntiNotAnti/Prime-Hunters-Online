@@ -192,6 +192,7 @@ namespace MphRead.Mods.Render
             // overlay blends premultiplied, which is the same "over" Avalonia
             // applied when it owned both layers.
             LauncherPhoto.Draw(width, height);
+            Mods.Launcher.Gui.UiSurface.Current?.DrawMapViewport(width, height);
             Draw(width, height);
             // The real hunter, *over* the screens rather than under them.
             //

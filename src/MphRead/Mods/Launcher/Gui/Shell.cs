@@ -164,6 +164,11 @@ namespace MphRead.Mods.Launcher.Gui
                 // program must not leave either behind.
                 NetSession.Stop();
                 NetHostSession.Stop();
+                if (window != null)
+                {
+                    window.Context.MakeCurrent();
+                    UiSurface.Current?.ReleaseMapRenderer();
+                }
                 window?.Dispose();
             }
         }
@@ -235,6 +240,7 @@ namespace MphRead.Mods.Launcher.Gui
             // pause menu against the size the window had when the match
             // started.
             surface.Resize(window.FramebufferSize.X, window.FramebufferSize.Y);
+            surface.PrepareMapRenderer();
             NotePointerBasis(window);
             if (!surface.Visible)
             {

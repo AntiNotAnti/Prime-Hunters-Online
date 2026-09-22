@@ -224,6 +224,21 @@ jobs:
           path: ${{ runner.temp }}/shellshot
           if-no-files-found: warn
 
+      - name: map viewport renderer, picking and resource ownership
+        if: matrix.id == 'linux-x64'
+        run: |
+          xvfb-run -a --server-args="-screen 0 1920x1080x24" \
+            publish/${{ matrix.id }}/ProjectPrime -mapviewportcheck "$RUNNER_TEMP/mapviewportcheck" \
+            -mapproject "publish/${{ matrix.id }}/maps/dust2.ppmap"
+
+      - name: map viewport captures
+        if: matrix.id == 'linux-x64' && always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: map-viewport
+          path: ${{ runner.temp }}/mapviewportcheck
+          if-no-files-found: warn
+
       # Both x64 Linux builds contain a dedicated server -- one with a launcher
       # attached, one without. CI cannot contain the proprietary game files an
       # authoritative server needs, so it verifies the safe startup contract:
