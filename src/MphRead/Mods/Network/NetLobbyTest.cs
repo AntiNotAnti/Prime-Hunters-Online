@@ -186,6 +186,17 @@ namespace MphRead.Mods.Network
             Check(LobbyRules.ValidateDefinition(match with { Mode = GameMode.PrimeHunter, Format = MatchFormat.OneVsOne }, out _) == LobbyResultCode.InvalidConfiguration, "prime hunter stays FFA");
             var single = RosterPacket.Create(); single.Count = 1;
             Check(LobbyRules.Validate(match with { Mode = GameMode.Battle, Format = MatchFormat.FreeForAll }, single, false, out _) == LobbyResultCode.NotEnoughPlayers, "explicit FFA minimum two");
+
+            var flexible = RosterPacket.Create();
+            flexible.Count = 2;
+            flexible.Teams[0] = 0; flexible.Teams[1] = 1;
+            flexible.Names[0] = "A"; flexible.Names[1] = "B";
+            MatchDefinition twoVsTwo = match with { Format = MatchFormat.TwoVsTwo };
+            Check(LobbyRules.Validate(twoVsTwo, flexible, false, out _) == LobbyResultCode.Ok,
+                "fixed team format can start underfilled");
+            flexible.Teams[1] = 0;
+            Check(LobbyRules.Validate(twoVsTwo, flexible, false, out _) == LobbyResultCode.InvalidTeam,
+                "team match still requires two occupied teams");
             for (int players = 2; players <= 8; players++)
             {
                 MatchWorldProfile world = MatchWorldProfile.Resolve(players);
@@ -508,13 +519,21 @@ namespace MphRead.Mods.Network
             config.Match = config.Match with { Mode = GameMode.BattleTeams, Format = MatchFormat.TwoVsTwo };
             config.RuleFlags &= ~SessionRules.RequireReady;
             rig.Expect(owner, owner.Command(LobbyCommandType.UpdateMatch, config: config), LobbyResultCode.Ok);
-            rig.Expect(owner, owner.Command(LobbyCommandType.StartMatch), LobbyResultCode.NotEnoughPlayers);
+            Check(LobbyRules.Validate(config.Match, owner.Roster, false, out _) == LobbyResultCode.Ok,
+                "2v2 start is valid with one player on each side");
             rig.Add(12); rig.Add(13);
             Check(owner.Roster.Teams.Take(4).SequenceEqual(new sbyte[] { 0, 1, 0, 1 }), "deterministic 2v2 assignment");
             rig.Expect(owner, owner.Command(LobbyCommandType.SetTeam, target: (byte)other.Slot, team: 0), LobbyResultCode.TeamFull);
             rig.Expect(owner, owner.Command(LobbyCommandType.StartMatch), LobbyResultCode.Ok);
-            Client leaving = rig.Clients[^1]; leaving.Dispose(); rig.Clients.Remove(leaving);
-            rig.Wait(() => owner.State.Value.Phase == SessionPhase.Lobby, "disconnect invalidates exact team format during load");
+            Client[] leavingTeam = rig.Clients
+                .Where(c => owner.Roster.Teams[c.Slot] == 1).ToArray();
+            foreach (Client leaving in leavingTeam)
+            {
+                leaving.Dispose();
+                rig.Clients.Remove(leaving);
+            }
+            rig.Wait(() => owner.State.Value.Phase == SessionPhase.Lobby,
+                "start cancels only when a team becomes empty during load");
             config = owner.State.Value; config.Match = config.Match with { Format = MatchFormat.FourVsFour };
             rig.Expect(owner, owner.Command(LobbyCommandType.UpdateMatch, config: config), LobbyResultCode.Ok);
             for (uint id = 14; rig.Clients.Count < 8; id++) rig.Add(id);
@@ -548,13 +567,13 @@ namespace MphRead.Mods.Network
             config = owner.State.Value; config.Match = config.Match with { CustomTeams = new TeamLayout(2, 2, 2) };
             rig.Expect(owner, owner.Command(LobbyCommandType.UpdateMatch, config: config), LobbyResultCode.InvalidConfiguration);
             rig.Expect(owner, owner.Command(LobbyCommandType.StartMatch), LobbyResultCode.Ok);
-            Check(owner.State.Value.WorldProfile == MatchWorldProfile.Resolve(6), "world profile frozen with exact layout");
+            Check(owner.State.Value.WorldProfile == MatchWorldProfile.Resolve(6), "world profile frozen with configured layout");
             Client leaving = rig.Clients[^1]; leaving.Dispose(); rig.Clients.Remove(leaving);
-            rig.Wait(() => owner.State.Value.Phase == SessionPhase.Lobby, "4v2 disconnect cancels load barrier");
-            Check(owner.Roster.LobbyReady.Take(owner.Roster.Count).All(ready => !ready), "cancelled barrier clears readiness");
-            rig.Add(60); rig.Expect(owner, owner.Command(LobbyCommandType.StartMatch), LobbyResultCode.Ok);
+            rig.Stable();
+            Check(owner.State.Value.Phase == SessionPhase.Starting,
+                "underfilled custom match keeps loading while both teams remain occupied");
             foreach (Client client in rig.Clients) client.Loaded();
-            rig.Wait(() => owner.State.Value.Phase == SessionPhase.InMatch, "4v2 starts after load");
+            rig.Wait(() => owner.State.Value.Phase == SessionPhase.InMatch, "underfilled 4v2 starts after load");
             leaving = rig.Clients.First(c => c != owner && owner.Roster.Teams[c.Slot] == 0);
             leaving.Dispose(); rig.Clients.Remove(leaving); rig.Stable();
             Client late = rig.Add(61);
