@@ -30,6 +30,13 @@ namespace MphRead.Entities
         public EffectEntry? Effect { get; private set; }
         private ModelInstance? _trailModel = null;
         private int _bindingId = 0;
+        internal void ReplayBindResources()
+        {
+            if (_trailModel == null) { _bindingId = 0; return; }
+            _scene.LoadModel(_trailModel.Model);
+            Material material = _trailModel.Model.Materials[0];
+            _bindingId = _scene.BindGetTexture(_trailModel.Model, material.TextureId, material.PaletteId, Math.Max(0, Recolor - 1));
+        }
         private ulong _lockjawVisualTick;
 
         // Map-audit hooks stay inert outside -maptest -drawrate checks. The

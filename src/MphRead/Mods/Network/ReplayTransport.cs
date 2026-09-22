@@ -24,6 +24,13 @@ namespace MphRead.Mods.Network
         private uint? _target;
         private bool _resumeAfterSeek;
         public bool IsSeeking => State == ReplayState.Seeking;
+        internal uint? SeekTarget => _target ?? _rebuild;
+        internal bool ResumeAfterSeek => _resumeAfterSeek;
+        internal void CopyPreferences(ReplayTransport source)
+        {
+            PlaybackRate = source.PlaybackRate; EventFilter = source.EventFilter;
+            ClipIn = source.ClipIn; ClipOut = source.ClipOut; LastInteraction = source.LastInteraction;
+        }
         public uint? ClipIn { get; private set; }
         public uint? ClipOut { get; private set; }
         public void MarkIn() => SetMarkIn(CurrentFrame);

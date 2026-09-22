@@ -61,6 +61,17 @@ internal static class ReplayReplicaProjectionChecks
             && !baseline!.Records.Any(r => r.Kind == ReplayFactKind.Intent),
             "old-life firing input does not enter new-life baseline");
         require(clip!.Records.Any(r => r.Kind == ReplayFactKind.Intent), "later baselines preserve frozen facts");
+        bool networkWorldRejected = false;
+        try { PassiveReplayScene.Checkpoint(clip); } catch (System.IO.InvalidDataException) { networkWorldRejected = true; }
+        require(networkWorldRejected, "network baseline cannot masquerade as a full replica world");
+        foreach (byte[] invalidWorld in new[] { Array.Empty<byte>(), new byte[] { 0x50, 0x50, 0x57, 0x43, 255, 0 },
+            new byte[Replay.ReplayWorldCheckpoint.MaximumBytes + 1] })
+        {
+            bool rejected = false;
+            try { Replay.ReplayWorldCheckpoint.FromBytes(invalidWorld); }
+            catch (Exception ex) when (ex is System.IO.InvalidDataException or System.IO.IOException) { rejected = true; }
+            require(rejected, "world checkpoint rejects empty, incompatible or oversized payload before construction");
+        }
 
         var decoder = new ReplayReplicaState();
         foreach (var fact in clip.RestorePoint.Records.Concat(clip.Records)) decoder.Accept(fact.Payload, fact.RecordingFrame);

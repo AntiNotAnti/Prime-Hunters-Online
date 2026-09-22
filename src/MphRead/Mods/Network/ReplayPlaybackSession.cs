@@ -20,6 +20,8 @@ namespace MphRead.Mods.Network
         public void Dispose() => Stop();
         private DemoReader? _reader;
         private DemoRecord? _pending;
+        private ReplayTimelineClip? _clip;
+        private int _clipIndex;
         /// <summary>The frame of the recording about to be replayed.</summary>
         private uint _frame;
         private bool _started;
@@ -36,7 +38,19 @@ namespace MphRead.Mods.Network
         public double DurationSeconds => LastFrame / 60.0;
 
         /// <summary>True once the file has no more records -- the scene holds on the last state rather than closing itself.</summary>
-        public bool AtEnd => IsActive && _pending == null;
+        public bool AtEnd => IsActive && (_clip != null ? _started && _frame >= LastFrame : _pending == null);
+
+        internal void Join(ReplayTimelineClip clip, ReplayReplicaCheckpoint construction)
+        {
+            if (_host is not PassiveReplaySessionHost passive || clip.RestorePoint.Kind != ReplayRestoreKind.ReplicaCheckpoint)
+                throw new InvalidOperationException("A frozen world clip requires a passive replica host and complete checkpoint.");
+            Stop();
+            _host.Start(); passive.State.RestoreCheckpoint(construction);
+            _clip = clip; _clipIndex = 0; _frame = clip.RestorePoint.RecordingFrame; CurrentPath = null;
+            LastFrame = clip.EndRecordingFrame; IsActive = true; _started = false;
+            LastResult = ReplayOpenResult.Success; LastError = null;
+            Transport.Begin();
+        }
 
         /// <summary>
         /// Why the last <see cref="Join"/> failed, for a screen that is
@@ -250,6 +264,14 @@ namespace MphRead.Mods.Network
         /// </summary>
         internal bool Reposition(uint frame, uint netFrame)
         {
+            if (IsActive && _clip != null)
+            {
+                if (frame < _clip.RestorePoint.RecordingFrame || frame > _clip.EndRecordingFrame) return false;
+                _clipIndex = 0;
+                while (_clipIndex < _clip.Records.Count && _clip.Records[_clipIndex].RecordingFrame <= frame) _clipIndex++;
+                _frame = frame; _started = true; _host.RestoreClock(netFrame); _host.SeekTo(frame);
+                return true;
+            }
             if (!IsActive || CurrentPath == null) return false;
             DemoReader? next = DemoReader.Open(CurrentPath, out ReplayOpenResult result);
             if (next == null || next.ProtocolVersion != NetConfig.ProtocolVersion)
@@ -286,6 +308,19 @@ namespace MphRead.Mods.Network
         /// </summary>
         public void PumpFrame()
         {
+            if (IsActive && _clip != null)
+            {
+                if (AtEnd) return;
+                if (_started) _frame++; else _started = true;
+                while (_clipIndex < _clip.Records.Count && _clip.Records[_clipIndex].RecordingFrame <= _frame)
+                {
+                    var record = _clip.Records[_clipIndex++];
+                    if (record.Kind is ReplayFactKind.Match or ReplayFactKind.Roster or ReplayFactKind.Snapshot or ReplayFactKind.Intent)
+                        _host.Inject(record.Payload.ToArray(), record.RecordingFrame);
+                }
+                _host.Advance(_frame / 60.0);
+                return;
+            }
             if (!IsActive || _reader == null || AtEnd)
             {
                 return;
@@ -345,6 +380,7 @@ namespace MphRead.Mods.Network
 
         public void Stop()
         {
+            _clip = null; _clipIndex = 0;
             _host.Stop();
             Transport.Stop();
             CloseReader();

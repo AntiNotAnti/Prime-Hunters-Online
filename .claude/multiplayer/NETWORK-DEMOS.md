@@ -35,19 +35,35 @@ model animation, projectile trails and effect particles. Presentation-only chang
 do not invalidate gameplay hashes; older hash schemas are explicitly skipped while
 their replay packets remain readable. The check compares both projections on every
 frame, including when the sibling scene runs in batches.
-This is deterministic reconstruction from packet-visible facts, not a detached
-world checkpoint. Historical objective/effect capture and killcam integration
-remain outstanding.
+These per-frame checks establish deterministic reconstruction from packet-visible
+facts. Historical authoritative world/objective capture and killcam integration
+remain outstanding; detached restore validation is described below.
 
 Detached checkpoint components now include a versioned, bounded replica-decoder
 payload and model animation state. Decoder restore retains packet ordering,
 occupants, death tombstones, input ages, rules, RNG and pickup state, and validates
 into a temporary owner before applying. Animation restore refers to model names
 and group ordinals, never GPU handles or live model references. These components
-are **not** full scene restore points: dynamic entity membership, entity links,
-simulation and effect state must be assembled before they can power a seek or killcam.
+are **not** full scene restore points by themselves; the world capsule below
+assembles entity membership, links, simulation and effect state.
 The replica check restores decoder values every frame and deliberately perturbs
 and restores all entity-model animations between batches.
+
+`ReplayWorldCheckpoint` now assembles those components with an explicit field
+contract for multiplayer entities, membership/pool order, local links, queued
+messages, effects/particles, clocks, RNG and replication/continuous-fire history.
+Capsules own bounded bytes (8 MiB/32,768 objects), never native handles or live
+objects. Asset identities and construction anchors resolve in an independently
+loaded scene with matching room content and initial decoder baseline. Resource
+rebinding does not call gameplay initialization. Unsupported schemas fail closed.
+
+`PassiveReplayPlayer` owns file/frozen-clip playback and a 64 MiB/128-entry cache,
+with checkpoints every 300 frames and at most 120 seek steps per update. Restore
+only targets an unpublished replica; it replaces the presented scene after success.
+Frozen clips require `ReplicaCheckpoint` and continue after timeline reset. The
+1,801-frame fixture passes seven restores, 1,500 continuation frames, seven exact
+restored images and 61 seek/clip comparisons. This is not all-mode/live killcam
+acceptance. Live checkpoint capture and foreground consumer migration remain.
 
 ## Controls and clock
 

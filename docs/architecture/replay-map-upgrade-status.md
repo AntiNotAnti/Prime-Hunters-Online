@@ -38,11 +38,12 @@ No fallback is removed before the plan's runtime acceptance gate.
 
 ## Remaining replay work
 
-- Complete detached scene restore schema and authoritative world/event capture.
-  Decoder and animation components are implemented; full entity/effect assembly is outstanding.
+- Complete authoritative world/event capture and attach live capture to detached
+  world checkpoints. Explicit entity/effect/clock/link assembly and file/frozen-clip
+  restoration are implemented; broader mode and combat acceptance remains.
 - Complete historical presentation/event state and scene service coverage for all modes;
   replica simulation, replication, silent audio and GL resource ownership are implemented.
-- Detached checkpoint seek and consumer attachment for instance-owned passive playback.
+- Attach the instance-owned passive player and bounded checkpoint seeking to consumers.
 - Replay-based personal/final killcams and audio/input/HUD ownership.
 - Migrate full playback, instant clips, Studio, thumbnails and video export.
 - Desktop/Android runtime stress and determinism/performance acceptance.
@@ -131,11 +132,11 @@ that the missing replay features work.
 
 | Plan area | Status |
 | --- | --- |
-| P0A timeline | Implemented bounded immutable records/segments, freeze and identity mapping; complete scene restore schema still missing |
+| P0A timeline | Bounded immutable records/segments, freeze and identity mapping; detached world restore implemented for passive scenes, live checkpoint production remains |
 | P0B recorder | Accepted match/configuration/roster/player snapshots, remote intents, submitted local input and existing semantic events integrated; full world/objective/presentation event capture missing |
-| P0C isolated session/services | Instance reader/transport/hosts and passive decoder implemented; scene-owned players, match state, RNG, camera sequences and pools extracted; private replication, silent audio, fixed stepping and GL rendering implemented; complete world checkpoints remain |
+| P0C isolated session/services | Instance reader/transport/hosts, private replication, silent audio, fixed stepping, GL rendering and detached world checkpoints implemented; broader mode/combat acceptance remains |
 | P0D/P0E personal/final killcams | Existing implementation retained; replay-scene replacement and runtime acceptance outstanding |
-| P1 playback/seek/interpolation | Studio facades now delegate reader/clock/transport to a session; seeks schedule at most 120 steps; isolated scenes/checkpoints/interpolation migration outstanding |
+| P1 playback/seek/interpolation | Studio facades delegate reader/clock/transport to a session; passive file/frozen-clip player uses detached checkpoints and at most 120 seek steps; foreground/interpolation migration outstanding |
 | P1 shared clips/highlights/export | Existing functionality retained; shared-timeline migration outstanding |
 | P2A history | State IDs, bounded delta commands and transaction coalescing implemented for common actions |
 | P2B viewport | Per-object native mesh and independent imported/entity/selection invalidation implemented |
@@ -151,7 +152,7 @@ that the missing replay features work.
 
 - Desktop Release build: passes with 18 pre-existing warnings.
 - Timeline: 36 checks.
-- Replay v2/v3 format, metadata, recovery, extraction and malformed input, passive session/scene ownership and projections: 578 checks.
+- Replay v2/v3 format, metadata, recovery, extraction and malformed input, passive session/scene ownership and projections: 582 checks.
 - Network lifecycle: 3,681 assertions.
 - Health/shot behavior: 2,967,760 assertions.
 - Editor/history/cache/build: 88 checks, including projection/ray agreement across DPI scales, real synthetic-texture compilation,
@@ -210,13 +211,42 @@ Gameplay hash schema 3 covers projectiles, bombs, pickups and gameplay RNG as we
 as players/objectives. Separate per-frame presentation hashes cover animation,
 trails and effect particles. All 1,801 frames agree in headless and OpenGL passes;
 linear/reconstructed playback, randomized seeks, rates and EOF also pass schema 3.
-Rendered images remain byte-identical after sibling disposal. Detached checkpoints
-and complete historical objective/effect state are still missing.
+Rendered images remain byte-identical after sibling disposal. Live authoritative
+world/objective capture and consumer migration remain outstanding.
 
 The detached decoder component now roundtrips all 1,801 recorded frames, including
 ordering and lifecycle tombstones. The same interleaved run performs 13,568 exact
 model-animation restores after deliberately changing animation frames and active
 flags, in headless and OpenGL modes. Its payloads contain values/asset identities,
 with no live scene/model/GPU references. Invalid decoder payloads fail atomically.
-These component tests do not establish full scene continuation: entity membership,
-links, simulation and effect state are the remaining checkpoint assembly work.
+The subsequent world assembly also passes seven detached restores (including an
+in-flight projectile), 1,500 continuation frames and 61 file/frozen-clip seek
+comparisons. Seven immediate restored OpenGL images match the linear source byte
+for byte. The clip starts at frame 1,150 after 250 warmup steps split across host
+updates, ends at 1,200, supports a backward seek and survives source timeline reset.
+EOF remains frozen. These fixtures do not establish all-mode or live combat acceptance.
+
+## Detached world checkpoints and passive seeking
+
+`ReplayWorldSchemas` is an explicit field contract rather than a traversal of an
+arbitrary live object graph. The capsule contains decoder state, the construction
+baseline, entity/pool membership and links, model animation, effects/particles,
+queued messages, replication history, continuous-fire phase, clocks and RNG.
+Resource assets are identified by keys; native binding names, sockets, hardware
+input and delegates are excluded. Two-pass object binding reconnects local links.
+Room content, construction baseline and contract fingerprint must agree. Unsupported
+objects fail capture instead of being silently omitted. Restore only targets an
+unpublished replica, whose caller disposes it on failure.
+
+Each capsule is bounded to 8 MiB and 32,768 graph objects. `PassiveReplayPlayer`
+retains at most 128 capsules/64 MiB, captures every 300 frames, selects a preceding
+checkpoint, replaces the scene after successful restore and advances at most 120
+steps per update. Frozen timeline clips must carry `ReplicaCheckpoint`; network
+baselines are rejected. The file and clip paths share the same replica stepping.
+
+In the local 1,801-frame fixture, capsules occupied about 480 KiB (decimal bytes:
+490,985–491,613). Seven cached capsules retained 3,437,580 bytes including cache
+overhead. Warm headless capture took approximately 10–14 ms; fresh scene creation
+plus restore took 22–33 ms in this run. Seeking to frame 1,799 from checkpoint
+1,500 required 299 steps over three updates. These are component measurements,
+not a claim about live killcam startup or Android frame time.
