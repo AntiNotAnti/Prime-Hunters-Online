@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 using MphRead.Entities;
 using MphRead.Formats.Sound;
@@ -169,6 +170,113 @@ namespace MphRead.Sound
         public static int ForceFieldSfxMute { get; set; }
         public static int TimedSfxMute { get; set; }
         public static int LongSfxMute { get; set; }
+
+        internal sealed class PreparedAudio
+        {
+            public IReadOnlyList<SoundSample> Samples { get; init; } = Array.Empty<SoundSample>();
+            public IReadOnlyList<Sound3dEntry> RangeData { get; init; } = Array.Empty<Sound3dEntry>();
+            public IReadOnlyList<DgnFile> DgnFiles { get; init; } = Array.Empty<DgnFile>();
+            public IReadOnlyList<SfxScriptFile> Scripts { get; init; } = Array.Empty<SfxScriptFile>();
+            public SoundData SoundData { get; init; } = null!;
+        }
+
+        private static readonly object _prewarmGate = new();
+        private static Lazy<PreparedAudio>? _prewarmedAudio;
+
+        /// <summary>
+        /// Decode immutable audio banks while the lobby is idle. OpenAL
+        /// device/context creation stays on the match thread.
+        /// </summary>
+        public static void Prewarm()
+        {
+            if (Mods.ThumbnailMode.Active || Mods.Headless.Active)
+                return;
+
+            Lazy<PreparedAudio> prepared;
+            lock (_prewarmGate)
+            {
+                if (_prewarmedAudio != null)
+                    return;
+                prepared = new Lazy<PreparedAudio>(
+                    PrepareAudio, LazyThreadSafetyMode.ExecutionAndPublication);
+                _prewarmedAudio = prepared;
+            }
+
+            _ = Task.Run(() =>
+            {
+                var clock = Stopwatch.StartNew();
+                try
+                {
+                    _ = prepared.Value;
+                    Console.WriteLine($"[prewarm] SFX decoded in {clock.Elapsed.TotalSeconds:0.00}s");
+                }
+                catch (Exception ex)
+                {
+                    lock (_prewarmGate)
+                    {
+                        if (ReferenceEquals(_prewarmedAudio, prepared))
+                            _prewarmedAudio = null;
+                    }
+                    Console.WriteLine($"[prewarm] SFX skipped: {ex.Message}");
+                }
+            });
+        }
+
+        internal static void DropPrewarm()
+        {
+            lock (_prewarmGate)
+                _prewarmedAudio = null;
+        }
+
+        internal static PreparedAudio TakePreparedAudio()
+        {
+            Lazy<PreparedAudio> prepared;
+            lock (_prewarmGate)
+            {
+                prepared = _prewarmedAudio ??= new Lazy<PreparedAudio>(
+                    PrepareAudio, LazyThreadSafetyMode.ExecutionAndPublication);
+            }
+            try
+            {
+                return prepared.Value;
+            }
+            finally
+            {
+                lock (_prewarmGate)
+                {
+                    if (ReferenceEquals(_prewarmedAudio, prepared))
+                        _prewarmedAudio = null;
+                }
+            }
+        }
+
+        private static PreparedAudio PrepareAudio()
+        {
+            IReadOnlyList<SoundSample> samples = SoundRead.ReadSoundSamples();
+            SoundTable table = SoundRead.ReadSoundTables();
+            Debug.Assert(samples.Count == table.Entries.Count);
+            for (int i = 0; i < samples.Count; i++)
+            {
+                SoundSample sample = samples[i];
+                SoundTableEntry entry = table.Entries[i];
+                sample.Volume = entry.InitialVolume / 127f;
+                sample.Name = entry.Name;
+                _ = sample.WaveData.Value;
+            }
+
+            SoundData soundData = SoundRead.ReadSdat();
+            foreach (SoundStream stream in soundData.Streams)
+                _ = stream.BufferData.Value;
+
+            return new PreparedAudio
+            {
+                Samples = samples,
+                RangeData = SoundRead.ReadSound3dList(),
+                DgnFiles = SoundRead.ReadDgnFiles(),
+                Scripts = SoundRead.ReadSfxScriptFiles(),
+                SoundData = soundData
+            };
+        }
 
         public static SoundCapability CheckAudioLoad()
         {
@@ -1471,26 +1579,14 @@ namespace MphRead.Sound
 
         public override void Load(Scene scene)
         {
+            var loadClock = Stopwatch.StartNew();
             _scene = scene;
-            _samples = SoundRead.ReadSoundSamples();
-            SoundTable table = SoundRead.ReadSoundTables();
-            Debug.Assert(_samples.Count == table.Entries.Count);
-            for (int i = 0; i < _samples.Count; i++)
-            {
-                SoundSample sample = _samples[i];
-                SoundTableEntry entry = table.Entries[i];
-                sample.Volume = entry.InitialVolume / 127f;
-                sample.Name = entry.Name;
-                _ = sample.WaveData.Value;
-            }
-            _rangeData = SoundRead.ReadSound3dList();
-            _dgnFiles = SoundRead.ReadDgnFiles();
-            _sfxScripts = SoundRead.ReadSfxScriptFiles();
-            _soundData = SoundRead.ReadSdat();
-            foreach (SoundStream stream in _soundData.Streams)
-            {
-                _ = stream.BufferData.Value;
-            }
+            Sfx.PreparedAudio prepared = Sfx.TakePreparedAudio();
+            _samples = prepared.Samples;
+            _rangeData = prepared.RangeData;
+            _dgnFiles = prepared.DgnFiles;
+            _sfxScripts = prepared.Scripts;
+            _soundData = prepared.SoundData;
             for (int i = 0; i < 16; i++)
             {
                 _inactiveQueue.Enqueue(new QueueItem());
@@ -1521,6 +1617,7 @@ namespace MphRead.Sound
             {
                 AL.DistanceModel(ALDistanceModel.LinearDistanceClamped);
             }
+            Console.WriteLine($"[load] SFX device ready in {loadClock.Elapsed.TotalSeconds:0.00}s");
         }
 
         public override void ShutDown()
