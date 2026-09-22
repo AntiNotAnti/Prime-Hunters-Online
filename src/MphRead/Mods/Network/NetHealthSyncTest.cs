@@ -40,12 +40,9 @@ namespace MphRead.Mods.Network
             data[5] = 0;
             NetHealthSync.Receive(data);
             Check(NetHealthSync.TryGet(4, out state) && state.Available, "old match mutated health");
-            Check(SnapshotHeader.Size + SnapshotWire.StateHeaderSize
-                + SnapshotWire.PlayerSize * PlayerEntity.SlotCapacity + 1
-                + SnapshotWire.DamageGroupSize
-                + NetMatchTimeSync.Size + NetHealthSync.HeaderSize
-                + NetHealthSync.MaxSpawns * NetHealthSync.EntrySize < NetConfig.MaxPacketSize,
-                "full base snapshot plus health state leaves no damage-event headroom");
+            Check(SnapshotHeader.Size + PlayerState.Size * PlayerEntity.SlotCapacity
+                + NetMatchTimeSync.Size + NetHealthSync.HeaderSize + NetHealthSync.MaxSpawns * NetHealthSync.EntrySize < NetConfig.MaxPacketSize,
+                "full snapshot exceeds datagram budget");
             Span<byte> times = stackalloc byte[NetMatchTimeSync.Size];
             times.Clear();
             BinaryPrimitives.WriteSingleLittleEndian(times[60..], 100);
