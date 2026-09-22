@@ -120,6 +120,7 @@ namespace MphRead.Mods.Network
         private static readonly Vector3[] _simulatedInputPositions = new Vector3[PlayerEntity.SlotCapacity];
         private static readonly Vector3[] _simulatedInputSpeeds = new Vector3[PlayerEntity.SlotCapacity];
         private static readonly bool[] _simulatedInputAltForms = new bool[PlayerEntity.SlotCapacity];
+        private static readonly bool[] _movementCapturePending = new bool[PlayerEntity.SlotCapacity];
 
         internal static void MarkMovementSimulated(int slot, uint frame,
             Vector3 position, Vector3 speed, bool altForm)
@@ -143,6 +144,19 @@ namespace MphRead.Mods.Network
             _simulatedInputPositions[slot] = position;
             _simulatedInputSpeeds[slot] = speed;
             _simulatedInputAltForms[slot] = altForm;
+            _movementCapturePending[slot] = true;
+        }
+
+        internal static void CompleteMovementSimulation(PlayerEntity player)
+        {
+            int slot = player.SlotIndex;
+            if ((uint)slot >= _movementCapturePending.Length || !_movementCapturePending[slot]) return;
+            _movementCapturePending[slot] = false;
+            // Match the client's end-of-tick history, including impulses and
+            // teleports from entities processed after this player's movement.
+            _simulatedInputPositions[slot] = player.Position;
+            _simulatedInputSpeeds[slot] = player.Speed;
+            _simulatedInputAltForms[slot] = player.IsAltForm;
         }
 
         /// <summary>Latest intent per slot, consumed by the host's input step.</summary>
@@ -442,6 +456,7 @@ namespace MphRead.Mods.Network
             Array.Clear(RemoteInputSpeeds);
             Array.Clear(RemoteInputAltForms);
             Array.Clear(_simulatedInputFrames);
+            Array.Clear(_movementCapturePending);
             Array.Clear(_simulatedInputPositions);
             Array.Clear(_simulatedInputSpeeds);
             Array.Clear(_simulatedInputAltForms);
@@ -528,6 +543,7 @@ namespace MphRead.Mods.Network
             Array.Clear(RemoteInputSpeeds);
             Array.Clear(RemoteInputAltForms);
             Array.Clear(_simulatedInputFrames);
+            Array.Clear(_movementCapturePending);
             Array.Clear(_simulatedInputPositions);
             Array.Clear(_simulatedInputSpeeds);
             Array.Clear(_simulatedInputAltForms);
@@ -1474,7 +1490,7 @@ namespace MphRead.Mods.Network
             }
             // Identity is checked before ordering. A new occupant/life clears
             // the frame baseline; a late packet can never reset it.
-            if (!NetPlayerLifecycle.AcceptIntent(slot, intent)) return;
+            if (!intent.HasValidAim || !intent.HasValidMovement || !NetPlayerLifecycle.AcceptIntent(slot, intent)) return;
             if (_lastSlotIntentFrame[slot] != 0 && !NetLifecycleTracker.Newer(intent.Frame, _lastSlotIntentFrame[slot]))
             {
                 IntentsOutOfOrder++;
@@ -1525,6 +1541,7 @@ namespace MphRead.Mods.Network
             RemoteInputSpeeds[slot] = Vector3.Zero;
             RemoteInputAltForms[slot] = false;
             _simulatedInputFrames[slot] = 0;
+            _movementCapturePending[slot] = false;
             _simulatedInputPositions[slot] = Vector3.Zero;
             _simulatedInputSpeeds[slot] = Vector3.Zero;
             _simulatedInputAltForms[slot] = false;
@@ -1737,6 +1754,7 @@ namespace MphRead.Mods.Network
                 Array.Clear(RemoteInputSpeeds);
                 Array.Clear(RemoteInputAltForms);
                 Array.Clear(_simulatedInputFrames);
+                Array.Clear(_movementCapturePending);
                 Array.Clear(_simulatedInputPositions);
                 Array.Clear(_simulatedInputSpeeds);
                 Array.Clear(_simulatedInputAltForms);
@@ -1867,6 +1885,19 @@ namespace MphRead.Mods.Network
             {
                 SnapshotsOutOfOrder++;
                 return;
+            }
+
+            // Validate every acknowledgement before committing the keyframe
+            // baseline or any per-slot state. A malformed later slot must not
+            // partially replace the last accepted snapshot.
+            for (int slot = 0; slot < PlayerEntity.SlotCapacity; slot++)
+            {
+                if ((activeMask & (1 << slot)) != 0
+                    && !SnapshotWire.TryReadMovementAck(payload, slot,
+                        out _, out _, out _, out _))
+                {
+                    return;
+                }
             }
 
             if (keyframe)

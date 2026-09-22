@@ -222,10 +222,25 @@ namespace MphRead.Mods.Network
                     double turn = frame / 60.0 + slot;
                     var aim = new Vector3((float)Math.Cos(turn), 0, (float)Math.Sin(turn));
                     var buttons = IntentButtons.MoveUp;
+                    if (player != null && player.LoadFlags.TestFlag(LoadFlags.Spawned)
+                        && player.Health > 0)
+                    {
+                        buttons |= IntentButtons.InPlayState;
+                    }
                     if (frame % 20 < 6)
                     {
                         buttons |= IntentButtons.Shoot;
                     }
+                    // Exercise both movement paths, including camera-relative
+                    // rolling and the flick input that position relaying used
+                    // to hide. The engine still decides whether morph/boost is
+                    // allowed at the current position.
+                    if (frame % 360 == 120 || frame % 360 == 300)
+                        buttons |= IntentButtons.Morph;
+                    if (player?.IsAltForm == true) buttons |= IntentButtons.RollUp;
+                    uint boostFrame = player?.IsAltForm == true && frame % 120 >= 90
+                        && frame % 120 < 90 + IntentPacket.PressHistory
+                        ? frame - frame % 120 + 90 : 0;
                     NetSession.AcceptSlotIntent(slot, new IntentPacket
                     {
                         Frame = frame,
@@ -236,6 +251,9 @@ namespace MphRead.Mods.Network
                         Buttons = buttons,
                         Presses = new uint[IntentPacket.PressHistory],
                         Aim = aim,
+                        RollForward = new Vector2(aim.X, aim.Z),
+                        BoostFrame = boostFrame,
+                        BoostDirection = Vector2.UnitX,
                         Position = _at[slot],
                         WeaponSelect = 0xFF,
                         AmmoUa = 400,

@@ -183,11 +183,29 @@ namespace MphRead.Mods.Network
             && !NetSession.IsAuthority && !NetSession.IsHost
             && NetSession.SnapshotAge <= SnapshotStaleFrames;
 
+        private static IntentPacket _sampledLocalIntent;
+        private static bool _localIntentPending;
+
+        internal static void RecordRollBasis(Vector2 forward)
+        {
+            if (_localIntentPending) _sampledLocalIntent.RollForward = NetMovementInput.Normalize(forward);
+        }
+
         public static void AfterRemoteMovement(PlayerEntity player)
         {
-            if (!NetSession.Active || !NetRoomChange.GameplayReady
-                || player.SlotIndex == NetSession.LocalSlot)
+            if (!NetSession.Active || !NetRoomChange.GameplayReady)
             {
+                return;
+            }
+            if (player.SlotIndex == NetSession.LocalSlot)
+            {
+                if (_localIntentPending)
+                {
+                    // Mouse/controller aim is applied inside ProcessBiped/Alt,
+                    // after AfterInput sampled the buttons. Send that tick's
+                    // actual heading, not the previous tick's aim.
+                    _sampledLocalIntent.Aim = player.ModGunVector;
+                }
                 return;
             }
             int slot = player.SlotIndex;
@@ -212,10 +230,9 @@ namespace MphRead.Mods.Network
                     if (NetPlayerLifecycle.Matches(slot,
                         intent.SlotGeneration, intent.LifeId))
                     {
-                        // Record the result *after* movement/collision for the
-                        // first server step that consumed this owner input.
-                        // That is the state the client prediction with the same
-                        // input-frame number can legitimately compare against.
+                        // Mark the first step consuming this input. The final
+                        // result is captured at the same end-of-tick boundary
+                        // as client prediction, after other entities run too.
                         NetSession.MarkMovementSimulated(slot, intent.Frame,
                             player.Position, player.Speed, player.IsAltForm);
                     }
@@ -401,6 +418,7 @@ namespace MphRead.Mods.Network
         /// </summary>
         public static void AfterInput(Scene scene)
         {
+            _localIntentPending = false;
             if (!NetSession.Active)
             {
                 return;
@@ -485,7 +503,8 @@ namespace MphRead.Mods.Network
                 NetPlayerBridge.RecordPresses(player);
                 if (NetSession.NetFrame % NetConfig.IntentSendInterval == 0)
                 {
-                    NetSession.SendIntent(NetPlayerBridge.CaptureIntent(player));
+                    _sampledLocalIntent = NetPlayerBridge.CaptureIntent(player);
+                    _localIntentPending = true;
                 }
             }
             else
@@ -515,6 +534,12 @@ namespace MphRead.Mods.Network
             {
                 return;
             }
+            if (_localIntentPending)
+            {
+                _localIntentPending = false;
+                NetMovementInput.CaptureBoost(ref _sampledLocalIntent);
+                NetSession.SendIntent(_sampledLocalIntent);
+            }
             // The playout clock, before anything reads a puppet position from
             // it. One tick a simulation frame, like every other counter here:
             // a picture with no step behind it must not advance it.
@@ -528,8 +553,12 @@ namespace MphRead.Mods.Network
                 PlayerEntity player = PlayerEntity.Players[i];
                 if (player.LoadFlags.TestFlag(LoadFlags.Active))
                 {
-                    player.ModRecordNetworkPosition(NetSession.NetFrame);
                     player.ModRepairVectors();
+                    player.ModRecordNetworkPosition(NetSession.NetFrame);
+                    if (NetSession.IsHost || NetSession.IsAuthority)
+                    {
+                        NetSession.CompleteMovementSimulation(player);
+                    }
                 }
             }
             // Also for a client the dedicated server designated as authority:

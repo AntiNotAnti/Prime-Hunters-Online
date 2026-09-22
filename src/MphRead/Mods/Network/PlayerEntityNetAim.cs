@@ -100,36 +100,42 @@ namespace MphRead.Entities
         private readonly bool[] _networkAltHistory = new bool[NetworkHistoryLength];
         private readonly uint[] _networkPositionFrames = new uint[NetworkHistoryLength];
         private int _networkPositionHistoryCount;
+        private int _networkPositionHistoryHead;
 
         /// <summary>Where this player's next beam will be born. Diagnostics only.</summary>
         internal OpenTK.Mathematics.Vector3 ModMuzzlePos => _muzzlePos;
 
-        internal void ModResetNetworkHistory() => _networkPositionHistoryCount = 0;
+        internal void ModResetNetworkHistory()
+        {
+            _networkPositionHistoryCount = 0;
+            _networkPositionHistoryHead = 0;
+        }
 
         internal void ModRecordNetworkPosition(uint frame)
         {
-            int count = Math.Min(_networkPositionHistoryCount, NetworkHistoryLength - 1);
-            for (int i = count; i > 0; i--)
+            // Append in constant time. Re-recording a frame replaces it rather
+            // than consuming another entry (e.g. after a correction).
+            if (_networkPositionHistoryCount == 0
+                || _networkPositionFrames[_networkPositionHistoryHead] != frame)
             {
-                _networkPositionHistory[i] = _networkPositionHistory[i - 1];
-                _networkSpeedHistory[i] = _networkSpeedHistory[i - 1];
-                _networkAltHistory[i] = _networkAltHistory[i - 1];
-                _networkPositionFrames[i] = _networkPositionFrames[i - 1];
+                _networkPositionHistoryHead = (_networkPositionHistoryHead + 1) % NetworkHistoryLength;
+                _networkPositionHistoryCount = Math.Min(_networkPositionHistoryCount + 1, NetworkHistoryLength);
             }
-            _networkPositionHistory[0] = Position;
-            _networkSpeedHistory[0] = Speed;
-            _networkAltHistory[0] = IsAltForm;
-            _networkPositionFrames[0] = frame;
-            _networkPositionHistoryCount = Math.Min(count + 1, NetworkHistoryLength);
+            int head = _networkPositionHistoryHead;
+            _networkPositionHistory[head] = Position;
+            _networkSpeedHistory[head] = Speed;
+            _networkAltHistory[head] = IsAltForm;
+            _networkPositionFrames[head] = frame;
         }
 
         internal bool ModGetNetworkPosition(uint frame, out Vector3 position)
         {
             for (int i = 0; i < _networkPositionHistoryCount; i++)
             {
-                if (_networkPositionFrames[i] <= frame)
+                int at = (_networkPositionHistoryHead - i + NetworkHistoryLength) % NetworkHistoryLength;
+                if (!NetLifecycleTracker.Newer(_networkPositionFrames[at], frame))
                 {
-                    position = _networkPositionHistory[i];
+                    position = _networkPositionHistory[at];
                     return true;
                 }
             }
@@ -142,11 +148,12 @@ namespace MphRead.Entities
         {
             for (int i = 0; i < _networkPositionHistoryCount; i++)
             {
-                if (_networkPositionFrames[i] == frame)
+                int at = (_networkPositionHistoryHead - i + NetworkHistoryLength) % NetworkHistoryLength;
+                if (_networkPositionFrames[at] == frame)
                 {
-                    position = _networkPositionHistory[i];
-                    speed = _networkSpeedHistory[i];
-                    altForm = _networkAltHistory[i];
+                    position = _networkPositionHistory[at];
+                    speed = _networkSpeedHistory[at];
+                    altForm = _networkAltHistory[at];
                     return true;
                 }
             }
@@ -1074,7 +1081,7 @@ namespace MphRead.Entities
             return 0;
         }
 
-        internal void ModSetShotState(int chargeLevel, int boostDamage, bool doubleDamage)
+        internal void ModSetShotState(int chargeLevel, bool doubleDamage)
         {
             if (SlotIndex == NetHooks.LocalSlot)
             {
@@ -1083,7 +1090,9 @@ namespace MphRead.Entities
                 return;
             }
             EquipInfo.ChargeLevel = (ushort)Math.Clamp(chargeLevel, 0, UInt16.MaxValue);
-            _boostDamage = (ushort)Math.Clamp(boostDamage, 0, UInt16.MaxValue);
+            // Boost charge, speed and ram damage now belong to the same
+            // authoritative movement step. A delayed owner report must not
+            // replace the damage the server just derived for its boost.
             if (doubleDamage)
             {
                 // Held up rather than counted down: the owner says so again

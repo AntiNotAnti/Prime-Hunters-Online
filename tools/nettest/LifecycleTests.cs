@@ -12,7 +12,7 @@ namespace MphRead.NetTest
 {
     // Runs the production packet parser, session, lifecycle, prediction, damage
     // and history code without proprietary assets or a graphics/audio device.
-    internal static class LifecycleTests
+    internal static partial class LifecycleTests
     {
         private static int _checks;
         public static int Run()
@@ -28,6 +28,7 @@ namespace MphRead.NetTest
                 PacketOrdering();
                 SnapshotDeltaStream();
                 IntentBundleDelivery();
+                Movement();
                 Prediction();
                 DamageHistory();
                 PresentationClock();
@@ -103,7 +104,7 @@ namespace MphRead.NetTest
             Check(IntentBundlePacket.SizeFor(PlayerEntity.SlotCapacity, PlayerEntity.SlotCapacity)
                 < NetConfig.MaxPacketSize, "worst-case intent bundle exceeds datagram budget");
 
-            Check(NetConfig.ProtocolVersion == 18, "server-authoritative movement protocol version");
+            Check(NetConfig.ProtocolVersion == 19, "server-authoritative movement protocol version");
             SnapshotWire.WriteStateHeader(buffer.AsSpan(SnapshotHeader.Size,
                 SnapshotWire.StateHeaderSize), keyframe: true, activeMask: 0xFF, baselineFrame: 1234);
             Vector3 ackPosition = new Vector3(4.5f, 8.25f, -2.75f);
@@ -344,6 +345,34 @@ namespace MphRead.NetTest
             state.LifeId = 1;
             Send(owner, PacketType.Snapshot, Snapshot(2, state));
             Check(Field<uint>("_snapshotFrame") == 2, "valid lower frame survives malformed higher frame");
+            byte[] badAck = Snapshot(3, state);
+            SnapshotWire.WriteMovementAck(badAck.AsSpan(SnapshotHeader.Size), 0,
+                10, new Vector3(float.NaN, 0, 0), Vector3.Zero, false);
+            Send(owner, PacketType.Snapshot, badAck);
+            Check(Field<uint>("_snapshotFrame") == 2,
+                "relay refuses a malformed movement acknowledgement before caching it");
+
+            var input = new IntentPacket { MatchId = Field<ushort>("_matchId"),
+                AuthorityEpoch = Field<ulong>("_authorityEpoch"), SlotGeneration = 1,
+                LifeId = 1, Frame = 10, Aim = Vector3.UnitZ, Buttons = IntentButtons.MoveUp };
+            void SendInput()
+            {
+                byte[] body = new byte[IntentPacket.FullSize]; input.Write(body);
+                Send(owner, PacketType.Intent, body);
+            }
+            object peer = Field<System.Collections.IList>("_peers")[0]!;
+            IntentPacket Latest() => (IntentPacket)peer.GetType().GetField("LatestIntent")!.GetValue(peer)!;
+            SendInput();
+            input.Frame = 9; input.Buttons = IntentButtons.MoveDown;
+            SendInput();
+            Check(Latest().Frame == 10 && Latest().Buttons == IntentButtons.MoveUp,
+                "reordered intent cannot roll back the observer bundle's controls");
+            input.Frame = 100; input.Aim = new Vector3(float.NaN, 0, 0);
+            SendInput();
+            Check(Latest().Frame == 10, "malformed aim cannot replace the server's latest intent");
+            input.Frame = 11; input.Aim = Vector3.UnitX;
+            SendInput();
+            Check(Latest().Frame == 11, "valid input survives a malformed higher frame on the relay");
         }
 
         private static void ClaimBoundaries()

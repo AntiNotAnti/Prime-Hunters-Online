@@ -2321,10 +2321,8 @@ namespace MphRead.Mods.Network
             {
                 IntentPacket intent = IntentPacket.Read(packet.Payload);
                 ushort life = _sim != null ? NetPlayerLifecycle.Get(peer.SlotIndex) : _slotLives[peer.SlotIndex];
-                if (intent.MatchId != _matchId || intent.AuthorityEpoch != _authorityEpoch
+                if (!intent.HasValidAim || !intent.HasValidMovement || intent.MatchId != _matchId || intent.AuthorityEpoch != _authorityEpoch
                     || intent.SlotGeneration != _slotGenerations[peer.SlotIndex] || intent.LifeId != life) return;
-                peer.LatestIntent = intent;
-                peer.HasIntent = true;
                 if (_sim != null)
                 {
                     // Straight into the simulation, one hop earlier than a
@@ -2353,6 +2351,8 @@ namespace MphRead.Mods.Network
                     return;
                 }
                 peer.LastIntentFrame = intent.Frame;
+                peer.LatestIntent = intent;
+                peer.HasIntent = true;
                 ServerReplayRecorder.RecordSlotIntent(peer.SlotIndex, packet.Payload);
                 // Only meaningful between the end of one match and the start
                 // of the next; read unconditionally because it costs nothing
@@ -2420,6 +2420,12 @@ namespace MphRead.Mods.Network
             }
 
             int occupied = 0;
+            for (int slot = 0; slot < PlayerEntity.SlotCapacity; slot++)
+            {
+                if ((activeMask & (1 << slot)) != 0
+                    && !SnapshotWire.TryReadMovementAck(payload, slot,
+                        out _, out _, out _, out _)) return;
+            }
             int entryOffset = SnapshotHeader.Size + SnapshotWire.StateHeaderSize;
             for (int i = 0; i < header.PlayerCount; i++)
             {

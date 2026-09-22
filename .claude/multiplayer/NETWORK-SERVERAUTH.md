@@ -26,9 +26,16 @@ launcher hosting.
   an observer fallback only; it cannot place an authoritative player or muzzle.
 - **Responsiveness is predicted locally.** A player's own movement still runs
   immediately on their client. Snapshots echo the newest owner input frame the
-  server actually simulated, and the client reconciles position/velocity
-  against its recorded prediction for that exact input frame. `NetHitPrediction`
+  server actually simulated, paired with the end-of-tick position/velocity
+  from that first simulation. The client compares its history at the same
+  boundary. Input aim is sampled after the tick applies mouse/controller
+  rotation; buttons and charge retain their pre-simulation values. `NetHitPrediction`
   does the analogous job for outgoing hit feedback.
+- **Rolling and flick boosts are input.** Intents and observer bundles carry
+  a normalized roll basis plus a bounded, repeated flick event with its input
+  frame and world direction. Receivers consume each flick once. The server
+  computes boost charge, velocity and ram damage; owner boost damage cannot
+  overwrite that result. These wire and simulation changes require protocol 19.
 
 ## Historical transition
 
@@ -237,9 +244,10 @@ press but had no snapshot-based correction.
 
 So the refactor did not create this. It removed slot 0's exemption from it:
 what ALPHA reported is what the other seven players had already seen. The
-current bridge reconciles the owner's form state on the authority and
-the authority's snapshot on each client. The transition-aware guard lets a
-puppet finish morphing while an older state is still in flight, then corrects
+current bridge runs Morph controls through the authority's real transition
+rules and reconciles the authority's snapshot on each client. Reported owner
+form no longer forces an authoritative unmorph through a low ceiling. The
+transition-aware guard lets a puppet finish morphing while an older state is still in flight, then corrects
 a lasting mismatch. This 78-frame result predates that change; a restart-free
 latency run is still needed to measure it in play. See
 `NETWORK-DIAGNOSTICS.md` and `.claude/KNOWN-GAPS.md`.
@@ -289,7 +297,16 @@ not select them.
   server derives canonical position/velocity from controls and collision.
   Reconciliation uses the snapshot's per-slot processed-input frame rather than
   a ping estimate, so a delayed authority state is compared with the local
-  prediction from the same instant.
+  prediction from the same instant. The history is a bounded circular buffer.
+  Hard corrections adopt position, form coordinates and velocity together
+  before collision; both hard and velocity corrections invalidate outstanding
+  predictions so older acknowledgements cannot apply the same error again.
+  Expired history recovers from the current authoritative snapshot.
+- **Full input replay remains unimplemented.** The authority consumes the
+  latest input each tick rather than a queue of every client command. The
+  client corrects state without restoring all physics timers/contact state
+  and replaying unacknowledged commands. This is not yet traditional rollback
+  prediction, and latency/loss plus hunter-specific movement need live testing.
 - **Real Windows authoritative gameplay still deserves manual coverage with
   extracted data.** CI validates the Windows server binary/startup contract,
   but cannot ship proprietary game files into Actions.

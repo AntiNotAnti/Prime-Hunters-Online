@@ -1337,6 +1337,7 @@ namespace MphRead.Entities
                     _altRollLrZ = CameraInfo.Field54;
                 }
                 // todo?: field35C targeting(?) stuff
+                ModNetworkRollInput();
 
                 void UpdateAnimation(float aimX, float aimY)
                 {
@@ -1762,6 +1763,10 @@ namespace MphRead.Entities
                                         + $" -> world ({boostDirX:0.00}, {boostDirZ:0.00})");
                                 }
                             }
+                        }
+                        if (swipeBoost)
+                        {
+                            Mods.Network.NetMovementInput.RecordBoost(this, new Vector2(boostDirX, boostDirZ));
                         }
                         SwipeBoostX = 0;
                         SwipeBoostY = 0;
