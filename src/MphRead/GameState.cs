@@ -531,20 +531,33 @@ namespace MphRead
             }
             else if (MatchState == MatchState.GameOver)
             {
-                PlayerEntity winner = PlayerEntity.Players[ResultSlots[0]];
-                if (!IsResultTie && winner.Health > 0 && winner.LoadFlags.TestFlag(LoadFlags.Active)
-                    && winner.LoadFlags.TestFlag(LoadFlags.Spawned))
+                if (Mods.KillCam.IsFinal)
                 {
-                    if (_stateChanged)
-                    {
-                        _stateChanged = false;
-                        winner.SetUpMatchEndCamera();
-                    }
-                    PlayerEntity.Main.UpdateMatchEndCamera(winner, scene.GlobalElapsedTime - _matchEndTime);
+                    // The final-kill replay owns the entire three-second
+                    // GameOver camera window. Do not let the stock winner
+                    // camera or intro sequence rewrite camera state underneath
+                    // it; Ending takes over immediately after this window.
+                    _stateChanged = false;
                 }
                 else
                 {
-                    EnsureIntroCamSeq();
+                    PlayerEntity winner = PlayerEntity.Players[ResultSlots[0]];
+                    if (!IsResultTie && winner.Health > 0
+                        && winner.LoadFlags.TestFlag(LoadFlags.Active)
+                        && winner.LoadFlags.TestFlag(LoadFlags.Spawned))
+                    {
+                        if (_stateChanged)
+                        {
+                            _stateChanged = false;
+                            winner.SetUpMatchEndCamera();
+                        }
+                        PlayerEntity.Main.UpdateMatchEndCamera(
+                            winner, scene.GlobalElapsedTime - _matchEndTime);
+                    }
+                    else
+                    {
+                        EnsureIntroCamSeq();
+                    }
                 }
                 if (MatchTime == 0)
                 {
