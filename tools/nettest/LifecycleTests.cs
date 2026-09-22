@@ -66,9 +66,11 @@ namespace MphRead.NetTest
             const int matchTimeSyncSize = PlayerEntity.SlotCapacity * sizeof(float) * 2;
             Check(1 + SnapshotHeader.Size + SnapshotWire.StateHeaderSize
                 + SnapshotWire.PlayerSize * PlayerEntity.SlotCapacity + 1
-                + SnapshotWire.DamageGroupSize * PlayerEntity.SlotCapacity
-                + matchTimeSyncSize + NetHealthSync.HeaderSize <= NetConfig.MaxPacketSize
-                && NetConfig.MaxPacketSize <= 1472, "worst-case eight-player snapshot fits one UDP datagram");
+                + SnapshotWire.DamageGroupSize + matchTimeSyncSize
+                + NetHealthSync.HeaderSize + NetHealthSync.EntrySize * NetHealthSync.MaxSpawns
+                <= NetConfig.MaxPacketSize
+                && NetConfig.MaxPacketSize <= 1472,
+                "eight-player keyframe plus reconciliation, one damage sidecar and max health tail fits one UDP datagram");
             byte[] buffer = new byte[NetConfig.MaxPacketSize];
             var state = State(ushort.MaxValue, 99, 65400);
             state.DamageEventId = 65535;
@@ -104,10 +106,15 @@ namespace MphRead.NetTest
             Check(NetConfig.ProtocolVersion == 18, "server-authoritative movement protocol version");
             SnapshotWire.WriteStateHeader(buffer.AsSpan(SnapshotHeader.Size,
                 SnapshotWire.StateHeaderSize), keyframe: true, activeMask: 0xFF, baselineFrame: 1234);
-            SnapshotWire.WriteInputFrame(buffer.AsSpan(SnapshotHeader.Size,
-                SnapshotWire.StateHeaderSize), 3, 5678);
-            Check(SnapshotWire.ReadInputFrame(buffer, 3) == 5678,
-                "snapshot input-frame acknowledgement round trip");
+            Vector3 ackPosition = new Vector3(4.5f, 8.25f, -2.75f);
+            Vector3 ackSpeed = new Vector3(.2f, -.15f, .05f);
+            SnapshotWire.WriteMovementAck(buffer.AsSpan(SnapshotHeader.Size,
+                SnapshotWire.StateHeaderSize), 3, 5678, ackPosition, ackSpeed, altForm: true);
+            Check(SnapshotWire.TryReadMovementAck(buffer, 3, out uint ackFrame,
+                    out Vector3 readAckPosition, out Vector3 readAckSpeed, out bool readAckAlt)
+                && ackFrame == 5678 && readAckPosition == ackPosition
+                && readAckSpeed == ackSpeed && readAckAlt,
+                "snapshot movement acknowledgement round trip");
 
             Check(Math.Abs(NetUnlagged.PolicyRewindFrames(10) - 10) < 0.001
                 && Math.Abs(NetUnlagged.PolicyRewindFrames(15) - 15) < 0.001,

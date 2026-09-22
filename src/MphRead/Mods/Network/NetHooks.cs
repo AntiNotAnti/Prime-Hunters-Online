@@ -206,6 +206,20 @@ namespace MphRead.Mods.Network
             // every other authoritative movement effect.
             if (NetSession.IsAuthority || NetSession.IsHost)
             {
+                if (NetSession.RemoteIntentValid[slot])
+                {
+                    IntentPacket intent = NetSession.RemoteIntents[slot];
+                    if (NetPlayerLifecycle.Matches(slot,
+                        intent.SlotGeneration, intent.LifeId))
+                    {
+                        // Record the result *after* movement/collision for the
+                        // first server step that consumed this owner input.
+                        // That is the state the client prediction with the same
+                        // input-frame number can legitimately compare against.
+                        NetSession.MarkMovementSimulated(slot, intent.Frame,
+                            player.Position, player.Speed, player.IsAltForm);
+                    }
+                }
                 return;
             }
             // A client whose puppets belong to the snapshot puts them back
@@ -333,10 +347,6 @@ namespace MphRead.Mods.Network
                 }
 
                 NetPlayerBridge.ApplyIntent(player, intent);
-                if (movementAuthority)
-                {
-                    NetSession.MarkInputSimulated(slot, intent.Frame);
-                }
             }
             return true;
         }

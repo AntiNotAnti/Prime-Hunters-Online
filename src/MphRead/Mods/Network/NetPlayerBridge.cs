@@ -98,6 +98,7 @@ namespace MphRead.Mods.Network
         public static long PredictionCorrections { get; private set; }
         public static long PredictionSnaps { get; private set; }
         public static long PredictionHistoryMisses { get; private set; }
+        public static long PredictionRecoveries { get; private set; }
         public static double PredictionErrorSum { get; private set; }
         public static float PredictionWorstError { get; private set; }
 
@@ -778,9 +779,18 @@ namespace MphRead.Mods.Network
                 player.ModSetSpectating((state.Flags & PlayerState.FlagSpectating) != 0);
                 return;
             }
-            // A deterministic self-death may precede its snapshot. Only a NEW
-            // authority-allocated life can stand that player back up.
-            if (!fresh && player.Health <= 0) return;
+            // A client may predict a kill-plane/self death before the server
+            // agrees. Movement is server authoritative now, so a same-life
+            // alive snapshot must be allowed to recover that false local death
+            // rather than waiting forever for a new LifeId the server will
+            // never allocate.
+            bool recoveredLocalLife = false;
+            if (!fresh && player.Health <= 0)
+            {
+                if (!isLocal) return;
+                RecoverLocalAuthorityLife(player, state);
+                recoveredLocalLife = true;
+            }
             if (!isLocal)
             {
                 Move(player, InForm(player, state.Position, (state.Flags & PlayerState.FlagAltForm) != 0));
@@ -794,15 +804,46 @@ namespace MphRead.Mods.Network
             }
             else
             {
-                if (!fresh && NetRoomChange.GameplayReady)
+                if (!fresh && !recoveredLocalLife && NetRoomChange.GameplayReady)
                 {
-                    ReconcileLocalMovement(player, state, slot, predictedCurrentSpeed);
+                    ReconcileLocalMovement(player, slot, predictedCurrentSpeed);
                     ApplyForm(player, (state.Flags & PlayerState.FlagAltForm) != 0);
                 }
                 player.Health = NetHitPrediction.LocalHealthFor(player, state.Health);
             }
             player.ModSetFrozen((state.Flags & PlayerState.FlagFrozen) != 0);
             ApplyAfflictions(player, state);
+        }
+
+        private static void RecoverLocalAuthorityLife(PlayerEntity player,
+            in PlayerState state)
+        {
+            int slot = player.SlotIndex;
+            NetPlayerLifecycle.ApplyingSpawn = true;
+            try
+            {
+                // Same life, so do not run respawn-choice/hunter-selection
+                // policy again. This is only rebuilding presentation/simulation
+                // state after a local death prediction the authority rejected.
+                player.ModNetSpawn(state.Position, state.Facing, respawn: false);
+            }
+            finally
+            {
+                NetPlayerLifecycle.ApplyingSpawn = false;
+            }
+            Move(player, state.Position);
+            player.Speed = state.Speed;
+            player.ModSetSpawnFacing(state.Facing);
+            player.Health = state.Health;
+            player.ModSetSpectating((state.Flags & PlayerState.FlagSpectating) != 0);
+            player.ModResetNetworkHistory();
+            if ((uint)slot < _lastPredictionAck.Length)
+            {
+                _lastPredictionAck[slot] = 0;
+            }
+            NetHitPrediction.NoteRespawn(slot);
+            PredictionRecoveries++;
+            NetLog.Event($"slot {slot} recovered same-life local death from authority");
         }
 
         private static void ApplyAfflictions(PlayerEntity player, PlayerState state)
@@ -854,7 +895,7 @@ namespace MphRead.Mods.Network
             new uint[PlayerEntity.SlotCapacity];
 
         private static void ReconcileLocalMovement(PlayerEntity player,
-            in PlayerState state, int slot, Vector3 predictedCurrentSpeed)
+            int slot, Vector3 predictedCurrentSpeed)
         {
             if ((uint)slot >= _lastPredictionAck.Length)
             {
@@ -867,24 +908,33 @@ namespace MphRead.Mods.Network
                 return;
             }
 
-            bool authorityAlt = (state.Flags & PlayerState.FlagAltForm) != 0;
-            if (player.IsMorphing || player.IsUnmorphing || player.IsAltForm != authorityAlt)
-            {
-                return;
-            }
-
-            // A snapshot can arrive before this frame's local movement has
-            // been recorded. Leave the ack unconsumed so AfterSimulation can
-            // retry the same snapshot after the exact prediction exists.
+            // The authority result below was captured immediately after first
+            // simulating this exact owner input. Compare it only with the
+            // client's prediction recorded for the same input frame.
             if (!player.ModGetNetworkPrediction(ack,
-                    out Vector3 predictedPosition, out Vector3 predictedSpeed))
+                    out Vector3 predictedPosition, out Vector3 predictedSpeed,
+                    out bool predictedAlt))
             {
                 PredictionHistoryMisses++;
                 return;
             }
+
+            bool authorityAlt = NetSession.RemoteInputAltForms[slot];
+            if (predictedAlt != authorityAlt)
+            {
+                return;
+            }
+
+            Vector3 authorityPosition = NetSession.RemoteInputPositions[slot];
+            Vector3 authoritySpeed = NetSession.RemoteInputSpeeds[slot];
+            if (!Sane(authorityPosition) || !Sane(authoritySpeed))
+            {
+                RejectedUpdates++;
+                return;
+            }
             _lastPredictionAck[slot] = ack;
 
-            Vector3 error = state.Position - predictedPosition;
+            Vector3 error = authorityPosition - predictedPosition;
             if (!Sane(error))
             {
                 RejectedUpdates++;
@@ -913,10 +963,12 @@ namespace MphRead.Mods.Network
                 PredictionCorrections++;
             }
 
-            // Authority velocity at ack plus the local predicted change since
-            // ack. predictedCurrentSpeed was captured before damage replay so
-            // an authoritative knockback event is not applied twice.
-            Vector3 targetSpeed = state.Speed + (predictedCurrentSpeed - predictedSpeed);
+            // Authority velocity at the same input frame, plus whatever the
+            // local prediction changed after that frame. predictedCurrentSpeed
+            // was captured before damage replay so replicated knockback cannot
+            // be applied twice.
+            Vector3 targetSpeed = authoritySpeed
+                + (predictedCurrentSpeed - predictedSpeed);
             if (Sane(targetSpeed))
             {
                 player.Speed = targetSpeed;
@@ -961,6 +1013,7 @@ namespace MphRead.Mods.Network
             PredictionCorrections = 0;
             PredictionSnaps = 0;
             PredictionHistoryMisses = 0;
+            PredictionRecoveries = 0;
             PredictionErrorSum = 0;
             PredictionWorstError = 0;
             Array.Clear(_lastReportPosition);
