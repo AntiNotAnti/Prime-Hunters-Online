@@ -546,6 +546,38 @@ namespace MphRead.Entities
             return true;
         }
 
+        internal bool ModGetFirstPersonEffectTransform(out Matrix4 transform)
+        {
+            transform = Matrix4.Identity;
+            if (!_fpRenderPoseValid)
+            {
+                return false;
+            }
+
+            // The linked muzzle/charge effects use a different authored axis
+            // convention from the gun model: their "facing" is the gun's right
+            // axis and their "up" is its forward axis. Rebuild that exact
+            // convention from the already-prepared render pose, with the
+            // emitter at the rendered barrel tip.
+            Vector3 gunRight = Vector3.Cross(
+                _fpRenderPose.GunUp, _fpRenderPose.GunFacing);
+            if (!ModFinite(gunRight) || gunRight.LengthSquared < 0.000001f)
+            {
+                return false;
+            }
+            gunRight = gunRight.Normalized();
+            Vector3 muzzle = _fpRenderPose.GunPosition
+                + _fpRenderPose.GunFacing * Fixed.ToFloat(Values.MuzzleOffset);
+            if (!ModFinite(muzzle))
+            {
+                return false;
+            }
+
+            transform = GetTransformMatrix(
+                gunRight, _fpRenderPose.GunFacing, muzzle);
+            return true;
+        }
+
         internal bool ModGetFirstPersonGunTransform(out Matrix4 transform)
         {
             if (!_fpRenderPoseValid)
