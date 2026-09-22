@@ -385,6 +385,10 @@ namespace MphRead.Mods.Network
             _lastSnapshotFrame = 0;
             SnapshotArrived = 0;
             AppliedSnapshotFrame = 0;
+            Array.Clear(_snapshotBaselineValid);
+            _snapshotBaselineFrame = 0;
+            Array.Clear(_snapshotKeyframeValid);
+            _snapshotKeyframeFrame = 0;
             Array.Clear(_lastSlotIntentFrame);
             Array.Clear(RemoteStateValid);
             Array.Clear(RemoteIntentValid);
