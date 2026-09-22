@@ -191,12 +191,7 @@ namespace MphRead.Mods.Network
             Array.Clear(RemoteStateValid); Array.Clear(RemoteIntentValid);
             Array.Clear(RemoteIntentArrived); Array.Clear(_lastSlotIntentFrame);
             _lastSnapshotFrame = 0; SnapshotArrived = 0; AppliedSnapshotFrame = 0;
-            _hasSnapshot = false;
-            Array.Clear(_snapshotBaselineValid); _snapshotBaselineFrame = 0;
-            Array.Clear(_snapshotKeyframeValid); _snapshotKeyframeFrame = 0;
-            Array.Clear(_publishedDamageSequence); Array.Clear(_damageRepeatFrames);
-            _damageSidecarCursor = 0;
-            ContinuousPhase.Reset();
+            _hasSnapshot = false; ContinuousPhase.Reset();
             NetPlayerLifecycle.ResetLives();
         }
 
