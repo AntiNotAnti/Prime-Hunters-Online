@@ -80,6 +80,7 @@ This file is the short, machine-oriented source of truth for architectural assum
 - Rolling timeline records own immutable payload copies and evict whole restore segments.
 - A dropped fact invalidates its dependent continuation; clips must not cross gaps.
 - Protocol network baselines are explicitly not complete replica-scene checkpoints.
+- Decoder and animation checkpoint components own detached payloads. Decoder restore validates before mutation; animation restore resolves groups against the destination asset. A component alone must never be advertised as a complete world checkpoint.
 - Replay readers and transport scheduling belong to session instances. Passive hosts own their decoded lifecycle state and never access live NetSession. The foreground theatre host alone bridges legacy process services.
 - Each scene owns its player registry, match state, random streams, camera sequences and enemy/platform beam pools. Legacy static facades refer only to the foreground scene. Replica construction and cleanup never rebind those facades. Replica scenes use an explicit fixed-step entry, instance replication/lifecycle histories, silent sound routing and private HUD queues. They cannot author outgoing input or resolve combat. Texture names are GL allocated and scene owned; shared model display lists have scene leases. Full historical checkpoints and killcam replacement remain gated on acceptance.
 - Exact kill markers fence match, authority, event, server tick, occupant generations and victim life. Ambiguous cumulative deaths are not exact kill candidates.

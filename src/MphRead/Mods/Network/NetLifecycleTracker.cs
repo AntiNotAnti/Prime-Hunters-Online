@@ -12,6 +12,9 @@ namespace MphRead.Mods.Network
         None, WrongGeneration, OldLife, InvalidResurrection, InvalidState
     }
 
+    internal readonly record struct LifecycleSnapshot(ushort Generation, ushort LifeId,
+        NetworkPlayerState State, bool Dead);
+
     /// <summary>Protocol invariants, independent of rendering and the game clock.</summary>
     public sealed class NetLifecycleTracker
     {
@@ -19,6 +22,20 @@ namespace MphRead.Mods.Network
         public ushort LifeId { get; private set; }
         public NetworkPlayerState State { get; private set; }
         private bool _dead;
+
+        internal LifecycleSnapshot Capture() => new(Generation, LifeId, State, _dead);
+        internal void Restore(LifecycleSnapshot snapshot)
+        {
+            if (!Enum.IsDefined(snapshot.State)
+                || snapshot.Generation == 0 && (snapshot.LifeId != 0 || snapshot.State != NetworkPlayerState.Empty || snapshot.Dead)
+                || snapshot.Generation != 0 && snapshot.State == NetworkPlayerState.Empty
+                || snapshot.LifeId == 0 && (snapshot.Dead || snapshot.State is NetworkPlayerState.Alive or NetworkPlayerState.Dead)
+                || snapshot.State == NetworkPlayerState.Dead && !snapshot.Dead
+                || snapshot.Dead && snapshot.State == NetworkPlayerState.Alive)
+                throw new System.IO.InvalidDataException("Invalid replay lifecycle checkpoint.");
+            Generation = snapshot.Generation; LifeId = snapshot.LifeId;
+            State = snapshot.State; _dead = snapshot.Dead;
+        }
 
         // Serial-number arithmetic: zero is reserved for an unassigned identity.
         public static ushort Next(ushort value) => value == ushort.MaxValue ? (ushort)1 : (ushort)(value + 1);

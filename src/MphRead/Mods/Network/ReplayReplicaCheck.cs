@@ -44,12 +44,12 @@ namespace MphRead.Mods.Network
                 Vector2i size = screenshots != null ? new(640, 480) : new(256, 192);
                 using var first = new PassiveReplayScene(path, size);
                 using var second = new PassiveReplayScene(path, size);
-                var hashes = new Queue<(string Gameplay, string Presentation)>();
-                int steps = 0, projectileFrames = 0;
+                var hashes = new Queue<(string Gameplay, string Presentation, ReplayReplicaCheckpoint Decoder)>();
+                int steps = 0, projectileFrames = 0, modelRestores = 0;
                 while (first.Step())
                 {
                     hashes.Enqueue((ReplayStateHash.Compute(first.Scene, first.Session.CurrentFrame),
-                        first.Scene.ReplayPresentationHash(first.Session.CurrentFrame)));
+                        first.Scene.ReplayPresentationHash(first.Session.CurrentFrame), first.State.CaptureCheckpoint()));
                     foreach (EntityBase entity in first.Scene.Entities)
                         if (entity is BeamProjectileEntity or BombEntity) { projectileFrames++; break; }
                     if (++steps % 17 == 0 || first.Session.AtEnd)
@@ -60,7 +60,20 @@ namespace MphRead.Mods.Network
                                 throw new InvalidDataException($"Interleaved replica worlds differ at frame {second.Session.CurrentFrame}.");
                             if (second.Scene.ReplayPresentationHash(second.Session.CurrentFrame) != expected.Presentation)
                                 throw new InvalidDataException($"Interleaved replica animation/effects differ at frame {second.Session.CurrentFrame}.");
+                            var decoded = new ReplayReplicaState(); decoded.RestoreCheckpoint(expected.Decoder);
+                            if (!decoded.CaptureCheckpoint().Bytes.SequenceEqual(second.State.CaptureCheckpoint().Bytes))
+                                throw new InvalidDataException($"Detached decoder differs at frame {second.Session.CurrentFrame}.");
                         }
+                        foreach (EntityBase entity in second.Scene.Entities)
+                            foreach (var model in entity.ReplayModels)
+                            {
+                                var captured = Replay.ReplayModelCheckpoint.Capture(model);
+                                model.AnimInfo.Frame[0] += 7; model.Active = !model.Active;
+                                captured.Restore(model);
+                                if (!Replay.ReplayModelCheckpoint.Capture(model).Bytes.SequenceEqual(captured.Bytes))
+                                    throw new InvalidDataException("Animation checkpoint did not restore its exact values.");
+                                modelRestores++;
+                            }
                         if (screenshots != null && steps % 170 == 0)
                         {
                             Draw(first, Path.Combine(screenshots, "first.png"));
@@ -85,7 +98,7 @@ namespace MphRead.Mods.Network
                 if (Sentinel(live) != before || !ReferenceEquals(global::MphRead.Sound.Sfx.Instance, foregroundAudio))
                     throw new InvalidDataException("Replica teardown changed foreground state.");
                 if (steps == 0) throw new InvalidDataException("No replica frames were simulated.");
-                Console.WriteLine($"[replayreplica] PASS: {steps} gameplay and presentation hashes, {projectileFrames} frames with projectiles; two interleaved scenes and teardown preserve foreground state.");
+                Console.WriteLine($"[replayreplica] PASS: {steps} gameplay/presentation hashes and decoder restores, {modelRestores} animation restores, {projectileFrames} frames with projectiles; two interleaved scenes and teardown preserve foreground state.");
                 return 0;
             }
             catch (Exception ex) { Console.WriteLine($"[replayreplica] FAIL: {ex}"); return 1; }

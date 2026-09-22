@@ -22,7 +22,8 @@ internal static class ReplayReplicaProjectionChecks
         recorder.AcceptRoster(roster, 0);
         var configuration = new SessionStatePacket { MatchId = 7, AuthorityEpoch = 9,
             MaxPlayers = 8, WorldProfile = MatchWorldProfile.Resolve(8),
-            Match = new MatchDefinition { RoomKey = match.RoomKey, DisablePowerups = true } };
+            Match = new MatchDefinition { RoomKey = match.RoomKey, Mode = GameMode.Battle,
+                Format = MatchFormat.Auto, DisablePowerups = true } };
         recorder.AcceptConfiguration(configuration, 0);
         byte[] Snapshot(uint frame, ushort life)
         {
@@ -60,6 +61,40 @@ internal static class ReplayReplicaProjectionChecks
             && !baseline!.Records.Any(r => r.Kind == ReplayFactKind.Intent),
             "old-life firing input does not enter new-life baseline");
         require(clip!.Records.Any(r => r.Kind == ReplayFactKind.Intent), "later baselines preserve frozen facts");
+
+        var decoder = new ReplayReplicaState();
+        foreach (var fact in clip.RestorePoint.Records.Concat(clip.Records)) decoder.Accept(fact.Payload, fact.RecordingFrame);
+        decoder.Advance(20);
+        var checkpoint = decoder.CaptureCheckpoint();
+        var restored = new ReplayReplicaState();
+        restored.RestoreCheckpoint(new ReplayReplicaState().CaptureCheckpoint());
+        require(restored.Match == null && restored.AcceptedPackets == 0, "empty decoder checkpoint restores");
+        restored.RestoreCheckpoint(checkpoint);
+        require(restored.CaptureCheckpoint().Bytes.SequenceEqual(checkpoint.Bytes), "decoder checkpoint roundtrip is exact");
+        require(restored.IntentAge(0) == 18 && restored.Occupant(0).Generation == 2
+            && restored.Configuration?.Match.DisablePowerups == true, "decoder restore retains input age, rules and occupant");
+        decoder.Reset();
+        require(restored.TryGetPlayer(0, out var restoredPlayer) && restoredPlayer.Health == 99,
+            "decoder checkpoint is detached from its source");
+        var invalid = checkpoint.Bytes.ToArray(); invalid[4]++;
+        bool incompatible = false;
+        try { restored.RestoreCheckpoint(new(invalid)); } catch (System.IO.InvalidDataException) { incompatible = true; }
+        require(incompatible && restored.CaptureCheckpoint().Bytes.SequenceEqual(checkpoint.Bytes),
+            "incompatible decoder checkpoint fails atomically");
+        foreach (int length in new[] { 0, 4, 7, checkpoint.Bytes.Length / 2, checkpoint.Bytes.Length - 1 })
+        {
+            bool rejected = false;
+            try { restored.RestoreCheckpoint(new(checkpoint.Bytes[..length])); }
+            catch (System.IO.InvalidDataException) { rejected = true; }
+            require(rejected && restored.CaptureCheckpoint().Bytes.SequenceEqual(checkpoint.Bytes),
+                "truncated decoder checkpoint fails atomically at " + length);
+        }
+        var tombstone = new NetLifecycleTracker(); tombstone.SetOccupant(2);
+        tombstone.Accept(2, 1, NetworkPlayerState.Dead, out _);
+        tombstone.Accept(2, 1, NetworkPlayerState.Spectating, out _);
+        var restoredLife = new NetLifecycleTracker(); restoredLife.Restore(tombstone.Capture());
+        require(restoredLife.Accept(2, 1, NetworkPlayerState.Alive, out _) == LifecycleRejection.InvalidResurrection,
+            "checkpoint retains death tombstone through spectator state");
 
         using var session = new ReplayPlaybackSession(new PassiveReplaySessionHost());
         var scene = new Scene(new(256, 192), SyntheticInput.CreateKeyboard(), SyntheticInput.CreateMouse(),
