@@ -37,7 +37,7 @@ namespace MphRead.Mods.Network
             live.Random.SetRng1(54321); live.Random.SetRng2(98765);
             NetPlayerBridge.ShootPressAge[2] = 23;
             var foregroundPlayer = PlayerEntity.Players[0];
-            var foregroundAudio = Sound.Sfx.Instance;
+            var foregroundAudio = global::MphRead.Sound.Sfx.Instance;
             string before = Sentinel(live);
             try
             {
@@ -66,7 +66,7 @@ namespace MphRead.Mods.Network
                     }
                     if (Sentinel(live) != before || !ReferenceEquals(GameState.Current, live.GameState)
                         || !ReferenceEquals(PlayerEntity.Players[0], foregroundPlayer)
-                        || !ReferenceEquals(Sound.Sfx.Instance, foregroundAudio))
+                        || !ReferenceEquals(global::MphRead.Sound.Sfx.Instance, foregroundAudio))
                         throw new InvalidDataException($"Replica changed foreground state at frame {first.Session.CurrentFrame}.");
                 }
                 if (screenshots != null) Draw(second, Path.Combine(screenshots, "before-dispose.png"));
@@ -79,7 +79,7 @@ namespace MphRead.Mods.Network
                         throw new InvalidOperationException("Disposing a replica changed another scene's picture.");
                 }
                 second.Dispose();
-                if (Sentinel(live) != before || !ReferenceEquals(Sound.Sfx.Instance, foregroundAudio))
+                if (Sentinel(live) != before || !ReferenceEquals(global::MphRead.Sound.Sfx.Instance, foregroundAudio))
                     throw new InvalidDataException("Replica teardown changed foreground state.");
                 if (steps == 0) throw new InvalidDataException("No replica frames were simulated.");
                 Console.WriteLine($"[replayreplica] PASS: {steps} frames, {projectileFrames} frames with projectiles; two interleaved scenes and teardown preserve foreground state.");
