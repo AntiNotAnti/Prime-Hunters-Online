@@ -799,7 +799,7 @@ namespace MphRead
             scene.LoadModel(Read.GetSingleParticle(SingleType.Fuzzball).Model);
             if (scene.GameState.SinglePlayer)
             {
-                scene.LoadModel(Read.GetModelInstance("icons", dir: MetaDir.Hud).Model);
+                scene.LoadModel(scene.GetModelInstance("icons", dir: MetaDir.Hud).Model);
             }
             // skdebug - the game only loads these if the Omega Cannon item is in the room
             scene.LoadEffect(209, persistent: true); // ultimateProjectile

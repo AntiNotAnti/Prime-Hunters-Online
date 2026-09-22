@@ -63,11 +63,11 @@ namespace MphRead.Entities
             {
                 if (Recolor == 0)
                 {
-                    _trailModel = Read.GetModelInstance("arcWelder");
+                    _trailModel = _scene.GetModelInstance("arcWelder");
                 }
                 else
                 {
-                    _trailModel = Read.GetModelInstance("arcWelder1");
+                    _trailModel = _scene.GetModelInstance("arcWelder1");
                 }
                 Countdown = 900 * 2;
                 // bombStartSylux, bombStartSyluxR, bombStartSyluxP, bombStartSyluxW, bombStartSyluxO, or bombStartSyluxG

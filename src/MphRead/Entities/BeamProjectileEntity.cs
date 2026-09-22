@@ -102,15 +102,15 @@ namespace MphRead.Entities
             // model will be loaded and bound by scene setup
             if (DrawFuncId == 0 || DrawFuncId == 3 || DrawFuncId == 6 || DrawFuncId == 7 || DrawFuncId == 10 || DrawFuncId == 12)
             {
-                _trailModel = Read.GetModelInstance("trail");
+                _trailModel = _scene.GetModelInstance("trail");
             }
             else if (DrawFuncId == 1 || DrawFuncId == 2)
             {
-                _trailModel = Read.GetModelInstance("electroTrail");
+                _trailModel = _scene.GetModelInstance("electroTrail");
             }
             else if (DrawFuncId == 9)
             {
-                _trailModel = Read.GetModelInstance("arcWelder");
+                _trailModel = _scene.GetModelInstance("arcWelder");
             }
             if (_trailModel != null)
             {
@@ -1769,12 +1769,12 @@ namespace MphRead.Entities
                 if (beam.DrawFuncId == 3)
                 {
                     beam.Flags |= BeamFlags.HasModel;
-                    beam._models.Add(Read.GetModelInstance("iceShard"));
+                    beam._models.Add(scene.GetModelInstance("iceShard"));
                 }
                 else if (beam.DrawFuncId == 17)
                 {
                     beam.Flags |= BeamFlags.HasModel;
-                    ModelInstance model = Read.GetModelInstance("energyBeam");
+                    ModelInstance model = scene.GetModelInstance("energyBeam");
                     model.SetAnimation(0);
                     beam._models.Add(model);
                     Matrix4 transform = GetTransformMatrix(beam.Direction, beam.Up);

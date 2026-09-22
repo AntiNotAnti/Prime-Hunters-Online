@@ -14,7 +14,7 @@ using OpenTK.Mathematics;
 
 namespace MphRead.Entities
 {
-    public class RoomEntity : EntityBase
+    public partial class RoomEntity : EntityBase
     {
         private readonly List<CollisionInstance> _roomCollision = new List<CollisionInstance>();
         public IReadOnlyList<CollisionInstance> RoomCollision => _roomCollision;
@@ -90,7 +90,7 @@ namespace MphRead.Entities
             _partBoundsBuiltFor = -1;
             _nextRoomPartId = 0;
             _doorPortalCount = 0;
-            ModelInstance inst = Read.GetRoomModelInstance(name);
+            ModelInstance inst = _scene.GetRoomModelInstance(name);
             if (_models.Count == 0)
             {
                 _models.Add(inst);
@@ -130,7 +130,7 @@ namespace MphRead.Entities
             _meta = meta;
             Model model = inst.Model;
             // portals are already filtered by layer mask
-            _portals.AddRange(collision.Info.Portals);
+            _portals.AddRange(collision.Info.Portals.Select(p => p.CreateSceneCopy()));
             if (_portals.Count > 0)
             {
                 IEnumerable<string> parts = _portals.Select(p => p.NodeName1).Concat(_portals.Select(p => p.NodeName2)).Distinct();
@@ -225,7 +225,7 @@ namespace MphRead.Entities
             if (nodeData != null && _models.Count < 2)
             {
                 // using cached instance messes with placeholders since the room entity doesn't update its instances normally
-                _models.Add(Read.GetModelInstance("pick_wpn_missile", noCache: true));
+                _models.Add(_scene.GetModelInstance("pick_wpn_missile", noCache: true));
             }
         }
 
@@ -270,7 +270,7 @@ namespace MphRead.Entities
             }
             RoomMetadata? meta = Metadata.GetRoomById((int)door.Data.ConnectorId);
             Debug.Assert(meta != null);
-            ModelInstance conInst = Read.GetRoomModelInstance(meta.Name); // cached
+            ModelInstance conInst = _scene.GetRoomModelInstance(meta.Name); // cached
             IReadOnlyList<Node> conNodes = conInst.Model.Nodes;
             string connectorName = door.Data.RoomName.MarshalString();
             for (int i = 0; i < conNodes.Count; i++)
@@ -341,7 +341,7 @@ namespace MphRead.Entities
             }
             RoomMetadata? meta = Metadata.GetRoomById(connectorId);
             Debug.Assert(meta != null);
-            ModelInstance conInst = Read.GetRoomModelInstance(meta.Name);
+            ModelInstance conInst = _scene.GetRoomModelInstance(meta.Name);
             _scene.LoadModel(conInst.Model);
             _connectorModels.Add(conInst);
             CollisionInstance collision = Collision.GetCollision(meta, roomLayerMask: -1);

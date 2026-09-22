@@ -61,7 +61,7 @@ namespace MphRead.Entities
             _plane = new Vector4(_facingVector, Vector3.Dot(_facingVector, Position));
             Recolor = Metadata.DoorPalettes[(int)data.Type];
             ModelInstance inst = SetUpModel("ForceField");
-            Read.GetModelInstance("ForceFieldLock");
+            _scene.GetModelInstance("ForceFieldLock");
             inst.SetAnimation(0);
         }
 

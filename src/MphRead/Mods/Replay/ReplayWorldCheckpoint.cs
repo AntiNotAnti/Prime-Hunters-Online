@@ -22,7 +22,7 @@ internal sealed class ReplayWorldCheckpoint
     internal const int MaximumBytes = 8 * 1024 * 1024;
     private const int MaximumObjects = 32768;
     private const uint Magic = 0x43575050; // PPWC
-    private const ushort Version = 1;
+    private const ushort Version = 2;
     private readonly byte[] _data;
     internal ReadOnlySpan<byte> Bytes => _data;
     internal uint Frame { get; }
@@ -32,7 +32,7 @@ internal sealed class ReplayWorldCheckpoint
         if (bytes.Length > MaximumBytes) throw new InvalidDataException("Replay world exceeds its checkpoint budget.");
         byte[] data = bytes.ToArray();
         using var stream = new MemoryStream(data, writable: false); using var reader = new BinaryReader(stream);
-        if (reader.ReadUInt32() != Magic || reader.ReadUInt16() != Version || reader.ReadString() != Contract)
+        if (reader.ReadUInt32() != Magic || reader.ReadUInt16() is < 1 or > Version || reader.ReadString() != Contract)
             throw new InvalidDataException("Replay world checkpoint contract differs.");
         reader.ReadString(); reader.ReadInt32(); reader.ReadUInt64();
         return new(data, reader.ReadUInt32());
@@ -150,6 +150,7 @@ internal sealed class ReplayWorldCheckpoint
         var nodes = graph.Finish();
         writer.Write(nodes.Count);
         foreach (var node in nodes) { writer.Write(node.Type); writer.Write(node.Anchor); WriteBytes(writer, node.Data); }
+        WriteBytes(writer, ReplayAssetCheckpoint.Capture(replay.Scene));
         writer.Flush();
         if (stream.Length > MaximumBytes) throw new InvalidDataException("Replay world exceeds its checkpoint budget.");
         return new(stream.ToArray(), frame);
@@ -229,7 +230,9 @@ internal sealed class ReplayWorldCheckpoint
     {
         if (replay.HasStepped) throw new InvalidOperationException("Restore requires a new unpublished replica.");
         using var stream = new MemoryStream(_data, writable: false); using var reader = new BinaryReader(stream);
-        if (_data.Length > MaximumBytes || reader.ReadUInt32() != Magic || reader.ReadUInt16() != Version
+        if (_data.Length > MaximumBytes || reader.ReadUInt32() != Magic) throw new InvalidDataException("Invalid replay world capsule.");
+        ushort version = reader.ReadUInt16();
+        if (version is < 1 or > Version
             || reader.ReadString() != Contract || reader.ReadString() != replay.Scene.Room!.Meta.Name
             || reader.ReadInt32() != (int)replay.Scene.GameState.Mode || reader.ReadUInt64() != replay.MapHash)
             throw new InvalidDataException("Replay world checkpoint contract or room differs.");
@@ -260,6 +263,7 @@ internal sealed class ReplayWorldCheckpoint
                 throw new InvalidDataException("Unknown replay object contract.");
             nodes[i] = new(typeId, anchor, ReadBytes(reader, MaximumBytes)); types[i] = ObjectTypes[typeId];
         }
+        byte[]? assets = version >= 2 ? ReadBytes(reader, MaximumBytes) : null;
         if (stream.Position != stream.Length || frame != Frame) throw new InvalidDataException("Invalid replay world capsule length/frame.");
         // Allocate and bind every object before following any link. Only this new
         // replica is modified; its caller disposes it if any validation fails.
@@ -289,7 +293,7 @@ internal sealed class ReplayWorldCheckpoint
             {
                 string name = input.ReadString(); bool firstHunt = input.ReadBoolean();
                 if (model.Model.Name != name || model.Model.FirstHunt != firstHunt)
-                    model.SetModel(Read.GetModelInstance(name, firstHunt).Model);
+                    model.SetModel(replay.Scene.GetModelInstance(name, firstHunt).Model);
                 ReplayModelCheckpoint.FromBytes(ReadBytes(input, 4096)).Restore(model);
             }
             else if (target is WeaponInfo) { input.ReadInt32(); input.ReadInt32(); }
@@ -329,6 +333,7 @@ internal sealed class ReplayWorldCheckpoint
             if (data.Position != data.Length) throw new InvalidDataException($"Trailing replay fields in {type.Name}.");
         }
         replay.Scene.FinishReplayWorldRestore();
+        if (assets != null) ReplayAssetCheckpoint.Restore(replay.Scene, assets);
         if (!replay.Session.Reposition(playbackFrame ?? frame, 0, sourceClock: playbackFrame.HasValue))
             throw new InvalidDataException(replay.Session.LastError);
         replay.State.RestoreCheckpoint(decoder);
@@ -338,7 +343,7 @@ internal sealed class ReplayWorldCheckpoint
     private static object Create(Type type, byte[] data, Scene scene)
     {
         using var stream = new MemoryStream(data, writable: false); using var reader = new BinaryReader(stream);
-        if (type == typeof(ModelInstance)) return Read.GetModelInstance(reader.ReadString(), reader.ReadBoolean());
+        if (type == typeof(ModelInstance)) return scene.GetModelInstance(reader.ReadString(), reader.ReadBoolean());
         if (type == typeof(WeaponInfo))
         {
             int family = reader.ReadInt32(), index = reader.ReadInt32();

@@ -264,6 +264,7 @@ namespace MphRead.Formats.Collision
 
     public class Portal
     {
+        internal Portal CreateSceneCopy() => (Portal)MemberwiseClone();
         public bool Active { get; set; } = true;
         public string Name { get; }
         public string NodeName1 { get; }

@@ -55,7 +55,7 @@ namespace MphRead.Entities.Enemies
                 Flags |= EnemyFlags.OnRadar;
                 // do not initialize animations with SetUpModel() -- the spinning animation is not needed
                 // (rotation is updated in process) and the scale animation makes it appear tiny
-                _model = Read.GetModelInstance("goreaMeteor");
+                _model = _scene.GetModelInstance("goreaMeteor");
                 _models.Add(_model);
                 SetTransform(owner.FacingVector, owner.UpVector, owner.Position);
                 _basePos = _prevPos = Position;

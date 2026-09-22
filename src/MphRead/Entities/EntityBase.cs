@@ -180,7 +180,7 @@ namespace MphRead.Entities
 
         protected ModelInstance SetUpModel(string name, int animIndex = 0, AnimFlags animFlags = AnimFlags.None, bool firstHunt = false)
         {
-            ModelInstance inst = Read.GetModelInstance(name, firstHunt);
+            ModelInstance inst = _scene.GetModelInstance(name, firstHunt);
             inst.SetAnimation(animIndex, animFlags);
             _models.Add(inst);
             return inst;
@@ -420,7 +420,7 @@ namespace MphRead.Entities
 
         protected void AddPlaceholderModel()
         {
-            ModelInstance inst = Read.GetModelInstance("pick_wpn_missile");
+            ModelInstance inst = _scene.GetModelInstance("pick_wpn_missile");
             inst.IsPlaceholder = true;
             _models.Add(inst);
         }

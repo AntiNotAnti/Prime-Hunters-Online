@@ -441,3 +441,17 @@ The five-minute eight-client Battle stress run (100 ms RTT, 2% loss, all seven
 hunters) passes on all eight clients. Each client saved a shared-timeline clip;
 killcam capture/playback reported no errors. Full source recordings and logs are
 local test artifacts, never release assets.
+
+## Private model and room activation state
+
+Replica scenes own nodes, material values, mesh visibility, matrix stacks and GPU
+model leases. Immutable geometry/animation definitions remain shared. Entity, HUD,
+projectile and particle resources resolve through the owning scene. Room portals
+also have separate activation state. Changing a replay's room layers or drawing
+its effects therefore cannot change live or sibling model state.
+
+World capsule version 2 adds an explicit mutable asset/room-activation component;
+version 1 remains readable. Android linker roots preserve the reflection-based
+world contract in Release builds. The asset isolation/mutation/restore checks, all
+12 modes (21,612 frames), rendered Capture restores, durable seek tests, older-v4
+determinism, 705 format checks and 358 rendered killcam lifecycle checks pass.

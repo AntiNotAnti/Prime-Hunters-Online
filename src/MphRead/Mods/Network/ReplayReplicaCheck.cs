@@ -45,6 +45,7 @@ namespace MphRead.Mods.Network
                 Vector2i size = screenshots != null ? new(640, 480) : new(256, 192);
                 using var first = new PassiveReplayScene(path, size);
                 using var second = new PassiveReplayScene(path, size);
+                ReplayAssetChecks.Run(first, second, path, size);
                 var hashes = new Queue<(string Gameplay, string Presentation, ReplayReplicaCheckpoint Decoder)>();
                 var drawnCheckpointFrames = new HashSet<uint>();
                 var referenceFrames = new Dictionary<uint, (string Gameplay, string Presentation)>();

@@ -36,11 +36,12 @@ public partial class Scene
             element.ParticleDefinitions.AddRange(definition.Particles);
             foreach (Particle particle in definition.Particles)
             {
-                element.Model ??= particle.Model;
-                LoadModel(particle.Model);
-                element.Nodes.Add(particle.Node);
-                Material material = particle.Model.Materials[particle.MaterialId];
-                element.TextureBindingIds.Add(BindGetTexture(particle.Model, material.TextureId, material.PaletteId, 0));
+                Model model = OwnModel(particle.Model);
+                element.Model ??= model;
+                LoadModel(model);
+                element.Nodes.Add(OwnParticleNode(particle));
+                Material material = model.Materials[particle.MaterialId];
+                element.TextureBindingIds.Add(BindGetTexture(model, material.TextureId, material.PaletteId, 0));
             }
             foreach (EffectParticle particle in element.Particles) particle.Random = Random;
         }

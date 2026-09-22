@@ -77,9 +77,10 @@ namespace MphRead.Effects
             uvsAndVerts[5] = Vertex2;
             uvsAndVerts[6] = new Vector3(Texcoord3);
             uvsAndVerts[7] = Vertex3;
-            Material material = ParticleDefinition.Model.Materials[ParticleDefinition.MaterialId];
+            Model model = scene.OwnModel(ParticleDefinition.Model);
+            Material material = model.Materials[ParticleDefinition.MaterialId];
             // should already be bound
-            int bindingId = scene.BindGetTexture(ParticleDefinition.Model, material.TextureId, material.PaletteId, 0);
+            int bindingId = scene.BindGetTexture(model, material.TextureId, material.PaletteId, 0);
             RepeatMode xRepeat = material.XRepeat;
             RepeatMode yRepeat = material.YRepeat;
             float scaleS = 1;

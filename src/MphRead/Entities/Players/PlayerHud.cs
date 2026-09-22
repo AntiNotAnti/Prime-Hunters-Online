@@ -145,9 +145,9 @@ namespace MphRead.Entities
             (_pauseBindingId, _) = HudInfo.CharMapToTexture(_hudObjects.ScanVisor, startX: 0, startY: 64,
                 tilesX: 0, tilesY: 32, _scene, visorPal);
             // todo: only load what needs to be loaded for the mode
-            _filterModel = Read.GetModelInstance("filter");
+            _filterModel = _scene.GetModelInstance("filter");
             _scene.LoadModel(_filterModel.Model);
-            _damageIndicator = Read.GetModelInstance("damage", dir: MetaDir.Hud);
+            _damageIndicator = _scene.GetModelInstance("damage", dir: MetaDir.Hud);
             _scene.LoadModel(_damageIndicator.Model);
             _damageIndicator.Active = false;
             for (int i = 0; i < 8; i++)
@@ -162,13 +162,13 @@ namespace MphRead.Entities
             _damageIndicatorNodes[5] = _damageIndicator.Model.GetNodeByName("sw")!;
             _damageIndicatorNodes[6] = _damageIndicator.Model.GetNodeByName("west")!;
             _damageIndicatorNodes[7] = _damageIndicator.Model.GetNodeByName("nw")!;
-            _playerLocator = Read.GetModelInstance("hud_icon_player", dir: MetaDir.Hud);
+            _playerLocator = _scene.GetModelInstance("hud_icon_player", dir: MetaDir.Hud);
             _scene.LoadModel(_playerLocator.Model);
-            _arrowLocator = Read.GetModelInstance("hud_icon_arrow", dir: MetaDir.Hud);
+            _arrowLocator = _scene.GetModelInstance("hud_icon_arrow", dir: MetaDir.Hud);
             _scene.LoadModel(_arrowLocator.Model);
-            _nodeLocator = Read.GetModelInstance("hud_icon_nodes", dir: MetaDir.Hud);
+            _nodeLocator = _scene.GetModelInstance("hud_icon_nodes", dir: MetaDir.Hud);
             _scene.LoadModel(_nodeLocator.Model);
-            _octolithLocator = Read.GetModelInstance("hud_icon_octolith", dir: MetaDir.Hud);
+            _octolithLocator = _scene.GetModelInstance("hud_icon_octolith", dir: MetaDir.Hud);
             _scene.LoadModel(_octolithLocator.Model);
             _targetCircleObj = HudInfo.GetHudObject(_hudObjects.Reticle);
             _sniperCircleObj = HudInfo.GetHudObject(_hudObjects.SniperReticle);
@@ -321,14 +321,14 @@ namespace MphRead.Entities
                 _mapQuitInst.SetCharacterData(quit.CharacterData, _scene);
                 _mapQuitInst.SetPaletteData(quit.PaletteData, _scene);
                 _mapQuitInst.Enabled = true;
-                _navPlayerPosModel = Read.GetModelInstance("PlayerPos_NAV", dir: MetaDir.Hud);
+                _navPlayerPosModel = _scene.GetModelInstance("PlayerPos_NAV", dir: MetaDir.Hud);
                 _scene.LoadModel(_navPlayerPosModel.Model);
                 _navPlayerPosModel.SetAnimation(0, AnimFlags.None);
-                _navDoorModel = Read.GetModelInstance("Door_NAV", dir: MetaDir.Hud);
+                _navDoorModel = _scene.GetModelInstance("Door_NAV", dir: MetaDir.Hud);
                 _scene.LoadModel(_navDoorModel.Model);
                 for (int i = 0; i < 7; i++)
                 {
-                    ModelInstance mapModel = Read.GetModelInstance(Metadata.NavMapModelNames[i], dir: MetaDir.Hud, noCache: true);
+                    ModelInstance mapModel = _scene.GetModelInstance(Metadata.NavMapModelNames[i], dir: MetaDir.Hud, noCache: true);
                     for (int j = 0; j < mapModel.Model.Materials.Count; j++)
                     {
                         Material material = mapModel.Model.Materials[j];

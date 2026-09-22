@@ -486,7 +486,7 @@ namespace MphRead
         // called before load
         public EntityBase AddModel(string name, int recolor = 0, bool firstHunt = false, MetaDir dir = MetaDir.Models, Vector3? pos = null)
         {
-            ModelInstance model = Read.GetModelInstance(name, firstHunt, dir);
+            ModelInstance model = GetModelInstance(name, firstHunt, dir);
             var entity = new ModelEntity(model, this, recolor);
             InsertEntityByType(entity);
             if (entity.Id != -1)
@@ -1355,7 +1355,7 @@ namespace MphRead
 
         public void LoadModel(string name, bool firstHunt = false)
         {
-            LoadModel(Read.GetModelInstance(name, firstHunt).Model);
+            LoadModel(GetModelInstance(name, firstHunt).Model);
         }
 
         public void LoadModel(Model model, bool isRoom = false)
@@ -3418,9 +3418,9 @@ namespace MphRead
                 entry.Color = color;
                 entry.Alpha = alpha;
                 entry.Scale = scale;
-                if (!_texPalMap.ContainsKey(entry.ParticleDefinition.Model.Id))
+                if (!_texPalMap.ContainsKey(OwnModel(entry.ParticleDefinition.Model).Id))
                 {
-                    InitTextures(entry.ParticleDefinition.Model);
+                    InitTextures(OwnModel(entry.ParticleDefinition.Model));
                 }
             }
         }
@@ -3570,7 +3570,7 @@ namespace MphRead
             foreach (EffectElement element in effect.Elements)
             {
                 // the model may already be loaded; meshes with a ListId will be skipped
-                Model model = Read.GetModelInstance(element.ModelName).Model;
+                Model model = GetModelInstance(element.ModelName).Model;
                 InitTextures(model);
                 GenerateLists(model, isRoom: false);
             }
@@ -3636,16 +3636,17 @@ namespace MphRead
                 for (int j = 0; j < elementDef.Particles.Count; j++)
                 {
                     Particle particleDef = elementDef.Particles[j];
+                    Model particleModel = OwnModel(particleDef.Model);
                     if (j == 0)
                     {
-                        if (!_texPalMap.ContainsKey(particleDef.Model.Id))
+                        if (!_texPalMap.ContainsKey(particleModel.Id))
                         {
-                            InitTextures(particleDef.Model);
+                            InitTextures(particleModel);
                         }
-                        element.Model = particleDef.Model;
+                        element.Model = particleModel;
                     }
-                    element.Nodes.Add(particleDef.Node);
-                    Material material = particleDef.Model.Materials[particleDef.MaterialId];
+                    element.Nodes.Add(OwnParticleNode(particleDef));
+                    Material material = particleModel.Materials[particleDef.MaterialId];
                     // Zero when there is no GL to have bound one. The effect
                     // itself is still spawned and still advanced: an effect is
                     // visual, but *whether* one is running is simulation state
@@ -3654,7 +3655,7 @@ namespace MphRead
                     // clients -- which is the one thing running the real
                     // engine on the server exists to avoid.
                     material.TextureBindingId = Mods.Headless.Active ? 0
-                        : _texPalMap[particleDef.Model.Id].Get(material.TextureId, material.PaletteId, 0).BindingId;
+                        : _texPalMap[particleModel.Id].Get(material.TextureId, material.PaletteId, 0).BindingId;
                     element.TextureBindingIds.Add(material.TextureBindingId);
                 }
             }
