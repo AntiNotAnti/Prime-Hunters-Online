@@ -24,7 +24,7 @@ namespace MphRead.Mods.Network
     public static class ServerSimCheck
     {
         public static int Run(string room, int players, double seconds, GameMode mode,
-            bool formCheck = false, bool movementCheck = false, int movementHunter = 0)
+            bool formCheck = false)
         {
             players = Math.Clamp(players, 1, PlayerEntity.SlotCapacity);
             Console.WriteLine($"[simcheck] \"{room}\" ({mode}), {players} player(s), {seconds:0} s");
@@ -52,17 +52,14 @@ namespace MphRead.Mods.Network
             // Everybody in, before the first step: a slot the roster does not
             // mention is inactive, and an inactive slot is not simulated, so
             // an empty roster would measure an empty room.
-            ApplyRoster(players, movementHunter);
+            ApplyRoster(players);
             int steps = (int)Math.Round(seconds * 60);
-            var driver = new IntentDriver(players, movementCheck);
-            var movement = movementCheck ? new MovementSimulationCheck(players) : null;
+            var driver = new IntentDriver(players);
             var wall = Stopwatch.StartNew();
             for (int i = 0; i < steps; i++)
             {
                 driver.Feed((uint)(i + 1));
-                movement?.BeforeStep();
                 sim.Step();
-                movement?.AfterStep();
             }
             wall.Stop();
             long afterRun = WorkingSetBytes();
@@ -96,7 +93,7 @@ namespace MphRead.Mods.Network
             // could not put anybody in it is a room the server cannot host,
             // and it is worth an exit code so a sweep over every map can be a
             // shell loop.
-            return spawned == players && formPassed && (movement?.Report() ?? true) ? 0 : 1;
+            return spawned == players && formPassed ? 0 : 1;
         }
 
         /// <summary>
@@ -165,7 +162,7 @@ namespace MphRead.Mods.Network
             return passed;
         }
 
-        private static void ApplyRoster(int players, int firstHunter = 0)
+        private static void ApplyRoster(int players)
         {
             NetSession.ApplyMatchState(new MatchStatePacket { MatchId = 1, AuthorityEpoch = 1 }, false);
             RosterPacket roster = RosterPacket.Create();
@@ -178,7 +175,7 @@ namespace MphRead.Mods.Network
                 roster.Generations[roster.Count] = 1;
                 // A different hunter per slot, cycling: eight copies of Samus
                 // would measure one collision volume and one set of weapons.
-                roster.Hunters[roster.Count] = (byte)((i + Math.Clamp(firstHunter, 0, 6)) % 7);
+                roster.Hunters[roster.Count] = (byte)(i % 7);
                 roster.Colors[roster.Count] = 0;
                 roster.Pings[roster.Count] = 0;
                 roster.Names[roster.Count] = $"SIM{i + 1}";
@@ -200,13 +197,9 @@ namespace MphRead.Mods.Network
             private readonly int _players;
             private readonly Vector3[] _at;
 
-            private readonly bool _movementOnly;
-            private readonly IntentButtons[] _previous = new IntentButtons[PlayerEntity.SlotCapacity];
-
-            public IntentDriver(int players, bool movementOnly = false)
+            public IntentDriver(int players)
             {
                 _players = players;
-                _movementOnly = movementOnly;
                 _at = new Vector3[players];
             }
 
@@ -229,26 +222,11 @@ namespace MphRead.Mods.Network
                     double turn = frame / 60.0 + slot;
                     var aim = new Vector3((float)Math.Cos(turn), 0, (float)Math.Sin(turn));
                     var buttons = IntentButtons.MoveUp;
-                    if (player != null && player.LoadFlags.TestFlag(LoadFlags.Spawned)
-                        && player.Health > 0)
-                    {
-                        buttons |= IntentButtons.InPlayState;
-                    }
-                    if (!_movementOnly && frame % 20 < 6)
+                    if (frame % 20 < 6)
                     {
                         buttons |= IntentButtons.Shoot;
                     }
-                    // Exercise both movement paths, including camera-relative
-                    // rolling and the flick input that position relaying used
-                    // to hide. The engine still decides whether morph/boost is
-                    // allowed at the current position.
-                    if (frame % 360 == 120 || frame % 360 == 300)
-                        buttons |= IntentButtons.Morph;
-                    if (player?.IsAltForm == true) buttons |= IntentButtons.RollUp;
-                    uint boostFrame = player?.IsAltForm == true && frame % 120 >= 90
-                        && frame % 120 < 90 + IntentPacket.PressHistory
-                        ? frame - frame % 120 + 90 : 0;
-                    var input = new IntentPacket
+                    NetSession.AcceptSlotIntent(slot, new IntentPacket
                     {
                         Frame = frame,
                         MatchId = NetSession.CurrentMatchId,
@@ -258,9 +236,6 @@ namespace MphRead.Mods.Network
                         Buttons = buttons,
                         Presses = new uint[IntentPacket.PressHistory],
                         Aim = aim,
-                        RollForward = new Vector2(aim.X, aim.Z),
-                        BoostFrame = boostFrame,
-                        BoostDirection = Vector2.UnitX,
                         Position = _at[slot],
                         WeaponSelect = 0xFF,
                         AmmoUa = 400,
@@ -270,10 +245,7 @@ namespace MphRead.Mods.Network
                         // "do not compensate", which is the one case a server
                         // measuring itself must not accidentally measure.
                         AckFrame = frame > 6 ? frame - 6 : 0
-                    };
-                    input.Presses[0] = (uint)(buttons & ~_previous[slot]);
-                    _previous[slot] = buttons;
-                    NetSession.AcceptSlotIntent(slot, input);
+                    });
                 }
             }
         }

@@ -44,49 +44,31 @@ namespace MphRead.Mods.Network
             var result = ValidateDefinition(match, out reason);
             if (result != LobbyResultCode.Ok) return result;
             TeamLayout layout = ResolveTeamLayout(match);
-            int required = layout.TeamCount > 0
-                ? 2
-                : match.Format == MatchFormat.FreeForAll ? 2 : 1;
-            if (roster.Count < required)
+            bool exact = ExactTeams(match);
+            int required = exact ? layout.TotalPlayers : match.Format == MatchFormat.FreeForAll ? 2 : 1;
+            if (roster.Count < required || (exact && roster.Count != required))
             {
-                reason = $"At least {required} players must join.";
+                reason = exact ? $"{layout} requires exactly {required} players." : $"At least {required} players must join.";
                 return LobbyResultCode.NotEnoughPlayers;
             }
-
             Span<int> counts = stackalloc int[4];
             for (int i = 0; i < roster.Count; i++)
             {
                 if (layout.TeamCount > 0)
                 {
                     int team = roster.Teams[i];
-                    if (team < 0 || team >= layout.TeamCount)
-                    { reason = "Every player needs a valid team."; return LobbyResultCode.InvalidTeam; }
+                    if (team < 0 || team >= layout.TeamCount) { reason = "Every player needs a valid team."; return LobbyResultCode.InvalidTeam; }
                     counts[team]++;
                 }
                 if (requireReady && !roster.LobbyReady[i])
                 { reason = $"Waiting for {roster.Names[i]} to ready."; return LobbyResultCode.PlayersNotReady; }
             }
-
-            if (layout.TeamCount > 0)
+            for (int team = 0; team < layout.TeamCount; team++)
             {
-                int occupiedTeams = 0;
-                for (int team = 0; team < layout.TeamCount; team++)
-                {
-                    int capacity = layout.Capacity(team);
-                    if (counts[team] > capacity)
-                    {
-                        reason = $"Team {(char)('A' + team)} is full ({counts[team]}/{capacity}).";
-                        return LobbyResultCode.InvalidTeam;
-                    }
-                    if (counts[team] > 0) occupiedTeams++;
-                }
-                if (occupiedTeams < 2)
-                {
-                    reason = "At least two teams need a player.";
-                    return LobbyResultCode.InvalidTeam;
-                }
+                int capacity = layout.Capacity(team);
+                if (counts[team] > capacity || (exact && counts[team] != capacity))
+                { reason = $"Team {(char)('A' + team)} needs {capacity} players (currently {counts[team]})."; return LobbyResultCode.InvalidTeam; }
             }
-
             reason = "Ready to start.";
             return LobbyResultCode.Ok;
         }

@@ -3059,9 +3059,6 @@ namespace MphRead
                             }
                         }
 
-                        if (!replayCamera && !interpolatedCamera)
-                            _viewMatrix = main.ModSmoothMovementView(_viewMatrix);
-
                         float authoredFov = replayCamera
                             ? replayFov
                             : interpolatedCamera

@@ -20,22 +20,12 @@ launcher hosting.
   match alone.
 - **No normal player is simulation authority.** The historical first-client
   authority/hand-over path is compatibility coverage only.
-- **Combat, movement, health, score, match state and match end are server
-  authoritative.** Remote controls run through the same engine movement and
-  collision code on the server. `IntentPacket.Position` remains telemetry and
-  an observer fallback only; it cannot place an authoritative player or muzzle.
-- **Responsiveness is predicted locally.** Commands are sequenced by input frame,
-  repeated over eight packets and consumed through a bounded server queue at
-  one command per simulation tick. The client restores complete movement state
-  from its owner-only correction packet and replays unacknowledged commands.
-  Shared world snapshots contain no reconciliation block. Owner corrections
-  run at 30 Hz, with immediate lifecycle, teleport, freeze/form and significant
-  impulse updates. Small corrections are smoothed only for drawing.
-- **Rolling and flick boosts are input.** Intents and observer bundles carry
-  a normalized roll basis plus a bounded, repeated flick event with its input
-  frame and world direction. Receivers consume each flick once. The server
-  computes boost charge, velocity and ram damage; owner boost damage cannot
-  overwrite that result. These wire and simulation changes require protocol 20.
+- **Combat, health, score, match state and match end are server authoritative.**
+  Movement position still comes from the owner's `IntentPacket.Position`; this
+  is not a fully server-derived movement model.
+- **Outgoing-hit responsiveness is client predicted.** `NetHitPrediction`
+  presents the shooter's own hit immediately and reconciles later. Remote
+  lethal damage is held for authority; self-damage/self-death can be local.
 
 ## Historical transition
 
@@ -76,14 +66,14 @@ positions set when the attack begins or the render transforms. The
 | `DedicatedServer.RunsTheMatch` | true for normal game servers. False exists only for compatibility/tests |
 
 The current wire protocol is defined only by `NetConfig.ProtocolVersion`
-(currently 20). Normal server-authority matches never send
+(currently 16). Normal server-authority matches never send
 `PacketType.Authority` to a player. The packet is still understood so legacy
 compatibility tests can exercise the old topology; it is not a normal hosting
 mechanism.
-`InputCommands` batches are validated before being queued by `NetCommandStream`.
-The simulation selects one command per tick. Observers and canonical replays
-receive the command actually selected for that tick, rather than the newest
-command that happened to arrive at the socket.
+`HandleIntent` feeds `NetSession.AcceptSlotIntent` one hop earlier than a
+client authority got the same bytes, through the same call, so the ordering
+rule that guards a rejoining player's restarted frame counter is the one that
+has already been debugged.
 
 **The simulation follows the server the way a client does.** The roster and the
 match state are applied to it through `NetSession.ApplyRoster` /
@@ -244,10 +234,9 @@ press but had no snapshot-based correction.
 
 So the refactor did not create this. It removed slot 0's exemption from it:
 what ALPHA reported is what the other seven players had already seen. The
-current bridge runs Morph controls through the authority's real transition
-rules and reconciles the authority's snapshot on each client. Reported owner
-form no longer forces an authoritative unmorph through a low ceiling. The
-transition-aware guard lets a puppet finish morphing while an older state is still in flight, then corrects
+current bridge reconciles the owner's form state on the authority and
+the authority's snapshot on each client. The transition-aware guard lets a
+puppet finish morphing while an older state is still in flight, then corrects
 a lasting mismatch. This 78-frame result predates that change; a restart-free
 latency run is still needed to measure it in play. See
 `NETWORK-DIAGNOSTICS.md` and `.claude/KNOWN-GAPS.md`.
@@ -292,23 +281,9 @@ not select them.
   server without them exits with an actionable error instead of falling back to
   client authority. Historical pruning measured the headless subset at roughly
   52 MB of extracted data, but that measurement is not a packaging contract.
-- **Movement replay is implemented and bounded.** `MovementState` captures
-  velocity, acceleration, movement flags, boost/freeze/morph/jump-pad timers,
-  Spire contact orientation and Weavel turret motion. Replay shares the existing
-  physics and suppresses damage, weapon spawns, pickups, audio and world callbacks.
-  Local commands are held in a 128-entry ring. Overflow adopts authoritative
-  state instead of replaying incomplete history; a sustained input outage can
-  rebase an empty server queue without simulating extra ticks.
-- **Dynamic-world rewind is not part of movement replay.** Static map physics,
-  jump pads, same-room teleporters and the owner's turret have replay paths.
-  Other players, doors and moving platforms are queried in their current world
-  state; later owner corrections resolve differences. Real multiplayer visual
-  feel and platform interactions still need live playtesting on supported OSes.
-- **Regression coverage:** `nettest --lifecycle` exercises the production command
-  queue under seeded delay, jitter, loss, duplicates and reordering, plus owner
-  packet validation and outage recovery. Run `-simcheck "TEST PADS" -players 1
-  -seconds 30 -movementcheck -movementhunter N` for N=0..6 to compare live physics
-  with single-step and 3–26-command replay, including injected freeze/impulses.
+- **Movement authority remains client-reported.** `IntentPacket.Position` is
+  still the owner's position claim. Converting that into fully server-derived
+  movement would be a separate prediction/reconciliation project.
 - **Real Windows authoritative gameplay still deserves manual coverage with
   extracted data.** CI validates the Windows server binary/startup contract,
   but cannot ship proprietary game files into Actions.

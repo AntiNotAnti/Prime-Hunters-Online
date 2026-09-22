@@ -287,7 +287,7 @@ Deno.serve(async (req: Request) => {
   try {
     const rows = await sql`
       select public.ingest_project_prime_career_match(
-        ${sql.json(normalized)}::jsonb,
+        ${normalizedText}::jsonb,
         ${reporter.server_id}::uuid,
         ${effectiveTrust}::integer,
         ${payloadHash}::text,

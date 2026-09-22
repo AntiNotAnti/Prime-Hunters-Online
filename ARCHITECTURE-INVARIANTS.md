@@ -6,7 +6,7 @@ This file is the short, machine-oriented source of truth for architectural assum
 
 ## Network protocol
 
-- The current wire protocol is **20** (`NetConfig.ProtocolVersion`).
+- The current wire protocol is **16** (`NetConfig.ProtocolVersion`).
 - Protocol mismatches are refused during the Hello handshake. Do not make incompatible wire or simulation changes without a protocol bump.
 - Dated protocol 6/7/8 measurements in `.claude/` are historical A/B evidence, not the current architecture.
 
@@ -16,10 +16,7 @@ This file is the short, machine-oriented source of truth for architectural assum
 - A normal player is never the simulation authority. Standalone dedicated servers simulate the match themselves.
 - "Host on this computer", directory-hosted games and regional/overflow hosted games run each match in an **isolated dedicated-server process** so every match gets its own static `NetSession`.
 - `PacketType.Authority`, `RunsTheMatch = false`, `NetSession.StartHost` and client-authority handover code remain only for compatibility/tests/legacy paths. Do not route normal launcher hosting through them.
-- The server derives movement and collision from client controls and owns combat, health, score, match state and match end. `IntentPacket.Position` is telemetry/observer fallback only; it cannot place an authoritative player or muzzle. Morph controls pass through the server's collision and freeze rules; reported form cannot override them.
-- Movement commands are sequenced by their 60 Hz input frame, repeated across eight datagrams, buffered in a bounded server queue, and consumed at most once per server tick. Packet arrival never advances physics. Missing input cannot cause a catch-up burst.
-- World snapshots contain no per-player reconciliation history. A separate owner-only `MovementState` packet carries the processed input frame, lifecycle and complete movement state at 30 Hz, with immediate updates for significant impulses, teleports and form/freeze changes.
-- Clients restore owner state, discard acknowledged commands, and replay pending commands through the shared movement/collision code without replaying combat, pickups or world-changing callbacks. Small corrections are eased in rendering; physics adopts the authoritative result immediately. Replay queries the current collision world, not a historical rewind of every dynamic entity.
+- The server is authoritative for combat, health, score, match state and match end. Player movement position is still supplied by the owning client's `IntentPacket.Position`; this is not a fully server-derived movement model.
 - A dedicated game server requires the user's extracted game data and a valid `paths.txt` beside the server binary. It must refuse to start rather than silently fall back to client authority when those files are unavailable.
 - The directory/master server does not simulate a match and does not require game files.
 

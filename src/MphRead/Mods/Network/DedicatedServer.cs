@@ -847,8 +847,6 @@ namespace MphRead.Mods.Network
         /// the sender: the sender here is the server, and it is in nobody's
         /// slot.
         /// </summary>
-        private readonly byte[] _ownerMovementScratch = new byte[NetMovementPrediction.PacketSize];
-
         private void SendSnapshot(ReadOnlySpan<byte> payload)
         {
             payload.CopyTo(_lastSnapshot);
@@ -875,8 +873,6 @@ namespace MphRead.Mods.Network
             for (int i = 0; i < _peers.Count; i++)
             {
                 _transport?.Send(_peers[i].EndPoint, PacketType.Snapshot, payload);
-                int movementSize = NetMovementPrediction.WriteOwner(_peers[i].SlotIndex, _ownerMovementScratch);
-                if (movementSize > 0) _transport?.Send(_peers[i].EndPoint, PacketType.MovementState, _ownerMovementScratch.AsSpan(0, movementSize));
             }
         }
 
@@ -889,10 +885,10 @@ namespace MphRead.Mods.Network
             for (int i = 0; i < _peers.Count; i++)
             {
                 Peer peer = _peers[i];
-                if (!NetSession.RemoteIntentValid[peer.SlotIndex]) continue;
+                if (!peer.HasIntent) continue;
                 if (offset + IntentBundlePacket.StateEntrySize > NetConfig.MaxPacketSize) break;
                 _intentBundleScratch[offset++] = (byte)peer.SlotIndex;
-                ObserverIntentState.FromIntent(NetSession.RemoteIntents[peer.SlotIndex])
+                ObserverIntentState.FromIntent(peer.LatestIntent)
                     .Write(_intentBundleScratch.AsSpan(offset, ObserverIntentState.Size));
                 offset += ObserverIntentState.Size;
                 states++;
@@ -902,14 +898,14 @@ namespace MphRead.Mods.Network
             for (int i = 0; i < _peers.Count; i++)
             {
                 Peer peer = _peers[i];
-                if (!NetSession.RemoteIntentValid[peer.SlotIndex] || !NetSession.RemoteIntents[peer.SlotIndex].Presses.Any) continue;
+                if (!peer.HasIntent || !peer.LatestIntent.Presses.Any) continue;
                 if (offset + IntentBundlePacket.EventEntrySize > NetConfig.MaxPacketSize) break;
                 _intentBundleScratch[offset++] = (byte)peer.SlotIndex;
                 for (int p = 0; p < IntentPacket.PressHistory; p++)
                 {
                     BinaryPrimitives.WriteUInt32LittleEndian(
                         _intentBundleScratch.AsSpan(offset + p * 4),
-                        NetSession.RemoteIntents[peer.SlotIndex].Presses[p]);
+                        peer.LatestIntent.Presses[p]);
                 }
                 offset += IntentPacket.PressHistory * 4;
                 events++;
@@ -1018,9 +1014,6 @@ namespace MphRead.Mods.Network
                 case PacketType.MatchLoadFailed: HandleMatchLoadFailed(packet); break;
                 case PacketType.Hello:
                     HandleHello(packet, now);
-                    break;
-                case PacketType.InputCommands:
-                    HandleInputCommands(packet, now);
                     break;
                 case PacketType.Intent:
                     HandleIntent(packet, now);
@@ -2311,46 +2304,6 @@ namespace MphRead.Mods.Network
         /// still be a reordered straggler rather than a restarted counter.
         /// </summary>
 
-        private readonly byte[] _compatibilityIntent = new byte[1 + IntentPacket.FullSize];
-
-        private void HandleInputCommands(ReceivedPacket packet, double now)
-        {
-            if (_phase is SessionPhase.Lobby or SessionPhase.Starting) return;
-            Peer? peer = Find(packet.Sender);
-            if (peer == null || !NetCommandStream.ValidateBatch(packet.Payload)) return;
-            var payload = packet.Payload;
-            if (!Simulating)
-            {
-                _compatibilityIntent[0] = (byte)PacketType.Intent;
-                payload.Slice(1 + (payload[0] - 1) * IntentPacket.FullSize, IntentPacket.FullSize).CopyTo(_compatibilityIntent.AsSpan(1));
-                HandleIntent(new ReceivedPacket(packet.Sender, _compatibilityIntent, _compatibilityIntent.Length), now);
-                return;
-            }
-            // Validate the entire datagram before accepting any command.
-            for (int i = 0; i < payload[0]; i++)
-            {
-                var input = IntentPacket.Read(payload.Slice(1 + i * IntentPacket.FullSize, IntentPacket.FullSize));
-                if (input.MatchId != _matchId || input.AuthorityEpoch != _authorityEpoch
-                    || input.SlotGeneration != _slotGenerations[peer.SlotIndex]
-                    || input.LifeId != NetPlayerLifecycle.Get(peer.SlotIndex)) return;
-            }
-            peer.LastSeen = now;
-            for (int i = 0; i < payload[0]; i++)
-            {
-                var bytes = payload.Slice(1 + i * IntentPacket.FullSize, IntentPacket.FullSize);
-                var input = IntentPacket.Read(bytes);
-                NetCommandStream.Enqueue(peer.SlotIndex, input);
-                if (!peer.HasIntent || NetLifecycleTracker.Newer(input.Frame, peer.LastIntentFrame))
-                {
-                    peer.LastIntentFrame = input.Frame;
-                    peer.LatestIntent = input;
-                    peer.HasIntent = true;
-                    peer.PostMatchReady = input.Buttons.HasFlag(IntentButtons.ReadyState);
-
-                }
-            }
-        }
-
         private void HandleIntent(ReceivedPacket packet, double now)
         {
             if (_phase is SessionPhase.Lobby or SessionPhase.Starting) return;
@@ -2368,8 +2321,10 @@ namespace MphRead.Mods.Network
             {
                 IntentPacket intent = IntentPacket.Read(packet.Payload);
                 ushort life = _sim != null ? NetPlayerLifecycle.Get(peer.SlotIndex) : _slotLives[peer.SlotIndex];
-                if (!intent.HasValidAim || !intent.HasValidMovement || intent.MatchId != _matchId || intent.AuthorityEpoch != _authorityEpoch
+                if (intent.MatchId != _matchId || intent.AuthorityEpoch != _authorityEpoch
                     || intent.SlotGeneration != _slotGenerations[peer.SlotIndex] || intent.LifeId != life) return;
+                peer.LatestIntent = intent;
+                peer.HasIntent = true;
                 if (_sim != null)
                 {
                     // Straight into the simulation, one hop earlier than a
@@ -2382,7 +2337,7 @@ namespace MphRead.Mods.Network
                     // one guards the *relay*, and its state is the peer's
                     // LastIntentFrame, which is updated whether or not this
                     // packet is relayed onward.
-                    NetCommandStream.Enqueue(peer.SlotIndex, intent);
+                    NetSession.AcceptSlotIntent(peer.SlotIndex, intent);
                 }
                 // UDP reorders; an older frame must not replace a newer one.
                 //
@@ -2398,9 +2353,7 @@ namespace MphRead.Mods.Network
                     return;
                 }
                 peer.LastIntentFrame = intent.Frame;
-                peer.LatestIntent = intent;
-                peer.HasIntent = true;
-                if (!Simulating) ServerReplayRecorder.RecordSlotIntent(peer.SlotIndex, packet.Payload);
+                ServerReplayRecorder.RecordSlotIntent(peer.SlotIndex, packet.Payload);
                 // Only meaningful between the end of one match and the start
                 // of the next; read unconditionally because it costs nothing
                 // and a client that sets it early is simply ready early.

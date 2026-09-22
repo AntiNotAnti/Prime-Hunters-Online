@@ -65,8 +65,6 @@ namespace MphRead.Mods.Network
         SessionState = 36, LobbyCommand = 37, LobbyCommandResult = 38,
         MatchLoaded = 39, MatchLoadFailed = 40,
         CareerIdentity = 41, // client -> server, short-lived career attribution ticket
-        InputCommands = 43, // redundant, ordered owner commands
-        MovementState = 44, // complete owner movement state and processed input
         IntentBundle = 42,   // server -> clients, one tick of compact observer input state/events
         MapDone = 35,        // client -> server, "I have it and it hashes right"
     }
@@ -1183,13 +1181,6 @@ namespace MphRead.Mods.Network
 
     public struct IntentPacket
     {
-        // Validate before advancing sequence numbers or exposing the aim to
-        // movement. ApplyModAim also reads intents outside ApplyIntent.
-        public readonly bool HasValidAim => Single.IsFinite(Aim.X)
-            && Single.IsFinite(Aim.Y) && Single.IsFinite(Aim.Z)
-            && MathF.Abs(Aim.X) < 100000 && MathF.Abs(Aim.Y) < 100000
-            && MathF.Abs(Aim.Z) < 100000;
-
         public ushort MatchId;
         public ulong AuthorityEpoch;
         public ushort SlotGeneration;
@@ -1232,8 +1223,7 @@ namespace MphRead.Mods.Network
         /// finds none and behaves exactly as it always did.
         /// </summary>
         public const int StateSize = 4;
-        public const int MovementSize = 20;
-        public const int FullSize = Size + StateSize + MovementSize;
+        public const int FullSize = Size + StateSize;
 
         /// <summary>
         /// <c>EquipInfo.ChargeLevel</c> as the owner holds it, clamped to a
@@ -1305,20 +1295,18 @@ namespace MphRead.Mods.Network
         /// </summary>
         public Vector3 Aim;
         /// <summary>
-        /// Diagnostic position and legacy observer fallback only. Authoritative
-        /// movement and shot origins must never be placed from this value.
+        /// Where the sender actually is.
+        ///
+        /// Sent rather than re-derived, because deriving it meant simulating
+        /// the same player twice -- once on their own machine from their
+        /// keyboard, once on the authority from these buttons -- and two
+        /// simulations of one player drift apart the moment a packet is lost.
+        /// They then disagree about collision, and the correction yanks the
+        /// player back and forth several times a second: a 10-unit jump, then
+        /// the local collision pushing it straight back, forever. Whoever is
+        /// playing a character is the one who knows where it is.
         /// </summary>
         public Vector3 Position;
-        // Camera-relative rolling and redundant, world-space flick boost input.
-        // These are directions only: the server still computes speed/collision.
-        public Vector2 RollForward;
-        public uint BoostFrame;
-        public Vector2 BoostDirection;
-        public readonly bool HasValidMovement => ValidDirection(RollForward)
-            && ValidDirection(BoostDirection);
-        private static bool ValidDirection(Vector2 value) => Single.IsFinite(value.X)
-            && Single.IsFinite(value.Y) && MathF.Abs(value.X) <= 1.01f
-            && MathF.Abs(value.Y) <= 1.01f;
         public byte WeaponSelect;   // 0xFF = no direct weapon switch this frame
         /// <summary>
         /// Universal ammo and missiles, as the owner counts them.
@@ -1404,11 +1392,6 @@ namespace MphRead.Mods.Network
                 dest[Size + 1] = BoostDamage;
                 dest[Size + 2] = ShotFlags;
                 dest[Size + 3] = HomingTarget;
-                BinaryPrimitives.WriteSingleLittleEndian(dest[(Size + StateSize)..], RollForward.X);
-                BinaryPrimitives.WriteSingleLittleEndian(dest[(Size + StateSize + 4)..], RollForward.Y);
-                BinaryPrimitives.WriteUInt32LittleEndian(dest[(Size + StateSize + 8)..], BoostFrame);
-                BinaryPrimitives.WriteSingleLittleEndian(dest[(Size + StateSize + 12)..], BoostDirection.X);
-                BinaryPrimitives.WriteSingleLittleEndian(dest[(Size + StateSize + 16)..], BoostDirection.Y);
             }
         }
 
@@ -1439,14 +1422,7 @@ namespace MphRead.Mods.Network
                 ChargeLevel = src.Length >= FullSize ? src[Size] : (byte)0,
                 BoostDamage = src.Length >= FullSize ? src[Size + 1] : (byte)0,
                 ShotFlags = src.Length >= FullSize ? src[Size + 2] : (byte)0,
-                HomingTarget = src.Length >= FullSize ? src[Size + 3] : (byte)0,
-                RollForward = src.Length >= FullSize ? new Vector2(
-                    BinaryPrimitives.ReadSingleLittleEndian(src[(Size + StateSize)..]),
-                    BinaryPrimitives.ReadSingleLittleEndian(src[(Size + StateSize + 4)..])) : default,
-                BoostFrame = src.Length >= FullSize ? BinaryPrimitives.ReadUInt32LittleEndian(src[(Size + StateSize + 8)..]) : 0,
-                BoostDirection = src.Length >= FullSize ? new Vector2(
-                    BinaryPrimitives.ReadSingleLittleEndian(src[(Size + StateSize + 12)..]),
-                    BinaryPrimitives.ReadSingleLittleEndian(src[(Size + StateSize + 16)..])) : default
+                HomingTarget = src.Length >= FullSize ? src[Size + 3] : (byte)0
             };
             for (int i = 0; i < PressHistory; i++)
             {
@@ -1465,7 +1441,7 @@ namespace MphRead.Mods.Network
     /// </summary>
     public struct ObserverIntentState
     {
-        public const int Size = 49 + IntentPacket.MovementSize;
+        public const int Size = 49;
 
         public ushort SlotGeneration;
         public ushort LifeId;
@@ -1481,9 +1457,6 @@ namespace MphRead.Mods.Network
         public byte BoostDamage;
         public byte ShotFlags;
         public byte HomingTarget;
-        public Vector2 RollForward;
-        public uint BoostFrame;
-        public Vector2 BoostDirection;
 
         public static ObserverIntentState FromIntent(in IntentPacket intent) => new()
         {
@@ -1500,10 +1473,7 @@ namespace MphRead.Mods.Network
             ChargeLevel = intent.ChargeLevel,
             BoostDamage = intent.BoostDamage,
             ShotFlags = intent.ShotFlags,
-            HomingTarget = intent.HomingTarget,
-            RollForward = intent.RollForward,
-            BoostFrame = intent.BoostFrame,
-            BoostDirection = intent.BoostDirection
+            HomingTarget = intent.HomingTarget
         };
 
         public readonly IntentPacket ToIntent(ushort matchId, ulong authorityEpoch,
@@ -1527,10 +1497,7 @@ namespace MphRead.Mods.Network
             ChargeLevel = ChargeLevel,
             BoostDamage = BoostDamage,
             ShotFlags = ShotFlags,
-            HomingTarget = HomingTarget,
-            RollForward = RollForward,
-            BoostFrame = BoostFrame,
-            BoostDirection = BoostDirection
+            HomingTarget = HomingTarget
         };
 
         public readonly void Write(Span<byte> dest)
@@ -1553,11 +1520,6 @@ namespace MphRead.Mods.Network
             dest[46] = BoostDamage;
             dest[47] = ShotFlags;
             dest[48] = HomingTarget;
-            BinaryPrimitives.WriteSingleLittleEndian(dest[49..], RollForward.X);
-            BinaryPrimitives.WriteSingleLittleEndian(dest[53..], RollForward.Y);
-            BinaryPrimitives.WriteUInt32LittleEndian(dest[57..], BoostFrame);
-            BinaryPrimitives.WriteSingleLittleEndian(dest[61..], BoostDirection.X);
-            BinaryPrimitives.WriteSingleLittleEndian(dest[65..], BoostDirection.Y);
         }
 
         public static ObserverIntentState Read(ReadOnlySpan<byte> src) => new()
@@ -1581,12 +1543,7 @@ namespace MphRead.Mods.Network
             ChargeLevel = src[45],
             BoostDamage = src[46],
             ShotFlags = src[47],
-            HomingTarget = src[48],
-            RollForward = new Vector2(BinaryPrimitives.ReadSingleLittleEndian(src[49..]),
-                BinaryPrimitives.ReadSingleLittleEndian(src[53..])),
-            BoostFrame = BinaryPrimitives.ReadUInt32LittleEndian(src[57..]),
-            BoostDirection = new Vector2(BinaryPrimitives.ReadSingleLittleEndian(src[61..]),
-                BinaryPrimitives.ReadSingleLittleEndian(src[65..]))
+            HomingTarget = src[48]
         };
     }
 
@@ -1905,9 +1862,6 @@ namespace MphRead.Mods.Network
         public static void WriteStateHeader(Span<byte> dest, bool keyframe,
             byte activeMask, uint baselineFrame)
         {
-            if (dest.Length < StateHeaderSize)
-                throw new ArgumentException("Snapshot state header is too small.", nameof(dest));
-            dest[..StateHeaderSize].Clear();
             dest[0] = keyframe ? FlagKeyframe : (byte)0;
             dest[1] = activeMask;
             BinaryPrimitives.WriteUInt32LittleEndian(dest[2..], baselineFrame);
@@ -2410,19 +2364,8 @@ namespace MphRead.Mods.Network
         /// keyframe; four-entry damage histories move into short-lived sidecars.
         /// Mixed v16/v17 peers must be refused because snapshot layout and
         /// server-to-observer packet types changed.
-        ///
-        /// Version 18 makes movement authoritative on the simulation machine.
-        /// Snapshot state headers now echo the last owner input frame actually
-        /// simulated for every slot so clients can reconcile immediate local
-        /// prediction against the authority at the same input instant.
-        /// Mixed v17/v18 peers must be refused because StateHeaderSize changed.
         /// </summary>
-        // Version 19 pairs movement acknowledgements with end-of-tick state,
-        // sends the aim used by that input, adds rolling/flick controls to intents
-        // and observer bundles, and keeps form changes authoritative.
-        // Version 20 adds redundant command batches and complete owner-only
-        // movement state, and removes the shared eight-slot reconciliation block.
-        public const int ProtocolVersion = 20;
+        public const int ProtocolVersion = 17;
         /// <summary>
         /// Frames between intent packets. One, so every frame.
         ///

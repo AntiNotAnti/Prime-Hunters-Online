@@ -12,7 +12,7 @@ namespace MphRead.NetTest
 {
     // Runs the production packet parser, session, lifecycle, prediction, damage
     // and history code without proprietary assets or a graphics/audio device.
-    internal static partial class LifecycleTests
+    internal static class LifecycleTests
     {
         private static int _checks;
         public static int Run()
@@ -28,7 +28,6 @@ namespace MphRead.NetTest
                 PacketOrdering();
                 SnapshotDeltaStream();
                 IntentBundleDelivery();
-                Movement();
                 Prediction();
                 DamageHistory();
                 PresentationClock();
@@ -67,11 +66,9 @@ namespace MphRead.NetTest
             const int matchTimeSyncSize = PlayerEntity.SlotCapacity * sizeof(float) * 2;
             Check(1 + SnapshotHeader.Size + SnapshotWire.StateHeaderSize
                 + SnapshotWire.PlayerSize * PlayerEntity.SlotCapacity + 1
-                + SnapshotWire.DamageGroupSize + matchTimeSyncSize
-                + NetHealthSync.HeaderSize + NetHealthSync.EntrySize * NetHealthSync.MaxSpawns
-                <= NetConfig.MaxPacketSize
-                && NetConfig.MaxPacketSize <= 1472,
-                "eight-player keyframe plus reconciliation, one damage sidecar and max health tail fits one UDP datagram");
+                + SnapshotWire.DamageGroupSize * PlayerEntity.SlotCapacity
+                + matchTimeSyncSize + NetHealthSync.HeaderSize <= NetConfig.MaxPacketSize
+                && NetConfig.MaxPacketSize <= 1472, "worst-case eight-player snapshot fits one UDP datagram");
             byte[] buffer = new byte[NetConfig.MaxPacketSize];
             var state = State(ushort.MaxValue, 99, 65400);
             state.DamageEventId = 65535;
@@ -103,22 +100,6 @@ namespace MphRead.NetTest
                 "observer intent compact round trip");
             Check(IntentBundlePacket.SizeFor(PlayerEntity.SlotCapacity, PlayerEntity.SlotCapacity)
                 < NetConfig.MaxPacketSize, "worst-case intent bundle exceeds datagram budget");
-
-            Check(NetConfig.ProtocolVersion == 20, "server-authoritative movement protocol version");
-            SnapshotWire.WriteStateHeader(buffer.AsSpan(SnapshotHeader.Size,
-                SnapshotWire.StateHeaderSize), keyframe: true, activeMask: 0xFF, baselineFrame: 1234);
-            Check(SnapshotWire.StateHeaderSize == 6, "world snapshots contain no per-owner reconciliation block");
-
-            Check(Math.Abs(NetUnlagged.PolicyRewindFrames(10) - 10) < 0.001
-                && Math.Abs(NetUnlagged.PolicyRewindFrames(15) - 15) < 0.001,
-                "ordinary latency is fully compensated");
-            Check(Math.Abs(NetUnlagged.PolicyRewindFrames(24) - 19.5) < 0.001
-                && Math.Abs(NetUnlagged.PolicyRewindFrames(30) - 21) < 0.001
-                && Math.Abs(NetUnlagged.PolicyRewindFrames(45) - 21) < 0.001,
-                "old views taper under defender-aware rewind policy");
-            Check(NetUnlagged.PolicyFrame(100, 76) == 80
-                && NetUnlagged.PolicyFrame(100, 70) == 79,
-                "hit claims use the same tapered historical frame");
             var claim = new HitClaimPacket { MatchId = 51, AuthorityEpoch = 3, ShooterGeneration = 5,
                 ShooterLifeId = 8, VictimGeneration = 10, VictimLifeId = 9, HitPoint = state.Position,
                 ClaimId = 65535, Damage = 127, LaunchFrame = 72,
@@ -337,27 +318,6 @@ namespace MphRead.NetTest
             state.LifeId = 1;
             Send(owner, PacketType.Snapshot, Snapshot(2, state));
             Check(Field<uint>("_snapshotFrame") == 2, "valid lower frame survives malformed higher frame");
-            var input = new IntentPacket { MatchId = Field<ushort>("_matchId"),
-                AuthorityEpoch = Field<ulong>("_authorityEpoch"), SlotGeneration = 1,
-                LifeId = 1, Frame = 10, Aim = Vector3.UnitZ, Buttons = IntentButtons.MoveUp };
-            void SendInput()
-            {
-                byte[] body = new byte[IntentPacket.FullSize]; input.Write(body);
-                Send(owner, PacketType.Intent, body);
-            }
-            object peer = Field<System.Collections.IList>("_peers")[0]!;
-            IntentPacket Latest() => (IntentPacket)peer.GetType().GetField("LatestIntent")!.GetValue(peer)!;
-            SendInput();
-            input.Frame = 9; input.Buttons = IntentButtons.MoveDown;
-            SendInput();
-            Check(Latest().Frame == 10 && Latest().Buttons == IntentButtons.MoveUp,
-                "reordered intent cannot roll back the observer bundle's controls");
-            input.Frame = 100; input.Aim = new Vector3(float.NaN, 0, 0);
-            SendInput();
-            Check(Latest().Frame == 10, "malformed aim cannot replace the server's latest intent");
-            input.Frame = 11; input.Aim = Vector3.UnitX;
-            SendInput();
-            Check(Latest().Frame == 11, "valid input survives a malformed higher frame on the relay");
         }
 
         private static void ClaimBoundaries()

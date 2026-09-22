@@ -84,7 +84,6 @@ namespace MphRead.Entities
         protected override Matrix4 GetModelTransform(ModelInstance inst, int index)
         {
             Matrix4 transform = base.GetModelTransform(inst, index);
-            if (NetSession.Active && SlotIndex == NetHooks.LocalSlot) transform.Row3.Xyz += ModMovementDrawOffset;
             if (NetSession.Active && SlotIndex != NetHooks.LocalSlot
                 && NetSmoothing.SamplePresentation(SlotIndex,
                     out Vector3 presented, out bool presentedAlt))
@@ -97,70 +96,38 @@ namespace MphRead.Entities
 
         private const int NetworkHistoryLength = 120;
         private readonly Vector3[] _networkPositionHistory = new Vector3[NetworkHistoryLength];
-        private readonly Vector3[] _networkSpeedHistory = new Vector3[NetworkHistoryLength];
-        private readonly bool[] _networkAltHistory = new bool[NetworkHistoryLength];
         private readonly uint[] _networkPositionFrames = new uint[NetworkHistoryLength];
         private int _networkPositionHistoryCount;
-        private int _networkPositionHistoryHead;
 
         /// <summary>Where this player's next beam will be born. Diagnostics only.</summary>
         internal OpenTK.Mathematics.Vector3 ModMuzzlePos => _muzzlePos;
 
-        internal void ModResetNetworkHistory()
-        {
-            _networkPositionHistoryCount = 0;
-            _networkPositionHistoryHead = 0;
-        }
+        internal void ModResetNetworkHistory() => _networkPositionHistoryCount = 0;
 
         internal void ModRecordNetworkPosition(uint frame)
         {
-            // Append in constant time. Re-recording a frame replaces it rather
-            // than consuming another entry (e.g. after a correction).
-            if (_networkPositionHistoryCount == 0
-                || _networkPositionFrames[_networkPositionHistoryHead] != frame)
+            int count = Math.Min(_networkPositionHistoryCount, NetworkHistoryLength - 1);
+            for (int i = count; i > 0; i--)
             {
-                _networkPositionHistoryHead = (_networkPositionHistoryHead + 1) % NetworkHistoryLength;
-                _networkPositionHistoryCount = Math.Min(_networkPositionHistoryCount + 1, NetworkHistoryLength);
+                _networkPositionHistory[i] = _networkPositionHistory[i - 1];
+                _networkPositionFrames[i] = _networkPositionFrames[i - 1];
             }
-            int head = _networkPositionHistoryHead;
-            _networkPositionHistory[head] = Position;
-            _networkSpeedHistory[head] = Speed;
-            _networkAltHistory[head] = IsAltForm;
-            _networkPositionFrames[head] = frame;
+            _networkPositionHistory[0] = Position;
+            _networkPositionFrames[0] = frame;
+            _networkPositionHistoryCount = Math.Min(count + 1, NetworkHistoryLength);
         }
 
         internal bool ModGetNetworkPosition(uint frame, out Vector3 position)
         {
             for (int i = 0; i < _networkPositionHistoryCount; i++)
             {
-                int at = (_networkPositionHistoryHead - i + NetworkHistoryLength) % NetworkHistoryLength;
-                if (!NetLifecycleTracker.Newer(_networkPositionFrames[at], frame))
+                if (_networkPositionFrames[i] <= frame)
                 {
-                    position = _networkPositionHistory[at];
+                    position = _networkPositionHistory[i];
                     return true;
                 }
             }
             position = default;
-            return false;
-        }
-
-        internal bool ModGetNetworkPrediction(uint frame, out Vector3 position,
-            out Vector3 speed, out bool altForm)
-        {
-            for (int i = 0; i < _networkPositionHistoryCount; i++)
-            {
-                int at = (_networkPositionHistoryHead - i + NetworkHistoryLength) % NetworkHistoryLength;
-                if (_networkPositionFrames[at] == frame)
-                {
-                    position = _networkPositionHistory[at];
-                    speed = _networkSpeedHistory[at];
-                    altForm = _networkAltHistory[at];
-                    return true;
-                }
-            }
-            position = default;
-            speed = default;
-            altForm = false;
             return false;
         }
 
@@ -655,13 +622,13 @@ namespace MphRead.Entities
         /// this -- once spawned, plain position writes are enough.
         /// </summary>
         internal void ModNetSpawn(OpenTK.Mathematics.Vector3 position,
-            OpenTK.Mathematics.Vector3 facing, bool respawn = true)
+            OpenTK.Mathematics.Vector3 facing)
         {
             OpenTK.Mathematics.Vector3 forward = facing.LengthSquared > 0.0001f
                 ? facing.Normalized()
                 : -OpenTK.Mathematics.Vector3.UnitZ;
             Spawn(position, forward, OpenTK.Mathematics.Vector3.UnitY,
-                ModSpawnNodeRef(_scene, position), respawn);
+                ModSpawnNodeRef(_scene, position), respawn: true);
         }
 
         /// <summary>
@@ -1082,7 +1049,7 @@ namespace MphRead.Entities
             return 0;
         }
 
-        internal void ModSetShotState(int chargeLevel, bool doubleDamage)
+        internal void ModSetShotState(int chargeLevel, int boostDamage, bool doubleDamage)
         {
             if (SlotIndex == NetHooks.LocalSlot)
             {
@@ -1091,9 +1058,7 @@ namespace MphRead.Entities
                 return;
             }
             EquipInfo.ChargeLevel = (ushort)Math.Clamp(chargeLevel, 0, UInt16.MaxValue);
-            // Boost charge, speed and ram damage now belong to the same
-            // authoritative movement step. A delayed owner report must not
-            // replace the damage the server just derived for its boost.
+            _boostDamage = (ushort)Math.Clamp(boostDamage, 0, UInt16.MaxValue);
             if (doubleDamage)
             {
                 // Held up rather than counted down: the owner says so again
@@ -1628,14 +1593,11 @@ namespace MphRead.Entities
                 }
                 return;
             }
-            if (!NetSession.RemoteIntentValid[SlotIndex])
+            if (!NetSession.RemoteIntentValid[SlotIndex]
+                || !NetPlayerBridge.AimTrusted(SlotIndex))
             {
                 return;
             }
-            // Current-life intents have already passed lifecycle validation.
-            // Movement authority needs this aim immediately; waiting for a
-            // spawn acknowledgement made forward movement use the spawn-point
-            // heading for part of a round trip.
             ModSetAim(NetSession.RemoteIntents[SlotIndex].Aim);
         }
 

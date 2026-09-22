@@ -11,80 +11,64 @@ namespace MphRead.Mods.Launcher.Gui
             bool showTeam = true, bool selected = false)
         {
             int slot = roster.Slots[index];
-            string team = roster.Teams[index] < 0 ? "AUTO" : $"TEAM {(char)('A' + roster.Teams[index])}";
+            string team = roster.Teams[index] < 0 ? "FFA" : $"Team {(char)('A' + roster.Teams[index])}";
             string state = roster.LobbyReady[index] ? "READY" : "WAIT";
             string name = roster.Names[index] + (slot == owner ? "  [OWNER]" : "");
-            string hunter = $"{(Hunter)roster.Hunters[index]} · S{roster.Colors[index] + 1}";
+            string teamPart = showTeam ? $" · {team}" : "";
+            string detail = $"{(Hunter)roster.Hunters[index]} · S{roster.Colors[index] + 1}{teamPart}";
 
             var line = new Grid
             {
-                ColumnDefinitions = showTeam
-                    ? new ColumnDefinitions("Auto,*,Auto,Auto,Auto")
-                    : new ColumnDefinitions("Auto,*,Auto,Auto"),
-                ColumnSpacing = 8,
-                MinHeight = 22
+                ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
+                RowDefinitions = new RowDefinitions("Auto,Auto"),
+                ColumnSpacing = 9,
+                RowSpacing = 1
             };
             var ready = new TextBlock
             {
                 Text = state,
                 FontFamily = GuiTheme.Display,
-                FontSize = 9.5,
+                FontSize = 11,
                 Foreground = roster.LobbyReady[index] ? GuiTheme.GoodBrush : GuiTheme.TextDimBrush,
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
             };
+            Grid.SetRowSpan(ready, 2);
             var player = new TextBlock
             {
                 Text = name,
                 FontFamily = GuiTheme.Display,
-                FontSize = 12,
+                FontSize = 13,
                 Foreground = GuiTheme.TextBrush,
                 TextTrimming = TextTrimming.CharacterEllipsis,
-                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
-            };
-            var hunterText = new TextBlock
-            {
-                Text = hunter,
-                FontFamily = Deck.Mono,
-                FontSize = 8.25,
-                Foreground = GuiTheme.TextDimBrush,
-                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
-            };
-            var teamText = new TextBlock
-            {
-                Text = team,
-                FontFamily = Deck.Mono,
-                FontSize = 8.25,
-                Foreground = GuiTheme.TextDimBrush,
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
             };
             var ping = new TextBlock
             {
                 Text = $"{roster.Pings[index]} ms",
                 FontFamily = Deck.Mono,
-                FontSize = 8.25,
+                FontSize = 8.5,
                 Foreground = GuiTheme.TextDimBrush,
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
             };
-
+            var facts = new TextBlock
+            {
+                Text = detail,
+                FontFamily = Deck.Mono,
+                FontSize = 8.5,
+                Foreground = GuiTheme.TextDimBrush,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+            };
             Grid.SetColumn(player, 1);
-            Grid.SetColumn(hunterText, 2);
-            if (showTeam)
-            {
-                Grid.SetColumn(teamText, 3);
-                Grid.SetColumn(ping, 4);
-            }
-            else
-            {
-                Grid.SetColumn(ping, 3);
-            }
-
+            Grid.SetColumn(ping, 2);
+            Grid.SetColumn(facts, 1);
+            Grid.SetRow(facts, 1);
+            Grid.SetColumnSpan(facts, 2);
             line.Children.Add(ready);
             line.Children.Add(player);
-            line.Children.Add(hunterText);
-            if (showTeam) line.Children.Add(teamText);
             line.Children.Add(ping);
-
-            Padding = new Thickness(4, 2);
+            line.Children.Add(facts);
+            Padding = new Thickness(4, 3);
             Background = selected
                 ? HubTheme.AccentPanel(HubTheme.Accent, 34)
                 : Brushes.Transparent;

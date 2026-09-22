@@ -103,13 +103,15 @@ claiming coverage that isn't there.
   step to `worst`. Both are only meaningful compared between two arms of the
   same scenario.
 
-- **Live multiplayer movement feel still needs platform coverage.** Protocol 20
-  restores owner-only movement state and replays pending inputs, with separate
-  visual smoothing. Asset-backed tests cover all hunters, morphs, boosts,
-  jump pads, injected freezes/impulses and delayed replay. Other players and
-  moving geometry are queried in the current world rather than fully rewound.
-  Test real network jitter, platforms and visual transitions on supported OSes;
-  historical Pi form-divergence measurements predate this implementation.
+- **Live validation of snapshot-based form reconciliation remains.** The
+  authority now reconciles from the owner's intent and each client from the
+  authority's snapshot, with a transition-aware guard for stale state. The
+  prior Pi run with 150 ms injected on two of three clients found a remote
+  puppet wrong for 78 consecutive frames; that predates this change. The
+  deterministic form test covers morph and unmorph at 150 and 300 ms, but a
+  restart-free `run-remote-lag.sh` run is still needed to measure real packet
+  timing and whether any visual bounce remains. See
+  `.claude/multiplayer/NETWORK-DIAGNOSTICS.md`.
 - **The damage pipeline's `Replayed` count reads zero for one slot on one
   client, and the reason is not established.** Measured against Japan,
   2026-09-09, four two-client runs: the first client's slot carries the same

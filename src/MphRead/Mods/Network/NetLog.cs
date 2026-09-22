@@ -236,8 +236,8 @@ namespace MphRead.Mods.Network
                 line.Append($"rewound={NetUnlagged.ShotsCompensated} ");
                 line.Append($"meanRewind={(double)NetUnlagged.FramesRewound / NetUnlagged.ShotsCompensated:0.0}f ");
                 line.Append($"worst={NetUnlagged.WorstRewind}f ");
-                line.Append($"rewindRawCap={NetUnlagged.MaxRewindFrames}f ");
-                line.Append($"rewindReduced={NetUnlagged.ShotsClamped} ");
+                line.Append($"ceiling={NetUnlagged.MaxRewindFrames}f ");
+                line.Append($"clamped={NetUnlagged.ShotsClamped} ");
                 line.Append($"historyMiss={NetUnlagged.HistoryMisses} ");
             }
             if (NetHitClaims.Declared > 0)
@@ -266,16 +266,6 @@ namespace MphRead.Mods.Network
             line.Append($" unpredStill={NetHitPrediction.UnpredictedStill}");
             line.Append($" firedMoving={NetDamage.FiredMoving}");
             line.Append($" firedStill={NetDamage.FiredStill}");
-            if (NetPlayerBridge.PredictionCorrections > 0
-                || NetPlayerBridge.PredictionHistoryMisses > 0
-                || NetPlayerBridge.PredictionRecoveries > 0)
-            {
-                line.Append($" moveCorr={NetPlayerBridge.PredictionCorrections}");
-                line.Append($" moveSnap={NetPlayerBridge.PredictionSnaps}");
-                line.Append($" moveHistMiss={NetPlayerBridge.PredictionHistoryMisses}");
-                line.Append($" moveRecover={NetPlayerBridge.PredictionRecoveries}");
-                line.Append($" moveWorst={NetPlayerBridge.PredictionWorstError:F2}");
-            }
             Line(line.ToString());
         }
 

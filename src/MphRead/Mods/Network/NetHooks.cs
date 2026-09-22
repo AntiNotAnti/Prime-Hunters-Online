@@ -183,29 +183,11 @@ namespace MphRead.Mods.Network
             && !NetSession.IsAuthority && !NetSession.IsHost
             && NetSession.SnapshotAge <= SnapshotStaleFrames;
 
-        private static IntentPacket _sampledLocalIntent;
-        private static bool _localIntentPending;
-
-        internal static void RecordRollBasis(Vector2 forward)
-        {
-            if (_localIntentPending) _sampledLocalIntent.RollForward = NetMovementInput.Normalize(forward);
-        }
-
         public static void AfterRemoteMovement(PlayerEntity player)
         {
-            if (!NetSession.Active || !NetRoomChange.GameplayReady)
+            if (!NetSession.Active || !NetRoomChange.GameplayReady
+                || player.SlotIndex == NetSession.LocalSlot)
             {
-                return;
-            }
-            if (player.SlotIndex == NetSession.LocalSlot)
-            {
-                if (_localIntentPending)
-                {
-                    // Mouse/controller aim is applied inside ProcessBiped/Alt,
-                    // after AfterInput sampled the buttons. Send that tick's
-                    // actual heading, not the previous tick's aim.
-                    _sampledLocalIntent.Aim = player.ModGunVector;
-                }
                 return;
             }
             int slot = player.SlotIndex;
@@ -217,12 +199,6 @@ namespace MphRead.Mods.Network
             {
                 return;
             }
-            // The authority now owns movement. Remote controls run through the
-            // real engine movement step above and that result is the truth;
-            // restoring the owner's reported Position here would turn the
-            // server back into a relay and discard collision, knockback and
-            // every other authoritative movement effect.
-            if (NetSession.IsAuthority || NetSession.IsHost) return;
             // A client whose puppets belong to the snapshot puts them back
             // where the snapshot said, not where the owner's intent did.
             // Skipping the restore altogether -- which is what this did on its
@@ -251,13 +227,15 @@ namespace MphRead.Mods.Network
             NetPlayerBridge.RestoreReportedPosition(player, NetSession.RemoteIntents[slot]);
         }
 
-        /// <summary>
-        /// A shot starts from the authority's simulated muzzle. Client-reported
-        /// Position is no longer allowed to move either the body or its shot
-        /// origin; it remains on the intent only for diagnostics and legacy
-        /// observer fallback.
-        /// </summary>
-        public static Vector3 RemoteShotOrigin(PlayerEntity player, Vector3 current) => current;
+        public static Vector3 RemoteShotOrigin(PlayerEntity player, Vector3 current)
+        {
+            if (!NetSession.IsAuthority || player.SlotIndex == NetSession.LocalSlot
+                || player.SlotIndex < 0 || player.SlotIndex >= NetSession.RemoteIntents.Length)
+            {
+                return current;
+            }
+            return current + NetSession.RemoteIntents[player.SlotIndex].Position - player.Position;
+        }
 
         public static Vector3 RemoteShotDirection(PlayerEntity player, Vector3 current)
         {
@@ -292,24 +270,30 @@ namespace MphRead.Mods.Network
         /// </summary>
         private const uint StaleIntentFrames = 30;
 
-        private const IntentButtons StaleIntentState =
-            IntentButtons.ZoomedState | IntentButtons.AltFormState
-            | IntentButtons.InPlayState | IntentButtons.SpectatingState
-            | IntentButtons.ReadyState;
-
         public static bool TryApplyRemoteInput(PlayerEntity player, int slot)
         {
             if (!NetSession.Active || slot == LocalSlot)
             {
                 return false;
             }
-
-            bool movementAuthority = NetSession.IsAuthority || NetSession.IsHost;
-            if (movementAuthority) NetCommandStream.SelectForTick(slot);
-
-            // Observer clients collide and aim against the same snapshot world
-            // they draw. The authority has no snapshot to follow: it derives
-            // movement from the owner's controls below.
+            // A puppet the snapshot owns is placed here as well as after the
+            // movement step, and both writes put it in the same place.
+            //
+            // <b>The measured fault this closes.</b> A client's own beam is
+            // spawned inside ProcessInput, which runs *before* the movement
+            // step -- so with the placement happening only in
+            // AfterRemoteMovement the shot was tested against the position
+            // that step left behind on the *previous* frame, while the intent
+            // it travelled with acked this frame's. One frame of a target's
+            // motion, against a headshot band 0.30 units tall and a runner
+            // measured at 0.377 units a frame: the whole band. Measured as
+            // headshot agreement falling from 75% to 30% when snapshot-owned
+            // puppets were turned on, which is what sent anyone looking.
+            //
+            // Writing the same number twice is what makes it safe: the value
+            // is NetSmoothing's read point either way, so the two writes
+            // cannot disagree, and the restore afterwards is still needed
+            // because the engine's own movement step runs in between.
             if (player.LoadFlags.TestFlag(LoadFlags.Spawned) && player.Health > 0
                 && NetRoomChange.GameplayReady && SnapshotPositions
                 && NetSession.RemoteStateValid[slot])
@@ -322,33 +306,36 @@ namespace MphRead.Mods.Network
                     NetSession.RemoteStates[slot]);
                 NetTimingDiagnostics.PresentationCorrection(current, player.Position);
             }
-
             if (player.LoadFlags.TestFlag(LoadFlags.Active) && NetSession.RemoteIntentValid[slot])
             {
-                IntentPacket intent = NetSession.RemoteIntents[slot];
-                uint age = NetSession.RemoteIntentAge(slot);
-
-                // Only non-authority observer fallback may use the owner's
-                // reported position. A real authority treats Position as
-                // untrusted telemetry and lets ProcessMovement own the body.
-                if (!movementAuthority
-                    && player.LoadFlags.TestFlag(LoadFlags.Spawned) && player.Health > 0
-                    && NetRoomChange.GameplayReady && !SnapshotPositions
-                    && age <= StaleIntentFrames)
+                if (player.LoadFlags.TestFlag(LoadFlags.Spawned) && player.Health > 0
+                    && NetRoomChange.GameplayReady
+                    // Not from the relayed intent while the snapshot owns this
+                    // puppet: the whole point is that the position it is drawn
+                    // at and the position it is shot at are the same one, and
+                    // this is the write that made them differ. The block above
+                    // is what puts it there instead.
+                    && !SnapshotPositions
+                    // And not from an intent that stopped coming. The pin is
+                    // "this player says they are here", which is only true
+                    // while they are still saying it: once their line goes,
+                    // the last position they sent fights the authority's
+                    // snapshots -- which keep moving the puppet, respawning
+                    // it, dropping it off ledges -- and the two yank it back
+                    // and forth every frame for the whole outage. Half a
+                    // second of silence is already several lost packets, and
+                    // the snapshot alone is the right answer from then on.
+                    && NetSession.RemoteIntentAge(slot) <= StaleIntentFrames)
                 {
-                    NetPlayerBridge.ApplyReportedPosition(player, intent);
+                    // Position and controls must enter the simulation
+                    // together. Applying the position after the scene step
+                    // left projectile collision testing on the old hitbox.
+                    //
+                    // Match/life identity and room readiness exclude reports
+                    // captured in the previous room.
+                    NetPlayerBridge.ApplyReportedPosition(player, NetSession.RemoteIntents[slot]);
                 }
-
-                if (movementAuthority && age > StaleIntentFrames)
-                {
-                    // Keep lifecycle/state answers but release every actionable
-                    // control. Otherwise one lost connection can leave MoveUp,
-                    // Shoot or Boost held until the peer's much longer timeout.
-                    intent.Buttons &= StaleIntentState;
-                    intent.Presses = default;
-                }
-
-                NetPlayerBridge.ApplyIntent(player, intent);
+                NetPlayerBridge.ApplyIntent(player, NetSession.RemoteIntents[slot]);
             }
             return true;
         }
@@ -403,7 +390,6 @@ namespace MphRead.Mods.Network
         /// </summary>
         public static void AfterInput(Scene scene)
         {
-            _localIntentPending = false;
             if (!NetSession.Active)
             {
                 return;
@@ -449,12 +435,6 @@ namespace MphRead.Mods.Network
                 : null;
             if (player != null && player.LoadFlags.TestFlag(LoadFlags.Active))
             {
-                // A hard authority correction is queued when a snapshot is
-                // adopted. Apply it here, before this frame's simulation and
-                // collision sweep, never after physics has already finished.
-                if (!NetMovementPrediction.Active) NetPlayerBridge.ApplyPendingLocalCorrection(player);
-                NetMovementPrediction.Apply(player);
-
                 // Between the input step and the intent capture, so a
                 // scripted player's keys reach both the local simulation and
                 // the wire -- the same order a person's keys travel in.
@@ -489,8 +469,7 @@ namespace MphRead.Mods.Network
                 NetPlayerBridge.RecordPresses(player);
                 if (NetSession.NetFrame % NetConfig.IntentSendInterval == 0)
                 {
-                    _sampledLocalIntent = NetPlayerBridge.CaptureIntent(player);
-                    _localIntentPending = true;
+                    NetSession.SendIntent(NetPlayerBridge.CaptureIntent(player));
                 }
             }
             else
@@ -520,12 +499,6 @@ namespace MphRead.Mods.Network
             {
                 return;
             }
-            if (_localIntentPending)
-            {
-                _localIntentPending = false;
-                NetMovementInput.CaptureBoost(ref _sampledLocalIntent);
-                NetSession.SendIntent(_sampledLocalIntent);
-            }
             // The playout clock, before anything reads a puppet position from
             // it. One tick a simulation frame, like every other counter here:
             // a picture with no step behind it must not advance it.
@@ -539,8 +512,8 @@ namespace MphRead.Mods.Network
                 PlayerEntity player = PlayerEntity.Players[i];
                 if (player.LoadFlags.TestFlag(LoadFlags.Active))
                 {
-                    player.ModRepairVectors();
                     player.ModRecordNetworkPosition(NetSession.NetFrame);
+                    player.ModRepairVectors();
                 }
             }
             // Also for a client the dedicated server designated as authority:

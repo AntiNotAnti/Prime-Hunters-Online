@@ -18,8 +18,6 @@ namespace MphRead.Entities
         private EntityCollision? _collidedEntCol = null;
         private EntityCollision? _standingEntCol = null;
 
-        private readonly CollisionResult[] _movementCollisionResults = new CollisionResult[40];
-
         // todo: visualize EVERYTHING
         private void CheckPlayerCollision()
         {
@@ -34,10 +32,9 @@ namespace MphRead.Entities
                 {
                     continue;
                 }
-                if ((!_movementReplay || other == this) && Flags2.TestFlag(PlayerFlags2.Halfturret))
+                if (Flags2.TestFlag(PlayerFlags2.Halfturret))
                 {
-                    Vector3 turretPosition = _movementReplay ? _movementTurretPosition : _halfturret.Position;
-                    Vector3 toTurret = other.Volume.SpherePosition - turretPosition;
+                    Vector3 toTurret = other.Volume.SpherePosition - _halfturret.Position;
                     float radius = other.Volume.SphereRadius + 0.45f + 0.1f;
                     if (toTurret.LengthSquared <= radius * radius)
                     {
@@ -51,19 +48,19 @@ namespace MphRead.Entities
                         turretRes.Field0 = 0;
                         turretRes.Plane = new Vector4(toTurret);
                         toTurret *= 0.45f;
-                        toTurret += turretPosition;
+                        toTurret += _halfturret.Position;
                         turretRes.Plane.W = Vector3.Dot(toTurret, turretRes.Plane.Xyz);
                         other.HandleCollision(turretRes);
                         if (other != this)
                         {
                             if (other.Flags1.TestFlag(PlayerFlags1.Boosting))
                             {
-                                if (!_movementReplay) TakeDamage(other._boostDamage, DamageFlags.NoDmgInvuln | DamageFlags.Halfturret, other.Speed, other);
+                                TakeDamage(other._boostDamage, DamageFlags.NoDmgInvuln | DamageFlags.Halfturret, other.Speed, other);
                                 other.EndAltAttack();
                             }
                             if (other._deathaltTimer > 0)
                             {
-                                if (!_movementReplay) TakeDamage(200, DamageFlags.Deathalt | DamageFlags.NoDmgInvuln | DamageFlags.Halfturret, other.Speed, other);
+                                TakeDamage(200, DamageFlags.Deathalt | DamageFlags.NoDmgInvuln | DamageFlags.Halfturret, other.Speed, other);
                             }
                             CheckAltAttackHit2(other, this, halfturret: true);
                         }
@@ -92,7 +89,7 @@ namespace MphRead.Entities
                     Position += posAdd;
                     _volume = CollisionVolume.Move(_volume, _volume.SpherePosition + posAdd);
                     float kbAccel = Fixed.ToFloat(Values.AltAttackKnockbackAccel);
-                    if (!_movementReplay && Hunter == Hunter.Noxus && IsAltForm)
+                    if (Hunter == Hunter.Noxus && IsAltForm)
                     {
                         other.Acceleration = new Vector3(between.X * -kbAccel, 0, between.Z * -kbAccel);
                         other._accelerationTimer = (ushort)(Values.AltAttackKnockbackTime * 2); // todo: FPS stuff
@@ -102,7 +99,6 @@ namespace MphRead.Entities
                         Acceleration = new Vector3(between.X * kbAccel, 0, between.Z * kbAccel);
                         _accelerationTimer = (ushort)(Values.AltAttackKnockbackTime * 2); // todo: FPS stuff
                     }
-                    if (_movementReplay) continue;
                     if (Flags1.TestFlag(PlayerFlags1.Boosting))
                     {
                         other.TakeDamage(_boostDamage, DamageFlags.NoDmgInvuln, Speed, this);
@@ -110,7 +106,7 @@ namespace MphRead.Entities
                     }
                     if (other.Flags1.TestFlag(PlayerFlags1.Boosting))
                     {
-                        if (!_movementReplay) TakeDamage(other._boostDamage, DamageFlags.NoDmgInvuln, other.Speed, other);
+                        TakeDamage(other._boostDamage, DamageFlags.NoDmgInvuln, other.Speed, other);
                         other.EndAltAttack();
                     }
                     if (_deathaltTimer > 0)
@@ -119,12 +115,12 @@ namespace MphRead.Entities
                     }
                     if (other._deathaltTimer > 0)
                     {
-                        if (!_movementReplay) TakeDamage(200, DamageFlags.Deathalt | DamageFlags.NoDmgInvuln, other.Speed, other);
+                        TakeDamage(200, DamageFlags.Deathalt | DamageFlags.NoDmgInvuln, other.Speed, other);
                     }
                     CheckAltAttackHit2(this, other, halfturret: false);
                     CheckAltAttackHit2(other, this, halfturret: false);
                 }
-                if (!_movementReplay) CheckAltAttackHit1(this, other, halfturret: false);
+                CheckAltAttackHit1(this, other, halfturret: false);
             }
         }
 
@@ -402,7 +398,7 @@ namespace MphRead.Entities
             _standingEntCol = null;
             _collidedEntCol = null;
             _terrainDamage = false;
-            var results = _movementCollisionResults;
+            var results = new CollisionResult[40];
             CollisionVolume altVolume = PlayerVolumes[(int)Hunter, 2];
             Vector3 point1;
             Vector3 point2;
@@ -467,7 +463,7 @@ namespace MphRead.Entities
                 {
                     Flags1 |= PlayerFlags1.NoUnmorph;
                 }
-                if (!_movementReplay && Hunter == Hunter.Kanden)
+                if (Hunter == Hunter.Kanden)
                 {
                     float altRadius = Fixed.ToFloat(Values.AltColRadius);
                     for (int i = 1; i < _kandenSegPos.Length; i++)
@@ -548,7 +544,7 @@ namespace MphRead.Entities
                             + doorResult.Plane.Y * (lockPos.Y + 0.4f * doorResult.Plane.Y)
                             + doorResult.Plane.Z * (lockPos.Z + 0.4f * doorResult.Plane.Z);
                         HandleCollision(doorResult);
-                        if (!_movementReplay) AltAttackHitDoor(door);
+                        AltAttackHitDoor(door);
                     }
                 }
             }
@@ -586,11 +582,11 @@ namespace MphRead.Entities
             dmgRes.TakeDamage = _terrainDamage;
             if (_collidedEntCol != null)
             {
-                if (!_movementReplay) _collidedEntCol.Entity.CheckContactDamage(ref dmgRes);
+                _collidedEntCol.Entity.CheckContactDamage(ref dmgRes);
             }
             if (dmgRes.TakeDamage)
             {
-                if (!_movementReplay) TakeDamage(dmgRes.Damage, DamageFlags.IgnoreInvuln, direction: null, source: null);
+                TakeDamage(dmgRes.Damage, DamageFlags.IgnoreInvuln, direction: null, source: null);
             }
             _volume = CollisionVolume.Move(_volumeUnxf, Position);
         }
@@ -852,7 +848,7 @@ namespace MphRead.Entities
                         {
                             damage = 1;
                         }
-                        if (!_movementReplay) TakeDamage((uint)damage, DamageFlags.NoDmgInvuln, direction: null, source: null);
+                        TakeDamage((uint)damage, DamageFlags.NoDmgInvuln, direction: null, source: null);
                     }
                     if (Hunter == Hunter.Noxus && IsAltForm && v165)
                     {
@@ -960,7 +956,7 @@ namespace MphRead.Entities
                     _standingEntCol = result.EntityCollision;
                 }
                 Flags1 |= PlayerFlags1.CollidingEntity;
-                if (!_movementReplay) _scene.SendMessage(Message.PlayerCollideWith, this, result.EntityCollision.Entity, 0, _standingEntCol == null ? 0 : 1);
+                _scene.SendMessage(Message.PlayerCollideWith, this, result.EntityCollision.Entity, 0, _standingEntCol == null ? 0 : 1);
                 _collidedEntCol = result.EntityCollision;
                 if (isCrusher)
                 {
@@ -1010,7 +1006,7 @@ namespace MphRead.Entities
                         if ((_crushBits & 3) == 3 || (_crushBits & 0xC) == 0xC || (_crushBits & 0x30) == 0x30)
                         {
                             // caught between one crusher moving +X and one moving -X, or one +Z and one -Z, or one +Y and one -Y
-                            if (!_movementReplay) TakeDamage((uint)_health, DamageFlags.Death | DamageFlags.IgnoreInvuln | DamageFlags.NoDmgInvuln,
+                            TakeDamage((uint)_health, DamageFlags.Death | DamageFlags.IgnoreInvuln | DamageFlags.NoDmgInvuln,
                                 direction: null, source: null);
                         }
                     }
@@ -1022,7 +1018,7 @@ namespace MphRead.Entities
                         && (v163 || result.Plane.Y < Fixed.ToFloat(-3849) && IsAltForm))
                     {
                         // reverse platform Y movement when hitting player
-                        if (!_movementReplay) platform.Recoil();
+                        platform.Recoil();
                     }
                 }
             }
@@ -1056,7 +1052,7 @@ namespace MphRead.Entities
                             Flags1 &= ~PlayerFlags1.UsedJump;
                         }
                         // if ( (some_flags & PSF_GROUNDED) == 0 && (some_flags & PSF_ALT_FORM) == 0 && player->energy )
-                        if (!_movementReplay && _health > 0 && !IsAltForm && !Flags1.TestFlag(PlayerFlags1.Grounded))
+                        if (_health > 0 && !IsAltForm && !Flags1.TestFlag(PlayerFlags1.Grounded))
                         {
                             if (Biped1Anim == PlayerAnimation.JumpLeft)
                             {

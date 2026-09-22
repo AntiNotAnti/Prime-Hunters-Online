@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using MphRead.Entities;
-using OpenTK.Mathematics;
 
 namespace MphRead.Mods.Network
 {
@@ -99,65 +98,6 @@ namespace MphRead.Mods.Network
         /// <summary>Latest authoritative state per slot, applied by clients.</summary>
         public static readonly PlayerState[] RemoteStates = new PlayerState[PlayerEntity.SlotCapacity];
         public static readonly bool[] RemoteStateValid = new bool[PlayerEntity.SlotCapacity];
-
-        /// <summary>
-        /// Per slot, the newest owner input frame the authority says it had
-        /// actually simulated when it composed the accepted snapshot.
-        /// Clients use this to reconcile local prediction against the same
-        /// instant rather than comparing today's position with a round-trip-old one.
-        /// </summary>
-        public static readonly uint[] RemoteInputFrames = new uint[PlayerEntity.SlotCapacity];
-        public static readonly Vector3[] RemoteInputPositions = new Vector3[PlayerEntity.SlotCapacity];
-        public static readonly Vector3[] RemoteInputSpeeds = new Vector3[PlayerEntity.SlotCapacity];
-        public static readonly bool[] RemoteInputAltForms = new bool[PlayerEntity.SlotCapacity];
-
-        /// <summary>
-        /// Authority-side result immediately after first simulating each owner
-        /// input frame. Snapshot current state may be several authority ticks
-        /// newer, so reconciliation must use these paired values instead.
-        /// </summary>
-        private static readonly uint[] _simulatedInputFrames = new uint[PlayerEntity.SlotCapacity];
-        private static readonly Vector3[] _simulatedInputPositions = new Vector3[PlayerEntity.SlotCapacity];
-        private static readonly Vector3[] _simulatedInputSpeeds = new Vector3[PlayerEntity.SlotCapacity];
-        private static readonly bool[] _simulatedInputAltForms = new bool[PlayerEntity.SlotCapacity];
-        private static readonly bool[] _movementCapturePending = new bool[PlayerEntity.SlotCapacity];
-
-        internal static void MarkMovementSimulated(int slot, uint frame,
-            Vector3 position, Vector3 speed, bool altForm)
-        {
-            if ((uint)slot >= _simulatedInputFrames.Length || frame == 0)
-            {
-                return;
-            }
-            uint previous = _simulatedInputFrames[slot];
-            if (previous != 0 && !NetLifecycleTracker.Newer(frame, previous))
-            {
-                return;
-            }
-            if (!Single.IsFinite(position.X) || !Single.IsFinite(position.Y)
-                || !Single.IsFinite(position.Z) || !Single.IsFinite(speed.X)
-                || !Single.IsFinite(speed.Y) || !Single.IsFinite(speed.Z))
-            {
-                return;
-            }
-            _simulatedInputFrames[slot] = frame;
-            _simulatedInputPositions[slot] = position;
-            _simulatedInputSpeeds[slot] = speed;
-            _simulatedInputAltForms[slot] = altForm;
-            _movementCapturePending[slot] = true;
-        }
-
-        internal static void CompleteMovementSimulation(PlayerEntity player)
-        {
-            int slot = player.SlotIndex;
-            if ((uint)slot >= _movementCapturePending.Length || !_movementCapturePending[slot]) return;
-            _movementCapturePending[slot] = false;
-            // Match the client's end-of-tick history, including impulses and
-            // teleports from entities processed after this player's movement.
-            _simulatedInputPositions[slot] = player.Position;
-            _simulatedInputSpeeds[slot] = player.Speed;
-            _simulatedInputAltForms[slot] = player.IsAltForm;
-        }
 
         /// <summary>Latest intent per slot, consumed by the host's input step.</summary>
         public static readonly IntentPacket[] RemoteIntents = new IntentPacket[PlayerEntity.SlotCapacity];
@@ -451,15 +391,6 @@ namespace MphRead.Mods.Network
             _snapshotKeyframeFrame = 0;
             Array.Clear(_lastSlotIntentFrame);
             Array.Clear(RemoteStateValid);
-            Array.Clear(RemoteInputFrames);
-            Array.Clear(RemoteInputPositions);
-            Array.Clear(RemoteInputSpeeds);
-            Array.Clear(RemoteInputAltForms);
-            Array.Clear(_simulatedInputFrames);
-            Array.Clear(_movementCapturePending);
-            Array.Clear(_simulatedInputPositions);
-            Array.Clear(_simulatedInputSpeeds);
-            Array.Clear(_simulatedInputAltForms);
             Array.Clear(RemoteIntentValid);
             SnapshotsReceived = 0;
             SnapshotsSent = 0;
@@ -538,15 +469,6 @@ namespace MphRead.Mods.Network
             ConnectionLost = false;
             LocalSlot = 0;
             Array.Clear(RemoteStateValid);
-            Array.Clear(RemoteInputFrames);
-            Array.Clear(RemoteInputPositions);
-            Array.Clear(RemoteInputSpeeds);
-            Array.Clear(RemoteInputAltForms);
-            Array.Clear(_simulatedInputFrames);
-            Array.Clear(_movementCapturePending);
-            Array.Clear(_simulatedInputPositions);
-            Array.Clear(_simulatedInputSpeeds);
-            Array.Clear(_simulatedInputAltForms);
             Array.Clear(RemoteIntentValid);
             Array.Clear(RemoteIntentArrived);
             ContinuousPhase.Reset();
@@ -995,14 +917,6 @@ namespace MphRead.Mods.Network
                         NetLog.Event($"server assigned slot {LocalSlot}");
                     }
                     break;
-                case PacketType.InputCommands when Role == NetRole.Host:
-                    if (NetCommandStream.ValidateBatch(packet.Payload))
-                    {
-                        _compatibilityIntent[0] = (byte)PacketType.Intent;
-                        packet.Payload.Slice(1 + (packet.Payload[0] - 1) * IntentPacket.FullSize, IntentPacket.FullSize).CopyTo(_compatibilityIntent.AsSpan(1));
-                        HandleIntent(new ReceivedPacket(packet.Sender, _compatibilityIntent, _compatibilityIntent.Length), time);
-                    }
-                    break;
                 case PacketType.Intent when Role == NetRole.Host:
                     HandleIntent(packet, time);
                     break;
@@ -1011,9 +925,6 @@ namespace MphRead.Mods.Network
                     break;
                 case PacketType.IntentBundle when Role == NetRole.Client:
                     HandleIntentBundle(packet);
-                    break;
-                case PacketType.MovementState when Role == NetRole.Client:
-                    if (_hostEndPoint != null && packet.Sender.Equals(_hostEndPoint)) NetMovementPrediction.Receive(packet.Payload);
                     break;
                 case PacketType.Snapshot when Role == NetRole.Client:
                     HandleSnapshot(packet);
@@ -1359,8 +1270,6 @@ namespace MphRead.Mods.Network
             BroadcastHostControl();
         }
 
-        private static readonly byte[] _compatibilityIntent = new byte[1 + IntentPacket.FullSize];
-
         private static void HandleIntent(ReceivedPacket packet, double time)
         {
             if (packet.Payload.Length < IntentPacket.Size)
@@ -1503,7 +1412,7 @@ namespace MphRead.Mods.Network
             }
             // Identity is checked before ordering. A new occupant/life clears
             // the frame baseline; a late packet can never reset it.
-            if (!intent.HasValidAim || !intent.HasValidMovement || !NetPlayerLifecycle.AcceptIntent(slot, intent)) return;
+            if (!NetPlayerLifecycle.AcceptIntent(slot, intent)) return;
             if (_lastSlotIntentFrame[slot] != 0 && !NetLifecycleTracker.Newer(intent.Frame, _lastSlotIntentFrame[slot]))
             {
                 IntentsOutOfOrder++;
@@ -1542,7 +1451,6 @@ namespace MphRead.Mods.Network
                 return;
             }
             ContinuousPhase.ResetSlot(slot);
-            NetCommandStream.ResetSlot(slot);
             _lastSlotIntentFrame[slot] = 0;
             RemoteIntentArrived[slot] = 0;
             RemoteIntentValid[slot] = false;
@@ -1550,15 +1458,6 @@ namespace MphRead.Mods.Network
             RemoteIntentArrived[slot] = 0;
             RemoteStateValid[slot] = false;
             RemoteStates[slot] = default;
-            RemoteInputFrames[slot] = 0;
-            RemoteInputPositions[slot] = Vector3.Zero;
-            RemoteInputSpeeds[slot] = Vector3.Zero;
-            RemoteInputAltForms[slot] = false;
-            _simulatedInputFrames[slot] = 0;
-            _movementCapturePending[slot] = false;
-            _simulatedInputPositions[slot] = Vector3.Zero;
-            _simulatedInputSpeeds[slot] = Vector3.Zero;
-            _simulatedInputAltForms[slot] = false;
             for (int i = 0; i < _peers.Count; i++)
             {
                 if (_peers[i].SlotIndex == slot)
@@ -1753,8 +1652,6 @@ namespace MphRead.Mods.Network
             ServerMatch = state;
             if (newMatch || newEpoch)
             {
-                NetCommandStream.Reset();
-                NetMovementPrediction.Reset();
                 _hasSnapshot = false;
                 _lastSnapshotFrame = SnapshotArrived = AppliedSnapshotFrame = 0;
                 Array.Clear(_snapshotBaselineValid);
@@ -1765,15 +1662,6 @@ namespace MphRead.Mods.Network
                 Array.Clear(_lastSlotIntentFrame);
                 Array.Clear(RemoteIntentValid);
                 Array.Clear(RemoteStateValid);
-                Array.Clear(RemoteInputFrames);
-                Array.Clear(RemoteInputPositions);
-                Array.Clear(RemoteInputSpeeds);
-                Array.Clear(RemoteInputAltForms);
-                Array.Clear(_simulatedInputFrames);
-                Array.Clear(_movementCapturePending);
-                Array.Clear(_simulatedInputPositions);
-                Array.Clear(_simulatedInputSpeeds);
-                Array.Clear(_simulatedInputAltForms);
                 NetSmoothing.NoteRoomChanged();
                 NetUnlagged.Reset();
                 NetHitPrediction.ForgetPending();
@@ -2074,9 +1962,8 @@ namespace MphRead.Mods.Network
             intent.AuthorityEpoch = AuthorityEpoch;
             intent.SlotGeneration = NetPlayerLifecycle.Generation(LocalSlot);
             intent.LifeId = NetPlayerLifecycle.Get(LocalSlot);
-            NetMovementPrediction.Record(intent);
             intent.Write(_scratch);
-            NetCommandStream.Send(_transport, _hostEndPoint, intent);
+            _transport.Send(_hostEndPoint, PacketType.Intent, _scratch.AsSpan(0, IntentPacket.FullSize));
             // A demo only ever contains what this client *received* -- and
             // this client never receives its own SlotIntent back, since it
             // already knows what it pressed. Without this, playback shows
@@ -2245,9 +2132,9 @@ namespace MphRead.Mods.Network
                 _snapshotKeyframeFrame = NetFrame;
             }
 
-            Span<byte> stateHeader = _scratch.AsSpan(SnapshotHeader.Size,
-                SnapshotWire.StateHeaderSize);
-            SnapshotWire.WriteStateHeader(stateHeader, keyframe, activeMask, baselineFrame);
+            SnapshotWire.WriteStateHeader(_scratch.AsSpan(SnapshotHeader.Size,
+                SnapshotWire.StateHeaderSize), keyframe, activeMask, baselineFrame);
+
             int damageCountOffset = offset++;
             int damageGroups = 0;
             for (int step = 0; step < currentCount; step++)

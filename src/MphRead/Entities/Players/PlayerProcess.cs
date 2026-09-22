@@ -374,7 +374,30 @@ namespace MphRead.Entities
             {
                 _timeSinceShot++;
             }
-            ModTickMovementTimers();
+            if (_altAttackCooldown > 0)
+            {
+                _altAttackCooldown--;
+            }
+            if (_boostAimLock > 0)
+            {
+                _boostAimLock--;
+            }
+            if (_jumpPadControlLock > 0)
+            {
+                _jumpPadControlLock--;
+            }
+            if (_jumpPadControlLock == 0)
+            {
+                _lastJumpPad = null;
+            }
+            if (_jumpPadControlLockMin > 0)
+            {
+                _jumpPadControlLockMin--;
+            }
+            if (_timeSinceJumpPad != UInt16.MaxValue)
+            {
+                _timeSinceJumpPad++;
+            }
             if (Hunter == Hunter.Samus)
             {
                 if (_bombRefillTimer > 0)
@@ -414,6 +437,10 @@ namespace MphRead.Entities
                 }
             }
             // todo?: FH leftover ammo recharge stuff
+            if (_timeSinceMorphCamera != UInt16.MaxValue)
+            {
+                _timeSinceMorphCamera++;
+            }
             if (Hunter == Hunter.Sylux && _bombOveruse > 0)
             {
                 _bombOveruse--;
@@ -1054,8 +1081,7 @@ namespace MphRead.Entities
                     CameraInfo.Fov = normalFov;
                 }
             }
-            if (Mods.Network.NetSession.Active) ModTickMovementMorph();
-            else if (_bipedModel2.AnimInfo.Flags[0].TestFlag(AnimFlags.Ended))
+            if (_bipedModel2.AnimInfo.Flags[0].TestFlag(AnimFlags.Ended))
             {
                 if (IsMorphing)
                 {
@@ -1150,14 +1176,12 @@ namespace MphRead.Entities
             {
                 if (Position.Y < _scene.Room.Meta.PlayerMin.Y)
                 {
-                    ModReportNetworkFall("player-min", _scene.Room.Meta.PlayerMin.Y);
                     TakeDamage(0, DamageFlags.Death, direction: null, source: null);
                 }
                 Position = Vector3.Clamp(Position, _scene.Room.Meta.PlayerMin.WithY(Position.Y), _scene.Room.Meta.PlayerMax);
             }
             if (Position.Y < _scene.Room.Meta.KillHeight)
             {
-                ModReportNetworkFall("kill-height", _scene.Room.Meta.KillHeight);
                 TakeDamage(0, DamageFlags.Death, direction: null, source: null);
             }
             // todo: update license stats
@@ -1245,9 +1269,7 @@ namespace MphRead.Entities
 
         public void ActivateJumpPad(JumpPadEntity jumpPad, Vector3 vector, ushort lockTime)
         {
-            _movementPadId = jumpPad.Id;
-            _movementPadCooldown = jumpPad.ModCooldownTicks;
-            if (!_movementReplay && _timeSinceJumpPad > 5 * 2) // todo: FPS stuff
+            if (_timeSinceJumpPad > 5 * 2) // todo: FPS stuff
             {
                 _soundSource.PlaySfx(SfxId.JUMP_PAD);
             }
@@ -1609,7 +1631,6 @@ namespace MphRead.Entities
 
         private bool TrySwitchForms(bool force = false)
         {
-            if (_movementReplay) return ModReplaySwitchForms();
             if (!force && (IsMorphing || IsUnmorphing || _frozenTimer > 0 || _field6D0 || _deathaltTimer > 0
                     || Flags2.TestFlag(PlayerFlags2.NoFormSwitch)
                     || !IsAltForm && Flags2.TestFlag(PlayerFlags2.BipedStuck)
@@ -1949,7 +1970,6 @@ namespace MphRead.Entities
             }
             EquipInfo.ChargeLevel = 0;
             SetBipedAnimation(PlayerAnimation.Morph, AnimFlags.NoLoop);
-            _movementMorphTicks = (ushort)(_bipedModel2.AnimInfo.FrameCount[0] * 2);
             PlayHunterSfx(HunterSfx.Morph);
         }
 
@@ -1970,7 +1990,6 @@ namespace MphRead.Entities
             // the game stops the boost charge SFX here, but that SFX is empty
             _boostCharge = 0;
             SetBipedAnimation(PlayerAnimation.Unmorph, AnimFlags.NoLoop);
-            _movementMorphTicks = (ushort)(_bipedModel2.AnimInfo.FrameCount[0] * 2);
             if (Flags2.TestFlag(PlayerFlags2.AltAttack))
             {
                 EndAltAttack();
@@ -2157,31 +2176,6 @@ namespace MphRead.Entities
             _scene.SpawnEffect(effectId, Vector3.UnitY, -Vector3.UnitX, _volume.SpherePosition);
             _scene.SpawnEffect(effectId, Vector3.UnitY, Vector3.UnitX, _volume.SpherePosition);
             _scene.SpawnEffect(effectId, Vector3.UnitY, -Vector3.UnitX, _volume.SpherePosition);
-        }
-
-        private void ModReportNetworkFall(string boundary, float y)
-        {
-            if (!Mods.Network.NetSession.Active || _health <= 0)
-            {
-                return;
-            }
-            int slot = SlotIndex;
-            string reported = "none";
-            if (slot >= 0 && slot < Mods.Network.NetSession.RemoteIntents.Length
-                && Mods.Network.NetSession.RemoteIntentValid[slot])
-            {
-                var intent = Mods.Network.NetSession.RemoteIntents[slot];
-                reported = $"({intent.Position.X:F2},{intent.Position.Y:F2},{intent.Position.Z:F2})"
-                    + $"/f{intent.Frame}";
-            }
-            string message = $"[movement] {boundary} slot={slot} "
-                + $"role={Mods.Network.NetSession.Role} authority={Mods.Network.NetSession.IsAuthority} "
-                + $"pos=({Position.X:F2},{Position.Y:F2},{Position.Z:F2}) "
-                + $"speed=({Speed.X:F2},{Speed.Y:F2},{Speed.Z:F2}) "
-                + $"standing={Flags1.TestFlag(PlayerFlags1.Standing)} limitY={y:F2} "
-                + $"reported={reported}";
-            Console.WriteLine(message);
-            Mods.Network.NetLog.Event(message);
         }
 
         private PlayerSpawnEntity? GetRespawnPoint()

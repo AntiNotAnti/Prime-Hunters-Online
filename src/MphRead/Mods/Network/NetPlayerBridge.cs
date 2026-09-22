@@ -88,20 +88,17 @@ namespace MphRead.Mods.Network
         /// </summary>
         public static long NodeLookupsUnresolved;
 
-        // Local movement is predicted immediately and reconciled when a
-        // snapshot names the exact owner-input frame the authority processed.
-        // Do not micro-teleport a live local body after its collision pass:
-        // even a small downward correction can place the capsule partly
-        // through a floor with no sweep protecting that move.
-        private const float PredictionSnapDistance = 2.0f;
-        private const float PredictionVelocityDeadzone = 0.08f;
-
-        public static long PredictionCorrections { get; private set; }
-        public static long PredictionSnaps { get; private set; }
-        public static long PredictionHistoryMisses { get; private set; }
-        public static long PredictionRecoveries { get; private set; }
-        public static double PredictionErrorSum { get; private set; }
-        public static float PredictionWorstError { get; private set; }
+        /// <summary>
+        /// How far this machine's own player may be from the authority's copy
+        /// of it before it is pulled back.
+        ///
+        /// Wide on purpose. The authority's copy is this client's own report
+        /// from a round trip ago, so under boost across a bad line the two
+        /// are several units apart while nothing at all is wrong, and a
+        /// threshold tight enough to call that a desync is a threshold that
+        /// fires constantly. This is here for corruption, not for latency.
+        /// </summary>
+        private const float DesyncDistance = 30f;
 
         /// <summary>
         /// The fastest a puppet may be said to be travelling, in units per
@@ -503,9 +500,36 @@ namespace MphRead.Mods.Network
             // target; from there the snapshot's FlagSpectating carries it to
             // everybody else.
             player.ModSetSpectating(intent.Buttons.HasFlag(IntentButtons.SpectatingState));
-            // Form changes come from the recovered Morph control above. The
-            // authority must retain its collision/freeze decision; forcing an
-            // owner's reported form could unmorph through a low ceiling.
+            // And which form its owner says it is in -- but only here, on the
+            // machine that answers that question for everybody else.
+            //
+            // The form was replicated by replaying the morph *press* through
+            // the engine and nothing else, which works until one of those
+            // presses does not take: a packet lost at the wrong moment, or a
+            // press that arrives while the puppet is somewhere it cannot
+            // unmorph. The authority's copy is then in the wrong form for the
+            // rest of the life -- and, since FlagAltForm in every snapshot is
+            // read off that copy, every other client agrees with it. The one
+            // machine that knows better is the owner's, and nothing was
+            // asking. Reported as "a player appears to everyone else as being
+            // in alt form when they are not".
+            //
+            // Its own answer, not an edge to rebuild, exactly like the zoom
+            // and the spectating flag above it: a state cannot be lost the way
+            // an edge can. Through ApplyForm rather than as a flag, so the
+            // grace period still protects the round trip in which a puppet is
+            // legitimately ahead of its owner's own report, and so the
+            // transition is attempted before it is forced.
+            //
+            // Only on the authority. A client that also acted on this would be
+            // taking form corrections from two sources at once -- the owner's
+            // intent and the authority's snapshot -- and the two disagree for
+            // exactly as long as it takes the authority to converge, which is
+            // long enough for the puppet to be pulled both ways.
+            if (NetSession.IsAuthority)
+            {
+                ApplyForm(player, intent.Buttons.HasFlag(IntentButtons.AltFormState));
+            }
             // And what this player's next shot is worth, from the one machine
             // that knows -- charge, ram, double damage, the Prime Hunter
             // bonus. Only here, and only from a sender that actually said so:
@@ -514,7 +538,7 @@ namespace MphRead.Mods.Network
             // powerups away rather than leave them where the old build's
             // re-derivation put them.
             //
-            // Only on the authority: it is the machine
+            // Only on the authority, like the form above: it is the machine
             // whose copy of this shot decides what it hit, and a client that
             // also acted on it would be correcting a puppet from two sources.
             if (intent.HasState && intent.HomingTarget != 0
@@ -526,7 +550,7 @@ namespace MphRead.Mods.Network
             }
             if (intent.HasState && (NetSession.IsAuthority || NetSession.IsHost))
             {
-                player.ModSetShotState(intent.ChargeLevel,
+                player.ModSetShotState(intent.ChargeLevel, intent.BoostDamage,
                     (intent.ShotFlags & IntentPacket.FlagDoubleDamage) != 0);
             }
         }
@@ -616,13 +640,17 @@ namespace MphRead.Mods.Network
                 // presses from before this client was listening.
                 _pressSeen[slot] = true;
                 _lastPressFrame[slot] = intent.Frame;
-                return NetCommandStream.Enabled(slot) ? (IntentButtons)intent.Presses[0] : IntentButtons.None;
+                return IntentButtons.None;
             }
             IntentButtons missed = IntentButtons.None;
             for (int i = intent.Presses.Length - 1; i >= 0; i--)
             {
-                uint frame = unchecked(intent.Frame - (uint)i);
-                if (!NetLifecycleTracker.Newer(frame, _lastPressFrame[slot]))
+                if (intent.Frame < (uint)i)
+                {
+                    continue;
+                }
+                uint frame = intent.Frame - (uint)i;
+                if (frame <= _lastPressFrame[slot])
                 {
                     continue;
                 }
@@ -640,7 +668,7 @@ namespace MphRead.Mods.Network
             // Every frame up to this packet is now accounted for, whether or
             // not it carried a press. Leaving gaps here let the same frame be
             // consumed again by a later packet.
-            if (NetLifecycleTracker.Newer(intent.Frame, _lastPressFrame[slot])) _lastPressFrame[slot] = intent.Frame;
+            _lastPressFrame[slot] = Math.Max(_lastPressFrame[slot], intent.Frame);
             return missed;
         }
 
@@ -680,8 +708,8 @@ namespace MphRead.Mods.Network
         /// are the match, and a client that decided them for itself was
         /// playing a different one -- but keeps its facing, because aim has to
         /// answer the mouse now rather than after a round trip, and keeps its
-        /// own position immediately. The isLocal branch reconciles that
-        /// prediction against the exact owner-input frame echoed by the server.
+        /// own position -- see the isLocal branch, and
+        /// <see cref="DesyncDistance"/> for the one case that overrides it.
         /// </summary>
         private static readonly ushort[] _appliedLifeId = new ushort[PlayerEntity.SlotCapacity];
         private static readonly bool[] _lifeApplied = new bool[PlayerEntity.SlotCapacity];
@@ -697,7 +725,6 @@ namespace MphRead.Mods.Network
             NetHitClaims.ForgetSlot(slot);
             NetUnlagged.ResetSlot(slot);
             player.ModResetNetworkHistory();
-            _lastPredictionAck[slot] = NetSession.NetFrame;
             player.Controls?.ClearAll();
             player.ModSetFrozen(false);
             player.ModSetBurning(false);
@@ -707,8 +734,7 @@ namespace MphRead.Mods.Network
                 NetPlayerLifecycle.ApplyingSpawn = true;
                 try { player.ModNetSpawn(state.Position, state.Facing); }
                 finally { NetPlayerLifecycle.ApplyingSpawn = false; }
-                Move(player, InForm(player, state.Position, (state.Flags & PlayerState.FlagAltForm) != 0));
-                player.Speed = state.Speed;
+                Move(player, state.Position);
                 player.ModSetSpawnFacing(state.Facing);
                 if (state.Health == 0) player.ModNetDie();
             }
@@ -738,32 +764,18 @@ namespace MphRead.Mods.Network
                 GameState.Kills[slot] = state.Kills;
                 GameState.Deaths[slot] = state.Deaths;
             }
-            // Preserve the local prediction before damage replay potentially
-            // applies authoritative knockback for feedback. Reconciliation
-            // rebuilds velocity from this value so the impulse is not doubled.
-            Vector3 predictedCurrentSpeed = isLocal ? player.Speed : default;
             NetDamage.Replay(player, state);
             if (!spawned)
             {
-                _pendingLocalCorrection[slot] = false;
                 if (state.Health == 0 && player.Health > 0) player.ModNetDie();
                 player.Health = state.Health;
                 if (state.Health == 0) NetHitPrediction.NoteDeath(slot);
                 player.ModSetSpectating((state.Flags & PlayerState.FlagSpectating) != 0);
                 return;
             }
-            // A client may predict a kill-plane/self death before the server
-            // agrees. Movement is server authoritative now, so a same-life
-            // alive snapshot must be allowed to recover that false local death
-            // rather than waiting forever for a new LifeId the server will
-            // never allocate.
-            bool recoveredLocalLife = false;
-            if (!fresh && player.Health <= 0)
-            {
-                if (!isLocal) return;
-                RecoverLocalAuthorityLife(player, state);
-                recoveredLocalLife = true;
-            }
+            // A deterministic self-death may precede its snapshot. Only a NEW
+            // authority-allocated life can stand that player back up.
+            if (!fresh && player.Health <= 0) return;
             if (!isLocal)
             {
                 Move(player, InForm(player, state.Position, (state.Flags & PlayerState.FlagAltForm) != 0));
@@ -777,47 +789,16 @@ namespace MphRead.Mods.Network
             }
             else
             {
-                if (!fresh && !recoveredLocalLife && NetRoomChange.GameplayReady && !NetMovementPrediction.Active)
+                if (!fresh && NetRoomChange.GameplayReady && Diverged(player, state, slot))
                 {
-                    ReconcileLocalMovement(player, state, slot, predictedCurrentSpeed);
-                    ApplyForm(player, (state.Flags & PlayerState.FlagAltForm) != 0);
+                    Move(player, state.Position);
+                    player.Speed = state.Speed;
+                    _divergedFrames[slot] = 0;
                 }
                 player.Health = NetHitPrediction.LocalHealthFor(player, state.Health);
             }
-            if (!isLocal || !NetMovementPrediction.Active) player.ModSetFrozen((state.Flags & PlayerState.FlagFrozen) != 0);
+            player.ModSetFrozen((state.Flags & PlayerState.FlagFrozen) != 0);
             ApplyAfflictions(player, state);
-        }
-
-        private static void RecoverLocalAuthorityLife(PlayerEntity player,
-            in PlayerState state)
-        {
-            int slot = player.SlotIndex;
-            NetPlayerLifecycle.ApplyingSpawn = true;
-            try
-            {
-                // Same life, so do not run respawn-choice/hunter-selection
-                // policy again. This is only rebuilding presentation/simulation
-                // state after a local death prediction the authority rejected.
-                player.ModNetSpawn(state.Position, state.Facing, respawn: false);
-            }
-            finally
-            {
-                NetPlayerLifecycle.ApplyingSpawn = false;
-            }
-            Move(player, InForm(player, state.Position, (state.Flags & PlayerState.FlagAltForm) != 0));
-            player.Speed = state.Speed;
-            player.ModSetSpawnFacing(state.Facing);
-            player.Health = state.Health;
-            player.ModSetSpectating((state.Flags & PlayerState.FlagSpectating) != 0);
-            player.ModResetNetworkHistory();
-            if ((uint)slot < _lastPredictionAck.Length)
-            {
-                _lastPredictionAck[slot] = NetSession.NetFrame;
-                _pendingLocalCorrection[slot] = false;
-            }
-            NetHitPrediction.NoteRespawn(slot);
-            PredictionRecoveries++;
-            NetLog.Event($"slot {slot} recovered same-life local death from authority");
         }
 
         private static void ApplyAfflictions(PlayerEntity player, PlayerState state)
@@ -865,135 +846,56 @@ namespace MphRead.Mods.Network
             => slot < 0 || slot >= _formReconciliation.Length ? FormCorrection.None
                 : _formReconciliation[slot].Step(frame, desiredAlt, actualAlt, morphing, unmorphing, ping);
 
-        private static readonly uint[] _lastPredictionAck =
-            new uint[PlayerEntity.SlotCapacity];
-        private static readonly bool[] _pendingLocalCorrection =
-            new bool[PlayerEntity.SlotCapacity];
-        private static readonly Vector3[] _pendingLocalPosition =
-            new Vector3[PlayerEntity.SlotCapacity];
-        private static readonly Vector3[] _pendingLocalSpeed =
-            new Vector3[PlayerEntity.SlotCapacity];
-        private static readonly bool[] _pendingLocalAltForm =
-            new bool[PlayerEntity.SlotCapacity];
+        private static readonly int[] _divergedFrames = new int[PlayerEntity.SlotCapacity];
 
-        internal static void ApplyPendingLocalCorrection(PlayerEntity player)
+        /// <summary>
+        /// How long this machine's own player must look wrong before it is
+        /// moved. Long enough that nothing latency can produce survives it.
+        /// </summary>
+        private const int DivergedFramesBeforeCorrecting = 60;
+
+        /// <summary>
+        /// Whether the authority's copy of this machine's own player is
+        /// somewhere it cannot be explained by the trip.
+        ///
+        /// Comparing it against where the player is *now* is the wrong
+        /// question, and asking it that way was a bug of its own. The
+        /// authority's copy is this client's own report from a round trip
+        /// ago, so under anything fast the two are legitimately far apart:
+        /// a player falling out of the level covers thirty units in the half
+        /// second a 250 ms link takes to answer, and correcting that hauled it
+        /// back up out of the fall, over and over, so it could never die.
+        /// Seventy-seven of those in one run, and the peers watching saw a
+        /// player jumping 64 units at a time.
+        ///
+        /// So compare it against where this player *was* when the authority
+        /// was looking -- its own recorded position, a ping's worth of frames
+        /// back. That is the same instant, and a difference then is a real
+        /// disagreement rather than a stale reading. It still has to persist,
+        /// because one bad snapshot is not a desync.
+        /// </summary>
+        private static bool Diverged(PlayerEntity player, in PlayerState state, int slot)
         {
-            int slot = player.SlotIndex;
-            if ((uint)slot >= _pendingLocalCorrection.Length
-                || !_pendingLocalCorrection[slot])
+            if (slot < 0 || slot >= _divergedFrames.Length)
             {
-                return;
+                return false;
             }
-            _pendingLocalCorrection[slot] = false;
-            if (player.Health <= 0) return;
-            Move(player, InForm(player, _pendingLocalPosition[slot], _pendingLocalAltForm[slot]));
-            player.Speed = _pendingLocalSpeed[slot];
-            InvalidateLocalPrediction(player, slot);
-        }
-
-        private static void InvalidateLocalPrediction(PlayerEntity player, int slot)
-        {
-            // Outstanding predictions predate the correction. Comparing their
-            // unchanged errors again would add the same impulse every snapshot
-            // or repeatedly teleport the body back while the ack catches up.
-            player.ModResetNetworkHistory();
-            _lastPredictionAck[slot] = NetSession.NetFrame;
-        }
-
-        private static void QueueLocalCorrection(in PlayerState state, int slot)
-        {
-            _pendingLocalPosition[slot] = state.Position;
-            _pendingLocalSpeed[slot] = state.Speed;
-            _pendingLocalAltForm[slot] = (state.Flags & PlayerState.FlagAltForm) != 0;
-            _pendingLocalCorrection[slot] = true;
-            PredictionCorrections++;
-            PredictionSnaps++;
-        }
-
-        private static void ReconcileLocalMovement(PlayerEntity player,
-            in PlayerState state, int slot, Vector3 predictedCurrentSpeed)
-        {
-            if ((uint)slot >= _lastPredictionAck.Length)
+            Vector3 then = player.Position;
+            int lagFrames = slot < NetSession.SlotPing.Length
+                ? Math.Clamp(NetSession.SlotPing[slot] * 60 / 1000, 0, 100)
+                : 0;
+            if (lagFrames > 0 && NetSession.NetFrame > (uint)lagFrames
+                && player.ModGetNetworkPosition(NetSession.NetFrame - (uint)lagFrames, out Vector3 past))
             {
-                return;
+                then = past;
             }
-            uint ack = NetSession.RemoteInputFrames[slot];
-            if (ack == 0 || NetLifecycleTracker.Newer(ack, NetSession.NetFrame)
-                || (_lastPredictionAck[slot] != 0
-                && !NetLifecycleTracker.Newer(ack, _lastPredictionAck[slot])))
+            if ((state.Position - then).LengthSquared <= DesyncDistance * DesyncDistance)
             {
-                return;
+                _divergedFrames[slot] = 0;
+                return false;
             }
-            // Process each acknowledgement once, including history misses and
-            // form transitions. ApplyState may run twice per simulation tick.
-            _lastPredictionAck[slot] = ack;
-
-            // The authority result below was captured immediately after first
-            // simulating this exact owner input. Compare it only with the
-            // client's prediction recorded for the same input frame.
-            if (!player.ModGetNetworkPrediction(ack,
-                    out Vector3 predictedPosition, out Vector3 predictedSpeed,
-                    out bool predictedAlt))
-            {
-                PredictionHistoryMisses++;
-                // A long outage can outlive the bounded prediction history.
-                // Recover from the current authority state instead of letting
-                // the local body diverge indefinitely without a comparison.
-                QueueLocalCorrection(state, slot);
-                return;
-            }
-
-            bool authorityAlt = NetSession.RemoteInputAltForms[slot];
-            if (predictedAlt != authorityAlt)
-            {
-                return;
-            }
-
-            Vector3 authorityPosition = NetSession.RemoteInputPositions[slot];
-            Vector3 authoritySpeed = NetSession.RemoteInputSpeeds[slot];
-            if (!Sane(authorityPosition) || !Sane(authoritySpeed))
-            {
-                RejectedUpdates++;
-                return;
-            }
-            Vector3 error = authorityPosition - predictedPosition;
-            if (!Sane(error))
-            {
-                RejectedUpdates++;
-                return;
-            }
-
-            float distance = error.Length;
-            PredictionErrorSum += distance;
-            PredictionWorstError = Math.Max(PredictionWorstError, distance);
-
-            if (distance >= PredictionSnapDistance)
-            {
-                // Large disagreements are real authority corrections. Small
-                // disagreements stay in local prediction so every physical move
-                // remains collision-swept. Snap to a position the authority
-                // actually occupied, not to a synthetic current+historical
-                // error point that may lie through nearby geometry.
-                QueueLocalCorrection(state, slot);
-                return;
-            }
-
-            // Reconcile velocity only when the authority genuinely disagreed
-            // at the matched input frame. Tiny gravity/floor differences are
-            // ignored so normal standing/falling noise cannot be fed back as
-            // a fresh downward impulse every snapshot.
-            Vector3 speedError = authoritySpeed - predictedSpeed;
-            if (Sane(speedError)
-                && speedError.LengthSquared >= PredictionVelocityDeadzone * PredictionVelocityDeadzone)
-            {
-                Vector3 targetSpeed = authoritySpeed
-                    + (predictedCurrentSpeed - predictedSpeed);
-                if (Sane(targetSpeed))
-                {
-                    player.Speed = targetSpeed;
-                    InvalidateLocalPrediction(player, slot);
-                }
-            }
+            _divergedFrames[slot]++;
+            return _divergedFrames[slot] >= DivergedFramesBeforeCorrecting;
         }
 
         /// <summary>
@@ -1004,24 +906,14 @@ namespace MphRead.Mods.Network
         /// </summary>
         public static void NoteRoomChanged()
         {
-            NetMovementInput.Reset();
-            NetCommandStream.Reset();
-            NetMovementPrediction.Reset();
             Array.Clear(_formReconciliation);
             Array.Clear(_lifeApplied);
             Array.Clear(_reportSeen);
-            Array.Clear(_lastPredictionAck);
-            Array.Clear(_pendingLocalCorrection);
-            Array.Clear(_pendingLocalPosition);
-            Array.Clear(_pendingLocalSpeed);
-            Array.Clear(_pendingLocalAltForm);
+            Array.Clear(_divergedFrames);
         }
 
         public static void Reset()
         {
-            NetMovementInput.Reset();
-            NetCommandStream.Reset();
-            NetMovementPrediction.Reset();
             Array.Clear(_formReconciliation);
             Array.Clear(_appliedLifeId);
             Array.Clear(_lifeApplied);
@@ -1040,17 +932,7 @@ namespace MphRead.Mods.Network
             Array.Clear(ShootPressAge);
             Array.Clear(_pressHistory);
             _hasLatch = false;
-            Array.Clear(_lastPredictionAck);
-            Array.Clear(_pendingLocalCorrection);
-            Array.Clear(_pendingLocalPosition);
-            Array.Clear(_pendingLocalSpeed);
-            Array.Clear(_pendingLocalAltForm);
-            PredictionCorrections = 0;
-            PredictionSnaps = 0;
-            PredictionHistoryMisses = 0;
-            PredictionRecoveries = 0;
-            PredictionErrorSum = 0;
-            PredictionWorstError = 0;
+            Array.Clear(_divergedFrames);
             Array.Clear(_lastReportPosition);
             Array.Clear(_lastReportFrame);
             Array.Clear(_reportSeen);
@@ -1101,12 +983,7 @@ namespace MphRead.Mods.Network
                 _hasLatch = false;
                 _latchedCharge = _latchedBoostDamage = 0;
             }
-            NetMovementInput.ResetSlot(slot);
-            NetCommandStream.ResetSlot(slot);
-            if (slot == NetSession.LocalSlot) NetMovementPrediction.Reset();
-            _lastPredictionAck[slot] = 0;
-            _pendingLocalCorrection[slot] = false;
-            _pendingLocalPosition[slot] = Vector3.Zero;
+            _divergedFrames[slot] = 0;
             _lastReportPosition[slot] = Vector3.Zero;
             _lastReportFrame[slot] = 0;
             _reportSeen[slot] = false;

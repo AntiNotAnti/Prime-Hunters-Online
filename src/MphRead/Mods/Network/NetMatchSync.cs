@@ -40,7 +40,7 @@ namespace MphRead.Mods.Network
                 return;
             }
             MatchStatePacket state = NetSession.ServerMatch.Value;
-            if (String.IsNullOrEmpty(state.RoomKey))
+            if (state.RoomKey.Length == 0)
             {
                 return;
             }

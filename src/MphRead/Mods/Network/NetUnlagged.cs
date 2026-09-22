@@ -113,25 +113,10 @@ namespace MphRead.Mods.Network
         public static int MaxRewindFrames { get; set; } = DefaultMaxRewindFrames;
 
         /// <summary>
-        /// Full rewind is granted through 250 ms. Beyond this point the
-        /// shooter's old view progressively yields to the defender's newer
-        /// authoritative position instead of letting latency buy equal power
-        /// all the way to a hard ceiling.
+        /// 750 ms. <see cref="LegacyMaxRewindFrames"/> is what every build up
+        /// to protocol 6 used, and is the baseline arm of any A/B.
         /// </summary>
-        public const int FullCompensationFrames = 15;
-        public const int SoftCompensationFrames = 24;
-        private const double SoftCompensationScale = 0.50;
-        private const double TailCompensationScale = 0.25;
-
-        /// <summary>
-        /// 500 ms raw request ceiling. The fairness curve serves at most 21
-        /// frames (350 ms) at this default, replacing the former 45-frame /
-        /// 750 ms full-rewind policy that produced pronounced behind-cover hits.
-        /// </summary>
-        public const int DefaultMaxRewindFrames = 30;
-
-        /// <summary>The former protocol-17 full-rewind default, retained for diagnostics.</summary>
-        public const int PreviousMaxRewindFrames = 45;
+        public const int DefaultMaxRewindFrames = 45;
 
         /// <summary>The 400 ms ceiling every build before protocol 7 had.</summary>
         public const int LegacyMaxRewindFrames = 24;
@@ -159,55 +144,6 @@ namespace MphRead.Mods.Network
             }
             MaxRewindFrames = frames;
             return true;
-        }
-
-        /// <summary>
-        /// Defender-aware rewind policy. Clean, ordinary latency receives its
-        /// full historical world. Older views taper instead of remaining
-        /// equally authoritative forever: 250-400 ms is half compensated and
-        /// the tail beyond 400 ms is quarter compensated, with
-        /// <see cref="MaxRewindFrames"/> bounding the raw request.
-        /// </summary>
-        public static double PolicyRewindFrames(double requested)
-        {
-            if (!Double.IsFinite(requested) || requested <= 0)
-            {
-                return 0;
-            }
-            double bounded = Math.Min(requested, MaxRewindFrames);
-            if (bounded <= FullCompensationFrames)
-            {
-                return bounded;
-            }
-
-            double served = FullCompensationFrames;
-            double soft = Math.Min(bounded, SoftCompensationFrames)
-                - FullCompensationFrames;
-            served += Math.Max(0, soft) * SoftCompensationScale;
-            if (bounded > SoftCompensationFrames)
-            {
-                served += (bounded - SoftCompensationFrames)
-                    * TailCompensationScale;
-            }
-            return served;
-        }
-
-        /// <summary>
-        /// Integer world frame used to validate a client hit claim under the
-        /// same policy as an authority-spawned shot. This prevents the rescue
-        /// path from restoring an ancient raw AckFrame that normal rewind
-        /// deliberately refused.
-        /// </summary>
-        public static uint PolicyFrame(uint now, uint acknowledged)
-        {
-            if (acknowledged == 0 || acknowledged >= now)
-            {
-                return now;
-            }
-            double served = PolicyRewindFrames(now - acknowledged);
-            uint frames = (uint)Math.Clamp((int)Math.Round(served), 0,
-                Math.Max(0, (int)now - 1));
-            return now - frames;
         }
 
         /// <summary>
@@ -402,7 +338,6 @@ namespace MphRead.Mods.Network
         private static bool[] _beamsBefore = new bool[16];
         private static PlayerEntity? _shooter;
         private static int _rewind;
-        private static uint _shotWorldFrame;
 
         /// <summary>
         /// True while a shot is being spawned into the past.
@@ -425,7 +360,6 @@ namespace MphRead.Mods.Network
             _inProgress = false;
             _shooter = null;
             _rewind = 0;
-            _shotWorldFrame = 0;
             ShotsCompensated = 0;
             FramesRewound = 0;
             WorstRewind = 0;
@@ -588,7 +522,11 @@ namespace MphRead.Mods.Network
             // measured. A depth past the ring is filed in the last cell rather
             // than dropped: it is still a shot that asked for more than it got.
             requested = (int)Math.Min(Math.Round(depth), HistoryFrames);
-            return PolicyRewindFrames(depth);
+            if (depth > MaxRewindFrames)
+            {
+                depth = MaxRewindFrames;
+            }
+            return depth < 0 ? 0 : depth;
         }
 
         /// <summary>
@@ -621,7 +559,6 @@ namespace MphRead.Mods.Network
             }
             _shooter = null;
             _rewind = 0;
-            _shotWorldFrame = 0;
             if (!Enabled || !Simulating || shooter.IsBot)
             {
                 return;
@@ -663,9 +600,6 @@ namespace MphRead.Mods.Network
             }
             _shooter = shooter;
             _rewind = (int)Math.Ceiling(rewind);
-            _shotWorldFrame = NetSession.NetFrame > (uint)served
-                ? NetSession.NetFrame - (uint)served
-                : 1;
             ShotsCompensated++;
             FramesRewound += served;
             if (served > WorstRewind)
@@ -697,10 +631,6 @@ namespace MphRead.Mods.Network
         /// </summary>
         internal static uint LaunchFrameFor(PlayerEntity shooter)
         {
-            if (_inProgress && _shooter == shooter && _shotWorldFrame != 0)
-            {
-                return _shotWorldFrame;
-            }
             int slot = shooter.SlotIndex;
             if (Simulating && slot != NetSession.LocalSlot && !shooter.IsBot
                 && slot >= 0 && slot < Slots && NetSession.RemoteIntentValid[slot])
@@ -708,7 +638,7 @@ namespace MphRead.Mods.Network
                 uint ack = NetSession.RemoteIntents[slot].AckFrame;
                 if (ack != 0 && ack <= NetSession.NetFrame)
                 {
-                    return PolicyFrame(NetSession.NetFrame, ack);
+                    return ack;
                 }
             }
             if (NetSmoothing.AckPoint(out uint read, out _))
@@ -973,7 +903,6 @@ namespace MphRead.Mods.Network
             Restore();
             _shooter = null;
             _rewind = 0;
-            _shotWorldFrame = 0;
             _inProgress = false;
         }
 
@@ -1003,9 +932,8 @@ namespace MphRead.Mods.Network
             // A clamped shot is still a compensated one -- it is rewound, just
             // not as far as it asked -- so ShotsCompensated is the whole
             // population and the denominator, not something to add to.
-            text += $"; policy full<={FullCompensationFrames}f, soft<={SoftCompensationFrames}f, "
-                + $"raw ceiling {MaxRewindFrames}f ({MaxRewindFrames * 1000 / 60} ms), "
-                + $"reduced {ShotsClamped}";
+            text += $"; ceiling {MaxRewindFrames} frames "
+                + $"({MaxRewindFrames * 1000 / 60} ms), clamped {ShotsClamped}";
             if (ShotsClamped > 0)
             {
                 text += $" ({ShotsClamped * 100.0 / Math.Max(1, ShotsCompensated):F1}% of shots, "
