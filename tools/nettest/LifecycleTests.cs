@@ -85,6 +85,17 @@ namespace MphRead.NetTest
             Check(input.MatchId == 51 && input.AuthorityEpoch == 9 && input.SlotGeneration == 22
                 && input.LifeId == 65535 && input.ChargeLevel == 99 && input.HomingTarget == 0x82
                 && input.AckSubFrame == 77, "intent round trip");
+            input.Presses[0] = (uint)IntentButtons.Shoot;
+            ObserverIntentState compactIntent = ObserverIntentState.FromIntent(input);
+            compactIntent.Write(buffer);
+            ObserverIntentState observed = ObserverIntentState.Read(buffer);
+            IntentPacket observerInput = observed.ToIntent(51, 9, input.Presses);
+            Check(observerInput.Frame == input.Frame && observerInput.Aim == input.Aim
+                && observerInput.Presses[0] == (uint)IntentButtons.Shoot
+                && observerInput.HomingTarget == input.HomingTarget,
+                "observer intent compact round trip");
+            Check(IntentBundlePacket.SizeFor(PlayerEntity.SlotCapacity, PlayerEntity.SlotCapacity)
+                < NetConfig.MaxPacketSize, "worst-case intent bundle exceeds datagram budget");
             var claim = new HitClaimPacket { MatchId = 51, AuthorityEpoch = 3, ShooterGeneration = 5,
                 ShooterLifeId = 8, VictimGeneration = 10, VictimLifeId = 9, HitPoint = state.Position,
                 ClaimId = 65535, Damage = 127, LaunchFrame = 72,
