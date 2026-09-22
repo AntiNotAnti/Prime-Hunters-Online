@@ -40,7 +40,8 @@ namespace MphRead.Mods.Network
             data[5] = 0;
             NetHealthSync.Receive(data);
             Check(NetHealthSync.TryGet(4, out state) && state.Available, "old match mutated health");
-            Check(SnapshotHeader.Size + SnapshotWire.PlayerSize * PlayerEntity.SlotCapacity + 1
+            Check(SnapshotHeader.Size + SnapshotWire.StateHeaderSize
+                + SnapshotWire.PlayerSize * PlayerEntity.SlotCapacity + 1
                 + SnapshotWire.DamageGroupSize
                 + NetMatchTimeSync.Size + NetHealthSync.HeaderSize
                 + NetHealthSync.MaxSpawns * NetHealthSync.EntrySize < NetConfig.MaxPacketSize,
