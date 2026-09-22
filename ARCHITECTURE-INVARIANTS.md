@@ -80,6 +80,7 @@ This file is the short, machine-oriented source of truth for architectural assum
 - Rolling timeline records own immutable payload copies and evict whole restore segments.
 - A dropped fact invalidates its dependent continuation; clips must not cross gaps.
 - Protocol network baselines are explicitly not complete replica-scene checkpoints.
+- Replay readers and transport scheduling belong to session instances. Passive hosts own their decoded lifecycle state and never access live NetSession. The foreground theatre host alone bridges legacy process services.
 - Exact kill markers fence match, authority, event, server tick, occupant generations and victim life. Ambiguous cumulative deaths are not exact kill candidates.
 - Keep current replay/Studio/killcam paths until isolated scene and runtime acceptance gates pass. See `docs/architecture/replay-map-upgrade-status.md` for remaining work.
 
