@@ -10,6 +10,7 @@ internal sealed class ReplayRecorder
     internal bool ProducesWorldCheckpoints { get; set; }
     internal event Action<ReplayTimelineRecord>? Accepted;
     internal event Action? Resetting;
+    internal event Action<ReplayTimelineRecord>? CheckpointCaptured;
     private readonly ReplayAuthorityWire _worldWire = new();
     private ReplayTimelineRecord? _match, _roster, _snapshot, _configuration;
     private readonly ReplayTimelineRecord?[] _intents = new ReplayTimelineRecord?[RosterPacket.MaxSlots];
@@ -129,7 +130,8 @@ internal sealed class ReplayRecorder
         // the World record is allowed to restore a replica scene.
         var records = new List<ReplayTimelineRecord> { _match, _roster, _snapshot };
         if (_configuration != null) records.Insert(0, _configuration);
-        records.Add(new(frame, tick, ReplayFactKind.World, bytes));
-        return Timeline.AppendRestorePoint(new(frame, tick, ReplayRestoreKind.ReplicaCheckpoint, records));
+        var world = new ReplayTimelineRecord(frame, tick, ReplayFactKind.World, bytes); records.Add(world);
+        if (!Timeline.AppendRestorePoint(new(frame, tick, ReplayRestoreKind.ReplicaCheckpoint, records))) return false;
+        CheckpointCaptured?.Invoke(world); return true;
     }
 }

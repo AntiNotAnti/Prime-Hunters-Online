@@ -49,7 +49,7 @@ public static class DemoPlayback
     { Stop(); _legacy = true; return Legacy.Join(path); }
     internal static int CheckpointCount => _player?.CheckpointCount ?? 0;
     internal static string SeekDiagnostics => _player == null ? "" :
-        $"restore {_player.SeekRestoreFrame} · {_player.SeekSimulationSteps} steps · {_player.SeekMilliseconds:0.0} ms · {_player.RejectedCheckpoints} rejected";
+        $"{_player.CheckpointSource} restore {_player.SeekRestoreFrame} · {_player.SeekSimulationSteps} steps · {_player.SeekMilliseconds:0.0} ms · {_player.RejectedCheckpoints} rejected";
     internal static void Update(Scene shell)
     {
         if (!IsIsolated || _failed) return;

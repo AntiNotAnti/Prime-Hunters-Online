@@ -421,3 +421,23 @@ visible replay frames without capture/playback errors; all eight clients saved
 clips. The general harness's position failures were traced to comparing the old
 fading room against the next match's snapshots before its load barrier. The
 measurement now observes the same GameplayReady fence as state application.
+
+## Durable seek checkpoints
+
+Version 4 recordings now append bounded compressed world checkpoints with an indexed
+footer (up to 4,096 entries / 256 MiB). Metadata scans read only the index. Playback
+loads the nearest checkpoint on demand and simulates at most 120 frames per host
+update. File and in-memory checkpoints share the same detached restore path; a bad
+optional checkpoint falls back to the earlier baseline. Recovery omits corrupted
+optional checkpoints. Range extraction preserves source clocks and nested ranges.
+
+`-replaydurablecheck SOURCE -output DIR` checks cold/backward seeks, nested ranges,
+CRC rejection and recovery. The 1,801-frame Nodes fixture passes with six durable
+checkpoints; cold seeks reconstruct 0–199 frames. An older v4 recording with the
+version-1 decoder passes all 2,843 gameplay/presentation frames, randomized seeks
+and playback rates after decoder-baseline normalization.
+
+The five-minute eight-client Battle stress run (100 ms RTT, 2% loss, all seven
+hunters) passes on all eight clients. Each client saved a shared-timeline clip;
+killcam capture/playback reported no errors. Full source recordings and logs are
+local test artifacts, never release assets.

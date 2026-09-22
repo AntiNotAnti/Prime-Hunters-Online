@@ -36,6 +36,16 @@ namespace MphRead.Mods.Network
         private uint LeadInFrames => _reader?.Metadata?.LeadInFrames ?? 0;
         public uint CurrentFrame => _frame >= LeadInFrames ? _frame - LeadInFrames : 0;
         internal uint RecordingFrame => checked(_frame + (_reader?.Metadata?.OriginRecordingFrame ?? 0));
+        internal IReadOnlyList<ReplayCheckpointIndex> DurableCheckpoints => _reader?.Checkpoints ?? Array.Empty<ReplayCheckpointIndex>();
+        internal uint CheckpointVisibleFrame(ReplayCheckpointIndex index) => index.Frame >= LeadInFrames ? index.Frame - LeadInFrames : 0;
+        internal uint SourceFrame => _frame;
+        internal Replay.ReplayWorldCheckpoint LoadCheckpoint(ReplayCheckpointIndex index)
+        {
+            var checkpoint = Replay.ReplayWorldCheckpoint.FromBytes(_reader!.ReadCheckpoint(index));
+            if (checkpoint.Frame != (ulong)index.Frame + (_reader.Metadata?.OriginRecordingFrame ?? 0))
+                throw new InvalidDataException("Durable checkpoint clock differs from its index.");
+            return checkpoint;
+        }
         internal bool IsWarming => LeadInFrames > 0 && (!_started || _frame < LeadInFrames);
         internal bool HasSimulatedFrame => _started && !IsWarming;
         public uint LastFrame { get; private set; }

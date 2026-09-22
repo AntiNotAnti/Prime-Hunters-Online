@@ -1816,6 +1816,12 @@ namespace MphRead.Mods
                 Environment.ExitCode = Network.ReplayLiveCaptureCheck.Run(liveSource);
                 return true;
             }
+            if (ValueAfter(args, "replaydurablecheck") is string durableSource)
+            {
+                Environment.ExitCode = Network.ReplayDurableCheck.Run(durableSource, ValueAfter(args, "output")
+                    ?? System.IO.Path.Combine(System.IO.Path.GetTempPath(), "prime-durable-check"));
+                return true;
+            }
             if (ValueAfter(args, "replayauthoritycheck") is string authoritySources)
             {
                 Environment.ExitCode = Network.ReplayAuthoritySceneCheck.Run(authoritySources, ValueAfter(args, "output")

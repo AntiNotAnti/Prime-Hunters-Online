@@ -20,6 +20,8 @@ internal sealed class PassiveReplayPlayer : IDisposable
     private readonly uint _firstFrame;
     private readonly Stopwatch _seekTime = new();
     private bool _disposed;
+    private readonly HashSet<long> _rejectedDurable = new();
+    internal string CheckpointSource { get; private set; } = "initial world";
     public PassiveReplayScene Current { get; private set; }
     public ReplayTransport Transport => Current.Session.Transport;
     internal event Action<Scene>? Stepped;
@@ -34,7 +36,13 @@ internal sealed class PassiveReplayPlayer : IDisposable
     internal bool Ready => !Transport.IsSeeking && !Current.Session.IsWarming;
 
     public PassiveReplayPlayer(string path, Vector2i size)
-    { _open = () => new(path, size); Current = _open(); }
+    {
+        _open = () => new(path, size); Current = _open();
+        // Nested ranges retain original source clocks. A durable baseline before
+        // their visible start can skip most of the hidden lead-in immediately.
+        if (Current.Session.IsWarming && DurableBefore(0) is { } baseline)
+            Rebuild(0, true, null, baseline);
+    }
     public PassiveReplayPlayer(ReplayTimelineClip clip, Vector2i size)
     { _open = () => new(clip, size); _firstFrame = clip.StartRecordingFrame; Current = _open(); }
 
@@ -58,8 +66,12 @@ internal sealed class PassiveReplayPlayer : IDisposable
         if (target.HasValue)
         {
             var checkpoint = _checkpoints.LastOrDefault(p => p.Key <= target.Value);
-            if (rebuild || checkpoint.Value != null && checkpoint.Key > Current.Session.CurrentFrame + MaximumStepsPerUpdate)
-                Rebuild(target.Value, resume, checkpoint.Value);
+            var durable = DurableBefore(target.Value);
+            if (durable is { } disk && checkpoint.Value != null && Current.Session.CheckpointVisibleFrame(disk) <= checkpoint.Key)
+                durable = null;
+            uint bestFrame = durable is { } chosen ? Current.Session.CheckpointVisibleFrame(chosen) : checkpoint.Key;
+            if (rebuild || bestFrame > Current.Session.CurrentFrame + MaximumStepsPerUpdate)
+                Rebuild(target.Value, resume, durable.HasValue ? null : checkpoint.Value, durable);
         }
         if (Current.Session.IsWarming)
         {
@@ -93,20 +105,37 @@ internal sealed class PassiveReplayPlayer : IDisposable
         { _seekTime.Stop(); SeekMilliseconds = _seekTime.Elapsed.TotalMilliseconds; }
         return steps;
     }
-    private void Rebuild(uint target, bool resume, ReplayWorldCheckpoint? checkpoint)
+    private ReplayCheckpointIndex? DurableBefore(uint target)
+    {
+        foreach (var index in Current.Session.DurableCheckpoints.Reverse())
+            if (Current.Session.CheckpointVisibleFrame(index) <= target && !_rejectedDurable.Contains(index.Offset)) return index;
+        return null;
+    }
+    private void Rebuild(uint target, bool resume, ReplayWorldCheckpoint? checkpoint, ReplayCheckpointIndex? durable = null)
     {
         PassiveReplayScene? replacement = null;
         try
         {
+            if (durable is { } disk)
+            {
+                try { checkpoint = Current.Session.LoadCheckpoint(disk); }
+                catch (Exception ex) when (ex is InvalidDataException or IOException or InvalidOperationException or ArgumentException)
+                {
+                    RejectedCheckpoints++; LastCheckpointError = ex.Message; _rejectedDurable.Add(disk.Offset);
+                    durable = null; checkpoint = null;
+                }
+            }
             replacement = _open();
+            CheckpointSource = checkpoint == null ? "initial world" : durable.HasValue ? "file" : "memory";
             if (checkpoint != null)
             {
-                try { checkpoint.Restore(replacement); }
+                try { checkpoint.Restore(replacement, durable?.Frame); }
                 catch (Exception ex) when (ex is InvalidDataException or IOException or InvalidOperationException or ArgumentException)
                 {
                     RejectedCheckpoints++; LastCheckpointError = ex.Message;
-                    CheckpointBytes -= checkpoint.Bytes.Length + 128; _checkpoints.Remove(checkpoint.Frame);
-                    replacement.Dispose(); replacement = _open();
+                    if (durable is { } rejected) _rejectedDurable.Add(rejected.Offset);
+                    else { CheckpointBytes -= checkpoint.Bytes.Length + 128; _checkpoints.Remove(checkpoint.Frame); }
+                    replacement.Dispose(); replacement = _open(); CheckpointSource = "initial world";
                 }
             }
             replacement.Session.Transport.CopyPreferences(Transport);

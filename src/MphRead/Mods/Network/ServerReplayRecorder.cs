@@ -19,6 +19,12 @@ namespace MphRead.Mods.Network
         static ServerReplayRecorder()
         {
             ReplayCapture.Recorder.Accepted += Accept;
+            ReplayCapture.Recorder.CheckpointCaptured += checkpoint =>
+            {
+                if (_writer == null || checkpoint.RecordingFrame <= _origin) return;
+                try { _writer.WriteCheckpoint(checkpoint.RecordingFrame - _origin, checkpoint.Payload); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException) { Fail(ex); }
+            };
             ReplayCapture.Recorder.Resetting += () => Stop();
         }
         private static ServerReplayPolicy _policy = ServerReplayPolicy.Default;

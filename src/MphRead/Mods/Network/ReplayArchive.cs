@@ -28,6 +28,7 @@ namespace MphRead.Mods.Network
                 // source remains untouched, and only complete valid chunks reach this file.
                 result = reader.LastResult;
                 foreach (ReplayEvent e in metadata.Events) writer.WriteEvent(e with { Frame = e.Frame + metadata.LeadInFrames });
+                CopyCheckpoints(reader, writer, last, tolerateCorruption: true);
                 writer.Dispose();
                 output = destination;
                 return true;
@@ -44,8 +45,10 @@ namespace MphRead.Mods.Network
             if (reader == null) return result;
             bool any = false;
             while (reader.ReadNext() != null) any = true;
-            return reader.LastResult != ReplayOpenResult.Success ? reader.LastResult
-                : any ? ReplayOpenResult.Success : ReplayOpenResult.Empty;
+            if (reader.LastResult != ReplayOpenResult.Success) return reader.LastResult;
+            try { foreach (var checkpoint in reader.Checkpoints) reader.ReadCheckpoint(checkpoint); }
+            catch (Exception ex) when (ex is IOException or InvalidDataException) { return ReplayFormatV3.Failure(ex); }
+            return any ? ReplayOpenResult.Success : ReplayOpenResult.Empty;
         }
 
         // Reference hashes come from a verified replay of the normal engine, not
@@ -60,6 +63,7 @@ namespace MphRead.Mods.Network
                 writer = new ReplayWriterV3(output, reader.Metadata);
                 while (reader.ReadNext() is { } record) writer.WriteRecord(record.Frame, record.Data);
                 if (reader.LastResult != ReplayOpenResult.Success) { writer.Abort(); return reader.LastResult; }
+                CopyCheckpoints(reader, writer, uint.MaxValue);
                 foreach (ReplayEvent value in reader.Metadata.Events) writer.WriteEvent(value with { Frame = value.Frame + reader.Metadata.LeadInFrames });
                 foreach (ReplayExpectedHash value in hashes) writer.WriteExpectedHash(value with { Frame = value.Frame + reader.Metadata.LeadInFrames }, ReplayStateHash.Schema, ReplayStateHash.BuildId);
                 writer.Dispose();
@@ -168,6 +172,16 @@ namespace MphRead.Mods.Network
             else if (type is PacketType.Roster or PacketType.Snapshot) packets[type] = packet;
         }
 
+        private static void CopyCheckpoints(DemoReader reader, ReplayWriterV3 writer, uint last, bool tolerateCorruption = false)
+        {
+            foreach (var checkpoint in reader.Checkpoints)
+            {
+                if (checkpoint.Frame > last) break;
+                try { writer.WriteCheckpoint(checkpoint.Frame, reader.ReadCheckpoint(checkpoint)); }
+                catch (Exception ex) when (tolerateCorruption && ex is IOException or InvalidDataException) { }
+            }
+        }
+
         private static ReplayMetadata Copy(ReplayMetadata source, ReplayBootstrap bootstrap, string room,
             GameMode mode, IReadOnlyList<ReplayPlayerInfo> players, ulong hash, ReplayType type, bool recovered) => new()
         {
@@ -207,6 +221,7 @@ namespace MphRead.Mods.Network
                 foreach (ReplayEvent value in source.Events)
                     if (value.Frame >= start && value.Frame <= end)
                         writer.WriteEvent(value with { Frame = value.Frame + source.LeadInFrames });
+                CopyCheckpoints(reader, writer, last);
                 writer.Dispose(); return ReplayOpenResult.Success;
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or OverflowException)

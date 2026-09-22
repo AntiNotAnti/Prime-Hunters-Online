@@ -234,9 +234,13 @@ internal sealed class ReplayWorldCheckpoint
             || reader.ReadInt32() != (int)replay.Scene.GameState.Mode || reader.ReadUInt64() != replay.MapHash)
             throw new InvalidDataException("Replay world checkpoint contract or room differs.");
         uint frame = reader.ReadUInt32(), rng1 = reader.ReadUInt32(), rng2 = reader.ReadUInt32();
-        if (!ReadBytes(reader, 65536).AsSpan().SequenceEqual(replay.InitialState.Bytes))
+        // Older v4 capsules can contain an earlier decoder version. Compare the
+        // normalized values, not two different encodings of the same baseline.
+        var construction = new ReplayReplicaState();
+        construction.RestoreCheckpoint(new ReplayReplicaCheckpoint(ReadBytes(reader, ReplayReplicaCheckpoint.MaximumBytes)));
+        if (!construction.CaptureCheckpoint().Bytes.SequenceEqual(replay.InitialState.Bytes))
             throw new InvalidDataException("Replay world construction baseline differs.");
-        var decoder = new ReplayReplicaCheckpoint(ReadBytes(reader, 65536));
+        var decoder = new ReplayReplicaCheckpoint(ReadBytes(reader, ReplayReplicaCheckpoint.MaximumBytes));
         var decoded = new ReplayReplicaState(); decoded.RestoreCheckpoint(decoder);
         for (int slot = 0; slot < PlayerEntity.SlotCapacity; slot++)
         {
