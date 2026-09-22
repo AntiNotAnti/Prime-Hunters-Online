@@ -684,7 +684,12 @@ namespace MphRead.Mods.Network
             _matchId = NetLifecycleTracker.Next(_matchId);
             _snapshotSeen = false;
             Array.Clear(_slotLives);
-            foreach (Peer connected in _peers) connected.LastIntentFrame = 0;
+            foreach (Peer connected in _peers)
+            {
+                connected.LastIntentFrame = 0;
+                connected.HasIntent = false;
+                connected.LatestIntent = default;
+            }
             TouchLobbyRevision("rotation advanced");
             // Votes belong to one match. No prompt, result or cooldown may
             // leak into the next room.
