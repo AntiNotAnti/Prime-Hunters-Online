@@ -1722,7 +1722,8 @@ namespace MphRead.Mods.Network
                 return;
             }
             if ((keyframe && baselineFrame != header.Frame)
-                || (!keyframe && baselineFrame != _snapshotBaselineFrame))
+                || (!keyframe && (baselineFrame == 0
+                    || baselineFrame != _snapshotBaselineFrame)))
             {
                 return;
             }
