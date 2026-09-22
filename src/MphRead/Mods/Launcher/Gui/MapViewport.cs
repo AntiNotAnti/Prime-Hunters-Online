@@ -224,29 +224,7 @@ namespace MphRead.Mods.Launcher.Gui
             if(_drag)
             {
                 var ids=Document.Selection.ToHashSet();Vector move=_preview;float angle=_rotation,scale=_scale;
-                Document.Edit(Tool+" selection",d=>
-                {
-                    foreach(var o in MapObjects.All(d).Where(o=>ids.Contains(o.Id)))
-                    {
-                        if(o.Value is MapGeometry {Locked:true})continue;
-                        if(Tool=="Move")
-                        {
-                            Vector translated=move;
-                            if(LocalAxes&&o.Value is MapGeometry local){var r=local.Transform.Rotation;translated=Vector.Transform(move,new Quaternion(r[0],r[1],r[2],r[3]));}
-                            o.Move(new[]{translated.X,translated.Y,translated.Z});
-                        }
-                        else if(o.Value is MapGeometry g)
-                        {
-                            if(Tool=="Scale")for(int i=0;i<3;i++)g.Transform.Scale[i]*=scale;
-                            else
-                            {
-                                var r=g.Transform.Rotation;var turn=Quaternion.CreateFromAxisAngle(Vector.UnitY,angle*MathF.PI/180);var current=new Quaternion(r[0],r[1],r[2],r[3]);var q=Quaternion.Normalize(LocalAxes?current*turn:turn*current);
-                                g.Transform.Rotation=new[]{q.X,q.Y,q.Z,q.W};
-                            }
-                        }
-                        else if(o.Value is MapSpawn s&&Tool=="Rotate")s.Yaw+=angle;
-                    }
-                });
+                Document.TransformSelection(ids, Tool, move, angle, scale, LocalAxes);
             }
             _drag=_orbit=_pan=false;_preview=Vector.Zero;_rotation=0;_scale=1;e.Pointer.Capture(null);InvalidateVisual();e.Handled=true;
         }
@@ -255,8 +233,8 @@ namespace MphRead.Mods.Launcher.Gui
         protected override void OnKeyDown(KeyEventArgs e)
         {
             if(e.Key==Key.F)FrameSelection();
-            else if(e.Key==Key.Delete){var ids=Document.Selection.ToHashSet();Document.Edit("Delete selection",d=>MapObjects.Delete(d,ids));}
-            else if(e.KeyModifiers.HasFlag(KeyModifiers.Control)&&e.Key==Key.D){var ids=Document.Selection.ToHashSet();Document.Edit("Duplicate selection",d=>MapObjects.Duplicate(d,ids));}
+            else if(e.Key==Key.Delete){var ids=Document.Selection.ToHashSet();Document.EditObjects("Delete selection",ids,d=>MapObjects.Delete(d,ids));}
+            else if(e.KeyModifiers.HasFlag(KeyModifiers.Control)&&e.Key==Key.D){var ids=Document.Selection.ToHashSet();Document.EditObjects("Duplicate selection",ids,d=>MapObjects.Duplicate(d,ids));}
             else if(e.KeyModifiers.HasFlag(KeyModifiers.Control)&&e.Key==Key.Z)Document.History.Undo();
             else if(e.KeyModifiers.HasFlag(KeyModifiers.Control)&&e.Key==Key.Y)Document.History.Redo();
             else

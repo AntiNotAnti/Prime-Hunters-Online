@@ -60,3 +60,21 @@ has a platform fallback; it is not a renderer-backed editor viewport.
 The initial target failed compilation because ReplayFormatCheck still referenced
 SnapshotWire, removed by #38. Its fixture now uses protocol 16's actual snapshot
 layout, without restoring the reverted wire protocol.
+
+## Editor history migration
+
+Dirty tracking compares `DocumentStateId` with `SavedStateId` in O(1). Undo entries
+carry their before/after identities, so branching, pruning and undo-to-save do not
+confuse stack position with document state. History is capped at 500 commands and
+256 MiB of conservative estimated retention, including redo entries.
+
+Viewport transforms store numeric transforms only. Create/delete/duplicate and
+object/property edits retain only affected objects; material edits retain one
+material. Explicit transaction keys coalesce continuous transform/property edits,
+with save boundaries preventing coalescing across the saved identity. Dragging
+still commits once on release. Whole-project replacement remains a bounded
+fallback for bulk environment/import/upgrade/recovery operations.
+
+`dotnet run --project tools/map-editor-check -c Release` exercises save identity,
+branching, undo/redo, polymorphic objects, coalescing, locked/no-op transforms,
+failed edit atomicity and history bounds.
