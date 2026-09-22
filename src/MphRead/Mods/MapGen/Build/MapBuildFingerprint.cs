@@ -10,35 +10,22 @@ namespace MphRead.Mods.MapGen
         string RecipeHash, string SourceHash, string TextureHash, string ConfigurationHash)
     {
         // Bump when compiler output or build-relevant defaults change.
-        public const int CurrentCompilerVersion = 3;
+        public const int CurrentCompilerVersion = 4;
 
         public static MapBuildFingerprint Create(MapDefinition definition)
         {
-            string recipe = definition.SourcePath == null ? HashText(definition.Serialize())
-                : HashFile(definition.SourcePath);
-            string source = definition.BundlePath != null ? recipe
-                : definition.Import == null ? "" : HashFile(definition.Import.Resolve());
-            string textures = definition.BundlePath != null ? recipe
-                : definition.Import?.Textures is not { Length: > 0 } ? ""
-                : HashFile(definition.Import.ResolveTextures());
-            return new(CurrentCompilerVersion, definition.FormatVersion, recipe, source, textures,
-                HashText(definition.Serialize() + AssetHashes(definition)
-                    + (definition.BundlePath == null && definition.Collision is { Source.Length: > 0 } collision
-                        ? HashFile(collision.Resolve()) : "")));
+            // In-memory edits are the recipe. The file on disk may be older,
+            // differently formatted or absent for an unsaved editor document.
+            string recipe = HashText(definition.Serialize());
+            var dependencies = MapDependencyAnalyzer.Analyze(definition);
+            string Select(string kind) => HashText(JsonSerializer.Serialize(
+                System.Linq.Enumerable.Where(dependencies, d => d.Kind == kind)));
+            return new(CurrentCompilerVersion, definition.FormatVersion, recipe,
+                Select("source"), Select("textures"), HashText(JsonSerializer.Serialize(dependencies)));
         }
 
-        private static string AssetHashes(MapDefinition definition)
-        {
-            if(definition.BundlePath!=null)return "";
-            var builder=new StringBuilder();
-            foreach(var asset in System.Linq.Enumerable.OrderBy(definition.Assets,a=>a.Path,StringComparer.Ordinal))
-            {
-                builder.Append(asset.Path).Append(':');
-                try{builder.Append(Convert.ToHexString(SHA256.HashData(MapAssets.Read(definition,asset.Path))));}
-                catch(Exception ex)when(ex is IOException or InvalidDataException or UnauthorizedAccessException){builder.Append("missing");}
-            }
-            return builder.ToString();
-        }
+        public string ContentKey => HashText(JsonSerializer.Serialize(new
+        { CompilerVersion, ProjectFormat, RecipeHash, SourceHash, TextureHash, ConfigurationHash }));
 
         public static string HashText(string value) => Convert.ToHexString(
             SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();

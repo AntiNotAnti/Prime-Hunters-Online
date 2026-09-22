@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Threading;
+using System.Threading.Tasks;
 using MphRead.Mods.MapEditor;
 using MphRead.Mods.MapGen;
 
@@ -95,6 +97,96 @@ try
     var layout = new MapViewportLayout(800, 600, 1.5);
     Check(layout.PixelWidth == 1200 && layout.PixelHeight == 900 && layout.Normalize(400, 300) == (0d, 0d), "DPI layout contract");
     Check(new MapViewportLayout(0, 0).PixelWidth == 0, "empty viewport safe");
+    var original = MapBuildSnapshot.Capture(doc.Project);
+    float snapshotX = original.CreateDefinition().Geometry[0].Transform.Position[0];
+    doc.Project.Definition.Geometry[0].Transform.Position[0] += 10;
+    Check(original.CreateDefinition().Geometry[0].Transform.Position[0] == snapshotX, "build snapshot detached from editor");
+    var copied = original.CreateDefinition(); copied.Geometry[0].Transform.Position[0] += 20;
+    Check(original.CreateDefinition().Geometry[0].Transform.Position[0] == snapshotX, "each worker has its own graph");
+    var logical = original.CreateDefinition();
+    string identity = MapBuildFingerprint.Create(logical).ContentKey;
+    logical.SourcePath = Path.Combine(root, "absent.json");
+    Check(MapBuildFingerprint.Create(logical).ContentKey == identity, "fingerprint uses in-memory recipe");
+    logical.Geometry[0].Transform.Position[0]++;
+    Check(MapBuildFingerprint.Create(logical).ContentKey != identity, "unsaved edit changes fingerprint");
+    string cacheRoot = Path.Combine(root, "cache");
+    int builds = 0;
+    using var release = new ManualResetEventSlim();
+    var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    MapValidationResult FakeBuild(MapDefinition map, string directory)
+    {
+        Interlocked.Increment(ref builds); entered.TrySetResult();
+        if (!release.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("test build release");
+        foreach (var file in MapOutputSet.Create(map,directory,directory,directory).Files) File.WriteAllText(file,map.Name);
+        return new MapValidationResult();
+    }
+    var scheduler = new MapBuildScheduler(cacheRoot, build: FakeBuild);
+    using var cancel = new CancellationTokenSource();
+    var first = scheduler.BuildAsync(original, cancel.Token);
+    await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    var second = scheduler.BuildAsync(original);
+    var timeout = DateTime.UtcNow.AddSeconds(10);
+    while (scheduler.SharedRequests == 0 && DateTime.UtcNow < timeout) await Task.Delay(1);
+    Check(scheduler.SharedRequests == 1, "identical concurrent requests share build");
+    cancel.Cancel();
+    try { await first; throw new Exception("cancellation did not propagate"); }
+    catch (OperationCanceledException) { checks++; }
+    release.Set();
+    var built = await second;
+    Check(built.Succeeded && builds == 1, "one caller cancellation preserves shared work");
+    var hit = await scheduler.BuildAsync(original);
+    Check(hit.CacheHit && builds == 1, "persistent cache hit skips compilation");
+    File.WriteAllText(hit.Outputs!.Model, "corruption");
+    var repaired = await scheduler.BuildAsync(original);
+    Check(repaired.Succeeded && !repaired.CacheHit && builds == 2, "corrupt output is rebuilt");
+    MapBuildScheduler.Install(repaired,original.CreateDefinition(),Path.Combine(root,"runtime"),Path.Combine(root,"entities"),Path.Combine(root,"nodes"));
+    Check(MapBuildManifest.IsCurrent(original.CreateDefinition(),MapOutputSet.Create(original.CreateDefinition(),Path.Combine(root,"runtime"),Path.Combine(root,"entities"),Path.Combine(root,"nodes"))), "installed manifest matches outputs");
+    int active=0, maximum=0;
+    using var parallelRelease = new ManualResetEventSlim();
+    var twoEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var parallel = new MapBuildScheduler(Path.Combine(root,"parallel"),build:(map,directory)=>
+    {
+        int current=Interlocked.Increment(ref active);
+        int seen; do { seen=Volatile.Read(ref maximum); } while(current>seen && Interlocked.CompareExchange(ref maximum,current,seen)!=seen);
+        if(current==2)twoEntered.TrySetResult();
+        try
+        {
+            if(!parallelRelease.Wait(TimeSpan.FromSeconds(10)))throw new TimeoutException();
+            foreach(var file in MapOutputSet.Create(map,directory,directory,directory).Files)File.WriteAllText(file,map.Name);
+            return new MapValidationResult();
+        }
+        finally{Interlocked.Decrement(ref active);}
+    });
+    var requests=Enumerable.Range(0,6).Select(n=>{var map=original.CreateDefinition();map.Name="CHECK_"+n;return parallel.BuildAsync(MapBuildSnapshot.Capture(map));}).ToArray();
+    await twoEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    parallelRelease.Set();
+    var results=await Task.WhenAll(requests);
+    Check(maximum==2 && results.All(r=>r.Succeeded),"compiler concurrency is bounded at two");
+    var failureScheduler=new MapBuildScheduler(Path.Combine(root,"failures"),build:(_,_)=>throw new IOException("fixture compiler failure"));
+    var failure=await failureScheduler.BuildAsync(original);
+    Check(!failure.Succeeded && failure.Diagnostics.Any(d=>d.Message.Contains("fixture compiler failure")),"compiler exception is structured");
+    Check(failureScheduler.PendingCount==0,"failed jobs leave no retained flight");
+    // Exercise the real compiler/packer with a synthetic texture, without game assets.
+    string texturePath=Path.Combine(root,"test.tex");
+    using(var texture=new BinaryWriter(File.Create(texturePath)))
+    {
+        texture.Write(System.Text.Encoding.ASCII.GetBytes("FPTX"));texture.Write((ushort)1);texture.Write((ushort)1);
+        texture.Write((ushort)0);texture.Write((ushort)8);texture.Write((ushort)8);texture.Write((ushort)1);texture.Write((ushort)0);
+        texture.Write((ushort)32767);texture.Write(new byte[64]);
+    }
+    var realDefinition=new MapDefinition{Name="REAL_BUILD_CHECK",BaseDirectory=root};
+    realDefinition.Materials.Add(new(){Texture="test.tex"});realDefinition.Assets.Add(new(){Path="test.tex"});
+    realDefinition.Geometry.Add(new MapBox{Transform=new(){Position=new[]{0f,-1,0},Scale=new[]{8f,1,8}}});
+    realDefinition.Spawns.Add(new(){Position=new[]{0f,2,0}});
+    var realSnapshot=MapBuildSnapshot.Capture(realDefinition);
+    var realScheduler=new MapBuildScheduler(Path.Combine(root,"real-cache"));
+    var realBuild=await realScheduler.BuildAsync(realSnapshot);
+    Check(realBuild.Succeeded,"real native compile/pack: "+string.Join(";",realBuild.Diagnostics.Select(d=>d.Message)));
+    Check(realBuild.Outputs!.Files.All(f=>new FileInfo(f).Length>0),"real build produces all five binaries");
+    Check((await realScheduler.BuildAsync(realSnapshot)).CacheHit,"real build cache hit");
+    string beforeAssetChange=MapBuildFingerprint.Create(realDefinition).ContentKey;
+    using(var texture=File.Open(texturePath,FileMode.Open,FileAccess.Write)){texture.Position=18;texture.WriteByte(0);}
+    Check(MapBuildFingerprint.Create(realDefinition).ContentKey!=beforeAssetChange,"asset content changes fingerprint");
     Console.WriteLine($"Map editor: {checks} checks passed.");
 }
 finally { Directory.Delete(root, true); }

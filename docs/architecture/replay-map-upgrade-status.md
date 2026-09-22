@@ -88,3 +88,25 @@ cleared only when import inputs change. Entity representations, selection,
 overlays and navigation carry independent counters. Save and camera navigation
 leave geometry caches alone. The CPU drawing backend is retained; migration to
 the game renderer is still outstanding.
+
+## Runtime map build migration
+
+`MapBuildSnapshot` detaches editor graphs before work is queued. The runtime build
+scheduler runs off the UI thread, deduplicates identical in-flight fingerprints,
+limits active workers to two and pending unique jobs to 32, and treats cancellation
+as cancellation of one caller's wait. Shared work completes and can satisfy other
+callers or populate the cache. Failures are structured diagnostics.
+
+Fingerprints use the in-memory recipe and dependency content, including bundles,
+Q3 sources, texture packs, collision, custom assets/audio and borrowed base-room
+model/texture inputs. Existing runtime manifests use the same analyzer. The cache
+stores all five binaries plus integrity hashes and diagnostics at
+`ProjectPrime/map-cache/<fingerprint>`. Publication is staged and guarded across
+processes. Corrupt/incomplete entries are rebuilt. External dependency changes
+during a job reject publication; cached installs also verify input identity and
+output integrity. Import/base-content reader access is serialized.
+
+Map Studio runtime Build and Playtest use this scheduler. Validation/navigation,
+package generation and existing synchronous server preparation still use their
+current detached compiler paths; unifying those consumers remains outstanding.
+The cache is per-user and is not part of release packaging.

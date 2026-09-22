@@ -489,8 +489,10 @@ namespace MphRead.Mods.Launcher.Gui
             else
             {
                 if(!GameFiles.Ready)throw new IOException("Set up game files in Settings before building runtime files.");GameFiles.ApplyPaths();
-                await Task.Run(()=>{token.ThrowIfCancellationRequested();MapPacker.Generate(p.Definition,CustomRooms.ArchiveDirectory(p.Definition),CustomRooms.EntityDirectory(),CustomRooms.NodeDirectory());},token);
-                Metadata.RegisterDownloadedMap(p.Definition);_status.Text="Runtime map built and added to Play.";
+                var built = await MapBuildScheduler.Shared.BuildAsync(MapBuildSnapshot.Capture(p), token);
+                token.ThrowIfCancellationRequested(); Problems(built.Validation()); if (!built.Succeeded) return;
+                await Task.Run(()=>{token.ThrowIfCancellationRequested();MapBuildScheduler.Install(built,p.Definition,CustomRooms.ArchiveDirectory(p.Definition),CustomRooms.EntityDirectory(),CustomRooms.NodeDirectory());},token);
+                Metadata.RegisterDownloadedMap(p.Definition);_status.Text=$"Runtime map ready · {(built.CacheHit ? "cache hit" : "compiled")} · {built.Milliseconds:0} ms";
             }
         });
         }
@@ -501,8 +503,9 @@ namespace MphRead.Mods.Launcher.Gui
             p.Definition.Capabilities=null;
             if(p.Definition.Import!=null)p.Definition.Import.KeepSpawns=false;
             if(_viewport!=null){var pos=_viewport.CameraPosition;p.Definition.Spawns.Clear();p.Definition.Spawns.Add(new(){Position=new[]{pos.X,pos.Y,pos.Z}});}
-            var result=await Task.Run(()=>MapCompiler.Compile(p,token),token);Problems(result.Validation);if(result.Map==null)return;
-            await Task.Run(()=>MapPacker.Generate(result.Map,CustomRooms.ArchiveDirectory(p.Definition),CustomRooms.EntityDirectory(),CustomRooms.NodeDirectory()),token);
+            var result=await MapBuildScheduler.Shared.BuildAsync(MapBuildSnapshot.Capture(p),token);
+            token.ThrowIfCancellationRequested();Problems(result.Validation());if(!result.Succeeded)return;
+            await Task.Run(()=>{token.ThrowIfCancellationRequested();MapBuildScheduler.Install(result,p.Definition,CustomRooms.ArchiveDirectory(p.Definition),CustomRooms.EntityDirectory(),CustomRooms.NodeDirectory());},token);
             PlayRequested?.Invoke(this,p.Definition);
         });
         private Task Audit()=>Work("Running map audit",async(p,token)=>
