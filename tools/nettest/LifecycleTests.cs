@@ -26,8 +26,6 @@ namespace MphRead.NetTest
                 LoopbackAdmission();
                 TransportCoalescing();
                 PacketOrdering();
-                SnapshotDeltaStream();
-                IntentBundleDelivery();
                 Prediction();
                 DamageHistory();
                 PresentationClock();
@@ -61,14 +59,9 @@ namespace MphRead.NetTest
         private static void Wire()
         {
             Check(NetUnlagged.PressAgeEnabled, "recovered trigger pulls include their age by default");
-            Check(PlayerState.Size == 114 && PlayerState.BaseSize == 54,
-                "full player state and compact snapshot base sizes");
-            const int matchTimeSyncSize = PlayerEntity.SlotCapacity * sizeof(float) * 2;
-            Check(1 + SnapshotHeader.Size + SnapshotWire.StateHeaderSize
-                + SnapshotWire.PlayerSize * PlayerEntity.SlotCapacity + 1
-                + SnapshotWire.DamageGroupSize * PlayerEntity.SlotCapacity
-                + matchTimeSyncSize + NetHealthSync.HeaderSize <= NetConfig.MaxPacketSize
-                && NetConfig.MaxPacketSize <= 1472, "worst-case eight-player snapshot fits one UDP datagram");
+            Check(PlayerState.Size == 114, "compact player wire size includes four event history entries");
+            Check(1 + SnapshotHeader.Size + PlayerState.Size * PlayerEntity.SlotCapacity <= NetConfig.MaxPacketSize
+                && NetConfig.MaxPacketSize <= 1472, "eight-player snapshot fits one Ethernet UDP datagram");
             byte[] buffer = new byte[NetConfig.MaxPacketSize];
             var state = State(ushort.MaxValue, 99, 65400);
             state.DamageEventId = 65535;
@@ -89,17 +82,6 @@ namespace MphRead.NetTest
             Check(input.MatchId == 51 && input.AuthorityEpoch == 9 && input.SlotGeneration == 22
                 && input.LifeId == 65535 && input.ChargeLevel == 99 && input.HomingTarget == 0x82
                 && input.AckSubFrame == 77, "intent round trip");
-            input.Presses[0] = (uint)IntentButtons.Shoot;
-            ObserverIntentState compactIntent = ObserverIntentState.FromIntent(input);
-            compactIntent.Write(buffer);
-            ObserverIntentState observed = ObserverIntentState.Read(buffer);
-            IntentPacket observerInput = observed.ToIntent(51, 9, input.Presses);
-            Check(observerInput.Frame == input.Frame && observerInput.Aim == input.Aim
-                && observerInput.Presses[0] == (uint)IntentButtons.Shoot
-                && observerInput.HomingTarget == input.HomingTarget,
-                "observer intent compact round trip");
-            Check(IntentBundlePacket.SizeFor(PlayerEntity.SlotCapacity, PlayerEntity.SlotCapacity)
-                < NetConfig.MaxPacketSize, "worst-case intent bundle exceeds datagram budget");
             var claim = new HitClaimPacket { MatchId = 51, AuthorityEpoch = 3, ShooterGeneration = 5,
                 ShooterLifeId = 8, VictimGeneration = 10, VictimLifeId = 9, HitPoint = state.Position,
                 ClaimId = 65535, Damage = 127, LaunchFrame = 72,
@@ -270,36 +252,19 @@ namespace MphRead.NetTest
             }
             byte[] Snapshot(uint frame, params PlayerState[] states)
             {
+                int playersEnd = SnapshotHeader.Size + states.Length * PlayerState.Size;
                 const int timeSyncSize = PlayerEntity.SlotCapacity * sizeof(float) * 2;
-                int damageGroups = 0;
-                for (int i = 0; i < states.Length; i++)
-                    if (states[i].DamageEventId != 0) damageGroups++;
-                int damageCountOffset = SnapshotHeader.Size + SnapshotWire.StateHeaderSize
-                    + states.Length * SnapshotWire.PlayerSize;
-                int damageOffset = damageCountOffset + 1;
-                int timeOffset = damageOffset + damageGroups * SnapshotWire.DamageGroupSize;
-                byte[] body = new byte[timeOffset + timeSyncSize + NetHealthSync.HeaderSize];
+                byte[] body = new byte[playersEnd + timeSyncSize + NetHealthSync.HeaderSize];
                 ushort matchId = Field<ushort>("_matchId");
                 new SnapshotHeader { MatchId = matchId, AuthorityEpoch = Field<ulong>("_authorityEpoch"),
                     Frame = frame, PlayerCount = (byte)states.Length }.Write(body);
-                byte activeMask = 0;
-                for (int i = 0; i < states.Length; i++) activeMask |= (byte)(1 << states[i].SlotIndex);
-                SnapshotWire.WriteStateHeader(body.AsSpan(SnapshotHeader.Size,
-                    SnapshotWire.StateHeaderSize), true, activeMask, frame);
                 for (int i = 0; i < states.Length; i++)
-                    states[i].WriteBase(body.AsSpan(
-                        SnapshotHeader.Size + SnapshotWire.StateHeaderSize
-                            + i * SnapshotWire.PlayerSize, SnapshotWire.PlayerSize));
-                body[damageCountOffset] = (byte)damageGroups;
-                for (int i = 0; i < states.Length; i++)
-                {
-                    if (states[i].DamageEventId == 0) continue;
-                    SnapshotWire.WriteDamageGroup(states[i].SlotIndex, states[i],
-                        body.AsSpan(damageOffset, SnapshotWire.DamageGroupSize));
-                    damageOffset += SnapshotWire.DamageGroupSize;
-                }
+                    states[i].Write(body.AsSpan(SnapshotHeader.Size + i * PlayerState.Size));
+                // The relay validates the same snapshot tails production sends.
+                // Zeroed match clocks are valid; an empty health-spawn section
+                // consists of the current match id plus a zero entry count.
                 BinaryPrimitives.WriteUInt16LittleEndian(
-                    body.AsSpan(timeOffset + timeSyncSize), matchId);
+                    body.AsSpan(playersEnd + timeSyncSize), matchId);
                 return body;
             }
             Hello(owner, 1); Hello(other, 2);
@@ -307,13 +272,13 @@ namespace MphRead.NetTest
                 Flags = PlayerState.FlagActive | PlayerState.FlagSpawned, Facing = Vector3.UnitZ };
             Send(owner, PacketType.Snapshot, Snapshot(1, state));
             Check(Field<uint>("_snapshotFrame") == 1, "valid authority establishes relay frame");
-            int previousLength = Field<int>("_lastSnapshotLength");
+            byte[] previous = Field<byte[]>("_lastSnapshot");
             Send(other, PacketType.Snapshot, Snapshot(500, state));
             Check(Field<uint>("_snapshotFrame") == 1, "non-authority cannot advance relay frame");
             state.LifeId = 2;
             Send(owner, PacketType.Snapshot, Snapshot(100, state, state));
             Check(Field<uint>("_snapshotFrame") == 1 && Field<ushort[]>("_slotLives")[0] == 1
-                && Field<int>("_lastSnapshotLength") == previousLength,
+                && ReferenceEquals(previous, Field<byte[]>("_lastSnapshot")),
                 "duplicate slots cannot commit frame, life or cached snapshot");
             state.LifeId = 1;
             Send(owner, PacketType.Snapshot, Snapshot(2, state));
@@ -395,24 +360,13 @@ namespace MphRead.NetTest
         private static byte[] Packet(uint frame, PlayerState state, ushort match = 51, ulong epoch = 4)
         {
             const int timeSyncSize = PlayerEntity.SlotCapacity * sizeof(float) * 2;
-            int damageGroups = state.DamageEventId == 0 ? 0 : 1;
-            int damageCountOffset = 1 + SnapshotHeader.Size + SnapshotWire.StateHeaderSize
-                + SnapshotWire.PlayerSize;
-            int damageOffset = damageCountOffset + 1;
-            int timeOffset = damageOffset + damageGroups * SnapshotWire.DamageGroupSize;
-            int healthOffset = timeOffset + timeSyncSize;
-            byte[] bytes = new byte[healthOffset + NetHealthSync.HeaderSize];
+            int payloadSize = SnapshotHeader.Size + PlayerState.Size + timeSyncSize + NetHealthSync.HeaderSize;
+            byte[] bytes = new byte[1 + payloadSize];
             bytes[0] = (byte)PacketType.Snapshot;
             new SnapshotHeader { MatchId = match, AuthorityEpoch = epoch, Frame = frame, PlayerCount = 1 }
                 .Write(bytes.AsSpan(1));
-            SnapshotWire.WriteStateHeader(bytes.AsSpan(1 + SnapshotHeader.Size,
-                SnapshotWire.StateHeaderSize), true, (byte)(1 << state.SlotIndex), frame);
-            state.WriteBase(bytes.AsSpan(1 + SnapshotHeader.Size + SnapshotWire.StateHeaderSize,
-                SnapshotWire.PlayerSize));
-            bytes[damageCountOffset] = (byte)damageGroups;
-            if (damageGroups != 0)
-                SnapshotWire.WriteDamageGroup(state.SlotIndex, state,
-                    bytes.AsSpan(damageOffset, SnapshotWire.DamageGroupSize));
+            state.Write(bytes.AsSpan(1 + SnapshotHeader.Size));
+            int healthOffset = 1 + SnapshotHeader.Size + PlayerState.Size + timeSyncSize;
             BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(healthOffset), match);
             return bytes;
         }
@@ -420,117 +374,6 @@ namespace MphRead.NetTest
         {
             NetSession.InjectPlaybackPacket(bytes, bytes.Length);
             NetSession.Update(0);
-        }
-
-        private static byte[] DeltaPacket(uint frame, uint baselineFrame,
-            PlayerState? changed, byte activeMask = 1 << 1,
-            ushort match = 51, ulong epoch = 4)
-        {
-            const int timeSyncSize = PlayerEntity.SlotCapacity * sizeof(float) * 2;
-            int entries = changed.HasValue ? 1 : 0;
-            int damageCountOffset = 1 + SnapshotHeader.Size + SnapshotWire.StateHeaderSize
-                + entries * SnapshotWire.PlayerSize;
-            int timeOffset = damageCountOffset + 1;
-            int healthOffset = timeOffset + timeSyncSize;
-            byte[] bytes = new byte[healthOffset + NetHealthSync.HeaderSize];
-            bytes[0] = (byte)PacketType.Snapshot;
-            new SnapshotHeader
-            {
-                MatchId = match,
-                AuthorityEpoch = epoch,
-                Frame = frame,
-                PlayerCount = (byte)entries
-            }.Write(bytes.AsSpan(1));
-            SnapshotWire.WriteStateHeader(bytes.AsSpan(1 + SnapshotHeader.Size,
-                SnapshotWire.StateHeaderSize), false, activeMask, baselineFrame);
-            if (changed is { } state)
-            {
-                state.WriteBase(bytes.AsSpan(1 + SnapshotHeader.Size
-                    + SnapshotWire.StateHeaderSize, SnapshotWire.PlayerSize));
-            }
-            bytes[damageCountOffset] = 0;
-            BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(healthOffset), match);
-            return bytes;
-        }
-
-        private static void SnapshotDeltaStream()
-        {
-            Session();
-            PlayerState baseState = State(7);
-            Deliver(Packet(100, baseState));
-            Check(NetSession.RemoteStates[1].Position == baseState.Position,
-                "snapshot keyframe establishes delta baseline");
-
-            // Deliberately do not deliver frame 101. Frame 102 is independent
-            // of frame 101 because both describe changes against keyframe 100.
-            PlayerState newest = baseState;
-            newest.Position = new Vector3(12, 2, 3);
-            Deliver(DeltaPacket(102, 100, newest));
-            Check(NetSession.RemoteStates[1].Position == newest.Position
-                && NetSession.LastSnapshotFrame == 102,
-                "lost delta does not poison a later delta");
-
-            Deliver(DeltaPacket(103, 99, newest));
-            Check(NetSession.LastSnapshotFrame == 102,
-                "delta naming an unavailable baseline is rejected");
-        }
-
-        private static void IntentBundleDelivery()
-        {
-            Session();
-            Deliver(Packet(100, State(7)));
-
-            var intent = new IntentPacket
-            {
-                MatchId = 51,
-                AuthorityEpoch = 4,
-                SlotGeneration = 10,
-                LifeId = 7,
-                Frame = 700,
-                Buttons = IntentButtons.Shoot | IntentButtons.InPlayState,
-                Aim = Vector3.UnitZ,
-                Position = new Vector3(10, 2, 4),
-                WeaponSelect = 1,
-                AmmoUa = 90,
-                AmmoMissiles = 5,
-                AckFrame = 100,
-                HasState = true,
-                ChargeLevel = 33,
-                ShotFlags = IntentPacket.FlagDoubleDamage
-            };
-            intent.Presses[0] = (uint)IntentButtons.Shoot;
-
-            int payloadSize = IntentBundlePacket.SizeFor(1, 1);
-            byte[] bytes = new byte[1 + payloadSize];
-            bytes[0] = (byte)PacketType.IntentBundle;
-            new IntentBundleHeader
-            {
-                MatchId = 51,
-                AuthorityEpoch = 4,
-                AuthorityFrame = 101,
-                StateCount = 1,
-                EventCount = 1
-            }.Write(bytes.AsSpan(1));
-
-            int offset = 1 + IntentBundleHeader.Size;
-            bytes[offset++] = 1;
-            ObserverIntentState.FromIntent(intent)
-                .Write(bytes.AsSpan(offset, ObserverIntentState.Size));
-            offset += ObserverIntentState.Size;
-            bytes[offset++] = 1;
-            for (int i = 0; i < IntentPacket.PressHistory; i++)
-            {
-                BinaryPrimitives.WriteUInt32LittleEndian(
-                    bytes.AsSpan(offset + i * 4), intent.Presses[i]);
-            }
-
-            Deliver(bytes);
-            Check(NetSession.RemoteIntentValid[1]
-                && NetSession.RemoteIntents[1].Frame == 700
-                && NetSession.RemoteIntents[1].Presses[0] == (uint)IntentButtons.Shoot
-                && NetSession.RemoteIntents[1].ChargeLevel == 33
-                && NetSession.RemoteIntents[1].Position == intent.Position,
-                "intent bundle reconstructs observer state and redundant event history");
         }
 
         private static void TransportCoalescing()
@@ -541,15 +384,6 @@ namespace MphRead.NetTest
             var endpoint = new System.Net.IPEndPoint(System.Net.IPAddress.Loopback,
                 transport.LocalPort);
 
-            byte[] keyframe = new byte[1 + SnapshotHeader.Size + SnapshotWire.StateHeaderSize];
-            keyframe[0] = (byte)PacketType.Snapshot;
-            new SnapshotHeader { Frame = 10 }.Write(keyframe.AsSpan(1));
-            SnapshotWire.WriteStateHeader(keyframe.AsSpan(1 + SnapshotHeader.Size,
-                SnapshotWire.StateHeaderSize), true, 0, 10);
-            sender.Send(keyframe, keyframe.Length, endpoint);
-            // Let the receive thread retain the baseline before the burst of
-            // deltas that all depend on it.
-            System.Threading.Thread.Sleep(20);
             sender.Send(new byte[] { (byte)PacketType.Snapshot, 1 }, 2, endpoint);
             sender.Send(new byte[] { (byte)PacketType.Snapshot, 2 }, 2, endpoint);
             sender.Send(new byte[] { (byte)PacketType.Snapshot, 3 }, 2, endpoint);
@@ -565,15 +399,13 @@ namespace MphRead.NetTest
             System.Threading.Thread.Sleep(20);
 
             int snapshots = 0, intents = 0, byes = 0;
-            bool sawKeyframe = false;
             byte newestSnapshot = 0, newestIntent = 0;
             foreach (ReceivedPacket packet in transport.Drain())
             {
                 if (packet.Type == PacketType.Snapshot)
                 {
                     snapshots++;
-                    if (SnapshotWire.IsKeyframe(packet.Payload)) sawKeyframe = true;
-                    else newestSnapshot = packet.Payload[0];
+                    newestSnapshot = packet.Payload[0];
                 }
                 else if (packet.Type == PacketType.SlotIntent)
                 {
@@ -585,8 +417,8 @@ namespace MphRead.NetTest
                     byes++;
                 }
             }
-            Check(snapshots == 2 && sawKeyframe && newestSnapshot == 3,
-                "coalescing preserves baseline keyframe plus newest delta");
+            Check(snapshots == 1 && newestSnapshot == 3,
+                "latest snapshot wins after a receive burst");
             Check(intents == 1 && newestIntent == 5,
                 "latest slot intent wins per slot");
             Check(byes == 1, "control traffic is not coalesced");
