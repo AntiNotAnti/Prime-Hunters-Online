@@ -90,10 +90,11 @@ namespace MphRead.Mods.Network
 
         // Local movement is predicted immediately and reconciled when a
         // snapshot names the exact owner-input frame the authority processed.
-        private const float PredictionDeadzone = 0.03f;
+        // Do not micro-teleport a live local body after its collision pass:
+        // even a small downward correction can place the capsule partly
+        // through a floor with no sweep protecting that move.
         private const float PredictionSnapDistance = 2.0f;
-        private const float PredictionCorrectionRate = 0.5f;
-        private const float PredictionMaxCorrection = 0.35f;
+        private const float PredictionVelocityDeadzone = 0.08f;
 
         public static long PredictionCorrections { get; private set; }
         public static long PredictionSnaps { get; private set; }
@@ -806,7 +807,7 @@ namespace MphRead.Mods.Network
             {
                 if (!fresh && !recoveredLocalLife && NetRoomChange.GameplayReady)
                 {
-                    ReconcileLocalMovement(player, slot, predictedCurrentSpeed);
+                    ReconcileLocalMovement(player, state, slot, predictedCurrentSpeed);
                     ApplyForm(player, (state.Flags & PlayerState.FlagAltForm) != 0);
                 }
                 player.Health = NetHitPrediction.LocalHealthFor(player, state.Health);
@@ -895,7 +896,7 @@ namespace MphRead.Mods.Network
             new uint[PlayerEntity.SlotCapacity];
 
         private static void ReconcileLocalMovement(PlayerEntity player,
-            int slot, Vector3 predictedCurrentSpeed)
+            in PlayerState state, int slot, Vector3 predictedCurrentSpeed)
         {
             if ((uint)slot >= _lastPredictionAck.Length)
             {
@@ -945,33 +946,32 @@ namespace MphRead.Mods.Network
             PredictionErrorSum += distance;
             PredictionWorstError = Math.Max(PredictionWorstError, distance);
 
-            if (distance > PredictionDeadzone)
+            if (distance >= PredictionSnapDistance)
             {
-                Vector3 correction;
-                if (distance >= PredictionSnapDistance)
-                {
-                    correction = error;
-                    PredictionSnaps++;
-                }
-                else
-                {
-                    float amount = Math.Min(distance * PredictionCorrectionRate,
-                        PredictionMaxCorrection);
-                    correction = error * (amount / distance);
-                }
-                Move(player, player.Position + correction);
+                // Large disagreements are real authority corrections. Small
+                // disagreements stay in local prediction so every physical move
+                // remains collision-swept. Snap to a position the authority
+                // actually occupied, not to a synthetic current+historical
+                // error point that may lie through nearby geometry.
+                Move(player, state.Position);
                 PredictionCorrections++;
+                PredictionSnaps++;
             }
 
-            // Authority velocity at the same input frame, plus whatever the
-            // local prediction changed after that frame. predictedCurrentSpeed
-            // was captured before damage replay so replicated knockback cannot
-            // be applied twice.
-            Vector3 targetSpeed = authoritySpeed
-                + (predictedCurrentSpeed - predictedSpeed);
-            if (Sane(targetSpeed))
+            // Reconcile velocity only when the authority genuinely disagreed
+            // at the matched input frame. Tiny gravity/floor differences are
+            // ignored so normal standing/falling noise cannot be fed back as
+            // a fresh downward impulse every snapshot.
+            Vector3 speedError = authoritySpeed - predictedSpeed;
+            if (Sane(speedError)
+                && speedError.LengthSquared >= PredictionVelocityDeadzone * PredictionVelocityDeadzone)
             {
-                player.Speed = targetSpeed;
+                Vector3 targetSpeed = authoritySpeed
+                    + (predictedCurrentSpeed - predictedSpeed);
+                if (Sane(targetSpeed))
+                {
+                    player.Speed = targetSpeed;
+                }
             }
         }
 
