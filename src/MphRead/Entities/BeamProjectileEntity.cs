@@ -84,6 +84,13 @@ namespace MphRead.Entities
 
         private ModelInstance? _trailModel;
         private int _bindingId = 0;
+        internal void ReplayBindResources()
+        {
+            if (_trailModel == null) { _bindingId = 0; return; }
+            _scene.LoadModel(_trailModel.Model);
+            Material material = _trailModel.Model.Materials[0];
+            _bindingId = _scene.BindGetTexture(_trailModel.Model, material.TextureId, material.PaletteId, 0);
+        }
 
         public BeamProjectileEntity(Scene scene) : base(EntityType.BeamProjectile, scene)
         {

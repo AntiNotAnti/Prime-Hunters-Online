@@ -12,6 +12,11 @@ internal sealed class ReplayModelCheckpoint
     private readonly byte[] _data;
     internal ReadOnlySpan<byte> Bytes => _data;
     private ReplayModelCheckpoint(byte[] data) => _data = data;
+    internal static ReplayModelCheckpoint FromBytes(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length > 4096) throw new InvalidDataException("Animation checkpoint exceeds its bound.");
+        return new(bytes.ToArray());
+    }
 
     internal static ReplayModelCheckpoint Capture(ModelInstance model)
     {
