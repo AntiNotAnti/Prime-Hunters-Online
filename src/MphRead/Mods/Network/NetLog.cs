@@ -267,11 +267,13 @@ namespace MphRead.Mods.Network
             line.Append($" firedMoving={NetDamage.FiredMoving}");
             line.Append($" firedStill={NetDamage.FiredStill}");
             if (NetPlayerBridge.PredictionCorrections > 0
-                || NetPlayerBridge.PredictionHistoryMisses > 0)
+                || NetPlayerBridge.PredictionHistoryMisses > 0
+                || NetPlayerBridge.PredictionRecoveries > 0)
             {
                 line.Append($" moveCorr={NetPlayerBridge.PredictionCorrections}");
                 line.Append($" moveSnap={NetPlayerBridge.PredictionSnaps}");
                 line.Append($" moveHistMiss={NetPlayerBridge.PredictionHistoryMisses}");
+                line.Append($" moveRecover={NetPlayerBridge.PredictionRecoveries}");
                 line.Append($" moveWorst={NetPlayerBridge.PredictionWorstError:F2}");
             }
             Line(line.ToString());

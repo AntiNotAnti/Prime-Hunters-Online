@@ -97,6 +97,7 @@ namespace MphRead.Entities
         private const int NetworkHistoryLength = 120;
         private readonly Vector3[] _networkPositionHistory = new Vector3[NetworkHistoryLength];
         private readonly Vector3[] _networkSpeedHistory = new Vector3[NetworkHistoryLength];
+        private readonly bool[] _networkAltHistory = new bool[NetworkHistoryLength];
         private readonly uint[] _networkPositionFrames = new uint[NetworkHistoryLength];
         private int _networkPositionHistoryCount;
 
@@ -112,10 +113,12 @@ namespace MphRead.Entities
             {
                 _networkPositionHistory[i] = _networkPositionHistory[i - 1];
                 _networkSpeedHistory[i] = _networkSpeedHistory[i - 1];
+                _networkAltHistory[i] = _networkAltHistory[i - 1];
                 _networkPositionFrames[i] = _networkPositionFrames[i - 1];
             }
             _networkPositionHistory[0] = Position;
             _networkSpeedHistory[0] = Speed;
+            _networkAltHistory[0] = IsAltForm;
             _networkPositionFrames[0] = frame;
             _networkPositionHistoryCount = Math.Min(count + 1, NetworkHistoryLength);
         }
@@ -135,7 +138,7 @@ namespace MphRead.Entities
         }
 
         internal bool ModGetNetworkPrediction(uint frame, out Vector3 position,
-            out Vector3 speed)
+            out Vector3 speed, out bool altForm)
         {
             for (int i = 0; i < _networkPositionHistoryCount; i++)
             {
@@ -143,11 +146,13 @@ namespace MphRead.Entities
                 {
                     position = _networkPositionHistory[i];
                     speed = _networkSpeedHistory[i];
+                    altForm = _networkAltHistory[i];
                     return true;
                 }
             }
             position = default;
             speed = default;
+            altForm = false;
             return false;
         }
 
@@ -642,13 +647,13 @@ namespace MphRead.Entities
         /// this -- once spawned, plain position writes are enough.
         /// </summary>
         internal void ModNetSpawn(OpenTK.Mathematics.Vector3 position,
-            OpenTK.Mathematics.Vector3 facing)
+            OpenTK.Mathematics.Vector3 facing, bool respawn = true)
         {
             OpenTK.Mathematics.Vector3 forward = facing.LengthSquared > 0.0001f
                 ? facing.Normalized()
                 : -OpenTK.Mathematics.Vector3.UnitZ;
             Spawn(position, forward, OpenTK.Mathematics.Vector3.UnitY,
-                ModSpawnNodeRef(_scene, position), respawn: true);
+                ModSpawnNodeRef(_scene, position), respawn);
         }
 
         /// <summary>
@@ -1613,11 +1618,14 @@ namespace MphRead.Entities
                 }
                 return;
             }
-            if (!NetSession.RemoteIntentValid[SlotIndex]
-                || !NetPlayerBridge.AimTrusted(SlotIndex))
+            if (!NetSession.RemoteIntentValid[SlotIndex])
             {
                 return;
             }
+            // Current-life intents have already passed lifecycle validation.
+            // Movement authority needs this aim immediately; waiting for a
+            // spawn acknowledgement made forward movement use the spawn-point
+            // heading for part of a round trip.
             ModSetAim(NetSession.RemoteIntents[SlotIndex].Aim);
         }
 

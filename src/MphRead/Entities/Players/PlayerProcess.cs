@@ -1176,12 +1176,14 @@ namespace MphRead.Entities
             {
                 if (Position.Y < _scene.Room.Meta.PlayerMin.Y)
                 {
+                    ModReportNetworkFall("player-min", _scene.Room.Meta.PlayerMin.Y);
                     TakeDamage(0, DamageFlags.Death, direction: null, source: null);
                 }
                 Position = Vector3.Clamp(Position, _scene.Room.Meta.PlayerMin.WithY(Position.Y), _scene.Room.Meta.PlayerMax);
             }
             if (Position.Y < _scene.Room.Meta.KillHeight)
             {
+                ModReportNetworkFall("kill-height", _scene.Room.Meta.KillHeight);
                 TakeDamage(0, DamageFlags.Death, direction: null, source: null);
             }
             // todo: update license stats
@@ -2176,6 +2178,31 @@ namespace MphRead.Entities
             _scene.SpawnEffect(effectId, Vector3.UnitY, -Vector3.UnitX, _volume.SpherePosition);
             _scene.SpawnEffect(effectId, Vector3.UnitY, Vector3.UnitX, _volume.SpherePosition);
             _scene.SpawnEffect(effectId, Vector3.UnitY, -Vector3.UnitX, _volume.SpherePosition);
+        }
+
+        private void ModReportNetworkFall(string boundary, float y)
+        {
+            if (!Mods.Network.NetSession.Active || _health <= 0)
+            {
+                return;
+            }
+            int slot = SlotIndex;
+            string reported = "none";
+            if (slot >= 0 && slot < Mods.Network.NetSession.RemoteIntents.Length
+                && Mods.Network.NetSession.RemoteIntentValid[slot])
+            {
+                var intent = Mods.Network.NetSession.RemoteIntents[slot];
+                reported = $"({intent.Position.X:F2},{intent.Position.Y:F2},{intent.Position.Z:F2})"
+                    + $"/f{intent.Frame}";
+            }
+            string message = $"[movement] {boundary} slot={slot} "
+                + $"role={Mods.Network.NetSession.Role} authority={Mods.Network.NetSession.IsAuthority} "
+                + $"pos=({Position.X:F2},{Position.Y:F2},{Position.Z:F2}) "
+                + $"speed=({Speed.X:F2},{Speed.Y:F2},{Speed.Z:F2}) "
+                + $"standing={Flags1.TestFlag(PlayerFlags1.Standing)} limitY={y:F2} "
+                + $"reported={reported}";
+            Console.WriteLine(message);
+            Mods.Network.NetLog.Event(message);
         }
 
         private PlayerSpawnEntity? GetRespawnPoint()
