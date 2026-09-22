@@ -221,6 +221,7 @@ namespace MphRead.Mods.Network
         private readonly ushort[] _slotLives = new ushort[PlayerEntity.SlotCapacity];
         private uint _snapshotFrame;
         private bool _snapshotSeen;
+        private uint _relaySnapshotBaselineFrame;
 
         /// <summary>
         /// How long the results are left on screen before the map changes.
@@ -685,6 +686,7 @@ namespace MphRead.Mods.Network
             _matchEndedAt = -1;
             _matchId = NetLifecycleTracker.Next(_matchId);
             _snapshotSeen = false;
+            _relaySnapshotBaselineFrame = 0;
             Array.Clear(_slotLives);
             foreach (Peer connected in _peers)
             {
@@ -1970,6 +1972,7 @@ namespace MphRead.Mods.Network
                     CloseBallot();
                     _matchId = NetLifecycleTracker.Next(_matchId);
                     _snapshotSeen = false;
+            _relaySnapshotBaselineFrame = 0;
                     _lastSnapshotLength = 0;
                     _lastKeyframeSnapshotLength = 0;
                     Array.Clear(_slotLives);
@@ -2000,6 +2003,7 @@ namespace MphRead.Mods.Network
                     _authority = peer;
                     _authorityEpoch++;
                     _snapshotSeen = false;
+            _relaySnapshotBaselineFrame = 0;
                     Log($"{packet.Sender} joined as slot {slot} (authority)");
                     NotifyAuthority(peer);
                 }
@@ -2377,62 +2381,88 @@ namespace MphRead.Mods.Network
         {
             if (_phase is SessionPhase.Lobby or SessionPhase.Starting) return;
             Peer? peer = Find(packet.Sender);
-            if (peer == null)
-            {
-                return;
-            }
+            if (peer == null) return;
             peer.LastSeen = now;
-            // Only the authority's view of the world is forwarded; anything
-            // else would let a client overwrite everyone's state. When this
-            // server is the authority that is every client without exception,
-            // and _authority is null, so the test below already refuses them
-            // -- said explicitly because it is the security property the whole
-            // refactor rests on and it should not read as an accident.
-            if (Simulating || peer != _authority)
+
+            // Only the designated compatibility authority may publish. Normal
+            // hosted matches are simulated in this server process and reject
+            // every client snapshot.
+            if (Simulating || peer != _authority) return;
+
+            ReadOnlySpan<byte> payload = packet.Payload;
+            if (payload.Length < SnapshotHeader.Size + SnapshotWire.StateHeaderSize) return;
+            SnapshotHeader header = SnapshotHeader.Read(payload);
+            if (!SnapshotWire.TryReadStateHeader(payload,
+                    out bool keyframe, out byte activeMask, out uint baselineFrame)
+                || !SnapshotWire.TryLocateTails(payload, header, out _, out int timeOffset))
             {
                 return;
             }
-            if (packet.Payload.Length < SnapshotHeader.Size) return;
-            SnapshotHeader header = SnapshotHeader.Read(packet.Payload);
-            if (!SnapshotWire.TryLocateTails(packet.Payload, header, out _, out int timeOffset)) return;
+            if ((keyframe && baselineFrame != header.Frame)
+                || (!keyframe && (baselineFrame == 0
+                    || baselineFrame != _relaySnapshotBaselineFrame)))
+            {
+                return;
+            }
+
             int healthOffset = timeOffset + NetMatchTimeSync.Size;
             if (header.MatchId != _matchId || header.AuthorityEpoch != _authorityEpoch
                 || header.PlayerCount > PlayerEntity.SlotCapacity
-                || healthOffset > packet.Payload.Length
-                || !NetMatchTimeSync.Validate(packet.Payload.Slice(timeOffset, NetMatchTimeSync.Size))
-                || !NetHealthSync.Validate(packet.Payload[healthOffset..])
-                || BinaryPrimitives.ReadUInt16LittleEndian(packet.Payload[healthOffset..]) != _matchId
-                || (_snapshotSeen && !NetLifecycleTracker.Newer(header.Frame, _snapshotFrame))) return;
+                || healthOffset > payload.Length
+                || !NetMatchTimeSync.Validate(payload.Slice(timeOffset, NetMatchTimeSync.Size))
+                || !NetHealthSync.Validate(payload[healthOffset..])
+                || BinaryPrimitives.ReadUInt16LittleEndian(payload[healthOffset..]) != _matchId
+                || (_snapshotSeen && !NetLifecycleTracker.Newer(header.Frame, _snapshotFrame)))
+            {
+                return;
+            }
+
             int occupied = 0;
+            int entryOffset = SnapshotHeader.Size + SnapshotWire.StateHeaderSize;
             for (int i = 0; i < header.PlayerCount; i++)
             {
                 PlayerState state = PlayerState.ReadBase(
-                    packet.Payload[(SnapshotHeader.Size + i * SnapshotWire.PlayerSize)..]);
-                if (state.SlotIndex >= _slotLives.Length || (occupied & (1 << state.SlotIndex)) != 0
-                    || state.SlotGeneration != _slotGenerations[state.SlotIndex]) return;
-                occupied |= 1 << state.SlotIndex;
+                    payload[(entryOffset + i * SnapshotWire.PlayerSize)..]);
+                int slot = state.SlotIndex;
+                if (slot >= _slotLives.Length
+                    || (activeMask & (1 << slot)) == 0
+                    || (occupied & (1 << slot)) != 0
+                    || state.SlotGeneration != _slotGenerations[slot])
+                {
+                    return;
+                }
+                occupied |= 1 << slot;
             }
+            if (keyframe)
+            {
+                int activeCount = 0;
+                for (int slot = 0; slot < PlayerEntity.SlotCapacity; slot++)
+                    if ((activeMask & (1 << slot)) != 0) activeCount++;
+                if (activeCount != header.PlayerCount || occupied != activeMask) return;
+            }
+
             // Commit only after the entire packet has passed validation.
             for (int i = 0; i < header.PlayerCount; i++)
             {
                 PlayerState state = PlayerState.ReadBase(
-                    packet.Payload[(SnapshotHeader.Size + i * SnapshotWire.PlayerSize)..]);
+                    payload[(entryOffset + i * SnapshotWire.PlayerSize)..]);
                 _slotLives[state.SlotIndex] = state.LifeId;
             }
+            if (keyframe) _relaySnapshotBaselineFrame = header.Frame;
             _snapshotSeen = true;
             _snapshotFrame = header.Frame;
-            packet.Payload.CopyTo(_lastSnapshot);
-            _lastSnapshotLength = packet.Payload.Length;
-            if (SnapshotWire.IsKeyframe(packet.Payload))
+            payload.CopyTo(_lastSnapshot);
+            _lastSnapshotLength = payload.Length;
+            if (keyframe)
             {
-                packet.Payload.CopyTo(_lastKeyframeSnapshot);
-                _lastKeyframeSnapshotLength = packet.Payload.Length;
+                payload.CopyTo(_lastKeyframeSnapshot);
+                _lastKeyframeSnapshotLength = payload.Length;
             }
             for (int i = 0; i < _peers.Count; i++)
             {
                 if (_peers[i] != peer)
                 {
-                    _transport?.Send(_peers[i].EndPoint, PacketType.Snapshot, packet.Payload);
+                    _transport?.Send(_peers[i].EndPoint, PacketType.Snapshot, payload);
                 }
             }
         }
@@ -2483,6 +2513,7 @@ namespace MphRead.Mods.Network
             _authority = _peers.Count > 0 ? _peers[0] : null;
             _authorityEpoch++;
             _snapshotSeen = false;
+            _relaySnapshotBaselineFrame = 0;
             BroadcastMatchState(_now);
             BroadcastRoster();
             Log(_authority != null
