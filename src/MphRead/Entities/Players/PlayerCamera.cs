@@ -58,7 +58,7 @@ namespace MphRead.Entities
                     SetGunAnimation(GunAnimation.UpDown, AnimFlags.NoLoop);
                 }
             }
-            if (IsMainPlayer && CameraSequence.Current != null)
+            if (IsMainPlayer && _scene.CameraSequences.Current != null)
             {
                 return;
             }
@@ -844,6 +844,7 @@ namespace MphRead.Entities
 
     public class CameraInfo
     {
+        internal MatchRandom Random { get; set; } = Rng.Current;
         public Vector3 Position;
         public Vector3 PrevPosition;
         public Vector3 Target;
@@ -987,9 +988,9 @@ namespace MphRead.Entities
             // todo: FPS stuff
             if (Shake > 0 && _shake)
             {
-                Target.X += Fixed.ToFloat(Rng.GetRandomInt2(Fixed.ToInt(Shake))) - Shake / 2;
-                Target.Y += Fixed.ToFloat(Rng.GetRandomInt2(Fixed.ToInt(Shake))) - Shake / 2;
-                Target.Z += Fixed.ToFloat(Rng.GetRandomInt2(Fixed.ToInt(Shake))) - Shake / 2;
+                Target.X += Fixed.ToFloat(Random.GetRandomInt2(Fixed.ToInt(Shake))) - Shake / 2;
+                Target.Y += Fixed.ToFloat(Random.GetRandomInt2(Fixed.ToInt(Shake))) - Shake / 2;
+                Target.Z += Fixed.ToFloat(Random.GetRandomInt2(Fixed.ToInt(Shake))) - Shake / 2;
                 if (toTarget.X * (Target.X - Position.X) + toTarget.Z * (Target.Z - Position.Z) < 0)
                 {
                     Target.X = Position.X + toTarget.X / 2;

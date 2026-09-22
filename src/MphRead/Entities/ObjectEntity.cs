@@ -44,13 +44,13 @@ namespace MphRead.Entities
             UpdateVisiblePosition();
             _flags = data.Flags;
             _state = (int)(data.Flags & ObjectFlags.State);
-            Debug.Assert(GameState.Mode == GameMode.SinglePlayer);
-            if (GameState.StorySave.GetRoomState(scene.RoomId, Id) == -1)
+            Debug.Assert(_scene.GameState.Mode == GameMode.SinglePlayer);
+            if (_scene.GameState.StorySave.GetRoomState(scene.RoomId, Id) == -1)
             {
                 Debug.Assert(_state >= 0 && _state <= 2);
-                GameState.StorySave.SetRoomState(scene.RoomId, Id, _state + 1);
+                _scene.GameState.StorySave.SetRoomState(scene.RoomId, Id, _state + 1);
             }
-            _state = GameState.StorySave.GetRoomState(scene.RoomId, Id);
+            _state = _scene.GameState.StorySave.GetRoomState(scene.RoomId, Id);
             if (_state != 0 || _data.ModelId == 53) // WallSwitch
             {
                 _scanId = _data.ScanId;
@@ -182,7 +182,7 @@ namespace MphRead.Entities
         public override void OnScanned()
         {
             if (_data.ScanMessage != Message.None && _scanMsgTarget != null && _data.ModelId != 46 // SniperTarget
-                && (_data.EffectFlags.TestFlag(ObjEffFlags.RepeatScanMessage) || !GameState.StorySave.CheckLogbook(GetScanId())))
+                && (_data.EffectFlags.TestFlag(ObjEffFlags.RepeatScanMessage) || !_scene.GameState.StorySave.CheckLogbook(GetScanId())))
             {
                 _scene.SendMessage(_data.ScanMessage, this, _scanMsgTarget, -1, 0);
             }
@@ -299,7 +299,7 @@ namespace MphRead.Entities
             _effectIntervalTimer = 0;
             _effectIntervalIndex = 15;
             Debug.Assert(_state >= 0 && _state <= 2);
-            GameState.StorySave.SetRoomState(_scene.RoomId, Id, _state + 1);
+            _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, _state + 1);
             if (state != 0 || _data.ModelId == 53) // WallSwitch
             {
                 _scanId = _data.ScanId;
@@ -345,7 +345,7 @@ namespace MphRead.Entities
             {
                 if (_state != 2)
                 {
-                    Vector3 between = PlayerEntity.Main.Position - Position;
+                    Vector3 between = _scene.Players.Main.Position - Position;
                     if (Vector3.Dot(between, between) >= 15 * 15)
                     {
                         if (_scanMsgTarget != null)
@@ -428,7 +428,7 @@ namespace MphRead.Entities
                     {
                         // todo: add an option to disable this check
                         Vector3 cameraPosition = _scene.CameraMode == CameraMode.Player
-                            ? PlayerEntity.Main.CameraInfo.Position
+                            ? _scene.Players.Main.CameraInfo.Position
                             : _scene.CameraPosition; // skdebug
                         processEffect = _effectVolume.TestPoint(cameraPosition);
                     }
@@ -498,9 +498,9 @@ namespace MphRead.Entities
                             if (_data.EffectFlags.TestFlag(ObjEffFlags.UseEffectOffset))
                             {
                                 Vector3 offset = _data.EffectPositionOffset.ToFloatVector();
-                                offset.X *= Fixed.ToFloat(2 * (Rng.GetRandomInt1(0x1000u) - 2048));
-                                offset.Y *= Fixed.ToFloat(2 * (Rng.GetRandomInt1(0x1000u) - 2048));
-                                offset.Z *= Fixed.ToFloat(2 * (Rng.GetRandomInt1(0x1000u) - 2048));
+                                offset.X *= Fixed.ToFloat(2 * (_scene.Random.GetRandomInt1(0x1000u) - 2048));
+                                offset.Y *= Fixed.ToFloat(2 * (_scene.Random.GetRandomInt1(0x1000u) - 2048));
+                                offset.Z *= Fixed.ToFloat(2 * (_scene.Random.GetRandomInt1(0x1000u) - 2048));
                                 spawnPos += Matrix.Vec3MultMtx3(offset, GetTransformMatrix(spawnFacing, spawnUp));
                             }
                             _scene.SpawnEffect(_data.EffectId, spawnFacing, spawnUp, spawnPos, entCol: entCol);
@@ -526,7 +526,7 @@ namespace MphRead.Entities
             }
             if (_data.ModelId == 0 && _models[0].AnimInfo.Index[0] == 3 && _models[0].AnimInfo.Flags[0].TestFlag(AnimFlags.Ended))
             {
-                _models[0].SetAnimation((int)Rng.GetRandomInt1(2));
+                _models[0].SetAnimation((int)_scene.Random.GetRandomInt1(2));
             }
             return true;
         }

@@ -35,7 +35,7 @@ namespace MphRead.Entities.Enemies
 
         protected override void EnemyInitialize()
         {
-            var facing = new Vector3(Rng.GetRandomInt2(4096) / 4096f, 0, Rng.GetRandomInt2(4096) / 4096f);
+            var facing = new Vector3(_scene.Random.GetRandomInt2(4096) / 4096f, 0, _scene.Random.GetRandomInt2(4096) / 4096f);
             if (facing.X == 0 && facing.Z == 0)
             {
                 facing = _spawner.Transform.Row2.Xyz;
@@ -50,9 +50,9 @@ namespace MphRead.Entities.Enemies
             _hurtVolumeInit = new CollisionVolume(SpawnFields.Volume0);
             SetUpModel(Metadata.EnemyModelNames[1]);
             _field1A0 = _field1AC = up;
-            _angleInc = Fixed.ToFloat(Rng.GetRandomInt2(0x3000)) + 3;
+            _angleInc = Fixed.ToFloat(_scene.Random.GetRandomInt2(0x3000)) + 3;
             _angleInc /= 2; // todo: FPS stuff
-            _maxAngle = Fixed.ToFloat(Rng.GetRandomInt2(0)) + 40;
+            _maxAngle = Fixed.ToFloat(_scene.Random.GetRandomInt2(0)) + 40;
             _angleCos = MathF.Cos(MathHelper.DegreesToRadians(_angleInc));
             _homeVolume = CollisionVolume.Move(SpawnFields.Volume1, _spawner.Data.Header.Position.ToFloatVector());
             _direction = Vector3.Cross(facing, up).Normalized();

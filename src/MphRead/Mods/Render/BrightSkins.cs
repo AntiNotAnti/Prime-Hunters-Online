@@ -11,32 +11,32 @@ namespace MphRead.Mods.Render
         {
             // MPH authored only two team model palettes. Team C/D get a local
             // render-only fallback so 2v2v2/2v2v2v2 remain visually distinct.
-            bool extendedTeam = GameState.Teams && player.TeamIndex >= 2
+            bool extendedTeam = player.OwningScene.GameState.Teams && player.TeamIndex >= 2
                 && player.TeamIndex < Metadata.TeamColors.Length;
-            if (!ShouldApply(RenderOptions.BrightSkins || extendedTeam, GameState.Multiplayer,
+            if (!ShouldApply(RenderOptions.BrightSkins || extendedTeam, player.OwningScene.GameState.Multiplayer,
                 player.IsMainPlayer, player.Health, player.Flags2, player.CurAlpha,
                 player.BrightSkinStatusOverride))
             {
                 return null;
             }
-            return GameState.Teams ? GetTeamColor(player.TeamIndex)
+            return player.OwningScene.GameState.Teams ? GetTeamColor(player.TeamIndex)
                 : GetSuitColor(player.Hunter, player.Recolor);
         }
 
         public static bool ShouldApply(PlayerEntity player)
         {
-            return ShouldApply(RenderOptions.BrightSkins, GameState.Multiplayer, player.IsMainPlayer,
+            return ShouldApply(RenderOptions.BrightSkins, player.OwningScene.GameState.Multiplayer, player.IsMainPlayer,
                 player.Health, player.Flags2, player.CurAlpha, player.BrightSkinStatusOverride);
         }
 
         public static Vector4? GetOutlineColor(PlayerEntity player)
         {
-            if (player.BrightSkinFrozenOverlay || !ShouldApply(RenderOptions.PlayerOutline != PlayerOutlineStyle.Off, GameState.Multiplayer,
+            if (player.BrightSkinFrozenOverlay || !ShouldApply(RenderOptions.PlayerOutline != PlayerOutlineStyle.Off, player.OwningScene.GameState.Multiplayer,
                 player.IsMainPlayer, player.Health, player.Flags2, player.CurAlpha, player.BrightSkinStatusOverride))
             {
                 return null;
             }
-            return ResolveOutlineColor(RenderOptions.PlayerOutline, GameState.Teams, player.TeamIndex);
+            return ResolveOutlineColor(RenderOptions.PlayerOutline, player.OwningScene.GameState.Teams, player.TeamIndex);
         }
 
         internal static Vector4 ResolveOutlineColor(PlayerOutlineStyle style, bool teams, int teamIndex)

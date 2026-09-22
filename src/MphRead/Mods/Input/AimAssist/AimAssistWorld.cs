@@ -36,6 +36,10 @@ namespace MphRead.Entities
         }
         private AimAssistResult ApplyControllerAssist(float x, float y)
         {
+            // Remote and replay actors consume recorded aim. They must never read or
+            // update the foreground controller's source, target or telemetry state.
+            if (_scene.Services.IsReplica || NetHooks.IsPuppet(this))
+                return new AimAssistResult(x, y);
             var snapshot = GamepadInput.FrameSnapshot;
             long context = GamepadContexts.Revision;
             if (_assistDeviceRevision != snapshot.Revision || _assistContextRevision != context                || _aimSourceRevision != AimInputSourceTracker.Revision || !ReferenceEquals(_assistRoom, _scene.Room))
@@ -60,12 +64,12 @@ namespace MphRead.Entities
             int count = 0;
             bool observe = AimAssistTelemetry.Enabled && GamepadContexts.Focused && !GamepadContexts.MenuVisible
                 && GamepadContexts.Current == GamepadContext.Gameplay && Health > 0 && !Mods.SpectatorMode.IsSpectating;
-            if (eligible || observe) for (int index = 0; index < Players.Count; index++)
+            if (eligible || observe) for (int index = 0; index < _scene.Players.Items.Count; index++)
             {
-                var target = Players[index];
+                var target = _scene.Players.Items[index];
                 if (target == null || target == this || !target.ModInPlay || !target.LoadFlags.TestFlag(LoadFlags.Active)
                     || !target.LoadFlags.TestFlag(LoadFlags.Spawned) || target.CurAlpha < .95f
-                    || (GameState.Teams && TeamIndex == target.TeamIndex)) continue;
+                    || (_scene.GameState.Teams && TeamIndex == target.TeamIndex)) continue;
                 var volume = PlayerVolumes[(int)target.Hunter, target.IsAltForm ? 2 : 0];
                 Vector3 center = target.Position + volume.SpherePosition;
                 float height = Fixed.ToFloat(target.Values.MaxPickupHeight);

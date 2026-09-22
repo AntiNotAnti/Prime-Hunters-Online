@@ -47,8 +47,8 @@ namespace MphRead.Entities
             _height = data.Height.FloatValue;
             SetTransform(data.Header.FacingVector, data.Header.UpVector, data.Header.Position);
             Scale = new Vector3(_width, _height, 1.0f);
-            Debug.Assert(GameState.Mode == GameMode.SinglePlayer);
-            int state = GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: _data.Active != 0);
+            Debug.Assert(_scene.GameState.Mode == GameMode.SinglePlayer);
+            int state = _scene.GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: _data.Active != 0);
             _active = state != 0;
             if (_active)
             {
@@ -112,24 +112,24 @@ namespace MphRead.Entities
                 {
                     _lock.SetHealth(0);
                 }
-                if (GameState.SinglePlayer)
+                if (_scene.GameState.SinglePlayer)
                 {
-                    if (CameraSequence.Current == null)
+                    if (_scene.CameraSequences.Current == null)
                     {
-                        PlayerEntity.Main.ForceFieldSfxTimer = 2 / 30f;
+                        _scene.Players.Main.ForceFieldSfxTimer = 2 / 30f;
                     }
                     else if (Sfx.ForceFieldSfxMute == 0 && _soundSource.CountPlayingSfx(SfxId.GEN_OFF) == 0)
                     {
                         _soundSource.PlayFreeSfx(SfxId.GEN_OFF);
                     }
-                    GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
+                    _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
                 }
                 _active = false;
                 _scanId = 0;
             }
             else if (info.Message == Message.Lock)
             {
-                if (!_active && GameState.SinglePlayer && CameraSequence.Current != null
+                if (!_active && _scene.GameState.SinglePlayer && _scene.CameraSequences.Current != null
                     && _soundSource.CountPlayingSfx(SfxId.FORCEFIELD_APPEAR) == 0)
                 {
                     _soundSource.PlayFreeSfx(SfxId.FORCEFIELD_APPEAR);
@@ -144,7 +144,7 @@ namespace MphRead.Entities
                 {
                     _scanId = _scanIds[(int)_data.Type];
                 }
-                GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
+                _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
                 if (_lock == null && _data.Type != 9)
                 {
                     _lock = EnemySpawnEntity.SpawnEnemy(this, EnemyType.ForceFieldLock, NodeRef, _scene) as Enemy49Entity;

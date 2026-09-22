@@ -759,9 +759,9 @@ namespace MphRead.Mods.Network
             // winning score.
             if (!NetRoomChange.Settling)
             {
-                GameState.Points[slot] = state.Points;
-                GameState.Kills[slot] = state.Kills;
-                GameState.Deaths[slot] = state.Deaths;
+                player.OwningScene.GameState.Points[slot] = state.Points;
+                player.OwningScene.GameState.Kills[slot] = state.Kills;
+                player.OwningScene.GameState.Deaths[slot] = state.Deaths;
             }
             NetDamage.Replay(player, state);
             if (!spawned)

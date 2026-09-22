@@ -15,10 +15,14 @@ namespace MphRead.NetTest
     internal static class LifecycleTests
     {
         private static int _checks;
+        private static Scene _scene = null!;
         public static int Run()
         {
             try
             {
+                _scene = new Scene(new Vector2i(256, 192),
+                    Mods.Input.SyntheticInput.CreateKeyboard(), Mods.Input.SyntheticInput.CreateMouse(),
+                    _ => { }, () => { }, initializeRuntime: false);
                 Wire();
                 PresentationStateSafety();
                 RelaySnapshotValidation();
@@ -480,6 +484,8 @@ namespace MphRead.NetTest
         {
             // Only plain state is used; spawning/rendering requires cartridge assets.
             var player = (PlayerEntity)RuntimeHelpers.GetUninitializedObject(typeof(PlayerEntity));
+            typeof(EntityBase).GetField("_scene", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .SetValue(player, _scene);
             typeof(PlayerEntity).GetProperty(nameof(PlayerEntity.SlotIndex))!.SetValue(player, slot);
             player.Health = health;
             return player;
@@ -525,6 +531,7 @@ namespace MphRead.NetTest
                 "self death remains immediate");
             Check(!NetPlayerLifecycle.CanSpawn, "client engine cannot allocate spawn");
             var projectile = (BeamProjectileEntity)RuntimeHelpers.GetUninitializedObject(typeof(BeamProjectileEntity));
+            typeof(EntityBase).GetField("_scene", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(projectile, _scene);
             projectile.Owner = shooter;
             NetPlayerLifecycle.StampProjectile(projectile);
             Check(NetPlayerLifecycle.CurrentProjectile(projectile), "projectile remembers firing life");

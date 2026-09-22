@@ -828,8 +828,8 @@ namespace MphRead.Mods.Network
             {
                 return; // already down here; the respawn is what matters next
             }
-            PlayerEntity? attacker = state.AttackerSlot < PlayerEntity.Players.Count
-                ? PlayerEntity.Players[state.AttackerSlot]
+            PlayerEntity? attacker = state.AttackerSlot < player.OwningScene.Players.Items.Count
+                ? player.OwningScene.Players.Items[state.AttackerSlot]
                 : null;
             // Already shown here, the moment the trigger was pulled: the
             // flinch, the sound, the knockback and the mark over the
@@ -845,7 +845,7 @@ namespace MphRead.Mods.Network
             // confirmation path above and is not double-applied.
             if (predicted && !lethal)
             {
-                if (authorityHeadshot && attacker == PlayerEntity.Main)
+                if (authorityHeadshot && attacker == player.OwningScene.Players.Main)
                 {
                     // The local prediction deliberately suppresses HEADSHOT
                     // text. This is the authority agreeing with that predicted

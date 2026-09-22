@@ -98,7 +98,7 @@ namespace MphRead.Mods.Network
             if (!_session.IsActive) return;
             uint target = Math.Min(frame, DurationFrames);
             _resumeAfterSeek = resume ?? State == ReplayState.Playing;
-            if (target == CurrentFrame)
+            if (target == CurrentFrame && _session.HasSimulatedFrame)
             {
                 _target = null;
                 _rebuild = null;
@@ -107,7 +107,7 @@ namespace MphRead.Mods.Network
                 return;
             }
 
-            if (target > CurrentFrame && State != ReplayState.Ended)
+            if ((target > CurrentFrame || !_session.HasSimulatedFrame) && State != ReplayState.Ended)
             {
                 _target = target;
                 _rebuild = null;
@@ -140,7 +140,7 @@ namespace MphRead.Mods.Network
         public void ContinueSeek(uint frame, bool resume)
         {
             _resumeAfterSeek = resume;
-            if (CurrentFrame >= frame)
+            if (CurrentFrame >= frame && _session.HasSimulatedFrame)
             {
                 _target = null;
                 State = resume ? ReplayState.Playing : ReplayState.Paused;
@@ -153,7 +153,9 @@ namespace MphRead.Mods.Network
         }
         internal int FramesDue()
         {
-            if (State == ReplayState.Seeking) return _target.HasValue ? (int)Math.Min(120u, _target.Value - CurrentFrame) : 0;
+            if (State == ReplayState.Seeking)
+                return _target.HasValue ? (int)Math.Min(120u,
+                    _target.Value - CurrentFrame + (_session.HasSimulatedFrame ? 0u : 1u)) : 0;
             if (State == ReplayState.Paused)
             {
                 if (_steps == 0) return 0;

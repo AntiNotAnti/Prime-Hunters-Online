@@ -46,7 +46,7 @@ namespace MphRead.Entities
             Position = data.Position;
             ItemType = data.ItemType;
             _scanId = _scanIds[(int)data.ItemType];
-            if (GameState.Multiplayer && GameState.AffinityWeapons && (ItemType == ItemType.VoltDriver
+            if (_scene.GameState.Multiplayer && _scene.GameState.AffinityWeapons && (ItemType == ItemType.VoltDriver
                 || ItemType == ItemType.Battlehammer || ItemType == ItemType.Imperialist
                 || ItemType == ItemType.Judicator || ItemType == ItemType.Magmaul || ItemType == ItemType.ShockCoil))
             {
@@ -116,9 +116,9 @@ namespace MphRead.Entities
                 if (Owner != null)
                 {
                     Owner.Item = null;
-                    if (GameState.SinglePlayer)
+                    if (_scene.GameState.SinglePlayer)
                     {
-                        GameState.StorySave.SetRoomState(_scene.RoomId, Owner.Id, state: 1);
+                        _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Owner.Id, state: 1);
                         if (!Owner.AlwaysActive)
                         {
                             Owner.Active = false;
@@ -137,13 +137,13 @@ namespace MphRead.Entities
             {
                 _soundSource.PlaySfx(sfx, loop: true);
             }
-            if (Owner == null && GameState.SinglePlayer && PlayerEntity.Main.EquipInfo.Weapon != null)
+            if (Owner == null && _scene.GameState.SinglePlayer && _scene.Players.Main.EquipInfo.Weapon != null)
             {
-                EquipInfo equip = PlayerEntity.Main.EquipInfo;
+                EquipInfo equip = _scene.Players.Main.EquipInfo;
                 if (equip.ChargeLevel >= equip.Weapon.MinCharge * 2) // todo: FPS stuff
                 {
                     // todo: visualize
-                    Vector3 between = PlayerEntity.Main.Position - Position;
+                    Vector3 between = _scene.Players.Main.Position - Position;
                     float distSqr = between.LengthSquared;
                     if (distSqr > 0 && distSqr < 20 * 20)
                     {
@@ -162,10 +162,10 @@ namespace MphRead.Entities
         {
             DespawnTimer = 0;
             Owner?.OnItemPickedUp(picker);
-            if (GameState.SinglePlayer)
+            if (_scene.GameState.SinglePlayer)
             {
                 int scanId = GetScanId();
-                GameState.StorySave.UpdateLogbook(scanId);
+                _scene.GameState.StorySave.UpdateLogbook(scanId);
             }
         }
 
@@ -220,9 +220,10 @@ namespace MphRead.Entities
         protected int _spinModelIndex;
         protected int _floatModelIndex;
 
-        private static ushort _nextItemRotation = 0;
-
-        internal static void ResetReplayRotation() => _nextItemRotation = 0;
+        internal static void ResetReplayRotation()
+        {
+            if (global::MphRead.GameState.Current.Owner is Scene scene) scene.NextItemRotation = 0;
+        }
 
         public SpinningEntityBase(float spinSpeed, Vector3 spinAxis,
             EntityType type, Scene scene) : base(type, scene)
@@ -289,10 +290,10 @@ namespace MphRead.Entities
             return transform;
         }
 
-        private static float GetItemRotation()
+        private float GetItemRotation()
         {
-            float rotation = _nextItemRotation / (float)0x10000 * 360f;
-            _nextItemRotation += 0x2000;
+            float rotation = _scene.NextItemRotation / (float)0x10000 * 360f;
+            _scene.NextItemRotation += 0x2000;
             return rotation;
         }
     }

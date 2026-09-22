@@ -73,7 +73,7 @@ namespace MphRead.Entities.Enemies
         {
             int min = _values.MinShots;
             int max = _values.MaxShots;
-            _shotsRemaining = (int)(min + Rng.GetRandomInt2(max + 1 - min));
+            _shotsRemaining = (int)(min + _scene.Random.GetRandomInt2(max + 1 - min));
         }
 
         protected override void EnemyProcess()
@@ -164,7 +164,7 @@ namespace MphRead.Entities.Enemies
             }
             else
             {
-                Vector3 target = PlayerEntity.Main.Position.AddY(0.5f);
+                Vector3 target = _scene.Players.Main.Position.AddY(0.5f);
                 Vector3 spawnDir = (target - Position).Normalized();
                 _soundSource.PlaySfx(SfxId.TURRET_ATTACK);
                 _equipInfo.UnchargedDamage = _values.Damage;
@@ -184,7 +184,7 @@ namespace MphRead.Entities.Enemies
 
         private bool Behavior00()
         {
-            if (PlayerEntity.Main.Health == 0 || !_volume.TestPoint(PlayerEntity.Main.Position))
+            if (_scene.Players.Main.Health == 0 || !_volume.TestPoint(_scene.Players.Main.Position))
             {
                 return false;
             }
@@ -200,7 +200,7 @@ namespace MphRead.Entities.Enemies
 
         private bool Behavior02()
         {
-            return !_volume.TestPoint(PlayerEntity.Main.Position);
+            return !_volume.TestPoint(_scene.Players.Main.Position);
         }
 
         private bool Behavior03()

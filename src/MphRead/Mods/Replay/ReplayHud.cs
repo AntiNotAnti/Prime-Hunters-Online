@@ -82,13 +82,13 @@ namespace MphRead.Mods.Replay
                 _status = $"{state}   {Time(ReplayController.CurrentFrame)} / "
                     + $"{Time(ReplayController.DurationFrames)}   "
                     + $"{ReplayController.PlaybackRate:0.##}x";
-                int slot = PlayerEntity.MainPlayerIndex;
+                int slot = scene.Players.MainPlayerIndex;
                 _watching = ReplayCamera.Mode is ReplayCameraMode.Chase or ReplayCameraMode.Orbit
-                    ? $"{ReplayCamera.Mode}: {GameState.Nicknames[
-                        Math.Clamp(slot, 0, GameState.Nicknames.Length - 1)]}"
+                    ? $"{ReplayCamera.Mode}: {scene.GameState.Nicknames[
+                        Math.Clamp(slot, 0, scene.GameState.Nicknames.Length - 1)]}"
                     : SpectatorMode.FreeCamera ? "Free camera"
-                    : $"Watching: {(slot >= 0 && slot < GameState.Nicknames.Length
-                        ? GameState.Nicknames[slot] : "")}";
+                    : $"Watching: {(slot >= 0 && slot < scene.GameState.Nicknames.Length
+                        ? scene.GameState.Nicknames[slot] : "")}";
             }
 
             Text(scene, 49, 163, _status, alpha, 207);

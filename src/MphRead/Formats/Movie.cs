@@ -74,9 +74,9 @@ namespace MphRead
             _movieSettings.AfterPosition = afterPosition;
             _movieSettings.AfterFacing = afterFacing;
             _movieSettings.AfterMovieAction = afterMovieAction;
-            if (GameState.MatchState == MatchState.InProgress && PlayerEntity.Main.Health > 0)
+            if (this.GameState.MatchState == MatchState.InProgress && this.Players.Main.Health > 0)
             {
-                GameState.PausePrevented = true;
+                this.GameState.PausePrevented = true;
             }
             SetFade(fadeToMovieType, fadeToMovieLength, overwrite: true, AfterFade.PlayMovie);
         }
@@ -89,7 +89,7 @@ namespace MphRead
             // - decoder can decode up to 4 frames, then needs to wait until its oldest frame is requested by the renderer,
             //   then it can drop that frame and decode another one
             Music.Stop();
-            GameState.PauseDialog();
+            this.GameState.PauseDialog();
             Sfx.SfxMute = true;
             Sfx.LongSfxMute++;
             Sfx.TimedSfxMute++;
@@ -282,7 +282,7 @@ namespace MphRead
                 if (_movieSettings.AfterMovieAction != AfterMovie.StartGame)
                 {
                     Debug.Assert(_room != null);
-                    _room.LoadRoom(resume: GameState.TransitionRoomId == -1);
+                    _room.LoadRoom(resume: this.GameState.TransitionRoomId == -1);
                 }
                 else
                 {
@@ -296,7 +296,7 @@ namespace MphRead
                 Sfx.LongSfxMute--;
                 Sfx.TimedSfxMute--;
                 Sfx.ForceFieldSfxMute--;
-                GameState.UnpauseDialog();
+                this.GameState.UnpauseDialog();
                 _decoderCts?.Cancel();
                 _movieFrameIndex = -1;
             }

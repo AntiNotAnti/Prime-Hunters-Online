@@ -108,29 +108,16 @@ namespace MphRead.Mods.Network
 
         private static GameWindowSettings GameSettings() => new() { UpdateFrequency = 60 };
 
-        private static NativeWindowSettings WindowSettings(int width, int height) => new()
+        private static NativeWindowSettings WindowSettings(int width, int height)
         {
-            ClientSize = new Vector2i(width, height),
-            Title = "MphRead net check",
-            Profile = ContextProfile.Compatability,
-            // Explicitly, exactly as the game's own window does. Left
-            // unset, OpenTK's default gave this window a *forward-compatible*
-            // context, which removes every deprecated entry point -- and this
-            // engine draws in immediate mode, so that is all of them. The
-            // profile mask still answers "compatibility", so nothing looked
-            // wrong; the driver only admitted it in a shader warning that
-            // mentioned "OGL 3.0 forward-compatible context". Every frame came
-            // out black with GL_INVALID_OPERATION on an Intel Iris Xe, while
-            // the game rendered perfectly on the same machine, because the
-            // game sets this and these windows did not.
-            Flags = ContextFlags.Default,
-            APIVersion = new Version(3, 2),
-            // Visible only for -hudshots, which reads the window's own buffer
-            // rather than the scene's offscreen target: the HUD is composited
-            // into the frame and a hidden window has no usable back buffer
-            // under Mesa. MapAudit's arrangement, for its reason.
-            StartVisible = ShowWindow
-        };
+            // Use the same platform contract as the game window. macOS only
+            // supplies legacy immediate-mode GL through a 2.1 context.
+            var settings = Render.DesktopGlContext.Settings(background: !ShowWindow);
+            settings.ClientSize = new Vector2i(width, height);
+            settings.Title = "Project Prime network check";
+            settings.StartVisible = ShowWindow;
+            return settings;
+        }
 
         public Scene Scene { get; }
 

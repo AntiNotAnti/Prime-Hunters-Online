@@ -12,7 +12,7 @@ namespace MphRead.Entities
             int id = Metadata.HunterSfx[(int)Hunter, (int)sfx];
             if (id == -1)
             {
-                if (!GameState.Multiplayer || Hunter != Hunter.Guardian || sfx != HunterSfx.Spawn) // todo: MP1P
+                if (!_scene.GameState.Multiplayer || Hunter != Hunter.Guardian || sfx != HunterSfx.Spawn) // todo: MP1P
                 {
                     return;
                 }
@@ -65,7 +65,7 @@ namespace MphRead.Entities
                 // 369 - DAMAGE2
                 // 370 - DAMAGE3
                 // 371 - DAMAGE4
-                uint sfx = Rng.GetRandomInt1(3) + 369;
+                uint sfx = _scene.Random.GetRandomInt1(3) + 369;
                 _soundSource.PlaySfx((int)sfx);
                 _damageSfxTimer = 90 / 30f;
             }
@@ -195,7 +195,7 @@ namespace MphRead.Entities
             {
                 sfxId = -1;
             }
-            float amountB = Rng.GetRandomInt1(0x7FFF) * 2;
+            float amountB = _scene.Random.GetRandomInt1(0x7FFF) * 2;
             if (sfxId != -1)
             {
                 _soundSource.PlaySfx(sfxId, amountA: 0xFFFF, amountB: amountB);
@@ -635,8 +635,8 @@ namespace MphRead.Entities
                     musicId = CheckMusicUpdate(musicId, (int)message.Param1, (int)message.Param2);
                 }
             }
-            if (musicId != MusicId.Invalid && PlayerEntity.Main.Health > 0
-                && (GameState.EscapeTimer == -1 || GameState.EscapeState != EscapeState.Escape))
+            if (musicId != MusicId.Invalid && _scene.Players.Main.Health > 0
+                && (_scene.GameState.EscapeTimer == -1 || _scene.GameState.EscapeState != EscapeState.Escape))
             {
                 if (Music.MusicEncounterSuspension != 0)
                 {
@@ -680,7 +680,7 @@ namespace MphRead.Entities
                 if (DoorChimeSfxTimer <= 1 / 30f)
                 {
                     DoorChimeSfxTimer = 0;
-                    if (Sfx.TimedSfxMute == 0 && (CameraSequence.Current == null || !CameraSequence.Current.BlockInput)
+                    if (Sfx.TimedSfxMute == 0 && (_scene.CameraSequences.Current == null || !_scene.CameraSequences.Current.BlockInput)
                         && _soundSource.CountPlayingSfx(SfxId.DOOR_UNLOCK) == 0)
                     {
                         // the game doesn't check whether the cam seq blocks input
@@ -726,7 +726,7 @@ namespace MphRead.Entities
             if (idValue > 70)
             {
                 // artifact ID (with model ID baked in)
-                bool hasArtifact = (GameState.StorySave.CheckFoundArtifact(idValue - 71, modelId: 0)) ^ negation;
+                bool hasArtifact = (_scene.GameState.StorySave.CheckFoundArtifact(idValue - 71, modelId: 0)) ^ negation;
                 if (hasArtifact)
                 {
                     return newMusicId;
@@ -735,7 +735,7 @@ namespace MphRead.Entities
             else if ((param2 & 0x100) >> 8 != 0) // bit 8
             {
                 // entity ID
-                bool hasRoomState = (GameState.StorySave.GetRoomState(_scene.RoomId, idValue) != 0) ^ negation;
+                bool hasRoomState = (_scene.GameState.StorySave.GetRoomState(_scene.RoomId, idValue) != 0) ^ negation;
                 if (hasRoomState)
                 {
                     return newMusicId;
@@ -746,7 +746,7 @@ namespace MphRead.Entities
                 // enemy type
                 int byteIndex = idValue >> 3;
                 int bitmask = (byte)(1 << (idValue & 7));
-                bool hasEncounterState = ((GameState.StorySave.EnemyEncounters[_scene.AreaId][byteIndex] & bitmask) == 0) ^ negation;
+                bool hasEncounterState = ((_scene.GameState.StorySave.EnemyEncounters[_scene.AreaId][byteIndex] & bitmask) == 0) ^ negation;
                 if (hasEncounterState)
                 {
                     return newMusicId;

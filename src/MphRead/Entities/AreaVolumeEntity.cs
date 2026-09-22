@@ -42,9 +42,9 @@ namespace MphRead.Entities
                 _cooldownTime--;
             }
             _cooldownTime *= 2; // todo: FPS stuff
-            if (GameState.Mode == GameMode.SinglePlayer)
+            if (_scene.GameState.Mode == GameMode.SinglePlayer)
             {
-                int state = GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: data.Active != 0);
+                int state = _scene.GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: data.Active != 0);
                 if (data.AlwaysActive != 0)
                 {
                     Active = data.Active != 0;
@@ -83,9 +83,9 @@ namespace MphRead.Entities
             if (info.Message == Message.Activate)
             {
                 Active = true;
-                if (GameState.Mode == GameMode.SinglePlayer)
+                if (_scene.GameState.Mode == GameMode.SinglePlayer)
                 {
-                    GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
+                    _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
                 }
             }
             else if (info.Message == Message.SetActive)
@@ -93,17 +93,17 @@ namespace MphRead.Entities
                 if ((int)info.Param1 != 0)
                 {
                     Active = true;
-                    if (GameState.Mode == GameMode.SinglePlayer)
+                    if (_scene.GameState.Mode == GameMode.SinglePlayer)
                     {
-                        GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
+                        _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
                     }
                 }
                 else
                 {
                     Active = false;
-                    if (GameState.Mode == GameMode.SinglePlayer)
+                    if (_scene.GameState.Mode == GameMode.SinglePlayer)
                     {
-                        GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
+                        _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
                     }
                 }
             }
@@ -245,7 +245,7 @@ namespace MphRead.Entities
             TriggerFlags flags = _data.TriggerFlags;
             foreach (PlayerEntity player in _scene.GetPlayerEntities())
             {
-                if (GameState.Mode == GameMode.SinglePlayer && player != PlayerEntity.Main)
+                if (_scene.GameState.Mode == GameMode.SinglePlayer && player != _scene.Players.Main)
                 {
                     continue;
                 }

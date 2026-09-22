@@ -233,15 +233,13 @@ namespace MphRead.Mods.Input
 
         private static void CheckPlayerInput()
         {
-            // Only the input pass runs. A scene shell avoids loading cartridge music,
-            // models or a GL context, while players and their controls use real constructors.
-            var scene = (Scene)RuntimeHelpers.GetUninitializedObject(typeof(Scene));
-            typeof(Scene).GetField("_movieFrameIndex", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .SetValue(scene, -1);
+            // Only the input pass runs. Construct the real owned state without
+            // loading cartridge music, models or a GL context.
+            var scene = new Scene(new OpenTK.Mathematics.Vector2i(256, 192),
+                SyntheticInput.CreateKeyboard(), SyntheticInput.CreateMouse(), _ => { }, () => { },
+                initializeRuntime: false);
             typeof(Scene).GetField("_cameraMode", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .SetValue(scene, CameraMode.Player);
-            PlayerEntity.Reset();
-            PlayerEntity.Construct(scene);
             var player = PlayerEntity.Main;
             player.LoadFlags = LoadFlags.Active;
             var keyboard = SyntheticInput.CreateKeyboard();

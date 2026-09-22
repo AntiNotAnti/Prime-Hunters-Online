@@ -78,7 +78,7 @@ namespace MphRead.Entities.Enemies
                 _itemChance3 = 0;
                 _itemChance4 = 60;
                 _field1C4 = 5 * 2; // todo: FPS stuff
-                _target = PlayerEntity.Main;
+                _target = _scene.Players.Main;
             }
         }
 
@@ -171,9 +171,9 @@ namespace MphRead.Entities.Enemies
             _basePos += _speed;
             if (_shakeTimer > 0)
             {
-                float x = ((int)Rng.GetRandomInt2(512) - 256) / 4096f;
-                float y = ((int)Rng.GetRandomInt2(512) - 256) / 4096f;
-                float z = ((int)Rng.GetRandomInt2(512) - 256) / 4096f;
+                float x = ((int)_scene.Random.GetRandomInt2(512) - 256) / 4096f;
+                float y = ((int)_scene.Random.GetRandomInt2(512) - 256) / 4096f;
+                float z = ((int)_scene.Random.GetRandomInt2(512) - 256) / 4096f;
                 Position = new Vector3(_basePos.X + x, _basePos.Y + y, _basePos.Z + z);
                 _shakeTimer--;
             }
@@ -211,7 +211,7 @@ namespace MphRead.Entities.Enemies
             int chance2 = chance1 + _itemChance2;
             int chance3 = chance2 + _itemChance3;
             int chance4 = chance3 + _itemChance4;
-            uint rand = Rng.GetRandomInt2(chance4);
+            uint rand = _scene.Random.GetRandomInt2(chance4);
             if (rand >= chance3)
             {
                 spawn = false;
@@ -279,7 +279,7 @@ namespace MphRead.Entities.Enemies
             }
             int damage = _field1B4;
             float dirMag = _field1B0;
-            if (!HitPlayers[PlayerEntity.Main.SlotIndex])
+            if (!HitPlayers[_scene.Players.Main.SlotIndex])
             {
                 float factor = Math.Clamp(distance / _field1A0, 0, 1);
                 damage = (int)(damage - damage * factor);

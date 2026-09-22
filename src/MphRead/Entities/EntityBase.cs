@@ -22,6 +22,11 @@ namespace MphRead.Entities
         public float Alpha { get; set; } = 1.0f;
 
         protected Scene _scene;
+        internal Scene OwningScene => _scene;
+        protected SceneGameState GameState => _scene.GameState;
+        protected MatchRandom Random => _scene.Random;
+        public ISceneServices SceneServices => _scene.Services;
+
         protected readonly string? _nodeName;
         public NodeRef NodeRef { get; set; } = NodeRef.None;
         protected int _scanId = 0;

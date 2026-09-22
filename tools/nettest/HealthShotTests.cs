@@ -12,6 +12,9 @@ namespace MphRead.NetTest
     internal static class HealthShotTests
     {
         private static int _checks;
+        private static readonly Scene _scene = new(new Vector2i(256, 192),
+            Mods.Input.SyntheticInput.CreateKeyboard(), Mods.Input.SyntheticInput.CreateMouse(),
+            _ => { }, () => { }, initializeRuntime: false);
         internal static void Check(bool ok, string message)
         {
             _checks++;
@@ -90,6 +93,7 @@ namespace MphRead.NetTest
         internal static PlayerEntity Player(int slot, int health = 99)
         {
             var player = (PlayerEntity)RuntimeHelpers.GetUninitializedObject(typeof(PlayerEntity));
+            typeof(EntityBase).GetField("_scene", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(player, _scene);
             typeof(PlayerEntity).GetProperty(nameof(PlayerEntity.SlotIndex))!.SetValue(player, slot);
             player.Health = health;
             Field(player, "<Controls>k__BackingField", PlayerControls.GetDefault());

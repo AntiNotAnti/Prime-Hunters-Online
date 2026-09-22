@@ -139,8 +139,8 @@ namespace MphRead.Entities.Enemies
                 _speedFactor = Fixed.ToFloat(_values.MinSpeedFactor2) / 2;
             }
             _increaseSpeed = true;
-            _shotCount = (ushort)(_values.MinShots + Rng.GetRandomInt2(_values.MaxShots + 1 - _values.MinShots));
-            _aimVec = (PlayerEntity.Main.Position - Position).Normalized();
+            _shotCount = (ushort)(_values.MinShots + _scene.Random.GetRandomInt2(_values.MaxShots + 1 - _values.MinShots));
+            _aimVec = (_scene.Players.Main.Position - Position).Normalized();
             _subId = _state1;
         }
 
@@ -183,8 +183,8 @@ namespace MphRead.Entities.Enemies
                     _speedInc = 0;
                     _delayTimer = (ushort)(_values.DelayTime * 2); // todo: FPS stuff
                     _shotTimer = (ushort)(_values.ShotTime * 2); // todo: FPS stuff
-                    _shotCount = (ushort)(_values.MinShots + Rng.GetRandomInt2(_values.MaxShots + 1 - _values.MinShots));
-                    _aimVec = (PlayerEntity.Main.Position - Position).Normalized();
+                    _shotCount = (ushort)(_values.MinShots + _scene.Random.GetRandomInt2(_values.MaxShots + 1 - _values.MinShots));
+                    _aimVec = (_scene.Players.Main.Position - Position).Normalized();
                     _models[0].SetAnimation(0, AnimFlags.NoLoop);
                     SetTransform(_aimVec, Vector3.UnitY, Position);
                     _curFacing = _aimVec;
@@ -227,21 +227,21 @@ namespace MphRead.Entities.Enemies
             Vector3 moveTarget;
             if (_homeVolume.Type == VolumeType.Cylinder)
             {
-                float dist = Fixed.ToFloat(Rng.GetRandomInt2(Fixed.ToInt(_homeVolume.CylinderRadius)));
+                float dist = Fixed.ToFloat(_scene.Random.GetRandomInt2(Fixed.ToInt(_homeVolume.CylinderRadius)));
                 var vec = new Vector3(dist, 0, 0);
                 _roamAngleSign *= -1;
-                float angle = Fixed.ToFloat(Rng.GetRandomInt2(0xB4000)) * _roamAngleSign; // [0-180)
+                float angle = Fixed.ToFloat(_scene.Random.GetRandomInt2(0xB4000)) * _roamAngleSign; // [0-180)
                 var rotY = Matrix4.CreateRotationY(MathHelper.DegreesToRadians(angle));
                 vec = Matrix.Vec3MultMtx3(vec, rotY);
-                vec.Y = Fixed.ToFloat(Rng.GetRandomInt2(Fixed.ToInt(_homeVolume.CylinderDot)));
+                vec.Y = Fixed.ToFloat(_scene.Random.GetRandomInt2(Fixed.ToInt(_homeVolume.CylinderDot)));
                 moveTarget = _homeVolume.CylinderPosition + vec;
             }
             else
             {
                 Debug.Assert(_homeVolume.Type == VolumeType.Box);
-                float distX = Fixed.ToFloat(Rng.GetRandomInt2(Fixed.ToInt(_homeVolume.BoxDot1)));
-                float distY = Fixed.ToFloat(Rng.GetRandomInt2(Fixed.ToInt(_homeVolume.BoxDot2)));
-                float distZ = Fixed.ToFloat(Rng.GetRandomInt2(Fixed.ToInt(_homeVolume.BoxDot3)));
+                float distX = Fixed.ToFloat(_scene.Random.GetRandomInt2(Fixed.ToInt(_homeVolume.BoxDot1)));
+                float distY = Fixed.ToFloat(_scene.Random.GetRandomInt2(Fixed.ToInt(_homeVolume.BoxDot2)));
+                float distZ = Fixed.ToFloat(_scene.Random.GetRandomInt2(Fixed.ToInt(_homeVolume.BoxDot3)));
                 var vec = new Vector3(
                     _homeVolume.BoxVector1.X * distX,
                     _homeVolume.BoxVector2.Y * distY,
@@ -296,7 +296,7 @@ namespace MphRead.Entities.Enemies
 
         private void UpdateFacing()
         {
-            Vector3 between = (PlayerEntity.Main.Position - Position).Normalized();
+            Vector3 between = (_scene.Players.Main.Position - Position).Normalized();
             if (Vector3.Dot(_curFacing, between) > Fixed.ToFloat(_values.RangeMaxCosine))
             {
                 SetTransform(between, Vector3.UnitY, Position);
@@ -318,7 +318,7 @@ namespace MphRead.Entities.Enemies
             }
             else
             {
-                Vector3 targetPos = PlayerEntity.Main.Position.AddY(0.5f);
+                Vector3 targetPos = _scene.Players.Main.Position.AddY(0.5f);
                 _aimVec = (targetPos - Position).Normalized();
                 Vector3 spawnPos = Position + _aimVec / 2;
                 _equipInfo.UnchargedDamage = _values.BeamDamage;
@@ -488,7 +488,7 @@ namespace MphRead.Entities.Enemies
                 // so we use the _reachTargetHackTimer to make this bugged movement last 2f instead of 1f
                 _reachTargetHackTimer = 1; // todo: FPS stuff
                 Vector3 facing = FacingVector;
-                _targetVec = (PlayerEntity.Main.Position - Position).Normalized();
+                _targetVec = (_scene.Players.Main.Position - Position).Normalized();
                 float angle = MathHelper.RadiansToDegrees(MathF.Acos(Vector3.Dot(facing, _targetVec)));
                 _aimSteps = (ushort)(_values.AimSteps * 2); // todo: FPS stuff
                 _aimAngleStep = angle / _aimSteps;
@@ -508,7 +508,7 @@ namespace MphRead.Entities.Enemies
 
         public bool Behavior07()
         {
-            if (CameraSequence.Current?.BlockInput == true)
+            if (_scene.CameraSequences.Current?.BlockInput == true)
             {
                 _camSeqDelayTimer = 40 * 2; // todo: FPS stuff
                 return false;
@@ -518,11 +518,11 @@ namespace MphRead.Entities.Enemies
                 _camSeqDelayTimer--;
                 return false;
             }
-            if (PlayerEntity.Main.Health > 0)
+            if (_scene.Players.Main.Health > 0)
             {
-                Vector3 between = (PlayerEntity.Main.Position - Position).Normalized();
+                Vector3 between = (_scene.Players.Main.Position - Position).Normalized();
                 if (Vector3.Dot(_curFacing, between) > Fixed.ToFloat(_values.RangeMaxCosine)
-                    && _rangeVolume.TestPoint(PlayerEntity.Main.Position))
+                    && _rangeVolume.TestPoint(_scene.Players.Main.Position))
                 {
                     _speed = Vector3.Zero;
                     _models[0].SetAnimation(1);
@@ -543,7 +543,7 @@ namespace MphRead.Entities.Enemies
             }
             _soundSource.StopSfx(SfxId.PSYCHOBIT_CHARGE);
             _models[0].SetAnimation(0, AnimFlags.NoLoop);
-            _aimVec = (PlayerEntity.Main.Position + Position).Normalized();
+            _aimVec = (_scene.Players.Main.Position + Position).Normalized();
             return true;
         }
 
@@ -566,7 +566,7 @@ namespace MphRead.Entities.Enemies
 
         public bool Behavior09()
         {
-            Vector3 between = (PlayerEntity.Main.Position - Position).Normalized();
+            Vector3 between = (_scene.Players.Main.Position - Position).Normalized();
             if (Vector3.Dot(_curFacing, between) >= Fixed.ToFloat(_values.RangeMaxCosine))
             {
                 return false;
@@ -577,7 +577,7 @@ namespace MphRead.Entities.Enemies
 
         public bool Behavior10()
         {
-            if (!_nearVolume.TestPoint(PlayerEntity.Main.Position))
+            if (!_nearVolume.TestPoint(_scene.Players.Main.Position))
             {
                 return false;
             }
@@ -594,7 +594,7 @@ namespace MphRead.Entities.Enemies
             PickRoamTarget();
             _delayTimer = (ushort)(_values.DelayTime * 2); // todo: FPS stuff
             _shotTimer = (ushort)(_values.ShotTime * 2); // todo: FPS stuff
-            _shotCount = (ushort)(_values.MinShots + Rng.GetRandomInt2(_values.MaxShots + 1 - _values.MinShots));
+            _shotCount = (ushort)(_values.MinShots + _scene.Random.GetRandomInt2(_values.MaxShots + 1 - _values.MinShots));
             if (_effect != null)
             {
                 _scene.UnlinkEffectEntry(_effect);
@@ -613,7 +613,7 @@ namespace MphRead.Entities.Enemies
             PickRoamTarget();
             _delayTimer = (ushort)(_values.DelayTime * 2); // todo: FPS stuff
             _shotTimer = (ushort)(_values.ShotTime * 2); // todo: FPS stuff
-            _shotCount = (ushort)(_values.MinShots + Rng.GetRandomInt2(_values.MaxShots + 1 - _values.MinShots));
+            _shotCount = (ushort)(_values.MinShots + _scene.Random.GetRandomInt2(_values.MaxShots + 1 - _values.MinShots));
             _damaged = false;
             if (_effect != null)
             {

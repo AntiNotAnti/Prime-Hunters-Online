@@ -207,7 +207,7 @@ namespace MphRead.Entities.Enemies
                 CloseEye();
                 int min = phaseValues.MinStaticShotTimer * 2; // todo: FPS stuff
                 int max = phaseValues.MaxStaticShotTimer * 2; // todo: FPS stuff
-                _staticShotTimer = (int)(min + Rng.GetRandomInt2(max - min));
+                _staticShotTimer = (int)(min + _scene.Random.GetRandomInt2(max - min));
                 break;
             case SlenchState.ShootTear:
                 _soundSource.PlaySfx(SfxId.BIGEYE_ATTACK1A_SCR);
@@ -340,7 +340,7 @@ namespace MphRead.Entities.Enemies
             Enemy41Values phaseValues = GetPhaseValues();
             Vector3 facing = FacingVector;
             Vector3 up = UpVector;
-            Vector3 playerTarget = PlayerEntity.Main.Volume.SpherePosition.AddY(0.5f);
+            Vector3 playerTarget = _scene.Players.Main.Volume.SpherePosition.AddY(0.5f);
             if (SlenchFlags.TestFlag(SlenchFlags.Wobbling))
             {
                 _wobbleAngle += 20 / 2; // todo: FPS stuff
@@ -372,9 +372,9 @@ namespace MphRead.Entities.Enemies
                     }
                 }
             }
-            if (HitPlayers[PlayerEntity.Main.SlotIndex])
+            if (HitPlayers[_scene.Players.Main.SlotIndex])
             {
-                PlayerEntity.Main.TakeDamage(35, DamageFlags.None, facing, this);
+                _scene.Players.Main.TakeDamage(35, DamageFlags.None, facing, this);
             }
             if (State == SlenchState.Roam)
             {
@@ -495,12 +495,12 @@ namespace MphRead.Entities.Enemies
                             // actually get the angle value. in the other code path, which has a 1/360 chance of being taken,
                             // 0.5 is subtracted from the angle instead. except in the case of 0, this results in the
                             // angle being 1 fx32 less (1/4096f). we don't do any of that, but we will still call RNG twice.
-                            Rng.GetRandomInt2(360);
-                            float angle = Rng.GetRandomInt2(360);
+                            _scene.Random.GetRandomInt2(360);
+                            float angle = _scene.Random.GetRandomInt2(360);
                             var rotMtx = Matrix4.CreateFromAxisAngle(facing, MathHelper.DegreesToRadians(angle));
                             Vector3 vecA = Matrix.Vec3MultMtx3(up, rotMtx);
                             Vector3 vecB = facing * 4 + Position;
-                            float randf = Rng.GetRandomInt2(0x2000) / 4096f + 2; // [2.0, 4.0)
+                            float randf = _scene.Random.GetRandomInt2(0x2000) / 4096f + 2; // [2.0, 4.0)
                             _destVec2 = vecA * randf + vecB;
                         }
                         RotateToTarget(_destVec2, Fixed.ToFloat(phaseValues.AngleIncrement1) / 2); // todo: FPS stuff
@@ -777,7 +777,7 @@ namespace MphRead.Entities.Enemies
                             }
                             else
                             {
-                                uint rand = Rng.GetRandomInt2(100);
+                                uint rand = _scene.Random.GetRandomInt2(100);
                                 if (rand >= 50)
                                 {
                                     SlenchFlags &= ~SlenchFlags.TargetingPlayer;
@@ -1247,7 +1247,7 @@ namespace MphRead.Entities.Enemies
                     ChangeState(SlenchState.Dead);
                     _soundSource.PlaySfx(SfxId.BIGEYE_DIE_SCR, noUpdate: true, recency: Single.MaxValue, sourceOnly: true);
                 }
-                if (PlayerEntity.Main.Health > 0 && GameState.SinglePlayer)
+                if (_scene.Players.Main.Health > 0 && _scene.GameState.SinglePlayer)
                 {
                     _scene.StartMovie(_deathMovieIds[_subtype], FadeType.FadeOutInWhite, 40 / 30f, FadeType.FadeOutInWhite, 5 / 30f);
                 }

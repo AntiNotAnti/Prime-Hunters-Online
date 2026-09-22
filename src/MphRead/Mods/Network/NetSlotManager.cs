@@ -144,20 +144,20 @@ namespace MphRead.Mods.Network
             // rebuilds the models and equipment while preserving position,
             // facing and health.
             player.Initialize();
-            PlayerEntity.PlayerCount = CountActive();
+            player.OwningScene.Players.PlayerCount = CountActive();
             Console.WriteLine($"[net] slot {slot} activated "
-                + $"({GameState.Nicknames[slot]}) -- {PlayerEntity.PlayerCount} player(s) in scene");
-            NetLog.Event($"slot {slot} activated ({GameState.Nicknames[slot]}), "
-                + $"{PlayerEntity.PlayerCount} player(s) in scene");
+                + $"({player.OwningScene.GameState.Nicknames[slot]}) -- {player.OwningScene.Players.PlayerCount} player(s) in scene");
+            NetLog.Event($"slot {slot} activated ({player.OwningScene.GameState.Nicknames[slot]}), "
+                + $"{player.OwningScene.Players.PlayerCount} player(s) in scene");
         }
 
         private static void SyncTeam(PlayerEntity player, int slot)
         {
-            int wanted = GameState.Teams ? NetSession.SlotTeamIndex[slot] : slot;
-            if (wanted < 0 || (GameState.Teams && wanted >= GameState.TeamCount)
+            int wanted = player.OwningScene.GameState.Teams ? NetSession.SlotTeamIndex[slot] : slot;
+            if (wanted < 0 || (player.OwningScene.GameState.Teams && wanted >= player.OwningScene.GameState.TeamCount)
                 || player.TeamIndex == wanted) return;
             player.TeamIndex = wanted;
-            if (GameState.Teams) MphRead.Mods.Multiplayer.TeamVisuals.Apply(player);
+            if (player.OwningScene.GameState.Teams) MphRead.Mods.Multiplayer.TeamVisuals.Apply(player);
             else player.Team = Team.None;
         }
 
@@ -240,7 +240,7 @@ namespace MphRead.Mods.Network
             // which is recoverable only by loading the room again.
             player.LoadFlags &= ~LoadFlags.Spawned;
             player.Health = 0;
-            PlayerEntity.PlayerCount = Math.Max(CountActive(), 1);
+            player.OwningScene.Players.PlayerCount = Math.Max(CountActive(), 1);
             Console.WriteLine($"[net] slot {slot} deactivated -- player left");
             NetLog.Event($"slot {slot} deactivated");
         }

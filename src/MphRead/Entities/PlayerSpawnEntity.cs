@@ -25,10 +25,10 @@ namespace MphRead.Entities
         {
             base.Initialize();
             SetTransform(_data.Header.FacingVector, _data.Header.UpVector, _data.Header.Position);
-            if (GameState.Mode == GameMode.SinglePlayer)
+            if (_scene.GameState.Mode == GameMode.SinglePlayer)
             {
                 bool active = Cheats.SkipPlanetIntros ? true : (_data.Active != 0);
-                _active = GameState.StorySave.InitRoomState(_scene.RoomId, Id, active) != 0;
+                _active = _scene.GameState.StorySave.InitRoomState(_scene.RoomId, Id, active) != 0;
             }
             else
             {
@@ -50,17 +50,17 @@ namespace MphRead.Entities
             if (info.Message == Message.Activate || (info.Message == Message.SetActive && (int)info.Param1 != 0))
             {
                 _active = true;
-                if (GameState.Mode == GameMode.SinglePlayer)
+                if (_scene.GameState.Mode == GameMode.SinglePlayer)
                 {
-                    GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
+                    _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
                 }
             }
             else if (info.Message == Message.SetActive && (int)info.Param1 == 0)
             {
                 _active = false;
-                if (GameState.Mode == GameMode.SinglePlayer)
+                if (_scene.GameState.Mode == GameMode.SinglePlayer)
                 {
-                    GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
+                    _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
                 }
             }
         }

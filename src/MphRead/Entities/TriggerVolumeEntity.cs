@@ -35,8 +35,8 @@ namespace MphRead.Entities
             SetTransform(data.Header.FacingVector, data.Header.UpVector, data.Header.Position);
             _volume = CollisionVolume.Move(data.Volume, Position);
             AddPlaceholderModel();
-            Debug.Assert(GameState.Mode == GameMode.SinglePlayer);
-            int state = GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: data.Active != 0);
+            Debug.Assert(_scene.GameState.Mode == GameMode.SinglePlayer);
+            int state = _scene.GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: data.Active != 0);
             if (data.AlwaysActive != 0)
             {
                 Active = data.Active != 0;
@@ -194,7 +194,7 @@ namespace MphRead.Entities
             else if (_data.Subtype == TriggerType.StateBits)
             {
                 int index = _data.RequiredStateBit;
-                if ((GameState.StorySave.TriggerState[index / 8] & (1 << (index % 8))) != 0)
+                if ((_scene.GameState.StorySave.TriggerState[index / 8] & (1 << (index % 8))) != 0)
                 {
                     Trigger();
                 }
@@ -205,7 +205,7 @@ namespace MphRead.Entities
         private void Deactivate()
         {
             Active = false;
-            GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
+            _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
         }
 
         public override void HandleMessage(MessageInfo info)
@@ -240,14 +240,14 @@ namespace MphRead.Entities
                 else if (info.Message == Message.Activate)
                 {
                     Active = true;
-                    GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
+                    _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
                 }
                 else if (info.Message == Message.SetActive)
                 {
                     if ((int)info.Param1 != 0)
                     {
                         Active = true;
-                        GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
+                        _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
                     }
                     else
                     {
@@ -256,7 +256,7 @@ namespace MphRead.Entities
                         {
                             _delayTimer = _data.RepeatDelay * 2; // todo: FPS stuff
                         }
-                        GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
+                        _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
                     }
                 }
             }

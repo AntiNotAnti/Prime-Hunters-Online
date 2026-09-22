@@ -9,6 +9,14 @@ decode into their own packet-visible replica values and never touch live session
 state; their scene integration remains under migration. Local intent and authority snapshot synthesis are
 preserved. Protocol mismatch is refused before packet playback.
 
+Scenes now own player allocation, match arrays/rules, RNG, camera sequences,
+rotating-item state and enemy/platform projectile pools. Creating another scene
+allocates fresh actors; a passive scene never changes foreground facade bindings.
+Entity/effect randomness comes from the owning scene. Controller aim processing
+is skipped for puppets and replica actors. The passive scene's normal foreground
+step entry point throws until the remaining live network/presentation services
+have been replaced; this ownership extraction does not yet enable killcam scenes.
+
 ## Controls and clock
 
 `ReplayController` schedules complete 1/60-second engine steps. Rates are

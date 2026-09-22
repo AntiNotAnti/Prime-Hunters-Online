@@ -77,7 +77,7 @@ namespace MphRead.Entities.Enemies
             _speedIncAmount = _speedInc;
             _delayTimer = (ushort)(_values.DelayTime * 2);
             _shotTimer = (ushort)(_values.ShotTime * 2);
-            _shotCount = (ushort)(_values.MinShots + Rng.GetRandomInt2(_values.MaxShots + 1 - _values.MinShots));
+            _shotCount = (ushort)(_values.MinShots + _scene.Random.GetRandomInt2(_values.MaxShots + 1 - _values.MinShots));
             _aimStepCount = (ushort)(_values.AimSteps * 2);
             if (_spawner.Data.SpawnerHealth == 0 || MathF.Abs(Position.X - _homeVolume.CylinderPosition.X) < 1 / 4096f
                 && MathF.Abs(Position.Z - _homeVolume.CylinderPosition.Z) < 1 / 4096f)
@@ -147,7 +147,7 @@ namespace MphRead.Entities.Enemies
         private void UpdateFacing()
         {
             _speed = Vector3.Zero;
-            Vector3 facing = (PlayerEntity.Main.Position - Position).Normalized();
+            Vector3 facing = (_scene.Players.Main.Position - Position).Normalized();
             if (facing.Y > 0.5f)
             {
                 facing = facing.WithY(0.5f).Normalized();
@@ -239,7 +239,7 @@ namespace MphRead.Entities.Enemies
             PickRoamTarget();
             _delayTimer = (ushort)(_values.DelayTime * 2);
             _shotTimer = (ushort)(_values.ShotTime * 2);
-            _shotCount = (ushort)(_values.MinShots + Rng.GetRandomInt2(_values.MaxShots + 1 - _values.MinShots));
+            _shotCount = (ushort)(_values.MinShots + _scene.Random.GetRandomInt2(_values.MaxShots + 1 - _values.MinShots));
             _models[0].SetAnimation(5);
             return true;
         }
@@ -254,7 +254,7 @@ namespace MphRead.Entities.Enemies
             PickRoamTarget();
             if (_state1 == 5)
             {
-                _targetVec = (PlayerEntity.Main.Position - Position).WithY(0).Normalized();
+                _targetVec = (_scene.Players.Main.Position - Position).WithY(0).Normalized();
                 float angle = MathHelper.RadiansToDegrees(MathF.Acos(Vector3.Dot(FacingVector, _targetVec)));
                 _aimSteps = _aimStepCount;
                 _aimAngleStep = angle / _aimSteps;
@@ -267,22 +267,22 @@ namespace MphRead.Entities.Enemies
 
         private bool Behavior04()
         {
-            if (!HitPlayers[PlayerEntity.Main.SlotIndex])
+            if (!HitPlayers[_scene.Players.Main.SlotIndex])
             {
                 return false;
             }
-            Vector3 between = PlayerEntity.Main.Volume.SpherePosition - Position;
+            Vector3 between = _scene.Players.Main.Volume.SpherePosition - Position;
             float mag = between.Length * 5;
-            PlayerEntity.Main.Speed = new Vector3(
-                PlayerEntity.Main.Speed.X + between.X / mag,
-                PlayerEntity.Main.Speed.Y,
-                PlayerEntity.Main.Speed.Z + between.Z / mag
+            _scene.Players.Main.Speed = new Vector3(
+                _scene.Players.Main.Speed.X + between.X / mag,
+                _scene.Players.Main.Speed.Y,
+                _scene.Players.Main.Speed.Z + between.Z / mag
             );
-            PlayerEntity.Main.TakeDamage(_values.ContactDamage, DamageFlags.NoDmgInvuln, null, this);
+            _scene.Players.Main.TakeDamage(_values.ContactDamage, DamageFlags.NoDmgInvuln, null, this);
             PickRoamTarget();
             if (_state1 == 5)
             {
-                _targetVec = (PlayerEntity.Main.Position - Position).WithY(0).Normalized();
+                _targetVec = (_scene.Players.Main.Position - Position).WithY(0).Normalized();
                 float angle = MathHelper.RadiansToDegrees(MathF.Acos(Vector3.Dot(FacingVector, _targetVec)));
                 _aimSteps = _aimStepCount;
                 _aimAngleStep = angle / _aimSteps;
@@ -295,11 +295,11 @@ namespace MphRead.Entities.Enemies
 
         private bool Behavior05()
         {
-            if (PlayerEntity.Main.Health == 0)
+            if (_scene.Players.Main.Health == 0)
             {
                 return false;
             }
-            Vector3 between = (PlayerEntity.Main.Position - Position).Normalized();
+            Vector3 between = (_scene.Players.Main.Position - Position).Normalized();
             // as with Psycho Bit, the dot product check could facilitate a vision angle range, but as written it's pointless
             if (Vector3.Dot(FacingVector, between) <= Fixed.ToFloat(_values.RangeMaxCosine))
             {

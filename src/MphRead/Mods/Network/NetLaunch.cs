@@ -292,9 +292,9 @@ namespace MphRead.Mods.Network
         public static void BuildPlayers(Scene scene, Hunter localHunter, int localRecolor,
             bool teams = false, int? localSlot = null)
         {
-            GameState.TeamCount = teams && NetSession.ActiveMatchDefinition is { } match ? LobbyRules.TeamCount(match) : teams ? 2 : 0;
+            scene.GameState.TeamCount = teams && NetSession.ActiveMatchDefinition is { } match ? LobbyRules.TeamCount(match) : teams ? 2 : 0;
             int resolvedSlot = localSlot ?? Math.Max(NetSession.LocalSlot, 0);
-            for (int slot = 0; slot < PlayerEntity.MaxPlayers; slot++)
+            for (int slot = 0; slot < scene.Players.MaxPlayers; slot++)
             {
                 // Only this machine's hunter is a local choice. Everyone
                 // else's comes from the server's roster, because it is their
@@ -323,10 +323,10 @@ namespace MphRead.Mods.Network
                 scene.AddPlayer(hunter, slot == resolvedSlot ? localRecolor : 0,
                     teams ? Math.Max(0, (int)NetSession.SlotTeamIndex[slot]) : -1);
             }
-            for (int slot = 0; slot < PlayerEntity.MaxPlayers; slot++)
+            for (int slot = 0; slot < scene.Players.MaxPlayers; slot++)
             {
-                PlayerEntity? player = slot < PlayerEntity.Players.Count
-                    ? PlayerEntity.Players[slot]
+                PlayerEntity? player = slot < scene.Players.Items.Count
+                    ? scene.Players.Items[slot]
                     : null;
                 if (player == null)
                 {
@@ -351,7 +351,7 @@ namespace MphRead.Mods.Network
                     player.LoadFlags &= ~LoadFlags.Active;
                 }
             }
-            PlayerEntity.PlayerCount = 1;
+            scene.Players.PlayerCount = 1;
             // Before AddRoom: the room loader initialises the camera and HUD
             // against PlayerEntity.Main, so Main must already point at the
             // slot this client drives. A client on slot 1 that skipped this
@@ -364,7 +364,7 @@ namespace MphRead.Mods.Network
             // SpectatorMode.Start immediately redirects once a real player
             // is available, same as it does after every subsequent cycle.
             int mainIndex = resolvedSlot >= 0 ? resolvedSlot : 0;
-            PlayerEntity.MainPlayerIndex = mainIndex;
+            scene.Players.MainPlayerIndex = mainIndex;
             PlayerColors.Resolve();
             // A hunter queued for a respawn belongs to the match it was asked
             // in. Carried into the next one it would override the choice the

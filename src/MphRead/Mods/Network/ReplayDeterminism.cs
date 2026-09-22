@@ -186,11 +186,11 @@ namespace MphRead.Mods.Network
             using var writer = new BinaryWriter(stream);
             writer.Write(scene.FrameCount);
             writer.Write(scene.GlobalElapsedTime);
-            writer.Write(GameState.MatchTime);
-            writer.Write((int)GameState.MatchState);
-            foreach (int value in GameState.Points) writer.Write(value);
-            foreach (int value in GameState.Kills) writer.Write(value);
-            foreach (int value in GameState.Deaths) writer.Write(value);
+            writer.Write(scene.GameState.MatchTime);
+            writer.Write((int)scene.GameState.MatchState);
+            foreach (int value in scene.GameState.Points) writer.Write(value);
+            foreach (int value in scene.GameState.Kills) writer.Write(value);
+            foreach (int value in scene.GameState.Deaths) writer.Write(value);
             writer.Write(NetSession.SnapshotsReceived);
             writer.Write(NetSession.IntentsReceived);
             foreach (EntityBase entity in scene.Entities)
@@ -199,7 +199,7 @@ namespace MphRead.Mods.Network
                 writer.Write(entity.Position.X); writer.Write(entity.Position.Y); writer.Write(entity.Position.Z);
                 WriteFields(writer, entity);
             }
-            foreach (PlayerEntity player in PlayerEntity.Players) WriteFields(writer, player);
+            foreach (PlayerEntity player in scene.Players.Items) WriteFields(writer, player);
             writer.Flush();
             return Convert.ToHexString(SHA256.HashData(stream.ToArray()));
         }

@@ -195,16 +195,16 @@ namespace MphRead.Mods
                 }
 
                 int local = NetHooks.LocalSlot;
-                if ((uint)local >= (uint)PlayerEntity.Players.Count
-                    || PlayerEntity.MainPlayerIndex != local
+                if ((uint)local >= (uint)scene.Players.Items.Count
+                    || scene.Players.MainPlayerIndex != local
                     || SpectatorMode.IsSpectating
-                    || GameState.MatchState != MatchState.InProgress)
+                    || scene.GameState.MatchState != MatchState.InProgress)
                 {
                     ClearCurrent();
                     return;
                 }
 
-                var shoot = PlayerEntity.Players[local].Controls.Shoot;
+                var shoot = scene.Players.Items[local].Controls.Shoot;
                 if (!_skipArmed)
                 {
                     if (!shoot.IsDown)

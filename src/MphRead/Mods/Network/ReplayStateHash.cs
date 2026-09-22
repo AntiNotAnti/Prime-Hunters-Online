@@ -27,17 +27,17 @@ namespace MphRead.Mods.Network
             using var writer = new BinaryWriter(stream);
             writer.Write(Schema);
             writer.Write(normalizedFrame);
-            writer.Write((int)GameState.Mode);
-            writer.Write((int)GameState.MatchState);
-            writer.Write(GameState.MatchTime);
-            writer.Write(GameState.PrimeHunter);
+            writer.Write((int)scene.GameState.Mode);
+            writer.Write((int)scene.GameState.MatchState);
+            writer.Write(scene.GameState.MatchTime);
+            writer.Write(scene.GameState.PrimeHunter);
             for (int slot = 0; slot < PlayerEntity.SlotCapacity; slot++)
             {
                 writer.Write(slot);
-                writer.Write(GameState.Points[slot]); writer.Write(GameState.Kills[slot]); writer.Write(GameState.Deaths[slot]);
-                writer.Write(GameState.TeamPoints[slot]); writer.Write(GameState.TeamKills[slot]); writer.Write(GameState.TeamDeaths[slot]);
-                writer.Write(GameState.Time[slot]); writer.Write(GameState.TeamTime[slot]);
-                var player = PlayerEntity.Players[slot];
+                writer.Write(scene.GameState.Points[slot]); writer.Write(scene.GameState.Kills[slot]); writer.Write(scene.GameState.Deaths[slot]);
+                writer.Write(scene.GameState.TeamPoints[slot]); writer.Write(scene.GameState.TeamKills[slot]); writer.Write(scene.GameState.TeamDeaths[slot]);
+                writer.Write(scene.GameState.Time[slot]); writer.Write(scene.GameState.TeamTime[slot]);
+                var player = scene.Players.Items[slot];
                 writer.Write(player != null);
                 if (player == null) continue;
                 writer.Write((int)player.LoadFlags);

@@ -79,7 +79,7 @@ namespace MphRead.Entities
         {
             // the game doesn't have this check; we need it to prevent crashing on uninitialized members
             // like _messageBoxInst when e.g. an automatic trigger entity tries to display a message
-            if (!LoadFlags.TestFlag(LoadFlags.Initial) || GameState.Mode != GameMode.SinglePlayer || !IsMainPlayer)
+            if (!LoadFlags.TestFlag(LoadFlags.Initial) || _scene.GameState.Mode != GameMode.SinglePlayer || !IsMainPlayer)
             {
                 return;
             }
@@ -246,7 +246,7 @@ namespace MphRead.Entities
             _dialogValue2 = null;
             if (unpause)
             {
-                GameState.UnpauseDialog();
+                _scene.GameState.UnpauseDialog();
             }
             Array.Fill(_overlayBuffer1, '\0');
             int lineCount = WrapText(_overlayMessage1, 142, _overlayBuffer1);
@@ -289,7 +289,7 @@ namespace MphRead.Entities
                 _soundSource.StopFreeSfxScripts();
                 _soundSource.PlayFreeSfx(SfxId.TELEPATHIC_MESSAGE);
             }
-            GameState.PauseDialog();
+            _scene.GameState.PauseDialog();
             _overlayMessage1 = entry.Value1;
             _overlayMessage2 = entry.Value2;
             Array.Fill(_overlayBuffer1, '\0');
@@ -308,7 +308,7 @@ namespace MphRead.Entities
         {
             StopLongSfx();
             EndWeaponMenu();
-            GameState.PauseDialog();
+            _scene.GameState.PauseDialog();
             _dialogCharTimer = 0;
             _dialogPalette = 0;
             _messageBoxInst.SetPalette(_dialogPalette, _scene);
@@ -326,8 +326,8 @@ namespace MphRead.Entities
             }
             StopLongSfx();
             EndWeaponMenu();
-            GameState.PausePrevented = true;
-            GameState.PauseDialog();
+            _scene.GameState.PausePrevented = true;
+            _scene.GameState.PauseDialog();
             _eventType = eventType;
             _overlayMessage1 = entry.Value1;
             _overlayMessage2 = entry.Value2;
@@ -395,7 +395,7 @@ namespace MphRead.Entities
         {
             // the game doesn't have this check; we need it to prevent crashing on uninitialized members
             // like _messageBoxInst when e.g. this is called on spawn
-            if (!LoadFlags.TestFlag(LoadFlags.Initial) || GameState.Mode != GameMode.SinglePlayer || !IsMainPlayer)
+            if (!LoadFlags.TestFlag(LoadFlags.Initial) || _scene.GameState.Mode != GameMode.SinglePlayer || !IsMainPlayer)
             {
                 return;
             }
@@ -454,7 +454,7 @@ namespace MphRead.Entities
                     _messageSpacerInst.SetIndex(spacerIndex, _scene);
                 }
             }
-            if (GameState.DialogPause && (DialogType == DialogType.Scan
+            if (_scene.GameState.DialogPause && (DialogType == DialogType.Scan
                 || _messageBoxInst.Time - _messageBoxInst.Timer >= 16 / 30f))
             {
                 bool closed = false;
@@ -495,9 +495,9 @@ namespace MphRead.Entities
                                 Music.FadeVolume(1, 5 / 30f);
                             }
                             RestartLongSfx();
-                            GameState.PausePrevented = false;
+                            _scene.GameState.PausePrevented = false;
                         }
-                        else if (GameState.DialogPause)
+                        else if (_scene.GameState.DialogPause)
                         {
                             RestartLongSfx();
                         }
@@ -505,7 +505,7 @@ namespace MphRead.Entities
                         _soundSource.PlayFreeSfx(SfxId.SCAN_OK);
                         CloseDialogs();
                         DialogConfirmState = ConfirmState.Okay;
-                        GameState.UnpauseDialog();
+                        _scene.GameState.UnpauseDialog();
                         if (scan)
                         {
                             AfterScan();
