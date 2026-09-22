@@ -310,7 +310,7 @@ namespace MphRead.Mods.Network
                 // down and eventually refuses to spawn a beam at all.
                 AmmoUa = (ushort)Math.Clamp(player.ModAmmo.Ua, 0, UInt16.MaxValue),
                 AmmoMissiles = (ushort)Math.Clamp(player.ModAmmo.Missiles, 0, UInt16.MaxValue),
-                Presses = (uint[])_pressHistory.Clone(),
+                // Press history is copied below into the inline value buffer.
                 // What this player's next shot is worth, from the machine that
                 // knows. Everything here was re-derived on the authority from
                 // the buttons above until now, and re-deriving a shooter is a
@@ -347,6 +347,10 @@ namespace MphRead.Mods.Network
                     ? NetSession.AppliedSnapshotFrame
                     : NetSession.LastSnapshotFrame
             };
+            for (int i = 0; i < IntentPacket.PressHistory; i++)
+            {
+                intent.Presses[i] = _pressHistory[i];
+            }
             // And the read point itself, if the puppets are being drawn on a
             // playout clock: that is a point *between* two snapshots, and an
             // integer ack cannot name it. Overwrites the choice above rather
@@ -627,7 +631,7 @@ namespace MphRead.Mods.Network
             out int shootAge)
         {
             shootAge = 0;
-            if (slot < 0 || slot >= _lastPressFrame.Length || intent.Presses == null)
+            if (slot < 0 || slot >= _lastPressFrame.Length)
             {
                 return IntentButtons.None;
             }
