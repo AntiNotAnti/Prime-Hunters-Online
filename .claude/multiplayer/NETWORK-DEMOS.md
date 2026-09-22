@@ -1,9 +1,12 @@
 # Replay system
 
 New recordings and instant clips use `.ppdemo` v3. Version 2 remains readable;
-its binary layout is unchanged. The viewer still feeds the recorded packets
-through `DemoPlayback`, `NetSession.StartPlayback`, `InjectPlaybackPacket`, and
-the normal session handlers. Local intent and authority snapshot synthesis are
+its binary layout is unchanged. The foreground viewer owns an instance `ReplayPlaybackSession` and `ReplayTransport`;
+`DemoPlayback` and `ReplayController` are compatibility facades. Its explicit
+`TheatreReplaySessionHost` feeds legacy packets through `NetSession.StartPlayback`,
+`InjectPlaybackPacket`, and the normal session handlers. Passive hosts instead
+decode into their own packet-visible replica values and never touch live session
+state; their scene integration remains under migration. Local intent and authority snapshot synthesis are
 preserved. Protocol mismatch is refused before packet playback.
 
 ## Controls and clock

@@ -31,8 +31,9 @@ namespace MphRead.Mods.Replay
                     && float.IsFinite(constantMid.Position.Y)
                     && float.IsFinite(constantMid.Position.Z),
                     "constant-speed spline sample finite");
-                Require(track.Sample(0, out var first) && first == start
-                    && track.Sample(uint.MaxValue, out last) && last == end, "endpoint clamp");
+                Require(track.Sample(0, out var first) && first == start with { Frame = 0 }
+                    && track.Sample(uint.MaxValue, out last) && last == end with { Frame = uint.MaxValue },
+                    "endpoint pose clamps while retaining requested presentation frame");
                 foreach (Vector3 direction in new[] { Vector3.UnitX, -Vector3.UnitZ, new Vector3(1, 2, 3).Normalized(), Vector3.UnitY })
                     Require((Vector3.Transform(-Vector3.UnitZ, ReplayCameraTrack.FacingRotation(direction)) - direction).Length < 0.0001f, "capture orientation");
                 Require(track.Save(replay), "save");

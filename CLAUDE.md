@@ -1280,3 +1280,5 @@ Do not regenerate the committed one by redirecting it over the top --
 table's charge rules, among others), so a wholesale `> MECHANICS.md` silently
 deletes it. Change `MechanicsDump.cs` for anything derived from the game's
 tables, and edit the file directly for anything that is not.
+
+Replay ownership migration: `DemoPlayback` and `ReplayController` now forward to an instance session/transport; only the theatre host bridges legacy globals. See `.claude/multiplayer/NETWORK-DEMOS.md` and `docs/architecture/replay-map-upgrade-status.md` for remaining scene isolation work.

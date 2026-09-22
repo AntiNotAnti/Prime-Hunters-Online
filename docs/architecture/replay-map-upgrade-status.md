@@ -39,7 +39,7 @@ No fallback is removed before the plan's runtime acceptance gate.
 - Complete detached scene restore schema and authoritative world/event capture.
 - Move PlayerEntity registries, GameState, RNG, scene services and presentation
   ownership out of process globals before creating simultaneous replay scenes.
-- Instance-owned passive/theatre playback and deterministic bounded seek.
+- Scene attachment for instance-owned passive playback and deterministic checkpoint seek.
 - Replay-based personal/final killcams and audio/input/HUD ownership.
 - Migrate full playback, instant clips, Studio, thumbnails and video export.
 - Desktop/Android runtime stress and determinism/performance acceptance.
@@ -122,9 +122,9 @@ that the missing replay features work.
 | --- | --- |
 | P0A timeline | Implemented bounded immutable records/segments, freeze and identity mapping; complete scene restore schema still missing |
 | P0B recorder | Accepted match/roster/player snapshots and existing semantic events integrated; full world/objective/presentation event capture missing |
-| P0C isolated session/services | Not implemented; PlayerEntity, GameState, RNG, network and presentation ownership require extraction |
+| P0C isolated session/services | Instance reader, transport and explicit theatre/passive hosts implemented; passive packet decoder has independent lifecycle state; PlayerEntity, GameState, RNG and presentation ownership still require extraction |
 | P0D/P0E personal/final killcams | Existing implementation retained; replay-scene replacement and runtime acceptance outstanding |
-| P1 playback/seek/interpolation | Existing Studio and compatibility paths retained; migration outstanding |
+| P1 playback/seek/interpolation | Studio facades now delegate reader/clock/transport to a session; seeks schedule at most 120 steps; isolated scenes/checkpoints/interpolation migration outstanding |
 | P1 shared clips/highlights/export | Existing functionality retained; shared-timeline migration outstanding |
 | P2A history | State IDs, bounded delta commands and transaction coalescing implemented for common actions |
 | P2B viewport | Per-object native mesh and independent imported/entity/selection invalidation implemented |
@@ -140,7 +140,7 @@ that the missing replay features work.
 
 - Desktop Release build: passes with 18 pre-existing warnings.
 - Timeline: 36 checks.
-- Replay v2/v3 format, metadata, recovery, extraction and malformed input: 531 checks.
+- Replay v2/v3 format, metadata, recovery, extraction and malformed input and passive session isolation: 542 checks.
 - Network lifecycle: 3,681 assertions.
 - Health/shot behavior: 2,967,760 assertions.
 - Editor/history/cache/build: 58 checks, including real synthetic-texture compilation,
@@ -166,3 +166,15 @@ are not end-to-end frame times or a promise of the same speedup on every machine
 The benchmark exposed full-map wrapper allocation in the initial delta path.
 Direct identity lookup removed it; geometry vertices are never copied by numeric
 transform commands. Timings vary with JIT, GC and machine load.
+
+## Playback session ownership
+
+`ReplayPlaybackSession` owns the file cursor, clock, errors and `ReplayTransport`.
+`DemoPlayback` and `ReplayController` are foreground compatibility facades.
+Only `TheatreReplaySessionHost` can bridge the existing socket-free NetSession
+pipeline and Studio presentation singletons. `PassiveReplaySessionHost` decodes
+packet-visible values with its own roster, lifecycle trackers, player states,
+intents and clocks; it ignores connection-control traffic. Opening, advancing,
+seeking and disposing passive sessions is tested against foreground identity,
+RNG and transport sentinels. The passive decoder does not yet render a scene and
+does not claim to reconstruct missing world/projectile state.

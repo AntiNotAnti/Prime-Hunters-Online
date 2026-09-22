@@ -130,6 +130,47 @@ namespace MphRead.Mods.Network
                     Require(reader.Metadata.Integrity == ReplayIntegrity.Healthy, "validated integrity");
                 }
                 Require(ReplayArchive.Validate(clean) == ReplayOpenResult.Success, "validator");
+                // Two passive readers can coexist with a foreground network session.
+                // Neither joining, seeking, stopping nor recorded control traffic may
+                // change foreground identity, transport, RNG or Replay Studio controls.
+                NetSession.StartPlayback();
+                NetSession.ApplyMatchState(match, false);
+                Rng.SetRng1(12345);
+                Rng.SetRng2(67890);
+                ReplayController.Begin();
+                ReplayController.SetPlaybackRate(2);
+                var passiveA = new PassiveReplaySessionHost();
+                var passiveB = new PassiveReplaySessionHost();
+                using (var first = new ReplayPlaybackSession(passiveA))
+                using (var second = new ReplayPlaybackSession(passiveB))
+                {
+                    Require(first.Join(clean) && second.Join(clean), "independent passive readers open");
+                    first.Transport.SetPlaybackRate(.25f);
+                    second.Transport.Pause();
+                    for (int i = 0; i < 12; i++) first.PumpFrame();
+                    Require(first.CurrentFrame == 11 && second.CurrentFrame == 0,
+                        "session reader clocks are independent");
+                    Require(second.Transport.IsPaused && first.Transport.PlaybackRate == .25f,
+                        "session controls are independent");
+                    first.Transport.Seek(399);
+                    Require(first.Transport.FramesDue() == 120, "seek batch is bounded to 120 steps");
+                    first.Transport.Seek(20);
+                    Require(first.Transport.FramesDue() == 9, "seek batch stops exactly at target");
+                    first.Transport.Seek(1);
+                    first.Stop();
+                    Require(!first.Transport.TakeRebuild(out _, out _), "stop clears pending rebuild");
+                    Require(second.IsActive, "stopping one reader preserves the other");
+                    foreach (PacketType control in new[] { PacketType.Bye, PacketType.Welcome, PacketType.Authority })
+                        passiveB.Inject(new[] { (byte)control }, 13);
+                    Require(passiveB.Match?.MatchId == match.MatchId, "control packets cannot mutate replica match");
+                    Require(NetSession.Active && NetSession.LocalSlot == -1 && !NetSession.IsAuthority
+                        && NetSession.CurrentMatchId == match.MatchId, "passive readers preserve live connection identity");
+                    Require(Rng.Rng1 == 12345 && Rng.Rng2 == 67890, "passive readers preserve live RNG");
+                    Require(ReplayController.PlaybackRate == 2 && ReplayController.State == ReplayState.Playing,
+                        "passive readers preserve Studio transport");
+                }
+                NetSession.Stop();
+                ReplayController.Stop();
                 using (var indexed = DemoReader.Open(clean, out var indexedResult))
                 {
                     Require(indexedResult == ReplayOpenResult.Success && indexed != null,
