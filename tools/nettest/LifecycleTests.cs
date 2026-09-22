@@ -26,6 +26,7 @@ namespace MphRead.NetTest
                 LoopbackAdmission();
                 TransportCoalescing();
                 PacketOrdering();
+                SnapshotDeltaStream();
                 Prediction();
                 DamageHistory();
                 PresentationClock();
@@ -304,13 +305,13 @@ namespace MphRead.NetTest
                 Flags = PlayerState.FlagActive | PlayerState.FlagSpawned, Facing = Vector3.UnitZ };
             Send(owner, PacketType.Snapshot, Snapshot(1, state));
             Check(Field<uint>("_snapshotFrame") == 1, "valid authority establishes relay frame");
-            byte[] previous = Field<byte[]>("_lastSnapshot");
+            int previousLength = Field<int>("_lastSnapshotLength");
             Send(other, PacketType.Snapshot, Snapshot(500, state));
             Check(Field<uint>("_snapshotFrame") == 1, "non-authority cannot advance relay frame");
             state.LifeId = 2;
             Send(owner, PacketType.Snapshot, Snapshot(100, state, state));
             Check(Field<uint>("_snapshotFrame") == 1 && Field<ushort[]>("_slotLives")[0] == 1
-                && ReferenceEquals(previous, Field<byte[]>("_lastSnapshot")),
+                && Field<int>("_lastSnapshotLength") == previousLength,
                 "duplicate slots cannot commit frame, life or cached snapshot");
             state.LifeId = 1;
             Send(owner, PacketType.Snapshot, Snapshot(2, state));
@@ -419,6 +420,61 @@ namespace MphRead.NetTest
             NetSession.Update(0);
         }
 
+        private static byte[] DeltaPacket(uint frame, uint baselineFrame,
+            PlayerState? changed, byte activeMask = 1 << 1,
+            ushort match = 51, ulong epoch = 4)
+        {
+            const int timeSyncSize = PlayerEntity.SlotCapacity * sizeof(float) * 2;
+            int entries = changed.HasValue ? 1 : 0;
+            int damageCountOffset = 1 + SnapshotHeader.Size + SnapshotWire.StateHeaderSize
+                + entries * SnapshotWire.PlayerSize;
+            int timeOffset = damageCountOffset + 1;
+            int healthOffset = timeOffset + timeSyncSize;
+            byte[] bytes = new byte[healthOffset + NetHealthSync.HeaderSize];
+            bytes[0] = (byte)PacketType.Snapshot;
+            new SnapshotHeader
+            {
+                MatchId = match,
+                AuthorityEpoch = epoch,
+                Frame = frame,
+                PlayerCount = (byte)entries
+            }.Write(bytes.AsSpan(1));
+            SnapshotWire.WriteStateHeader(bytes.AsSpan(1 + SnapshotHeader.Size,
+                SnapshotWire.StateHeaderSize), false, activeMask, baselineFrame);
+            if (changed is { } state)
+            {
+                state.WriteBase(bytes.AsSpan(1 + SnapshotHeader.Size
+                    + SnapshotWire.StateHeaderSize, SnapshotWire.PlayerSize));
+            }
+            bytes[damageCountOffset] = 0;
+            BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(healthOffset), match);
+            return bytes;
+        }
+
+        private static void SnapshotDeltaStream()
+        {
+            Session();
+            PlayerState baseState = State(7);
+            Deliver(Packet(100, baseState));
+            Check(NetSession.RemoteStates[1].Position == baseState.Position,
+                "snapshot keyframe establishes delta baseline");
+
+            PlayerState missed = baseState;
+            missed.Position = new Vector3(11, 2, 3);
+            // Deliberately do not deliver frame 101. Frame 102 is independent
+            // of frame 101 because both describe changes against keyframe 100.
+            PlayerState newest = baseState;
+            newest.Position = new Vector3(12, 2, 3);
+            Deliver(DeltaPacket(102, 100, newest));
+            Check(NetSession.RemoteStates[1].Position == newest.Position
+                && NetSession.LastSnapshotFrame == 102,
+                "lost delta does not poison a later delta");
+
+            Deliver(DeltaPacket(103, 99, newest));
+            Check(NetSession.LastSnapshotFrame == 102,
+                "delta naming an unavailable baseline is rejected");
+        }
+
         private static void TransportCoalescing()
         {
             using var transport = new NetTransport(0);
@@ -427,6 +483,15 @@ namespace MphRead.NetTest
             var endpoint = new System.Net.IPEndPoint(System.Net.IPAddress.Loopback,
                 transport.LocalPort);
 
+            byte[] keyframe = new byte[1 + SnapshotHeader.Size + SnapshotWire.StateHeaderSize];
+            keyframe[0] = (byte)PacketType.Snapshot;
+            new SnapshotHeader { Frame = 10 }.Write(keyframe.AsSpan(1));
+            SnapshotWire.WriteStateHeader(keyframe.AsSpan(1 + SnapshotHeader.Size,
+                SnapshotWire.StateHeaderSize), true, 0, 10);
+            sender.Send(keyframe, keyframe.Length, endpoint);
+            // Let the receive thread retain the baseline before the burst of
+            // deltas that all depend on it.
+            System.Threading.Thread.Sleep(20);
             sender.Send(new byte[] { (byte)PacketType.Snapshot, 1 }, 2, endpoint);
             sender.Send(new byte[] { (byte)PacketType.Snapshot, 2 }, 2, endpoint);
             sender.Send(new byte[] { (byte)PacketType.Snapshot, 3 }, 2, endpoint);
@@ -442,13 +507,15 @@ namespace MphRead.NetTest
             System.Threading.Thread.Sleep(20);
 
             int snapshots = 0, intents = 0, byes = 0;
+            bool sawKeyframe = false;
             byte newestSnapshot = 0, newestIntent = 0;
             foreach (ReceivedPacket packet in transport.Drain())
             {
                 if (packet.Type == PacketType.Snapshot)
                 {
                     snapshots++;
-                    newestSnapshot = packet.Payload[0];
+                    if (SnapshotWire.IsKeyframe(packet.Payload)) sawKeyframe = true;
+                    else newestSnapshot = packet.Payload[0];
                 }
                 else if (packet.Type == PacketType.SlotIntent)
                 {
@@ -460,8 +527,8 @@ namespace MphRead.NetTest
                     byes++;
                 }
             }
-            Check(snapshots == 1 && newestSnapshot == 3,
-                "latest snapshot wins after a receive burst");
+            Check(snapshots == 2 && sawKeyframe && newestSnapshot == 3,
+                "coalescing preserves baseline keyframe plus newest delta");
             Check(intents == 1 && newestIntent == 5,
                 "latest slot intent wins per slot");
             Check(byes == 1, "control traffic is not coalesced");
