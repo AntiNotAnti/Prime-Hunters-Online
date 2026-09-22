@@ -66,6 +66,7 @@ namespace MphRead.Mods.Network
         // one-frame action.
         private volatile bool _coalesceRealtimeState;
         private readonly object _stateLock = new();
+        private ReceivedPacket? _latestSnapshotKeyframe;
         private ReceivedPacket? _latestSnapshot;
         private ReceivedPacket? _latestIntentBundle;
         private readonly ReceivedPacket?[] _latestSlotIntent =
@@ -132,12 +133,35 @@ namespace MphRead.Mods.Network
             {
                 if (packet.Type == PacketType.Snapshot)
                 {
-                    if (_latestSnapshot.HasValue)
+                    if (SnapshotWire.IsKeyframe(packet.Payload))
                     {
-                        _latestSnapshot.Value.Release();
-                        Interlocked.Increment(ref _statePacketsCoalesced);
+                        if (_latestSnapshotKeyframe.HasValue)
+                        {
+                            _latestSnapshotKeyframe.Value.Release();
+                            Interlocked.Increment(ref _statePacketsCoalesced);
+                        }
+                        _latestSnapshotKeyframe = packet;
+
+                        // Any delta queued before this keyframe names an older
+                        // baseline. Keeping it would make the final state in
+                        // this drain depend on a baseline we deliberately
+                        // replaced.
+                        if (_latestSnapshot.HasValue)
+                        {
+                            _latestSnapshot.Value.Release();
+                            _latestSnapshot = null;
+                            Interlocked.Increment(ref _statePacketsCoalesced);
+                        }
                     }
-                    _latestSnapshot = packet;
+                    else
+                    {
+                        if (_latestSnapshot.HasValue)
+                        {
+                            _latestSnapshot.Value.Release();
+                            Interlocked.Increment(ref _statePacketsCoalesced);
+                        }
+                        _latestSnapshot = packet;
+                    }
                     return true;
                 }
                 if (packet.Type == PacketType.IntentBundle)
@@ -418,17 +442,27 @@ namespace MphRead.Mods.Network
                     }
                 }
 
+                ReceivedPacket? keyframe;
                 ReceivedPacket? bundle;
                 ReceivedPacket? snapshot;
                 lock (_stateLock)
                 {
+                    keyframe = _latestSnapshotKeyframe;
+                    _latestSnapshotKeyframe = null;
                     bundle = _latestIntentBundle;
                     _latestIntentBundle = null;
                     snapshot = _latestSnapshot;
                     _latestSnapshot = null;
                 }
-                // Apply controls before the authoritative picture from the same
-                // drain, matching the normal frame order.
+                // A retained delta may depend on the retained keyframe, so the
+                // baseline must enter NetSession first. The latest input bundle
+                // then precedes the latest authoritative picture.
+                if (keyframe.HasValue)
+                {
+                    ReceivedPacket value = keyframe.Value;
+                    try { yield return value; }
+                    finally { value.Release(); }
+                }
                 if (bundle.HasValue)
                 {
                     ReceivedPacket value = bundle.Value;
@@ -548,6 +582,8 @@ namespace MphRead.Mods.Network
             }
             lock (_stateLock)
             {
+                if (_latestSnapshotKeyframe.HasValue) _latestSnapshotKeyframe.Value.Release();
+                _latestSnapshotKeyframe = null;
                 if (_latestSnapshot.HasValue) _latestSnapshot.Value.Release();
                 _latestSnapshot = null;
                 if (_latestIntentBundle.HasValue) _latestIntentBundle.Value.Release();
