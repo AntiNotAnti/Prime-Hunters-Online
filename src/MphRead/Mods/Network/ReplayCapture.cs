@@ -141,9 +141,15 @@ namespace MphRead.Mods.Network
                     var identity = new ReplayKillIdentity(NetSession.CurrentMatchId, NetSession.AuthorityEpoch,
                         tick, state.DamageEventId, state.AttackerSlot, attackerGeneration,
                         state.SlotIndex, state.SlotGeneration, state.LifeId);
-                    Recorder.Marker(NetSession.NetFrame, tick, new(ReplayMarkerKind.Kill,
-                        state.AttackerSlot, state.SlotIndex, Kill: identity,
-                        Weapon: state.DamageBeam, DamageFlags: state.DamageFlags));
+                    // A later-life snapshot or a jump in cumulative deaths does not
+                    // identify the exact death. Keep the coarse Studio annotation,
+                    // but never advertise it as a fenced killcam candidate.
+                    if (state.LifeId == old.LifeId && state.Health == 0
+                        && state.Deaths == old.Deaths + 1 && attackerGeneration != 0
+                        && state.AttackerSlot < RosterPacket.MaxSlots && state.AttackerSlot != slot)
+                        Recorder.Marker(NetSession.NetFrame, tick, new(ReplayMarkerKind.Kill,
+                            state.AttackerSlot, state.SlotIndex, Kill: identity,
+                            Weapon: state.DamageBeam, DamageFlags: state.DamageFlags));
                     MphRead.Mods.KillCam.NoteDeath(slot, state.AttackerSlot,
                         authoritativeFrame ?? NetSession.NetFrame);
                 }

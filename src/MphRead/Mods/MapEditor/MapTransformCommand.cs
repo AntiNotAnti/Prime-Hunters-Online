@@ -16,8 +16,8 @@ public sealed partial class MapDocument
         if (!float.IsFinite(move.X) || !float.IsFinite(move.Y) || !float.IsFinite(move.Z)
             || !float.IsFinite(angle) || !float.IsFinite(scale) || scale <= 0) throw new ArgumentOutOfRangeException(nameof(move));
         var selected = ids.ToHashSet();
-        var objects = MapObjects.All(Project.Definition).Where(o => selected.Contains(o.Id)
-            && o.Value is not MapGeometry { Locked: true }).ToArray();
+        var objects = selected.Select(id => MapObjects.Find(Project.Definition, id)).OfType<MapObject>()
+            .Where(o => o.Value is not MapGeometry { Locked: true }).ToArray();
         var before = objects.Select(TransformValue.Capture).ToArray();
         var after = objects.Select(o =>
         {
@@ -104,8 +104,9 @@ public sealed partial class MapDocument
         public void Undo() => Apply(_before);
         private void Apply(TransformValue[] values)
         {
-            var objects = MapObjects.All(_document.Project.Definition).ToDictionary(o => o.Id);
-            foreach (var value in values) value.Apply(objects[value.Id]);
+            foreach (var value in values)
+                value.Apply(MapObjects.Find(_document.Project.Definition, value.Id)
+                    ?? throw new InvalidOperationException("Transform target no longer exists."));
         }
         public bool TryMerge(IMapEditCommand next)
         {

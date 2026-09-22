@@ -74,3 +74,19 @@ This file is the short, machine-oriented source of truth for architectural assum
 - Current-behavior sections must describe the current code, not the build in which a feature was introduced.
 - Dated measurements and old protocol comparisons are valuable, but must be labeled **historical** when the architecture they measured is no longer current.
 - `KNOWN-GAPS.md` contains only unresolved/unverified items. Move fixed items out instead of leaving them as warnings.
+
+## Replay timeline migration
+
+- Rolling timeline records own immutable payload copies and evict whole restore segments.
+- A dropped fact invalidates its dependent continuation; clips must not cross gaps.
+- Protocol network baselines are explicitly not complete replica-scene checkpoints.
+- Exact kill markers fence match, authority, event, server tick, occupant generations and victim life. Ambiguous cumulative deaths are not exact kill candidates.
+- Keep current replay/Studio/killcam paths until isolated scene and runtime acceptance gates pass. See `docs/architecture/replay-map-upgrade-status.md` for remaining work.
+
+## Map Studio ownership
+
+- Dirty state is a document state-ID comparison, not project serialization or history depth.
+- Common transforms and edits use bounded delta history; undo-to-save and branching preserve state identity.
+- Selection, entity edits and camera movement do not rebuild unrelated geometry.
+- Build workers receive detached snapshots; cancelling one waiter must not cancel shared work.
+- Runtime cache publication validates content fingerprints and output integrity. Cache files contain locally generated content and are never release inputs.

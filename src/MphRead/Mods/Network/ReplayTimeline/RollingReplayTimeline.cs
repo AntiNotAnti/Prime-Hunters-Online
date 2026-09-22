@@ -100,7 +100,14 @@ public sealed class RollingReplayTimeline : IReplayTimeline
             foreach (var record in segment.Records)
             {
                 if (record.RecordingFrame > endFrame) break;
-                records.Add(record);
+                // A recorder may index an accepted fact and also retain it in
+                // the sequential stream for clips starting at earlier baselines.
+                // The chosen baseline already applied that exact immutable fact.
+                bool inBaseline = false;
+                if (ReferenceEquals(segment.Restore, restore))
+                    foreach (var baselineRecord in restore.Records)
+                        inBaseline |= ReferenceEquals(baselineRecord, record);
+                if (!inBaseline) records.Add(record);
             }
         }
         clip = new ReplayTimelineClip(restore, records.ToArray(), startFrame, endFrame);

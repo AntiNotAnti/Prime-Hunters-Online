@@ -81,6 +81,16 @@ namespace MphRead.Mods.Network
                 timelineRecorder.AcceptRoster(timelineRoster, 2);
                 timelineRecorder.AcceptSnapshot(snapshotBytes, 3, 3);
                 Require(timelineRecorder.Timeline.NeedsRestorePoint, "old roster cannot bootstrap new match");
+                timelineRoster.MatchId = nextMatch.MatchId;
+                timelineRecorder.AcceptRoster(timelineRoster, 4);
+                timelineRecorder.AcceptSnapshot(snapshotBytes, 5, bootstrapFrame);
+                Require(timelineRecorder.Timeline.NeedsRestorePoint, "old snapshot cannot bootstrap new match");
+                timelineRecorder.Reset(); timelineRecorder.AcceptMatch(match, 0);
+                timelineRoster.MatchId = match.MatchId; timelineRecorder.AcceptRoster(timelineRoster, 0);
+                timelineRecorder.AcceptSnapshot(snapshotBytes, 1, bootstrapFrame);
+                var roomTransition = match; roomTransition.RoomKey = "MP2 HIGHGROUND";
+                timelineRecorder.AcceptMatch(roomTransition, 2);
+                Require(timelineRecorder.Timeline.NeedsRestorePoint, "room transition clears historical state");
                 var currentSnapshotMetadata = new ReplayMetadata { RoomKey = match.RoomKey, Mode = GameMode.Battle,
                     Bootstrap = new ReplayBootstrap { Packets = new[] { sessionBytes, matchBytes, snapshotBytes } } };
                 string currentSnapshot = Path.Combine(directory, "current-snapshot.ppdemo");

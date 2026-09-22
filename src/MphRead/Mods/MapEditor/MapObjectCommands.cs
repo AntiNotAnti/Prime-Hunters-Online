@@ -59,7 +59,7 @@ public sealed partial class MapDocument
         throw new ArgumentException("Unsupported map object " + type.Name);
     }
     private static ObjectValue[] CaptureObjects(MapDefinition d, HashSet<Guid>? ids)
-        => MapObjects.All(d).Where(o => ids == null || ids.Contains(o.Id)).Select(o =>
+        => (ids == null ? MapObjects.All(d) : ids.Select(id => MapObjects.Find(d, id)).OfType<MapObject>()).Select(o =>
             new ObjectValue(o.Id, o.Value.GetType(), ObjectList(d, o.Value.GetType()).IndexOf(o.Value),
                 JsonSerializer.Serialize(o.Value, o.Value.GetType()))).ToArray();
 

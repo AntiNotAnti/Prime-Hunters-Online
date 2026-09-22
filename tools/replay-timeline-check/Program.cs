@@ -53,4 +53,9 @@ Check(!bounded.AppendRestorePoint(new ReplayRestorePoint(12, 12, ReplayRestoreKi
 var wraps = new RollingReplayTimeline();
 wraps.AppendRestorePoint(Restore(0, uint.MaxValue)); wraps.Append(Fact(1, 0));
 Check(wraps.LastServerTick == 0, "server tick wrap");
+var indexed = new RollingReplayTimeline();
+var baselineFact = Fact(0);
+indexed.AppendRestorePoint(new(0, 0, ReplayRestoreKind.NetworkBaseline, new[] { baselineFact }));
+indexed.Append(baselineFact);
+Check(indexed.TryFreeze(0, 0, out var noDuplicate) && noDuplicate!.Records.Count == 0, "chosen baseline fact is not replayed twice");
 Console.WriteLine($"Replay timeline: {checks} checks passed.");
