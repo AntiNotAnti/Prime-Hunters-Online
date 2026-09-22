@@ -3140,6 +3140,14 @@ namespace MphRead
                     {
                         _cameraPosition = replayPosition;
                     }
+                    else if (main.ModGetFirstPersonRenderCameraPosition(
+                        out Vector3 firstPersonPosition))
+                    {
+                        // TransformCamera prepared this exact position together
+                        // with the view matrix. Frustum/culling must not silently
+                        // fall back to a different simulation timestamp.
+                        _cameraPosition = firstPersonPosition;
+                    }
                     else
                     {
                         bool interpolate = Mods.Render.FrameTiming.Active
