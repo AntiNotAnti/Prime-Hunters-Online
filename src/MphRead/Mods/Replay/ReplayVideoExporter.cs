@@ -18,6 +18,7 @@ namespace MphRead.Mods.Replay
         private static ReplayVideoExportManifest? _job;
         private static ReplayVideoSegment[] _segments = Array.Empty<ReplayVideoSegment>();
         private static int _segmentIndex;
+        private static bool _halfCaptured;
         private static uint _lastFrame = UInt32.MaxValue;
         private static int _written;
         private static int _totalFrames;
@@ -29,6 +30,10 @@ namespace MphRead.Mods.Replay
         private static bool _cameraStateSaved;
 
         public static bool Active => _job != null;
+        internal static float PresentationAlpha => _job is { Fps: 120 }
+            && _segmentIndex < _segments.Length && ReplayController.CurrentFrame > _segments[_segmentIndex].StartFrame
+            && ReplayController.CurrentFrame != _lastFrame && !_halfCaptured ? .5f : 1f;
+        internal static OpenTK.Mathematics.Vector2i? OutputSize => _job == null ? null : new(_job.Width, _job.Height);
         public static int FramesWritten => _written;
         public static float Progress => _totalFrames <= 0
             ? 0 : Math.Clamp(_written / (float)_totalFrames, 0, 1);
@@ -37,6 +42,10 @@ namespace MphRead.Mods.Replay
 
         public static bool Start(ReplayVideoExportManifest job)
         {
+            if (job.Fps is not (30 or 60 or 120) || job.Width is < 64 or > 3840 || job.Height is < 64 or > 2160)
+            {
+                Status = "Unsupported export dimensions or frame rate."; return false;
+            }
             if (Active)
             {
                 Status = "A video export is already active.";
@@ -89,6 +98,7 @@ namespace MphRead.Mods.Replay
             _written = 0;
             _segmentIndex = 0;
             _lastFrame = UInt32.MaxValue;
+            _halfCaptured = false;
             _totalFrames = EstimateFrames(job.Fps, _segments);
             LastOutput = null;
             Status = "Seeking to render start...";
@@ -141,9 +151,8 @@ namespace MphRead.Mods.Replay
             if (frame == _lastFrame)
                 return;
 
-            // A v3 replay is a 60 Hz simulation. For 30 fps exports retain every
-            // second simulation frame. 60/120 capture every source frame and
-            // FFmpeg handles presentation duplication for 120.
+            // Gameplay always advances at 60 Hz. A 120 FPS job renders the
+            // midpoint and exact endpoint of each subsequent simulation interval.
             int stride = job.Fps <= 30 ? 2 : 1;
             if ((frame - segment.StartFrame) % stride == 0)
             {
@@ -166,6 +175,12 @@ namespace MphRead.Mods.Replay
                     + $"{segment.Name} · {ReplayHud.Time(frame)} / "
                     + $"{ReplayHud.Time(segment.EndFrame)} · {_written}/{_totalFrames} frames";
             }
+            if (job.Fps == 120 && frame > segment.StartFrame && !_halfCaptured)
+            {
+                _halfCaptured = true;
+                return; // draw this same world again at its exact endpoint
+            }
+            _halfCaptured = false;
             _lastFrame = frame;
 
             if (frame >= segment.EndFrame)
@@ -185,6 +200,7 @@ namespace MphRead.Mods.Replay
 
             _segmentIndex++;
             _lastFrame = UInt32.MaxValue;
+            _halfCaptured = false;
             if (_segmentIndex >= _segments.Length)
             {
                 Finish();
@@ -238,7 +254,8 @@ namespace MphRead.Mods.Replay
             int stride = fps <= 30 ? 2 : 1;
             long total = 0;
             foreach (ReplayVideoSegment segment in segments)
-                total += (segment.EndFrame - segment.StartFrame) / (uint)stride + 1;
+                total += fps == 120 ? (long)(segment.EndFrame - segment.StartFrame) * 2 + 1
+                    : (segment.EndFrame - segment.StartFrame) / (uint)stride + 1;
             return (int)Math.Min(Int32.MaxValue, total);
         }
 

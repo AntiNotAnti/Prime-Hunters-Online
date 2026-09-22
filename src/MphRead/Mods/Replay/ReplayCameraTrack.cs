@@ -84,14 +84,14 @@ namespace MphRead.Mods.Replay
             return true;
         }
 
-        public bool Sample(uint frame, out ReplayCameraKeyframe sample,
+        public bool Sample(double frame, out ReplayCameraKeyframe sample,
             bool constantSpeed = false)
         {
             sample = default;
             if (_keys.Count == 0) return false;
             if (frame <= _keys[0].Frame)
             {
-                sample = _keys[0] with { Frame = frame };
+                sample = _keys[0] with { Frame = (uint)Math.Clamp(frame, 0, UInt32.MaxValue) };
                 return true;
             }
 
@@ -101,7 +101,7 @@ namespace MphRead.Mods.Replay
                 if (frame > right.Frame) continue;
 
                 ReplayCameraKeyframe left = _keys[i - 1];
-                float raw = (frame - left.Frame) / (float)Math.Max(1u, right.Frame - left.Frame);
+                float raw = (float)((frame - left.Frame) / Math.Max(1u, right.Frame - left.Frame));
                 float t = ApplyEase(raw, left.Ease);
                 Vector3 p0 = i >= 2 ? _keys[i - 2].Position : left.Position;
                 Vector3 p3 = i + 1 < _keys.Count ? _keys[i + 1].Position : right.Position;
@@ -118,7 +118,7 @@ namespace MphRead.Mods.Replay
                 };
 
                 sample = new ReplayCameraKeyframe(
-                    frame,
+                    (uint)Math.Clamp(frame, 0, UInt32.MaxValue),
                     position,
                     Quaternion.Slerp(left.Rotation, right.Rotation, t).Normalized(),
                     left.Fov + (right.Fov - left.Fov) * t,
@@ -129,7 +129,7 @@ namespace MphRead.Mods.Replay
                 return true;
             }
 
-            sample = _keys[^1] with { Frame = frame };
+            sample = _keys[^1] with { Frame = (uint)Math.Clamp(frame, 0, UInt32.MaxValue) };
             return true;
         }
 

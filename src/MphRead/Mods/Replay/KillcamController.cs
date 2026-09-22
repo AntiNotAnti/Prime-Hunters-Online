@@ -155,6 +155,8 @@ internal sealed class KillcamController : IDisposable
         if (scene.Size != size) { scene.Size = size; scene.OnResize(); }
         PlayerEntity actor = scene.Players.Items[slot];
         Vector3 facing = actor.FacingVector;
+        if (scene.ReplayPoses?.Sample(actor.SlotIndex, scene.ReplayRenderAlpha, out _, out var replicaFacing) == true)
+            facing = replicaFacing;
         if (facing.LengthSquared < .0001f) facing = Vector3.UnitZ;
         facing = facing.Normalized();
         Vector3 focus = actor.ReplayDrawTransform.Row3.Xyz + Vector3.UnitY * (actor.IsAltForm ? .6f : 1.2f);

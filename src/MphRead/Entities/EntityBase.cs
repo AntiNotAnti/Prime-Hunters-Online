@@ -314,7 +314,17 @@ namespace MphRead.Entities
         /// orthogonal instead of linearly blending sixteen unrelated values.
         /// </summary>
         internal Matrix4 ReplayDrawTransform => ModDrawTransform();
+        internal Vector3 SimulationDrawPosition => !_drawStateValid ? Position
+            : Vector3.Lerp(_drawPrevious.Row3.Xyz, _drawCurrent.Row3.Xyz, _scene.ReplayRenderAlpha);
         protected Matrix4 ModDrawTransform()
+        {
+            Matrix4 transform = SimulationDrawTransform();
+            if (this is PlayerEntity player && _scene.ReplayPoses?.Sample(player.SlotIndex,
+                _scene.ReplayRenderAlpha, out Vector3 position, out _) == true)
+                transform.Row3.Xyz = position;
+            return transform;
+        }
+        private Matrix4 SimulationDrawTransform()
         {
             if (!InterpolateDrawTransform || !_scene.Services.IsReplica && !Mods.Render.FrameTiming.Active || !_drawStateValid)
             {
@@ -337,20 +347,8 @@ namespace MphRead.Entities
             {
                 return _drawCurrent;
             }
-            Vector3 facing = Vector3.Lerp(previousFacing.Normalized(), currentFacing.Normalized(), t).Normalized();
-            Vector3 up = Vector3.Lerp(previousUp.Normalized(), currentUp.Normalized(), t).Normalized();
-            Vector3 right = Vector3.Cross(up, facing);
-            if (right.LengthSquared < 0.000001f)
-            {
-                return _drawCurrent;
-            }
-            right = right.Normalized();
-            up = Vector3.Cross(facing, right).Normalized();
-
-            Matrix4 result = Matrix4.Identity;
-            result.Row0.Xyz = right * scale.X;
-            result.Row1.Xyz = up * scale.Y;
-            result.Row2.Xyz = facing * scale.Z;
+            Quaternion rotation = Quaternion.Slerp(_drawPrevious.ExtractRotation(), _drawCurrent.ExtractRotation(), t).Normalized();
+            Matrix4 result = Matrix4.CreateScale(scale) * Matrix4.CreateFromQuaternion(rotation);
             result.Row3.Xyz = Vector3.Lerp(_drawPrevious.Row3.Xyz, _drawCurrent.Row3.Xyz, t);
             return result;
         }

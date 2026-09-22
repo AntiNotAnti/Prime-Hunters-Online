@@ -137,8 +137,8 @@ that the missing replay features work.
 | P0B recorder | Accepted match/configuration/roster/player snapshots, remote intents, submitted local input and existing semantic events integrated; full world/objective/presentation event capture missing |
 | P0C isolated session/services | Instance reader/transport/hosts, private replication, silent audio, fixed stepping, GL rendering and detached world checkpoints implemented; broader mode/combat acceptance remains |
 | P0D/P0E personal/final killcams | Instance controller and private replay presentation implemented; two-client personal/final combat checked with latency/loss; larger matches and Android runtime acceptance remain |
-| P1 playback/seek/interpolation | Studio facades delegate reader/clock/transport to a session; passive file/frozen-clip player uses detached checkpoints and at most 120 seek steps; foreground Studio uses private player; interpolation/export acceptance outstanding |
-| P1 shared clips/highlights/export | Client/server full recordings and instant clips share accepted facts; v4 durable initial worlds and exact nested/legacy ranges implemented; rendered export acceptance outstanding |
+| P1 playback/seek/interpolation | Studio facades delegate reader/clock/transport to a session; passive file/frozen-clip player uses detached checkpoints and at most 120 seek steps; foreground Studio, bounded accepted-snapshot presentation and deterministic export implemented; broader runtime/platform acceptance remains |
+| P1 shared clips/highlights/export | Client/server full recordings and instant clips share accepted facts; v4 durable initial worlds and exact nested/legacy ranges implemented; rendered export, native offscreen targets and interpolated 120 FPS verified |
 | P2A history | State IDs, bounded delta commands and transaction coalescing implemented for common actions |
 | P2B viewport | Per-object native mesh and independent imported/entity/selection invalidation implemented |
 | P2C renderer viewport | Existing game renderer consumes stable meshes; DPI/picking/capture contract, overlay composition and viewport resource lifetime verified |
@@ -362,3 +362,32 @@ frames, rates, seeks and EOF checks. The general network harness flagged shot-co
 coverage and transient position gaps in that run; those are still under investigation
 and are not counted as a full network acceptance pass. All 12 synthetic multiplayer
 fixtures also pass again after the Studio and disk-sink migration (21,612 frames).
+
+## Recorded presentation and export
+
+`ReplayPoseStream` uses an independent bounded cursor with six frames of lookahead
+and at most 24 accepted poses per slot. It samples source-frame timestamps, never
+receive wall time, and cannot advance the simulation or RNG. Slot/life, spawn,
+death, form and teleport discontinuities prevent blending. File and frozen-clip
+views use the same sampler; a malformed/oversized presentation cursor falls back
+to deterministic entity history. Body, chase, killcam and first-person cameras use
+the presentation pose. Entity rotation interpolation uses quaternion slerp.
+
+Video jobs render a deterministic sample sequence: alternate ticks at 30 FPS,
+every tick at 60, and exact half-frame/end-frame pairs at 120. Camera tracks accept
+fractional frames, orbit uses recorded time, and track collision anchors are
+recorded keyframes. Export skips wall-time camera damping. Gameplay remains 60 Hz.
+Version-2 export manifests tell FFmpeg the actual sample frequency.
+
+A scene-owned composite framebuffer provides native output dimensions, including
+HUD, independently of the window size and gameplay resolution-scale preference.
+A scaled blit supplies the window preview. The replay transport/export-status
+banner is excluded from movies. Scene/GL cleanup releases the export target.
+
+`-replayexportcheck FILE -output DIR` passes repeated byte-identical 30/60/120 FPS
+exports with different wall-clock cadence, distinct half-frame images, unchanged
+gameplay hashes and native 720p/4K HUD dimensions. Both an eight-actor fixture and
+a real dedicated-server v4 recording pass; FFmpeg produced and decoded a real
+1280×720, 120 FPS movie. Native 4K HUD images were inspected. Rendered replica tests
+still pass all 1,801 gameplay/presentation frames, seven restored images and 61
+file/clip seeks; controller checks include fractional tracks and discontinuities.

@@ -27,6 +27,7 @@ namespace MphRead.Mods.Network
             {
                 if (Session.Metadata?.WorldCheckpoint is { Length: > 0 } bytes)
                     Replay.ReplayWorldCheckpoint.FromBytes(bytes).Restore(this, playbackFrame: 0);
+                Scene.ReplayPoses = new(this, path);
             }
             catch { Dispose(); throw; }
         }
@@ -39,6 +40,7 @@ namespace MphRead.Mods.Network
                 Checkpoint(clip).Restore(this);
                 Session.Transport.ContinueSeek(clip.StartRecordingFrame, resume: true);
                 Session.Transport.AfterFrame();
+                Scene.ReplayPoses = new(this, clip);
             }
             catch { Dispose(); throw; }
         }
@@ -120,6 +122,7 @@ namespace MphRead.Mods.Network
         {
             if (_disposed) return;
             _disposed = true;
+            Scene.ReplayPoses?.Dispose(); Scene.ReplayPoses = null;
             if (_ownsScene) { Scene.DoCleanup(); Scene.UnloadGl(); }
             Session.Dispose();
         }

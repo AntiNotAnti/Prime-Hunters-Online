@@ -47,7 +47,10 @@ namespace MphRead.Entities
                 ? historicalPose.Facing
                 : Mods.Network.DemoPlayback.IsActive && networkPresented
                     ? presentedFacing
-                    : _facingVector;
+                    : _scene.Services.IsReplica ? ReplayDrawTransform.Row2.Xyz.Normalized() : _facingVector;
+
+            if (_scene.ReplayPoses?.Sample(SlotIndex, _scene.ReplayRenderAlpha, out _, out Vector3 replicaFacing) == true)
+                drawFacing = replicaFacing;
 
             if (!historical && Flags2.TestFlag(PlayerFlags2.Spectating))
             {

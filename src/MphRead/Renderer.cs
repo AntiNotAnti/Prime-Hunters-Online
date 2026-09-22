@@ -694,7 +694,7 @@ namespace MphRead
         {
             get
             {
-                var requested = new Vector2i(
+                var requested = ExportingReplay ? Size : new Vector2i(
                     Mods.RenderOptions.Scaled(Size.X), Mods.RenderOptions.Scaled(Size.Y));
                 int limit = MaxRenderTargetSize();
                 if (requested.X <= limit && requested.Y <= limit)
@@ -2302,8 +2302,9 @@ namespace MphRead
                 return null;
             }
             byte[] buffer = new byte[width * height * 3];
-            GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, 0);
-            GL.ReadBuffer(ReadBufferMode.Back);
+            int source = ExportingReplay ? ReplayOutputFramebuffer() : 0;
+            GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, source);
+            GL.ReadBuffer(source == 0 ? ReadBufferMode.Back : ReadBufferMode.ColorAttachment0);
             GL.PixelStore(PixelStoreParameter.PackAlignment, 1);
             GL.ReadPixels(0, 0, width, height, PixelFormat.Rgb, PixelType.UnsignedByte, buffer);
             return buffer;
@@ -3141,7 +3142,7 @@ namespace MphRead
                         bool replayCamera = main.ModReplayPresentationCamera(
                             presentationAlpha, out Matrix4 replayView,
                             out _, out float replayFov);
-                        bool interpolatedCamera = Mods.Render.FrameTiming.Active
+                        bool interpolatedCamera = Services.IsReplica || Mods.Render.FrameTiming.Active
                             && (Mods.SpectatorMode.IsSpectating || Mods.Network.DemoPlayback.IsActive);
 
                         _viewMatrix = replayCamera
@@ -3251,7 +3252,7 @@ namespace MphRead
                     }
                     else
                     {
-                        bool interpolate = Mods.Render.FrameTiming.Active
+                        bool interpolate = Services.IsReplica || Mods.Render.FrameTiming.Active
                             && (Mods.SpectatorMode.IsSpectating || Mods.Network.DemoPlayback.IsActive);
                         _cameraPosition = interpolate
                             ? camera.ModGetDrawPosition(Services.IsReplica ? ReplayRenderAlpha : Mods.Render.FrameTiming.PresentationAlpha)
@@ -4748,6 +4749,7 @@ namespace MphRead
         /// </summary>
         public void UnloadGl()
         {
+            ReleaseReplayOutput();
             if (Mods.Headless.Active)
             {
                 return;

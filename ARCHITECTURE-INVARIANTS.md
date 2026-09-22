@@ -107,3 +107,6 @@ This file is the short, machine-oriented source of truth for architectural assum
 
 - Full client/server recordings and instant clips consume the shared accepted-fact recorder. V4 initial worlds, frame origins and hidden lead-in preserve exact clip starts; v2/v3 are supported by explicit adapters. Clip disk writes consume frozen values on a worker; GL world creation/disposal stays on the owner.
 - Camera/player selection must not affect replay simulation RNG. Replica stepping fixes its simulation perspective and restores viewing state afterwards. Replay Lab is an explicit offline detach and cannot take over while a live connection exists.
+
+- Replay pose lookahead is bounded and presentation-only; it never advances simulation/RNG or uses live receive jitter. Do not blend across occupant/life, spawn/death, form or teleport boundaries.
+- Export stays at 60 Hz gameplay. A 120 FPS movie renders deterministic half-frame samples, never duplicate-frame conversion or 120 Hz physics. Camera paths and export collision anchors use recorded time. Native-size world/HUD targets belong to the scene and release on its GL owner.

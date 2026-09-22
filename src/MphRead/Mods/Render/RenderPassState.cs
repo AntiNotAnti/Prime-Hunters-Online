@@ -126,7 +126,7 @@ namespace MphRead
 
         private void BeginCompositePass()
         {
-            GL.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
+            GL.BindFramebuffer(FramebufferTarget.Framebuffer, ReplayOutputFramebuffer());
             GL.Viewport(0, 0, Size.X, Size.Y);
             SetScreenPassState();
             GL.Enable(EnableCap.Blend);
@@ -160,7 +160,7 @@ namespace MphRead
 
         private void BeginHudPass()
         {
-            GL.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
+            GL.BindFramebuffer(FramebufferTarget.Framebuffer, ReplayOutputFramebuffer());
             GL.Viewport(0, 0, Size.X, Size.Y);
             SetScreenPassState();
             GL.Enable(EnableCap.Blend);
@@ -204,6 +204,7 @@ namespace MphRead
             GL.Disable(EnableCap.ScissorTest);
             GL.Disable(EnableCap.StencilTest);
             GL.Disable(EnableCap.AlphaTest);
+            PreviewReplayOutput();
             CheckGlError("EndHudPass");
         }
 

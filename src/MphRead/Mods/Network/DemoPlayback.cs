@@ -99,7 +99,7 @@ public static class DemoPlayback
             SpectatorMode.Start(watchSomeone: true);
             var main = current.Players.Main;
             if (!Headless.Active && main.LoadFlags.TestFlag(LoadFlags.Active) && !main.HudReady) main.SetUpHud();
-            if (!Headless.Active && !silent) Sound.Sfx.Update(1f / 60);
+            if (!Headless.Active && !silent) MphRead.Sound.Sfx.Update(1f / 60);
         }
     }
     internal static Scene? PreparePresentation(Scene shell)
@@ -107,10 +107,11 @@ public static class DemoPlayback
         if (!ReferenceEquals(_shell, shell) && !Owns(shell)) return null;
         Scene? scene = PresentationScene;
         if (scene == null) return null;
-        var size = _shell!.Size;
+        scene.ReplayPreviewSize = _shell!.Size;
+        var size = ReplayVideoExporter.OutputSize ?? _shell.Size;
         if (scene.Size != size) { scene.Size = size; scene.OnResize(); }
-        scene.ReplayRenderAlpha = Render.FrameTiming.Active
-            ? Session.Transport.PresentationAlpha(Render.FrameTiming.PresentationAlpha) : 1;
+        scene.ReplayRenderAlpha = ReplayVideoExporter.Active ? ReplayVideoExporter.PresentationAlpha
+            : Render.FrameTiming.Active ? Session.Transport.PresentationAlpha(Render.FrameTiming.PresentationAlpha) : 1;
         return ReferenceEquals(scene, shell) ? null : scene;
     }
     internal static void Release(Scene shell)

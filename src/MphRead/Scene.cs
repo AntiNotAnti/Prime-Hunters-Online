@@ -23,6 +23,7 @@ namespace MphRead
         public ISceneServices Services { get; private set; }
         internal bool IsReplayLab { get; private set; }
         internal float ReplayRenderAlpha { get; set; } = 1;
+        internal Mods.Network.ReplayPoseStream? ReplayPoses { get; set; }
         internal Action<Scene>? ReplayPresentationHud { get; set; }
         internal Action<int, int>? ReplayShotPresented { get; set; }
         public SceneGameState GameState { get; }

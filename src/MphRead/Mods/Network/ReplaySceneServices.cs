@@ -92,11 +92,24 @@ namespace MphRead.Mods.Network
             return Math.Max(0, match.TimeRemaining - elapsed / 60f);
         }
 
+        private readonly (ushort Generation, ushort Life, byte Flags, bool Alive)[] _presentationLives =
+            new (ushort, ushort, byte, bool)[PlayerEntity.SlotCapacity];
+        private readonly bool[] _presentationKnown = new bool[PlayerEntity.SlotCapacity];
         public void AfterSimulation(Scene scene)
         {
             for (int slot = 0; slot < PlayerEntity.SlotCapacity; slot++)
                 if (State.TryGetPlayer(slot, out var recorded))
-                    scene.PlayerReplication.ApplyState(scene.Players.Items[slot], recorded, isLocal: false);
+                {
+                    var player = scene.Players.Items[slot];
+                    scene.PlayerReplication.ApplyState(player, recorded, isLocal: false);
+                    var life = (recorded.SlotGeneration, recorded.LifeId,
+                        (byte)(recorded.Flags & (PlayerState.FlagActive | PlayerState.FlagSpawned | PlayerState.FlagAltForm)), recorded.Health > 0);
+                    if (!_presentationKnown[slot] || _presentationLives[slot] != life)
+                    {
+                        player.ModResetDrawState(); player.CameraInfo.ModResetDrawState(); player.ModResetFirstPersonDrawState();
+                    }
+                    _presentationKnown[slot] = true; _presentationLives[slot] = life;
+                }
             ReadOnlySpan<byte> tail = State.WorldTail;
             if (tail.Length >= NetMatchTimeSync.Size)
                 for (int i = 0; i < PlayerEntity.SlotCapacity; i++)

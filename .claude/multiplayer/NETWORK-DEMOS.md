@@ -481,3 +481,11 @@ changes, pause, seeks and live-state sentinels. `-replaydeterminism` and
 `-replayclipcheck` now run the same private player, comparing both gameplay and
 presentation every visible frame. `-demoinfo -replay` uses the private decoder and
 reports source cadence without calling sparse snapshots a playback failure.
+
+Presentation now reads a bounded six-frame lookahead of accepted snapshots in a
+separate cursor. Its 24-pose-per-slot bound and lifecycle/teleport fences are
+independent of networking. Simulation keeps its own transforms. Video manifests
+v2 contain real 30/60/120 FPS samples; 120 uses half-frame interpolation, including
+fractional camera tracks. Native offscreen world/HUD targets support 720p through
+4K independently of window size. `-replayexportcheck FILE -output DIR` verifies
+repeated image identity, distinct half-frames and unchanged gameplay hashes.

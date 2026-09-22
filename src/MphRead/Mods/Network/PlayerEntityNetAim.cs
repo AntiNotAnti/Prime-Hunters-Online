@@ -40,6 +40,18 @@ namespace MphRead.Entities
             view = CameraInfo.ViewMatrix;
             position = CameraInfo.Position;
             fov = CameraInfo.Fov;
+            if (_scene.Services.IsReplica && CameraInfo.ModGetDrawPose(alpha,
+                out Vector3 replicaPosition, out Vector3 replicaTarget, out Vector3 replicaUp, out float replicaFov))
+            {
+                if (_scene.ReplayPoses?.Sample(SlotIndex, (float)alpha, out var actorPosition, out var actorFacing) == true)
+                {
+                    replicaPosition += actorPosition - SimulationDrawPosition;
+                    replicaTarget = replicaPosition + actorFacing * Math.Max(.1f, (CameraInfo.Target - CameraInfo.Position).Length);
+                }
+                position = replicaPosition; fov = replicaFov;
+                view = Matrix4.LookAt(replicaPosition, replicaTarget, replicaUp);
+                return true;
+            }
             if (_scene.Services.IsReplica || !DemoPlayback.IsActive
                 || !NetSmoothing.SampleReplayPresentation(SlotIndex,
                     out Vector3 replayPosition, out Vector3 replayFacing,

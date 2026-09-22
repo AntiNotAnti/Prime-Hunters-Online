@@ -696,12 +696,12 @@ namespace MphRead.Mods.Replay
             Directory.CreateDirectory(root);
             string frames = Path.Combine(root, "frame_%08d.png");
             string output = Path.Combine(root, "replay.mp4");
-            int sourceFps = fps <= 30 ? 30 : 60;
+            int sourceFps = fps;
             string filters = $"scale={width}:{height}:flags=lanczos,fps={fps}";
             string ffmpeg = $"-y -framerate {sourceFps} -i \"{frames}\" "
                 + $"-vf \"{filters}\" -c:v libx264 -preset slow -crf 18 "
                 + $"-pix_fmt yuv420p -movflags +faststart \"{output}\"";
-            var manifest = new ReplayVideoExportManifest(1, Path.GetFullPath(replay), startFrame, endFrame,
+            var manifest = new ReplayVideoExportManifest(2, Path.GetFullPath(replay), startFrame, endFrame,
                 width, height, fps, cleanHud, director, cameraTrack, frames, output, ffmpeg);
             File.WriteAllText(Path.Combine(root, "render.json"),
                 JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }));
