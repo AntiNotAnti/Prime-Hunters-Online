@@ -169,7 +169,17 @@ namespace MphRead.Mods.Network
         {
             if (payload.Length < SnapshotHeader.Size) return false;
             SnapshotHeader header = SnapshotHeader.Read(payload);
-            if (header.PlayerCount > RosterPacket.MaxSlots) return false;
+            if (header.PlayerCount > RosterPacket.MaxSlots
+                || !SnapshotWire.TryReadStateHeader(payload,
+                    out bool keyframe, out byte activeMask, out uint baselineFrame)
+                || !keyframe || baselineFrame != header.Frame)
+            {
+                return false;
+            }
+            int activeCount = 0;
+            for (int slot = 0; slot < RosterPacket.MaxSlots; slot++)
+                if ((activeMask & (1 << slot)) != 0) activeCount++;
+            if (activeCount != header.PlayerCount) return false;
             if (!SnapshotWire.TryLocateTails(payload, header, out _, out int timeOffset)) return false;
             int healthOffset = timeOffset + NetMatchTimeSync.Size;
             if (healthOffset > payload.Length) return false;
