@@ -1,5 +1,13 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import postgres from "npm:postgres@3.4.7";
+
+const dbUrl = Deno.env.get("SUPABASE_DB_URL")!;
+const sql = postgres(dbUrl, {
+  prepare: false,
+  max: 1,
+  idle_timeout: 20,
+});
 
 function json(status: number, value: unknown) {
   return new Response(JSON.stringify(value), {
@@ -43,15 +51,19 @@ Deno.serve(async (req: Request) => {
     return json(401, { error: "invalid_session" });
   }
 
-  const { data, error } = await admin.rpc("project_prime_hunter_license_for", {
-    p_user: userData.user.id,
-    p_display_name: displayName || "Hunter",
-    p_favorite_hunter: favoriteHunter,
-  });
-
-  if (error) {
-    console.error("hunter-license bridge failed", error);
-    return json(500, { error: "hunter_license_bridge_failed" });
+  try {
+    const rows = await sql`
+      select public.project_prime_hunter_license_for(
+        ${userData.user.id}::uuid,
+        ${displayName || "Hunter"}::text,
+        ${favoriteHunter}::integer
+      ) as value
+    `;
+    const value = rows[0]?.value;
+    if (!value) return json(500, { error: "hunter_license_empty_result" });
+    return json(200, value);
+  } catch (error) {
+    console.error("hunter-license database bridge failed", error);
+    return json(500, { error: "hunter_license_db_failed" });
   }
-  return json(200, data);
 });
