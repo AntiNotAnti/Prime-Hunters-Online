@@ -54,7 +54,8 @@ namespace MphRead.Mods
             get
             {
                 if (!GameState.Multiplayer || GameState.MenuPause
-                    || DemoPlayback.IsActive || SpectatorMode.IsSpectating
+                    || DemoPlayback.IsActive || KillCam.IsFinal
+                    || SpectatorMode.IsSpectating
                     || SpectatorMode.FreeCamera || PlayerEntity.Main == null)
                 {
                     return false;

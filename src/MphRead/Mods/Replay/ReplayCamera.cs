@@ -185,8 +185,19 @@ namespace MphRead
             var player = PlayerEntity.Main;
             if (!player.LoadFlags.TestFlag(LoadFlags.Spawned)) return;
             SetFreeCamera(true);
-            Vector3 target = player.Position + Vector3.UnitY * Math.Clamp(Mods.Replay.ReplayCamera.Height, 0.5f, 8);
+
+            Vector3 playerPosition = player.Position;
             Vector3 facing = player.CameraInfo.Facing;
+            if (Mods.Network.NetSmoothing.SampleReplayPresentation(player.SlotIndex,
+                out Vector3 replayPosition, out Vector3 replayFacing, out bool replayAlt))
+            {
+                playerPosition = Mods.Network.NetPlayerBridge.InFormFor(
+                    player, replayPosition, replayAlt);
+                facing = replayFacing;
+            }
+
+            Vector3 target = playerPosition
+                + Vector3.UnitY * Math.Clamp(Mods.Replay.ReplayCamera.Height, 0.5f, 8);
             facing.Y = 0;
             if (facing.LengthSquared < 0.001f) facing = -Vector3.UnitZ;
             facing.Normalize();

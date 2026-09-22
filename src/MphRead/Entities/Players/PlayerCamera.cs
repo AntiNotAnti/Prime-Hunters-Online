@@ -915,20 +915,39 @@ namespace MphRead.Entities
 
         internal Matrix4 ModGetDrawView(double alpha)
         {
-            if (!_drawStateValid)
+            if (!ModGetDrawPose(alpha, out Vector3 position, out Vector3 target,
+                out Vector3 up, out _))
             {
                 return ViewMatrix;
             }
+            return Matrix4.LookAt(position, target, up);
+        }
+
+        internal bool ModGetDrawPose(double alpha, out Vector3 position,
+            out Vector3 target, out Vector3 up, out float fov)
+        {
+            if (!_drawStateValid)
+            {
+                position = Position;
+                target = Target;
+                up = UpVector.LengthSquared > 0.000001f ? UpVector.Normalized() : Vector3.UnitY;
+                fov = Fov;
+                return IsFinite(position) && IsFinite(target)
+                    && (target - position).LengthSquared >= 0.000001f;
+            }
+
             float t = (float)Math.Clamp(alpha, 0.0, 1.0);
-            Vector3 position = Vector3.Lerp(_drawPreviousPosition, _drawCurrentPosition, t);
-            Vector3 target = Vector3.Lerp(_drawPreviousTarget, _drawCurrentTarget, t);
-            Vector3 up = Vector3.Lerp(_drawPreviousUp, _drawCurrentUp, t);
+            position = Vector3.Lerp(_drawPreviousPosition, _drawCurrentPosition, t);
+            target = Vector3.Lerp(_drawPreviousTarget, _drawCurrentTarget, t);
+            up = Vector3.Lerp(_drawPreviousUp, _drawCurrentUp, t);
+            fov = _drawPreviousFov + (_drawCurrentFov - _drawPreviousFov) * t;
             if (!IsFinite(position) || !IsFinite(target) || !IsFinite(up)
                 || (target - position).LengthSquared < 0.000001f || up.LengthSquared < 0.000001f)
             {
-                return ViewMatrix;
+                return false;
             }
-            return Matrix4.LookAt(position, target, up.Normalized());
+            up = up.Normalized();
+            return true;
         }
 
         internal float ModGetDrawFov(double alpha)

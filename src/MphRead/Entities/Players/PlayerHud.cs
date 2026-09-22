@@ -1384,11 +1384,12 @@ namespace MphRead.Entities
             // running match and answered from wherever the player is looking.
             ModDrawVote();
             ModDrawKillCam();
-            if (Mods.KillCam.IsPersonal)
+            if (Mods.KillCam.Active)
             {
-                // The camera is replaying the killer's historical view, not
-                // the dead player's visor. Keep chat and the kill-cam banner,
-                // but do not layer stale health/ammo/weapon UI over it.
+                // A kill cam is a replay presentation, not the player's live
+                // visor or the post-match results UI. Keep chat and the
+                // kill-cam banner only so both personal and final replays are
+                // visually unmistakable.
                 return;
             }
             // With the chat and before every early return below it, for the
@@ -1560,7 +1561,7 @@ namespace MphRead.Entities
 
         public void DrawHudModels()
         {
-            if (Mods.ThumbnailMode.Active || Mods.KillCam.IsPersonal)
+            if (Mods.ThumbnailMode.Active || Mods.KillCam.Active)
             {
                 return;
             }
