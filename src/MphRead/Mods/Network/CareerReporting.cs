@@ -37,6 +37,7 @@ namespace MphRead.Mods.Network
             PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
         };
         private static int _draining;
+        private static int _probing;
         private static int _warnedDisabled;
 
         private static string DirectoryPath => Path.Combine(
@@ -63,7 +64,9 @@ namespace MphRead.Mods.Network
                 }
                 return;
             }
+            Console.WriteLine($"[career] reporting enabled: {ReportUrl}");
             Kick();
+            Probe();
         }
 
         public static void Enqueue(CareerMatchReport report)
@@ -102,6 +105,38 @@ namespace MphRead.Mods.Network
                 return;
             }
             _ = Task.Run(DrainAsync);
+        }
+
+        private static void Probe()
+        {
+            if (!Enabled || Interlocked.CompareExchange(ref _probing, 1, 0) != 0)
+            {
+                return;
+            }
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var request = new HttpRequestMessage(HttpMethod.Get, ReportUrl);
+                    request.Headers.TryAddWithoutValidation("Authorization", "Bearer " + ServerKey);
+                    request.Headers.TryAddWithoutValidation("apikey", PublishableKey);
+                    using HttpResponseMessage response = await Http.SendAsync(request)
+                        .ConfigureAwait(false);
+                    string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    Console.WriteLine(response.IsSuccessStatusCode
+                        ? "[career] reporter credential accepted"
+                        : $"[career] reporter probe refused ({(int)response.StatusCode}): {Trim(body, 240)}");
+                }
+                catch (Exception ex) when (ex is HttpRequestException
+                    or TaskCanceledException or IOException)
+                {
+                    Console.WriteLine($"[career] reporter probe deferred: {ex.Message}");
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref _probing, 0);
+                }
+            });
         }
 
         private static async Task DrainAsync()

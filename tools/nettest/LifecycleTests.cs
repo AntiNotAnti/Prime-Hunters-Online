@@ -806,6 +806,12 @@ namespace MphRead.NetTest
             Check(NetSmoothing.AckPoint(out ackFrame, out ackSub)
                 && ackFrame == 100 && ackSub == 0,
                 "held presentation acks the world the client actually received");
+
+            Check(NetSmoothing.SampleReplayPresentation(1,
+                    out Vector3 review, out Vector3 reviewFacing, out _)
+                && review.X > 10.05f && review.X < 12f
+                && reviewFacing.LengthSquared > 0.99f,
+                "replay review bridges missing snapshot frames without changing live ack semantics");
         }
 
         private static void HistoryBoundaries()

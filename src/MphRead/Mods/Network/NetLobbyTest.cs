@@ -377,6 +377,8 @@ namespace MphRead.Mods.Network
             rig.ReadyAll();
             var start = a.Command(LobbyCommandType.StartMatch); rig.Expect(a, start, LobbyResultCode.Ok);
             Check(a.State.Value.Phase == SessionPhase.Starting, "start enters barrier");
+            Check(a.State.Value.StartCountdownMilliseconds is > 0 and <= 1500,
+                "start publishes overlapping countdown");
             a.Loaded((ushort)(a.State.Value.MatchId - 1));
             a.Loaded(); rig.Wait(() => a.State.Value.LoadedParticipants == (1 << a.Slot), "one participant loaded");
             Check(a.State.Value.Phase == SessionPhase.Starting, "one loaded cannot release barrier");
@@ -385,12 +387,8 @@ namespace MphRead.Mods.Network
                 "browser status clock stays frozen through the load barrier");
             Client late = rig.Add(3); Check((late.State!.Value.ExpectedParticipants & (1 << late.Slot)) == 0, "late join excluded from barrier");
             b.Loaded();
-            rig.Wait(() => a.State.Value.Phase == SessionPhase.Starting
-                && a.State.Value.StartCountdownMilliseconds > 0,
-                "loaded barrier publishes start countdown");
-            Check(a.State.Value.StartCountdownMilliseconds <= 1500,
-                "countdown remains bounded to one and a half seconds");
-            rig.Wait(() => a.State.Value.Phase == SessionPhase.InMatch, "barrier released after countdown");
+            rig.Wait(() => a.State.Value.Phase == SessionPhase.InMatch,
+                "barrier releases when loads and overlapping countdown are complete");
             b.EndMatch();
             rig.Wait(() => a.State.Value.Phase == SessionPhase.PostMatch, "results entered");
             Check(rig.Clients.All(c => c.OpenMapChoices == 0),
@@ -636,10 +634,9 @@ namespace MphRead.Mods.Network
             Check(NetSession.FreezeGameplay, "gameplay frozen before loaded");
             Check(NetSession.IsStarting && NetSession.ConnectionPort == port,
                 "lobby connection survives the load barrier");
-            NetSession.MarkMatchLoaded();
             PumpUntil(() => NetSession.StartCountdownRemainingSeconds > 0,
-                "real load ack starts countdown");
-            Check(NetSession.IsStarting, "real client stays frozen during countdown");
+                "real start publishes overlapping countdown");
+            NetSession.MarkMatchLoaded();
             PumpUntil(() => NetSession.IsPlaying, "real load ack starts match");
             Check(!NetSession.FreezeGameplay, "gameplay released after barrier");
             NetSession.SendMatchEnd();

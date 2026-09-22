@@ -27,6 +27,60 @@ namespace MphRead.Entities
         protected override bool InterpolateDrawTransform
             => DemoPlayback.IsActive || (!IsMainPlayer && !NetSession.Active);
 
+        /// <summary>
+        /// The generic entity interpolation point for this picture. Replay
+        /// cameras use it only as the baseline from which the replay-specific
+        /// authority-frame smoother offsets the watched hunter.
+        /// </summary>
+        internal Vector3 ModPresentationPosition => ModDrawTransform().Row3.Xyz;
+
+        internal bool ModReplayPresentationCamera(double alpha, out Matrix4 view,
+            out Vector3 position, out float fov)
+        {
+            view = CameraInfo.ViewMatrix;
+            position = CameraInfo.Position;
+            fov = CameraInfo.Fov;
+            if (!DemoPlayback.IsActive
+                || !NetSmoothing.SampleReplayPresentation(SlotIndex,
+                    out Vector3 replayPosition, out Vector3 replayFacing,
+                    out bool replayAlt)
+                || !CameraInfo.ModGetDrawPose(alpha, out Vector3 cameraPosition,
+                    out Vector3 cameraTarget, out Vector3 cameraUp, out float cameraFov))
+            {
+                return false;
+            }
+
+            Vector3 presented = NetPlayerBridge.InFormFor(
+                this, replayPosition, replayAlt);
+            Vector3 delta = presented - ModPresentationPosition;
+            cameraPosition += delta;
+
+            float lookDistance = (cameraTarget - CameraInfo.ModGetDrawPosition(alpha)).Length;
+            if (!Single.IsFinite(lookDistance) || lookDistance < 0.1f)
+                lookDistance = 1;
+            cameraTarget = cameraPosition + replayFacing * lookDistance;
+            if ((cameraTarget - cameraPosition).LengthSquared < 0.000001f)
+                return false;
+
+            Vector3 look = (cameraTarget - cameraPosition).Normalized();
+            Vector3 up = cameraUp;
+            if (!Single.IsFinite(up.X) || !Single.IsFinite(up.Y)
+                || !Single.IsFinite(up.Z) || up.LengthSquared < 0.000001f
+                || MathF.Abs(Vector3.Dot(look, up.Normalized())) > 0.999f)
+            {
+                up = MathF.Abs(look.Y) < 0.999f ? Vector3.UnitY : Vector3.UnitZ;
+            }
+            Vector3 right = Vector3.Cross(look, up);
+            if (right.LengthSquared < 0.000001f)
+                return false;
+            up = Vector3.Cross(right.Normalized(), look).Normalized();
+
+            position = cameraPosition;
+            fov = cameraFov;
+            view = Matrix4.LookAt(cameraPosition, cameraTarget, up);
+            return true;
+        }
+
         protected override Matrix4 GetModelTransform(ModelInstance inst, int index)
         {
             Matrix4 transform = base.GetModelTransform(inst, index);
@@ -80,13 +134,6 @@ namespace MphRead.Entities
             return false;
         }
 
-        /// <summary>
-        /// Exact local prediction result for one input frame. Unlike the older
-        /// diagnostic lookup above, reconciliation must never substitute a
-        /// nearby frame: the authority explicitly names which owner input it
-        /// had processed, and comparing different instants recreates the
-        /// rubber-banding this history exists to prevent.
-        /// </summary>
         internal bool ModGetNetworkPrediction(uint frame, out Vector3 position,
             out Vector3 speed)
         {

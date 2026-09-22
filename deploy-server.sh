@@ -126,7 +126,8 @@ if [ "$DEPLOY_MASTER" = "1" ]; then
   ssh_run "sudo systemctl start $MASTER_SERVICE"
 fi
 sleep 3
-ssh_run "systemctl is-active $SERVICE && journalctl -u $SERVICE -n 5 --no-pager | tail -4"
+ssh_run "systemctl is-active $SERVICE && journalctl -u $SERVICE -n 12 --no-pager | tail -10"
+ssh_run "journalctl -u $SERVICE -n 50 --no-pager | grep '\[career\]' | tail -6 || true"
 if [ "$DEPLOY_MASTER" = "1" ]; then
   ssh_run "systemctl is-active $MASTER_SERVICE \
     && journalctl -u $MASTER_SERVICE -n 5 --no-pager | tail -4"
@@ -139,8 +140,7 @@ echo "That name has to resolve to this machine, and UDP 27889 has to reach it,"
 echo "before any server shows up in anybody's list."
  /etc/systemd/system/$name.service"; then
       echo "==> adding career.env to $name.service"
-      ssh_run "sudo sed -i '/^WorkingDirectory=/a EnvironmentFile=-$REMOTE_DIR/career.env' /etc/systemd/system/$name.service \
-        && sudo systemctl daemon-reload"
+      ssh_run "sudo sed -i '/^WorkingDirectory=/a EnvironmentFile=-$REMOTE_DIR/career.env' /etc/systemd/system/$name.service         && sudo systemctl daemon-reload"
     fi
     if ssh_run "grep -q '$REMOTE_DIR/$OLD_BINARY ' /etc/systemd/system/$name.service"; then
       echo "==> $name.service still starts $OLD_BINARY; pointing it at $BINARY"

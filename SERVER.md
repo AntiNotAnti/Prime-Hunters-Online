@@ -195,3 +195,21 @@ before it can touch the existing `prime` career/rating tables.
 Continuous provisioned servers may apply the existing pairwise rating policy.
 Player-created persistent lobbies are career-history only and cannot modify
 rating points.
+
+### Verify career reporting
+
+After restarting a dedicated server, the log should contain both:
+
+```text
+[career] reporting enabled: https://hwcjaygoistufktorbmf.supabase.co/functions/v1/career-report
+[career] reporter credential accepted
+```
+
+Check with:
+
+```bash
+systemctl cat mphread-server | grep EnvironmentFile
+journalctl -u mphread-server -n 80 --no-pager | grep '\[career\]'
+```
+
+If the first command prints nothing, the installed systemd unit predates career reporting and is not loading `career.env`. Re-run `deploy-server.sh` or add `EnvironmentFile=-/home/<user>/mphread-server/career.env` under `[Service]`, then run `sudo systemctl daemon-reload && sudo systemctl restart mphread-server`.

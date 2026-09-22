@@ -3033,13 +3033,21 @@ namespace MphRead
                     {
                         PlayerEntity main = PlayerEntity.Main;
                         CameraInfo camera = main.CameraInfo;
+                        double presentationAlpha = Mods.Render.FrameTiming.PresentationAlpha;
+                        bool replayCamera = main.ModReplayPresentationCamera(
+                            presentationAlpha, out Matrix4 replayView,
+                            out _, out float replayFov);
                         bool interpolatedCamera = Mods.Render.FrameTiming.Active
                             && (Mods.SpectatorMode.IsSpectating || Mods.Network.DemoPlayback.IsActive);
-                        _viewMatrix = interpolatedCamera
-                            ? camera.ModGetDrawView(Mods.Render.FrameTiming.PresentationAlpha)
-                            : camera.ViewMatrix;
 
-                        if (!interpolatedCamera && !Mods.PauseMenu.Open && !GameState.MenuPause
+                        _viewMatrix = replayCamera
+                            ? replayView
+                            : interpolatedCamera
+                                ? camera.ModGetDrawView(presentationAlpha)
+                                : camera.ViewMatrix;
+
+                        if (!replayCamera && !interpolatedCamera
+                            && !Mods.PauseMenu.Open && !GameState.MenuPause
                             && !GameState.DialogPause && !Mods.EndScreen.Available)
                         {
                             (float padX, float padY) = Mods.Input.GamepadInput.RenderAim(
@@ -3051,9 +3059,11 @@ namespace MphRead
                             }
                         }
 
-                        float authoredFov = interpolatedCamera
-                            ? camera.ModGetDrawFov(Mods.Render.FrameTiming.PresentationAlpha)
-                            : camera.Fov;
+                        float authoredFov = replayCamera
+                            ? replayFov
+                            : interpolatedCamera
+                                ? camera.ModGetDrawFov(presentationAlpha)
+                                : camera.Fov;
                         float fov = authoredFov > 0
                             ? authoredFov
                             : Mods.RenderOptions.DefaultFov;
@@ -3110,12 +3120,22 @@ namespace MphRead
                 }
                 else
                 {
-                    CameraInfo camera = PlayerEntity.Main.CameraInfo;
-                    bool interpolate = Mods.Render.FrameTiming.Active
-                        && (Mods.SpectatorMode.IsSpectating || Mods.Network.DemoPlayback.IsActive);
-                    _cameraPosition = interpolate
-                        ? camera.ModGetDrawPosition(Mods.Render.FrameTiming.PresentationAlpha)
-                        : camera.Position;
+                    PlayerEntity main = PlayerEntity.Main;
+                    CameraInfo camera = main.CameraInfo;
+                    if (main.ModReplayPresentationCamera(
+                        Mods.Render.FrameTiming.PresentationAlpha,
+                        out _, out Vector3 replayPosition, out _))
+                    {
+                        _cameraPosition = replayPosition;
+                    }
+                    else
+                    {
+                        bool interpolate = Mods.Render.FrameTiming.Active
+                            && (Mods.SpectatorMode.IsSpectating || Mods.Network.DemoPlayback.IsActive);
+                        _cameraPosition = interpolate
+                            ? camera.ModGetDrawPosition(Mods.Render.FrameTiming.PresentationAlpha)
+                            : camera.Position;
+                    }
                 }
             }
         }
@@ -7943,13 +7963,6 @@ namespace MphRead
             {
                 return;
             }
-
-            // Choose the fractional network/replay playout point for this
-            // picture. The smoothing clock advances at 60 Hz; high-refresh
-            // drawing samples between its completed steps instead of showing
-            // the same puppet pose until the next simulation tick.
-            Mods.Network.NetSmoothing.PreparePresentation(
-                Mods.Render.FrameTiming.PresentationAlpha);
 
             Scene.OnDrawFrame();
             if (!Scene.OnRenderFrame())

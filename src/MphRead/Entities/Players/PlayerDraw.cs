@@ -15,12 +15,23 @@ namespace MphRead.Entities
                 SlotIndex, out Mods.KillCamPlayerPose historicalPose);
 
             Vector3 presentedPosition = default;
+            Vector3 presentedFacing = _facingVector;
             bool presentedAlt = false;
-            bool networkPresented = !historical
-                && Mods.Network.NetSession.Active
-                && SlotIndex != Mods.Network.NetHooks.LocalSlot
-                && Mods.Network.NetSmoothing.SamplePresentation(
-                    SlotIndex, out presentedPosition, out presentedAlt);
+            bool networkPresented = false;
+            if (!historical && Mods.Network.NetSession.Active
+                && SlotIndex != Mods.Network.NetHooks.LocalSlot)
+            {
+                if (Mods.Network.DemoPlayback.IsActive)
+                {
+                    networkPresented = Mods.Network.NetSmoothing.SampleReplayPresentation(
+                        SlotIndex, out presentedPosition, out presentedFacing, out presentedAlt);
+                }
+                else
+                {
+                    networkPresented = Mods.Network.NetSmoothing.SamplePresentation(
+                        SlotIndex, out presentedPosition, out presentedAlt);
+                }
+            }
 
             Vector3 drawPosition = historical
                 ? historicalPose.Position
@@ -31,14 +42,11 @@ namespace MphRead.Entities
             bool drawAltForm = historical ? historicalPose.AltForm : IsAltForm;
             bool drawAlive = historical ? historicalPose.Health > 0 : _health > 0;
 
-            Vector3 drawFacing = historical ? historicalPose.Facing : _facingVector;
-            if (!historical && Mods.Network.DemoPlayback.IsActive
-                && Mods.Render.FrameTiming.Active)
-            {
-                Vector3 smoothedFacing = ModDrawTransform().Row2.Xyz;
-                if (smoothedFacing.LengthSquared > 0.000001f)
-                    drawFacing = smoothedFacing.Normalized();
-            }
+            Vector3 drawFacing = historical
+                ? historicalPose.Facing
+                : Mods.Network.DemoPlayback.IsActive && networkPresented
+                    ? presentedFacing
+                    : _facingVector;
 
             if (!historical && Flags2.TestFlag(PlayerFlags2.Spectating))
             {

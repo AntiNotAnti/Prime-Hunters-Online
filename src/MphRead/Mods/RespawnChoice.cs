@@ -99,6 +99,7 @@ namespace MphRead.Mods
                 // then places and arms them. The order is the whole trick: the
                 // other way round, the new hunter would inherit the old one's
                 // abilities and energy for one life.
+                player.ModPrepareHunterResources(hunter);
                 player.ModSetHunter(hunter);
                 player.Initialize();
             }
