@@ -13,6 +13,7 @@ namespace MphRead.Mods.Network
         public const int MaxSpawns = 56;
         public const int HeaderSize = 3;
         public const int EntrySize = 7;
+        public static int WireSize => HeaderSize + EntrySize * _spawns.Count;
         private const int PickerShift = 2;
         private const int PickerMask = 0xF;
         private const int ReservedMask = 0xC0;
