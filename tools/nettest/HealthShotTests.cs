@@ -77,7 +77,8 @@ namespace MphRead.NetTest
             const ushort matchId = 51;
             const int timeSyncSize = PlayerEntity.SlotCapacity * sizeof(float) * 2;
             int damageGroups = state.DamageEventId == 0 ? 0 : 1;
-            int damageCountOffset = 1 + SnapshotHeader.Size + SnapshotWire.PlayerSize;
+            int damageCountOffset = 1 + SnapshotHeader.Size + SnapshotWire.StateHeaderSize
+                + SnapshotWire.PlayerSize;
             int damageOffset = damageCountOffset + 1;
             int timeOffset = damageOffset + damageGroups * SnapshotWire.DamageGroupSize;
             int healthOffset = timeOffset + timeSyncSize;
@@ -85,7 +86,10 @@ namespace MphRead.NetTest
             bytes[0] = (byte)PacketType.Snapshot;
             new SnapshotHeader { MatchId = matchId, AuthorityEpoch = 4, Frame = frame, PlayerCount = 1 }
                 .Write(bytes.AsSpan(1));
-            state.WriteBase(bytes.AsSpan(1 + SnapshotHeader.Size, SnapshotWire.PlayerSize));
+            SnapshotWire.WriteStateHeader(bytes.AsSpan(1 + SnapshotHeader.Size,
+                SnapshotWire.StateHeaderSize), keyframe: true, (byte)(1 << state.SlotIndex), frame);
+            state.WriteBase(bytes.AsSpan(1 + SnapshotHeader.Size + SnapshotWire.StateHeaderSize,
+                SnapshotWire.PlayerSize));
             bytes[damageCountOffset] = (byte)damageGroups;
             if (damageGroups != 0)
                 SnapshotWire.WriteDamageGroup(state.SlotIndex, state,
