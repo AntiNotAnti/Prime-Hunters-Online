@@ -53,6 +53,9 @@ internal static class MapViewportCheck
             foreach (var size in new[] { new Vector2i(960, 600), new Vector2i(1440, 900), new Vector2i(2880, 1800) })
             {
                 window.ClientSize = size;
+                NativeWindow.ProcessWindowEvents(false);
+                window.Context.SwapBuffers(); // GLX commits the resized drawable at swap.
+                NativeWindow.ProcessWindowEvents(false);
                 // The UI and rendering consume framebuffer pixels, including Retina.
                 var target = window.FramebufferSize;
                 surface.Resize(target.X, target.Y); surface.Show(panel);
@@ -104,12 +107,16 @@ internal static class MapViewportCheck
             var center = label.TranslatePoint(new Point(45, 20), surface.Root)!.Value;
             int px = (int)(center.X / surface.WindowWidth * window.FramebufferSize.X);
             int py = window.FramebufferSize.Y - (int)(center.Y / surface.WindowHeight * window.FramebufferSize.Y);
-            byte[] marker = new byte[3];
-            GL.ReadPixels(px, py, 1, 1, OpenTK.Graphics.OpenGL.PixelFormat.Rgb, PixelType.UnsignedByte, marker);
-            Check(marker[0] > 240 && marker[1] < 40 && marker[2] > 100, "UI overlay remains above GPU geometry");
+            byte[] marker = new byte[4];
+            GL.ReadPixels(px, py, 1, 1, OpenTK.Graphics.OpenGL.PixelFormat.Rgba, PixelType.UnsignedByte, marker);
+            Check(marker[0] > 240 && marker[1] < 40 && marker[2] > 100,
+                $"UI overlay remains above GPU geometry ({px},{py}; {string.Join(',', marker)})");
             surface.Hide(); surface.PrepareMapRenderer();
             Check(viewport.GpuMeshUploads == 0 && GL.GetError() == ErrorCode.NoError, "leaving editor releases renderer");
             window.ClientSize = new(1440, 900);
+            NativeWindow.ProcessWindowEvents(false);
+            window.Context.SwapBuffers();
+            NativeWindow.ProcessWindowEvents(false);
             surface.Resize(window.FramebufferSize.X, window.FramebufferSize.Y);
             var studio = new MapStudioScreen(); studio.Load(MapTemplates.Create("Renderer check", false));
             surface.Show(studio); surface.PrepareMapRenderer();
@@ -123,7 +130,7 @@ internal static class MapViewportCheck
             var backCenter = back.TranslatePoint(new Point(back.Bounds.Width / 2, back.Bounds.Height / 2), surface.Root)!.Value;
             GL.ReadPixels((int)(backCenter.X / surface.WindowWidth * window.FramebufferSize.X),
                 window.FramebufferSize.Y - (int)(backCenter.Y / surface.WindowHeight * window.FramebufferSize.Y),
-                1, 1, OpenTK.Graphics.OpenGL.PixelFormat.Rgb, PixelType.UnsignedByte, marker);
+                1, 1, OpenTK.Graphics.OpenGL.PixelFormat.Rgba, PixelType.UnsignedByte, marker);
             Check(marker[0] > 20 && marker[1] > 20 && marker[2] > 20, "editor toolbar survives GPU composite");
             Check(ReferenceEquals(foregroundPlayers, MphRead.Entities.PlayerEntity.LegacyRegistry)
                 && ReferenceEquals(foregroundState, GameState.Current) && ReferenceEquals(foregroundRandom, Rng.Current),
@@ -165,7 +172,7 @@ internal static class MapViewportCheck
             Console.WriteLine($"MAPVIEWPORT {checks} checks passed.");
             return 0;
         }
-        catch (Exception ex) { Console.Error.WriteLine("MAPVIEWPORT " + ex); return 1; }
+        catch (Exception ex) { Console.WriteLine("MAPVIEWPORT " + ex); return 1; }
         finally { surface.ReleaseMapRenderer(); surface.Hide(); UiOverlay.Release(); }
     }
 }
