@@ -76,12 +76,24 @@ namespace MphRead.NetTest
         {
             const ushort matchId = 51;
             const int timeSyncSize = PlayerEntity.SlotCapacity * sizeof(float) * 2;
-            int healthOffset = 1 + SnapshotHeader.Size + PlayerState.Size + timeSyncSize;
+            int damageGroups = state.DamageEventId == 0 ? 0 : 1;
+            int damageCountOffset = 1 + SnapshotHeader.Size + SnapshotWire.StateHeaderSize
+                + SnapshotWire.PlayerSize;
+            int damageOffset = damageCountOffset + 1;
+            int timeOffset = damageOffset + damageGroups * SnapshotWire.DamageGroupSize;
+            int healthOffset = timeOffset + timeSyncSize;
             byte[] bytes = new byte[healthOffset + NetHealthSync.HeaderSize];
             bytes[0] = (byte)PacketType.Snapshot;
             new SnapshotHeader { MatchId = matchId, AuthorityEpoch = 4, Frame = frame, PlayerCount = 1 }
                 .Write(bytes.AsSpan(1));
-            state.Write(bytes.AsSpan(1 + SnapshotHeader.Size));
+            SnapshotWire.WriteStateHeader(bytes.AsSpan(1 + SnapshotHeader.Size,
+                SnapshotWire.StateHeaderSize), true, (byte)(1 << state.SlotIndex), frame);
+            state.WriteBase(bytes.AsSpan(1 + SnapshotHeader.Size + SnapshotWire.StateHeaderSize,
+                SnapshotWire.PlayerSize));
+            bytes[damageCountOffset] = (byte)damageGroups;
+            if (damageGroups != 0)
+                SnapshotWire.WriteDamageGroup(state.SlotIndex, state,
+                    bytes.AsSpan(damageOffset, SnapshotWire.DamageGroupSize));
             BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(healthOffset), matchId);
             Deliver(bytes);
         }
@@ -319,7 +331,7 @@ namespace MphRead.NetTest
                                 var input = Intent(frame, frame < 60 ? (ushort)7 : (ushort)8, shooting, alive);
                                 input.WeaponSelect = (byte)weapon;
                                 // A dead press repeated in history must not become an alive action.
-                                if (frame is >= 30 and < 35) input.Presses[frame - 30] = (uint)IntentButtons.Shoot;
+                                if (frame is >= 30 and < 35) input.Presses[(int)(frame - 30)] = (uint)IntentButtons.Shoot;
                                 byte[] bytes = new byte[IntentPacket.FullSize]; input.Write(bytes);
                                 queue.Enqueue(frame * 1000.0 / 60, bytes);
                             }

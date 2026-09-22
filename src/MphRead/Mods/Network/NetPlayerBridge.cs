@@ -170,12 +170,11 @@ namespace MphRead.Mods.Network
         /// Record this frame's rising edges, whether or not a packet goes out
         /// this frame.
         ///
-        /// Separate from building the packet because the two happen at
-        /// different rates: edges have to be caught every frame -- a one-frame
-        /// press exists only on the frame it happens -- while packets are sent
-        /// less often to keep the relay from drowning. Folding this into the
-        /// packet build meant a slower send rate silently dropped half of all
-        /// morphs and weapon switches.
+        /// Separate from building the packet because the history is also the
+        /// loss-recovery lane: a one-frame press exists only on the frame it
+        /// happens, while each 60 Hz packet repeats the last few rising edges.
+        /// The dedicated server then carries those edges in the bundle's
+        /// separate redundant event section rather than relaying raw intents.
         /// </summary>
         public static void RecordPresses(PlayerEntity player)
         {
@@ -212,10 +211,8 @@ namespace MphRead.Mods.Network
             // The charge that will be spent by the shot this frame fires, and
             // the ram that will be spent by the boost it releases.
             //
-            // Sampled here rather than in CaptureIntent because this runs
-            // every frame and that one does not: a packet goes out every other
-            // frame, so the current value at capture time is the charge as it
-            // stands *after* the release, which is zero. What the authority
+            // Sampled here before capture so a release observes the charge as
+            // it stood on the firing frame, before gameplay spends it. What the authority
             // needs is the value the trigger was let go on, so it is latched
             // on the frame of the release and held until a packet carries it.
             // Nothing is latched on a frame with no release, and the current
@@ -310,7 +307,7 @@ namespace MphRead.Mods.Network
                 // down and eventually refuses to spawn a beam at all.
                 AmmoUa = (ushort)Math.Clamp(player.ModAmmo.Ua, 0, UInt16.MaxValue),
                 AmmoMissiles = (ushort)Math.Clamp(player.ModAmmo.Missiles, 0, UInt16.MaxValue),
-                Presses = (uint[])_pressHistory.Clone(),
+                // Press history is copied below into the inline value buffer.
                 // What this player's next shot is worth, from the machine that
                 // knows. Everything here was re-derived on the authority from
                 // the buttons above until now, and re-deriving a shooter is a
@@ -347,6 +344,10 @@ namespace MphRead.Mods.Network
                     ? NetSession.AppliedSnapshotFrame
                     : NetSession.LastSnapshotFrame
             };
+            for (int i = 0; i < IntentPacket.PressHistory; i++)
+            {
+                intent.Presses[i] = _pressHistory[i];
+            }
             // And the read point itself, if the puppets are being drawn on a
             // playout clock: that is a point *between* two snapshots, and an
             // integer ack cannot name it. Overwrites the choice above rather
@@ -627,7 +628,7 @@ namespace MphRead.Mods.Network
             out int shootAge)
         {
             shootAge = 0;
-            if (slot < 0 || slot >= _lastPressFrame.Length || intent.Presses == null)
+            if (slot < 0 || slot >= _lastPressFrame.Length)
             {
                 return IntentButtons.None;
             }

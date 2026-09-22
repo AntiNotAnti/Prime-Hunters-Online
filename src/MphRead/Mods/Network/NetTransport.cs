@@ -59,13 +59,16 @@ namespace MphRead.Mods.Network
         private int _inboxCount;
         private int _playbackBytes;
 
-        // Real-time clients do not benefit from processing six obsolete
-        // snapshots after a hitch. Keep only the newest full snapshot and the
-        // newest SlotIntent for each remote slot. Control/event traffic remains
-        // ordered in _inbox, and playback/fault-injection never enables this.
+        // Real-time clients do not benefit from processing obsolete state
+        // after a hitch. Keep only the newest snapshot and newest bundled
+        // observer-input tick (plus legacy per-slot intents). The bundle repeats
+        // recent press events, so replacing an older bundle cannot erase a
+        // one-frame action.
         private volatile bool _coalesceRealtimeState;
         private readonly object _stateLock = new();
+        private ReceivedPacket? _latestSnapshotKeyframe;
         private ReceivedPacket? _latestSnapshot;
+        private ReceivedPacket? _latestIntentBundle;
         private readonly ReceivedPacket?[] _latestSlotIntent =
             new ReceivedPacket?[MphRead.Entities.PlayerEntity.SlotCapacity];
         private long _statePacketsCoalesced;
@@ -130,12 +133,45 @@ namespace MphRead.Mods.Network
             {
                 if (packet.Type == PacketType.Snapshot)
                 {
-                    if (_latestSnapshot.HasValue)
+                    if (SnapshotWire.IsKeyframe(packet.Payload))
                     {
-                        _latestSnapshot.Value.Release();
+                        if (_latestSnapshotKeyframe.HasValue)
+                        {
+                            _latestSnapshotKeyframe.Value.Release();
+                            Interlocked.Increment(ref _statePacketsCoalesced);
+                        }
+                        _latestSnapshotKeyframe = packet;
+
+                        // Any delta queued before this keyframe names an older
+                        // baseline. Keeping it would make the final state in
+                        // this drain depend on a baseline we deliberately
+                        // replaced.
+                        if (_latestSnapshot.HasValue)
+                        {
+                            _latestSnapshot.Value.Release();
+                            _latestSnapshot = null;
+                            Interlocked.Increment(ref _statePacketsCoalesced);
+                        }
+                    }
+                    else
+                    {
+                        if (_latestSnapshot.HasValue)
+                        {
+                            _latestSnapshot.Value.Release();
+                            Interlocked.Increment(ref _statePacketsCoalesced);
+                        }
+                        _latestSnapshot = packet;
+                    }
+                    return true;
+                }
+                if (packet.Type == PacketType.IntentBundle)
+                {
+                    if (_latestIntentBundle.HasValue)
+                    {
+                        _latestIntentBundle.Value.Release();
                         Interlocked.Increment(ref _statePacketsCoalesced);
                     }
-                    _latestSnapshot = packet;
+                    _latestIntentBundle = packet;
                     return true;
                 }
                 if (packet.Type == PacketType.SlotIntent && packet.Length > 1)
@@ -406,11 +442,32 @@ namespace MphRead.Mods.Network
                     }
                 }
 
+                ReceivedPacket? keyframe;
+                ReceivedPacket? bundle;
                 ReceivedPacket? snapshot;
                 lock (_stateLock)
                 {
+                    keyframe = _latestSnapshotKeyframe;
+                    _latestSnapshotKeyframe = null;
+                    bundle = _latestIntentBundle;
+                    _latestIntentBundle = null;
                     snapshot = _latestSnapshot;
                     _latestSnapshot = null;
+                }
+                // A retained delta may depend on the retained keyframe, so the
+                // baseline must enter NetSession first. The latest input bundle
+                // then precedes the latest authoritative picture.
+                if (keyframe.HasValue)
+                {
+                    ReceivedPacket value = keyframe.Value;
+                    try { yield return value; }
+                    finally { value.Release(); }
+                }
+                if (bundle.HasValue)
+                {
+                    ReceivedPacket value = bundle.Value;
+                    try { yield return value; }
+                    finally { value.Release(); }
                 }
                 if (snapshot.HasValue)
                 {
@@ -525,8 +582,12 @@ namespace MphRead.Mods.Network
             }
             lock (_stateLock)
             {
+                if (_latestSnapshotKeyframe.HasValue) _latestSnapshotKeyframe.Value.Release();
+                _latestSnapshotKeyframe = null;
                 if (_latestSnapshot.HasValue) _latestSnapshot.Value.Release();
                 _latestSnapshot = null;
+                if (_latestIntentBundle.HasValue) _latestIntentBundle.Value.Release();
+                _latestIntentBundle = null;
                 for (int i = 0; i < _latestSlotIntent.Length; i++)
                 {
                     if (_latestSlotIntent[i].HasValue) _latestSlotIntent[i]!.Value.Release();

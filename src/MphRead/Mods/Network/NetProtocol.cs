@@ -33,7 +33,7 @@ namespace MphRead.Mods.Network
         Roster = 10,        // server -> clients, who is in which slot
         Identify = 11,      // client -> server, my display name and hunter
         Authority = 12,     // server -> client, you are the simulation authority
-        SlotIntent = 13,    // server -> authority, one peer's input, tagged with its slot
+        SlotIntent = 13,    // compatibility relay -> client authority, one tagged peer input
         StatusQuery = 14,   // anyone -> server, "what is running?" -- claims no slot
         StatusReply = 15,   // server -> asker, the running match plus the player cap
         MatchEnd = 16,      // authority -> server, somebody won or the clock ran out
@@ -65,6 +65,7 @@ namespace MphRead.Mods.Network
         SessionState = 36, LobbyCommand = 37, LobbyCommandResult = 38,
         MatchLoaded = 39, MatchLoadFailed = 40,
         CareerIdentity = 41, // client -> server, short-lived career attribution ticket
+        IntentBundle = 42,   // server -> clients, one tick of compact observer input state/events
         MapDone = 35,        // client -> server, "I have it and it hashes right"
     }
 
@@ -1130,6 +1131,54 @@ namespace MphRead.Mods.Network
         }
     }
 
+    /// <summary>
+    /// Inline, allocation-free history of the last eight rising-edge masks.
+    /// The implicit array conversion exists for tests and tooling; production
+    /// capture/read paths fill this value directly and allocate nothing.
+    /// </summary>
+    public struct PressHistoryBuffer
+    {
+        private uint _0, _1, _2, _3, _4, _5, _6, _7;
+
+        public readonly int Length => IntentPacket.PressHistory;
+
+        public uint this[int index]
+        {
+            readonly get => index switch
+            {
+                0 => _0, 1 => _1, 2 => _2, 3 => _3,
+                4 => _4, 5 => _5, 6 => _6, 7 => _7,
+                _ => throw new ArgumentOutOfRangeException(nameof(index))
+            };
+            set
+            {
+                switch (index)
+                {
+                    case 0: _0 = value; break;
+                    case 1: _1 = value; break;
+                    case 2: _2 = value; break;
+                    case 3: _3 = value; break;
+                    case 4: _4 = value; break;
+                    case 5: _5 = value; break;
+                    case 6: _6 = value; break;
+                    case 7: _7 = value; break;
+                    default: throw new ArgumentOutOfRangeException(nameof(index));
+                }
+            }
+        }
+
+        public readonly bool Any => (_0 | _1 | _2 | _3 | _4 | _5 | _6 | _7) != 0;
+
+        public static implicit operator PressHistoryBuffer(uint[] values)
+        {
+            var history = new PressHistoryBuffer();
+            if (values == null) return history;
+            int count = Math.Min(values.Length, IntentPacket.PressHistory);
+            for (int i = 0; i < count; i++) history[i] = values[i];
+            return history;
+        }
+    }
+
     public struct IntentPacket
     {
         public ushort MatchId;
@@ -1158,8 +1207,8 @@ namespace MphRead.Mods.Network
         /// simulation of the shooter -- the same mistake the aim deltas and
         /// the ammo count were fixed by, with the same symptom. The charge is
         /// a count of frames the trigger was held, and this packet is sent
-        /// every *other* frame over a line that reorders and drops, so the
-        /// authority's count is the owner's give or take a few; on a
+        /// every frame over a line that reorders and drops, so an authority
+        /// re-deriving it can still be the owner's give or take a few; on a
         /// partial-charge weapon the damage is a continuous function of that
         /// count, so the two machines put different numbers on the same shot
         /// every time it is fired. Double damage and the Prime Hunter bonus
@@ -1230,7 +1279,7 @@ namespace MphRead.Mods.Network
         public uint Frame;          // client's frame counter, for ordering
         public IntentButtons Buttons;
         /// <summary>Rising edges for Frame, Frame-1, ... Frame-(PressHistory-1).</summary>
-        public uint[] Presses;
+        public PressHistoryBuffer Presses;
         /// <summary>
         /// Where the sender's gun points, as a direction rather than as this
         /// frame's mouse movement.
@@ -1327,8 +1376,7 @@ namespace MphRead.Mods.Network
             dest[20] = WeaponSelect;
             for (int i = 0; i < PressHistory; i++)
             {
-                BinaryPrimitives.WriteUInt32LittleEndian(dest[(21 + i * 4)..],
-                    Presses != null && i < Presses.Length ? Presses[i] : 0);
+                BinaryPrimitives.WriteUInt32LittleEndian(dest[(21 + i * 4)..], Presses[i]);
             }
             int at = 21 + PressHistory * 4;
             BinaryPrimitives.WriteSingleLittleEndian(dest[at..], Position.X);
@@ -1349,12 +1397,7 @@ namespace MphRead.Mods.Network
 
         public static IntentPacket Read(ReadOnlySpan<byte> src)
         {
-            var presses = new uint[PressHistory];
-            for (int i = 0; i < PressHistory; i++)
-            {
-                presses[i] = BinaryPrimitives.ReadUInt32LittleEndian(src[(21 + i * 4)..]);
-            }
-            return new IntentPacket
+            var packet = new IntentPacket
             {
                 MatchId = BinaryPrimitives.ReadUInt16LittleEndian(src[74..]),
                 AuthorityEpoch = BinaryPrimitives.ReadUInt64LittleEndian(src[76..]),
@@ -1367,7 +1410,6 @@ namespace MphRead.Mods.Network
                     BinaryPrimitives.ReadSingleLittleEndian(src[12..]),
                     BinaryPrimitives.ReadSingleLittleEndian(src[16..])),
                 WeaponSelect = src[20],
-                Presses = presses,
                 Position = new Vector3(
                     BinaryPrimitives.ReadSingleLittleEndian(src[(21 + PressHistory * 4)..]),
                     BinaryPrimitives.ReadSingleLittleEndian(src[(25 + PressHistory * 4)..]),
@@ -1376,17 +1418,170 @@ namespace MphRead.Mods.Network
                 AmmoMissiles = BinaryPrimitives.ReadUInt16LittleEndian(src[(35 + PressHistory * 4)..]),
                 AckFrame = BinaryPrimitives.ReadUInt32LittleEndian(src[(37 + PressHistory * 4)..]),
                 AckSubFrame = src[41 + PressHistory * 4],
-                // Only when it is actually there. A client from before this
-                // block sends Size bytes and nothing more, and reading zeros
-                // out of the end of its datagram would tell the authority that
-                // its charge is nothing and its powerups are gone.
                 HasState = src.Length >= FullSize,
                 ChargeLevel = src.Length >= FullSize ? src[Size] : (byte)0,
                 BoostDamage = src.Length >= FullSize ? src[Size + 1] : (byte)0,
                 ShotFlags = src.Length >= FullSize ? src[Size + 2] : (byte)0,
                 HomingTarget = src.Length >= FullSize ? src[Size + 3] : (byte)0
             };
+            for (int i = 0; i < PressHistory; i++)
+            {
+                packet.Presses[i] = BinaryPrimitives.ReadUInt32LittleEndian(src[(21 + i * 4)..]);
+            }
+            return packet;
         }
+    }
+
+    /// <summary>
+    /// Compact copy of client input sent to observers. The dedicated authority
+    /// still receives the full <see cref="IntentPacket"/>; observers do not
+    /// need sub-frame rewind data or a press-history array inside every state
+    /// entry. Rising edges travel in the bundle's separate redundant event
+    /// section.
+    /// </summary>
+    public struct ObserverIntentState
+    {
+        public const int Size = 49;
+
+        public ushort SlotGeneration;
+        public ushort LifeId;
+        public uint Frame;
+        public IntentButtons Buttons;
+        public Vector3 Aim;
+        public Vector3 Position;
+        public byte WeaponSelect;
+        public ushort AmmoUa;
+        public ushort AmmoMissiles;
+        public uint AckFrame;
+        public byte ChargeLevel;
+        public byte BoostDamage;
+        public byte ShotFlags;
+        public byte HomingTarget;
+
+        public static ObserverIntentState FromIntent(in IntentPacket intent) => new()
+        {
+            SlotGeneration = intent.SlotGeneration,
+            LifeId = intent.LifeId,
+            Frame = intent.Frame,
+            Buttons = intent.Buttons,
+            Aim = intent.Aim,
+            Position = intent.Position,
+            WeaponSelect = intent.WeaponSelect,
+            AmmoUa = intent.AmmoUa,
+            AmmoMissiles = intent.AmmoMissiles,
+            AckFrame = intent.AckFrame,
+            ChargeLevel = intent.ChargeLevel,
+            BoostDamage = intent.BoostDamage,
+            ShotFlags = intent.ShotFlags,
+            HomingTarget = intent.HomingTarget
+        };
+
+        public readonly IntentPacket ToIntent(ushort matchId, ulong authorityEpoch,
+            PressHistoryBuffer presses) => new()
+        {
+            MatchId = matchId,
+            AuthorityEpoch = authorityEpoch,
+            SlotGeneration = SlotGeneration,
+            LifeId = LifeId,
+            Frame = Frame,
+            Buttons = Buttons,
+            Presses = presses,
+            Aim = Aim,
+            Position = Position,
+            WeaponSelect = WeaponSelect,
+            AmmoUa = AmmoUa,
+            AmmoMissiles = AmmoMissiles,
+            AckFrame = AckFrame,
+            AckSubFrame = 0,
+            HasState = true,
+            ChargeLevel = ChargeLevel,
+            BoostDamage = BoostDamage,
+            ShotFlags = ShotFlags,
+            HomingTarget = HomingTarget
+        };
+
+        public readonly void Write(Span<byte> dest)
+        {
+            BinaryPrimitives.WriteUInt16LittleEndian(dest[0..], SlotGeneration);
+            BinaryPrimitives.WriteUInt16LittleEndian(dest[2..], LifeId);
+            BinaryPrimitives.WriteUInt32LittleEndian(dest[4..], Frame);
+            BinaryPrimitives.WriteUInt32LittleEndian(dest[8..], (uint)Buttons);
+            BinaryPrimitives.WriteSingleLittleEndian(dest[12..], Aim.X);
+            BinaryPrimitives.WriteSingleLittleEndian(dest[16..], Aim.Y);
+            BinaryPrimitives.WriteSingleLittleEndian(dest[20..], Aim.Z);
+            BinaryPrimitives.WriteSingleLittleEndian(dest[24..], Position.X);
+            BinaryPrimitives.WriteSingleLittleEndian(dest[28..], Position.Y);
+            BinaryPrimitives.WriteSingleLittleEndian(dest[32..], Position.Z);
+            dest[36] = WeaponSelect;
+            BinaryPrimitives.WriteUInt16LittleEndian(dest[37..], AmmoUa);
+            BinaryPrimitives.WriteUInt16LittleEndian(dest[39..], AmmoMissiles);
+            BinaryPrimitives.WriteUInt32LittleEndian(dest[41..], AckFrame);
+            dest[45] = ChargeLevel;
+            dest[46] = BoostDamage;
+            dest[47] = ShotFlags;
+            dest[48] = HomingTarget;
+        }
+
+        public static ObserverIntentState Read(ReadOnlySpan<byte> src) => new()
+        {
+            SlotGeneration = BinaryPrimitives.ReadUInt16LittleEndian(src[0..]),
+            LifeId = BinaryPrimitives.ReadUInt16LittleEndian(src[2..]),
+            Frame = BinaryPrimitives.ReadUInt32LittleEndian(src[4..]),
+            Buttons = (IntentButtons)BinaryPrimitives.ReadUInt32LittleEndian(src[8..]),
+            Aim = new Vector3(
+                BinaryPrimitives.ReadSingleLittleEndian(src[12..]),
+                BinaryPrimitives.ReadSingleLittleEndian(src[16..]),
+                BinaryPrimitives.ReadSingleLittleEndian(src[20..])),
+            Position = new Vector3(
+                BinaryPrimitives.ReadSingleLittleEndian(src[24..]),
+                BinaryPrimitives.ReadSingleLittleEndian(src[28..]),
+                BinaryPrimitives.ReadSingleLittleEndian(src[32..])),
+            WeaponSelect = src[36],
+            AmmoUa = BinaryPrimitives.ReadUInt16LittleEndian(src[37..]),
+            AmmoMissiles = BinaryPrimitives.ReadUInt16LittleEndian(src[39..]),
+            AckFrame = BinaryPrimitives.ReadUInt32LittleEndian(src[41..]),
+            ChargeLevel = src[45],
+            BoostDamage = src[46],
+            ShotFlags = src[47],
+            HomingTarget = src[48]
+        };
+    }
+
+    public struct IntentBundleHeader
+    {
+        public const int Size = 16;
+        public ushort MatchId;
+        public ulong AuthorityEpoch;
+        public uint AuthorityFrame;
+        public byte StateCount;
+        public byte EventCount;
+
+        public readonly void Write(Span<byte> dest)
+        {
+            BinaryPrimitives.WriteUInt16LittleEndian(dest[0..], MatchId);
+            BinaryPrimitives.WriteUInt64LittleEndian(dest[2..], AuthorityEpoch);
+            BinaryPrimitives.WriteUInt32LittleEndian(dest[10..], AuthorityFrame);
+            dest[14] = StateCount;
+            dest[15] = EventCount;
+        }
+
+        public static IntentBundleHeader Read(ReadOnlySpan<byte> src) => new()
+        {
+            MatchId = BinaryPrimitives.ReadUInt16LittleEndian(src[0..]),
+            AuthorityEpoch = BinaryPrimitives.ReadUInt64LittleEndian(src[2..]),
+            AuthorityFrame = BinaryPrimitives.ReadUInt32LittleEndian(src[10..]),
+            StateCount = src[14],
+            EventCount = src[15]
+        };
+    }
+
+    public static class IntentBundlePacket
+    {
+        public const int StateEntrySize = 1 + ObserverIntentState.Size;
+        public const int EventEntrySize = 1 + IntentPacket.PressHistory * 4;
+
+        public static int SizeFor(int states, int events) =>
+            IntentBundleHeader.Size + states * StateEntrySize + events * EventEntrySize;
     }
 
     /// <summary>
@@ -1446,7 +1641,8 @@ namespace MphRead.Mods.Network
     {
         public ushort SlotGeneration;
         public ushort LifeId;
-        public const int Size = 54 + DamageEvent.Size * DamageHistory;
+        public const int BaseSize = 54;
+        public const int Size = BaseSize + DamageEvent.Size * DamageHistory;
 
         public byte SlotIndex;
         public byte Flags;          // bit 0 = active, bit 1 = alt form, bit 2 = spawned
@@ -1561,7 +1757,7 @@ namespace MphRead.Mods.Network
         /// </summary>
         public const byte FlagBurning = 1 << 7;
 
-        public void Write(Span<byte> dest)
+        public readonly void WriteBase(Span<byte> dest)
         {
             dest[0] = SlotIndex;
             dest[1] = Flags;
@@ -1577,35 +1773,42 @@ namespace MphRead.Mods.Network
             BinaryPrimitives.WriteUInt16LittleEndian(dest[48..], SlotGeneration);
             BinaryPrimitives.WriteUInt16LittleEndian(dest[50..], LifeId);
             BinaryPrimitives.WriteUInt16LittleEndian(dest[52..], DamageEventId);
+        }
+
+        public readonly void Write(Span<byte> dest)
+        {
+            WriteBase(dest);
             for (int i = 0; i < DamageHistory; i++)
             {
-                EventAt(i).Write(dest[(54 + i * DamageEvent.Size)..]);
+                EventAt(i).Write(dest[(BaseSize + i * DamageEvent.Size)..]);
             }
         }
 
+        public static PlayerState ReadBase(ReadOnlySpan<byte> src) => new()
+        {
+            SlotIndex = src[0],
+            Flags = src[1],
+            Position = ReadVec(src[2..]),
+            Speed = ReadVec(src[14..]),
+            Facing = ReadVec(src[26..]),
+            Health = BinaryPrimitives.ReadUInt16LittleEndian(src[38..]),
+            CurrentWeapon = src[40],
+            Team = src[41],
+            Points = BinaryPrimitives.ReadInt16LittleEndian(src[42..]),
+            Kills = BinaryPrimitives.ReadUInt16LittleEndian(src[44..]),
+            Deaths = BinaryPrimitives.ReadUInt16LittleEndian(src[46..]),
+            SlotGeneration = BinaryPrimitives.ReadUInt16LittleEndian(src[48..]),
+            LifeId = BinaryPrimitives.ReadUInt16LittleEndian(src[50..]),
+            DamageEventId = BinaryPrimitives.ReadUInt16LittleEndian(src[52..])
+        };
+
         public static PlayerState Read(ReadOnlySpan<byte> src)
         {
-            var state = new PlayerState
-            {
-                SlotIndex = src[0],
-                Flags = src[1],
-                Position = ReadVec(src[2..]),
-                Speed = ReadVec(src[14..]),
-                Facing = ReadVec(src[26..]),
-                Health = BinaryPrimitives.ReadUInt16LittleEndian(src[38..]),
-                CurrentWeapon = src[40],
-                Team = src[41],
-                Points = BinaryPrimitives.ReadInt16LittleEndian(src[42..]),
-                Kills = BinaryPrimitives.ReadUInt16LittleEndian(src[44..]),
-                Deaths = BinaryPrimitives.ReadUInt16LittleEndian(src[46..]),
-                SlotGeneration = BinaryPrimitives.ReadUInt16LittleEndian(src[48..]),
-                LifeId = BinaryPrimitives.ReadUInt16LittleEndian(src[50..]),
-                DamageEventId = BinaryPrimitives.ReadUInt16LittleEndian(src[52..]),
-                Damage0 = DamageEvent.Read(src[54..]),
-                Damage1 = DamageEvent.Read(src[(54 + DamageEvent.Size)..]),
-                Damage2 = DamageEvent.Read(src[(54 + 2 * DamageEvent.Size)..]),
-                Damage3 = DamageEvent.Read(src[(54 + 3 * DamageEvent.Size)..])
-            };
+            var state = ReadBase(src);
+            state.Damage0 = DamageEvent.Read(src[BaseSize..]);
+            state.Damage1 = DamageEvent.Read(src[(BaseSize + DamageEvent.Size)..]);
+            state.Damage2 = DamageEvent.Read(src[(BaseSize + 2 * DamageEvent.Size)..]);
+            state.Damage3 = DamageEvent.Read(src[(BaseSize + 3 * DamageEvent.Size)..]);
 
             // Keep the existing in-memory convenience fields without paying
             // for a second copy of the newest damage metadata on the wire.
@@ -1639,6 +1842,93 @@ namespace MphRead.Mods.Network
                 BinaryPrimitives.ReadSingleLittleEndian(src[0..]),
                 BinaryPrimitives.ReadSingleLittleEndian(src[4..]),
                 BinaryPrimitives.ReadSingleLittleEndian(src[8..]));
+        }
+    }
+
+    /// <summary>
+    /// Compact snapshot wire layout. The fixed per-player block carries only
+    /// authoritative state; damage histories are emitted as redundant sidecars
+    /// for a short window after a new damage sequence appears.
+    /// </summary>
+    public static class SnapshotWire
+    {
+        public const int PlayerSize = PlayerState.BaseSize;
+        public const int StateHeaderSize = 6; // flags, active-slot mask, keyframe baseline
+        public const byte FlagKeyframe = 1 << 0;
+        public const int KeyframeInterval = 15;
+        public const int DamageGroupSize = 1 + DamageEvent.Size * PlayerState.DamageHistory;
+        public const int DamageRepeatFrames = 12;
+
+        public static void WriteStateHeader(Span<byte> dest, bool keyframe,
+            byte activeMask, uint baselineFrame)
+        {
+            dest[0] = keyframe ? FlagKeyframe : (byte)0;
+            dest[1] = activeMask;
+            BinaryPrimitives.WriteUInt32LittleEndian(dest[2..], baselineFrame);
+        }
+
+        public static bool TryReadStateHeader(ReadOnlySpan<byte> payload,
+            out bool keyframe, out byte activeMask, out uint baselineFrame)
+        {
+            keyframe = false;
+            activeMask = 0;
+            baselineFrame = 0;
+            if (payload.Length < SnapshotHeader.Size + StateHeaderSize) return false;
+            int at = SnapshotHeader.Size;
+            byte flags = payload[at];
+            if ((flags & ~FlagKeyframe) != 0) return false;
+            keyframe = (flags & FlagKeyframe) != 0;
+            activeMask = payload[at + 1];
+            baselineFrame = BinaryPrimitives.ReadUInt32LittleEndian(payload[(at + 2)..]);
+            return true;
+        }
+
+        public static bool IsKeyframe(ReadOnlySpan<byte> payload) =>
+            TryReadStateHeader(payload, out bool keyframe, out _, out _) && keyframe;
+
+        public static bool TryLocateTails(ReadOnlySpan<byte> payload, in SnapshotHeader header,
+            out int damageCountOffset, out int timeOffset)
+        {
+            damageCountOffset = SnapshotHeader.Size + StateHeaderSize
+                + header.PlayerCount * PlayerSize;
+            timeOffset = 0;
+            if (damageCountOffset >= payload.Length) return false;
+            int damageGroups = payload[damageCountOffset];
+            timeOffset = damageCountOffset + 1 + damageGroups * DamageGroupSize;
+            return timeOffset <= payload.Length;
+        }
+
+        public static bool BaseEquals(in PlayerState a, in PlayerState b) =>
+            a.SlotIndex == b.SlotIndex
+            && a.Flags == b.Flags
+            && a.Position == b.Position
+            && a.Speed == b.Speed
+            && a.Facing == b.Facing
+            && a.Health == b.Health
+            && a.CurrentWeapon == b.CurrentWeapon
+            && a.Team == b.Team
+            && a.Points == b.Points
+            && a.Kills == b.Kills
+            && a.Deaths == b.Deaths
+            && a.SlotGeneration == b.SlotGeneration
+            && a.LifeId == b.LifeId
+            && a.DamageEventId == b.DamageEventId;
+
+        public static void WriteDamageGroup(byte slot, in PlayerState state, Span<byte> dest)
+        {
+            dest[0] = slot;
+            for (int i = 0; i < PlayerState.DamageHistory; i++)
+            {
+                state.EventAt(i).Write(dest[(1 + i * DamageEvent.Size)..]);
+            }
+        }
+
+        public static void ApplyDamageGroup(ReadOnlySpan<byte> src, ref PlayerState state)
+        {
+            state.Damage0 = DamageEvent.Read(src[1..]);
+            state.Damage1 = DamageEvent.Read(src[(1 + DamageEvent.Size)..]);
+            state.Damage2 = DamageEvent.Read(src[(1 + 2 * DamageEvent.Size)..]);
+            state.Damage3 = DamageEvent.Read(src[(1 + 3 * DamageEvent.Size)..]);
         }
     }
 
@@ -2065,8 +2355,17 @@ namespace MphRead.Mods.Network
         /// HitClaimPacket. A rescued explosive hit can now preserve the same
         /// directional momentum as the collision that produced the claim.
         /// Mixed v15/v16 peers must be refused because claim entry size changed.
+        ///
+        /// Version 17 changes high-rate replication. Client intents keep their
+        /// full authority-facing layout, but observers receive one compact
+        /// IntentBundle per authority tick with continuous state separated from
+        /// redundant rising-edge histories. Snapshot state uses a slot bitmask,
+        /// 54-byte player bases and independent deltas against a periodic
+        /// keyframe; four-entry damage histories move into short-lived sidecars.
+        /// Mixed v16/v17 peers must be refused because snapshot layout and
+        /// server-to-observer packet types changed.
         /// </summary>
-        public const int ProtocolVersion = 16;
+        public const int ProtocolVersion = 17;
         /// <summary>
         /// Frames between intent packets. One, so every frame.
         ///
