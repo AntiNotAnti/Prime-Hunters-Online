@@ -39,6 +39,8 @@ namespace MphRead.Entities
                     ? Mods.Network.NetPlayerBridge.InFormFor(
                         this, presentedPosition, presentedAlt)
                     : Position;
+            if (!historical && Mods.Network.NetSession.Active && SlotIndex == Mods.Network.NetSession.LocalSlot)
+                drawPosition += ModMovementDrawOffset;
             bool drawAltForm = historical ? historicalPose.AltForm : IsAltForm;
             bool drawAlive = historical ? historicalPose.Health > 0 : _health > 0;
 
@@ -263,7 +265,8 @@ namespace MphRead.Entities
                     _scene.BeginViewModelItems();
                     try
                     {
-                        Matrix4 transform = GetTransformMatrix(_aimVec, _upVector, _gunDrawPos);
+                        Matrix4 transform = GetTransformMatrix(_aimVec, _upVector, _gunDrawPos
+                            + (SlotIndex == Mods.Network.NetSession.LocalSlot ? ModMovementDrawOffset : Vector3.Zero));
                         UpdateTransforms(_gunModel, transform, Recolor);
                         GetDrawItems(_gunModel, _gunModel.Model.Nodes[0], _curAlpha);
                         if (Flags1.TestFlag(PlayerFlags1.DrawGunSmoke))

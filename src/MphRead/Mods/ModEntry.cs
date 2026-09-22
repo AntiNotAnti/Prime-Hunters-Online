@@ -1468,7 +1468,8 @@ namespace MphRead.Mods
                     simMode = parsedSimMode;
                 }
                 Environment.ExitCode = Network.ServerSimCheck.Run(simCheck, simPlayers,
-                    simSeconds, simMode, formCheck: HasFlag(args, "formcheck"));
+                    simSeconds, simMode, formCheck: HasFlag(args, "formcheck"), movementCheck: HasFlag(args, "movementcheck"),
+                    movementHunter: Int32.TryParse(ValueAfter(args, "movementhunter"), out int movementHunter) ? movementHunter : 0);
                 return true;
             }
 

@@ -74,6 +74,7 @@ namespace MphRead.Entities
             {
                 _health = 1;
             }
+            _ySpeed = 0;
             _grounded = Owner.Flags1.TestFlag(PlayerFlags1.Standing);
             EquipInfo.Beams = Owner.EquipInfo.Beams;
             EquipInfo.Weapon = Weapons.Current[3]; // non-affinity Battlehammer
@@ -90,6 +91,30 @@ namespace MphRead.Entities
             position = Position;
             up = Vector3.UnitY;
             facing = FacingVector;
+        }
+
+        private readonly CollisionResult[] _movementResults = new CollisionResult[1];
+        internal float ModMovementYSpeed => _ySpeed;
+        internal bool ModMovementGrounded => _grounded;
+        internal void ModRestoreMovement(Vector3 position, float speed, bool grounded)
+        {
+            Position = position; _ySpeed = speed; _grounded = grounded;
+        }
+        internal void ModStepMovement(ref Vector3 position, ref float speed, ref bool grounded)
+        {
+            if (grounded) return;
+            Vector3 previous = position;
+            speed -= 0.02f / 2;
+            position.Y += speed / 2;
+            if (CollisionDetection.CheckSphereBetweenPoints(previous, position, 0.45f, limit: 1,
+                includeOffset: false, TestFlags.None, _scene, _movementResults) > 0)
+            {
+                var result = _movementResults[0];
+                float distance = 0.45f - (Vector3.Dot(position, result.Plane.Xyz) - result.Plane.W);
+                position = result.Position + result.Plane.Xyz * distance;
+                speed = 0;
+                grounded = true;
+            }
         }
 
         public void Reposition(Vector3 offset, NodeRef nodeRef)
@@ -273,20 +298,9 @@ namespace MphRead.Entities
             {
                 // future: it would be cool to have the halfturret move with platforms, etc.
                 Vector3 prevPos = Position;
-                _ySpeed -= 0.02f / 2; // todo: FPS stuff
-                Position = Position.AddY(_ySpeed / 2); // todo: FPS stuff
-                var results = new CollisionResult[1];
-                if (CollisionDetection.CheckSphereBetweenPoints(prevPos, Position, 0.45f, limit: 1,
-                    includeOffset: false, TestFlags.None, _scene, results) > 0)
-                {
-                    CollisionResult result = results[0];
-                    float dot = Vector3.Dot(Position, result.Plane.Xyz) - result.Plane.W;
-                    dot = 0.45f - dot;
-                    Position = result.Position + result.Plane.Xyz * dot;
-                    _ySpeed = 0;
-                    _grounded = true;
-                    // todo?: wifi stuff
-                }
+                Vector3 position = Position;
+                ModStepMovement(ref position, ref _ySpeed, ref _grounded);
+                Position = position;
                 UpdateLightSources(Position);
                 NodeRef = _scene.UpdateNodeRef(NodeRef, prevPos, Position);
                 ClosestNode = null;

@@ -995,6 +995,14 @@ namespace MphRead.Mods.Network
                         NetLog.Event($"server assigned slot {LocalSlot}");
                     }
                     break;
+                case PacketType.InputCommands when Role == NetRole.Host:
+                    if (NetCommandStream.ValidateBatch(packet.Payload))
+                    {
+                        _compatibilityIntent[0] = (byte)PacketType.Intent;
+                        packet.Payload.Slice(1 + (packet.Payload[0] - 1) * IntentPacket.FullSize, IntentPacket.FullSize).CopyTo(_compatibilityIntent.AsSpan(1));
+                        HandleIntent(new ReceivedPacket(packet.Sender, _compatibilityIntent, _compatibilityIntent.Length), time);
+                    }
+                    break;
                 case PacketType.Intent when Role == NetRole.Host:
                     HandleIntent(packet, time);
                     break;
@@ -1003,6 +1011,9 @@ namespace MphRead.Mods.Network
                     break;
                 case PacketType.IntentBundle when Role == NetRole.Client:
                     HandleIntentBundle(packet);
+                    break;
+                case PacketType.MovementState when Role == NetRole.Client:
+                    if (_hostEndPoint != null && packet.Sender.Equals(_hostEndPoint)) NetMovementPrediction.Receive(packet.Payload);
                     break;
                 case PacketType.Snapshot when Role == NetRole.Client:
                     HandleSnapshot(packet);
@@ -1348,6 +1359,8 @@ namespace MphRead.Mods.Network
             BroadcastHostControl();
         }
 
+        private static readonly byte[] _compatibilityIntent = new byte[1 + IntentPacket.FullSize];
+
         private static void HandleIntent(ReceivedPacket packet, double time)
         {
             if (packet.Payload.Length < IntentPacket.Size)
@@ -1529,6 +1542,7 @@ namespace MphRead.Mods.Network
                 return;
             }
             ContinuousPhase.ResetSlot(slot);
+            NetCommandStream.ResetSlot(slot);
             _lastSlotIntentFrame[slot] = 0;
             RemoteIntentArrived[slot] = 0;
             RemoteIntentValid[slot] = false;
@@ -1739,6 +1753,8 @@ namespace MphRead.Mods.Network
             ServerMatch = state;
             if (newMatch || newEpoch)
             {
+                NetCommandStream.Reset();
+                NetMovementPrediction.Reset();
                 _hasSnapshot = false;
                 _lastSnapshotFrame = SnapshotArrived = AppliedSnapshotFrame = 0;
                 Array.Clear(_snapshotBaselineValid);
@@ -1887,19 +1903,6 @@ namespace MphRead.Mods.Network
                 return;
             }
 
-            // Validate every acknowledgement before committing the keyframe
-            // baseline or any per-slot state. A malformed later slot must not
-            // partially replace the last accepted snapshot.
-            for (int slot = 0; slot < PlayerEntity.SlotCapacity; slot++)
-            {
-                if ((activeMask & (1 << slot)) != 0
-                    && !SnapshotWire.TryReadMovementAck(payload, slot,
-                        out _, out _, out _, out _))
-                {
-                    return;
-                }
-            }
-
             if (keyframe)
             {
                 Array.Clear(_snapshotBaselineValid);
@@ -1947,28 +1950,6 @@ namespace MphRead.Mods.Network
                     break;
                 }
                 damageOffset += SnapshotWire.DamageGroupSize;
-            }
-
-            for (int slot = 0; slot < PlayerEntity.SlotCapacity; slot++)
-            {
-                if ((activeMask & (1 << slot)) == 0)
-                {
-                    RemoteInputFrames[slot] = 0;
-                    RemoteInputPositions[slot] = Vector3.Zero;
-                    RemoteInputSpeeds[slot] = Vector3.Zero;
-                    RemoteInputAltForms[slot] = false;
-                    continue;
-                }
-                if (!SnapshotWire.TryReadMovementAck(payload, slot,
-                    out uint inputFrame, out Vector3 inputPosition,
-                    out Vector3 inputSpeed, out bool inputAlt))
-                {
-                    return;
-                }
-                RemoteInputFrames[slot] = inputFrame;
-                RemoteInputPositions[slot] = inputPosition;
-                RemoteInputSpeeds[slot] = inputSpeed;
-                RemoteInputAltForms[slot] = inputAlt;
             }
 
             _hasSnapshot = true;
@@ -2093,8 +2074,9 @@ namespace MphRead.Mods.Network
             intent.AuthorityEpoch = AuthorityEpoch;
             intent.SlotGeneration = NetPlayerLifecycle.Generation(LocalSlot);
             intent.LifeId = NetPlayerLifecycle.Get(LocalSlot);
+            NetMovementPrediction.Record(intent);
             intent.Write(_scratch);
-            _transport.Send(_hostEndPoint, PacketType.Intent, _scratch.AsSpan(0, IntentPacket.FullSize));
+            NetCommandStream.Send(_transport, _hostEndPoint, intent);
             // A demo only ever contains what this client *received* -- and
             // this client never receives its own SlotIntent back, since it
             // already knows what it pressed. Without this, playback shows
@@ -2266,22 +2248,6 @@ namespace MphRead.Mods.Network
             Span<byte> stateHeader = _scratch.AsSpan(SnapshotHeader.Size,
                 SnapshotWire.StateHeaderSize);
             SnapshotWire.WriteStateHeader(stateHeader, keyframe, activeMask, baselineFrame);
-            for (int slot = 0; slot < PlayerEntity.SlotCapacity; slot++)
-            {
-                if ((activeMask & (1 << slot)) == 0) continue;
-                if (slot == LocalSlot && LocalSlot >= 0
-                    && slot < PlayerEntity.Players.Count)
-                {
-                    PlayerEntity local = PlayerEntity.Players[slot];
-                    SnapshotWire.WriteMovementAck(stateHeader, slot, NetFrame,
-                        local.Position, local.Speed, local.IsAltForm);
-                    continue;
-                }
-                SnapshotWire.WriteMovementAck(stateHeader, slot,
-                    _simulatedInputFrames[slot], _simulatedInputPositions[slot],
-                    _simulatedInputSpeeds[slot], _simulatedInputAltForms[slot]);
-            }
-
             int damageCountOffset = offset++;
             int damageGroups = 0;
             for (int step = 0; step < currentCount; step++)

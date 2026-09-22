@@ -51,7 +51,8 @@ namespace MphRead.NetTest
             MovementHistory();
             MovementCorrections();
             MovementAcknowledgements();
-            MovementSnapshotValidation();
+            MovementCommandTransport();
+            MovementStateWire();
             MovementInputValidation();
             MovementControls();
         }
@@ -180,38 +181,6 @@ namespace MphRead.NetTest
             Check(intent.Aim == Vector3.UnitX && intent.Buttons == IntentButtons.MoveUp && intent.ChargeLevel == 12,
                 "outgoing input uses the simulated aim while preserving pre-simulation controls and charge");
             typeof(NetHooks).GetField("_localIntentPending", PrivateStatic)!.SetValue(null, false);
-        }
-
-        private static void MovementSnapshotValidation()
-        {
-            Session();
-            byte[] valid = Packet(1, State(1));
-            SnapshotWire.WriteMovementAck(valid.AsSpan(1 + SnapshotHeader.Size), 1,
-                10, Vector3.One, Vector3.UnitX, false);
-            Deliver(valid);
-            byte[] malformed = Packet(2, State(1));
-            SnapshotWire.WriteMovementAck(malformed.AsSpan(1 + SnapshotHeader.Size), 1,
-                11, new Vector3(float.NaN, 0, 0), Vector3.Zero, false);
-            Deliver(malformed);
-            Check(NetSession.LastSnapshotFrame == 1 && NetSession.RemoteInputFrames[1] == 10,
-                "malformed movement ack cannot commit snapshot metadata");
-            Deliver(DeltaPacket(3, 1, null));
-            Check(NetSession.LastSnapshotFrame == 3,
-                "malformed movement keyframe cannot poison the accepted delta baseline");
-
-            // Invalid data in a later slot must not clear an earlier slot's ack.
-            var other = State(1); other.SlotIndex = 0; other.SlotGeneration = 9;
-            valid = Packet(4, other);
-            SnapshotWire.WriteMovementAck(valid.AsSpan(1 + SnapshotHeader.Size), 0,
-                12, Vector3.One, Vector3.Zero, false);
-            Deliver(valid);
-            malformed = Packet(5, State(1));
-            int flags = 1 + SnapshotHeader.Size + (SnapshotWire.StateHeaderSize - SnapshotWire.MovementAckBlockSize)
-                + SnapshotWire.MovementAckSize + sizeof(uint);
-            malformed[flags] = 0x80;
-            Deliver(malformed);
-            Check(NetSession.LastSnapshotFrame == 4 && NetSession.RemoteInputFrames[0] == 12,
-                "later malformed movement slot cannot partially clear earlier acknowledgements");
         }
 
         private static void MovementInputValidation()

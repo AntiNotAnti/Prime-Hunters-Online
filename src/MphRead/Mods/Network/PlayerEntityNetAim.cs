@@ -84,6 +84,7 @@ namespace MphRead.Entities
         protected override Matrix4 GetModelTransform(ModelInstance inst, int index)
         {
             Matrix4 transform = base.GetModelTransform(inst, index);
+            if (NetSession.Active && SlotIndex == NetHooks.LocalSlot) transform.Row3.Xyz += ModMovementDrawOffset;
             if (NetSession.Active && SlotIndex != NetHooks.LocalSlot
                 && NetSmoothing.SamplePresentation(SlotIndex,
                     out Vector3 presented, out bool presentedAlt))

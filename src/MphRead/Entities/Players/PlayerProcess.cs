@@ -374,30 +374,7 @@ namespace MphRead.Entities
             {
                 _timeSinceShot++;
             }
-            if (_altAttackCooldown > 0)
-            {
-                _altAttackCooldown--;
-            }
-            if (_boostAimLock > 0)
-            {
-                _boostAimLock--;
-            }
-            if (_jumpPadControlLock > 0)
-            {
-                _jumpPadControlLock--;
-            }
-            if (_jumpPadControlLock == 0)
-            {
-                _lastJumpPad = null;
-            }
-            if (_jumpPadControlLockMin > 0)
-            {
-                _jumpPadControlLockMin--;
-            }
-            if (_timeSinceJumpPad != UInt16.MaxValue)
-            {
-                _timeSinceJumpPad++;
-            }
+            ModTickMovementTimers();
             if (Hunter == Hunter.Samus)
             {
                 if (_bombRefillTimer > 0)
@@ -437,10 +414,6 @@ namespace MphRead.Entities
                 }
             }
             // todo?: FH leftover ammo recharge stuff
-            if (_timeSinceMorphCamera != UInt16.MaxValue)
-            {
-                _timeSinceMorphCamera++;
-            }
             if (Hunter == Hunter.Sylux && _bombOveruse > 0)
             {
                 _bombOveruse--;
@@ -1081,7 +1054,8 @@ namespace MphRead.Entities
                     CameraInfo.Fov = normalFov;
                 }
             }
-            if (_bipedModel2.AnimInfo.Flags[0].TestFlag(AnimFlags.Ended))
+            if (Mods.Network.NetSession.Active) ModTickMovementMorph();
+            else if (_bipedModel2.AnimInfo.Flags[0].TestFlag(AnimFlags.Ended))
             {
                 if (IsMorphing)
                 {
@@ -1271,7 +1245,9 @@ namespace MphRead.Entities
 
         public void ActivateJumpPad(JumpPadEntity jumpPad, Vector3 vector, ushort lockTime)
         {
-            if (_timeSinceJumpPad > 5 * 2) // todo: FPS stuff
+            _movementPadId = jumpPad.Id;
+            _movementPadCooldown = jumpPad.ModCooldownTicks;
+            if (!_movementReplay && _timeSinceJumpPad > 5 * 2) // todo: FPS stuff
             {
                 _soundSource.PlaySfx(SfxId.JUMP_PAD);
             }
@@ -1633,6 +1609,7 @@ namespace MphRead.Entities
 
         private bool TrySwitchForms(bool force = false)
         {
+            if (_movementReplay) return ModReplaySwitchForms();
             if (!force && (IsMorphing || IsUnmorphing || _frozenTimer > 0 || _field6D0 || _deathaltTimer > 0
                     || Flags2.TestFlag(PlayerFlags2.NoFormSwitch)
                     || !IsAltForm && Flags2.TestFlag(PlayerFlags2.BipedStuck)
@@ -1972,6 +1949,7 @@ namespace MphRead.Entities
             }
             EquipInfo.ChargeLevel = 0;
             SetBipedAnimation(PlayerAnimation.Morph, AnimFlags.NoLoop);
+            _movementMorphTicks = (ushort)(_bipedModel2.AnimInfo.FrameCount[0] * 2);
             PlayHunterSfx(HunterSfx.Morph);
         }
 
@@ -1992,6 +1970,7 @@ namespace MphRead.Entities
             // the game stops the boost charge SFX here, but that SFX is empty
             _boostCharge = 0;
             SetBipedAnimation(PlayerAnimation.Unmorph, AnimFlags.NoLoop);
+            _movementMorphTicks = (ushort)(_bipedModel2.AnimInfo.FrameCount[0] * 2);
             if (Flags2.TestFlag(PlayerFlags2.AltAttack))
             {
                 EndAltAttack();

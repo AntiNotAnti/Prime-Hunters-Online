@@ -18,6 +18,7 @@ namespace MphRead.Mods.Network
         {
             if (!NetSession.Active || player.SlotIndex != NetSession.LocalSlot) return;
             _boostFrame = NetSession.NetFrame;
+            player.ModMovementBoostConsumed(_boostFrame);
             _boostDirection = Normalize(direction);
         }
 
@@ -93,6 +94,7 @@ namespace MphRead.Entities
             if (_abilities.TestFlag(AbilityFlags.Boost) && !IsMorphing && AttachedEnemy == null
                 && Mods.Network.NetMovementInput.ConsumeBoost(slot, intent))
             {
+                _movementBoostFrame = intent.BoostFrame;
                 Vector2 direction = Mods.Network.NetMovementInput.Normalize(intent.BoostDirection);
                 SwipeBoostRequested = true;
                 SwipeBoostX = -Vector2.Dot(direction, new Vector2(_altRollLrX, _altRollLrZ));

@@ -157,6 +157,24 @@ namespace MphRead.Entities
             }
         }
 
+        internal void ModReplayMovement(PlayerEntity player)
+        {
+            if (!Active || _targetRoomId != -1) return;
+            Vector3 between = player.Volume.SpherePosition - Position;
+            CollisionResult discard = default;
+            bool near = MathF.Abs(between.Y) < 1.5f && between.X * between.X + between.Z * between.Z < 49
+                && CollisionDetection.CheckCylinderOverlapSphere(player.PrevPosition, player.Volume.SpherePosition,
+                    Position.AddY(1), 1.75f, ref discard);
+            if (!near) { player.ModClearMovementTeleport(Id); return; }
+            if (player.ModCanReplayTeleport(Id)
+                && CollisionDetection.CheckCylinderOverlapSphere(player.PrevPosition, player.Volume.SpherePosition,
+                    Position.AddY(1), _big ? 1.5f : 1, ref discard))
+            {
+                player.ModReplayTeleport(_targetPos.AddY(0.5f), FacingVector, _targetNodeRef);
+                player.ModNoteMovementTeleport(Id);
+            }
+        }
+
         public override bool Process()
         {
             if (_data.Invisible == 0)
@@ -235,6 +253,7 @@ namespace MphRead.Entities
                                     player.AiData.Field118 = 148 * 2; // todo-ai: FPS stuff
                                 }
                                 _triggeredSlots[player.SlotIndex] = true;
+                                player.ModNoteMovementTeleport(Id);
                                 Mods.WorldEvents.NoteTeleport(player, Id);
                             }
                         }
@@ -242,11 +261,13 @@ namespace MphRead.Entities
                     else
                     {
                         _triggeredSlots[player.SlotIndex] = false;
+                        player.ModClearMovementTeleport(Id);
                     }
                 }
                 else
                 {
                     _triggeredSlots[player.SlotIndex] = false;
+                    player.ModClearMovementTeleport(Id);
                 }
             }
             if (!activated && _bool3)

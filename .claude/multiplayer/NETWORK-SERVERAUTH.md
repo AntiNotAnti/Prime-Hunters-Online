@@ -24,18 +24,18 @@ launcher hosting.
   authoritative.** Remote controls run through the same engine movement and
   collision code on the server. `IntentPacket.Position` remains telemetry and
   an observer fallback only; it cannot place an authoritative player or muzzle.
-- **Responsiveness is predicted locally.** A player's own movement still runs
-  immediately on their client. Snapshots echo the newest owner input frame the
-  server actually simulated, paired with the end-of-tick position/velocity
-  from that first simulation. The client compares its history at the same
-  boundary. Input aim is sampled after the tick applies mouse/controller
-  rotation; buttons and charge retain their pre-simulation values. `NetHitPrediction`
-  does the analogous job for outgoing hit feedback.
+- **Responsiveness is predicted locally.** Commands are sequenced by input frame,
+  repeated over eight packets and consumed through a bounded server queue at
+  one command per simulation tick. The client restores complete movement state
+  from its owner-only correction packet and replays unacknowledged commands.
+  Shared world snapshots contain no reconciliation block. Owner corrections
+  run at 30 Hz, with immediate lifecycle, teleport, freeze/form and significant
+  impulse updates. Small corrections are smoothed only for drawing.
 - **Rolling and flick boosts are input.** Intents and observer bundles carry
   a normalized roll basis plus a bounded, repeated flick event with its input
   frame and world direction. Receivers consume each flick once. The server
   computes boost charge, velocity and ram damage; owner boost damage cannot
-  overwrite that result. These wire and simulation changes require protocol 19.
+  overwrite that result. These wire and simulation changes require protocol 20.
 
 ## Historical transition
 
@@ -76,14 +76,14 @@ positions set when the attack begins or the render transforms. The
 | `DedicatedServer.RunsTheMatch` | true for normal game servers. False exists only for compatibility/tests |
 
 The current wire protocol is defined only by `NetConfig.ProtocolVersion`
-(currently 16). Normal server-authority matches never send
+(currently 20). Normal server-authority matches never send
 `PacketType.Authority` to a player. The packet is still understood so legacy
 compatibility tests can exercise the old topology; it is not a normal hosting
 mechanism.
-`HandleIntent` feeds `NetSession.AcceptSlotIntent` one hop earlier than a
-client authority got the same bytes, through the same call, so the ordering
-rule that guards a rejoining player's restarted frame counter is the one that
-has already been debugged.
+`InputCommands` batches are validated before being queued by `NetCommandStream`.
+The simulation selects one command per tick. Observers and canonical replays
+receive the command actually selected for that tick, rather than the newest
+command that happened to arrive at the socket.
 
 **The simulation follows the server the way a client does.** The roster and the
 match state are applied to it through `NetSession.ApplyRoster` /
@@ -292,21 +292,23 @@ not select them.
   server without them exits with an actionable error instead of falling back to
   client authority. Historical pruning measured the headless subset at roughly
   52 MB of extracted data, but that measurement is not a packaging contract.
-- **Movement prediction is intentionally client-side; movement authority is
-  not.** The local player moves without waiting for the round trip, while the
-  server derives canonical position/velocity from controls and collision.
-  Reconciliation uses the snapshot's per-slot processed-input frame rather than
-  a ping estimate, so a delayed authority state is compared with the local
-  prediction from the same instant. The history is a bounded circular buffer.
-  Hard corrections adopt position, form coordinates and velocity together
-  before collision; both hard and velocity corrections invalidate outstanding
-  predictions so older acknowledgements cannot apply the same error again.
-  Expired history recovers from the current authoritative snapshot.
-- **Full input replay remains unimplemented.** The authority consumes the
-  latest input each tick rather than a queue of every client command. The
-  client corrects state without restoring all physics timers/contact state
-  and replaying unacknowledged commands. This is not yet traditional rollback
-  prediction, and latency/loss plus hunter-specific movement need live testing.
+- **Movement replay is implemented and bounded.** `MovementState` captures
+  velocity, acceleration, movement flags, boost/freeze/morph/jump-pad timers,
+  Spire contact orientation and Weavel turret motion. Replay shares the existing
+  physics and suppresses damage, weapon spawns, pickups, audio and world callbacks.
+  Local commands are held in a 128-entry ring. Overflow adopts authoritative
+  state instead of replaying incomplete history; a sustained input outage can
+  rebase an empty server queue without simulating extra ticks.
+- **Dynamic-world rewind is not part of movement replay.** Static map physics,
+  jump pads, same-room teleporters and the owner's turret have replay paths.
+  Other players, doors and moving platforms are queried in their current world
+  state; later owner corrections resolve differences. Real multiplayer visual
+  feel and platform interactions still need live playtesting on supported OSes.
+- **Regression coverage:** `nettest --lifecycle` exercises the production command
+  queue under seeded delay, jitter, loss, duplicates and reordering, plus owner
+  packet validation and outage recovery. Run `-simcheck "TEST PADS" -players 1
+  -seconds 30 -movementcheck -movementhunter N` for N=0..6 to compare live physics
+  with single-step and 3–26-command replay, including injected freeze/impulses.
 - **Real Windows authoritative gameplay still deserves manual coverage with
   extracted data.** CI validates the Windows server binary/startup contract,
   but cannot ship proprietary game files into Actions.

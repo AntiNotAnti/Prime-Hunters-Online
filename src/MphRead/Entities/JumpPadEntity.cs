@@ -65,6 +65,16 @@ namespace MphRead.Entities
             return false;
         }
 
+        internal ushort ModCooldownTicks => (ushort)(_data.CooldownTime * 2);
+        internal void ModReplayMovement(PlayerEntity player)
+        {
+            if (!Active || !player.ModCanReplayJumpPad(Id)) return;
+            bool alt = player.IsAltForm;
+            if (!_data.TriggerFlags.TestFlag(alt ? TriggerFlags.PlayerAlt : TriggerFlags.PlayerBiped)) return;
+            if (_volume.TestPoint(alt ? player.Volume.SpherePosition : player.Position))
+                player.ActivateJumpPad(this, _beamVector, _data.ControlLockTime);
+        }
+
         public override bool Process()
         {
             if (_parent != null)

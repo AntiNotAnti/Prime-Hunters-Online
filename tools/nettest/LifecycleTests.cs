@@ -104,18 +104,10 @@ namespace MphRead.NetTest
             Check(IntentBundlePacket.SizeFor(PlayerEntity.SlotCapacity, PlayerEntity.SlotCapacity)
                 < NetConfig.MaxPacketSize, "worst-case intent bundle exceeds datagram budget");
 
-            Check(NetConfig.ProtocolVersion == 19, "server-authoritative movement protocol version");
+            Check(NetConfig.ProtocolVersion == 20, "server-authoritative movement protocol version");
             SnapshotWire.WriteStateHeader(buffer.AsSpan(SnapshotHeader.Size,
                 SnapshotWire.StateHeaderSize), keyframe: true, activeMask: 0xFF, baselineFrame: 1234);
-            Vector3 ackPosition = new Vector3(4.5f, 8.25f, -2.75f);
-            Vector3 ackSpeed = new Vector3(.2f, -.15f, .05f);
-            SnapshotWire.WriteMovementAck(buffer.AsSpan(SnapshotHeader.Size,
-                SnapshotWire.StateHeaderSize), 3, 5678, ackPosition, ackSpeed, altForm: true);
-            Check(SnapshotWire.TryReadMovementAck(buffer, 3, out uint ackFrame,
-                    out Vector3 readAckPosition, out Vector3 readAckSpeed, out bool readAckAlt)
-                && ackFrame == 5678 && readAckPosition == ackPosition
-                && readAckSpeed == ackSpeed && readAckAlt,
-                "snapshot movement acknowledgement round trip");
+            Check(SnapshotWire.StateHeaderSize == 6, "world snapshots contain no per-owner reconciliation block");
 
             Check(Math.Abs(NetUnlagged.PolicyRewindFrames(10) - 10) < 0.001
                 && Math.Abs(NetUnlagged.PolicyRewindFrames(15) - 15) < 0.001,
@@ -345,13 +337,6 @@ namespace MphRead.NetTest
             state.LifeId = 1;
             Send(owner, PacketType.Snapshot, Snapshot(2, state));
             Check(Field<uint>("_snapshotFrame") == 2, "valid lower frame survives malformed higher frame");
-            byte[] badAck = Snapshot(3, state);
-            SnapshotWire.WriteMovementAck(badAck.AsSpan(SnapshotHeader.Size), 0,
-                10, new Vector3(float.NaN, 0, 0), Vector3.Zero, false);
-            Send(owner, PacketType.Snapshot, badAck);
-            Check(Field<uint>("_snapshotFrame") == 2,
-                "relay refuses a malformed movement acknowledgement before caching it");
-
             var input = new IntentPacket { MatchId = Field<ushort>("_matchId"),
                 AuthorityEpoch = Field<ulong>("_authorityEpoch"), SlotGeneration = 1,
                 LifeId = 1, Frame = 10, Aim = Vector3.UnitZ, Buttons = IntentButtons.MoveUp };

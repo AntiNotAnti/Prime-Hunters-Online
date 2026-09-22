@@ -24,7 +24,7 @@ namespace MphRead.Mods.Network
     public static class ServerSimCheck
     {
         public static int Run(string room, int players, double seconds, GameMode mode,
-            bool formCheck = false)
+            bool formCheck = false, bool movementCheck = false, int movementHunter = 0)
         {
             players = Math.Clamp(players, 1, PlayerEntity.SlotCapacity);
             Console.WriteLine($"[simcheck] \"{room}\" ({mode}), {players} player(s), {seconds:0} s");
@@ -52,14 +52,17 @@ namespace MphRead.Mods.Network
             // Everybody in, before the first step: a slot the roster does not
             // mention is inactive, and an inactive slot is not simulated, so
             // an empty roster would measure an empty room.
-            ApplyRoster(players);
+            ApplyRoster(players, movementHunter);
             int steps = (int)Math.Round(seconds * 60);
-            var driver = new IntentDriver(players);
+            var driver = new IntentDriver(players, movementCheck);
+            var movement = movementCheck ? new MovementSimulationCheck(players) : null;
             var wall = Stopwatch.StartNew();
             for (int i = 0; i < steps; i++)
             {
                 driver.Feed((uint)(i + 1));
+                movement?.BeforeStep();
                 sim.Step();
+                movement?.AfterStep();
             }
             wall.Stop();
             long afterRun = WorkingSetBytes();
@@ -93,7 +96,7 @@ namespace MphRead.Mods.Network
             // could not put anybody in it is a room the server cannot host,
             // and it is worth an exit code so a sweep over every map can be a
             // shell loop.
-            return spawned == players && formPassed ? 0 : 1;
+            return spawned == players && formPassed && (movement?.Report() ?? true) ? 0 : 1;
         }
 
         /// <summary>
@@ -162,7 +165,7 @@ namespace MphRead.Mods.Network
             return passed;
         }
 
-        private static void ApplyRoster(int players)
+        private static void ApplyRoster(int players, int firstHunter = 0)
         {
             NetSession.ApplyMatchState(new MatchStatePacket { MatchId = 1, AuthorityEpoch = 1 }, false);
             RosterPacket roster = RosterPacket.Create();
@@ -175,7 +178,7 @@ namespace MphRead.Mods.Network
                 roster.Generations[roster.Count] = 1;
                 // A different hunter per slot, cycling: eight copies of Samus
                 // would measure one collision volume and one set of weapons.
-                roster.Hunters[roster.Count] = (byte)(i % 7);
+                roster.Hunters[roster.Count] = (byte)((i + Math.Clamp(firstHunter, 0, 6)) % 7);
                 roster.Colors[roster.Count] = 0;
                 roster.Pings[roster.Count] = 0;
                 roster.Names[roster.Count] = $"SIM{i + 1}";
@@ -197,9 +200,13 @@ namespace MphRead.Mods.Network
             private readonly int _players;
             private readonly Vector3[] _at;
 
-            public IntentDriver(int players)
+            private readonly bool _movementOnly;
+            private readonly IntentButtons[] _previous = new IntentButtons[PlayerEntity.SlotCapacity];
+
+            public IntentDriver(int players, bool movementOnly = false)
             {
                 _players = players;
+                _movementOnly = movementOnly;
                 _at = new Vector3[players];
             }
 
@@ -227,7 +234,7 @@ namespace MphRead.Mods.Network
                     {
                         buttons |= IntentButtons.InPlayState;
                     }
-                    if (frame % 20 < 6)
+                    if (!_movementOnly && frame % 20 < 6)
                     {
                         buttons |= IntentButtons.Shoot;
                     }
@@ -241,7 +248,7 @@ namespace MphRead.Mods.Network
                     uint boostFrame = player?.IsAltForm == true && frame % 120 >= 90
                         && frame % 120 < 90 + IntentPacket.PressHistory
                         ? frame - frame % 120 + 90 : 0;
-                    NetSession.AcceptSlotIntent(slot, new IntentPacket
+                    var input = new IntentPacket
                     {
                         Frame = frame,
                         MatchId = NetSession.CurrentMatchId,
@@ -263,7 +270,10 @@ namespace MphRead.Mods.Network
                         // "do not compensate", which is the one case a server
                         // measuring itself must not accidentally measure.
                         AckFrame = frame > 6 ? frame - 6 : 0
-                    });
+                    };
+                    input.Presses[0] = (uint)(buttons & ~_previous[slot]);
+                    _previous[slot] = buttons;
+                    NetSession.AcceptSlotIntent(slot, input);
                 }
             }
         }

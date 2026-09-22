@@ -967,6 +967,10 @@ namespace MphRead.Entities
                 _spawnInvulnTimer = (ushort)(Values.SpawnInvulnerability * 2); // todo: FPS stuff
             }
             _boostCharge = 0;
+            _movementMorphTicks = _movementPadCooldown = 0;
+            _movementBoostFrame = 0;
+            _movementPadId = _movementLastTeleport = -1;
+            MovementVisualOffset = Vector3.Zero;
             _boostAimLock = 0;
             _altAttackCooldown = 0;
             _field4E8 = Vector3.Zero;
@@ -1214,6 +1218,7 @@ namespace MphRead.Entities
 
         public void Teleport(Vector3 position, Vector3 facing, NodeRef nodeRef)
         {
+            _movementTeleportSerial++;
             _soundSource.PlaySfx(SfxId.TELEPORT_OUT, noUpdate: true);
             Reposition(position, facing, nodeRef);
             if (IsAltForm || IsMorphing || IsUnmorphing)

@@ -65,6 +65,8 @@ namespace MphRead.Mods.Network
         SessionState = 36, LobbyCommand = 37, LobbyCommandResult = 38,
         MatchLoaded = 39, MatchLoadFailed = 40,
         CareerIdentity = 41, // client -> server, short-lived career attribution ticket
+        InputCommands = 43, // redundant, ordered owner commands
+        MovementState = 44, // complete owner movement state and processed input
         IntentBundle = 42,   // server -> clients, one tick of compact observer input state/events
         MapDone = 35,        // client -> server, "I have it and it hashes right"
     }
@@ -1894,16 +1896,8 @@ namespace MphRead.Mods.Network
     public static class SnapshotWire
     {
         public const int PlayerSize = PlayerState.BaseSize;
-        private const int BaseStateHeaderSize = 6; // flags, active-slot mask, keyframe baseline
-        // Reconciliation data names the owner input frame and the authority's
-        // position/speed immediately after first simulating that exact input.
-        // Snapshot state itself is the authority's *current* frame, which is
-        // not interchangeable with this historical point under latency.
-        public const int MovementAckSize = sizeof(uint) + 1 + sizeof(float) * 6;
-        public const int MovementAckBlockSize = MovementAckSize * PlayerEntity.SlotCapacity;
-        public const int StateHeaderSize = BaseStateHeaderSize + MovementAckBlockSize;
+        public const int StateHeaderSize = 6; // flags, active-slot mask, keyframe baseline
         public const byte FlagKeyframe = 1 << 0;
-        public const byte MovementAckAltForm = 1 << 0;
         public const int KeyframeInterval = 15;
         public const int DamageGroupSize = 1 + DamageEvent.Size * PlayerState.DamageHistory;
         public const int DamageRepeatFrames = 12;
@@ -1918,85 +1912,6 @@ namespace MphRead.Mods.Network
             dest[1] = activeMask;
             BinaryPrimitives.WriteUInt32LittleEndian(dest[2..], baselineFrame);
         }
-
-        /// <summary>
-        /// Write the authority result produced by the first simulation step
-        /// that consumed <paramref name="frame"/>. This is deliberately not
-        /// the snapshot's current position: comparing a current server state
-        /// with a historical client prediction was the protocol-18 launch bug
-        /// that produced constant corrections, choppy movement and eventually
-        /// false local kill-plane deaths.
-        /// </summary>
-        public static void WriteMovementAck(Span<byte> stateHeader, int slot,
-            uint frame, Vector3 position, Vector3 speed, bool altForm)
-        {
-            if ((uint)slot >= PlayerEntity.SlotCapacity || stateHeader.Length < StateHeaderSize)
-                return;
-            int at = BaseStateHeaderSize + slot * MovementAckSize;
-            BinaryPrimitives.WriteUInt32LittleEndian(stateHeader[at..], frame);
-            stateHeader[at + 4] = altForm ? MovementAckAltForm : (byte)0;
-            WriteVec(stateHeader[(at + 5)..], position);
-            WriteVec(stateHeader[(at + 17)..], speed);
-        }
-
-        // Kept as a narrow helper for replay/test fixtures that only need the
-        // frame. Production snapshots use WriteMovementAck.
-        public static void WriteInputFrame(Span<byte> stateHeader, int slot, uint frame)
-        {
-            if ((uint)slot >= PlayerEntity.SlotCapacity || stateHeader.Length < StateHeaderSize)
-                return;
-            int at = BaseStateHeaderSize + slot * MovementAckSize;
-            BinaryPrimitives.WriteUInt32LittleEndian(stateHeader[at..], frame);
-        }
-
-        public static bool TryReadMovementAck(ReadOnlySpan<byte> payload, int slot,
-            out uint frame, out Vector3 position, out Vector3 speed, out bool altForm)
-        {
-            frame = 0;
-            position = default;
-            speed = default;
-            altForm = false;
-            if ((uint)slot >= PlayerEntity.SlotCapacity
-                || payload.Length < SnapshotHeader.Size + StateHeaderSize)
-            {
-                return false;
-            }
-            int at = SnapshotHeader.Size + BaseStateHeaderSize + slot * MovementAckSize;
-            frame = BinaryPrimitives.ReadUInt32LittleEndian(payload[at..]);
-            byte flags = payload[at + 4];
-            if ((flags & ~MovementAckAltForm) != 0)
-            {
-                return false;
-            }
-            altForm = (flags & MovementAckAltForm) != 0;
-            position = ReadVec(payload[(at + 5)..]);
-            speed = ReadVec(payload[(at + 17)..]);
-            return frame == 0 || (Finite(position) && Finite(speed));
-        }
-
-        public static uint ReadInputFrame(ReadOnlySpan<byte> payload, int slot)
-        {
-            return TryReadMovementAck(payload, slot, out uint frame,
-                out _, out _, out _) ? frame : 0;
-        }
-
-        private static void WriteVec(Span<byte> dest, Vector3 value)
-        {
-            BinaryPrimitives.WriteSingleLittleEndian(dest, value.X);
-            BinaryPrimitives.WriteSingleLittleEndian(dest[4..], value.Y);
-            BinaryPrimitives.WriteSingleLittleEndian(dest[8..], value.Z);
-        }
-
-        private static Vector3 ReadVec(ReadOnlySpan<byte> src)
-        {
-            return new Vector3(
-                BinaryPrimitives.ReadSingleLittleEndian(src),
-                BinaryPrimitives.ReadSingleLittleEndian(src[4..]),
-                BinaryPrimitives.ReadSingleLittleEndian(src[8..]));
-        }
-
-        private static bool Finite(Vector3 value) =>
-            Single.IsFinite(value.X) && Single.IsFinite(value.Y) && Single.IsFinite(value.Z);
 
         public static bool TryReadStateHeader(ReadOnlySpan<byte> payload,
             out bool keyframe, out byte activeMask, out uint baselineFrame)
@@ -2505,7 +2420,9 @@ namespace MphRead.Mods.Network
         // Version 19 pairs movement acknowledgements with end-of-tick state,
         // sends the aim used by that input, adds rolling/flick controls to intents
         // and observer bundles, and keeps form changes authoritative.
-        public const int ProtocolVersion = 19;
+        // Version 20 adds redundant command batches and complete owner-only
+        // movement state, and removes the shared eight-slot reconciliation block.
+        public const int ProtocolVersion = 20;
         /// <summary>
         /// Frames between intent packets. One, so every frame.
         ///

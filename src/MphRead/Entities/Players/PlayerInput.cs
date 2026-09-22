@@ -561,13 +561,16 @@ namespace MphRead.Entities
             {
                 _timeIdle = 0;
             }
-            if (EquipInfo.SmokeLevel < EquipInfo.Weapon.SmokeDrain)
+            if (!_movementReplay)
             {
-                EquipInfo.SmokeLevel = 0;
-            }
-            else
-            {
-                EquipInfo.SmokeLevel -= EquipInfo.Weapon.SmokeDrain;
+                if (EquipInfo.SmokeLevel < EquipInfo.Weapon.SmokeDrain)
+                {
+                    EquipInfo.SmokeLevel = 0;
+                }
+                else
+                {
+                    EquipInfo.SmokeLevel -= EquipInfo.Weapon.SmokeDrain;
+                }
             }
             Vector3 speedDelta = Vector3.Zero;
             PlayerAnimation anim1 = PlayerAnimation.None;
@@ -576,7 +579,7 @@ namespace MphRead.Entities
             AnimFlags animFlags2 = AnimFlags.None;
             if (_frozenTimer == 0 && _health > 0 && !_field6D0)
             {
-                if (Biped1Anim == PlayerAnimation.Turn)
+                if (!_movementReplay && Biped1Anim == PlayerAnimation.Turn)
                 {
                     if (Biped1Frame <= Biped1FrameCount / 2)
                     {
@@ -588,7 +591,7 @@ namespace MphRead.Entities
                     }
                     Biped1Flags |= AnimFlags.NoLoop;
                 }
-                if (Biped2Anim == PlayerAnimation.Turn)
+                if (!_movementReplay && Biped2Anim == PlayerAnimation.Turn)
                 {
                     if (Biped2Frame <= Biped2FrameCount / 2)
                     {
@@ -600,8 +603,8 @@ namespace MphRead.Entities
                     }
                     Biped2Flags |= AnimFlags.NoLoop;
                 }
-                ApplyModAim();
-                if (Controls.MouseAim && !Flags1.TestFlag(PlayerFlags1.NoAimInput) && !IsBot)
+                if (!_movementReplay) ApplyModAim();
+                if (!ModUsesNetworkMovementInput && Controls.MouseAim && !Flags1.TestFlag(PlayerFlags1.NoAimInput) && !IsBot)
                 {
                     // The 1/4 was the whole of the sensitivity setting; it is
                     // now the point where one lives (1.0 = this exact feel).
@@ -663,7 +666,7 @@ namespace MphRead.Entities
                         }
                     }
                 }
-                if (Controls.KeyboardAim || IsBot)
+                if (!ModUsesNetworkMovementInput && (Controls.KeyboardAim || IsBot))
                 {
                     UpdateAimX(_buttonAimX);
                     UpdateAimY(_buttonAimY);
@@ -801,7 +804,7 @@ namespace MphRead.Entities
                             Speed = Speed.WithY(Fixed.ToFloat(Values.JumpSpeed)); // todo: FPS stuff?
                         }
                         _timeSinceGrounded = 8 * 2; // todo: FPS stuff
-                        PlayHunterSfx(HunterSfx.Jump);
+                        if (!_movementReplay) PlayHunterSfx(HunterSfx.Jump);
                     }
                 }
                 // unimpl-controls: the game attempts to play free look SFX, but they don't exist
@@ -832,203 +835,211 @@ namespace MphRead.Entities
                 }
             }
             ProcessMovement();
-            Mods.Network.NetHooks.AfterRemoteMovement(this);
-            UpdateCamera();
-            ModRefreshNetworkAim();
-            UpdateAimVecs();
+            if (!_movementReplay)
+            {
+                Mods.Network.NetHooks.AfterRemoteMovement(this);
+                UpdateCamera();
+                ModRefreshNetworkAim();
+                UpdateAimVecs();
+            }
+            else if (_frozenTimer == 0) ModSetAim(_movementReplayAim);
             if (_frozenTimer == 0 && _health > 0 && !_field6D0)
             {
-                bool scanInput = false;
-                if (ScanVisor)
+                if (!_movementReplay)
                 {
-                    scanInput = true;
-                    if (!_scanning && Controls.Scan.IsPressed || _scanning && Controls.Scan.IsDown)
+                    bool scanInput = false;
+                    if (ScanVisor)
                     {
-                        UpdateScanning(scanning: true);
-                    }
-                    else
-                    {
-                        UpdateScanning(scanning: false);
-                        if (Controls.Scan != Controls.Shoot
-                            && (Controls.Shoot.IsPressed || Controls.Morph.IsPressed))
+                        scanInput = true;
+                        if (!_scanning && Controls.Scan.IsPressed || _scanning && Controls.Scan.IsDown)
                         {
-                            SwitchVisors(reset: false);
-                            scanInput = false;
-                        }
-                    }
-                    if (EquipInfo.ChargeLevel > 0)
-                    {
-                        EquipInfo.ChargeLevel = 0;
-                        StopBeamChargeSfx(CurrentWeapon);
-                    }
-                }
-                if (!scanInput && !IsUnmorphing)
-                {
-                    if (!Controls.Shoot.IsDown)
-                    {
-                        Flags2 &= ~PlayerFlags2.Shooting;
-                    }
-                    else if (Controls.Shoot.IsPressed || !Flags2.TestFlag(PlayerFlags2.NoShotsFired))
-                    {
-                        Flags2 |= PlayerFlags2.Shooting;
-                        Flags2 &= ~PlayerFlags2.NoShotsFired;
-                    }
-                    if (!_availableCharges[CurrentWeapon] || !EquipWeapon.Flags.TestFlag(WeaponFlags.CanCharge))
-                    {
-                        EquipInfo.ChargeLevel = 0;
-                    }
-                    else
-                    {
-                        bool releaseCharge = false;
-                        if (!Flags2.TestFlag(PlayerFlags2.Shooting) || EquipInfo.Ammo < EquipWeapon.ChargeCost)
-                        {
-                            releaseCharge = true; // charge released/insufficient
+                            UpdateScanning(scanning: true);
                         }
                         else
                         {
-                            if (EquipInfo.ChargeLevel > 0 && GunAnimation != GunAnimation.MissileClose)
+                            UpdateScanning(scanning: false);
+                            if (Controls.Scan != Controls.Shoot
+                                && (Controls.Shoot.IsPressed || Controls.Morph.IsPressed))
                             {
-                                // the game doesn't need this condition, but we do because "the next frame will
-                                // overwrite it" type stuff isn't guaranteed to get in ahead of the audio system
-                                if (CurrentWeapon != BeamType.PowerBeam
-                                    || EquipInfo.ChargeLevel >= EquipInfo.Weapon.MinCharge * 2) // todo: FPS stuff
-                                {
-                                    PlayBeamChargeSfx(CurrentWeapon);
-                                }
-                                if (Biped2Flags.TestFlag(AnimFlags.Ended) || Biped2Anim == PlayerAnimation.Charge
-                                    || Biped2Anim == PlayerAnimation.Shoot && Biped2Frame > 8)
-                                {
-                                    anim2 = PlayerAnimation.Charge;
-                                }
+                                SwitchVisors(reset: false);
+                                scanInput = false;
                             }
-                            if (EquipInfo.ChargeLevel >= EquipWeapon.FullCharge * 2) // todo: FPS stuff
+                        }
+                        if (EquipInfo.ChargeLevel > 0)
+                        {
+                            EquipInfo.ChargeLevel = 0;
+                            StopBeamChargeSfx(CurrentWeapon);
+                        }
+                    }
+                    if (!scanInput && !IsUnmorphing)
+                    {
+                        if (!Controls.Shoot.IsDown)
+                        {
+                            Flags2 &= ~PlayerFlags2.Shooting;
+                        }
+                        else if (Controls.Shoot.IsPressed || !Flags2.TestFlag(PlayerFlags2.NoShotsFired))
+                        {
+                            Flags2 |= PlayerFlags2.Shooting;
+                            Flags2 &= ~PlayerFlags2.NoShotsFired;
+                        }
+                        if (!_availableCharges[CurrentWeapon] || !EquipWeapon.Flags.TestFlag(WeaponFlags.CanCharge))
+                        {
+                            EquipInfo.ChargeLevel = 0;
+                        }
+                        else
+                        {
+                            bool releaseCharge = false;
+                            if (!Flags2.TestFlag(PlayerFlags2.Shooting) || EquipInfo.Ammo < EquipWeapon.ChargeCost)
                             {
-                                EquipInfo.SmokeLevel += EquipWeapon.SmokeChargeAmount;
-                                EquipInfo.SmokeLevel = (ushort)Math.Min(EquipInfo.SmokeLevel, EquipWeapon.SmokeStart * 2); // todo: FPS stuff
+                                releaseCharge = true; // charge released/insufficient
                             }
                             else
                             {
-                                EquipInfo.ChargeLevel++;
-                                int minCharge = EquipWeapon.MinCharge * 2; // todo: FPS stuff
-                                if (EquipInfo.ChargeLevel > minCharge)
+                                if (EquipInfo.ChargeLevel > 0 && GunAnimation != GunAnimation.MissileClose)
                                 {
-                                    int fullCharge = EquipWeapon.FullCharge * 2; // todo: FPS stuff
-                                    int chargeCost = EquipWeapon.ChargeCost * 2; // todo: FPS stuff
-                                    int minCost = EquipWeapon.MinChargeCost * 2; // todo: FPS stuff
-                                    int cost = minCost + (chargeCost - minCost) * (EquipInfo.ChargeLevel - minCharge) / (fullCharge - minCharge);
-                                    if (EquipInfo.Ammo < cost / 2) // todo: FPS stuff
+                                    // the game doesn't need this condition, but we do because "the next frame will
+                                    // overwrite it" type stuff isn't guaranteed to get in ahead of the audio system
+                                    if (CurrentWeapon != BeamType.PowerBeam
+                                        || EquipInfo.ChargeLevel >= EquipInfo.Weapon.MinCharge * 2) // todo: FPS stuff
                                     {
-                                        EquipInfo.ChargeLevel--;
+                                        PlayBeamChargeSfx(CurrentWeapon);
+                                    }
+                                    if (Biped2Flags.TestFlag(AnimFlags.Ended) || Biped2Anim == PlayerAnimation.Charge
+                                        || Biped2Anim == PlayerAnimation.Shoot && Biped2Frame > 8)
+                                    {
+                                        anim2 = PlayerAnimation.Charge;
                                     }
                                 }
-                            }
-                            // todo?: auto release
-                        }
-                        if (releaseCharge)
-                        {
-                            StopBeamChargeSfx(CurrentWeapon);
-                            if (EquipInfo.ChargeLevel >= EquipWeapon.MinCharge * 2) // todo: FPS stuff
-                            {
-                                TryFireWeapon();
-                                anim2 = PlayerAnimation.ChargeShoot;
-                                animFlags2 = AnimFlags.NoLoop;
-                            }
-                            EquipInfo.ChargeLevel = 0;
-                        }
-                    }
-                    if (EquipWeapon.Flags.TestFlag(WeaponFlags.CanZoom))
-                    {
-                        if (Controls.Zoom.IsPressed)
-                        {
-                            UpdateZoom(!EquipInfo.Zoomed);
-                        }
-                        if (EquipInfo.Zoomed && CameraSequence.Current == null)
-                        {
-                            // note: the game does this during cam seqs, resulting in the FOV thrashing a bit, but it has no visible effect
-                            // since the sin/cos values for projection are set aside in the cam info update that's already occurred above.
-                            float zoomFov = Fixed.ToFloat(EquipInfo.Weapon.ZoomFov);
-                            Vector3 facing = _facingVector;
-
-                            void CheckZoomTargets(EntityType type)
-                            {
-                                foreach (EntityBase entity in _scene.Entities)
+                                if (EquipInfo.ChargeLevel >= EquipWeapon.FullCharge * 2) // todo: FPS stuff
                                 {
-                                    if (entity.Type != type || entity == this || !entity.GetTargetable())
+                                    EquipInfo.SmokeLevel += EquipWeapon.SmokeChargeAmount;
+                                    EquipInfo.SmokeLevel = (ushort)Math.Min(EquipInfo.SmokeLevel, EquipWeapon.SmokeStart * 2); // todo: FPS stuff
+                                }
+                                else
+                                {
+                                    EquipInfo.ChargeLevel++;
+                                    int minCharge = EquipWeapon.MinCharge * 2; // todo: FPS stuff
+                                    if (EquipInfo.ChargeLevel > minCharge)
                                     {
-                                        continue;
-                                    }
-                                    if (entity.Type == EntityType.Object
-                                        && !((ObjectEntity)entity).Data.EffectFlags.TestFlag(ObjEffFlags.WeaponZoom))
-                                    {
-                                        continue;
-                                    }
-                                    entity.GetPosition(out Vector3 position);
-                                    Vector3 between = position - Position;
-                                    float dot = Vector3.Dot(between, facing);
-                                    if (dot > 1 && dot / between.Length >= Fixed.ToFloat(4074))
-                                    {
-                                        float angle = MathHelper.RadiansToDegrees(MathF.Atan2(3, dot));
-                                        if (angle < zoomFov)
+                                        int fullCharge = EquipWeapon.FullCharge * 2; // todo: FPS stuff
+                                        int chargeCost = EquipWeapon.ChargeCost * 2; // todo: FPS stuff
+                                        int minCost = EquipWeapon.MinChargeCost * 2; // todo: FPS stuff
+                                        int cost = minCost + (chargeCost - minCost) * (EquipInfo.ChargeLevel - minCharge) / (fullCharge - minCharge);
+                                        if (EquipInfo.Ammo < cost / 2) // todo: FPS stuff
                                         {
-                                            zoomFov = angle;
+                                            EquipInfo.ChargeLevel--;
                                         }
                                     }
                                 }
+                                // todo?: auto release
                             }
+                            if (releaseCharge)
+                            {
+                                StopBeamChargeSfx(CurrentWeapon);
+                                if (EquipInfo.ChargeLevel >= EquipWeapon.MinCharge * 2) // todo: FPS stuff
+                                {
+                                    TryFireWeapon();
+                                    anim2 = PlayerAnimation.ChargeShoot;
+                                    animFlags2 = AnimFlags.NoLoop;
+                                }
+                                EquipInfo.ChargeLevel = 0;
+                            }
+                        }
+                        if (EquipWeapon.Flags.TestFlag(WeaponFlags.CanZoom))
+                        {
+                            if (Controls.Zoom.IsPressed)
+                            {
+                                UpdateZoom(!EquipInfo.Zoomed);
+                            }
+                            if (EquipInfo.Zoomed && CameraSequence.Current == null)
+                            {
+                                // note: the game does this during cam seqs, resulting in the FOV thrashing a bit, but it has no visible effect
+                                // since the sin/cos values for projection are set aside in the cam info update that's already occurred above.
+                                float zoomFov = Fixed.ToFloat(EquipInfo.Weapon.ZoomFov);
+                                Vector3 facing = _facingVector;
 
-                            CheckZoomTargets(EntityType.Player);
-                            CheckZoomTargets(EntityType.EnemyInstance);
-                            CheckZoomTargets(EntityType.Object);
-                            zoomFov *= 2;
-                            float currentFov = CameraInfo.Fov;
-                            if (zoomFov > currentFov)
-                            {
-                                currentFov += 2 * 2;
-                                if (currentFov > zoomFov)
+                                void CheckZoomTargets(EntityType type)
                                 {
-                                    currentFov = zoomFov;
+                                    foreach (EntityBase entity in _scene.Entities)
+                                    {
+                                        if (entity.Type != type || entity == this || !entity.GetTargetable())
+                                        {
+                                            continue;
+                                        }
+                                        if (entity.Type == EntityType.Object
+                                            && !((ObjectEntity)entity).Data.EffectFlags.TestFlag(ObjEffFlags.WeaponZoom))
+                                        {
+                                            continue;
+                                        }
+                                        entity.GetPosition(out Vector3 position);
+                                        Vector3 between = position - Position;
+                                        float dot = Vector3.Dot(between, facing);
+                                        if (dot > 1 && dot / between.Length >= Fixed.ToFloat(4074))
+                                        {
+                                            float angle = MathHelper.RadiansToDegrees(MathF.Atan2(3, dot));
+                                            if (angle < zoomFov)
+                                            {
+                                                zoomFov = angle;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                CheckZoomTargets(EntityType.Player);
+                                CheckZoomTargets(EntityType.EnemyInstance);
+                                CheckZoomTargets(EntityType.Object);
+                                zoomFov *= 2;
+                                float currentFov = CameraInfo.Fov;
+                                if (zoomFov > currentFov)
+                                {
+                                    currentFov += 2 * 2;
+                                    if (currentFov > zoomFov)
+                                    {
+                                        currentFov = zoomFov;
+                                    }
+                                }
+                                else if (zoomFov < currentFov)
+                                {
+                                    currentFov -= 2 * 2;
+                                    if (currentFov < zoomFov)
+                                    {
+                                        currentFov = zoomFov;
+                                    }
+                                }
+                                CameraInfo.Fov = currentFov;
+                            }
+                        }
+                        if (Controls.Shoot.IsPressed && EquipInfo.ChargeLevel <= 1 * 2 // todo: FPS stuff
+                            || EquipWeapon.Flags.TestFlag(WeaponFlags.RepeatFire) && Flags2.TestFlag(PlayerFlags2.Shooting)
+                            && (!EquipWeapon.Flags.TestFlag(WeaponFlags.CanCharge) || EquipInfo.ChargeLevel < EquipWeapon.MinCharge * 2)) // todo: FPS stuff
+                        {
+                            if (TryFireWeapon())
+                            {
+                                anim2 = PlayerAnimation.Shoot;
+                                animFlags2 |= AnimFlags.NoLoop;
+                                if (Biped2Anim == PlayerAnimation.Shoot)
+                                {
+                                    SetBiped2Animation(PlayerAnimation.Shoot, Biped2Flags);
                                 }
                             }
-                            else if (zoomFov < currentFov)
-                            {
-                                currentFov -= 2 * 2;
-                                if (currentFov < zoomFov)
-                                {
-                                    currentFov = zoomFov;
-                                }
-                            }
-                            CameraInfo.Fov = currentFov;
                         }
-                    }
-                    if (Controls.Shoot.IsPressed && EquipInfo.ChargeLevel <= 1 * 2 // todo: FPS stuff
-                        || EquipWeapon.Flags.TestFlag(WeaponFlags.RepeatFire) && Flags2.TestFlag(PlayerFlags2.Shooting)
-                        && (!EquipWeapon.Flags.TestFlag(WeaponFlags.CanCharge) || EquipInfo.ChargeLevel < EquipWeapon.MinCharge * 2)) // todo: FPS stuff
-                    {
-                        if (TryFireWeapon())
+                        // the game doesn't require pressed here, but presumably the control scheme would have the pressed flag
+                        // todo: use the ability flag for the morph touch button too, even though the game doesn't
+                        if (!Flags2.TestFlag(PlayerFlags2.BipedStuck) && _abilities.TestFlag(AbilityFlags.AltForm)
+                            && Controls.Morph.IsPressed || IsMainPlayer && CameraSequence.Current?.ForceAlt == true)
                         {
-                            anim2 = PlayerAnimation.Shoot;
-                            animFlags2 |= AnimFlags.NoLoop;
-                            if (Biped2Anim == PlayerAnimation.Shoot)
+                            if (TrySwitchForms() && IsMainPlayer && IsMorphing)
                             {
-                                SetBiped2Animation(PlayerAnimation.Shoot, Biped2Flags);
+                                // the game only does this when using the touch screen button, but this is equivalent,
+                                // and we want to call this beause it updates the reticle expansion
+                                HudOnMorphStart();
                             }
+                            anim1 = PlayerAnimation.Morph;
+                            anim2 = PlayerAnimation.Morph;
                         }
-                    }
-                    // the game doesn't require pressed here, but presumably the control scheme would have the pressed flag
-                    // todo: use the ability flag for the morph touch button too, even though the game doesn't
-                    if (!Flags2.TestFlag(PlayerFlags2.BipedStuck) && _abilities.TestFlag(AbilityFlags.AltForm)
-                        && Controls.Morph.IsPressed || IsMainPlayer && CameraSequence.Current?.ForceAlt == true)
-                    {
-                        if (TrySwitchForms() && IsMainPlayer && IsMorphing)
-                        {
-                            // the game only does this when using the touch screen button, but this is equivalent,
-                            // and we want to call this beause it updates the reticle expansion
-                            HudOnMorphStart();
-                        }
-                        anim1 = PlayerAnimation.Morph;
-                        anim2 = PlayerAnimation.Morph;
                     }
                 }
+                else if (_abilities.TestFlag(AbilityFlags.AltForm) && Controls.Morph.IsPressed) TrySwitchForms();
                 float magBefore = MathF.Sqrt(Speed.X * Speed.X + Speed.Z * Speed.Z);
                 Speed += speedDelta; // todo: FPS stuff?
                 float magAfter = MathF.Sqrt(Speed.X * Speed.X + Speed.Z * Speed.Z);
@@ -1051,6 +1062,7 @@ namespace MphRead.Entities
                     _facingVector += diff * 0.3f / 2; // todo: FPS stuff
                     _facingVector = _facingVector.Normalized();
                 }
+                if (_movementReplay) return;
                 if (anim1 == PlayerAnimation.None)
                 {
                     if (Flags1.TestFlag(PlayerFlags1.Grounded))
@@ -1328,7 +1340,7 @@ namespace MphRead.Entities
                 {
                     Flags1 &= ~PlayerFlags1.AltDirOverride;
                 }
-                if (_timeSinceMorphCamera > 10 * 2 && !Flags1.TestFlag(PlayerFlags1.AltDirOverride) // todo: FPS stuff
+                if (!_movementReplay && _timeSinceMorphCamera > 10 * 2 && !Flags1.TestFlag(PlayerFlags1.AltDirOverride) // todo: FPS stuff
                     && (MathF.Abs(CameraInfo.Field48) >= 1 / 4096f || MathF.Abs(CameraInfo.Field4C) >= 1 / 4096f))
                 {
                     _altRollFbX = CameraInfo.Field48;
@@ -1337,7 +1349,7 @@ namespace MphRead.Entities
                     _altRollLrZ = CameraInfo.Field54;
                 }
                 // todo?: field35C targeting(?) stuff
-                ModNetworkRollInput();
+                if (!_movementReplay) ModNetworkRollInput();
 
                 void UpdateAnimation(float aimX, float aimY)
                 {
@@ -1385,8 +1397,8 @@ namespace MphRead.Entities
                     // is the same turn the mouse makes: without it a pad could
                     // walk and shoot in alt form but not look, and a puppet in
                     // alt form faced wherever its last snapshot left it.
-                    ApplyModAim();
-                    if (Controls.MouseAim && !Flags1.TestFlag(PlayerFlags1.NoAimInput) && !IsBot)
+                    if (!_movementReplay) ApplyModAim();
+                    if (!ModUsesNetworkMovementInput && Controls.MouseAim && !Flags1.TestFlag(PlayerFlags1.NoAimInput) && !IsBot)
                     {
                         float aimY = -Input.MouseDeltaY / 4f * Mods.InputSettings.MouseSensitivity
                             * (Mods.InputSettings.InvertMouseY ? -1 : 1);
@@ -1407,7 +1419,7 @@ namespace MphRead.Entities
                         UpdateAimX(aimX);
                         UpdateAnimation(aimX, aimY);
                     }
-                    if (Controls.KeyboardAim || IsBot)
+                    if (!ModUsesNetworkMovementInput && (Controls.KeyboardAim || IsBot))
                     {
                         UpdateAimX(_buttonAimX);
                         UpdateAimY(_buttonAimY);
@@ -1549,7 +1561,7 @@ namespace MphRead.Entities
                 }
                 if (!IsMorphing)
                 {
-                    if (_abilities.TestFlag(AbilityFlags.Bombs) && Controls.AltAttack.IsPressed
+                    if (!_movementReplay && _abilities.TestFlag(AbilityFlags.Bombs) && Controls.AltAttack.IsPressed
                         && _bombAmmo > 0 && _bombCooldown == 0 && _field35C == null)
                     {
                         SpawnBomb();
@@ -1561,21 +1573,21 @@ namespace MphRead.Entities
                             if (Controls.AltAttack.IsPressed)
                             {
                                 _altAttackTime = 1;
-                                _altModel.SetAnimation((int)NoxusAltAnim.Extend, AnimFlags.NoLoop);
+                                if (!_movementReplay) _altModel.SetAnimation((int)NoxusAltAnim.Extend, AnimFlags.NoLoop);
                             }
                             else if (_altAttackTime > 0)
                             {
                                 _altAttackTime++;
                                 if (_altAttackTime == 7 * 2) // todo: FPS stuff
                                 {
-                                    _soundSource.PlaySfx(SfxId.NOX_TOP_ATTACK1);
+                                    if (!_movementReplay) _soundSource.PlaySfx(SfxId.NOX_TOP_ATTACK1);
                                 }
                                 else
                                 {
                                     int startupTime = Values.AltAttackStartup * 2; // todo: FPS stuff
                                     if (_altAttackTime == startupTime / 2)
                                     {
-                                        _soundSource.PlaySfx(SfxId.NOX_TOP_ATTACK2, loop: true);
+                                        if (!_movementReplay) _soundSource.PlaySfx(SfxId.NOX_TOP_ATTACK2, loop: true);
                                     }
                                     else if (_altAttackTime >= startupTime)
                                     {
@@ -1592,7 +1604,7 @@ namespace MphRead.Entities
                             EndAltAttack();
                         }
                     }
-                    if (_abilities.TestFlag(AbilityFlags.SpireAltAttack))
+                    if (!_movementReplay && _abilities.TestFlag(AbilityFlags.SpireAltAttack))
                     {
                         if (Flags2.TestFlag(PlayerFlags2.AltAttack))
                         {
@@ -1604,8 +1616,8 @@ namespace MphRead.Entities
                         else if (Controls.AltAttack.IsPressed)
                         {
                             Flags2 |= PlayerFlags2.AltAttack;
-                            _altModel.SetAnimation((int)SpireAltAnim.Attack, AnimFlags.NoLoop);
-                            _soundSource.PlaySfx(SfxId.SPIRE_ALT_ATTACK);
+                            if (!_movementReplay) _altModel.SetAnimation((int)SpireAltAnim.Attack, AnimFlags.NoLoop);
+                            if (!_movementReplay) _soundSource.PlaySfx(SfxId.SPIRE_ALT_ATTACK);
                             _spireRockPosR = Position;
                             _spireRockPosL = Position;
                             _spireAltUp = _fieldC0;
@@ -1646,7 +1658,7 @@ namespace MphRead.Entities
                             }
                             animId = (int)TraceAltAnim.Attack;
                             animFlags = AnimFlags.NoLoop;
-                            _soundSource.PlaySfx(SfxId.TRACE_ALT_ATTACK);
+                            if (!_movementReplay) _soundSource.PlaySfx(SfxId.TRACE_ALT_ATTACK);
                         }
                     }
                     if (_abilities.TestFlag(AbilityFlags.WeavelAltAttack))
@@ -1683,7 +1695,7 @@ namespace MphRead.Entities
                             }
                             animId = (int)WeavelAltAnim.Attack;
                             animFlags = AnimFlags.NoLoop;
-                            _soundSource.PlaySfx(SfxId.WEAVEL_ALT_ATTACK);
+                            if (!_movementReplay) _soundSource.PlaySfx(SfxId.WEAVEL_ALT_ATTACK);
                         }
                     }
                     if (_abilities.TestFlag(AbilityFlags.Boost) && AttachedEnemy == null)
@@ -1696,7 +1708,7 @@ namespace MphRead.Entities
                         // A whip of the mouse or desktop stylus is the same gesture from
                         // the pointer's end and asks for the boost through the same
                         // one-shot. See Mods.Input.MouseFlick.
-                        ModCheckMouseFlick(buttonBoost);
+                        if (!_movementReplay) ModCheckMouseFlick(buttonBoost);
                         // A touch platform's swipe gesture is a flick, not a
                         // hold-and-release: it forces a full charge straight
                         // into the release branch below instead of building
@@ -1764,7 +1776,7 @@ namespace MphRead.Entities
                                 }
                             }
                         }
-                        if (swipeBoost)
+                        if (swipeBoost && !_movementReplay)
                         {
                             Mods.Network.NetMovementInput.RecordBoost(this, new Vector2(boostDirX, boostDirZ));
                         }
@@ -1793,7 +1805,7 @@ namespace MphRead.Entities
                                 if (_boostCharge > 0)
                                 {
                                     int sfx = Metadata.HunterSfx[(int)Hunter, (int)HunterSfx.Boost];
-                                    _soundSource.PlaySfx(sfx);
+                                    if (!_movementReplay) _soundSource.PlaySfx(sfx);
                                 }
                                 float boostHCap = Fixed.ToFloat(Values.BoostSpeedCap) * _boostCharge
                                     / (Values.BoostChargeMax * 2); // todo: FPS stuff
@@ -1848,32 +1860,35 @@ namespace MphRead.Entities
                                 speedDelta = speedDelta.AddX(boostDirX * factor).AddZ(boostDirZ * factor);
                                 _altAttackCooldown = (ushort)(Values.AltAttackCooldown * 2); // todo: FPS stuff
                                 Flags1 |= PlayerFlags1.Boosting;
-                                ModControllerFeedback(Mods.Input.GamepadFeedback.Boost);
+                                if (!_movementReplay) ModControllerFeedback(Mods.Input.GamepadFeedback.Boost);
                                 _boostDamage = (ushort)(Values.AltAttackDamage * _boostCharge / (Values.BoostChargeMax * 2)); // todo: FPS stuff
-                                if (IsMainPlayer)
+                                if (!_movementReplay)
                                 {
-                                    _boostInst.SetAnimation(start: 0, target: 10, frames: 11, afterAnim: 0);
-                                }
-                                if (_boostEffect != null)
-                                {
-                                    _scene.UnlinkEffectEntry(_boostEffect);
-                                    _boostEffect = null;
-                                }
-                                // The dash trail goes with the boost. Aimed
-                                // sideways it would otherwise streak along the
-                                // way the ball was pointing while the ball
-                                // left in another direction entirely. The
-                                // vectors are built the way _gunVec2 is built
-                                // from the facing, so an unaimed boost spawns
-                                // exactly what it always did.
-                                Vector3 boostVec1 = boostAimed
-                                    ? new Vector3(boostDirZ, 0, -boostDirX) : _gunVec2;
-                                Vector3 boostVec2 = boostAimed
-                                    ? new Vector3(boostDirX, 0, boostDirZ) : _facingVector;
-                                _boostEffect = _scene.SpawnEffectGetEntry(136, boostVec1, boostVec2, Position); // samusDash
-                                if (_boostEffect != null)
-                                {
-                                    _boostEffect.SetElementExtension(true);
+                                    if (IsMainPlayer)
+                                    {
+                                        _boostInst.SetAnimation(start: 0, target: 10, frames: 11, afterAnim: 0);
+                                    }
+                                    if (_boostEffect != null)
+                                    {
+                                        _scene.UnlinkEffectEntry(_boostEffect);
+                                        _boostEffect = null;
+                                    }
+                                    // The dash trail goes with the boost. Aimed
+                                    // sideways it would otherwise streak along the
+                                    // way the ball was pointing while the ball
+                                    // left in another direction entirely. The
+                                    // vectors are built the way _gunVec2 is built
+                                    // from the facing, so an unaimed boost spawns
+                                    // exactly what it always did.
+                                    Vector3 boostVec1 = boostAimed
+                                        ? new Vector3(boostDirZ, 0, -boostDirX) : _gunVec2;
+                                    Vector3 boostVec2 = boostAimed
+                                        ? new Vector3(boostDirX, 0, boostDirZ) : _facingVector;
+                                    _boostEffect = _scene.SpawnEffectGetEntry(136, boostVec1, boostVec2, Position); // samusDash
+                                    if (_boostEffect != null)
+                                    {
+                                        _boostEffect.SetElementExtension(true);
+                                    }
                                 }
                             }
                             _boostCharge = 0;
@@ -1918,18 +1933,21 @@ namespace MphRead.Entities
                     {
                         if ((info.Index[0] != 1 || info.Flags[0].TestFlag(AnimFlags.Ended)) && animId != info.Index[0])
                         {
-                            _altModel.SetAnimation(animId, animFlags);
+                            if (!_movementReplay) _altModel.SetAnimation(animId, animFlags);
                         }
                     }
                     else if (info.Index[0] != 0 && (!info.Flags[0].TestFlag(AnimFlags.NoLoop) || info.Flags[0].TestFlag(AnimFlags.Ended)))
                     {
-                        _altModel.SetAnimation(0);
+                        if (!_movementReplay) _altModel.SetAnimation(0);
                     }
                 }
             }
             ProcessMovement();
-            Mods.Network.NetHooks.AfterRemoteMovement(this);
-            UpdateCamera();
+            if (!_movementReplay)
+            {
+                Mods.Network.NetHooks.AfterRemoteMovement(this);
+                UpdateCamera();
+            }
         }
 
         private void SpawnBomb()
@@ -2064,13 +2082,13 @@ namespace MphRead.Entities
             {
                 if (_altAttackTime > 0)
                 {
-                    _soundSource.StopSfx(SfxId.NOX_TOP_ATTACK1);
-                    _soundSource.StopSfx(SfxId.NOX_TOP_ATTACK2);
+                    if (!_movementReplay) _soundSource.StopSfx(SfxId.NOX_TOP_ATTACK1);
+                    if (!_movementReplay) _soundSource.StopSfx(SfxId.NOX_TOP_ATTACK2);
                     if (_altAttackTime >= Values.AltAttackStartup / 2 * 2) // todo: FPS stuff
                     {
-                        _soundSource.PlaySfx(SfxId.NOX_TOP_ATTACK3);
+                        if (!_movementReplay) _soundSource.PlaySfx(SfxId.NOX_TOP_ATTACK3);
                     }
-                    _altModel.SetAnimation((int)NoxusAltAnim.Extend, AnimFlags.Paused);
+                    if (!_movementReplay) _altModel.SetAnimation((int)NoxusAltAnim.Extend, AnimFlags.Paused);
                     _altAttackTime = 0;
                 }
             }
@@ -2221,7 +2239,7 @@ namespace MphRead.Entities
                     slideSfxAmount = 0xFFFF * _hSpeedMag / Fixed.ToFloat(Values.WalkSpeedCap);
                 }
             }
-            UpdateSlidingSfx(slideSfxAmount);
+            if (!_movementReplay) UpdateSlidingSfx(slideSfxAmount);
             Vector3 speedMul = Speed.WithX(Speed.X * speedFactor).WithZ(Speed.Z * speedFactor);
             Speed += (speedMul - Speed) / 2; // todo: FPS stuff
             if (Flags1.TestFlag(PlayerFlags1.UsedJumpPad))
@@ -2291,14 +2309,14 @@ namespace MphRead.Entities
                 // --> does so outside of the _health > 0 condition, before the player collision check (which is inside another _health > 0)
                 CheckPlayerCollision();
             }
-            if (Hunter == Hunter.Kanden && IsAltForm && Flags1.TestFlag(PlayerFlags1.Standing))
+            if (!_movementReplay && Hunter == Hunter.Kanden && IsAltForm && Flags1.TestFlag(PlayerFlags1.Standing))
             {
                 for (int i = 1; i < _kandenSegPos.Length; i++)
                 {
                     _kandenSegPos[i] = _kandenSegPos[i].AddY(-0.1f / 2); // todo: FPS stuff
                 }
             }
-            if (_standingEntCol != null)
+            if (!_movementReplay && _standingEntCol != null)
             {
                 Vector3 position = Matrix.Vec3MultMtx4(Position, _standingEntCol.Inverse2);
                 Position = Matrix.Vec3MultMtx4(position, _standingEntCol.Transform);
@@ -2350,7 +2368,7 @@ namespace MphRead.Entities
             }
             if (_standTerrain != prevTerrain)
             {
-                StopTerrainSfx(prevTerrain);
+                if (!_movementReplay) StopTerrainSfx(prevTerrain);
             }
             if (Flags1.TestFlag(PlayerFlags1.Standing) && !Flags1.TestFlag(PlayerFlags1.StandingPrevious))
             {
@@ -2369,7 +2387,7 @@ namespace MphRead.Entities
                     }
                     if (PrevSpeed.Y < -0.65f)
                     {
-                        CameraInfo.SetShake(Fixed.ToFloat(204));
+                        if (!_movementReplay) CameraInfo.SetShake(Fixed.ToFloat(204));
                     }
                 }
             }
@@ -2379,7 +2397,7 @@ namespace MphRead.Entities
             }
             if (IsAltForm)
             {
-                UpdateAltTransform();
+                if (!_movementReplay || Hunter != Hunter.Kanden) UpdateAltTransform();
             }
             if (Flags1.TestFlag(PlayerFlags1.Grounded))
             {
@@ -2411,10 +2429,10 @@ namespace MphRead.Entities
             {
                 burning = true;
             }
-            UpdateBurningSfx(burning);
+            if (!_movementReplay) UpdateBurningSfx(burning);
             if ((!IsAltForm || Hunter == Hunter.Weavel) && Flags1.TestFlag(PlayerFlags1.Grounded))
             {
-                UpdateWalkingSfx();
+                if (!_movementReplay) UpdateWalkingSfx();
             }
         }
 

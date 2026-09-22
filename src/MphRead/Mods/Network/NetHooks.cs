@@ -222,23 +222,7 @@ namespace MphRead.Mods.Network
             // restoring the owner's reported Position here would turn the
             // server back into a relay and discard collision, knockback and
             // every other authoritative movement effect.
-            if (NetSession.IsAuthority || NetSession.IsHost)
-            {
-                if (NetSession.RemoteIntentValid[slot])
-                {
-                    IntentPacket intent = NetSession.RemoteIntents[slot];
-                    if (NetPlayerLifecycle.Matches(slot,
-                        intent.SlotGeneration, intent.LifeId))
-                    {
-                        // Mark the first step consuming this input. The final
-                        // result is captured at the same end-of-tick boundary
-                        // as client prediction, after other entities run too.
-                        NetSession.MarkMovementSimulated(slot, intent.Frame,
-                            player.Position, player.Speed, player.IsAltForm);
-                    }
-                }
-                return;
-            }
+            if (NetSession.IsAuthority || NetSession.IsHost) return;
             // A client whose puppets belong to the snapshot puts them back
             // where the snapshot said, not where the owner's intent did.
             // Skipping the restore altogether -- which is what this did on its
@@ -321,6 +305,7 @@ namespace MphRead.Mods.Network
             }
 
             bool movementAuthority = NetSession.IsAuthority || NetSession.IsHost;
+            if (movementAuthority) NetCommandStream.SelectForTick(slot);
 
             // Observer clients collide and aim against the same snapshot world
             // they draw. The authority has no snapshot to follow: it derives
@@ -467,7 +452,8 @@ namespace MphRead.Mods.Network
                 // A hard authority correction is queued when a snapshot is
                 // adopted. Apply it here, before this frame's simulation and
                 // collision sweep, never after physics has already finished.
-                NetPlayerBridge.ApplyPendingLocalCorrection(player);
+                if (!NetMovementPrediction.Active) NetPlayerBridge.ApplyPendingLocalCorrection(player);
+                NetMovementPrediction.Apply(player);
 
                 // Between the input step and the intent capture, so a
                 // scripted player's keys reach both the local simulation and
@@ -555,10 +541,6 @@ namespace MphRead.Mods.Network
                 {
                     player.ModRepairVectors();
                     player.ModRecordNetworkPosition(NetSession.NetFrame);
-                    if (NetSession.IsHost || NetSession.IsAuthority)
-                    {
-                        NetSession.CompleteMovementSimulation(player);
-                    }
                 }
             }
             // Also for a client the dedicated server designated as authority:

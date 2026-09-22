@@ -616,17 +616,13 @@ namespace MphRead.Mods.Network
                 // presses from before this client was listening.
                 _pressSeen[slot] = true;
                 _lastPressFrame[slot] = intent.Frame;
-                return IntentButtons.None;
+                return NetCommandStream.Enabled(slot) ? (IntentButtons)intent.Presses[0] : IntentButtons.None;
             }
             IntentButtons missed = IntentButtons.None;
             for (int i = intent.Presses.Length - 1; i >= 0; i--)
             {
-                if (intent.Frame < (uint)i)
-                {
-                    continue;
-                }
-                uint frame = intent.Frame - (uint)i;
-                if (frame <= _lastPressFrame[slot])
+                uint frame = unchecked(intent.Frame - (uint)i);
+                if (!NetLifecycleTracker.Newer(frame, _lastPressFrame[slot]))
                 {
                     continue;
                 }
@@ -644,7 +640,7 @@ namespace MphRead.Mods.Network
             // Every frame up to this packet is now accounted for, whether or
             // not it carried a press. Leaving gaps here let the same frame be
             // consumed again by a later packet.
-            _lastPressFrame[slot] = Math.Max(_lastPressFrame[slot], intent.Frame);
+            if (NetLifecycleTracker.Newer(intent.Frame, _lastPressFrame[slot])) _lastPressFrame[slot] = intent.Frame;
             return missed;
         }
 
@@ -781,14 +777,14 @@ namespace MphRead.Mods.Network
             }
             else
             {
-                if (!fresh && !recoveredLocalLife && NetRoomChange.GameplayReady)
+                if (!fresh && !recoveredLocalLife && NetRoomChange.GameplayReady && !NetMovementPrediction.Active)
                 {
                     ReconcileLocalMovement(player, state, slot, predictedCurrentSpeed);
                     ApplyForm(player, (state.Flags & PlayerState.FlagAltForm) != 0);
                 }
                 player.Health = NetHitPrediction.LocalHealthFor(player, state.Health);
             }
-            player.ModSetFrozen((state.Flags & PlayerState.FlagFrozen) != 0);
+            if (!isLocal || !NetMovementPrediction.Active) player.ModSetFrozen((state.Flags & PlayerState.FlagFrozen) != 0);
             ApplyAfflictions(player, state);
         }
 
@@ -1009,6 +1005,8 @@ namespace MphRead.Mods.Network
         public static void NoteRoomChanged()
         {
             NetMovementInput.Reset();
+            NetCommandStream.Reset();
+            NetMovementPrediction.Reset();
             Array.Clear(_formReconciliation);
             Array.Clear(_lifeApplied);
             Array.Clear(_reportSeen);
@@ -1022,6 +1020,8 @@ namespace MphRead.Mods.Network
         public static void Reset()
         {
             NetMovementInput.Reset();
+            NetCommandStream.Reset();
+            NetMovementPrediction.Reset();
             Array.Clear(_formReconciliation);
             Array.Clear(_appliedLifeId);
             Array.Clear(_lifeApplied);
@@ -1102,6 +1102,8 @@ namespace MphRead.Mods.Network
                 _latchedCharge = _latchedBoostDamage = 0;
             }
             NetMovementInput.ResetSlot(slot);
+            NetCommandStream.ResetSlot(slot);
+            if (slot == NetSession.LocalSlot) NetMovementPrediction.Reset();
             _lastPredictionAck[slot] = 0;
             _pendingLocalCorrection[slot] = false;
             _pendingLocalPosition[slot] = Vector3.Zero;
