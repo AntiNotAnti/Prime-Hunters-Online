@@ -76,12 +76,20 @@ namespace MphRead.NetTest
         {
             const ushort matchId = 51;
             const int timeSyncSize = PlayerEntity.SlotCapacity * sizeof(float) * 2;
-            int healthOffset = 1 + SnapshotHeader.Size + PlayerState.Size + timeSyncSize;
+            int damageGroups = state.DamageEventId == 0 ? 0 : 1;
+            int damageCountOffset = 1 + SnapshotHeader.Size + SnapshotWire.PlayerSize;
+            int damageOffset = damageCountOffset + 1;
+            int timeOffset = damageOffset + damageGroups * SnapshotWire.DamageGroupSize;
+            int healthOffset = timeOffset + timeSyncSize;
             byte[] bytes = new byte[healthOffset + NetHealthSync.HeaderSize];
             bytes[0] = (byte)PacketType.Snapshot;
             new SnapshotHeader { MatchId = matchId, AuthorityEpoch = 4, Frame = frame, PlayerCount = 1 }
                 .Write(bytes.AsSpan(1));
-            state.Write(bytes.AsSpan(1 + SnapshotHeader.Size));
+            state.WriteBase(bytes.AsSpan(1 + SnapshotHeader.Size, SnapshotWire.PlayerSize));
+            bytes[damageCountOffset] = (byte)damageGroups;
+            if (damageGroups != 0)
+                SnapshotWire.WriteDamageGroup(state.SlotIndex, state,
+                    bytes.AsSpan(damageOffset, SnapshotWire.DamageGroupSize));
             BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(healthOffset), matchId);
             Deliver(bytes);
         }
