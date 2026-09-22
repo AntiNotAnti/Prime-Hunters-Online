@@ -463,9 +463,10 @@ namespace MphRead.Mods.Network
                 {
                     NetTestScript.Apply(player);
                 }
-                // Edges and upstream intent both run every frame. The dedicated
-                // server no longer fans these N*(N-1) datagrams back out:
-                // observers receive one compact IntentBundle per authority tick.
+                // Edges every frame, packets every other one. With N players
+                // the server relays N*(N-1) updates per frame, and at six
+                // players that was losing enough of them to leave visible
+                // gaps in everyone's position stream.
                 NetPlayerBridge.RecordPresses(player);
                 if (NetSession.NetFrame % NetConfig.IntentSendInterval == 0)
                 {
