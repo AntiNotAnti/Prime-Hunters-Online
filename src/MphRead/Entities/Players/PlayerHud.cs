@@ -1146,7 +1146,7 @@ namespace MphRead.Entities
             float priorLengthSquared = priorStep.LengthSquared;
             if (priorLengthSquared > 0.0000000001f)
             {
-                if (Vector2.Dot(step, priorStep) <= 0)
+                if (step.X * priorStep.X + step.Y * priorStep.Y <= 0)
                 {
                     return _reticleCurrentPosition;
                 }
