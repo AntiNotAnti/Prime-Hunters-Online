@@ -277,7 +277,9 @@ namespace MphRead.Mods.Network
             _matchEndedAt = -1;
             _expectedLoadedSlots = 0;
             _loadedSlots = 0;
-            _startCountdownDeadline = 0;
+            // The visible countdown overlaps room loading. Gameplay still
+            // releases only after BOTH the countdown and load barrier finish.
+            _startCountdownDeadline = now + StartCountdownSeconds;
             foreach (Peer participant in _peers)
                 _expectedLoadedSlots |= (byte)(1 << participant.SlotIndex);
 
@@ -315,7 +317,10 @@ namespace MphRead.Mods.Network
             // own cold load was expensive.
             double buildSeconds = NetSession.Clock - buildStarted;
             _startDeadline += buildSeconds;
-            SyncSimulationState(now);
+            double afterBuild = now + buildSeconds;
+            _now = Math.Max(_now, afterBuild);
+            SyncSimulationState(afterBuild);
+            CheckLoadBarrier(afterBuild);
             Log($"[lobby] authority loaded {_frozenMatch.RoomKey} in {buildSeconds:0.00}s; "
                 + $"waiting for slots mask {_expectedLoadedSlots:X2}");
             return true;
@@ -411,28 +416,24 @@ namespace MphRead.Mods.Network
         private void CheckLoadBarrier(double now)
         {
             if (_phase != SessionPhase.Starting) return;
-            if (_startCountdownDeadline > 0)
-            {
-                if (now < _startCountdownDeadline) return;
-                _startCountdownDeadline = 0;
-                _matchStarted = now;
-                SetPhase(SessionPhase.InMatch);
-                // The phase flip is the gate clients use to reveal and unfreeze
-                // gameplay. Send it redundantly so one lost UDP control packet
-                // cannot leave a player a full periodic-broadcast tick behind.
-                BroadcastSessionState(copies: 2);
-                BroadcastMatchState(now);
-                return;
-            }
 
             bool allLoaded = (_loadedSlots & _expectedLoadedSlots) == _expectedLoadedSlots;
-            if (!allLoaded && now < _startDeadline) return;
+            bool loadTimedOut = !allLoaded && now >= _startDeadline;
+            bool countdownDone = _startCountdownDeadline <= 0 || now >= _startCountdownDeadline;
+            if (!countdownDone || (!allLoaded && !loadTimedOut))
+                return;
 
             Log(allLoaded
-                ? "[lobby] all clients loaded; starting countdown"
-                : "[lobby] load timeout; starting countdown, late clients may join in progress");
-            _startCountdownDeadline = now + StartCountdownSeconds;
-            TouchLobbyRevision("start countdown");
+                ? "[lobby] all clients loaded; releasing synchronized start"
+                : "[lobby] load timeout; releasing start, late clients may join in progress");
+            _startCountdownDeadline = 0;
+            _matchStarted = now;
+            SetPhase(SessionPhase.InMatch);
+            // The phase flip is the gate clients use to reveal and unfreeze
+            // gameplay. Redundancy keeps one lost control packet from putting
+            // a player a full periodic-broadcast tick behind.
+            BroadcastSessionState(copies: 2);
+            BroadcastMatchState(now);
         }
 
         private void HandleMatchLoadFailed(ReceivedPacket packet)

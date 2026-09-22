@@ -587,21 +587,44 @@ namespace MphRead
                 LoadBeamEffectResources(scene);
                 LoadBeamProjectileResources(scene);
                 LoadRoomResources(scene);
-                LoadHunterResources(Hunter.Samus, scene);
-                // A preview creates one Samus so the multiplayer intro camera
-                // has a main player to run against, and draws no hunter at
-                // all. The other seven are 832 ms of a 2970 ms room load.
-                if (!Mods.ThumbnailMode.Active)
-                {
-                    LoadHunterResources(Hunter.Kanden, scene);
-                    LoadHunterResources(Hunter.Trace, scene);
-                    LoadHunterResources(Hunter.Sylux, scene);
-                    LoadHunterResources(Hunter.Noxus, scene);
-                    LoadHunterResources(Hunter.Spire, scene);
-                    LoadHunterResources(Hunter.Weavel, scene);
-                    LoadHunterResources(Hunter.Guardian, scene);
-                }
+                LoadInitialHunterResources(scene);
                 LoadCommonHunterResources(scene);
+            }
+        }
+
+        private static void LoadInitialHunterResources(Scene scene)
+        {
+            // Empty network slots are Samus placeholders so late joins do not
+            // require rebuilding the room. Do not pay to upload all eight
+            // hunters when only a subset is actually in this match.
+            var loaded = new HashSet<Hunter> { Hunter.Samus };
+            LoadHunterResources(Hunter.Samus, scene);
+
+            if (Mods.ThumbnailMode.Active)
+                return;
+
+            if (GameState.Multiplayer)
+            {
+                for (int slot = 0; slot < PlayerEntity.MaxPlayers; slot++)
+                {
+                    PlayerEntity? player = slot < PlayerEntity.Players.Count
+                        ? PlayerEntity.Players[slot]
+                        : null;
+                    if (player != null && player.LoadFlags.TestFlag(LoadFlags.Active)
+                        && loaded.Add(player.Hunter))
+                    {
+                        LoadHunterResources(player.Hunter, scene);
+                    }
+                }
+                return;
+            }
+
+            // Adventure may materialize hunters from story state after the
+            // room begins loading, so retain the complete set there.
+            foreach (Hunter hunter in new[] { Hunter.Kanden, Hunter.Trace, Hunter.Sylux,
+                Hunter.Noxus, Hunter.Spire, Hunter.Weavel, Hunter.Guardian })
+            {
+                LoadHunterResources(hunter, scene);
             }
         }
 

@@ -48,6 +48,9 @@ namespace MphRead.Mods
                 return;
             }
 
+            if (!Headless.Active)
+                MphRead.Sound.Sfx.Prewarm();
+
             int generation;
             lock (Gate)
             {
@@ -245,6 +248,8 @@ namespace MphRead.Mods
             _room = "";
             _files = new Dictionary<string, Lazy<byte[]>>(PathComparer);
             _roomModel = null;
+            if (!Headless.Active)
+                MphRead.Sound.Sfx.DropPrewarm();
         }
     }
 }
