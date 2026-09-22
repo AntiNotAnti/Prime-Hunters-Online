@@ -1954,7 +1954,7 @@ namespace MphRead.Mods.Network
                 PlayerEntity player = PlayerEntity.Players[i];
                 if (!player.LoadFlags.TestFlag(LoadFlags.Active)) continue;
                 if (offset + SnapshotWire.PlayerSize + 1 + NetMatchTimeSync.Size
-                    + NetHealthSync.HeaderSize > NetConfig.MaxPacketSize - 1)
+                    + NetHealthSync.WireSize > NetConfig.MaxPacketSize - 1)
                 {
                     break;
                 }
@@ -2014,7 +2014,7 @@ namespace MphRead.Mods.Network
                 int slot = state.SlotIndex;
                 if (_damageRepeatFrames[slot] == 0 || state.DamageEventId == 0) continue;
                 if (offset + SnapshotWire.DamageGroupSize + NetMatchTimeSync.Size
-                    + NetHealthSync.HeaderSize > NetConfig.MaxPacketSize - 1)
+                    + NetHealthSync.WireSize > NetConfig.MaxPacketSize - 1)
                 {
                     break;
                 }
