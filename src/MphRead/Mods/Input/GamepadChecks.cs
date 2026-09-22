@@ -112,6 +112,29 @@ namespace MphRead.Mods.Input
                 GamepadManager.UpdateDevice("mapped", State(), true); GamepadInput.BeginFrame();
                 GamepadManager.UpdateDevice("mapped", State(GamepadButtons.A), true); GamepadInput.BeginFrame();
                 Check(GamepadInput.TakePress(GamepadButtons.A), "gameplay press before context transition");
+
+                // High-refresh presentation may project a held stick between simulation
+                // steps, but it must project the state that BeginFrame accepted. A newer
+                // hardware poll belongs to the next simulation step and must not become a
+                // second camera-input stream in the renderer.
+                GamepadContexts.Current = GamepadContext.Gameplay;
+                GamepadContexts.Focused = true;
+                GamepadContexts.MenuVisible = false;
+                GamepadManager.UpdateDevice("mapped",
+                    new GamepadState { Connected = true, Name = "test", RightX = .8f }, true);
+                GamepadInput.BeginFrame();
+                var acceptedRenderAim = GamepadInput.RenderAim(.5);
+                GamepadManager.UpdateDevice("mapped",
+                    new GamepadState { Connected = true, Name = "test", RightX = -.8f }, true);
+                var uncommittedRenderAim = GamepadInput.RenderAim(.5);
+                Near(uncommittedRenderAim.X, acceptedRenderAim.X,
+                    "render aim cannot consume controller state before BeginFrame");
+                GamepadInput.BeginFrame();
+                var committedRenderAim = GamepadInput.RenderAim(.5);
+                Check(Math.Sign(committedRenderAim.X) == -Math.Sign(acceptedRenderAim.X)
+                    && Math.Abs(committedRenderAim.X) > .01f,
+                    "render aim updates after the next accepted controller frame");
+
                 GamepadContexts.MenuVisible = true; GamepadContexts.MenuVisible = false;
                 GamepadManager.UpdateDevice("mapped", State(GamepadButtons.B), true); GamepadInput.BeginFrame();
                 Check(!GamepadInput.TakePress(GamepadButtons.B), "menu closed between simulation steps cannot leak held accept/back");

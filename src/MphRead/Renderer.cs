@@ -2049,14 +2049,9 @@ namespace MphRead
             if (ProcessFrame || CameraMode != CameraMode.Player)
             {
                 ModReplayCamera();
-                // Poll once per picture as well as once per game step. Button
-                // edges still belong to BeginFrame at 60 Hz; this refresh is
-                // only so render-time right-stick projection sees the newest
-                // analogue state.
-                if (!Mods.Headless.Active)
-                {
-                    Mods.Input.GamepadDesktop.Poll();
-                }
+                // Controller hardware is polled by the simulation input step only.
+                // TransformCamera may fractionally project that accepted stick sample,
+                // but the draw pass must not publish a second, unsynchronised pad state.
                 TransformCamera();
                 UpdateCameraPosition();
             }

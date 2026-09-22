@@ -132,10 +132,12 @@ the same mouse state normally and clears the presentation delta. Android does th
 same thing non-destructively with the touch aim accumulator.
 
 A held controller stick is projected through the fractional remainder of the
-current simulation step. Button edges, aim assist, shooting and intent capture
-still happen only in `GamepadInput.BeginFrame` / the simulation step. This
-removes up to almost one 60 Hz frame from input-to-photon without changing the
-wire or the authoritative aim used for a shot.
+current simulation step. The projection uses the exact controller state and
+runtime configuration captured by `GamepadInput.BeginFrame`; the draw pass does
+not poll or publish controller hardware on its own. Button edges, aim assist,
+shooting and intent capture still happen only in the simulation step. This keeps
+held-stick presentation smooth without creating a second unsynchronised camera
+input stream or changing the wire/authoritative aim used for a shot.
 
 Spectator and replay cameras use the captured camera history instead, because
 they have no local input to late-latch and benefit from smooth high-refresh
