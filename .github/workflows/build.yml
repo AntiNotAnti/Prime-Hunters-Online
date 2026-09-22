@@ -123,6 +123,10 @@ jobs:
           --self-contained true -p:PublishSingleFile=true
           -o publish/${{ matrix.id }}
 
+      - name: replay timeline bounds and identity regressions
+        if: matrix.id == 'linux-x64'
+        run: dotnet run --project tools/replay-timeline-check -c Release
+
       - name: replay format and server-retention regressions
         if: matrix.id == 'linux-x64'
         run: publish/linux-x64/ProjectPrime -replayformatcheck

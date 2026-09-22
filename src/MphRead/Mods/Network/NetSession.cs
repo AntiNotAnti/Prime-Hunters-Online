@@ -1448,19 +1448,6 @@ namespace MphRead.Mods.Network
         /// </summary>
         public static void ApplyRoster(RosterPacket roster)
         {
-            for (int slot = 0; slot < SlotOccupied.Length; slot++)
-            {
-                bool present = false;
-                for (int i = 0; i < roster.Count; i++)
-                {
-                    present |= roster.Slots[i] == slot;
-                }
-                if (present != SlotOccupied[slot])
-                {
-                    ReplayCapture.Event(present ? ReplayEventType.PlayerJoined
-                        : ReplayEventType.PlayerLeft, slot);
-                }
-            }
             if (!MatchesStream(roster.MatchId, roster.AuthorityEpoch)
                 || (_hasRoster && !NetLifecycleTracker.Newer(roster.Revision, _rosterRevision))) return;
             if (roster.Count > SlotOccupied.Length) return;
@@ -1477,6 +1464,19 @@ namespace MphRead.Mods.Network
                 {
                     NetPlayerLifecycle.WrongGeneration++;
                     return;
+                }
+            }
+            for (int slot = 0; slot < SlotOccupied.Length; slot++)
+            {
+                bool present = false;
+                for (int i = 0; i < roster.Count; i++)
+                {
+                    present |= roster.Slots[i] == slot;
+                }
+                if (present != SlotOccupied[slot])
+                {
+                    ReplayCapture.Event(present ? ReplayEventType.PlayerJoined
+                        : ReplayEventType.PlayerLeft, slot);
                 }
             }
             _hasRoster = true;
@@ -1519,6 +1519,7 @@ namespace MphRead.Mods.Network
             }
             for (int slot = 0; slot < SlotOccupied.Length; slot++)
                 if (!SlotOccupied[slot]) NetPlayerLifecycle.SetOccupant(slot, 0);
+            ReplayCapture.AcceptedRoster(roster);
         }
 
         private static void HandleMatchState(ReceivedPacket packet, bool rotated)
@@ -1538,14 +1539,6 @@ namespace MphRead.Mods.Network
         /// </summary>
         public static void ApplyMatchState(MatchStatePacket state, bool rotated)
         {
-            if (ServerMatch?.MatchId != state.MatchId)
-            {
-                ReplayCapture.Event(ReplayEventType.MatchStarted);
-            }
-            if (state.Ending && ServerMatch?.Ending != true)
-            {
-                ReplayCapture.Event(ReplayEventType.MatchEnded);
-            }
             if (state.MatchId == 0 || state.AuthorityEpoch == 0) return;
             MatchStatePacket? previous = ServerMatch;
             if (previous.HasValue)
@@ -1564,6 +1557,10 @@ namespace MphRead.Mods.Network
             bool newMatch = !previous.HasValue || state.MatchId != previous.Value.MatchId;
             bool newEpoch = !previous.HasValue || state.AuthorityEpoch != previous.Value.AuthorityEpoch;
             ServerMatch = state;
+            if (newMatch || newEpoch || previous?.RoomKey != state.RoomKey) ReplayCapture.Reset();
+            ReplayCapture.AcceptedMatch(state);
+            if (newMatch) ReplayCapture.Event(ReplayEventType.MatchStarted);
+            if (state.Ending && previous?.Ending != true) ReplayCapture.Event(ReplayEventType.MatchEnded);
             if (newMatch || newEpoch)
             {
                 _hasSnapshot = false;
@@ -1676,7 +1673,6 @@ namespace MphRead.Mods.Network
                 offset += PlayerState.Size;
                 if (state.SlotIndex < RemoteStates.Length && NetPlayerLifecycle.AcceptState(state, header.Frame))
                 {
-                    ReplayCapture.AcceptedState(state, header.Frame);
                     RemoteStates[state.SlotIndex] = state;
                     RemoteStateValid[state.SlotIndex] = true;
                     if (count < _snapshotScratch.Length)
@@ -1696,6 +1692,18 @@ namespace MphRead.Mods.Network
             NetSmoothing.Record(header.Frame, _snapshotScratch.AsSpan(0, count), packet.ArrivedAt);
             NetMatchTimeSync.Receive(payload.Slice(timeOffset, NetMatchTimeSync.Size));
             NetHealthSync.Receive(payload[healthOffset..]);
+            // Only accepted player lives enter the timeline. Preserve the validated
+            // clock/health tail, but omit stale-generation player states.
+            int tailLength = payload.Length - timeOffset;
+            Span<byte> accepted = stackalloc byte[1 + SnapshotHeader.Size + count * PlayerState.Size + tailLength];
+            accepted[0] = (byte)PacketType.Snapshot;
+            header.PlayerCount = (byte)count;
+            header.Write(accepted[1..]);
+            for (int i = 0; i < count; i++)
+                _snapshotScratch[i].Write(accepted[(1 + SnapshotHeader.Size + i * PlayerState.Size)..]);
+            payload[timeOffset..].CopyTo(accepted[(1 + SnapshotHeader.Size + count * PlayerState.Size)..]);
+            ReplayCapture.AcceptedSnapshot(accepted, header.Frame);
+            for (int i = 0; i < count; i++) ReplayCapture.AcceptedState(_snapshotScratch[i], header.Frame);
         }
 
         /// <summary>
