@@ -21,11 +21,13 @@ namespace MphRead.Mods.Network
                 writer = new ReplayWriterV3(destination, Copy(metadata, metadata.Bootstrap, metadata.RoomKey,
                     metadata.Mode, metadata.Players, metadata.MapHash, metadata.Type, recovered: true));
                 writer.WriteRecord(first.Value.Frame, first.Value.Data);
-                while (reader.ReadNext() is { } record) writer.WriteRecord(record.Frame, record.Data);
+                uint last = first.Value.Frame;
+                while (reader.ReadNext() is { } record) { writer.WriteRecord(record.Frame, record.Data); last = record.Frame; }
+                if (last < metadata.LeadInFrames) { writer.Abort(); result = ReplayOpenResult.Empty; return false; }
                 // Each chunk is CRC/record validated before exposing its first packet. The
                 // source remains untouched, and only complete valid chunks reach this file.
                 result = reader.LastResult;
-                foreach (ReplayEvent e in metadata.Events) writer.WriteEvent(e);
+                foreach (ReplayEvent e in metadata.Events) writer.WriteEvent(e with { Frame = e.Frame + metadata.LeadInFrames });
                 writer.Dispose();
                 output = destination;
                 return true;
@@ -58,8 +60,8 @@ namespace MphRead.Mods.Network
                 writer = new ReplayWriterV3(output, reader.Metadata);
                 while (reader.ReadNext() is { } record) writer.WriteRecord(record.Frame, record.Data);
                 if (reader.LastResult != ReplayOpenResult.Success) { writer.Abort(); return reader.LastResult; }
-                foreach (ReplayEvent value in reader.Metadata.Events) writer.WriteEvent(value);
-                foreach (ReplayExpectedHash value in hashes) writer.WriteExpectedHash(value, ReplayStateHash.Schema, ReplayStateHash.BuildId);
+                foreach (ReplayEvent value in reader.Metadata.Events) writer.WriteEvent(value with { Frame = value.Frame + reader.Metadata.LeadInFrames });
+                foreach (ReplayExpectedHash value in hashes) writer.WriteExpectedHash(value with { Frame = value.Frame + reader.Metadata.LeadInFrames }, ReplayStateHash.Schema, ReplayStateHash.BuildId);
                 writer.Dispose();
                 return ReplayOpenResult.Success;
             }
@@ -76,6 +78,29 @@ namespace MphRead.Mods.Network
             if (reader == null) return result;
             if (reader.ProtocolVersion != NetConfig.ProtocolVersion) return ReplayOpenResult.ProtocolMismatch;
             ReplayMetadata metadata = reader.Metadata ?? new ReplayMetadata();
+            if (reader.FormatVersion == 2)
+            {
+                using var probe = new ReplayPlaybackSession(new PassiveReplaySessionHost());
+                if (!probe.Join(source)) return probe.LastResult;
+                var state = ((PassiveReplaySessionHost)probe.Host).State;
+                var match = state.Match!.Value;
+                var players = new List<ReplayPlayerInfo>();
+                for (int slot = 0; slot < RosterPacket.MaxSlots; slot++)
+                {
+                    var occupant = state.Occupant(slot);
+                    if (occupant.Generation != 0) players.Add(new((byte)slot, (byte)occupant.Hunter, occupant.Team, occupant.Name));
+                }
+                metadata = new ReplayMetadata { FormatVersion = 4, RoomKey = match.RoomKey,
+                    Mode = (GameMode)match.Mode, MapHash = ReplayMapIdentity.Compute(match.RoomKey), Players = players,
+                    Bootstrap = new ReplayBootstrap { Packets = new[] { ReplayTimelineArchive.Construction(state) } } };
+                return ExtractRange(reader, metadata, start, end, output, probe.LastFrame);
+            }
+            // Preserve the initial world and every required warmup fact. Lead-in
+            // is hidden by the session and advanced in bounded owner updates.
+            // This is also how a legacy packet recording gets a faithful range:
+            // reconstruct from its original bootstrap, not a mid-flight snapshot.
+            if (reader.Metadata != null && (metadata.FormatVersion == 4 || metadata.MapHash != 0))
+                return ExtractRange(reader, metadata, start, end, output);
             var bootstrap = new Dictionary<PacketType, byte[]>();
             foreach (byte[] packet in metadata.Bootstrap.Packets) Remember(bootstrap, packet);
             ReplayWriterV3? writer = null;
@@ -146,9 +171,46 @@ namespace MphRead.Mods.Network
         private static ReplayMetadata Copy(ReplayMetadata source, ReplayBootstrap bootstrap, string room,
             GameMode mode, IReadOnlyList<ReplayPlayerInfo> players, ulong hash, ReplayType type, bool recovered) => new()
         {
+            FormatVersion = source.FormatVersion, WorldCheckpoint = source.WorldCheckpoint,
+            OriginRecordingFrame = source.OriginRecordingFrame, LeadInFrames = source.LeadInFrames,
             ProtocolVersion = source.ProtocolVersion, BuildVersion = source.BuildVersion, BuildId = source.BuildId,
             RecordedAtUtc = source.RecordedAtUtc, Type = type, RoomKey = room, Mode = mode, Players = players,
             MapHash = hash, Bootstrap = bootstrap, Recovered = recovered
         };
+
+        private static ReplayOpenResult ExtractRange(DemoReader reader, ReplayMetadata source, uint start, uint end, string output, uint? legacyDuration = null)
+        {
+            ReplayWriterV3? writer = null;
+            try
+            {
+                uint duration = legacyDuration ?? reader.DurationFrames;
+                if (start > duration || start > end) return ReplayOpenResult.Empty;
+                end = Math.Min(end, duration);
+                uint lead = checked(source.LeadInFrames + start), last = checked(source.LeadInFrames + end);
+                var metadata = new ReplayMetadata
+                {
+                    FormatVersion = 4, ProtocolVersion = source.ProtocolVersion,
+                    BuildVersion = source.BuildVersion, BuildId = source.BuildId, RecordedAtUtc = source.RecordedAtUtc,
+                    Type = ReplayType.Clip, RoomKey = source.RoomKey, Mode = source.Mode, Players = source.Players,
+                    MapHash = source.MapHash, Bootstrap = source.Bootstrap, Recovered = source.Recovered,
+                    OriginRecordingFrame = source.OriginRecordingFrame, WorldCheckpoint = source.WorldCheckpoint,
+                    LeadInFrames = lead
+                };
+                writer = new ReplayWriterV3(output, metadata);
+                while (reader.ReadNext() is { } record)
+                {
+                    if (record.Frame > last) break;
+                    writer.WriteRecord(record.Frame, record.Data);
+                }
+                if (reader.LastResult != ReplayOpenResult.Success) { writer.Abort(); return reader.LastResult; }
+                ReplayTimelineArchive.EndFrame(writer, last);
+                foreach (ReplayEvent value in source.Events)
+                    if (value.Frame >= start && value.Frame <= end)
+                        writer.WriteEvent(value with { Frame = value.Frame + source.LeadInFrames });
+                writer.Dispose(); return ReplayOpenResult.Success;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or OverflowException)
+            { writer?.Abort(); return ReplayFormatV3.Failure(ex); }
+        }
     }
 }

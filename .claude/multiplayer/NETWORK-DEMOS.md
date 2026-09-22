@@ -16,14 +16,20 @@ element ordinals because names may repeat. Timed goals apply before room loading
 historical match clocks interpolate between accepted updates, preserving no-limit
 and ending behavior. This is synthetic coverage, not live combat acceptance.
 
-New recordings and instant clips use `.ppdemo` v3. Version 2 remains readable;
-its binary layout is unchanged. The foreground viewer owns an instance `ReplayPlaybackSession` and `ReplayTransport`;
-`DemoPlayback` and `ReplayController` are compatibility facades. Its explicit
-`TheatreReplaySessionHost` feeds legacy packets through `NetSession.StartPlayback`,
-`InjectPlaybackPacket`, and the normal session handlers. Passive hosts instead
-decode into their own packet-visible replica values and never touch live session
-state; `PassiveReplayScene` owns a scene and reader together. Local intent and authority snapshot synthesis are
-preserved. Protocol mismatch is refused before packet playback.
+New recordings and instant clips use `.ppdemo` v4: v3's CRC/index envelope plus
+bounded exact initial-world bytes, source origin and hidden warmup. Versions 2/3
+remain readable without format changes. Client/server full recordings and instant
+clips subscribe to one accepted-fact recorder. Clip disk writes run off the scene
+owner; frozen values survive reset. Extraction preserves the source world and all
+required warmup facts, including nested ranges and v2 compatibility construction.
+
+Foreground Studio uses `PassiveReplayPlayer`. `DemoPlayback`/`ReplayController`
+bridge only presentation/transport; normal playback never starts `NetSession`.
+The theatre packet host is explicit diagnostic compatibility only. The private
+player owns seeking, world lifetime and GL cleanup. Watching another actor changes
+presentation only; fixed replica perspective keeps simulation RNG deterministic.
+Replay Lab detaches a selected actor into offline practice only without a live
+connection. Protocol mismatch is refused before decoding.
 
 Scenes now own player allocation, match arrays/rules, RNG, camera sequences,
 rotating-item state and enemy/platform projectile pools. Creating another scene
@@ -469,3 +475,9 @@ relative to the binary, not to the shell. Pass an absolute one.
   rather than a bug.
 
 Killcams now freeze the canonical world timeline and present through an instance-owned `KillcamController`. Personal and final replay scenes have been exercised with two real clients, latency and packet loss. `-replaykillcamcheck FILE [-shots DIR]` verifies cancellation, bounded warmup, historical frames, source reset, resize, input release and versioned audio ownership. Full playback/Studio, disk clips and larger-match/Android acceptance are still migration work.
+
+`-replaytheatrecheck FILE [-shots DIR]` checks normal Studio routing, camera/slot
+changes, pause, seeks and live-state sentinels. `-replaydeterminism` and
+`-replayclipcheck` now run the same private player, comparing both gameplay and
+presentation every visible frame. `-demoinfo -replay` uses the private decoder and
+reports source cadence without calling sparse snapshots a playback failure.

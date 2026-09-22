@@ -55,7 +55,9 @@ internal sealed class ReplayWorldCheckpoint
     private static readonly Dictionary<Type, ushort> TypeIds = ObjectTypes.Select((type, index) => (type, index))
         .ToDictionary(pair => pair.type, pair => checked((ushort)pair.index));
     private static readonly string Contract = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
-        ReplayStateHash.BuildId + "|" + string.Join('|', Fields.OrderBy(p => p.Key.FullName, StringComparer.Ordinal).Select(p => p.Key.FullName + ":" +
+        // Explicit codec revision plus field/asset contract, not the git SHA.
+        // Unrelated commits must not invalidate durable clips.
+        "world-codec-1|" + string.Join('|', Fields.OrderBy(p => p.Key.FullName, StringComparer.Ordinal).Select(p => p.Key.FullName + ":" +
             string.Join(',', p.Value.Select(f => f.DeclaringType!.FullName + "." + f.Name + ":" + f.FieldType))))
         + string.Join('|', Types.Values.Where(t => t.IsValueType && !t.IsPrimitive && !t.IsEnum).OrderBy(t => t.FullName, StringComparer.Ordinal)
             .Select(t => t.FullName + ":" + string.Join(',', ValueFields(t).Select(f => f.Name + ":" + f.FieldType)))))));
@@ -133,13 +135,14 @@ internal sealed class ReplayWorldCheckpoint
         }
     }
 
-    internal static ReplayWorldCheckpoint Capture(PassiveReplayScene replay)
+    internal static ReplayWorldCheckpoint Capture(PassiveReplayScene replay, uint? recordingFrame = null)
     {
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream);
         writer.Write(Magic); writer.Write(Version); writer.Write(Contract);
         writer.Write(replay.Scene.Room!.Meta.Name); writer.Write((int)replay.Scene.GameState.Mode); writer.Write(replay.MapHash);
-        writer.Write(replay.Session.CurrentFrame); writer.Write(replay.Scene.Random.Rng1); writer.Write(replay.Scene.Random.Rng2);
+        uint frame = recordingFrame ?? replay.Session.CurrentFrame;
+        writer.Write(frame); writer.Write(replay.Scene.Random.Rng1); writer.Write(replay.Scene.Random.Rng2);
         WriteBytes(writer, replay.InitialState.Bytes);
         WriteBytes(writer, replay.State.CaptureCheckpoint().Bytes);
         var graph = new CaptureGraph(replay.CheckpointBindings);
@@ -149,7 +152,7 @@ internal sealed class ReplayWorldCheckpoint
         foreach (var node in nodes) { writer.Write(node.Type); writer.Write(node.Anchor); WriteBytes(writer, node.Data); }
         writer.Flush();
         if (stream.Length > MaximumBytes) throw new InvalidDataException("Replay world exceeds its checkpoint budget.");
-        return new(stream.ToArray(), replay.Session.CurrentFrame);
+        return new(stream.ToArray(), frame);
     }
 
     private sealed record Node(ushort Type, ulong Anchor, byte[] Data);
@@ -222,7 +225,7 @@ internal sealed class ReplayWorldCheckpoint
         throw new InvalidOperationException("Replay single particle has no asset identity.");
     }
 
-    internal void Restore(PassiveReplayScene replay)
+    internal void Restore(PassiveReplayScene replay, uint? playbackFrame = null)
     {
         if (replay.HasStepped) throw new InvalidOperationException("Restore requires a new unpublished replica.");
         using var stream = new MemoryStream(_data, writable: false); using var reader = new BinaryReader(stream);
@@ -322,7 +325,8 @@ internal sealed class ReplayWorldCheckpoint
             if (data.Position != data.Length) throw new InvalidDataException($"Trailing replay fields in {type.Name}.");
         }
         replay.Scene.FinishReplayWorldRestore();
-        if (!replay.Session.Reposition(frame, 0)) throw new InvalidDataException(replay.Session.LastError);
+        if (!replay.Session.Reposition(playbackFrame ?? frame, 0, sourceClock: playbackFrame.HasValue))
+            throw new InvalidDataException(replay.Session.LastError);
         replay.State.RestoreCheckpoint(decoder);
         replay.Scene.Random.SetRng1(rng1); replay.Scene.Random.SetRng2(rng2);
     }

@@ -254,7 +254,7 @@ namespace MphRead.Droid
             };
         }
 
-        public Scene? Scene => _loop.Scene;
+        public Scene? Scene => _loop.Scene is { } shell ? Mods.Network.DemoPlayback.Presentation(shell) ?? shell : null;
 
         public void Stop()
         {
@@ -394,6 +394,7 @@ namespace MphRead.Droid
             private int _requestedFrameRate = -1;
 
             public Scene? Scene { get; private set; }
+            private Scene? PresentedScene => Scene is { } shell ? Mods.Network.DemoPlayback.Presentation(shell) ?? shell : null;
 
             public RenderLoop(TouchControls controls, AndroidInput input,
                 Func<AndroidInput, Vector2i, Scene> build, Action onEnd, Action onLoaded,
@@ -834,7 +835,8 @@ namespace MphRead.Droid
             private bool DrawFrame()
             {
                 Scene scene = Scene!;
-                if (Mods.Network.DemoPlayback.IsActive && Mods.Network.ReplayController.TakeRebuild(out uint target, out bool resume))
+                if (Mods.Network.DemoPlayback.IsActive && !Mods.Network.DemoPlayback.IsIsolated
+                    && Mods.Network.ReplayController.TakeRebuild(out uint target, out bool resume))
                 {
                     if (Mods.Replay.ReplayCheckpointManager.TryRestore(
                         scene, target, resume, out uint checkpointFrame))
@@ -1141,7 +1143,7 @@ namespace MphRead.Droid
                 // not a pad is in the player's hands, or the story stops at
                 // the first scan with nothing to press.
                 _controls.ForceVisible = GameState.DialogPause;
-                PlayerEntity main = PlayerEntity.Main;
+                PlayerEntity main = PresentedScene?.Players.Main ?? PlayerEntity.Main;
                 if (main == null || !main.LoadFlags.TestFlag(LoadFlags.Active))
                 {
                     return;
@@ -1268,7 +1270,7 @@ namespace MphRead.Droid
                         // same units: OnMouseMove applies the player's own
                         // sensitivity and inversion, so the free camera turns
                         // the way their game does.
-                        Scene?.OnMouseMove(look.X * AimScale, look.Y * AimScale);
+                        PresentedScene?.OnMouseMove(look.X * AimScale, look.Y * AimScale);
                     }
                 }
                 else

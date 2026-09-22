@@ -10,6 +10,7 @@ namespace MphRead.Mods.Network
     internal sealed class ReplayPlaybackSession : IDisposable
     {
         private readonly IReplaySessionHost _host;
+        internal event Action<uint, byte[]>? FactRead;
         public ReplayTransport Transport { get; }
         public IReplaySessionHost Host => _host;
         public ReplayPlaybackSession(IReplaySessionHost host)
@@ -32,11 +33,14 @@ namespace MphRead.Mods.Network
         public string? CurrentPath { get; private set; }
         public IReadOnlyList<ReplayEvent> Events => _reader?.Metadata?.Events ?? Array.Empty<ReplayEvent>();
         internal ReplayMetadata? Metadata => _reader?.Metadata ?? _liveMetadata;
-        public uint CurrentFrame => _frame;
-        internal bool HasSimulatedFrame => _started;
+        private uint LeadInFrames => _reader?.Metadata?.LeadInFrames ?? 0;
+        public uint CurrentFrame => _frame >= LeadInFrames ? _frame - LeadInFrames : 0;
+        internal uint RecordingFrame => checked(_frame + (_reader?.Metadata?.OriginRecordingFrame ?? 0));
+        internal bool IsWarming => LeadInFrames > 0 && (!_started || _frame < LeadInFrames);
+        internal bool HasSimulatedFrame => _started && !IsWarming;
         public uint LastFrame { get; private set; }
         public ReplayOpenResult LastResult { get; private set; }
-        public double CurrentSeconds => _frame / 60.0;
+        public double CurrentSeconds => CurrentFrame / 60.0;
         public double DurationSeconds => LastFrame / 60.0;
 
         /// <summary>True once the file has no more records -- the scene holds on the last state rather than closing itself.</summary>
@@ -165,7 +169,7 @@ namespace MphRead.Mods.Network
             if (pathChanged) Transport.ClearSelection();
             CurrentPath = path;
             _host.Prepare(path, pathChanged);
-            LastFrame = _reader.FormatVersion == 3 ? _reader.DurationFrames : DemoLibrary.Duration(path);
+            LastFrame = _reader.FormatVersion >= 3 ? _reader.DurationFrames : DemoLibrary.Duration(path);
             _host.Start();
             IsActive = true;
             _frame = 0;
@@ -182,6 +186,21 @@ namespace MphRead.Mods.Network
                     Stop();
                     return false;
                 }
+                if (metadata.WorldCheckpoint.Length > 0)
+                {
+                    if (_host is not PassiveReplaySessionHost passive)
+                        throw new InvalidDataException("This replay requires the isolated world player.");
+                    var world = Replay.ReplayWorldCheckpoint.FromBytes(metadata.WorldCheckpoint);
+                    if (world.Frame != metadata.OriginRecordingFrame)
+                        throw new InvalidDataException("Replay origin differs from its initial world.");
+                    passive.State.RestoreCheckpoint(world.ConstructionState());
+                    _pending = _reader.ReadNext();
+                    if (_pending == null) throw new InvalidDataException("Replay contains no completed frames.");
+                    Transport.Begin();
+                    return true;
+                }
+                if (metadata.Bootstrap.Packets.Count > 0)
+                {
                 foreach (byte[] packet in metadata.Bootstrap.Packets)
                     _host.Inject(packet, 0);
                 _host.Advance(0);
@@ -205,6 +224,7 @@ namespace MphRead.Mods.Network
                 }
                 Transport.Begin();
                 return true;
+                }
             }
             _pending = _reader.ReadNext();
             bool hadRecords = _pending != null;
@@ -282,7 +302,7 @@ namespace MphRead.Mods.Network
         /// No packets at or before the checkpoint are re-applied because the checkpoint
         /// already contains their resulting world state.
         /// </summary>
-        internal bool Reposition(uint frame, uint netFrame)
+        internal bool Reposition(uint frame, uint netFrame, bool sourceClock = false)
         {
             if (IsActive && _clip != null)
             {
@@ -301,7 +321,8 @@ namespace MphRead.Mods.Network
                 return false;
             }
 
-            DemoRecord? pending = next.SeekAfter(frame);
+            uint sourceFrame = sourceClock ? frame : checked(frame + LeadInFrames);
+            DemoRecord? pending = next.SeekAfter(sourceFrame);
             if (pending == null && next.LastResult != ReplayOpenResult.Success && frame < LastFrame)
             {
                 LastResult = next.LastResult;
@@ -312,7 +333,7 @@ namespace MphRead.Mods.Network
             _reader?.Dispose();
             _reader = next;
             _pending = pending;
-            _frame = frame;
+            _frame = sourceFrame;
             _started = true;
             _host.ResetDiagnostics();
             LastResult = ReplayOpenResult.Success;
@@ -357,7 +378,8 @@ namespace MphRead.Mods.Network
             {
                 while (_pending is DemoRecord record && record.Frame <= _frame)
                 {
-                    _host.Inject(record.Data, record.Frame);
+                    _host.Inject(record.Data, checked(record.Frame + (_reader.Metadata?.OriginRecordingFrame ?? 0)));
+                    FactRead?.Invoke(record.Frame >= LeadInFrames ? record.Frame - LeadInFrames : 0, record.Data);
                     _pending = _reader.ReadNext();
                 }
             }

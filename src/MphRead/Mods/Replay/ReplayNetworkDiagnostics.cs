@@ -77,6 +77,7 @@ namespace MphRead.Mods.Replay
                 _intents++;
             }
         }
+        internal static void OnPacketArray(uint frame, byte[] packet) => OnPacket(frame, packet);
 
         public static ReplayNetworkSnapshot Snapshot()
             => new(_packets, _bytes, _snapshots, _intents, _maxSnapshotGap,

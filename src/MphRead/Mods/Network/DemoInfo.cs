@@ -81,7 +81,7 @@ namespace MphRead.Mods.Network
                     + $"({entry.Value / Math.Max(seconds, 0.001),6:0.0}/s, "
                     + $"{bytes[entry.Key] / 1024.0:0.0} KiB)");
             }
-            if (!counts.ContainsKey(PacketType.Snapshot))
+            if (!counts.ContainsKey(PacketType.Snapshot) && reader.Metadata?.WorldCheckpoint.Length is not > 0)
             {
                 Console.WriteLine("  NO SNAPSHOTS -- nothing in this file ever places a player, "
                     + "so it will play back as an empty room.");
@@ -107,53 +107,31 @@ namespace MphRead.Mods.Network
         /// </summary>
         private static int Replay(string path)
         {
-            Console.WriteLine("  --- replayed through DemoPlayback ---");
-            if (!DemoPlayback.Join(path))
+            Console.WriteLine("  --- decoded by an isolated replay session ---");
+            using var session = new ReplayPlaybackSession(new PassiveReplaySessionHost());
+            if (!session.Join(path))
             {
-                Console.WriteLine($"  replay failed: {DemoPlayback.LastError}");
-                return 1;
+                Console.WriteLine($"  replay failed: {session.LastError}"); return 1;
             }
-            long previousSnapshots = NetSession.SnapshotsReceived;
-            long previousIntents = NetSession.IntentsReceived;
-            long frames = 0;
-            long framesWithSnapshot = 0;
-            long framesWithSeveral = 0;
-            long gap = 0;
-            long worstGap = 0;
-            long intents = 0;
-            while (!DemoPlayback.AtEnd && frames < 60 * 60 * 30)
+            long snapshots = 0, intents = 0, frames = 0, framesWithSnapshot = 0, worstGap = 0, gap = 0;
+            session.FactRead += (_, packet) =>
             {
-                DemoPlayback.PumpFrame();
-                NetSession.Update(frames / 60.0);
-                frames++;
-                long snapshots = NetSession.SnapshotsReceived - previousSnapshots;
-                previousSnapshots = NetSession.SnapshotsReceived;
-                intents += NetSession.IntentsReceived - previousIntents;
-                previousIntents = NetSession.IntentsReceived;
-                if (snapshots == 0)
-                {
-                    gap++;
-                    worstGap = Math.Max(worstGap, gap);
-                    continue;
-                }
-                gap = 0;
-                framesWithSnapshot++;
-                if (snapshots > 1)
-                {
-                    framesWithSeveral++;
-                }
+                if (packet[0] == (byte)PacketType.Snapshot) snapshots++;
+                if (packet[0] == (byte)PacketType.SlotIntent) intents++;
+            };
+            while (!session.AtEnd)
+            {
+                long before = snapshots;
+                session.PumpFrame(); frames++;
+                if (snapshots == before) { gap++; worstGap = Math.Max(gap, worstGap); }
+                else { gap = 0; framesWithSnapshot++; }
             }
-            DemoPlayback.Stop();
-            NetSession.Stop();
-            double percent = frames == 0 ? 0 : 100.0 * framesWithSnapshot / frames;
-            Console.WriteLine($"  {frames} frame(s) replayed, {intents} slot intent(s) applied");
-            Console.WriteLine($"  {framesWithSnapshot} frame(s) got a snapshot ({percent:0.0}%), "
-                + $"{framesWithSeveral} got more than one");
-            Console.WriteLine($"  longest run of frames with no snapshot: {worstGap}");
-            // Two snapshots on one frame is one thrown away: RemoteStates is a
-            // slot per player, so the older is overwritten before anything
-            // reads it. A frame with none is a frame nobody moves on.
-            return framesWithSeveral > frames / 20 || worstGap > 10 ? 1 : 0;
+            Console.WriteLine($"  {frames} source frames decoded, {snapshots} snapshots, {intents} slot intents");
+            Console.WriteLine($"  {framesWithSnapshot} frames carried a snapshot; longest recorded gap {worstGap}");
+            Console.WriteLine($"  visible duration {session.DurationSeconds:0.00}s, lead-in {session.Metadata?.LeadInFrames ?? 0} frames");
+            // Cadence describes the source, not presentation quality. Sparse or
+            // bundled snapshots are legal; replica rendering uses its own clock.
+            return session.LastResult == ReplayOpenResult.Success ? 0 : 1;
         }
     }
 }

@@ -292,10 +292,10 @@ namespace MphRead
         public const int DisplaySphereStacks = 16;
         public const int DisplaySphereSectors = 24;
 
-        private readonly KeyboardState _keyboardState;
-        private readonly MouseState _mouseState;
-        private readonly Action<string> _setTitle;
-        private readonly Action _close;
+        private KeyboardState _keyboardState;
+        private MouseState _mouseState;
+        private Action<string> _setTitle;
+        private Action _close;
 
         public Scene(Vector2i size, KeyboardState keyboardState, MouseState mouseState,
             Action<string> setTitle, Action close, ISceneServices? services = null, bool initializeRuntime = true)
@@ -1654,6 +1654,10 @@ namespace MphRead
         /// </summary>
         public void OnSimulationFrame()
         {
+            if (Mods.Network.DemoPlayback.Presentation(this) is { IsReplayLab: true } lab)
+            { lab.OnSimulationFrame(); return; }
+            if (Mods.Network.DemoPlayback.IsIsolated && (!Services.IsReplica || Mods.Network.DemoPlayback.Owns(this)))
+            { Mods.Network.DemoPlayback.Update(this); return; }
             if (Services.IsReplica)
                 throw new InvalidOperationException("Replica scenes must be stepped by their replay session, not the foreground host.");
             // A lobby/start barrier must remain authoritative even during playback.
@@ -1670,6 +1674,60 @@ namespace MphRead
                 return;
             }
 
+            PollReplayControls();
+
+            int frames = Mods.Network.ReplayController.FramesDue();
+            float volume = Sound.Sfx.Volume;
+            float musicVolume = Music.UserVolume;
+            bool mute = Mods.Network.ReplayController.IsSeeking && !Mods.Headless.Active;
+            if (mute)
+            {
+                Sound.Sfx.Volume = 0;
+                Music.SetUserVolume(0);
+            }
+            try
+            {
+                for (int i = 0; i < frames && !Mods.Network.DemoPlayback.AtEnd; i++)
+                {
+                    bool seeking = Mods.Network.ReplayController.IsSeeking;
+                    RunSimulationFrame();
+                    // A transition barrier may become active while replay packets are
+                    // being consumed. Do not count that blocked step as replay progress.
+                    if (Mods.Network.NetSession.FreezeGameplay)
+                    {
+                        break;
+                    }
+                    Mods.Network.ReplayVerification.AfterFrame(this);
+                    Mods.Network.ReplayController.AfterFrame();
+                    if (seeking && !Mods.Network.ReplayController.IsSeeking)
+                    {
+                        break;
+                    }
+                }
+            }
+            finally
+            {
+                if (mute)
+                {
+                    Sound.Sfx.Instance.StopAllSound();
+                    Sound.Sfx.Volume = volume;
+                    Music.SetUserVolume(musicVolume);
+                }
+            }
+        }
+
+        internal void UseReplayInput(Scene shell)
+        { _keyboardState = shell._keyboardState; _mouseState = shell._mouseState; _setTitle = shell._setTitle; _close = shell._close; }
+        internal void CopyReplayView(Scene previous)
+        {
+            _cameraMode = previous._cameraMode; _freeCam = previous._freeCam;
+            _cameraPosition = previous._cameraPosition; _cameraFacing = previous._cameraFacing;
+            _cameraUp = previous._cameraUp; _cameraRight = previous._cameraRight;
+            _replayOrbit = previous._replayOrbit;
+            Players.MainPlayerIndex = previous.Players.MainPlayerIndex;
+        }
+        internal void PollReplayControls()
+        {
             // Replay controls are presentation-time input. They remain responsive
             // while the recorded simulation is paused or seeking, but are sampled
             // only once per rendered frame rather than once per replay simulation step.
@@ -1714,44 +1772,6 @@ namespace MphRead
                 }
             }
 
-            int frames = Mods.Network.ReplayController.FramesDue();
-            float volume = Sound.Sfx.Volume;
-            float musicVolume = Music.UserVolume;
-            bool mute = Mods.Network.ReplayController.IsSeeking && !Mods.Headless.Active;
-            if (mute)
-            {
-                Sound.Sfx.Volume = 0;
-                Music.SetUserVolume(0);
-            }
-            try
-            {
-                for (int i = 0; i < frames && !Mods.Network.DemoPlayback.AtEnd; i++)
-                {
-                    bool seeking = Mods.Network.ReplayController.IsSeeking;
-                    RunSimulationFrame();
-                    // A transition barrier may become active while replay packets are
-                    // being consumed. Do not count that blocked step as replay progress.
-                    if (Mods.Network.NetSession.FreezeGameplay)
-                    {
-                        break;
-                    }
-                    Mods.Network.ReplayVerification.AfterFrame(this);
-                    Mods.Network.ReplayController.AfterFrame();
-                    if (seeking && !Mods.Network.ReplayController.IsSeeking)
-                    {
-                        break;
-                    }
-                }
-            }
-            finally
-            {
-                if (mute)
-                {
-                    Sound.Sfx.Instance.StopAllSound();
-                    Sound.Sfx.Volume = volume;
-                    Music.SetUserVolume(musicVolume);
-                }
-            }
         }
 
         private void RunSimulationFrame()
@@ -2029,6 +2049,8 @@ namespace MphRead
         /// </summary>
         public void OnDrawFrame()
         {
+            if (Mods.Network.DemoPlayback.PreparePresentation(this) is { } theatre)
+            { theatre.OnDrawFrame(); return; }
             if (Mods.KillCam.Presentation(this) is { } historical)
             {
                 try { historical.OnDrawFrame(); return; }
@@ -2112,7 +2134,7 @@ namespace MphRead
             // positions they had then, until the 200-entry table filled up and
             // started dropping the new ones.
             _singleParticleCount = 0;
-            if (!Services.IsReplica && (ProcessFrame || CameraMode != CameraMode.Player))
+            if ((!Services.IsReplica || Mods.Network.DemoPlayback.Owns(this)) && (ProcessFrame || CameraMode != CameraMode.Player || Services.IsReplica))
             {
                 ModReplayCamera();
                 // Controller hardware is polled by the simulation input step only.
@@ -2759,6 +2781,8 @@ namespace MphRead
 
         public bool OnRenderFrame()
         {
+            if (Mods.Network.DemoPlayback.PreparePresentation(this) is { } theatre)
+                return theatre.OnRenderFrame();
             if (Mods.KillCam.Presentation(this) is { } historical)
             {
                 try { return historical.OnRenderFrame(); }
@@ -2963,7 +2987,7 @@ namespace MphRead
             // Replay controls and timeline belong to the presentation, not to
             // a particular hunter's visor. Keep them visible in chase, orbit
             // and free-camera modes as well as first-person playback.
-            if (!Services.IsReplica)
+            if (!Services.IsReplica || Mods.Network.DemoPlayback.Owns(this))
             {
                 Mods.Replay.ReplayHud.Draw(this);
                 Mods.Input.AimAssist.AimAssistDebug.Draw(this);
@@ -3113,7 +3137,7 @@ namespace MphRead
                         PlayerEntity main = this.Players.Main;
                         CameraInfo camera = main.CameraInfo;
                         main.ModInvalidateFirstPersonRenderPose();
-                        double presentationAlpha = Mods.Render.FrameTiming.PresentationAlpha;
+                        double presentationAlpha = Services.IsReplica ? ReplayRenderAlpha : Mods.Render.FrameTiming.PresentationAlpha;
                         bool replayCamera = main.ModReplayPresentationCamera(
                             presentationAlpha, out Matrix4 replayView,
                             out _, out float replayFov);
@@ -3212,7 +3236,7 @@ namespace MphRead
                     PlayerEntity main = this.Players.Main;
                     CameraInfo camera = main.CameraInfo;
                     if (main.ModReplayPresentationCamera(
-                        Mods.Render.FrameTiming.PresentationAlpha,
+                        Services.IsReplica ? ReplayRenderAlpha : Mods.Render.FrameTiming.PresentationAlpha,
                         out _, out Vector3 replayPosition, out _))
                     {
                         _cameraPosition = replayPosition;
@@ -3230,7 +3254,7 @@ namespace MphRead
                         bool interpolate = Mods.Render.FrameTiming.Active
                             && (Mods.SpectatorMode.IsSpectating || Mods.Network.DemoPlayback.IsActive);
                         _cameraPosition = interpolate
-                            ? camera.ModGetDrawPosition(Mods.Render.FrameTiming.PresentationAlpha)
+                            ? camera.ModGetDrawPosition(Services.IsReplica ? ReplayRenderAlpha : Mods.Render.FrameTiming.PresentationAlpha)
                             : camera.Position;
                     }
                 }
@@ -4688,6 +4712,7 @@ namespace MphRead
             {
                 _exiting = true;
                 _room?.CancelTransition();
+                Mods.Network.DemoPlayback.Release(this);
                 if (!Services.IsReplica && !SideScene && ReferenceEquals(MphRead.GameState.Current, this.GameState))
                 {
                     Mods.KillCam.Reset();
@@ -7394,7 +7419,7 @@ namespace MphRead
         /// property: making it one would put a question mark on two hundred
         /// call sites to describe a state only the launcher can be in.
         /// </summary>
-        public Scene Scene => _scene!;
+        public Scene Scene => _scene == null ? null! : Mods.Network.DemoPlayback.Presentation(_scene) ?? _scene;
 
         /// <summary>Whether a match is loaded. False while the launcher is up.</summary>
         public bool HasScene => _scene != null;
@@ -7932,7 +7957,7 @@ namespace MphRead
                 return;
             }
 #endif
-            if (Mods.Network.DemoPlayback.IsActive
+            if (Mods.Network.DemoPlayback.IsActive && !Mods.Network.DemoPlayback.IsIsolated
                 && Mods.Network.ReplayController.TakeRebuild(out uint target, out bool resume))
             {
                 if (Mods.Replay.ReplayCheckpointManager.TryRestore(

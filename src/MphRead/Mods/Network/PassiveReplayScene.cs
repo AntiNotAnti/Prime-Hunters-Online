@@ -19,7 +19,17 @@ namespace MphRead.Mods.Network
         internal ulong MapHash { get; }
         internal bool HasStepped { get; private set; }
         private bool _disposed;
-        public PassiveReplayScene(string path, Vector2i size) : this(Open(path), size) { }
+        private bool _ownsScene = true;
+        internal Scene DetachScene() { _ownsScene = false; return Scene; }
+        public PassiveReplayScene(string path, Vector2i size) : this(Open(path), size)
+        {
+            try
+            {
+                if (Session.Metadata?.WorldCheckpoint is { Length: > 0 } bytes)
+                    Replay.ReplayWorldCheckpoint.FromBytes(bytes).Restore(this, playbackFrame: 0);
+            }
+            catch { Dispose(); throw; }
+        }
         internal PassiveReplayScene(ReplayReplicaCheckpoint initial, uint frame, ulong mapHash, Vector2i size)
             : this(OpenLive(initial, frame, mapHash), size) { }
         public PassiveReplayScene(ReplayTimelineClip clip, Vector2i size) : this(Open(clip), size)
@@ -97,7 +107,7 @@ namespace MphRead.Mods.Network
             if (Session.LastResult != ReplayOpenResult.Success) throw new InvalidDataException(Session.LastError);
             Scene.StepReplica();
             HasStepped = true;
-            Session.Transport.AfterFrame();
+            if (!Session.IsWarming) Session.Transport.AfterFrame();
             return true;
         }
         internal void StepLive(uint frame, IReadOnlyList<ReplayTimelineRecord> records)
@@ -110,8 +120,7 @@ namespace MphRead.Mods.Network
         {
             if (_disposed) return;
             _disposed = true;
-            Scene.DoCleanup();
-            Scene.UnloadGl();
+            if (_ownsScene) { Scene.DoCleanup(); Scene.UnloadGl(); }
             Session.Dispose();
         }
     }

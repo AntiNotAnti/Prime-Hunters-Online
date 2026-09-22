@@ -20,13 +20,15 @@ namespace MphRead
         internal Mods.Network.ContinuousWeaponPhase WeaponPhase => Services.IsReplica ? ContinuousPhase : Mods.Network.NetSession.ContinuousPhase;
         public IReadOnlyList<WeaponInfo> WeaponRules => GameState.Multiplayer ? Weapons.WeaponsMP : Weapons.Weapons1P;
         internal IReadOnlyList<PlayerEntity.HudMessage> HudMessages { get; } = PlayerEntity.CreateHudMessages();
-        public ISceneServices Services { get; }
+        public ISceneServices Services { get; private set; }
+        internal bool IsReplayLab { get; private set; }
         internal float ReplayRenderAlpha { get; set; } = 1;
         internal Action<Scene>? ReplayPresentationHud { get; set; }
+        internal Action<int, int>? ReplayShotPresented { get; set; }
         public SceneGameState GameState { get; }
         public ScenePlayerRegistry Players { get; }
         public MatchRandom Random { get; }
-        public Mods.Network.PlayerReplicationBridge PlayerReplication { get; }
+        public Mods.Network.PlayerReplicationBridge PlayerReplication { get; private set; }
         internal ushort NextItemRotation { get; set; }
         public SceneCameraSequences CameraSequences => GameState.CameraSequences;
         internal BeamProjectileEntity[] EnemyBeams { get; set; } = null!;

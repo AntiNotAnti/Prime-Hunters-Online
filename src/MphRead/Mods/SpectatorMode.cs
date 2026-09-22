@@ -13,7 +13,7 @@ namespace MphRead.Mods
     /// The whole thing is one pointer swap: <see cref="PlayerEntity.Main"/>
     /// is already what the camera, the HUD and the weapon viewmodel all key
     /// off (see <c>Mods.Network.NetPlayerSetup</c>), so pointing
-    /// <see cref="PlayerEntity.MainPlayerIndex"/> at somebody else's slot
+    /// <see cref="Registry.MainPlayerIndex"/> at somebody else's slot
     /// makes every one of those follow them for free. The one thing that
     /// pointer does not touch is whose slot real hardware input reaches --
     /// that is <c>Network.NetHooks.LocalSlot</c>, unchanged here -- so
@@ -23,6 +23,8 @@ namespace MphRead.Mods
     /// </summary>
     public static class SpectatorMode
     {
+        private static ScenePlayerRegistry Registry => Network.DemoPlayback.ReplicaScene?.Players
+            ?? Network.DemoPlayback.PresentationScene?.Players ?? PlayerEntity.LegacyRegistry;
         public static bool IsSpectating { get; private set; }
 
         /// <summary>
@@ -61,7 +63,7 @@ namespace MphRead.Mods
             {
                 return;
             }
-            int next = FindNextActiveSlot(PlayerEntity.MainPlayerIndex);
+            int next = FindNextActiveSlot(Registry.MainPlayerIndex);
             if (watchSomeone && next == -1)
             {
                 // Nobody to watch yet: the demo path calls this every frame
@@ -74,9 +76,9 @@ namespace MphRead.Mods
             // real local entity (not whoever Main points at); NetSession
             // reads this flag into the outgoing snapshot for everyone else.
             int localSlot = Network.NetHooks.LocalSlot;
-            if (localSlot >= 0 && localSlot < PlayerEntity.Players.Count)
+            if (localSlot >= 0 && localSlot < Registry.Items.Count)
             {
-                PlayerEntity.Players[localSlot].ModSetSpectating(true);
+                Registry.Items[localSlot].ModSetSpectating(true);
             }
             if (watchSomeone)
             {
@@ -99,8 +101,8 @@ namespace MphRead.Mods
         /// </summary>
         public static void Watch(int slot)
         {
-            if (!IsSpectating || slot < 0 || slot >= PlayerEntity.Players.Count) return;
-            var player = PlayerEntity.Players[slot];
+            if (!IsSpectating || slot < 0 || slot >= Registry.Items.Count) return;
+            var player = Registry.Items[slot];
             if (!player.LoadFlags.TestFlag(LoadFlags.Active) || !player.LoadFlags.TestFlag(LoadFlags.Spawned)) return;
             Switch(slot);
             Network.ReplayController.NoteInput();
@@ -112,7 +114,7 @@ namespace MphRead.Mods
             {
                 return;
             }
-            int next = FindNextActiveSlot(PlayerEntity.MainPlayerIndex);
+            int next = FindNextActiveSlot(Registry.MainPlayerIndex);
             if (next == -1)
             {
                 // Nobody to switch to. In the overview that means the click
@@ -134,7 +136,7 @@ namespace MphRead.Mods
             {
                 return;
             }
-            int previous = FindPreviousActiveSlot(PlayerEntity.MainPlayerIndex);
+            int previous = FindPreviousActiveSlot(Registry.MainPlayerIndex);
             if (previous == -1)
             {
                 return;
@@ -213,12 +215,12 @@ namespace MphRead.Mods
         /// </summary>
         private static void Switch(int slot)
         {
-            PlayerEntity target = PlayerEntity.Players[slot];
-            if (!target.HudReady)
+            PlayerEntity target = Registry.Items[slot];
+            if (!Headless.Active && !target.HudReady)
             {
                 target.SetUpHud();
             }
-            PlayerEntity.MainPlayerIndex = slot;
+            Registry.MainPlayerIndex = slot;
             // RoomEntity.UpdateRoomParts walks the portal graph outward from
             // Main.CameraInfo.NodeRef to decide which room geometry is
             // active this frame -- not from the player's own NodeRef, which
@@ -247,14 +249,14 @@ namespace MphRead.Mods
         /// </summary>
         internal static bool TakeReplayControl(int slot)
         {
-            if (!IsSpectating || slot < 0 || slot >= PlayerEntity.Players.Count)
+            if (!IsSpectating || slot < 0 || slot >= Registry.Items.Count)
                 return false;
-            PlayerEntity target = PlayerEntity.Players[slot];
+            PlayerEntity target = Registry.Items[slot];
             if (!target.LoadFlags.TestFlag(LoadFlags.Active)
                 || !target.LoadFlags.TestFlag(LoadFlags.Spawned))
                 return false;
 
-            PlayerEntity.MainPlayerIndex = slot;
+            Registry.MainPlayerIndex = slot;
             target.ModSetSpectating(false);
             target.CameraInfo.NodeRef = target.NodeRef;
             IsSpectating = false;
@@ -270,7 +272,7 @@ namespace MphRead.Mods
                 return;
             }
             int localSlot = Network.NetHooks.LocalSlot;
-            PlayerEntity.MainPlayerIndex = localSlot;
+            Registry.MainPlayerIndex = localSlot;
             IsSpectating = false;
             ShowScoreboard = false;
             // Back behind your own eyes, whichever of the two spectator
@@ -278,7 +280,7 @@ namespace MphRead.Mods
             _cameraRequest = false;
             if (localSlot >= 0 && localSlot < GameState.Points.Length)
             {
-                PlayerEntity.Players[localSlot].ModSetSpectating(false);
+                Registry.Items[localSlot].ModSetSpectating(false);
                 GameState.Points[localSlot] = Math.Min(0, GameState.Points[localSlot]);
                 GameState.Kills[localSlot] = 0;
                 GameState.Deaths[localSlot] = 0;
@@ -297,7 +299,7 @@ namespace MphRead.Mods
         private static int FindPreviousActiveSlot(int fromSlot)
         {
             int localSlot = Network.NetHooks.LocalSlot;
-            IReadOnlyList<PlayerEntity> players = PlayerEntity.Players;
+            IReadOnlyList<PlayerEntity> players = Registry.Items;
             for (int offset = 1; offset <= players.Count; offset++)
             {
                 int index = (fromSlot - offset + players.Count) % players.Count;
@@ -318,7 +320,7 @@ namespace MphRead.Mods
         private static int FindNextActiveSlot(int fromSlot)
         {
             int localSlot = Network.NetHooks.LocalSlot;
-            IReadOnlyList<PlayerEntity> players = PlayerEntity.Players;
+            IReadOnlyList<PlayerEntity> players = Registry.Items;
             for (int offset = 1; offset <= players.Count; offset++)
             {
                 int index = (fromSlot + offset) % players.Count;

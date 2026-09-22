@@ -7,12 +7,43 @@ namespace MphRead
 {
     public partial class Scene
     {
+        internal void BeginReplayLab(int slot)
+        {
+            if (!Services.IsReplica || Mods.Network.NetSession.Active)
+                throw new InvalidOperationException("Practice forks require an isolated replay and no live connection.");
+            Services = LiveSceneServices.Instance;
+            PlayerReplication = new Mods.Network.PlayerReplicationBridge(Services.PlayerReplication);
+            IsReplayLab = true;
+            Players.MainPlayerIndex = slot;
+            PlayerEntity.LegacyRegistry = Players;
+            global::MphRead.GameState.Current = GameState;
+            Rng.Current = Random;
+            foreach (var player in Players.Items)
+            {
+                player.Controls.ClearAll(); player.ModForgetInputDeltas();
+                player.IsBot = false;
+            }
+            SetFreeCamera(false);
+            Audio.SetListenerScene(this);
+        }
         /// <summary>One fixed replica step. The caller pumps only this scene's
         /// session; no local input, socket, match-ending or foreground HUD pass runs.</summary>
         internal void StepReplica()
         {
             if (Services is not ReplaySceneServices replay)
                 throw new InvalidOperationException("Only a replay-owned scene can take a replica step.");
+            // Watching another actor is presentation state. The retail engine
+            // branches some effect/animation work on Main; keep its simulation
+            // perspective fixed so a camera click cannot change future RNG.
+            int watched = Players.MainPlayerIndex;
+            CameraMode viewMode = _cameraMode;
+            Players.MainPlayerIndex = 0;
+            _cameraMode = CameraMode.Roam;
+            try { StepReplicaWorld(replay); }
+            finally { Players.MainPlayerIndex = watched; _cameraMode = viewMode; }
+        }
+        private void StepReplicaWorld(ReplaySceneServices replay)
+        {
             _frameTime = 1f / 60;
             _effectFrame++;
             _globalElapsedTime += _frameTime;

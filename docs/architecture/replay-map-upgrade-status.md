@@ -6,7 +6,7 @@
 - Reborn reference: `1a3726ee764393a295d80152b55e7a8e6ec58a49`.
 - Recent target work reviewed: #23 (Map Studio), #26/#31 (replay/killcam),
   #37 (presentation), #38 (protocol rollback), #39 (Android surface lifecycle).
-- Protocol remains 16; replay v2/v3 and map formats are unchanged.
+- Protocol remains 16. Replay v2/v3 remain readable; v4 adds an explicit world envelope. Map formats are unchanged.
 
 ## Timeline foundation
 
@@ -33,7 +33,8 @@ player/RNG/clock/health state, but do not contain all historical projectiles,
 objectives, animation and effects. They are tagged `NetworkBaseline`. No passive
 killcam may treat one as `ReplicaCheckpoint`.
 
-The existing replay, clip and killcam paths remain in service during migration.
+Studio, full client/server recording, clips and killcams use the private timeline pipeline.
+The legacy theatre host and pose killcam remain diagnostic/fallback adapters during migration.
 No fallback is removed before the plan's runtime acceptance gate.
 
 ## Remaining replay work
@@ -43,9 +44,9 @@ No fallback is removed before the plan's runtime acceptance gate.
   acceptance and consumer attachment remain.
 - Complete historical presentation/event state and scene service coverage for all modes;
   replica simulation, replication, silent audio and GL resource ownership are implemented.
-- Attach the instance-owned passive player and bounded checkpoint seeking to consumers.
+- Complete presentation interpolation, export and remaining stress acceptance.
 - Complete killcam stress acceptance on larger matches and Android; private-scene controllers and audio/input/HUD ownership are implemented.
-- Migrate full playback, instant clips, Studio, thumbnails and video export.
+- Verify all rendered Studio, thumbnail and video export workflows on the shared player.
 - Desktop/Android runtime stress and determinism/performance acceptance.
 
 ## Existing editor integration
@@ -136,8 +137,8 @@ that the missing replay features work.
 | P0B recorder | Accepted match/configuration/roster/player snapshots, remote intents, submitted local input and existing semantic events integrated; full world/objective/presentation event capture missing |
 | P0C isolated session/services | Instance reader/transport/hosts, private replication, silent audio, fixed stepping, GL rendering and detached world checkpoints implemented; broader mode/combat acceptance remains |
 | P0D/P0E personal/final killcams | Instance controller and private replay presentation implemented; two-client personal/final combat checked with latency/loss; larger matches and Android runtime acceptance remain |
-| P1 playback/seek/interpolation | Studio facades delegate reader/clock/transport to a session; passive file/frozen-clip player uses detached checkpoints and at most 120 seek steps; foreground/interpolation migration outstanding |
-| P1 shared clips/highlights/export | Existing functionality retained; shared-timeline migration outstanding |
+| P1 playback/seek/interpolation | Studio facades delegate reader/clock/transport to a session; passive file/frozen-clip player uses detached checkpoints and at most 120 seek steps; foreground Studio uses private player; interpolation/export acceptance outstanding |
+| P1 shared clips/highlights/export | Client/server full recordings and instant clips share accepted facts; v4 durable initial worlds and exact nested/legacy ranges implemented; rendered export acceptance outstanding |
 | P2A history | State IDs, bounded delta commands and transaction coalescing implemented for common actions |
 | P2B viewport | Per-object native mesh and independent imported/entity/selection invalidation implemented |
 | P2C renderer viewport | Existing game renderer consumes stable meshes; DPI/picking/capture contract, overlay composition and viewport resource lifetime verified |
@@ -318,3 +319,46 @@ ARENA showed personal and final replay scenes under 100 ms round-trip latency
 and 2% packet loss; HUD captures were inspected. One retry was needed after GLFW
 crashed querying a missing macOS monitor before either client loaded a scene.
 The network harness now includes fatal health drops in its damage counter.
+
+## Shared disk sinks and foreground Studio
+
+Normal playback now uses `PassiveReplayPlayer`; `DemoPlayback` is a presentation
+facade. The root window scene routes drawing, input and resize to the ready private
+scene. Readers, seek reconstruction and historical entities remain separate from
+live `NetSession`. Watching another slot keeps the replica simulation perspective
+fixed, so camera changes cannot alter RNG or weapon effects. Versioned audio leases
+mute seek/paused worlds and follow scene replacement. Replay Lab explicitly detaches
+an alive historical actor into an offline practice scene, refusing a live connection.
+
+Client and dedicated-server recording subscribe to `ReplayRecorder.Accepted`.
+Instant clips select the same immutable timeline and prepare an exact initial
+world with bounded warmup. Disk serialization then runs on a worker; completion and
+GL cleanup run on the owner. Pending post-roll is truncated and preserved on reset.
+The old independent packet ring has been removed.
+
+`.ppdemo` v4 retains v3 CRC chunks, indexing and atomic `.part` publication, with
+bounded initial-world bytes, source-frame origin and hidden lead-in in its header.
+A fixed codec revision and field contract replace commit-SHA checkpoint rejection.
+File-only semantic records preserve exact kill identities without changing protocol
+16. Frame markers preserve quiet EOF. Extracted ranges retain their source world
+and required facts, including nested ranges. V2 uses its original construction
+preflight decoder; short clips cannot accidentally choose a different roster.
+
+Validation: 591 format checks pass. The live-capture check passes 1,801 accepted
+frames, seven checkpoints, 251 frozen comparisons, durable v4 and nested clips,
+and v2/v3 source-range fidelity. Saved live clips and v3 recordings pass every
+frame's gameplay/presentation projection, 14 cold/cached seeks, all five rates,
+frozen EOF and injected-divergence detection. A real v4 recording passes 620
+rendered Studio frames, camera/player changes, four seeks and pause with foreground
+and network sentinels unchanged. Replay Lab's offline handoff also passes.
+Two real clients saved clips during combat without capture/playback errors; one
+missed a harness shot-count threshold, so that run is clip validation, not a full
+network acceptance pass. Larger-match and server recording checks continue.
+
+The four-client 90-second latency/loss run completed 22 killcam starts and 2,761
+visible frames, with clips from every client and no capture/playback errors.
+Dedicated-server recording survived rotation; its first v4 file passes all 2,843
+frames, rates, seeks and EOF checks. The general network harness flagged shot-count
+coverage and transient position gaps in that run; those are still under investigation
+and are not counted as a full network acceptance pass. All 12 synthetic multiplayer
+fixtures also pass again after the Studio and disk-sink migration (21,612 frames).

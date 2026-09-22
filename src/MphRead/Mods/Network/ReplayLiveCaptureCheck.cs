@@ -64,6 +64,63 @@ internal static class ReplayLiveCaptureCheck
             while (!player.Ready) player.Update();
             if (ReplayStateHash.Compute(player.Current.Scene, start) != reference[start].Gameplay)
                 throw new InvalidDataException("Live frozen clip backward seek differs.");
+            string directory = Path.Combine(Path.GetTempPath(), "prime-world-clips-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            try
+            {
+                string saved = Path.Combine(directory, "clip.ppdemo");
+                ReplayTimelineArchive.Save(clip, player.Current, saved);
+                CompareFile(saved, start, 250);
+                string subrange = Path.Combine(directory, "subrange.ppdemo");
+                if (ReplayArchive.Extract(saved, 40, 120, subrange) != ReplayOpenResult.Success)
+                    throw new InvalidDataException("Could not extract a durable world subrange.");
+                CompareFile(subrange, start + 40, 80);
+                string nested = Path.Combine(directory, "nested.ppdemo");
+                if (ReplayArchive.Extract(subrange, 10, 30, nested) != ReplayOpenResult.Success)
+                    throw new InvalidDataException("Could not extract a nested world range.");
+                CompareFile(nested, start + 50, 20);
+                Console.WriteLine("[replaylive] Durable v4 clip and two nested ranges preserve every gameplay/presentation frame, exact frame zero, EOF and backward seek.");
+                string legacyRange = Path.Combine(directory, "v3-range.ppdemo");
+                if (ReplayArchive.Extract(path, 400, 500, legacyRange) != ReplayOpenResult.Success
+                    || ReplayClipFidelity.Run(path, legacyRange, 400) != 0)
+                    throw new InvalidDataException("V3 source extraction changed its world.");
+                string v2 = Path.Combine(directory, "legacy-v2.ppdemo");
+                using (var original = DemoReader.Open(path)!)
+                using (var writer = new DemoWriter(v2))
+                {
+                    foreach (var packet in original.Metadata!.Bootstrap.Packets) writer.WriteRecord(0, packet);
+                    while (original.ReadNext() is { } record) writer.WriteRecord(record.Frame, record.Data);
+                }
+                foreach (uint begin in new uint[] { 0, 400 })
+                {
+                    string range = Path.Combine(directory, $"v2-range-{begin}.ppdemo");
+                    if (ReplayArchive.Extract(v2, begin, begin + 50, range) != ReplayOpenResult.Success
+                        || ReplayClipFidelity.Run(v2, range, begin) != 0)
+                        throw new InvalidDataException("V2 compatibility extraction changed its world.");
+                }
+            }
+            finally { Directory.Delete(directory, recursive: true); }
+
+            void CompareFile(string file, uint origin, uint duration)
+            {
+                using var disk = new PassiveReplayPlayer(file, new Vector2i(256, 192));
+                while (!disk.Ready) disk.Update();
+                if (disk.Current.Session.CurrentFrame != 0 || disk.Current.Session.LastFrame != duration)
+                    throw new InvalidDataException("Durable clip range is not normalized.");
+                do
+                {
+                    uint recorded = disk.Current.Session.CurrentFrame + origin;
+                    if (ReplayStateHash.Compute(disk.Current.Scene, recorded) != reference[recorded].Gameplay
+                        || disk.Current.Scene.ReplayPresentationHash(recorded) != reference[recorded].Presentation)
+                        throw new InvalidDataException($"Durable clip differs at {recorded}.");
+                    if (disk.Current.Session.AtEnd) break;
+                    disk.Update();
+                } while (true);
+                disk.Seek(0);
+                while (!disk.Ready) disk.Update();
+                if (ReplayStateHash.Compute(disk.Current.Scene, origin) != reference[origin].Gameplay)
+                    throw new InvalidDataException("Durable clip backward seek differs.");
+            }
             if (ReplayStateHash.Compute(live, 0) != sentinel || !ReferenceEquals(GameState.Current, live.GameState))
                 throw new InvalidDataException("Live clip playback changed its foreground owner.");
             Console.WriteLine($"[replaylive] PASS: {reference.Count} accepted-fact frames, {capture.CaptureCount} world checkpoints, {bytes} timeline bytes, {comparisons} frozen frame comparisons, backward seek and match-reset isolation. Last capture {capture.LastCaptureMilliseconds:F2} ms; replica tick {capture.LastStepMilliseconds:F3} ms.");

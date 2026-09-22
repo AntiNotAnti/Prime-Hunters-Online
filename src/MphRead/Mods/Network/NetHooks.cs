@@ -33,6 +33,7 @@ namespace MphRead.Mods.Network
         /// </remarks>
         public static int LocalSlot => DemoPlayback.IsActive
             || NetSession.Role == NetRole.Server ? -1
+            : GameState.Current.Owner is { IsReplayLab: true } lab ? lab.Players.MainPlayerIndex
             : NetSession.Active && NetSession.LocalSlot >= 0
             ? NetSession.LocalSlot
             : 0;

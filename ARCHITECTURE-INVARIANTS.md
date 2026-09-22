@@ -48,7 +48,7 @@ This file is the short, machine-oriented source of truth for architectural assum
 
 ## Replay and clips
 
-- Replay format v3 is protocol-bound and validated before playback.
+- Replay formats v3/v4 are protocol-bound and validated before playback.
 - Authoritative dedicated servers record canonical replays when enabled.
 - Client replay recording, rolling clip capture, Replay Studio, checkpoints, highlight derivation and deterministic frame export all exist. Do not describe replay/clip recording as a future feature.
 - Replay playback must not open a live gameplay socket or mutate the recorded session through reconnect/authority control packets.
@@ -83,7 +83,7 @@ This file is the short, machine-oriented source of truth for architectural assum
 - Decoder and animation checkpoint components own detached payloads. Decoder restore validates before mutation; animation restore resolves groups against the destination asset. A component alone must never be advertised as a complete world checkpoint.
 - `ReplayWorldCheckpoint` combines those components with an explicit entity/effect/clock/link field contract. Its payload contains values, asset keys and construction anchors, never live references or native handles. Restore is restricted to an unpublished replica with matching room content and construction baseline. Unknown contracts/anchors fail closed. Resource binding does not call gameplay initialization.
 - `PassiveReplayPlayer` owns a 64 MiB/128-entry checkpoint cache. File and frozen-world-clip seeks share its fixed stepping, with at most 120 steps per host update. The presented scene is replaced only after reconstruction succeeds; a frozen clip remains valid after its timeline is reset.
-- Replay readers and transport scheduling belong to session instances. Passive hosts own their decoded lifecycle state and never access live NetSession. The foreground theatre host alone bridges legacy process services.
+- Replay readers and transport scheduling belong to session instances. Passive hosts own their decoded lifecycle state and never access live NetSession. Normal Studio uses the private player too. The explicit legacy theatre host is diagnostic compatibility only.
 - Each scene owns its player registry, match state, random streams, camera sequences and enemy/platform beam pools. Legacy static facades refer only to the foreground scene. Replica construction and cleanup never rebind those facades. Replica scenes use an explicit fixed-step entry, instance replication/lifecycle histories, silent sound routing and private HUD queues. They cannot author outgoing input or resolve combat. Texture names are GL allocated and scene owned; shared model display lists have scene leases. Full historical checkpoints and killcam replacement remain gated on acceptance.
 - Exact kill markers fence match, authority, event, server tick, occupant generations and victim life. Ambiguous cumulative deaths are not exact kill candidates.
 - Timeline intent baselines must match the recorded occupant generation and life. Submitted local input is presentation evidence, never accepted hit/damage authority. Versioned gameplay hashes include world/projectile state; animation/effect projections are checked separately.
@@ -104,3 +104,6 @@ This file is the short, machine-oriented source of truth for architectural assum
 - One dependency analyzer defines content identities and portable assets for fingerprints, packages, package reference checks and Save As. Cartridge dependencies affect builds but are never packaged.
 
 - Replay killcams own a frozen timeline clip, passive player, scene, HUD and versioned audio lease. They never replace live players or send replay input. UI/Android skip callbacks queue requests; GL disposal stays on the scene owner. Respawn and match/epoch/occupant/life changes invalidate the presentation.
+
+- Full client/server recordings and instant clips consume the shared accepted-fact recorder. V4 initial worlds, frame origins and hidden lead-in preserve exact clip starts; v2/v3 are supported by explicit adapters. Clip disk writes consume frozen values on a worker; GL world creation/disposal stays on the owner.
+- Camera/player selection must not affect replay simulation RNG. Replica stepping fixes its simulation perspective and restores viewing state afterwards. Replay Lab is an explicit offline detach and cannot take over while a live connection exists.

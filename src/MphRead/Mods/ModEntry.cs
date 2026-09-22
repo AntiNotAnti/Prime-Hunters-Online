@@ -1801,6 +1801,11 @@ namespace MphRead.Mods
                 Environment.ExitCode = Network.ReplayKillcamCheck.Run(killcamSource, ValueAfter(args, "shots"));
                 return true;
             }
+            if (ValueAfter(args, "replaytheatrecheck") is string theatreSource)
+            {
+                Environment.ExitCode = Network.ReplayTheatreCheck.Run(theatreSource, ValueAfter(args, "shots"));
+                return true;
+            }
             if (ValueAfter(args, "replaylivecheck") is string liveSource)
             {
                 Environment.ExitCode = Network.ReplayLiveCaptureCheck.Run(liveSource);

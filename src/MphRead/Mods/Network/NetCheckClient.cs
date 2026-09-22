@@ -90,6 +90,7 @@ namespace MphRead.Mods.Network
         private int _shots;
         private int _killcamFrames, _killcamStarts;
         private bool _killcamWasVisible;
+        private int _clipTests;
         private int _duelShots;
         private int _lastDuelShotFrame = -1000;
         private bool _opponentInView;
@@ -222,6 +223,11 @@ namespace MphRead.Mods.Network
             SwapBuffers();
             Scene.AfterRenderFrame();
             base.OnRenderFrame(args);
+            if (Environment.GetEnvironmentVariable("MPHREAD_CLIP_TEST") != null && _clipTests < 2
+                && _frame >= (_seconds - 12 + _clipTests * 6) * 60 && !DemoClip.IsSaving && DemoClip.Held > 0)
+            {
+                Console.WriteLine($"[netcheck] {_name} shared clip {++_clipTests}: {DemoClip.Save()}");
+            }
             if (_frame >= _seconds * 60)
             {
                 Close();
@@ -929,12 +935,8 @@ namespace MphRead.Mods.Network
                 // has no check at all.
                 if (Environment.GetEnvironmentVariable("MPHREAD_CLIP_TEST") != null)
                 {
-                    // Twice, deliberately: two presses must make two files
-                    // rather than one overwriting the other.
-                    Console.WriteLine($"[netcheck] {name} clip held {DemoClip.Held:0.0} s, "
-                        + (DemoClip.Save() ?? "nothing saved"));
-                    Console.WriteLine($"[netcheck] {name} clip again -> "
-                        + (DemoClip.Save() ?? "nothing saved"));
+                    DemoClip.CompletePending(window?.Scene.Size ?? new Vector2i(256, 192));
+                    Console.WriteLine($"[netcheck] {name} shared clip result: {DemoClip.LastSavedPath}; error={DemoClip.LastError ?? "none"}");
                 }
                 window?.Dispose();
                 SpectatorMode.Reset();

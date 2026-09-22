@@ -187,7 +187,7 @@ namespace MphRead.Mods.Network
         private ReplayOpenResult _result;
 
         public byte ProtocolVersion { get; }
-        public byte FormatVersion => _v3 != null ? (byte)3 : (byte)2;
+        public byte FormatVersion => _v3?.Metadata.FormatVersion ?? (byte)2;
         public ReplayMetadata? Metadata => _v3?.Metadata;
         public uint DurationFrames => _v3?.DurationFrames ?? _frame;
         public ReplayOpenResult LastResult => _v3?.LastResult ?? _result;
@@ -216,7 +216,7 @@ namespace MphRead.Mods.Network
                     result = ReplayOpenResult.InvalidMagic;
                     return null;
                 }
-                if (header[4] is not (2 or 3))
+                if (header[4] is not (2 or 3 or 4))
                 {
                     stream.Dispose();
                     result = ReplayOpenResult.UnsupportedFormat;
@@ -237,7 +237,7 @@ namespace MphRead.Mods.Network
         {
             _stream = stream;
             ProtocolVersion = protocolVersion;
-            if (version == 3) _v3 = new ReplayReaderV3(stream, protocolVersion, metadataOnly);
+            if (version >= 3) _v3 = new ReplayReaderV3(stream, protocolVersion, metadataOnly, version);
             else _deflate = new DeflateStream(stream, CompressionMode.Decompress, leaveOpen: true);
         }
 

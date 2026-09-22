@@ -284,7 +284,7 @@ namespace MphRead.Mods.Network
                     int delivered = 0; foreach (var unused in transport.Drain()) delivered++;
                     Require(delivered == 4096 && transport.PacketsDropped == 0, "recorded packet burst is not dropped");
                 }
-                Require(DemoPlayback.Join(clean), "matching protocol bootstrap joins");
+                Require(DemoPlayback.JoinLegacy(clean), "matching protocol bootstrap joins");
                 Require(NetSession.ActiveMatchDefinition?.DisablePowerups == true,
                     "session rules survive replay bootstrap");
                 foreach (byte[] control in new[] { new byte[] { (byte)PacketType.Welcome, 0 },
@@ -418,32 +418,39 @@ namespace MphRead.Mods.Network
                     _ = ReplayArchive.Validate(corrupt);
                     checks++;
                 }
-                NetSession.StartPlayback();
-                // DemoClip only records inside a valid network stream. Match
-                // identity zero is deliberately rejected by ApplyMatchState,
-                // so give this stalled-client fixture the same non-zero
-                // lifecycle identity a real replay session has.
-                NetSession.ApplyMatchState(new MatchStatePacket
+                // V4 carries a bounded opaque initial world and a hidden, indexed
+                // lead-in. Asset-free checks verify the envelope; world fidelity
+                // is covered by the real-scene clip check.
+                string v4 = Path.Combine(directory, "world-range.ppdemo");
+                var v4Metadata = new ReplayMetadata { FormatVersion = 4, OriginRecordingFrame = 900,
+                    LeadInFrames = 60, RoomKey = match.RoomKey, Mode = GameMode.Battle,
+                    WorldCheckpoint = new byte[300000] };
+                using (var writer = new ReplayWriterV3(v4, v4Metadata))
                 {
-                    MatchId = 1,
-                    AuthorityEpoch = 1,
-                    RoomKey = "",
-                    NextRoomKey = "",
-                    Mode = (byte)GameMode.Battle
-                }, false);
-                int priorSeconds = DemoClip.Seconds;
-                try
-                {
-                    DemoClip.Seconds = 120;
-                    // No simulation frames advance: a packet flood during a stalled client
-                    // must remain bounded by memory as well as by the time window.
-                    for (int i = 0; i < 1000000; i++) DemoClip.Add(packet.AsSpan(0, 1));
-                    Require(DemoClip.BufferedBytes <= 24 * 1024 * 1024 && DemoClip.BufferedPages > 1, "stalled packet flood is bounded");
-                    DemoClip.Purge();
-                    Require(DemoClip.BufferedBytes == 0 && DemoClip.BufferedPages == 0, "pooled clip pages released");
+                    for (uint frame = 0; frame <= 180; frame++) ReplayTimelineArchive.EndFrame(writer, frame);
+                    writer.WriteEvent(new(70, ReplayEventType.Kill, 1, 2));
                 }
-                finally { DemoClip.Seconds = priorSeconds; NetSession.Stop(); }
-                Console.WriteLine($"[replayformat] PASS {checks} checks (v2/v3, order, metadata, CRC, recovery, extraction, malformed files)");
+                using (var read = DemoReader.Open(v4, out var opened))
+                {
+                    Require(opened == ReplayOpenResult.Success && read?.FormatVersion == 4, "world format opens");
+                    Require(read?.Metadata?.WorldCheckpoint.Length == 300000 && read.Metadata.OriginRecordingFrame == 900,
+                        "world bootstrap roundtrip exceeds old packet/header limit");
+                    Require(read?.DurationFrames == 120 && read.Metadata!.Events.Single().Frame == 10,
+                        "lead-in normalizes duration and events");
+                }
+                string v4Range = Path.Combine(directory, "world-subrange.ppdemo");
+                Require(ReplayArchive.Extract(v4, 5, 40, v4Range) == ReplayOpenResult.Success, "world range extraction");
+                using (var read = DemoReader.Open(v4Range, out _))
+                    Require(read?.DurationFrames == 35 && read.Metadata!.LeadInFrames == 65
+                        && read.Metadata.Events.Single().Frame == 5 && read.Metadata.WorldCheckpoint.Length == 300000,
+                        "nested range retains world/warmup and normalizes visible events");
+                Require(ReplayArchive.Validate(v4Range) == ReplayOpenResult.Success, "world range CRC validation");
+                var exactKill = new ReplayMarker(ReplayMarkerKind.Kill, 2, 3, Kill:
+                    new ReplayKillIdentity(4, 5, 987, 22, 2, 10, 3, 11, 12), Weapon: 6, DamageFlags: 7);
+                var semantic = ReplayTimelineArchive.DecodeMarker(123, ReplayTimelineArchive.EncodeMarker(987, exactKill));
+                Require(semantic.RecordingFrame == 123 && semantic.ServerTick == 987 && semantic.Marker == exactKill,
+                    "durable semantic kill retains epoch, server tick, generations, life, weapon and classification");
+                Console.WriteLine($"[replayformat] PASS {checks} checks (v2/v3/v4, order, metadata, CRC, recovery, extraction, malformed files)");
                 return 0;
             }
             catch (Exception ex) { Console.WriteLine($"[replayformat] FAIL: {ex}"); return 1; }

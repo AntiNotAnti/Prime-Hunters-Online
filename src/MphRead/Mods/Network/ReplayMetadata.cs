@@ -51,6 +51,11 @@ namespace MphRead.Mods.Network
         public bool Recovered { get; init; }
         public IReadOnlyList<ReplayPlayerInfo> Players { get; init; } = Array.Empty<ReplayPlayerInfo>();
         public ReplayBootstrap Bootstrap { get; init; } = new();
+        // V4 starts from a detached world at exactly visible frame zero. Wire
+        // ticks and decoder input ages keep their original recording clock.
+        public uint OriginRecordingFrame { get; init; }
+        public uint LeadInFrames { get; init; }
+        public byte[] WorldCheckpoint { get; init; } = Array.Empty<byte>();
         public IReadOnlyList<ReplayEvent> Events { get; set; } = Array.Empty<ReplayEvent>();
         public ushort HashSchema { get; set; }
         public string HashBuildId { get; set; } = "";

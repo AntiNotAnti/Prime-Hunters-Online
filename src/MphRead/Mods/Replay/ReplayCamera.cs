@@ -186,9 +186,9 @@ namespace MphRead
             if (!player.LoadFlags.TestFlag(LoadFlags.Spawned)) return;
             SetFreeCamera(true);
 
-            Vector3 playerPosition = player.Position;
+            Vector3 playerPosition = Services.IsReplica ? player.ReplayDrawTransform.Row3.Xyz : player.Position;
             Vector3 facing = player.CameraInfo.Facing;
-            if (Mods.Network.NetSmoothing.SampleReplayPresentation(player.SlotIndex,
+            if (!Services.IsReplica && Mods.Network.NetSmoothing.SampleReplayPresentation(player.SlotIndex,
                 out Vector3 replayPosition, out Vector3 replayFacing, out bool replayAlt))
             {
                 playerPosition = Mods.Network.NetPlayerBridge.InFormFor(

@@ -1,186 +1,116 @@
 using System;
-using System.Buffers;
-using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
+using OpenTK.Mathematics;
 
-namespace MphRead.Mods.Network
+namespace MphRead.Mods.Network;
+
+/// <summary>Instant-clip selection over the shared bounded replay timeline.
+/// Frozen facts survive reset; private warmup uses at most 120 steps per tick.</summary>
+internal static class DemoClip
 {
-    /// <summary>Bounded pooled packet pages; each bootstrap belongs to the beginning of its page.</summary>
-    internal static class DemoClip
+    public static readonly int[] Lengths = { 15, 30, 60, 120 };
+    public static readonly int[] PostRollLengths = { 0, 2, 3, 5 };
+    private static int _seconds = 30;
+    public static int Seconds { get => _seconds; set { _seconds = Math.Clamp(value, 0, 120); } }
+    public static int PostRollSeconds { get; set; } = 3;
+    private static string? _pendingPath;
+    private static uint _start, _finish;
+    private static ReplayTimelineClip? _clip;
+    private static PassiveReplayPlayer? _preparing;
+    private static Task? _writing;
+    static DemoClip() { ReplayCapture.Recorder.Resetting += Freeze; }
+    public static bool IsSaving => _pendingPath != null;
+    public static string? LastError { get; private set; }
+    public static string? LastSavedPath { get; private set; }
+    public static bool Active => Seconds > 0 && NetSession.Active && !DemoPlayback.IsActive;
+    public static double Held => ReplayCapture.Recorder.Timeline.FirstRecordingFrame is uint first
+        && ReplayCapture.Recorder.Timeline.LastRecordingFrame is uint last
+        ? Math.Min(Seconds, (last - first) / 60.0) : 0;
+    public static string? Save()
     {
-        public static readonly int[] Lengths = { 15, 30, 60, 120 };
-        public static readonly int[] PostRollLengths = { 0, 2, 3, 5 };
-        private static int _seconds = 30;
-        public static int Seconds
+        if (IsSaving) return _pendingPath;
+        var timeline = ReplayCapture.Recorder.Timeline;
+        if (!Active || timeline.FirstRecordingFrame is not uint first || timeline.LastRecordingFrame is not uint last) return null;
+        LastError = null;
+        _start = Math.Max(first, last > Seconds * 60 ? last - (uint)(Seconds * 60) : 0);
+        _finish = last + (uint)Math.Clamp(PostRollSeconds, 0, 5) * 60;
+        string room = NetSession.ServerMatch?.RoomKey ?? "match";
+        foreach (char c in Path.GetInvalidFileNameChars()) room = room.Replace(c, '_');
+        _pendingPath = Paths.Combine(Paths.Export, "_demos", $"{room}_clip_{DateTime.Now:yyyy-MM-dd_HH-mm-ss-fff}_{Guid.NewGuid():N}{DemoFile.Extension}");
+        if (PostRollSeconds <= 0) Freeze();
+        return _pendingPath;
+    }
+    public static string? SaveWithFeedback()
+    {
+        double held = Held;
+        string? path = Save();
+        Chat.ChatBox.System(path == null ? "nothing to clip yet" : $"saving the last {held:0} s to " + Path.GetFileName(path));
+        return path;
+    }
+    private static void Freeze()
+    {
+        if (!IsSaving || _clip != null) return;
+        var timeline = ReplayCapture.Recorder.Timeline;
+        if (timeline.LastRecordingFrame is uint last && timeline.TryFreeze(_start, Math.Min(last, _finish), out var frozen))
+            _clip = frozen;
+        else Fail(new InvalidDataException("The requested replay history is no longer available."));
+    }
+    // Settings/respawn changes stop an outstanding selection's post-roll; the
+    // shared world history remains available to killcams and other consumers.
+    public static void Purge() => Freeze();
+    internal static void Tick(Vector2i size)
+    {
+        if (!IsSaving) return;
+        try
         {
-            get => _seconds;
-            set { _seconds = Math.Clamp(value, 0, 120); if (_seconds == 0) Purge(); }
-        }
-        public static int PostRollSeconds { get; set; } = 3;
-        private const long MaxBytes = 24 * 1024 * 1024;
-        private const int PageSize = 64 * 1024;
-        private readonly record struct Entry(uint Frame, int Offset, ushort Length);
-        private sealed class Page : IDisposable
-        {
-            public readonly byte[] Buffer;
-            public readonly List<Entry> Entries = new(512);
-            public readonly List<ReplayEvent> Events = new();
-            public readonly uint First;
-            public readonly ReplayMetadata Metadata;
-            public int Used;
-            public Page(uint frame)
+            if (_clip == null && ReplayCapture.Recorder.Timeline.LastRecordingFrame >= _finish) Freeze();
+            if (_clip == null) return;
+            if (_writing != null)
             {
-                First = frame;
-                Metadata = ReplayCapture.Capture(ReplayType.Clip);
-                Buffer = ArrayPool<byte>.Shared.Rent(PageSize);
+                if (!_writing.IsCompleted) return;
+                _writing.GetAwaiter().GetResult();
+                LastSavedPath = _pendingPath;
+                Chat.ChatBox.System("Saved replay clip: " + Path.GetFileName(_pendingPath));
+                Clear(); return;
             }
-            public void Dispose() => ArrayPool<byte>.Shared.Return(Buffer);
-        }
-        private static readonly Queue<Page> Pages = new();
-        private static Page? _tail;
-        private static long _bytes;
-        private static string? _pendingPath;
-        private static uint _finishFrame;
-        public static bool IsSaving => _pendingPath != null;
-        public static string? LastError { get; private set; }
-        public static string? LastSavedPath { get; private set; }
-        internal static long BufferedBytes => _bytes;
-        internal static int BufferedPages => Pages.Count;
-        public static bool Active => Seconds > 0 && NetSession.Active && !DemoPlayback.IsActive;
-        public static double Held => Pages.Count == 0 || NetSession.NetFrame < Pages.Peek().First
-            ? 0 : (NetSession.NetFrame - Pages.Peek().First) / 60.0;
-
-        public static void Add(ReadOnlySpan<byte> data)
-        {
-            if (!Active || data.Length is < 1 or > NetConfig.MaxPacketSize || NetSession.ServerMatch == null) return;
-            uint frame = NetSession.NetFrame;
-            if (_tail != null && frame < _tail.First) Purge();
-            try
+            _preparing ??= new PassiveReplayPlayer(_clip, size);
+            if (!_preparing.Ready) _preparing.Update();
+            if (!_preparing.Ready) return;
+            if (_writing == null)
             {
-                if (_tail == null || frame - _tail.First >= 60 || _tail.Used + data.Length > _tail.Buffer.Length
-                    || _tail.Entries.Count >= 4096)
-                {
-                    _tail = new Page(frame);
-                    Pages.Enqueue(_tail);
-                    // Include descriptor capacity and bootstrap overhead for even 1-byte packet floods.
-                    _bytes += _tail.Buffer.Length + 96 * 1024;
-                }
-                data.CopyTo(_tail.Buffer.AsSpan(_tail.Used));
-                _tail.Entries.Add(new(frame, _tail.Used, (ushort)data.Length));
-                _tail.Used += data.Length;
-                Trim(frame);
-            }
-            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException
-                || ex is InvalidDataException || ex is ArgumentException
-                || ex is KeyNotFoundException)
-            {
-                LastError = "Replay buffer unavailable: " + ex.Message;
+                var frozen = _clip;
+                var metadata = ReplayTimelineArchive.Metadata(_preparing.Current, ReplayType.Clip);
+                string path = _pendingPath!;
+                _writing = Task.Run(() => ReplayTimelineArchive.Save(frozen, metadata, path));
+                _preparing.Dispose(); _preparing = null;
+                return;
             }
         }
-
-        public static void AddEvent(ReplayEvent value)
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException) { Fail(ex); }
+    }
+    // Called on scene teardown with its GL context current. Preserve an already
+    // requested clip even when disconnect truncates the requested post-roll.
+    internal static void CompletePending(Vector2i size)
+    {
+        Freeze();
+        while (IsSaving)
         {
-            if (Active && _tail != null && _tail.Events.Count < 2048) _tail.Events.Add(value);
-        }
-
-        public static void Tick()
-        {
-            if (IsSaving && NetSession.NetFrame >= _finishFrame) Finish();
-            Trim(NetSession.NetFrame);
-        }
-
-        private static void Trim(uint now)
-        {
-            uint window = (uint)Math.Clamp(Seconds, 0, 120) * 60 + 60;
-            if (IsSaving) window += (uint)Math.Clamp(PostRollSeconds, 0, 5) * 60;
-            while (Pages.Count > 0 && (_bytes > MaxBytes
-                || (now >= Pages.Peek().First && now - Pages.Peek().First > window)))
+            Tick(size);
+            if (_writing != null)
             {
-                Page page = Pages.Dequeue();
-                _bytes -= page.Buffer.Length + 96 * 1024;
-                if (page == _tail) _tail = null;
-                page.Dispose();
+                try { _writing.GetAwaiter().GetResult(); }
+                catch (Exception ex) { Fail(ex); }
             }
         }
-
-        public static void Purge()
-        {
-            // A disconnect during post-roll keeps the requested available portion.
-            if (IsSaving) Finish();
-            while (Pages.Count > 0) Pages.Dequeue().Dispose();
-            _tail = null; _bytes = 0;
-        }
-
-        public static string? Save()
-        {
-            if (IsSaving) Finish();
-            Tick();
-            if (Pages.Count == 0) return null;
-            LastError = null;
-            string room = Pages.Peek().Metadata.RoomKey;
-            foreach (char c in Path.GetInvalidFileNameChars()) room = room.Replace(c, '_');
-            string name = $"{room}_clip_{DateTime.Now:yyyy-MM-dd_HH-mm-ss-fff}_{Guid.NewGuid():N}{DemoFile.Extension}";
-            _pendingPath = Paths.Combine(Paths.Export, "_demos", name);
-            _finishFrame = NetSession.NetFrame + (uint)Math.Clamp(PostRollSeconds, 0, 5) * 60;
-            string path = _pendingPath;
-            if (PostRollSeconds <= 0) return Finish() ? path : null;
-            return path;
-        }
-
-        /// <summary>
-        /// Save the rolling buffer and report the same player-facing status
-        /// regardless of whether the request came from a key, controller or
-        /// Android touch control.
-        /// </summary>
-        public static string? SaveWithFeedback()
-        {
-            double held = Held;
-            string? clip = Save();
-            if (clip != null)
-            {
-                Chat.ChatBox.System(
-                    $"{(IsSaving ? "saving" : "saved")} the last {held:0} s to "
-                    + Path.GetFileName(clip));
-            }
-            else
-            {
-                Chat.ChatBox.System("nothing to clip yet");
-            }
-            return clip;
-        }
-
-        private static bool Finish()
-        {
-            string? path = _pendingPath;
-            _pendingPath = null;
-            if (path == null || Pages.Count == 0) return false;
-            ReplayWriterV3? writer = null;
-            try
-            {
-                Page first = Pages.Peek();
-                uint start = first.First;
-                if (first.Metadata.MapHash == 0) throw new IOException("The clip's map could not be identified.");
-                writer = new ReplayWriterV3(path, first.Metadata);
-                foreach (Page page in Pages)
-                {
-                    foreach (Entry entry in page.Entries)
-                        writer.WriteRecord(entry.Frame - start, page.Buffer.AsSpan(entry.Offset, entry.Length));
-                    foreach (ReplayEvent value in page.Events)
-                        if (value.Frame >= start) writer.WriteEvent(value with { Frame = value.Frame - start });
-                }
-                writer.Dispose();
-                LastSavedPath = path;
-                Chat.ChatBox.System("Saved replay clip: " + Path.GetFileName(path));
-                return true;
-            }
-            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is InvalidDataException)
-            {
-                writer?.Abort();
-                LastError = "Could not save replay: " + ex.Message;
-                Console.WriteLine($"[replay] {LastError}");
-                Chat.ChatBox.System(LastError);
-                return false;
-            }
-        }
+    }
+    private static void Fail(Exception error)
+    {
+        LastError = "Could not save replay: " + error.Message;
+        Console.WriteLine("[replay] " + LastError); Chat.ChatBox.System(LastError); Clear();
+    }
+    private static void Clear()
+    {
+        _preparing?.Dispose(); _preparing = null; _clip = null; _pendingPath = null; _writing = null;
     }
 }

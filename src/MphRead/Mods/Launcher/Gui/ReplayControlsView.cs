@@ -314,7 +314,7 @@ namespace MphRead.Mods.Launcher.Gui
             AddCamera("FOV +5°", () => ReplayCamera.FieldOfView = Math.Clamp(ReplayCamera.FieldOfView + 5, 20, 140));
             AddCamera("LOOK AT PLAYER", () =>
             {
-                int slot = PlayerEntity.MainPlayerIndex;
+                int slot = DemoPlayback.PresentationScene?.Players.MainPlayerIndex ?? PlayerEntity.MainPlayerIndex;
                 ReplayCamera.LookAtSlot = ReplayCamera.LookAtSlot == slot ? -1 : slot;
             });
             AddCamera("CONSTANT SPEED", () =>
@@ -1039,7 +1039,7 @@ namespace MphRead.Mods.Launcher.Gui
                 _message = "Replay Lab forks history here. Press TAKE CONTROL again to confirm.";
                 return;
             }
-            int slot = PlayerEntity.MainPlayerIndex;
+            int slot = DemoPlayback.PresentationScene?.Players.MainPlayerIndex ?? PlayerEntity.MainPlayerIndex;
             if (DemoPlayback.TakeControl(slot, out string? branch))
             {
                 _message = "Replay Lab branch: " + (branch == null ? "created" : Path.GetFileName(branch));
@@ -1103,7 +1103,7 @@ namespace MphRead.Mods.Launcher.Gui
                 + $"FOV {ReplayCamera.FieldOfView:0}° · roll {ReplayCamera.Roll:0}° · "
                 + $"look-at {(ReplayCamera.LookAtSlot < 0 ? "off" : $"P{ReplayCamera.LookAtSlot + 1}")} · "
                 + $"director {ReplayDirector.Reason} ({ReplayDirector.CurrentScore:0}) · "
-                + $"{ReplayCheckpointManager.Count} checkpoint candidates";
+                + $"{DemoPlayback.CheckpointCount} world checkpoints";
 
             ReplayAnalyticsSnapshot analytics = ReplayStudio.Analytics();
             var names = DemoPlayback.Metadata?.Players.ToDictionary(p => p.Slot, p => p.Name);

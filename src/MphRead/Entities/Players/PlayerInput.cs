@@ -1171,6 +1171,7 @@ namespace MphRead.Entities
             }
             if (!_scene.Services.IsReplica) Mods.Network.ReplayCapture.Event(Mods.Network.ReplayEventType.WeaponFired,
                 SlotIndex, value: (int)CurrentWeapon);
+            else _scene.ReplayShotPresented?.Invoke(SlotIndex, (int)CurrentWeapon);
             NetShotDiagnostics.Finish(this, ShotAttemptResult.Spawned, shotVec, _gunVec1);
             ModControllerFeedback(EquipWeapon.MinCharge > 0 && EquipInfo.ChargeLevel >= EquipWeapon.MinCharge * 2
                 ? Mods.Input.GamepadFeedback.ChargedShot : Mods.Input.GamepadFeedback.Fire);

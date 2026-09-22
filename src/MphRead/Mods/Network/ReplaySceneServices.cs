@@ -26,11 +26,11 @@ namespace MphRead.Mods.Network
 
         public void BeforeSimulation(Scene scene)
         {
-            State.Advance(Session.CurrentFrame);
+            State.Advance(Session.RecordingFrame);
             if (State.Match is not MatchStatePacket match) return;
             if (!string.Equals(scene.Room?.Meta.Name, match.RoomKey, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("The replica scene belongs to a different recorded room.");
-            ApplyRules(scene, Session.CurrentFrame);
+            ApplyRules(scene, Session.RecordingFrame);
             if (_rngTick != State.ServerTick)
             {
                 _rngTick = State.ServerTick;

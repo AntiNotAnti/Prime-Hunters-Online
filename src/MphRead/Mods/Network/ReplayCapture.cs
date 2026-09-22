@@ -16,13 +16,18 @@ namespace MphRead.Mods.Network
 
         internal static void AfterSimulation(Scene scene)
         {
-            if (scene.Services.IsReplica || DemoPlayback.IsActive || !NetSession.Active || !scene.GameState.Multiplayer) return;
+            if (scene.Services.IsReplica) return;
+            DemoClip.Tick(scene.Size);
+            if (DemoPlayback.IsActive || !NetSession.Active || !scene.GameState.Multiplayer) return;
             Recorder.Timeline.SetHistoryFrames((uint)Math.Max(45, DemoClip.Seconds + DemoClip.PostRollSeconds) * 60);
             WorldCapture.Advance(NetSession.NetFrame, scene.Size);
+            DemoRecorder.Tick();
+            ServerReplayRecorder.Tick();
         }
 
         internal static void ReleaseWorld()
         {
+            DemoClip.CompletePending(WorldCapture.World?.Scene.Size ?? new OpenTK.Mathematics.Vector2i(256, 192));
             WorldCapture.Dispose(); WorldCapture = new(Recorder);
             Recorder.Reset();
         }
@@ -32,7 +37,6 @@ namespace MphRead.Mods.Network
             _snapshotLength = 0; _room = null; _mapHash = 0;
             Array.Clear(Known);
             Recorder.Reset();
-            DemoClip.Purge();
         }
 
         public static void Observe(ReadOnlySpan<byte> packet)
@@ -120,10 +124,6 @@ namespace MphRead.Mods.Network
         {
             if (!NetSession.Active || DemoPlayback.IsActive) return;
             byte Actor(int slot) => slot is >= 0 and < RosterPacket.MaxSlots ? (byte)slot : byte.MaxValue;
-            var e = new ReplayEvent(NetSession.NetFrame, type, Actor(actor), Actor(target), value);
-            DemoRecorder.RecordEvent(e);
-            ServerReplayRecorder.RecordEvent(e);
-            DemoClip.AddEvent(e);
             ReplayMarkerKind? marker = type switch
             {
                 ReplayEventType.PlayerSpawn => ReplayMarkerKind.Spawn,
@@ -136,6 +136,7 @@ namespace MphRead.Mods.Network
                 // client. Preserve legacy annotations, but not as timeline truth.
                 ReplayEventType.Objective when NetSession.IsAuthority => ReplayMarkerKind.Objective,
                 ReplayEventType.MatchEnded => ReplayMarkerKind.MatchEnd,
+                ReplayEventType.MatchStarted => ReplayMarkerKind.MatchStart,
                 _ => null
             };
             if (marker is { } kind) Recorder.Marker(NetSession.NetFrame,

@@ -655,7 +655,6 @@ namespace MphRead.Mods.Network
         /// </summary>
         public static void Update(double time)
         {
-            DemoClip.Tick();
             if (Role == NetRole.Client && !DemoPlayback.IsActive) time = Clock;
             if (Role == NetRole.Server)
             {
@@ -678,7 +677,6 @@ namespace MphRead.Mods.Network
             }
             foreach (ReceivedPacket packet in _transport.Drain())
             {
-                DemoRecorder.Record(packet);
                 Handle(packet, time);
             }
             PumpLobby(time);
@@ -1809,7 +1807,6 @@ namespace MphRead.Mods.Network
             // and never this player's own, because nothing ever told it to.
             if (LocalSlot >= 0)
             {
-                DemoRecorder.RecordOwnIntent(LocalSlot, _scratch.AsSpan(0, IntentPacket.FullSize));
                 ReplayCapture.AcceptedIntent(LocalSlot, intent);
             }
             // And whatever this machine has resolved for itself that the

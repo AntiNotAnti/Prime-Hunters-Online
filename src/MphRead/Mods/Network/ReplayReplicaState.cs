@@ -78,6 +78,10 @@ namespace MphRead.Mods.Network
         public void Accept(ReadOnlySpan<byte> packet, uint frame)
         {
             if (packet.IsEmpty) throw new InvalidDataException("Empty replay packet.");
+            if (packet[0] == 253)
+            {
+                RestoreCheckpoint(ReplayTimelineArchive.ReadConstruction(packet)); return;
+            }
             ReadOnlySpan<byte> payload = packet[1..];
             bool accepted = false;
             switch ((PacketType)packet[0])

@@ -219,9 +219,9 @@ namespace MphRead.Mods.Replay
                 .Take(4)
                 .Select(p =>
                 {
-                    string name = p.Slot < GameState.Nicknames.Length
-                        && !String.IsNullOrWhiteSpace(GameState.Nicknames[p.Slot])
-                            ? GameState.Nicknames[p.Slot] : $"P{p.Slot + 1}";
+                    string[] names = DemoPlayback.ReplicaScene?.GameState.Nicknames ?? GameState.Nicknames;
+                    string name = p.Slot < names.Length && !String.IsNullOrWhiteSpace(names[p.Slot])
+                            ? names[p.Slot] : $"P{p.Slot + 1}";
                     return $"{name}: {p.Kills}K/{p.Deaths}D  {p.Damage} dmg  {p.ObjectiveEvents} obj";
                 }).ToList();
             lines.Insert(0, $"ANALYTICS  {analytics.TotalKills} kills  "
@@ -236,7 +236,7 @@ namespace MphRead.Mods.Replay
                     + $"max burst {net.MaxPacketsInFrame}",
                 $"max snapshot gap {net.MaxSnapshotGapFrames}f  "
                     + $"last snapshot {net.LastSnapshotFrame}f",
-                $"checkpoints {ReplayCheckpointManager.Count}  "
+                $"checkpoints {DemoPlayback.CheckpointCount}  "
                     + $"director {ReplayDirector.Reason}"
             };
         }

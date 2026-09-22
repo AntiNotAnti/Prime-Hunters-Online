@@ -22,6 +22,8 @@ internal sealed class PassiveReplayPlayer : IDisposable
     private bool _disposed;
     public PassiveReplayScene Current { get; private set; }
     public ReplayTransport Transport => Current.Session.Transport;
+    internal event Action<Scene>? Stepped;
+    internal event Action<Scene, PassiveReplayScene>? Replaced;
     internal long CheckpointBytes { get; private set; }
     internal int CheckpointCount => _checkpoints.Count;
     internal uint SeekRestoreFrame { get; private set; }
@@ -29,7 +31,7 @@ internal sealed class PassiveReplayPlayer : IDisposable
     internal double SeekMilliseconds { get; private set; }
     internal int RejectedCheckpoints { get; private set; }
     internal string? LastCheckpointError { get; private set; }
-    internal bool Ready => !Transport.IsSeeking;
+    internal bool Ready => !Transport.IsSeeking && !Current.Session.IsWarming;
 
     public PassiveReplayPlayer(string path, Vector2i size)
     { _open = () => new(path, size); Current = _open(); }
@@ -59,12 +61,25 @@ internal sealed class PassiveReplayPlayer : IDisposable
             if (rebuild || checkpoint.Value != null && checkpoint.Key > Current.Session.CurrentFrame + MaximumStepsPerUpdate)
                 Rebuild(target.Value, resume, checkpoint.Value);
         }
+        if (Current.Session.IsWarming)
+        {
+            int warmup = 0;
+            while (Current.Session.IsWarming && warmup < MaximumStepsPerUpdate)
+            {
+                if (!Current.Step()) throw new InvalidDataException("Replay ended during its required lead-in.");
+                if (!Current.Session.IsWarming) Stepped?.Invoke(Current.Scene);
+                warmup++;
+                if (Transport.IsSeeking) SeekSimulationSteps++;
+            }
+            return warmup;
+        }
         int due = Math.Min(MaximumStepsPerUpdate, Transport.FramesDue());
         bool seeking = Transport.IsSeeking;
         int steps = 0;
         for (; steps < due; steps++)
         {
             if (!Current.Step()) break;
+            Stepped?.Invoke(Current.Scene);
             uint frame = Current.Session.CurrentFrame;
             if (seeking) SeekSimulationSteps++;
             if (frame % 300 == 0 && !_checkpoints.ContainsKey(frame))
@@ -97,7 +112,9 @@ internal sealed class PassiveReplayPlayer : IDisposable
             replacement.Session.Transport.CopyPreferences(Transport);
             replacement.Session.Transport.ContinueSeek(target, resume);
             SeekRestoreFrame = replacement.Session.CurrentFrame;
-            var previous = Current; Current = replacement; replacement = null; previous.Dispose();
+            var previous = Current; Current = replacement; replacement = null;
+            try { Replaced?.Invoke(previous.Scene, Current); }
+            finally { previous.Dispose(); }
         }
         finally { replacement?.Dispose(); }
     }

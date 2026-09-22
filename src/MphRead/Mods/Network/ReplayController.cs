@@ -16,7 +16,7 @@ namespace MphRead.Mods.Network
         public static double CurrentSeconds => Current.CurrentSeconds;
         public static double DurationSeconds => Current.DurationSeconds;
         public static long LastInteraction => Current.LastInteraction;
-        public static bool IsSeeking => Current.IsSeeking;
+        public static bool IsSeeking => Current.IsSeeking || DemoPlayback.Session.IsWarming;
         public static uint? ClipIn => Current.ClipIn;
         public static uint? ClipOut => Current.ClipOut;
         public static ReplayEventType? EventFilter { get => Current.EventFilter; set => Current.EventFilter = value; }

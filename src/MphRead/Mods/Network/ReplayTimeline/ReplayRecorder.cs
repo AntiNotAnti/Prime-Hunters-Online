@@ -18,10 +18,10 @@ internal sealed class ReplayRecorder
     private uint _lastRestore;
     public void Reset()
     {
+        Resetting?.Invoke();
         Timeline.Reset(); _match = _roster = _snapshot = _configuration = null;
         Array.Clear(_intents);
         _matchId = 0; _epoch = 0; _room = null; _lastRestore = 0;
-        Resetting?.Invoke();
     }
     public void AcceptMatch(in MatchStatePacket match, uint frame)
     {

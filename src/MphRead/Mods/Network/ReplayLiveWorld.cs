@@ -61,6 +61,11 @@ internal sealed class ReplayLiveWorld : IDisposable
                 ulong mapHash = ReplayMapIdentity.Compute(match.RoomKey);
                 if (mapHash == 0) throw new InvalidDataException("The capture room has no content identity.");
                 _world = new PassiveReplayScene(_bootstrap.CaptureCheckpoint(), frame, mapHash, size);
+                // Presentation telemetry comes from this canonical reconstruction,
+                // so disk/instant clips count the same shots as the replay world.
+                _world.Scene.ReplayShotPresented = (slot, weapon) => _recorder.Marker(
+                    _world.Session.CurrentFrame, _world.State.ServerTick,
+                    new(ReplayMarkerKind.WeaponFired, (byte)slot, byte.MaxValue, weapon));
             }
             else if (_world.Session.CurrentFrame == frame) return;
             var timer = Stopwatch.StartNew();

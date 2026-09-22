@@ -120,7 +120,6 @@ namespace MphRead.Mods.Network
     {
         // Used by the headless verifier after every complete engine step, including
         // frames processed inside a seek batch or a 4x presentation interval.
-        internal static Action<Scene>? ObserveFrame;
         private static int _nextHash;
         internal static void Reset() => _nextHash = 0;
         internal static void SeekTo(uint frame)
@@ -137,8 +136,7 @@ namespace MphRead.Mods.Network
 
         internal static void AfterFrame(Scene scene)
         {
-            ObserveFrame?.Invoke(scene);
-            Replay.ReplayCheckpointManager.AfterFrame(scene);
+            if (!scene.Services.IsReplica) Replay.ReplayCheckpointManager.AfterFrame(scene);
             ReplayMetadata? metadata = DemoPlayback.Metadata;
             if (metadata == null || metadata.HashSchema != ReplayStateHash.Schema
                 || metadata.HashBuildId != ReplayStateHash.BuildId || _nextHash >= metadata.ExpectedHashes.Count) return;
