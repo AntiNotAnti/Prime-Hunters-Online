@@ -525,6 +525,17 @@ namespace MphRead.Entities
         internal void ModInvalidateFirstPersonRenderPose()
             => _fpRenderPoseValid = false;
 
+        internal bool ModGetFirstPersonRenderCameraPosition(out Vector3 position)
+        {
+            if (!_fpRenderPoseValid)
+            {
+                position = CameraInfo.Position;
+                return false;
+            }
+            position = _fpRenderPose.CameraPosition;
+            return true;
+        }
+
         internal bool ModGetFirstPersonGunTransform(out Matrix4 transform)
         {
             if (!_fpRenderPoseValid)
