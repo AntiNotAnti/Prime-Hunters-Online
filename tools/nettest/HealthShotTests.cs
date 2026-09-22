@@ -331,7 +331,7 @@ namespace MphRead.NetTest
                                 var input = Intent(frame, frame < 60 ? (ushort)7 : (ushort)8, shooting, alive);
                                 input.WeaponSelect = (byte)weapon;
                                 // A dead press repeated in history must not become an alive action.
-                                if (frame is >= 30 and < 35) input.Presses[frame - 30] = (uint)IntentButtons.Shoot;
+                                if (frame is >= 30 and < 35) input.Presses[(int)(frame - 30)] = (uint)IntentButtons.Shoot;
                                 byte[] bytes = new byte[IntentPacket.FullSize]; input.Write(bytes);
                                 queue.Enqueue(frame * 1000.0 / 60, bytes);
                             }
