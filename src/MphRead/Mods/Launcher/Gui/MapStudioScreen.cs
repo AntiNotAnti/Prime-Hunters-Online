@@ -171,7 +171,7 @@ namespace MphRead.Mods.Launcher.Gui
             finally{_refreshing=false;}
         }
         private void EditSelection(string label,Action<MapDefinition,ISet<Guid>> edit)
-        {if(_document==null)return;var ids=_document.Selection.ToHashSet();_document.Edit(label,d=>edit(d,ids));}
+        {if(_document==null)return;var ids=_document.Selection.ToHashSet();_document.EditObjects(label,ids,d=>edit(d,ids));}
         private void NewMap()
         {
             var view=new StackPanel {Spacing=10};view.Children.Add(Text("NEW MAP"));var name=new TextBox {Text="My Arena"};view.Children.Add(name);
@@ -266,7 +266,7 @@ namespace MphRead.Mods.Launcher.Gui
         private sealed record BrowserRow(string Path){public override string ToString()=>(Directory.Exists(Path)?"[folder] ":"")+System.IO.Path.GetFileName(Path);}
         private void AddObject(string kind)
         {
-            _document?.Edit("Create "+kind,d=>
+            _document?.EditObjects("Create "+kind,Array.Empty<Guid>(),d=>
             {
                 switch(kind)
                 {
@@ -334,7 +334,7 @@ namespace MphRead.Mods.Launcher.Gui
                     Field("Cooldown",p.CooldownTime,(o,v)=>((MapJumpPad)o).CooldownTime=ushort.Parse(v,CultureInfo.InvariantCulture));break;
                 case MapBrush b:Vec("Minimum",b.Min,(o,v)=>((MapBrush)o).Min=v);Vec("Maximum",b.Max,(o,v)=>((MapBrush)o).Max=v);Material(b.Material,(o,index)=>((MapBrush)o).Material=index);break;
             }
-            AddButton(_inspector,"Apply",()=>{try{_document.Edit("Edit properties",d=>{var target=MapObjects.All(d).First(o=>o.Id==id).Value;foreach(var edit in edits)edit(target);});}catch(Exception ex){Failure(ex);}});
+            AddButton(_inspector,"Apply",()=>{try{_document.EditObjects("Edit properties",new[]{id},d=>{var target=MapObjects.All(d).First(o=>o.Id==id).Value;foreach(var edit in edits)edit(target);});}catch(Exception ex){Failure(ex);}});
         }
         private static float Number(string value){float number=float.Parse(value,CultureInfo.InvariantCulture);if(!float.IsFinite(number))throw new FormatException("Enter a finite number.");return number;}
         private static float[] ParseVector(string value,int count)
@@ -358,7 +358,7 @@ namespace MphRead.Mods.Launcher.Gui
                 var spawns=new CheckBox {Content="Use imported spawns",IsChecked=import.KeepSpawns};_inspector.Children.Add(spawns);edits.Add(m=>m.Import!.KeepSpawns=spawns.IsChecked==true);
             }
             var fog=new CheckBox {Content="Fog enabled",IsChecked=d.FogEnabled};_inspector.Children.Add(fog);edits.Add(m=>m.FogEnabled=fog.IsChecked==true);
-            AddButton(_inspector,"Apply",()=>{try{_document.Edit("Environment",map=>{foreach(var edit in edits)edit(map);});}catch(Exception ex){Failure(ex);}});
+            AddButton(_inspector,"Apply",()=>{try{_document.Edit("Environment",map=>{foreach(var edit in edits)edit(map);},MapChangeDomain.Environment | MapChangeDomain.Metadata | (d.Import != null ? MapChangeDomain.Import : MapChangeDomain.None));}catch(Exception ex){Failure(ex);}});
             AddButton(_inspector,"Upgrade project",()=>_document.Upgrade());
             AddButton(_inspector,"Use camera as preview",()=>{if(_viewport!=null){var p=_viewport.CameraPosition;var t=_viewport.CameraTarget;_document.Edit("Preview camera",m=>m.Preview=new(){Position=new[]{p.X,p.Y,p.Z},Target=new[]{t.X,t.Y,t.Z}});}});
         }
@@ -371,7 +371,7 @@ namespace MphRead.Mods.Launcher.Gui
                 try{if(m.Texture!=null||GameFiles.Ready){var preview=MapMaterialPreview.Create(_document.Project.Definition,m);_images.Add(preview.Bitmap);_inspector.Children.Add(new Image {Source=preview.Bitmap,Width=64,Height=64,HorizontalAlignment=HorizontalAlignment.Left});_inspector.Children.Add(Text(preview.Details));}}
                 catch(Exception ex)when(ex is IOException or InvalidDataException or ProgramException or ArgumentException or InvalidOperationException){_inspector.Children.Add(Text("Preview unavailable: "+ex.Message));}
                 var source=new TextBox{Text=m.SourceMaterial.ToString()};var scale=new TextBox{Text=m.TexScale.ToString(CultureInfo.InvariantCulture)};_inspector.Children.Add(Text("Source material / texels per unit"));_inspector.Children.Add(source);_inspector.Children.Add(scale);
-                AddButton(_inspector,"Apply material",()=>{try{_document.Edit("Material",d=>{d.Materials[index].SourceMaterial=int.Parse(source.Text??"",CultureInfo.InvariantCulture);d.Materials[index].TexScale=Number(scale.Text??"");});}catch(Exception ex){Failure(ex);}});
+                AddButton(_inspector,"Apply material",()=>{try{_document.EditMaterial(index,m=>{m.SourceMaterial=int.Parse(source.Text??"",CultureInfo.InvariantCulture);m.TexScale=Number(scale.Text??"");});}catch(Exception ex){Failure(ex);}});
                 if(m.Texture==null&&GameFiles.Ready)
                 {
                     try

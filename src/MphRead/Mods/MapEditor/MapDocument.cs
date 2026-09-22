@@ -7,31 +7,7 @@ using MphRead.Mods.MapGen;
 
 namespace MphRead.Mods.MapEditor
 {
-    public interface IMapEditCommand { string Label { get; } void Execute(); void Undo(); }
-
-    public sealed class MapCommandHistory
-    {
-        private readonly List<IMapEditCommand> _undo = new(), _redo = new();
-        public bool CanUndo => _undo.Count != 0;
-        public bool CanRedo => _redo.Count != 0;
-        public void Execute(IMapEditCommand command)
-        {
-            command.Execute(); _undo.Add(command); _redo.Clear();
-            if (_undo.Count > 50) _undo.RemoveAt(0);
-        }
-        public void Undo()
-        {
-            if (!CanUndo) return;
-            var command = _undo[^1]; command.Undo(); _undo.RemoveAt(_undo.Count-1); _redo.Add(command);
-        }
-        public void Redo()
-        {
-            if (!CanRedo) return;
-            var command = _redo[^1]; command.Execute(); _redo.RemoveAt(_redo.Count-1); _undo.Add(command);
-        }
-    }
-
-    public sealed class MapDocument
+    public sealed partial class MapDocument
     {
         public MapProject Project { get; private set; }
         public string? FilePath { get; private set; }
@@ -39,9 +15,11 @@ namespace MphRead.Mods.MapEditor
         public MapCommandHistory History { get; } = new();
         public MapValidationResult Diagnostics { get; set; } = new();
         public DateTime LastEditUtc { get; private set; } = DateTime.UtcNow;
-        public bool IsDirty => Project.Definition.Serialize() != _saved;
+        public DocumentStateId CurrentStateId => History.CurrentStateId;
+        public DocumentStateId? SavedStateId { get; private set; }
+        public bool IsDirty => SavedStateId != CurrentStateId;
+        public event Action<MapDocumentChange>? Invalidated;
         public event Action? Changed;
-        private string _saved;
         private readonly string _recoveryKey;
 
         public MapDocument(MapProject project, string? path = null)
@@ -50,17 +28,24 @@ namespace MphRead.Mods.MapEditor
             FilePath = path;
             // Legacy object IDs exist in the editor snapshot only until Save.
             foreach (var item in MapObjects.All(Project.Definition)) if (item.Id == Guid.Empty) item.SetId(Guid.NewGuid());
-            _saved = path == null ? "" : Project.Definition.Serialize();
+            SavedStateId = path == null ? null : History.CurrentStateId;
+            if (path != null) History.MarkSaved();
+            History.Changed += change =>
+            {
+                Selection.IntersectWith(MapObjects.All(Project.Definition).Select(o => o.Id));
+                LastEditUtc = DateTime.UtcNow;
+                Invalidated?.Invoke(change); Changed?.Invoke();
+            };
             _recoveryKey = MapBuildFingerprint.HashText(path == null ? Guid.NewGuid().ToString() : Path.GetFullPath(path));
         }
 
         public MapProject Snapshot() => new(Project.ToDefinition());
-        public void Edit(string label, Action<MapDefinition> edit)
+        public void Edit(string label, Action<MapDefinition> edit, MapChangeDomain domains = MapChangeDomain.All)
         {
             MapDefinition before = Project.ToDefinition(), after = Project.ToDefinition();
             edit(after);
             if (before.Serialize() == after.Serialize()) return;
-            History.Execute(new SnapshotCommand(this, label, before, after));
+            History.Execute(new SnapshotCommand(this, label, before, after, domains));
         }
 
         private sealed class SnapshotCommand : IMapEditCommand
@@ -68,16 +53,31 @@ namespace MphRead.Mods.MapEditor
             private readonly MapDocument _document;
             private readonly MapDefinition _before, _after;
             public string Label { get; }
-            public SnapshotCommand(MapDocument document, string label, MapDefinition before, MapDefinition after)
-            { _document=document; Label=label; _before=before; _after=after; }
+            public long ApproximateBytes { get; }
+            public MapDocumentChange Change { get; }
+            public SnapshotCommand(MapDocument document, string label, MapDefinition before, MapDefinition after,
+                MapChangeDomain domains = MapChangeDomain.All)
+            {
+                _document=document; Label=label; _before=before; _after=after;
+                ApproximateBytes = 512 + 4L * (before.Serialize().Length + after.Serialize().Length);
+                Change = new(domains);
+            }
             public void Execute() => _document.Replace(_after);
             public void Undo() => _document.Replace(_before);
         }
         private void Replace(MapDefinition definition)
         {
-            Project = new(MapProjectSerializer.Clone(definition));
+            var replacement = MapProjectSerializer.Clone(definition);
+            if (FilePath != null)
+            {
+                replacement.SourcePath = FilePath; replacement.BaseDirectory = Path.GetDirectoryName(FilePath);
+                replacement.BundlePath = null;
+                if (replacement.Import != null) { replacement.Import.BaseDirectory = replacement.BaseDirectory; replacement.Import.BundlePath = null; }
+                if (replacement.Collision != null) { replacement.Collision.BaseDirectory = replacement.BaseDirectory; replacement.Collision.BundlePath = null; }
+            }
+            Project = new(replacement);
             Selection.IntersectWith(MapObjects.All(Project.Definition).Select(o => o.Id));
-            LastEditUtc = DateTime.UtcNow; Changed?.Invoke();
+
         }
 
         public void Upgrade() => Edit("Upgrade project", d =>
@@ -94,7 +94,8 @@ namespace MphRead.Mods.MapEditor
             definition.BundlePath = null;
             if (definition.Import != null) { definition.Import.BaseDirectory=definition.BaseDirectory; definition.Import.BundlePath=null; }
             if (definition.Collision != null) { definition.Collision.BaseDirectory=definition.BaseDirectory; definition.Collision.BundlePath=null; }
-            Project = new(definition); _saved = definition.Serialize(); Changed?.Invoke();
+            Project = new(definition); SavedStateId = CurrentStateId; History.MarkSaved();
+            Invalidated?.Invoke(new(MapChangeDomain.Metadata)); Changed?.Invoke();
         }
         public string RecoveryPath(string directory) => Path.Combine(directory, ".autosave", _recoveryKey + ".json");
         public void Autosave(string directory)
