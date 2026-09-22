@@ -574,7 +574,15 @@ namespace MphRead.Mods.Network
                 "underfilled custom match keeps loading while both teams remain occupied");
             foreach (Client client in rig.Clients) client.Loaded();
             rig.Wait(() => owner.State.Value.Phase == SessionPhase.InMatch, "underfilled 4v2 starts after load");
-            leaving = rig.Clients.First(c => c != owner && owner.Roster.Teams[c.Slot] == 0);
+
+            Client refill = rig.Add(60);
+            Check(owner.Roster.Teams[Array.IndexOf(owner.Roster.Slots, (byte)refill.Slot, 0, owner.Roster.Count)] == 0,
+                "JIP fills the vacancy left by the underfilled start");
+            Check(refill.State!.Value.WorldProfile == MatchWorldProfile.Resolve(6),
+                "underfilled JIP retains frozen world");
+
+            leaving = rig.Clients.First(c => c != owner && c != refill
+                && owner.Roster.Teams[c.Slot] == 0);
             leaving.Dispose(); rig.Clients.Remove(leaving); rig.Stable();
             Client late = rig.Add(61);
             Check(owner.Roster.Teams[Array.IndexOf(owner.Roster.Slots, (byte)late.Slot, 0, owner.Roster.Count)] == 0, "JIP fills only A vacancy");
