@@ -2182,8 +2182,16 @@ namespace MphRead.Mods.Network
                     header.AuthorityEpoch = _authorityEpoch;
                     header.Frame = 0;
                     header.Write(_scratch);
-                    _transport?.Send(peer.EndPoint, PacketType.Snapshot,
-                        _scratch.AsSpan(0, _lastKeyframeSnapshotLength));
+                    if (SnapshotWire.TryReadStateHeader(
+                        _scratch.AsSpan(0, _lastKeyframeSnapshotLength),
+                        out bool keyframe, out byte activeMask, out _) && keyframe)
+                    {
+                        SnapshotWire.WriteStateHeader(
+                            _scratch.AsSpan(SnapshotHeader.Size, SnapshotWire.StateHeaderSize),
+                            true, activeMask, 0);
+                        _transport?.Send(peer.EndPoint, PacketType.Snapshot,
+                            _scratch.AsSpan(0, _lastKeyframeSnapshotLength));
+                    }
                 }
             }
             _scratch[0] = (byte)peer.SlotIndex;
