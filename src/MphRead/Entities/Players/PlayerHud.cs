@@ -1129,18 +1129,28 @@ namespace MphRead.Entities
                 return _reticleCurrentPosition;
             }
 
+            float alpha = (float)Math.Clamp(Mods.Render.FrameTiming.Alpha, 0.0, 1.0);
             Vector2 step = _reticleCurrentPosition - _reticlePreviousPosition;
+
+            // Legacy moving-reticle aim now renders its camera from the
+            // previous/current camera history. Keep the reticle on that same
+            // presentation timestamp instead of predicting it forward while
+            // the camera is deliberately interpolating behind the simulation.
+            if (!Features.FixedCrosshair)
+            {
+                return _reticlePreviousPosition + step * alpha;
+            }
+
             float stepLengthSquared = step.LengthSquared;
             if (stepLengthSquared <= 0.0000000001f)
             {
                 return _reticleCurrentPosition;
             }
 
-            // Forward presentation, not a low-pass filter: at a steady reticle
-            // velocity, Alpha places the next 90/120/144 Hz picture exactly
-            // between the two 60 Hz simulation samples without adding a frame
-            // of local aiming latency. When the reticle is slowing down, reduce
-            // the prediction; when direction changes, stop predicting entirely.
+            // Modern/fixed-camera presentation stays latency-oriented: at a
+            // steady reticle velocity, extend only the fractional remainder of
+            // the next simulation step. When the reticle is slowing down,
+            // reduce prediction; when direction changes, stop it entirely.
             float confidence = 1f;
             Vector2 priorStep = _reticlePreviousPosition - _reticleOlderPosition;
             float priorLengthSquared = priorStep.LengthSquared;
@@ -1157,7 +1167,6 @@ namespace MphRead.Entities
                 }
             }
 
-            float alpha = (float)Math.Clamp(Mods.Render.FrameTiming.Alpha, 0.0, 1.0);
             return _reticleCurrentPosition + step * (alpha * confidence);
         }
 
