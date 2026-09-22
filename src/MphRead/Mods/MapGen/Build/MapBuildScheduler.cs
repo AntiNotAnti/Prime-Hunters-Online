@@ -114,12 +114,39 @@ public sealed class MapBuildScheduler : IMapBuildScheduler
         }, cancellation).ConfigureAwait(false);
     }
 
-    private static Task<(MapDefinition Definition, MapBuildFingerprint Fingerprint)> Prepare(
-        MapBuildSnapshot snapshot, CancellationToken cancellation) => Task.Run(() =>
+    private async Task<(MapDefinition Definition, MapBuildFingerprint Fingerprint)> Prepare(
+        MapBuildSnapshot snapshot, CancellationToken cancellation)
     {
-        var definition = snapshot.CreateDefinition();
-        return (definition, MapBuildFingerprint.Create(definition));
-    }, cancellation);
+        var input = await Task.Run(() =>
+        {
+            var definition = snapshot.CreateDefinition();
+            return (Definition: definition, Fingerprint: MapBuildFingerprint.Create(definition));
+        }, cancellation).ConfigureAwait(false);
+        if (input.Definition.BundlePath == null && input.Definition.Import is { Textures.Length: > 0 } import
+            && import.ResolveTextures() == null && import.Resolve() != null)
+        {
+            // A clean checkout can contain a PK3 and a recipe naming a derived
+            // texture pack. Materialize that compiler input before fixing the
+            // job's content identity. Real source changes still reject the job.
+            await _queue.Schedule("prepare:" + input.Fingerprint.ContentKey, () =>
+            {
+                lock (MapCompiler.ContentReadLock)
+                {
+                    var before = MapDependencyAnalyzer.Analyze(input.Definition)
+                        .Where(d => d.Kind != "textures").ToArray();
+                    if (import.ResolveTextures() == null)
+                        Q3Import.BakeTextures(Q3Bsp.Load(import.Resolve()!, import.MapName), import, verbose: false);
+                    var after = MapDependencyAnalyzer.Analyze(input.Definition).Where(d => d.Kind != "textures");
+                    if (!before.SequenceEqual(after))
+                        throw new IOException("Map source dependencies changed while preparing textures. Build again.");
+                }
+                return true;
+            }, cancellation).ConfigureAwait(false);
+            input.Fingerprint = await Task.Run(() => MapBuildFingerprint.Create(input.Definition), cancellation)
+                .ConfigureAwait(false);
+        }
+        return input;
+    }
 
     private void RequireUnchanged(MapDefinition definition, MapBuildFingerprint fingerprint)
     {
