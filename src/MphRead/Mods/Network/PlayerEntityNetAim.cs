@@ -457,11 +457,17 @@ namespace MphRead.Entities
             // then snaps back at the next simulation step. That is the whole-
             // scene high-refresh shimmer. In that mode, interpolate the camera
             // history at the same timestamp as the viewmodel/world instead.
-            bool smoothLegacyCamera = !Features.FixedCrosshair
-                && Mods.Render.FrameTiming.HighRefreshPresentation
-                && CameraInfo.ModGetDrawPose(presentationAlpha,
-                    out Vector3 drawCameraPosition, out Vector3 drawCameraTarget,
-                    out Vector3 drawCameraUp, out float drawCameraFov);
+            Vector3 drawCameraPosition = default;
+            Vector3 drawCameraTarget = default;
+            Vector3 drawCameraUp = default;
+            float drawCameraFov = CameraInfo.Fov;
+            bool smoothLegacyCamera = false;
+            if (!Features.FixedCrosshair && Mods.Render.FrameTiming.HighRefreshPresentation)
+            {
+                smoothLegacyCamera = CameraInfo.ModGetDrawPose(presentationAlpha,
+                    out drawCameraPosition, out drawCameraTarget,
+                    out drawCameraUp, out drawCameraFov);
+            }
             if (smoothLegacyCamera)
             {
                 Vector3 drawFacing = drawCameraTarget - drawCameraPosition;
