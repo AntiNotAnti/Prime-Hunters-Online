@@ -135,23 +135,23 @@ namespace MphRead.Entities
                         // outside, from one nobody walked into.
                         if (player != Owner && player.Health > 0)
                         {
-                            Mods.Network.NetDamage.BombTeamSkips++;
+                            if (!_scene.Services.IsReplica) Mods.Network.NetDamage.BombTeamSkips++;
                         }
                         continue;
                     }
-                    Mods.Network.NetDamage.BombPlayerChecks++;
+                    if (!_scene.Services.IsReplica) Mods.Network.NetDamage.BombPlayerChecks++;
                     float gap = (player.Volume.SpherePosition - Position).Length;
-                    if (gap < Mods.Network.NetDamage.BombNearest)
+                    if (!_scene.Services.IsReplica && gap < Mods.Network.NetDamage.BombNearest)
                     {
                         Mods.Network.NetDamage.BombNearest = gap;
                     }
-                    if (Radius > Mods.Network.NetDamage.BombRadiusSeen)
+                    if (!_scene.Services.IsReplica && Radius > Mods.Network.NetDamage.BombRadiusSeen)
                     {
                         Mods.Network.NetDamage.BombRadiusSeen = Radius;
                     }
                     if (player.CheckHitByBomb(this, halfturret: false))
                     {
-                        Mods.Network.NetDamage.BombHits++;
+                        if (!_scene.Services.IsReplica) Mods.Network.NetDamage.BombHits++;
                         hitEntity = player;
                         Flags |= BombFlags.Exploding;
                     }

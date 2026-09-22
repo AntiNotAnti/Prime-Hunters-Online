@@ -553,6 +553,7 @@ namespace MphRead.Mods.Network
         /// </summary>
         public static void BeginShot(PlayerEntity shooter)
         {
+            if (shooter.SceneServices.IsReplica) return;
             if (_inProgress)
             {
                 return;
@@ -825,6 +826,7 @@ namespace MphRead.Mods.Network
         /// </summary>
         public static void EndShot(PlayerEntity shooter)
         {
+            if (shooter.SceneServices.IsReplica) return;
             if (_shooter != shooter || _rewind <= 0)
             {
                 Restore();

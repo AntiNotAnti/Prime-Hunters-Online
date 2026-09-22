@@ -76,7 +76,7 @@ namespace MphRead.Entities
             }
             _grounded = Owner.Flags1.TestFlag(PlayerFlags1.Standing);
             EquipInfo.Beams = Owner.EquipInfo.Beams;
-            EquipInfo.Weapon = Weapons.Current[3]; // non-affinity Battlehammer
+            EquipInfo.Weapon = _scene.WeaponRules[3]; // non-affinity Battlehammer
             _models[0].SetAnimation(1, AnimFlags.NoLoop);
             _light1Vector = Owner.Light1Vector;
             _light1Color = Owner.Light1Color;

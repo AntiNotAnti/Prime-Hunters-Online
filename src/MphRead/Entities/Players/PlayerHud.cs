@@ -2271,7 +2271,7 @@ namespace MphRead.Entities
                     continue;
                 }
                 bool equipped = beam == CurrentWeapon;
-                WeaponInfo info = Weapons.Current[i];
+                WeaponInfo info = _scene.WeaponRules[i];
                 // The colour this weapon is known by. See _weaponListColors:
                 // deliberately not the game's own beam colour, which is the
                 // colour of the *shot* and is nothing like it for several.
@@ -4246,7 +4246,7 @@ namespace MphRead.Entities
             }
         }
 
-        private class HudMessage
+        internal class HudMessage
         {
             public Vector2 Position { get; set; }
             public float FontSize { get; set; }
@@ -4260,7 +4260,9 @@ namespace MphRead.Entities
             public bool DialogHide { get; set; }
         }
 
-        private static readonly IReadOnlyList<HudMessage> _hudMessageQueue = new HudMessage[20]
+        private IReadOnlyList<HudMessage> _hudMessageQueue => _scene.HudMessages;
+
+        internal static IReadOnlyList<HudMessage> CreateHudMessages() => new HudMessage[20]
         {
             new HudMessage(),
             new HudMessage(),

@@ -30,14 +30,14 @@ namespace MphRead
                 {
                     mode = GameMode.Bounty;
                 }
-                Weapons.Current = metadata.Multiplayer ? Weapons.WeaponsMP : Weapons.Weapons1P;
+                if (!scene.Services.IsReplica) Weapons.Current = metadata.Multiplayer ? Weapons.WeaponsMP : Weapons.Weapons1P;
             }
             else
             {
-                Weapons.Current = scene.GameState.Multiplayer ? Weapons.WeaponsMP : Weapons.Weapons1P;
+                if (!scene.Services.IsReplica) Weapons.Current = scene.GameState.Multiplayer ? Weapons.WeaponsMP : Weapons.Weapons1P;
             }
             scene.GameState.Mode = mode;
-            if (mode == GameMode.SinglePlayer)
+            if (!scene.Services.IsReplica && mode == GameMode.SinglePlayer)
             {
                 Menu.ApplyAdventureSettings();
             }
@@ -45,7 +45,7 @@ namespace MphRead
             LoadResources(scene);
             // currently no differentiation between loading a file and choosing a planet,
             // so reset the RNG when loading a different save slot from the previous
-            if (Menu.SaveSlot != Menu.PreviousSaveSlot)
+            if (!scene.Services.IsReplica && Menu.SaveSlot != Menu.PreviousSaveSlot)
             {
                 scene.Random.SetRng1(Rng.Rng1StartValue);
                 scene.Random.SetRng2(Rng.Rng2StartValue);
@@ -55,7 +55,7 @@ namespace MphRead
             scene.CameraSequences.Entity = null;
             scene.CameraSequences.Current = null;
             scene.CameraSequences.Intro = null;
-            if (scene.GameState.Multiplayer && scene.Players.PlayerCount > 0)
+            if (!scene.Services.IsReplica && scene.GameState.Multiplayer && scene.Players.PlayerCount > 0)
             {
                 int seqId = roomId - 93 + 172;
                 if (seqId >= 172 && seqId < 199)
@@ -63,18 +63,18 @@ namespace MphRead
                     scene.CameraSequences.Intro = CameraSequence.Load(seqId, scene);
                 }
             }
-            Sound.Sfx.Load(scene);
+            if (scene.Services.AllowsPresentationSideEffects) Sound.Sfx.Load(scene);
             var room = new RoomEntity(scene);
             (CollisionInstance collision, IReadOnlyList<EntityBase> entities) = SetUpRoom(mode, playerCount,
                 bossFlags, nodeLayerMask, entityLayerId, metadata, room, scene, isRoomTransition: false);
-            Music.TryPlayRoomMusic(room.RoomId, scene.GameState.SinglePlayer && (((int)scene.GameState.StorySave.BossFlags >> (2 * scene.AreaId)) & 3) != 0 ? 1 : 0);
+            if (scene.Services.AllowsPresentationSideEffects) Music.TryPlayRoomMusic(room.RoomId, scene.GameState.SinglePlayer && (((int)scene.GameState.StorySave.BossFlags >> (2 * scene.AreaId)) & 3) != 0 ? 1 : 0);
             if (scene.GameState.SinglePlayer)
             {
                 UpdateAreaHunters();
                 InitHunterSpawns(scene, entities, initialize: false); // see: "probably revisit this"
                 scene.LoadMapSymbolEntities(scene.AreaId);
             }
-            AiPersonality.LoadAll(mode);
+            if (!scene.Services.IsReplica) AiPersonality.LoadAll(mode);
             room.SetNodeData(LoadNodeData(metadata.NodePath, room.RoomId, mode, entities, metadata.FirstHunt));
             scene.GameState.StorySave.CheckpointRoomId = room.RoomId;
             return (room, metadata, collision, entities);
@@ -384,10 +384,9 @@ namespace MphRead
                 collision.Active = false;
             }
             room.Setup(metadata.Name, metadata, collision, nodeLayerMask, metadata.Id);
-            Mods.Network.NetHealthSync.BeginRoom();
+            if (!scene.Services.IsReplica) Mods.Network.NetHealthSync.BeginRoom();
             var resources = mode == GameMode.SinglePlayer ? Mods.Multiplayer.ResourceSpawnProfile.Low
-                : Mods.Network.NetSession.Active ? Mods.Network.NetLaunch.WorldProfile.Resources
-                : Mods.Multiplayer.MatchWorldProfile.Resolve(playerCount).Resources;
+                : (scene.Services.NetworkWorldProfile ?? Mods.Multiplayer.MatchWorldProfile.Resolve(playerCount)).Resources;
             IReadOnlyList<EntityBase> entities = LoadEntities(metadata, entityLayerId, scene, resources);
             entities = GetExtraEntities(room.RoomId, entities, scene);
             return (collision, entities);
@@ -464,7 +463,7 @@ namespace MphRead
                 {
                     var data = Mods.Multiplayer.MapResourceRules.ResolveData(metadata, resources,
                         ((Entity<ItemSpawnEntityData>)entity).Data);
-                    if (Mods.Network.NetSession.ActiveMatchDefinition?.DisablePowerups == true
+                    if (scene.Services.DisablePowerups
                         && Mods.Multiplayer.MapResourceRules.IsPowerup(data.ItemType))
                     {
                         continue;

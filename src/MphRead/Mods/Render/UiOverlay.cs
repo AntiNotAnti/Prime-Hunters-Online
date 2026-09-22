@@ -27,26 +27,6 @@ namespace MphRead.Mods.Render
     /// </summary>
     public static class UiOverlay
     {
-        /// <summary>
-        /// The texture name this takes, chosen rather than asked for.
-        ///
-        /// The engine does not call <c>glGenTextures</c> for its own textures:
-        /// it counts (<c>Scene._textureCount</c>) and binds the number, which
-        /// is legal -- a bind creates the object -- and which upstream gets
-        /// away with because the counter starts at one in a context nothing
-        /// else draws in. A name taken from GenTextures is therefore a name
-        /// the next scene will count its way onto and overwrite: the launcher
-        /// was handed name 1, the first hunter model loaded took name 1 as
-        /// well, and the pause menu came out as a 128x128 piece of somebody's
-        /// armour stretched over the window.
-        ///
-        /// So the overlay lives above anything the counter will reach in a
-        /// session -- a room and eight hunters is a few hundred textures, not
-        /// a million -- and it is never given back, since the counter restarts
-        /// at one with every match and would collide again.
-        /// </summary>
-        private const int Name = 1_000_000;
-
         private static int _texture;
         private static int _width;
         private static int _height;
@@ -78,7 +58,7 @@ namespace MphRead.Mods.Render
             GL.ActiveTexture(TextureUnit.Texture0);
             if (_texture == 0)
             {
-                _texture = Name;
+                _texture = GL.GenTexture();
                 GL.BindTexture(TextureTarget.Texture2D, _texture);
                 // Linear, alone in this program apart from the weapon icons:
                 // the UI is drawn at the window's own resolution, so there is

@@ -48,7 +48,7 @@ namespace MphRead.Entities
             {
                 Active = data.Enabled != 0;
             }
-            if (Mods.Network.NetSession.ActiveMatchDefinition?.DisablePowerups == true
+            if (scene.Services.DisablePowerups
                 && Mods.Multiplayer.MapResourceRules.IsPowerup(data.ItemType))
             {
                 Active = false;
@@ -67,7 +67,7 @@ namespace MphRead.Entities
         public override void Initialize()
         {
             base.Initialize();
-            Mods.Network.NetHealthSync.Register(this);
+            if (!_scene.Services.IsReplica) Mods.Network.NetHealthSync.Register(this);
             _scene.TryGetEntity(_data.NotifyEntityId, out _pickupNotifyEntity);
         }
 
@@ -92,16 +92,16 @@ namespace MphRead.Entities
             {
                 Position = Matrix.Vec3MultMtx4(_invPos, _parent.CollisionTransform);
             }
-            if (Mods.Network.NetHealthSync.IsReplica && Mods.Multiplayer.MapResourceRules.IsHealth(_data.ItemType))
+            if (_scene.Services.ReplicatesHealthSpawns && Mods.Multiplayer.MapResourceRules.IsHealth(_data.ItemType))
             {
-                if (Mods.Network.NetHealthSync.TryGet((short)Id, out var state))
+                if (_scene.Services.TryGetHealthSpawn((short)Id, out var state))
                 {
                     Active = state.Active;
                     _spawnCooldown = state.Cooldown;
                     _spawnCount = state.SpawnCount;
                     if (!state.Available && Item != null)
                     {
-                        int localSlot = Mods.Network.NetSession.LocalSlot;
+                        int localSlot = _scene.Services.PlayerReplication.LocalSlot;
                         if (Item.DespawnTimer != 0 && state.PickerSlot == localSlot
                             && localSlot >= 0 && localSlot < _scene.Players.Items.Count)
                         {
@@ -239,7 +239,7 @@ namespace MphRead.Entities
         private static ItemInstanceEntity? SpawnItem(ItemType type, Vector3 position, NodeRef nodeRef,
             Scene scene, uint? chance = null, int despawnTime = 0)
         {
-            if (Mods.Network.NetSession.ActiveMatchDefinition?.DisablePowerups == true
+            if (scene.Services.DisablePowerups
                 && Mods.Multiplayer.MapResourceRules.IsPowerup(type))
             {
                 return null;

@@ -475,7 +475,7 @@ namespace MphRead.Entities
             ProcessTransition(CancellationToken.None);
             EndTransition();
             _scene.GameState.PausePrevented = false;
-            Music.TryPlayRoomMusic(_scene.RoomId, _scene.GameState.SinglePlayer && (((int)_scene.GameState.StorySave.BossFlags >> (2 * _scene.AreaId)) & 3) != 0 ? 1 : 0);
+            if (_scene.Services.AllowsPresentationSideEffects) Music.TryPlayRoomMusic(_scene.RoomId, _scene.GameState.SinglePlayer && (((int)_scene.GameState.StorySave.BossFlags >> (2 * _scene.AreaId)) & 3) != 0 ? 1 : 0);
             if (!resume)
             {
                 _scene.InsertEntity(player);
@@ -497,7 +497,7 @@ namespace MphRead.Entities
         {
             Debug.Assert(_scene.GameState.TransitionRoomId != -1);
             _scene.GameState.TransitionState = TransitionState.Process;
-            Music.UpdateEncounterMusic(-1);
+            if (_scene.Services.AllowsPresentationSideEffects) Music.UpdateEncounterMusic(-1);
             foreach (EntityBase entity in _scene.Entities)
             {
                 if (entity.Type == EntityType.Room || entity.Type == EntityType.Model
@@ -544,15 +544,10 @@ namespace MphRead.Entities
                 }
             }
             _scene.ClearNonPersistentEffects();
-            // A cam sequence that was still running gets cut off here without
-            // reaching the CanEnd branch that would have paired off whatever
-            // mute counter it bumped -- leaving sound classes silenced for the
-            // rest of the match. Sfx.Load resets these once at initial connect;
-            // a mid-session room transition needs the same reset.
-            Sfx.SfxMute = false;
-            Sfx.ForceFieldSfxMute = 0;
-            Sfx.TimedSfxMute = 0;
-            Sfx.LongSfxMute = 0;
+            if (_scene.Services.AllowsPresentationSideEffects) Sfx.SfxMute = false;
+            if (_scene.Services.AllowsPresentationSideEffects) Sfx.ForceFieldSfxMute = 0;
+            if (_scene.Services.AllowsPresentationSideEffects) Sfx.TimedSfxMute = 0;
+            if (_scene.Services.AllowsPresentationSideEffects) Sfx.LongSfxMute = 0;
             _scene.CameraSequences.Entity = null;
             _scene.CameraSequences.Current = null;
             _scene.ClearMessageQueue();

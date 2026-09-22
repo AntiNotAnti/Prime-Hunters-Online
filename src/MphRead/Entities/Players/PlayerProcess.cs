@@ -257,7 +257,7 @@ namespace MphRead.Entities
                             }
                         }
                         if (_scene.GameState.SinglePlayer || Controls.Shoot.IsDown
-                            || Mods.Network.NetPlayerBridge.RespawnRequested(SlotIndex) || time <= 0 || IsBot
+                            || _scene.PlayerReplication.RespawnRequested(SlotIndex) || time <= 0 || IsBot
                             || Mods.Network.NetHooks.ForceSpawn(this)) // todo: or forced
                         {
                             // todo?: something with wi-fi
@@ -571,7 +571,7 @@ namespace MphRead.Entities
                     BeamType slotWeap = _weaponSlots[i];
                     if (slotWeap != BeamType.None)
                     {
-                        WeaponInfo slotInfo = Weapons.Current[(int)slotWeap];
+                        WeaponInfo slotInfo = _scene.WeaponRules[(int)slotWeap];
                         if (slotInfo.Priority > priority && _ammo[slotInfo.AmmoType] >= slotInfo.AmmoCost)
                         {
                             priority = slotInfo.Priority;
@@ -1309,7 +1309,7 @@ namespace MphRead.Entities
             distSqr *= distSqr;
             foreach (ItemInstanceEntity item in _scene.GetItemInstanceEntities())
             {
-                if (!Mods.Network.NetHealthSync.OwnsPickup(item) || item.DespawnTimer == 0) continue;
+                if (_scene.Services.IsReplica || !Mods.Network.NetHealthSync.OwnsPickup(item) || item.DespawnTimer == 0) continue;
                 bool inRange = false;
                 if (IsAltForm)
                 {
@@ -1549,7 +1549,7 @@ namespace MphRead.Entities
                 // &tab0 FOUND you've obtained the &tab0. &tab1
                 ShowDialog(DialogType.Event, messageId: 5, param1: weaponId, value1: value1, value2: value2);
             }
-            WeaponInfo info = Weapons.Current[(int)weapon];
+            WeaponInfo info = _scene.WeaponRules[(int)weapon];
             if (_ammo[info.AmmoType] < 60)
             {
                 _ammo[info.AmmoType] = Math.Min(_ammo[info.AmmoType] + 60, 60);
@@ -1562,7 +1562,7 @@ namespace MphRead.Entities
                 int slot2Index = (int)slot2Weapon;
                 BeamType affinityWeapon = Weapons.GetAffinityBeam(Hunter);
                 if (slot2Weapon == BeamType.None || weapon == BeamType.OmegaCannon
-                    || (info.Priority > Weapons.Current[slot2Index].Priority || weapon == affinityWeapon)
+                    || (info.Priority > _scene.WeaponRules[slot2Index].Priority || weapon == affinityWeapon)
                     && (!Flags2.TestFlag(PlayerFlags2.Shooting) || CurrentWeapon != slot2Weapon))
                 {
                     // todo: update HUD

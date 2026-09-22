@@ -13,10 +13,17 @@ namespace MphRead
 {
     public partial class Scene
     {
+        private readonly Sound.SfxInstanceBase _silentAudio = new();
+        internal Sound.SfxInstanceBase Audio => Services.AllowsPresentationSideEffects ? Sound.Sfx.Instance : _silentAudio;
+        internal Mods.Network.ContinuousWeaponPhase ContinuousPhase { get; } = new(PlayerEntity.SlotCapacity);
+        internal Mods.Network.ContinuousWeaponPhase WeaponPhase => Services.IsReplica ? ContinuousPhase : Mods.Network.NetSession.ContinuousPhase;
+        public IReadOnlyList<WeaponInfo> WeaponRules => GameState.Multiplayer ? Weapons.WeaponsMP : Weapons.Weapons1P;
+        internal IReadOnlyList<PlayerEntity.HudMessage> HudMessages { get; } = PlayerEntity.CreateHudMessages();
         public ISceneServices Services { get; }
         public SceneGameState GameState { get; }
         public ScenePlayerRegistry Players { get; }
         public MatchRandom Random { get; }
+        public Mods.Network.PlayerReplicationBridge PlayerReplication { get; }
         internal ushort NextItemRotation { get; set; }
         public SceneCameraSequences CameraSequences => GameState.CameraSequences;
         internal BeamProjectileEntity[] EnemyBeams { get; set; } = null!;

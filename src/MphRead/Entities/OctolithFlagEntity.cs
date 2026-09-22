@@ -131,7 +131,7 @@ namespace MphRead.Entities
                         {
                             _soundSource.QueueStream(VoiceId.VOICE_OCTO_PICKUP, delay: 1, expiration: 2);
                             _scene.Players.Main.StartFlagCarrySfx();
-                            Music.PlayRoomMusic(_scene.RoomId, track: 1);
+                            if (_scene.Services.AllowsPresentationSideEffects) Music.PlayRoomMusic(_scene.RoomId, track: 1);
                         }
                         else
                         {
@@ -140,7 +140,7 @@ namespace MphRead.Entities
                     }
                     else
                     {
-                        Music.PlayRoomMusic(_scene.RoomId, track: 1);
+                            if (_scene.Services.AllowsPresentationSideEffects) Music.PlayRoomMusic(_scene.RoomId, track: 1);
                         if (_carrier == _scene.Players.Main)
                         {
                             _soundSource.QueueStream(VoiceId.VOICE_OCTO_PICKUP, delay: 1, expiration: 2);
@@ -289,7 +289,7 @@ namespace MphRead.Entities
             }
             _scene.Players.Main.QueueHudMessage(128, 133, 60 / 30f, 1, messageId);
             _scene.Players.Main.StopFlagCarrySfx();
-            Music.PlayRoomMusic(_scene.RoomId, track: 0);
+            if (_scene.Services.AllowsPresentationSideEffects) Music.PlayRoomMusic(_scene.RoomId, track: 0);
             if (reset)
             {
                 SetAtBase();
@@ -337,10 +337,10 @@ namespace MphRead.Entities
                 _scene.Players.Main.QueueHudMessage(128, 133, 90 / 30f, 1, 203); // bounty received
             }
             _scene.Players.Main.StopFlagCarrySfx();
-            Music.PlayRoomMusic(_scene.RoomId, track: 0);
+            if (_scene.Services.AllowsPresentationSideEffects) Music.PlayRoomMusic(_scene.RoomId, track: 0);
             _scene.GameState.Points[_carrier.SlotIndex]++;
             _scene.GameState.OctolithScores[_carrier.SlotIndex]++;
-            Mods.Network.ReplayCapture.Event(Mods.Network.ReplayEventType.Objective, _carrier.SlotIndex,
+            if (!_scene.Services.IsReplica) Mods.Network.ReplayCapture.Event(Mods.Network.ReplayEventType.Objective, _carrier.SlotIndex,
                 value: _scene.GameState.OctolithScores[_carrier.SlotIndex]);
             SetAtBase();
         }

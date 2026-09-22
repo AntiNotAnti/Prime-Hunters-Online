@@ -149,12 +149,14 @@ namespace MphRead.Entities
         {
             Type = type;
             _scene = scene;
+            _soundSource.Owner = scene;
         }
 
         protected EntityBase(EntityType type, string nodeName, Scene scene)
         {
             Type = type;
             _scene = scene;
+            _soundSource.Owner = scene;
             _nodeName = nodeName;
         }
 
@@ -162,6 +164,7 @@ namespace MphRead.Entities
         {
             Type = type;
             _scene = scene;
+            _soundSource.Owner = scene;
             NodeRef = nodeRef;
         }
 

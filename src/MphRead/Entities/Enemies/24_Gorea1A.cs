@@ -402,7 +402,7 @@ namespace MphRead.Entities.Enemies
             _colors = Metadata.Enemy24Colors[_weaponIndex];
             if (_scene.Players.Main.Health > 0)
             {
-                Music.PlayMusic(_musicTracks[_weaponIndex]);
+                if (_scene.Services.AllowsPresentationSideEffects) Music.PlayMusic(_musicTracks[_weaponIndex]);
             }
             WeaponInfo weapon = Weapons.GoreaWeapons[_weaponIndex];
             int effectiveness = Metadata.GoreaEffectiveness[_weaponIndex];
@@ -1055,7 +1055,7 @@ namespace MphRead.Entities.Enemies
                 model.AnimInfo.Frame[0] = 5;
                 if (_scene.Players.Main.Health > 0)
                 {
-                    Music.PlayMusic(MusicId.SEQ_GOREA_1_M21);
+                    if (_scene.Services.AllowsPresentationSideEffects) Music.PlayMusic(MusicId.SEQ_GOREA_1_M21);
                 }
                 _soundSource.PlaySfx(SfxId.GOREA_TRANSFORM1_SCR);
                 return true;

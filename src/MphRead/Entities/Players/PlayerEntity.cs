@@ -500,6 +500,7 @@ namespace MphRead.Entities
         {
             SlotIndex = slotIndex;
             CameraInfo.Random = scene.Random;
+            _timedSfxSource.Owner = scene;
             _beams = SceneSetup.CreateBeamList(16, scene); // in-game: 5
             AiData = new PlayerAiData(this);
         }
@@ -689,10 +690,9 @@ namespace MphRead.Entities
 
         public void Spawn(Vector3 pos, Vector3 facing, Vector3 up, NodeRef nodeRef, bool respawn)
         {
-            if (!Mods.Network.NetPlayerLifecycle.CanSpawn) return;
-            Mods.Network.NetPlayerLifecycle.OnSpawn(this);
-            Mods.Network.NetSession.ContinuousPhase.ResetSlot(SlotIndex);
-            Mods.Network.NetPlayerBridge.NoteSpawn(SlotIndex);
+            if (!_scene.Services.PlayerReplication.CanSpawn) return;
+            _scene.Services.PlayerReplication.OnSpawn(this);
+            _scene.PlayerReplication.NoteSpawn(SlotIndex);
             if (IsMainPlayer)
             {
                 _scene.NoteRenderLifecycle("spawn begin");
@@ -1035,7 +1035,7 @@ namespace MphRead.Entities
             AiData.HealthThreshold = data.HunterHealthThreshold;
             if (Hunter == Hunter.Guardian)
             {
-                Music.PlayEncounterMusic(Hunter.Guardian);
+                if (_scene.Services.AllowsPresentationSideEffects) Music.PlayEncounterMusic(Hunter.Guardian);
             }
             // todo: update story save for multiplayer unlock
             if (data.HunterWeapon != 255)
@@ -1048,7 +1048,7 @@ namespace MphRead.Entities
                 _weaponSlots[2] = weapon;
                 _ammo[0] = 0;
                 _ammo[1] = 0;
-                WeaponInfo weaponInfo = Weapons.Current[(int)weapon];
+                WeaponInfo weaponInfo = _scene.WeaponRules[(int)weapon];
                 _ammo[weaponInfo.AmmoType] = Int32.MaxValue;
                 EquipInfo.InfiniteAmmo = true;
                 EquipInfo.ChargeLevel = 0;
@@ -1355,7 +1355,7 @@ namespace MphRead.Entities
             else if (_scene.GameState.SinglePlayer && IsBot)
             {
                 BeamType affinityBeam = Weapons.GetAffinityBeam(Hunter);
-                WeaponInfo affinityInfo = Weapons.Current[(int)affinityBeam];
+                WeaponInfo affinityInfo = _scene.WeaponRules[(int)affinityBeam];
                 _availableWeapons[affinityBeam] = true;
                 _availableCharges[affinityBeam] = true;
                 _weaponSlots[0] = _weaponSlots[1] = BeamType.None;
@@ -1367,7 +1367,7 @@ namespace MphRead.Entities
             }
             else
             {
-                WeaponInfo missileInfo = Weapons.Current[(int)BeamType.Missile];
+                WeaponInfo missileInfo = _scene.WeaponRules[(int)BeamType.Missile];
                 _availableWeapons[BeamType.PowerBeam] = true;
                 _availableWeapons[BeamType.Missile] = true;
                 _availableCharges[BeamType.PowerBeam] = true;
@@ -1391,7 +1391,7 @@ namespace MphRead.Entities
             {
                 return false;
             }
-            WeaponInfo info = Weapons.Current[(int)beam];
+            WeaponInfo info = _scene.WeaponRules[(int)beam];
             byte ammoType = info.AmmoType;
             if (debug && Cheats.FreeWeaponSelect)
             {
@@ -1423,11 +1423,11 @@ namespace MphRead.Entities
                 || _scene.GameState.SinglePlayer && (Hunter == Hunter.Samus && (beam == BeamType.PowerBeam || beam == BeamType.OmegaCannon)
                 || Hunter == Hunter.Guardian && beam == BeamType.VoltDriver))
             {
-                EquipInfo.Weapon = Weapons.Current[(int)beam + 9];
+                EquipInfo.Weapon = _scene.WeaponRules[(int)beam + 9];
             }
             else
             {
-                EquipInfo.Weapon = Weapons.Current[(int)beam];
+                EquipInfo.Weapon = _scene.WeaponRules[(int)beam];
             }
             EquipInfo.ChargeLevel = 0;
             EquipInfo.SmokeLevel = 0;
@@ -1515,7 +1515,7 @@ namespace MphRead.Entities
                 {
                     if (i != 2 && _availableWeapons[i])
                     {
-                        WeaponInfo info = Weapons.Current[i];
+                        WeaponInfo info = _scene.WeaponRules[i];
                         if (info.Priority > priority && _ammo[info.AmmoType] >= info.AmmoCost)
                         {
                             priority = info.Priority;
@@ -2045,7 +2045,7 @@ namespace MphRead.Entities
                     }
                     else
                     {
-                        Music.UpdateEncounterMusic((int)Hunter);
+                        if (_scene.Services.AllowsPresentationSideEffects) Music.UpdateEncounterMusic((int)Hunter);
                         PlayHunterSfx(HunterSfx.Death);
                     }
                     StopBeamChargeSfx(CurrentWeapon);
@@ -2151,7 +2151,7 @@ namespace MphRead.Entities
                             float minDistance = 0;
                             for (int i = 1; i < _scene.Players.PlayerCount; i++)
                             {
-                                PlayerEntity enemyHunter = _players[i];
+                                PlayerEntity enemyHunter = _scene.Players.Items[i];
                                 if (enemyHunter.Health == 0 || enemyHunter.Hunter == Hunter.Guardian)
                                 {
                                     continue;
@@ -2169,8 +2169,8 @@ namespace MphRead.Entities
                                 _lostOctolithSpeed = 0.2f * 30; // frame-independent drag
                             }
                         }
-                        Music.UpdateEncounterMusic(-2);
-                        Music.Stop(fadeTime: 150 / 30f);
+                        if (_scene.Services.AllowsPresentationSideEffects) Music.UpdateEncounterMusic(-2);
+                        if (_scene.Services.AllowsPresentationSideEffects) Music.Stop(fadeTime: 150 / 30f);
                     }
                     else if (attacker?.IsMainPlayer == true)
                     {

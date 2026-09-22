@@ -16,8 +16,9 @@ using var window = new NativeWindow(new NativeWindowSettings
     ClientSize = new Vector2i(32, 32),
     StartVisible = false,
     StartFocused = false,
-    Profile = ContextProfile.Compatability,
-    APIVersion = new Version(3, 2)
+    Flags = ContextFlags.Default,
+    Profile = OperatingSystem.IsMacOS() ? ContextProfile.Any : ContextProfile.Compatability,
+    APIVersion = OperatingSystem.IsMacOS() ? new Version(2, 1) : new Version(3, 2)
 });
 window.Context.MakeCurrent();
 GL.LoadBindings(new GLFWBindingsContext());

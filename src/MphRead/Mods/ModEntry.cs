@@ -1789,6 +1789,11 @@ namespace MphRead.Mods
                 return true;
             }
 #endif
+            if (ValueAfter(args, "replayreplicacheck") is string replicaPath)
+            {
+                Environment.ExitCode = Network.ReplayReplicaCheck.Run(replicaPath, ValueAfter(args, "shots"));
+                return true;
+            }
             if (ValueAfter(args, "replaydeterminism") is string replayPath)
             {
                 Environment.ExitCode = Network.ReplayDeterminism.Run(replayPath, ValueAfter(args, "replayhashout"));

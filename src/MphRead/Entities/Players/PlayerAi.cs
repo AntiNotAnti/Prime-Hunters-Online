@@ -2054,14 +2054,14 @@ namespace MphRead.Entities
             // helper
             private bool CheckBeam(BeamType beam)
             {
-                WeaponInfo info = Weapons.Current[(int)beam];
+                WeaponInfo info = _scene.WeaponRules[(int)beam];
                 return _player._ammo[info.AmmoType] >= info.AmmoCost && _player._availableWeapons[beam];
             }
 
             // helper
             private bool CheckCharge(BeamType beam)
             {
-                WeaponInfo info = Weapons.Current[(int)beam];
+                WeaponInfo info = _scene.WeaponRules[(int)beam];
                 return info.Flags.TestFlag(WeaponFlags.CanCharge)
                     && _player._ammo[info.AmmoType] >= info.ChargeCost && _player._availableCharges[beam];
             }
@@ -4922,28 +4922,28 @@ namespace MphRead.Entities
             // same as Func3_213BFFC but for _weapon1 instead of _weapon2
             private int Func3_213C078(AiContext context, AiPersonalityData5 param)
             {
-                WeaponInfo info = Weapons.Current[(int)GetBeamType(_weapon1)];
+                WeaponInfo info = _scene.WeaponRules[(int)GetBeamType(_weapon1)];
                 return _player._ammo[info.AmmoType] < info.AmmoCost ? 1 : 0;
             }
 
             // same as Func3_213BFD8 but for _weapon1 instead of _weapon2
             private int Func3_213C054(AiContext context, AiPersonalityData5 param)
             {
-                WeaponInfo info = Weapons.Current[(int)GetBeamType(_weapon1)];
+                WeaponInfo info = _scene.WeaponRules[(int)GetBeamType(_weapon1)];
                 return _player._ammo[info.AmmoType] >= info.AmmoCost ? 1 : 0; // inverted
             }
 
             // same as Func3_213C078 but for _weapon2 instead of _weapon1
             private int Func3_213BFFC(AiContext context, AiPersonalityData5 param)
             {
-                WeaponInfo info = Weapons.Current[(int)GetBeamType(_weapon2)];
+                WeaponInfo info = _scene.WeaponRules[(int)GetBeamType(_weapon2)];
                 return _player._ammo[info.AmmoType] < info.AmmoCost ? 1 : 0;
             }
 
             // same as Func3_213C054 but for _weapon2 instead of _weapon1
             private int Func3_213BFD8(AiContext context, AiPersonalityData5 param)
             {
-                WeaponInfo info = Weapons.Current[(int)GetBeamType(_weapon2)];
+                WeaponInfo info = _scene.WeaponRules[(int)GetBeamType(_weapon2)];
                 return _player._ammo[info.AmmoType] >= info.AmmoCost ? 1 : 0;
             }
 
@@ -5010,13 +5010,13 @@ namespace MphRead.Entities
 
             private int Func3_213BE10(AiContext context, AiPersonalityData5 param)
             {
-                WeaponInfo info = Weapons.Current[(int)BeamType.Missile];
+                WeaponInfo info = _scene.WeaponRules[(int)BeamType.Missile];
                 return _player._ammo[info.AmmoType] < info.AmmoCost ? 1 : 0;
             }
 
             private int Func3_213BDF4(AiContext context, AiPersonalityData5 param)
             {
-                WeaponInfo info = Weapons.Current[(int)BeamType.Missile];
+                WeaponInfo info = _scene.WeaponRules[(int)BeamType.Missile];
                 return _player._ammo[info.AmmoType] >= info.AmmoCost ? 1 : 0; // inverted
             }
 

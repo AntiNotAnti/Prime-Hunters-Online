@@ -1,5 +1,6 @@
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.IO;
 using MphRead.Entities;
 using OpenTK.Mathematics;
@@ -18,16 +19,20 @@ namespace MphRead.Mods.Network
         private readonly IntentPacket[] _intents = new IntentPacket[PlayerEntity.SlotCapacity];
         private readonly bool[] _hasPlayer = new bool[PlayerEntity.SlotCapacity];
         private readonly bool[] _hasIntent = new bool[PlayerEntity.SlotCapacity];
+        private readonly uint[] _intentReceivedFrame = new uint[PlayerEntity.SlotCapacity];
         private readonly NetLifecycleTracker[] _lives = new NetLifecycleTracker[PlayerEntity.SlotCapacity];
         private uint? _rosterRevision;
         private bool _hasSnapshot;
+        private readonly Dictionary<short, HealthSpawnState> _healthSpawns = new();
         public MatchStatePacket? Match { get; private set; }
         public SessionStatePacket? Configuration { get; private set; }
         public uint ServerTick { get; private set; }
         public uint RecordingFrame { get; private set; }
         public uint Rng1 { get; private set; } = Rng.Rng1StartValue;
         public uint Rng2 { get; private set; } = Rng.Rng2StartValue;
-        public byte[] WorldTail { get; private set; } = Array.Empty<byte>();
+        private byte[] _worldTail = Array.Empty<byte>();
+        public ReadOnlySpan<byte> WorldTail => _worldTail;
+        public bool TryGetHealthSpawn(short id, out HealthSpawnState state) => _healthSpawns.TryGetValue(id, out state);
         public long AcceptedPackets { get; private set; }
         public long IgnoredPackets { get; private set; }
         public ReplayReplicaState()
@@ -35,10 +40,14 @@ namespace MphRead.Mods.Network
             for (int i = 0; i < _lives.Length; i++) _lives[i] = new NetLifecycleTracker();
         }
         public ReplayOccupant Occupant(int slot) => _roster[slot];
+        public bool MatchesLife(int slot, ushort generation, ushort life) => (uint)slot < (uint)_lives.Length
+            && generation != 0 && _lives[slot].Generation == generation && _lives[slot].LifeId == life;
         public bool TryGetPlayer(int slot, out PlayerState player)
         { player = _players[slot]; return _hasPlayer[slot]; }
         public bool TryGetIntent(int slot, out IntentPacket intent)
         { intent = _intents[slot]; return _hasIntent[slot]; }
+        public uint IntentAge(int slot) => _hasIntent[slot] ? RecordingFrame - _intentReceivedFrame[slot] : uint.MaxValue;
+        internal void Advance(uint frame) => RecordingFrame = frame;
         public void Reset()
         {
             Match = null;
@@ -60,7 +69,8 @@ namespace MphRead.Mods.Network
             AcceptedPackets = IgnoredPackets = 0;
             Rng1 = Rng.Rng1StartValue;
             Rng2 = Rng.Rng2StartValue;
-            WorldTail = Array.Empty<byte>();
+            _worldTail = Array.Empty<byte>();
+            _healthSpawns.Clear();
         }
         private bool Matches(ushort match, ulong authority) => Match is MatchStatePacket current
             && current.MatchId == match && current.AuthorityEpoch == authority;
@@ -114,7 +124,8 @@ namespace MphRead.Mods.Network
                     accepted = AcceptSnapshot(payload);
                     break;
                 case PacketType.SlotIntent:
-                    if (payload.Length != 1 + IntentPacket.Size || payload[0] >= _intents.Length) throw Malformed();
+                    if ((payload.Length != 1 + IntentPacket.Size && payload.Length != 1 + IntentPacket.FullSize)
+                        || payload[0] >= _intents.Length) throw Malformed();
                     int actor = payload[0];
                     IntentPacket intent = IntentPacket.Read(payload[1..]);
                     if (!Matches(intent.MatchId, intent.AuthorityEpoch) || intent.SlotGeneration == 0
@@ -122,6 +133,7 @@ namespace MphRead.Mods.Network
                         || intent.LifeId != _lives[actor].LifeId
                         || _hasIntent[actor] && !NetLifecycleTracker.Newer(intent.Frame, _intents[actor].Frame)) break;
                     _intents[actor] = intent;
+                    _intentReceivedFrame[actor] = frame;
                     _hasIntent[actor] = true;
                     accepted = true;
                     break;
@@ -178,12 +190,24 @@ namespace MphRead.Mods.Network
             ServerTick = header.Frame;
             Rng1 = header.Rng1;
             Rng2 = header.Rng2;
-            WorldTail = payload[tail..].ToArray();
+            _worldTail = payload[tail..].ToArray();
+            _healthSpawns.Clear();
+            var healthState = payload[health..];
+            for (int offset = NetHealthSync.HeaderSize; offset < healthState.Length; offset += NetHealthSync.EntrySize)
+            {
+                byte flags = healthState[offset + 2];
+                _healthSpawns.Add(BinaryPrimitives.ReadInt16LittleEndian(healthState[offset..]), new(
+                    (flags & 1) != 0, (flags & 2) != 0,
+                    BinaryPrimitives.ReadUInt16LittleEndian(healthState[(offset + 3)..]),
+                    BinaryPrimitives.ReadUInt16LittleEndian(healthState[(offset + 5)..]),
+                    (sbyte)(((flags >> 2) & 15) - 1)));
+            }
             _hasSnapshot = true;
             return true;
         }
         private static bool Sane(Vector3 v) => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z)
             && Math.Abs(v.X) < 100000 && Math.Abs(v.Y) < 100000 && Math.Abs(v.Z) < 100000;
-        private static InvalidDataException Malformed() => new("Malformed replay replica packet.");
+        private static InvalidDataException Malformed()
+            => new("Replay packet has an invalid length or state value.");
     }
 }

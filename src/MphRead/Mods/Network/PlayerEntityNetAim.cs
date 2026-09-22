@@ -25,7 +25,7 @@ namespace MphRead.Entities
         // the generic draw interpolation; the local view uses render-time
         // late latching below.
         protected override bool InterpolateDrawTransform
-            => DemoPlayback.IsActive || (!IsMainPlayer && !NetSession.Active);
+            => _scene.Services.IsReplica || DemoPlayback.IsActive || (!IsMainPlayer && !NetSession.Active);
 
         /// <summary>
         /// The generic entity interpolation point for this picture. Replay
@@ -40,7 +40,7 @@ namespace MphRead.Entities
             view = CameraInfo.ViewMatrix;
             position = CameraInfo.Position;
             fov = CameraInfo.Fov;
-            if (!DemoPlayback.IsActive
+            if (_scene.Services.IsReplica || !DemoPlayback.IsActive
                 || !NetSmoothing.SampleReplayPresentation(SlotIndex,
                     out Vector3 replayPosition, out Vector3 replayFacing,
                     out bool replayAlt)
@@ -50,7 +50,7 @@ namespace MphRead.Entities
                 return false;
             }
 
-            Vector3 presented = NetPlayerBridge.InFormFor(
+            Vector3 presented = _scene.PlayerReplication.InFormFor(
                 this, replayPosition, replayAlt);
             Vector3 delta = presented - ModPresentationPosition;
             cameraPosition += delta;
@@ -84,11 +84,11 @@ namespace MphRead.Entities
         protected override Matrix4 GetModelTransform(ModelInstance inst, int index)
         {
             Matrix4 transform = base.GetModelTransform(inst, index);
-            if (NetSession.Active && SlotIndex != NetHooks.LocalSlot
-                && NetSmoothing.SamplePresentation(SlotIndex,
+            if (_scene.Services.PlayerReplication.Active && SlotIndex != _scene.Services.PlayerReplication.LocalSlot
+                && _scene.Services.PlayerReplication.SamplePosition(SlotIndex, presentation: true,
                     out Vector3 presented, out bool presentedAlt))
             {
-                Vector3 drawPosition = NetPlayerBridge.InFormFor(this, presented, presentedAlt);
+                Vector3 drawPosition = _scene.PlayerReplication.InFormFor(this, presented, presentedAlt);
                 transform.Row3.Xyz += drawPosition - Position;
             }
             return transform;
@@ -592,11 +592,11 @@ namespace MphRead.Entities
 
         internal void ModRefreshNetworkAim()
         {
-            if (NetSession.Active && SlotIndex != NetHooks.LocalSlot
-                && NetSession.RemoteIntentValid[SlotIndex]
-                && NetPlayerBridge.AimTrusted(SlotIndex))
+            if (_scene.Services.PlayerReplication.Active && SlotIndex != _scene.Services.PlayerReplication.LocalSlot
+                && _scene.Services.PlayerReplication.TryGetIntent(SlotIndex, out var recorded)
+                && _scene.PlayerReplication.AimTrusted(SlotIndex))
             {
-                ModSetAim(NetSession.RemoteIntents[SlotIndex].Aim);
+                ModSetAim(recorded.Aim);
             }
         }
 
@@ -614,7 +614,7 @@ namespace MphRead.Entities
             {
                 return;
             }
-            if (NetSession.Active && SlotIndex != NetHooks.LocalSlot)
+            if (_scene.Services.PlayerReplication.Active && SlotIndex != _scene.Services.PlayerReplication.LocalSlot)
             {
                 // A remote player's camera is not the authoritative state.
                 // Repositioning the player without moving this cached camera
@@ -702,7 +702,7 @@ namespace MphRead.Entities
         /// <summary>
         /// Put this player at a position, hitbox and room node included.
         ///
-        /// The same three lines NetPlayerBridge.Move does, exposed because
+        /// The same three lines _scene.PlayerReplication.Move does, exposed because
         /// <see cref="Mods.Network.NetUnlagged"/> needs them in the middle of
         /// a frame rather than around the edges of one. That timing is the
         /// whole reason it cannot just assign Position: _volume is a cached
@@ -906,7 +906,7 @@ namespace MphRead.Entities
             // EXPANDED report that this method was written for, except that
             // there the position resolved and here it does not resolve at all.
             ModNodeUnresolved = true;
-            NetPlayerBridge.NodeLookupsUnresolved++;
+            _scene.PlayerReplication.NodeLookupsUnresolved++;
             if (NodeRef != Formats.Culling.NodeRef.None)
             {
                 NodeRef = _scene.UpdateNodeRef(NodeRef, previousPosition, Position);
@@ -934,7 +934,7 @@ namespace MphRead.Entities
         /// </summary>
         internal void ModLogCollisionRange()
         {
-            if (!NetLog.Enabled || !NetSession.Active)
+            if (_scene.Services.IsReplica || !NetLog.Enabled || !NetSession.Active)
             {
                 return;
             }
@@ -1410,7 +1410,7 @@ namespace MphRead.Entities
         internal byte ModPickNetworkHomingTarget()
         {
             WeaponInfo weapon = EquipInfo.Weapon;
-            if (!NetSession.Active || weapon.Beam != BeamType.VoltDriver || !ModChargeReady
+            if (_scene.Services.IsReplica || !NetSession.Active || weapon.Beam != BeamType.VoltDriver || !ModChargeReady
                 || !weapon.Afflictions[1].TestFlag(Affliction.Disrupt) || _disruptedTimer > 0)
             {
                 return 0;
@@ -1439,7 +1439,7 @@ namespace MphRead.Entities
 
         internal void ModSetShotState(int chargeLevel, int boostDamage, bool doubleDamage)
         {
-            if (SlotIndex == NetHooks.LocalSlot)
+            if (SlotIndex == _scene.Services.PlayerReplication.LocalSlot)
             {
                 // Never the machine's own player: this is its own state coming
                 // back to it a round trip later.
@@ -1697,7 +1697,7 @@ namespace MphRead.Entities
         ///
         /// The engine recomputes it once a frame, at the end of the movement
         /// step -- and a puppet is moved *after* that, when its owner's
-        /// reported position arrives (see NetPlayerBridge.Move). So for every
+        /// reported position arrives (see _scene.PlayerReplication.Move). So for every
         /// remote player the volume described where this machine's own
         /// simulation had guessed they were, and the correction never reached
         /// it.
@@ -1921,7 +1921,7 @@ namespace MphRead.Entities
         /// </summary>
         internal void ModNetDie()
         {
-            NetDamage.ReplayDeath(this);
+            _scene.Services.PlayerReplication.ReplayDeath(this);
         }
 
         /// <summary>
@@ -1963,11 +1963,11 @@ namespace MphRead.Entities
         private void ApplyModAim()
         {
             ApplyGamepadAim();
-            if (!NetSession.Active)
+            if (!_scene.Services.PlayerReplication.Active)
             {
                 return;
             }
-            if (SlotIndex == NetHooks.LocalSlot)
+            if (SlotIndex == _scene.Services.PlayerReplication.LocalSlot)
             {
                 // A scripted local player has no mouse, so its rotation has
                 // to enter the same way a remote player's does. Same call
@@ -1981,12 +1981,12 @@ namespace MphRead.Entities
                 }
                 return;
             }
-            if (!NetSession.RemoteIntentValid[SlotIndex]
-                || !NetPlayerBridge.AimTrusted(SlotIndex))
+            if (!_scene.Services.PlayerReplication.TryGetIntent(SlotIndex, out var recorded)
+                || !_scene.PlayerReplication.AimTrusted(SlotIndex))
             {
                 return;
             }
-            ModSetAim(NetSession.RemoteIntents[SlotIndex].Aim);
+            ModSetAim(recorded.Aim);
         }
 
         /// <summary>
@@ -2060,7 +2060,7 @@ namespace MphRead.Entities
         /// two are worse and were found by following it:
         ///
         /// - a **remote player** is driven from relayed intents
-        ///   (`NetPlayerBridge.ApplyIntent`), and `ProcessAllInput` skips the
+        ///   (`_scene.PlayerReplication.ApplyIntent`), and `ProcessAllInput` skips the
         ///   flag entirely for them. So every puppet on every machine looked
         ///   idle from the moment it stopped respawning or changing weapon --
         ///   which lowers its gun, and `CanShoot` refuses to spawn a beam

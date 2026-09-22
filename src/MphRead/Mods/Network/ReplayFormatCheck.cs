@@ -141,6 +141,22 @@ namespace MphRead.Mods.Network
                 ReplayController.SetPlaybackRate(2);
                 var passiveA = new PassiveReplaySessionHost();
                 var passiveB = new PassiveReplaySessionHost();
+                // The optional charge/boost extension is part of protocol 16.
+                // Decode both legal forms even when their occupant is not current.
+                passiveA.Inject(matchBytes, 0);
+                foreach (int size in new[] { IntentPacket.Size, IntentPacket.FullSize })
+                {
+                    byte[] intent = new byte[2 + size];
+                    intent[0] = (byte)PacketType.SlotIntent;
+                    passiveA.Inject(intent, 0);
+                }
+                Require(passiveA.State.IgnoredPackets == 2, "base and extended replica intents decode");
+                bool truncatedIntentRejected = false;
+                byte[] truncatedIntent = new byte[1 + IntentPacket.FullSize];
+                truncatedIntent[0] = (byte)PacketType.SlotIntent;
+                try { passiveA.Inject(truncatedIntent, 0); }
+                catch (InvalidDataException) { truncatedIntentRejected = true; }
+                Require(truncatedIntentRejected, "truncated extended replica intent rejected");
                 using (var first = new ReplayPlaybackSession(passiveA))
                 using (var second = new ReplayPlaybackSession(passiveB))
                 {
@@ -197,6 +213,22 @@ namespace MphRead.Mods.Network
                     sceneA.Players.MainPlayerIndex = 3;
                     Require(sceneB.Players.MainPlayerIndex == 0 && Entities.PlayerEntity.MainPlayerIndex != 3,
                         "replica perspective does not change foreground ownership");
+                    NetPlayerBridge.ShootPressAge[0] = 17;
+                    NetPlayerBridge.SpawnFrame[0] = 83;
+                    sceneA.PlayerReplication.ShootPressAge[0] = 6;
+                    sceneA.PlayerReplication.NoteSpawn(0);
+                    Require(sceneB.PlayerReplication.AimTrusted(0) && !sceneA.PlayerReplication.AimTrusted(0)
+                        && NetPlayerBridge.SpawnFrame[0] == 83 && NetPlayerBridge.ShootPressAge[0] == 17,
+                        "replica life barriers and shot history do not touch the foreground bridge");
+                    sceneA.PlayerReplication.Reset();
+                    Require(NetPlayerBridge.ShootPressAge[0] == 17,
+                        "replica bridge reset cannot clear live input history");
+                    bool outgoingRejected = false;
+                    try { sceneA.PlayerReplication.CaptureIntent(sceneA.Players.Items[0]); }
+                    catch (InvalidOperationException) { outgoingRejected = true; }
+                    Require(outgoingRejected, "replicas cannot author gameplay intent");
+                    Require(!sceneA.Services.PlayerReplication.CanSpawn,
+                        "replica respawn requires an accepted life transition");
                     sceneA.DoCleanup();
                     Require(sceneB.Players.Items[0] != null && NetSession.Active && Rng.Rng1 == 12345,
                         "replica cleanup preserves other worlds and foreground state");
