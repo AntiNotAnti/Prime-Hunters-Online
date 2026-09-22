@@ -39,6 +39,9 @@ namespace MphRead.Mods.MapEditor
             _recoveryKey = MapBuildFingerprint.HashText(path == null ? Guid.NewGuid().ToString() : Path.GetFullPath(path));
         }
 
+        public void SelectionChanged() => Invalidated?.Invoke(new(MapChangeDomain.Selection));
+        public void OverlayChanged() => Invalidated?.Invoke(new(MapChangeDomain.Overlay));
+
         public MapProject Snapshot() => new(Project.ToDefinition());
         public void Edit(string label, Action<MapDefinition> edit, MapChangeDomain domains = MapChangeDomain.All)
         {

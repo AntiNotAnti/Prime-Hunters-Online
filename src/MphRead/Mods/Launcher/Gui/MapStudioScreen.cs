@@ -105,12 +105,12 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 if(_refreshing||_document==null)return;
                 _document.Selection.Clear();foreach(var item in _hierarchy.SelectedItems?.OfType<MapObject>()??Enumerable.Empty<MapObject>())_document.Selection.Add(item.Id);
-                Inspect();_viewport?.InvalidateVisual();
+                _document.SelectionChanged();Inspect();_viewport?.InvalidateVisual();
             };
             _problems.SelectionChanged+=(_,_)=>
             {
                 if(_document!=null&&_problems.SelectedItem is ProblemRow {Diagnostic.ObjectId:Guid id})
-                {_document.Selection.Clear();_document.Selection.Add(id);RefreshHierarchy();Inspect();_viewport?.FrameSelection();}
+                {_document.Selection.Clear();_document.Selection.Add(id);_document.SelectionChanged();RefreshHierarchy();Inspect();_viewport?.FrameSelection();}
             };
             _idle.Interval=TimeSpan.FromMilliseconds(250);
             _idle.Tick+=async(_,_)=>

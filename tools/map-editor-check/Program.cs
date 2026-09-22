@@ -73,6 +73,28 @@ try
     history.Undo(); history.Undo(); Check(value == 8 && !history.CanUndo, "pruned undo floor");
     history.Execute(new Counter(() => value++, () => value--, 1001));
     Check(history.CommandCount == 0 && history.ApproximateBytes == 0, "oversized history bound and branch pruning");
+    var cache = new MapViewportCache();
+    cache.Invalidate(doc.Project.Definition, new(MapChangeDomain.All));
+    doc.Invalidated += change => cache.Invalidate(doc.Project.Definition, change);
+    int geometryCount = cache.GeometryRebuildCount, entityCount = cache.EntityRebuildCount;
+    int selectionCount = cache.SelectionRebuildCount;
+    doc.Selection.Add(box.Id); doc.SelectionChanged();
+    Check(cache.GeometryRebuildCount == geometryCount && cache.EntityRebuildCount == entityCount
+        && cache.SelectionRebuildCount == selectionCount + 1, "selection invalidates only selection");
+    var native = cache.NativeFaces;
+    doc.TransformSelection(new[] { spawn.Id }, "Move", Vector3.One, 0, 1, false);
+    Check(cache.GeometryRebuildCount == geometryCount && ReferenceEquals(native, cache.NativeFaces), "entity move preserves mesh cache");
+    Check(cache.EntityRebuildCount == entityCount + 1, "entity move invalidates entity cache");
+    int rebuilt = cache.GeometryObjectsRebuilt;
+    doc.TransformSelection(new[] { box.Id }, "Move", Vector3.One, 0, 1, false);
+    Check(cache.GeometryObjectsRebuilt == rebuilt + 1, "single object geometry rebuild");
+    doc.OverlayChanged();
+    Check(cache.GeometryObjectsRebuilt == rebuilt + 1, "overlay leaves geometry cached");
+    doc.Save(Path.Combine(root, "map.json"));
+    Check(cache.GeometryObjectsRebuilt == rebuilt + 1, "save leaves geometry cached");
+    var layout = new MapViewportLayout(800, 600, 1.5);
+    Check(layout.PixelWidth == 1200 && layout.PixelHeight == 900 && layout.Normalize(400, 300) == (0d, 0d), "DPI layout contract");
+    Check(new MapViewportLayout(0, 0).PixelWidth == 0, "empty viewport safe");
     Console.WriteLine($"Map editor: {checks} checks passed.");
 }
 finally { Directory.Delete(root, true); }

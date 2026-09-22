@@ -30,8 +30,8 @@ namespace MphRead.Mods.Launcher.Gui
         public bool KillPlane { get; set; }
         public MapNodePacker.NavigationGraph? Navigation { get; set; }
         public event Action? SelectionChanged;
-        private MapViewportScene _scene = new();
-        private readonly List<MapViewportFace> _imported = new();
+        internal MapViewportCache Cache { get; } = new();
+        private IEnumerable<MapViewportFace> Faces => Cache.NativeFaces.Concat(Cache.ImportedFaces);
         private readonly List<(Guid Id, Point[] Points, double Depth)> _pick = new();
         private Point _last, _start;
         private bool _orbit, _pan, _drag;
@@ -42,22 +42,22 @@ namespace MphRead.Mods.Launcher.Gui
         public MapViewport(MapDocument document)
         {
             Document=document; Focusable=true; ClipToBounds=true;
-            Document.Changed += Rebuild;
-            AttachedToVisualTree+=(_,_)=>{Document.Changed-=Rebuild;Document.Changed+=Rebuild;Rebuild();};
-            DetachedFromVisualTree += (_,_) => Document.Changed -= Rebuild;
-            Rebuild();
+            Document.Invalidated += InvalidateDocument;
+            InvalidateDocument(new(MapChangeDomain.All));
         }
-        private void Rebuild() { _scene=MapViewportScene.Create(Document.Project.Definition); _scene.Faces.AddRange(_imported); Navigation=null; InvalidateVisual(); }
+        private void InvalidateDocument(MapDocumentChange change)
+        {
+            Cache.Invalidate(Document.Project.Definition, change);
+            if ((change.Domains & (MapChangeDomain.Navigation | MapChangeDomain.Import)) != 0) Navigation = null;
+            InvalidateVisual();
+        }
         public void SetImported(BuiltMap map)
         {
-            _imported.Clear();
-            foreach(var face in map.Faces)
-                _imported.Add(new(Guid.Empty,face.Points.Select(p=>new Vector(p.X,p.Y,p.Z)).ToArray(),face.Shade,face.Material,true));
-            Rebuild();
+            Cache.SetImported(map); InvalidateVisual();
         }
         public void FrameAll()
         {
-            var points=_scene.Faces.SelectMany(f=>f.Points).ToArray();
+            var points=Faces.SelectMany(f=>f.Points).ToArray();
             if(points.Length==0) return;
             Vector min=points.Aggregate(new Vector(float.MaxValue),Vector.Min), max=points.Aggregate(new Vector(float.MinValue),Vector.Max);
             CameraTarget=(min+max)/2; CameraPosition=CameraTarget+Vector.Normalize(new Vector(1,.8f,1))*Math.Max(8,(max-min).Length()); InvalidateVisual();
@@ -78,8 +78,10 @@ namespace MphRead.Mods.Launcher.Gui
         {
             var (right,up,forward)=Basis(); Vector offset=p-CameraPosition; float z=Vector.Dot(offset,forward);
             if(z<.05f) return null;
-            double scale=View=="Perspective"?Math.Min(Bounds.Width,Bounds.Height)*.9/z:Math.Min(Bounds.Width,Bounds.Height)/Math.Max(2,Vector.Distance(CameraPosition,CameraTarget)) * 1.5;
-            return(new Point(Bounds.Width/2+Vector.Dot(offset,right)*scale,Bounds.Height/2-Vector.Dot(offset,up)*scale),z);
+            var layout = new MapViewportLayout(Bounds.Width, Bounds.Height, TopLevel.GetTopLevel(this)?.RenderScaling ?? 1);
+            if (!layout.IsValid) return null;
+            double scale=View=="Perspective"?Math.Min(layout.Width,layout.Height)*.9/z:Math.Min(layout.Width,layout.Height)/Math.Max(2,Vector.Distance(CameraPosition,CameraTarget)) * 1.5;
+            return(new Point(layout.Width/2+Vector.Dot(offset,right)*scale,layout.Height/2-Vector.Dot(offset,up)*scale),z);
         }
         private void Line(DrawingContext context,Vector a,Vector b,IBrush color,double width=1)
         { var x=Project(a);var y=Project(b);if(x!=null&&y!=null)context.DrawLine(new Pen(color,width),x.Value.Point,y.Value.Point); }
@@ -97,7 +99,7 @@ namespace MphRead.Mods.Launcher.Gui
             var projected=new List<(MapViewportFace Face,Point[] Points,double Depth)>();
             var centers=Document.Project.Definition.Geometry.Where(g=>Document.Selection.Contains(g.Id)&&!g.Locked).ToDictionary(g=>g.Id,g=>MapViewportScene.Vector(g.Transform.Position));
             var rotations=Document.Project.Definition.Geometry.Where(g=>centers.ContainsKey(g.Id)).ToDictionary(g=>g.Id,g=>new Quaternion(g.Transform.Rotation[0],g.Transform.Rotation[1],g.Transform.Rotation[2],g.Transform.Rotation[3]));
-            foreach(var face in _scene.Faces)
+            foreach(var face in Faces)
             {
                 if(Collision&&!face.Solid)continue;
                 Vector delta=Document.Selection.Contains(face.ObjectId)?_preview:Vector.Zero;
@@ -122,7 +124,7 @@ namespace MphRead.Mods.Launcher.Gui
                 context.DrawGeometry(Wireframe?null:new SolidColorBrush(color),new Pen(selected?Brushes.Gold:grid,selected?2:1),Polygon(item.Points));
                 if(item.Face.ObjectId!=Guid.Empty)_pick.Add((item.Face.ObjectId,item.Points,item.Depth));
             }
-            foreach(var o in MapObjects.All(Document.Project.Definition).Where(o=>o.Value is not MapGeometry && o.Value is not MapBrush))
+            foreach(var o in Cache.Entities)
             {
                 Vector position=MapViewportScene.Vector(o.Position)+(Document.Selection.Contains(o.Id)?_preview:Vector.Zero);
                 var p=Project(position);if(p==null)continue;
@@ -190,7 +192,7 @@ namespace MphRead.Mods.Launcher.Gui
                 if(id==Guid.Empty) id=_pick.Where(p=>Contains(p.Points,_last)).OrderBy(p=>p.Depth).Select(p=>p.Id).FirstOrDefault();
                 if(!e.KeyModifiers.HasFlag(KeyModifiers.Shift)&&!Document.Selection.Contains(id))Document.Selection.Clear();
                 if(id!=Guid.Empty)Document.Selection.Add(id);
-                _drag=id!=Guid.Empty;SelectionChanged?.Invoke();InvalidateVisual();
+                _drag=id!=Guid.Empty;Document.SelectionChanged();SelectionChanged?.Invoke();InvalidateVisual();
             }
             e.Pointer.Capture(this);e.Handled=true;
         }

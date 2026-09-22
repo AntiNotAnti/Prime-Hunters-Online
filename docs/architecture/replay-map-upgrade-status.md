@@ -78,3 +78,13 @@ fallback for bulk environment/import/upgrade/recovery operations.
 `dotnet run --project tools/map-editor-check -c Release` exercises save identity,
 branching, undo/redo, polymorphic objects, coalescing, locked/no-op transforms,
 failed edit atomicity and history bounds.
+
+## Viewport invalidation migration
+
+The viewport subscribes to typed invalidations instead of rebuilding on every
+`Changed` notification. Native faces are cached by object identity; affected
+objects alone are recompiled. Imported architecture has a separate cache and is
+cleared only when import inputs change. Entity representations, selection,
+overlays and navigation carry independent counters. Save and camera navigation
+leave geometry caches alone. The CPU drawing backend is retained; migration to
+the game renderer is still outstanding.
