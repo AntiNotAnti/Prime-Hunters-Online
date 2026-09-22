@@ -59,9 +59,12 @@ namespace MphRead.NetTest
         private static void Wire()
         {
             Check(NetUnlagged.PressAgeEnabled, "recovered trigger pulls include their age by default");
-            Check(PlayerState.Size == 114, "compact player wire size includes four event history entries");
-            Check(1 + SnapshotHeader.Size + PlayerState.Size * PlayerEntity.SlotCapacity <= NetConfig.MaxPacketSize
-                && NetConfig.MaxPacketSize <= 1472, "eight-player snapshot fits one Ethernet UDP datagram");
+            Check(PlayerState.Size == 114 && PlayerState.BaseSize == 54,
+                "full player state and compact snapshot base sizes");
+            Check(1 + SnapshotHeader.Size + SnapshotWire.PlayerSize * PlayerEntity.SlotCapacity + 1
+                + SnapshotWire.DamageGroupSize * PlayerEntity.SlotCapacity
+                + NetMatchTimeSync.Size + NetHealthSync.HeaderSize <= NetConfig.MaxPacketSize
+                && NetConfig.MaxPacketSize <= 1472, "worst-case eight-player snapshot fits one UDP datagram");
             byte[] buffer = new byte[NetConfig.MaxPacketSize];
             var state = State(ushort.MaxValue, 99, 65400);
             state.DamageEventId = 65535;
@@ -252,19 +255,30 @@ namespace MphRead.NetTest
             }
             byte[] Snapshot(uint frame, params PlayerState[] states)
             {
-                int playersEnd = SnapshotHeader.Size + states.Length * PlayerState.Size;
                 const int timeSyncSize = PlayerEntity.SlotCapacity * sizeof(float) * 2;
-                byte[] body = new byte[playersEnd + timeSyncSize + NetHealthSync.HeaderSize];
+                int damageGroups = 0;
+                for (int i = 0; i < states.Length; i++)
+                    if (states[i].DamageEventId != 0) damageGroups++;
+                int damageCountOffset = SnapshotHeader.Size + states.Length * SnapshotWire.PlayerSize;
+                int damageOffset = damageCountOffset + 1;
+                int timeOffset = damageOffset + damageGroups * SnapshotWire.DamageGroupSize;
+                byte[] body = new byte[timeOffset + timeSyncSize + NetHealthSync.HeaderSize];
                 ushort matchId = Field<ushort>("_matchId");
                 new SnapshotHeader { MatchId = matchId, AuthorityEpoch = Field<ulong>("_authorityEpoch"),
                     Frame = frame, PlayerCount = (byte)states.Length }.Write(body);
                 for (int i = 0; i < states.Length; i++)
-                    states[i].Write(body.AsSpan(SnapshotHeader.Size + i * PlayerState.Size));
-                // The relay validates the same snapshot tails production sends.
-                // Zeroed match clocks are valid; an empty health-spawn section
-                // consists of the current match id plus a zero entry count.
+                    states[i].WriteBase(body.AsSpan(
+                        SnapshotHeader.Size + i * SnapshotWire.PlayerSize, SnapshotWire.PlayerSize));
+                body[damageCountOffset] = (byte)damageGroups;
+                for (int i = 0; i < states.Length; i++)
+                {
+                    if (states[i].DamageEventId == 0) continue;
+                    SnapshotWire.WriteDamageGroup(states[i].SlotIndex, states[i],
+                        body.AsSpan(damageOffset, SnapshotWire.DamageGroupSize));
+                    damageOffset += SnapshotWire.DamageGroupSize;
+                }
                 BinaryPrimitives.WriteUInt16LittleEndian(
-                    body.AsSpan(playersEnd + timeSyncSize), matchId);
+                    body.AsSpan(timeOffset + timeSyncSize), matchId);
                 return body;
             }
             Hello(owner, 1); Hello(other, 2);
@@ -360,13 +374,20 @@ namespace MphRead.NetTest
         private static byte[] Packet(uint frame, PlayerState state, ushort match = 51, ulong epoch = 4)
         {
             const int timeSyncSize = PlayerEntity.SlotCapacity * sizeof(float) * 2;
-            int payloadSize = SnapshotHeader.Size + PlayerState.Size + timeSyncSize + NetHealthSync.HeaderSize;
-            byte[] bytes = new byte[1 + payloadSize];
+            int damageGroups = state.DamageEventId == 0 ? 0 : 1;
+            int damageCountOffset = 1 + SnapshotHeader.Size + SnapshotWire.PlayerSize;
+            int damageOffset = damageCountOffset + 1;
+            int timeOffset = damageOffset + damageGroups * SnapshotWire.DamageGroupSize;
+            int healthOffset = timeOffset + timeSyncSize;
+            byte[] bytes = new byte[healthOffset + NetHealthSync.HeaderSize];
             bytes[0] = (byte)PacketType.Snapshot;
             new SnapshotHeader { MatchId = match, AuthorityEpoch = epoch, Frame = frame, PlayerCount = 1 }
                 .Write(bytes.AsSpan(1));
-            state.Write(bytes.AsSpan(1 + SnapshotHeader.Size));
-            int healthOffset = 1 + SnapshotHeader.Size + PlayerState.Size + timeSyncSize;
+            state.WriteBase(bytes.AsSpan(1 + SnapshotHeader.Size, SnapshotWire.PlayerSize));
+            bytes[damageCountOffset] = (byte)damageGroups;
+            if (damageGroups != 0)
+                SnapshotWire.WriteDamageGroup(state.SlotIndex, state,
+                    bytes.AsSpan(damageOffset, SnapshotWire.DamageGroupSize));
             BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(healthOffset), match);
             return bytes;
         }
