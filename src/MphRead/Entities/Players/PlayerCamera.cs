@@ -1026,7 +1026,7 @@ namespace MphRead.Entities
             {
                 position = Position;
                 Vector3 facingNow = Target - Position;
-                if (!ModInterpolateDirection(facingNow, facingNow, 1, out Vector3 facing))
+                if (!ModInterpolateDirection(facingNow, facingNow, 1, out Vector3 initialFacing))
                 {
                     target = Target;
                     up = Vector3.UnitY;
@@ -1034,12 +1034,12 @@ namespace MphRead.Entities
                     return false;
                 }
                 up = UpVector;
-                up -= facing * Vector3.Dot(up, facing);
+                up -= initialFacing * Vector3.Dot(up, initialFacing);
                 if (!IsFinite(up) || up.LengthSquared < 0.000001f)
                 {
-                    Vector3 reference = MathF.Abs(facing.Y) < 0.999f
+                    Vector3 reference = MathF.Abs(initialFacing.Y) < 0.999f
                         ? Vector3.UnitY : Vector3.UnitZ;
-                    up = reference - facing * Vector3.Dot(reference, facing);
+                    up = reference - initialFacing * Vector3.Dot(reference, initialFacing);
                 }
                 if (!IsFinite(up) || up.LengthSquared < 0.000001f)
                 {
@@ -1048,7 +1048,7 @@ namespace MphRead.Entities
                     return false;
                 }
                 up = up.Normalized();
-                target = position + facing * Math.Max(facingNow.Length, 1f);
+                target = position + initialFacing * Math.Max(facingNow.Length, 1f);
                 fov = Fov;
                 return true;
             }
@@ -1092,6 +1092,7 @@ namespace MphRead.Entities
             }
             if (!IsFinite(up) || up.LengthSquared < 0.000001f)
             {
+                fov = Fov;
                 return false;
             }
             up = up.Normalized();
