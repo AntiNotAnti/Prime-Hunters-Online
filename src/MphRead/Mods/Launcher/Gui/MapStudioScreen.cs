@@ -42,6 +42,8 @@ namespace MphRead.Mods.Launcher.Gui
         private DateTime _autosaved = DateTime.MinValue;
         private DateTime _checked=DateTime.MinValue;
         private bool _checking;
+        private MapBuildResult? _lastBuild;
+        private TextBlock? _diagnostics;
         private readonly string _previewName="STUDIO "+Guid.NewGuid().ToString("N");
 
         internal static int Capture(string directory)
@@ -90,7 +92,7 @@ namespace MphRead.Mods.Launcher.Gui
                 if(name=="Navigation"){_=Navigation();return;}
                 _viewport.Wireframe=name=="Wireframe";_viewport.Collision=name=="Collision";_viewport.KillPlane=name=="Kill plane";_viewport.InvalidateVisual();
             });
-            Choice(new[]{"Inspector","Environment","Materials","Assets & music","Snapping"},name=>{if(name=="Materials")MaterialInspector();else if(name=="Assets & music")AssetInspector();else if(name=="Snapping")SnapInspector();else Inspect();});
+            Choice(new[]{"Inspector","Environment","Materials","Assets & music","Snapping","Statistics"},name=>{if(name=="Materials")MaterialInspector();else if(name=="Assets & music")AssetInspector();else if(name=="Snapping")SnapInspector();else if(name=="Statistics")Statistics();else Inspect();});
             AddButton(tools,"Frame all",()=>_viewport?.FrameAll());AddButton(tools,"Focus",()=>_viewport?.FrameSelection());
             AddButton(tools,"Duplicate",()=>EditSelection("Duplicate",MapObjects.Duplicate));AddButton(tools,"Delete",()=>EditSelection("Delete",MapObjects.Delete));
             AddButton(tools,"Capture preview",CapturePreview);
@@ -115,6 +117,7 @@ namespace MphRead.Mods.Launcher.Gui
             _idle.Interval=TimeSpan.FromMilliseconds(250);
             _idle.Tick+=async(_,_)=>
             {
+                if (_diagnostics != null && _inspector.Children.Contains(_diagnostics)) RefreshStatistics();
                 if(_work==null&&!_checking&&_document!=null&&_document.LastEditUtc>_checked&&DateTime.UtcNow-_document.LastEditUtc>TimeSpan.FromMilliseconds(500))
                 {
                     var document=_document;var edited=document.LastEditUtc;var snapshot=document.Snapshot();_checking=true;
@@ -143,6 +146,7 @@ namespace MphRead.Mods.Launcher.Gui
         private void Close()=>WithUnsaved(()=>Closed?.Invoke(this,EventArgs.Empty));
         internal void Load(MapProject project,string? path=null)
         {
+            _lastBuild = null;
             if(_document!=null)_document.Changed-=Changed;
             _document=new(project,path);_document.Changed+=Changed;_viewport=new(_document);_viewport.SelectionChanged+=()=>{RefreshHierarchy();Inspect();};
             _viewportHost.Children.Clear();_viewportHost.Children.Add(_viewport);_path.Text=path??Path.Combine(CustomRooms.MapDirectory,project.Definition.Name.ToLowerInvariant()+".json");
@@ -336,6 +340,25 @@ namespace MphRead.Mods.Launcher.Gui
             }
             AddButton(_inspector,"Apply",()=>{try{_document.EditObjects("Edit properties",new[]{id},d=>{var target=MapObjects.All(d).First(o=>o.Id==id).Value;foreach(var edit in edits)edit(target);});}catch(Exception ex){Failure(ex);}});
         }
+        private void Statistics()
+        {
+            _inspector.Children.Clear();
+            _diagnostics = Text(""); _diagnostics.TextWrapping = TextWrapping.Wrap;
+            _inspector.Children.Add(_diagnostics); RefreshStatistics();
+        }
+        private void RefreshStatistics()
+        {
+            if (_diagnostics == null || _document == null || _viewport == null) return;
+            var cache = _viewport.Cache; var jobs = MapBuildScheduler.Shared;
+            _diagnostics.Text = $"Viewport rebuilds\nGeometry: {cache.GeometryRebuildCount} ({cache.GeometryObjectsRebuilt} objects)\n"
+                + $"Imported: {cache.ImportedRebuildCount}\nSelection: {cache.SelectionRebuildCount}\nEntities: {cache.EntityRebuildCount}\n"
+                + $"Collision: {cache.CollisionRebuildCount}\nNavigation invalidations: {cache.NavigationInvalidationCount}\n\n"
+                + $"History: {_document.History.CommandCount} commands / {_document.History.ApproximateBytes / 1024d:0.0} KiB\n\n"
+                + $"Build queue: {jobs.PendingCount}\nShared requests: {jobs.SharedRequests}\nCompilations: {jobs.CompilationCount}\n"
+                + $"Compiler cache: {jobs.CompiledCacheCount} entries / {jobs.CompiledCacheBytes / 1048576d:0.0} MiB\n\n"
+                + (_lastBuild == null ? "Build this map to measure its runtime cache."
+                    : $"Last runtime build: {_lastBuild.Milliseconds:0.0} ms / {(_lastBuild.CacheHit ? "cache hit" : "cache miss")}\n{_lastBuild.Fingerprint}");
+        }
         private static float Number(string value){float number=float.Parse(value,CultureInfo.InvariantCulture);if(!float.IsFinite(number))throw new FormatException("Enter a finite number.");return number;}
         private static float[] ParseVector(string value,int count)
         {var result=value.Split(',',StringSplitOptions.TrimEntries).Select(Number).ToArray();if(result.Length!=count)throw new FormatException($"Enter {count} comma-separated numbers.");return result;}
@@ -500,6 +523,7 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 if(!GameFiles.Ready)throw new IOException("Set up game files in Settings before building runtime files.");GameFiles.ApplyPaths();
                 var built = await MapBuildScheduler.Shared.BuildAsync(MapBuildSnapshot.Capture(p), token);
+                _lastBuild = built;
                 token.ThrowIfCancellationRequested(); Problems(built.Validation()); if (!built.Succeeded) return;
                 await Task.Run(()=>{token.ThrowIfCancellationRequested();MapBuildScheduler.Install(built,p.Definition,CustomRooms.ArchiveDirectory(p.Definition),CustomRooms.EntityDirectory(),CustomRooms.NodeDirectory());},token);
                 Metadata.RegisterDownloadedMap(p.Definition);_status.Text=$"Runtime map ready · {(built.CacheHit ? "cache hit" : "compiled")} · {built.Milliseconds:0} ms";

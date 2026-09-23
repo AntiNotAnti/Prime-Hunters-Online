@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Diagnostics;
+using System.Linq;
 using MphRead.Entities;
 using MphRead.Formats;
 using MphRead.Mods.Network;
@@ -27,6 +29,9 @@ internal sealed class KillcamController : IDisposable
     private ulong _audio;
     private Scene? _live;
     private KillcamHud? _hud;
+    private readonly Stopwatch _startup = new();
+    internal double StartupMilliseconds { get; private set; }
+    internal long ClipBytes { get; private set; }
     internal KillcamState State { get; private set; }
     internal KillcamEndReason EndReason { get; private set; }
     internal KillCamKind Kind { get; private set; }
@@ -89,6 +94,7 @@ internal sealed class KillcamController : IDisposable
             else if (!context.FinalEnabled) { Stop(KillcamEndReason.Disabled); return; }
             _player.Update();
             if (!_player.Ready) { State = KillcamState.Preparing; return; }
+            if (_startup.IsRunning) { _startup.Stop(); StartupMilliseconds = _startup.Elapsed.TotalMilliseconds; }
             if (_audio == 0) _audio = ReplayAudioOwner.Acquire(_player.Current.Scene, live);
             State = _player.Current.Session.AtEnd ? KillcamState.AwaitCompletion : KillcamState.Replay;
             if (State == KillcamState.AwaitCompletion && Kind == KillCamKind.Personal && ++_hold >= 15)
@@ -123,6 +129,8 @@ internal sealed class KillcamController : IDisposable
     private void Start(Scene live, ReplayTimelineClip clip, ReplayMarker marker, KillCamKind kind)
     {
         Stop(KillcamEndReason.None);
+        _startup.Restart(); StartupMilliseconds = 0;
+        ClipBytes = clip.RestorePoint.PayloadBytes + clip.Records.Sum(r => r.PayloadBytes);
         _player = _open(clip, live.Size); _playing = marker; Kind = kind; _live = live;
         _player.Current.Scene.ReplayPresentationHud = DrawHud;
         _start = clip.StartRecordingFrame; _end = clip.EndRecordingFrame; _hold = 0; _skipArmed = false;
@@ -185,6 +193,7 @@ internal sealed class KillcamController : IDisposable
     internal void Stop(KillcamEndReason reason)
     {
         ReplayAudioOwner.Release(_audio); _audio = 0;
+        _startup.Stop();
         _hud = null; _player?.Dispose(); _player = null; _playing = null; State = KillcamState.None; Kind = KillCamKind.None;
         EndReason = reason;
         if (_live != null && _live.Players.Items.Count > 0)

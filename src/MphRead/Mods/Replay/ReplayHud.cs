@@ -238,7 +238,11 @@ namespace MphRead.Mods.Replay
                 $"max snapshot gap {net.MaxSnapshotGapFrames}f  "
                     + $"last snapshot {net.LastSnapshotFrame}f",
                 $"checkpoints {DemoPlayback.CheckpointCount}  "
-                    + $"director {ReplayDirector.Reason}"
+                    + $"director {ReplayDirector.Reason}",
+                $"session {DemoPlayback.Session.Host.GetType().Name}  frame {DemoPlayback.CurrentFrame}",
+                $"alpha {DemoPlayback.ReplicaScene?.ReplayRenderAlpha:0.000}  {DemoPlayback.SeekDiagnostics}",
+                $"capture {ReplayCapture.Recorder.Timeline.PayloadBytes / 1024d:0} KiB / {ReplayCapture.Recorder.Timeline.RecordCount} facts / {ReplayCapture.Recorder.Timeline.RestorePointCount} worlds",
+                $"history {(ReplayCapture.Recorder.Timeline.LastRecordingFrame.GetValueOrDefault() - ReplayCapture.Recorder.Timeline.FirstRecordingFrame.GetValueOrDefault()) / 60d:0.0}s  killcam {KillCam.Diagnostics}"
             };
         }
 

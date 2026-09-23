@@ -27,6 +27,7 @@ internal static class KillCam
     internal static KillcamState State => Controller.State;
     internal static KillcamEndReason EndReason => Controller.EndReason;
     internal static string? LastError => Controller.LastError;
+    internal static string Diagnostics => $"{Controller.State}/{Controller.EndReason} · {Controller.StartupMilliseconds:0.0} ms · {Controller.ClipBytes / 1024d:0} KiB";
 
     private static KillcamContext Context(Scene? scene)
     {

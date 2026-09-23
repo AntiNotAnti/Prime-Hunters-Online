@@ -1822,6 +1822,12 @@ namespace MphRead.Mods
                     ?? System.IO.Path.Combine(System.IO.Path.GetTempPath(), "prime-durable-check"));
                 return true;
             }
+            if (ValueAfter(args, "replaybenchmark") is string benchmarkSource)
+            {
+                Environment.ExitCode = Network.ReplayBenchmark.Run(benchmarkSource,
+                    ValueAfter(args, "output") ?? System.IO.Path.Combine(System.IO.Path.GetTempPath(), "prime-replay-benchmark-" + Guid.NewGuid().ToString("N")));
+                return true;
+            }
             if (ValueAfter(args, "replayauthoritycheck") is string authoritySources)
             {
                 Environment.ExitCode = Network.ReplayAuthoritySceneCheck.Run(authoritySources, ValueAfter(args, "output")

@@ -18,7 +18,7 @@ internal static class ReplayDurableCheck
             using (var reader = DemoReader.Open(source)!)
             using (var world = new PassiveReplayScene(source, new(256, 192)))
             {
-                if (!world.Step()) throw new InvalidDataException("Empty source.");
+                if (!world.Session.HasSimulatedFrame && !world.Step()) throw new InvalidDataException("Empty source.");
                 var metadata = ReplayTimelineArchive.Metadata(world, ReplayType.FullMatch);
                 using var writer = new ReplayWriterV3(path, metadata);
                 DemoRecord? record = reader.ReadNext();

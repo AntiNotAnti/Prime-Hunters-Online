@@ -172,7 +172,7 @@ namespace MphRead.Mods.Network
                 if (!_killcamWasVisible)
                 {
                     _killcamStarts++;
-                    Console.WriteLine($"[netcheck] replay killcam start {_killcamStarts} at live frame {NetSession.NetFrame}");
+                    Console.WriteLine($"[netcheck] replay killcam start {_killcamStarts} at live frame {NetSession.NetFrame}; {Mods.KillCam.Diagnostics}");
                     if (_shotDirectory != null) Capture(Path.Combine(_shotDirectory, $"{_name}-killcam-{_killcamStarts:00}.png"));
                 }
             }
