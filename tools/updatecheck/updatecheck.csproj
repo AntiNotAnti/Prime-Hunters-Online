@@ -8,6 +8,7 @@
   <ItemGroup>
     <Compile Include="../../src/MphRead/Mods/Update/BuildVersion.cs" Link="BuildVersion.cs" />
     <Compile Include="../../src/MphRead/Mods/Update/UpdateCheck.cs" Link="UpdateCheck.cs" />
+    <Compile Include="../../src/MphRead/Mods/Update/UpdateDownload.cs" Link="UpdateDownload.cs" />
     <Compile Include="../../src/MphRead/Mods/Update/SyncHttp.cs" Link="SyncHttp.cs" />
     <Compile Include="../../src/MphRead/Mods/Branding.cs" Link="Branding.cs" />
   </ItemGroup>

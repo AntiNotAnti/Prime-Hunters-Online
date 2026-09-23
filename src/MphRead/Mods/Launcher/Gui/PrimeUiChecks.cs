@@ -154,7 +154,12 @@ namespace MphRead.Mods.Launcher.Gui
                     int pulses = 0;
                     using var pulse = new PrimeUiPulse(TimeSpan.FromMilliseconds(10), () =>
                     { Check(Dispatcher.UIThread.CheckAccess(), "wall-clock pulse runs on UI thread"); pulses++; });
-                    pulse.Start(); System.Threading.Thread.Sleep(60); Dispatcher.UIThread.RunJobs();
+                    pulse.Start();
+                    // A busy CI worker may not schedule the thread-pool timer
+                    // within one short sleep. Pump until delivery or a bounded deadline.
+                    var deadline = System.Diagnostics.Stopwatch.StartNew();
+                    while (pulses == 0 && deadline.Elapsed < TimeSpan.FromSeconds(5))
+                    { System.Threading.Thread.Sleep(10); Dispatcher.UIThread.RunJobs(); }
                     Check(pulses > 0, "embedded shell pulse advances without a native event loop");
                     pulse.Stop(); int stopped = pulses;
                     System.Threading.Thread.Sleep(30); Dispatcher.UIThread.RunJobs();

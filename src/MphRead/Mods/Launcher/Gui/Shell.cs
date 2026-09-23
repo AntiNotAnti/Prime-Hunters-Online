@@ -873,45 +873,10 @@ namespace MphRead.Mods.Launcher.Gui
             _shotWait = frames;
         }
 
-        /// <summary>
-        /// Press something on whatever the front screen is.
-        ///
-        /// Two screens, because there are two: with game files it is the menu,
-        /// and the SETTINGS button is a <see cref="DeckButton"/> since the
-        /// deck theme -- the predicate that still said <see cref="UiWord"/> is
-        /// why every click here quietly matched nothing for weeks. Without
-        /// them the setup screen is pushed over the menu and *is* the front
-        /// screen, so a press aimed at the menu lands on the panel covering
-        /// it. CI is always the second case; a machine set up to play is
-        /// always the first.
-        /// </summary>
-        private static void ClickSettings()
-        {
-            if (GameFiles.Ready)
-            {
-                Click(c => FrontAction(c, "SETTINGS"));
-                return;
-            }
-            // The setup screen's tick, which is the only thing on it that can
-            // be pressed: the path to type beside it is gone. That used to be
-            // the target here ("Use this file"), so removing it failed the
-            // whole capture rather than the screen -- and is why
-            // NativeFilePicker.Suppressed exists. With it set the press takes
-            // the screen's own no-dialog path: nothing opens, the sentence
-            // about it goes on screen, and what is being proven -- that the
-            // press arrives at all -- is proven.
-            Click(c => c is UiMark mark && mark.Label == "choose your .nds file");
-        }
-
-        private static void HoverFront()
-        {
-            if (GameFiles.Ready)
-            {
-                Hover(c => FrontAction(c, "SETTINGS"));
-                return;
-            }
-            Hover(c => c is UiMark mark && mark.Label == "choose your .nds file");
-        }
+        // The initial Escape dismisses the setup sheet when assets are absent.
+        // Settings remains available in the persistent header in either case.
+        private static void ClickSettings() => Click(c => FrontAction(c, "SETTINGS"));
+        private static void HoverFront() => Hover(c => FrontAction(c, "SETTINGS"));
 
         /// <summary>
         /// The steps that need a room to load. Skipped rather than failed
