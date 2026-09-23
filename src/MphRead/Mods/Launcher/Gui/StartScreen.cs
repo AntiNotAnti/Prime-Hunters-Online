@@ -1013,7 +1013,7 @@ namespace MphRead.Mods.Launcher.Gui
                     HubTheme.Warm, pressable: true);
                 return;
             }
-            Say($"BUILD  //  {number}", BuildVersion.IsRelease && Updater.Checked
+            Say($"BUILD  //  {number}  //  VERSIONS", BuildVersion.IsRelease && Updater.Checked
                 ? GuiTheme.Good : GuiTheme.TextDim);
         }
 
@@ -1076,6 +1076,12 @@ namespace MphRead.Mods.Launcher.Gui
         {
             if (_loadingVersions || _updating)
             {
+                return;
+            }
+            if (Updater.Disabled)
+            {
+                Say($"BUILD  //  {VersionNumber()}  //  VERSION CHECKS DISABLED FOR THIS RUN",
+                    GuiTheme.TextDim);
                 return;
             }
             _ = LoadVersionManager();
