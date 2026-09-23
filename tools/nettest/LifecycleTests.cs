@@ -214,7 +214,12 @@ namespace MphRead.NetTest
                     for (int i = 0; i < 20; i++)
                     {
                         var from = endpoint; byte[] reply = socket.Receive(ref from);
-                        if (reply[0] == (byte)PacketType.MatchState) return MatchStatePacket.Read(reply.AsSpan(1));
+                        if (reply[0] == (byte)PacketType.MatchState)
+                        {
+                            var state = MatchStatePacket.Read(reply.AsSpan(1));
+                            bool expectedEnding = requestedMatch == admission.MatchId && requestedEpoch == admission.AuthorityEpoch;
+                            if (state.Ending == expectedEnding) return state;
+                        }
                     }
                     throw new InvalidOperationException("No match state after end request");
                 }

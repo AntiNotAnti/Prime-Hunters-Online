@@ -2350,7 +2350,7 @@ namespace MphRead.Mods.Network
         private void Remove(Peer peer, string reason)
         {
             CareerPeerLeaving(peer);
-            _transport?.ForgetConnection(peer.EndPoint);
+            _transport?.RetireConnection(peer.EndPoint);
             _peers.Remove(peer);
             LobbyPeerRemoved(peer);
             BroadcastRoster();

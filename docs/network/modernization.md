@@ -59,3 +59,11 @@ Receive-window tests cover all 32 bits, duplicate/reorder/loss, exact 32/33 jump
 uint wrap, stale IDs and wrong endpoints. Localhost UDP tests use the production
 transport and validate admission, payloads, ACK-derived RTT and spoofed endpoints.
 The lifecycle suite still passes with its loopback peer using the new transport.
+
+## P1-B
+
+Reliable events have independent event IDs, 32 ordinary + 8 reserved pending
+slots, bounded exponential retries, 256-ID receive history and sender span guards.
+The impaired delivery test applies all 40 events exactly once; realtime intent
+traffic continues. Idle ACKs complete control delivery. Application revisions
+remain authoritative. Exhaustion/expiry disconnects instead of hiding divergence.

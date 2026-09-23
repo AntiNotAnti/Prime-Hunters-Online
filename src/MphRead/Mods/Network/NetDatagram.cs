@@ -76,12 +76,16 @@ public readonly record struct NetConnectionSnapshot(ulong ConnectionId, long Sen
 /// <summary>Bound to one endpoint/incarnation; caller serializes all access. No payload ownership.</summary>
 public sealed class NetConnection
 {
-    private struct Attempt { public uint Sequence; public double SentAt; public bool Pending; }
+    private struct Attempt { public uint Sequence; public double SentAt; public bool Pending; public uint? EventId; }
     private readonly Attempt[] _attempts = new Attempt[512];
     private NetReceiveWindow _received;
     private uint _nextSequence;
     private long _sent, _acked, _lost, _duplicates, _reordered, _old;
     private double? _rtt, _variance, _minimum;
+    public NetReliableChannel Reliable { get; } = new();
+    public bool AckPending { get; set; }
+    public bool FailureReported { get; set; }
+    public double? RetiredAt { get; set; }
     public ulong Id { get; }
     public IPEndPoint Endpoint { get; }
     public uint ClientId { get; }
@@ -96,13 +100,13 @@ public sealed class NetConnection
         do { RandomNumberGenerator.Fill(bytes); id = BinaryPrimitives.ReadUInt64LittleEndian(bytes); } while (id == 0);
         return id;
     }
-    public NetHeader Send(PacketType type, double nowMs, NetHeaderFlags flags = NetHeaderFlags.None)
+    public NetHeader Send(PacketType type, double nowMs, NetHeaderFlags flags = NetHeaderFlags.None, uint? eventId = null)
     {
         uint sequence = _nextSequence++;
         ref Attempt previous = ref _attempts[sequence % (uint)_attempts.Length];
         if (previous.Pending) _lost++; // bounded-window estimate, not a claim of certain wire loss
-        previous = new() { Sequence = sequence, SentAt = nowMs, Pending = true };
-        _sent++;
+        previous = new() { Sequence = sequence, SentAt = nowMs, Pending = true, EventId = eventId };
+        _sent++; AckPending = false;
         return new(type, flags | (_received.Initialized ? NetHeaderFlags.AckValid : 0), Id, sequence, _received.Latest, _received.Bits);
     }
     public bool Accepts(IPEndPoint sender, in NetHeader header) => header.ConnectionId == Id && Endpoint.Equals(sender);
@@ -125,6 +129,7 @@ public sealed class NetConnection
         ref Attempt attempt = ref _attempts[sequence % (uint)_attempts.Length];
         if (!attempt.Pending || attempt.Sequence != sequence) return;
         attempt.Pending = false; _acked++;
+        if (attempt.EventId.HasValue) Reliable.Acknowledge(attempt.EventId.Value);
         double sample = Math.Max(0, nowMs - attempt.SentAt);
         _minimum = Math.Min(_minimum ?? sample, sample);
         _variance = _rtt.HasValue ? .75 * _variance!.Value + .25 * Math.Abs(sample - _rtt.Value) : sample / 2;
