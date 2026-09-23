@@ -206,7 +206,7 @@ namespace MphRead.Mods.Launcher.Gui
             var view = new CreateServerScreen(_rooms, _settings.RoomKey);
             view.Closed += (_, _) => Pop();
             view.Launched += (_, plan) => { Pop(); ConnectedOrFinished(plan); };
-            Push(view);
+            _prime.Overlays.Show(view, cancel: view.RequestBack);
         }
         private void ConnectedOrFinished(LaunchPlan plan)
         {
@@ -333,7 +333,7 @@ namespace MphRead.Mods.Launcher.Gui
                 settings.Closed += (_, _) => Pop();
                 Push(settings);
             };
-            Push(view);
+            _prime.Overlays.Show(view, cancel: () => { Pop(); onResume(); });
             view.FocusResume();
         }
 

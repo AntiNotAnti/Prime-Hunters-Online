@@ -106,6 +106,9 @@ namespace MphRead.Mods.Launcher.Gui
                     FocusNavigator.Key(FocusNavigator.Ensure(shell)!, Key.Escape); Drain(window);
                     Check(!shell.Overlays.IsOpen && shell.Router.Current == PrimeRoute.Play, "Escape closes modal first");
                     Check(join.IsFocused, "modal close restores focus");
+                    bool resumed = false;
+                    shell.Overlays.Show(new PrimePanel(PrimeChrome.Text("pause")), cancel: () => { shell.Overlays.Close(); resumed = true; });
+                    shell.Back(); Check(resumed && !shell.Overlays.IsOpen, "Back dispatches overlay cancellation semantics");
                     shell.Router.Navigate(PrimeRoute.Settings); Drain(window);
                     var settings = (SettingsView)shell.Workspaces.Content!;
                     var slider = settings.GetVisualDescendants().OfType<SliderRow>().First();
