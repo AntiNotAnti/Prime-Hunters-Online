@@ -355,6 +355,10 @@ namespace MphRead.Droid
             private ISurfaceHolder? _holder;
             private Vector2i _wanted;
             private bool _paused;
+            // Set by the UI thread on resume and consumed only by the GL
+            // thread. Background time must not become one giant render/sim
+            // interval when the app returns.
+            private bool _resetPacingOnResume;
             private bool _stopping;
             private bool _holdingSurface;
             private bool _ended;
@@ -425,7 +429,15 @@ namespace MphRead.Droid
             {
                 lock (_lock)
                 {
+                    if (_paused == paused)
+                    {
+                        return;
+                    }
                     _paused = paused;
+                    if (!paused)
+                    {
+                        _resetPacingOnResume = true;
+                    }
                     Monitor.PulseAll(_lock);
                 }
             }
@@ -506,14 +518,19 @@ namespace MphRead.Droid
                 {
                     ISurfaceHolder holder;
                     Vector2i wanted;
+                    bool resetPacing;
                     lock (_lock)
                     {
                         while (!_stopping && (_holder == null || _paused))
                         {
-                            // Nothing to draw into, or nobody looking. Let go
-                            // of the surface first if it is the former, so
-                            // SurfaceGone is not left waiting on us.
-                            if (_holder == null && _holdingSurface)
+                            // A system pause is an ownership boundary even when
+                            // SurfaceView has not emitted SurfaceDestroyed yet.
+                            // Keeping an EGL window surface current while Android
+                            // backgrounds or replaces that window is device-
+                            // dependent and is the source of resume crashes on
+                            // stricter drivers. Release only the EGLSurface on
+                            // this GL thread; keep the context and loaded scene.
+                            if (_holdingSurface && (_holder == null || _paused))
                             {
                                 Monitor.Exit(_lock);
                                 try
@@ -535,10 +552,27 @@ namespace MphRead.Droid
                         }
                         holder = _holder!;
                         wanted = _wanted;
+                        resetPacing = _resetPacingOnResume;
                     }
                     if (!BindSurface(holder, wanted))
                     {
+                        // Keep the resume reset pending until Android gives us
+                        // a surface that can actually be made current.
                         continue;
+                    }
+                    if (resetPacing)
+                    {
+                        // Do not feed time spent in the background into either
+                        // the render deadline or the 60 Hz accumulator.
+                        double now = _clock.Elapsed.TotalSeconds;
+                        _nextFrame = now;
+                        _lastFrameStart = now;
+                        FrameTiming.Reset();
+                        Scene?.ModSetLateAim(0, 0);
+                        lock (_lock)
+                        {
+                            _resetPacingOnResume = false;
+                        }
                     }
                     if (Scene == null)
                     {
@@ -662,7 +696,46 @@ namespace MphRead.Droid
                 }
                 if (!EGL14.EglMakeCurrent(_display, _eglSurface, _eglSurface, _context))
                 {
-                    return Fail($"eglMakeCurrent failed (0x{EGL14.EglGetError():X})");
+                    int error = EGL14.EglGetError();
+                    EGLSurface? failedSurface = _eglSurface;
+                    _eglSurface = null;
+                    // The native window can be between generations while a
+                    // SurfaceView is being resumed, translated back on screen,
+                    // or otherwise relaid out. These errors describe that
+                    // window/surface boundary, not a lost GL context. Destroy
+                    // the failed wrapper and let the render loop retry once
+                    // Android has a usable native window instead of ending the
+                    // match.
+                    try
+                    {
+                        if (failedSurface != null
+                            && !failedSurface.Equals(EGL14.EglNoSurface))
+                        {
+                            EGL14.EglDestroySurface(_display, failedSurface);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[android] discarding a failed EGL surface failed: {ex.Message}");
+                    }
+
+                    const int EglBadCurrentSurface = 0x3007;
+                    const int EglBadNativeWindow = 0x300B;
+                    const int EglBadSurface = 0x300D;
+                    if (error == EglBadCurrentSurface
+                        || error == EglBadNativeWindow
+                        || error == EglBadSurface)
+                    {
+                        Console.WriteLine("[android] eglMakeCurrent is waiting for a replacement "
+                            + $"window surface (0x{error:X})");
+                        return false;
+                    }
+
+                    // EGL_CONTEXT_LOST and configuration/context errors are not
+                    // recoverable without rebuilding every GL resource owned by
+                    // the loaded scene, so keep those fatal rather than limping
+                    // on with invalid objects.
+                    return Fail($"eglMakeCurrent failed (0x{error:X})");
                 }
                 lock (_lock)
                 {
@@ -696,6 +769,10 @@ namespace MphRead.Droid
                     _eglSurface = null;
                     _boundTo = null;
                     _holdingSurface = false;
+                    // SetFrameRate belongs to the Android window surface, not
+                    // the long-lived EGL context. A replacement surface must be
+                    // told again even when the requested cap did not change.
+                    _requestedFrameRate = -1;
                     Monitor.PulseAll(_lock);
                 }
                 if (_display == null || surface == null)

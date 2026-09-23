@@ -355,6 +355,12 @@ namespace MphRead.Droid
                 _displays.UnregisterDisplayListener(this);
                 _displays = null;
             }
+            // Android can cancel a gesture without delivering PointerUp when
+            // the activity backgrounds. Do not carry a stranded aim/stick or
+            // held touch button into the resumed match.
+            _controls.ReleaseEverything();
+            _overlay?.Invalidate();
+            GamepadBridge.Clear();
             _gameView?.OnPause();
             base.OnPause();
         }
