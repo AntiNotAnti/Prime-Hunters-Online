@@ -12,6 +12,9 @@ namespace MphRead
 {
     public static class Extract
     {
+        private static readonly object _runtimeDataGate = new();
+        private static string _runtimeDataStamp = "";
+
         public static void Setup(string path)
         {
             byte[] bytes = File.ReadAllBytes(path);
@@ -390,31 +393,54 @@ namespace MphRead
         public static void LoadRuntimeData()
         {
             if (!_romData.TryGetValue(Paths.MphKey, out RomData? data))
-            {
                 return;
+
+            string fontPath = Paths.Combine(Paths.FileSystem, "_bin", data.FontWidths.File);
+            string beamPath = Paths.Combine(Paths.FileSystem, "_bin", data.BeamSfx.File);
+            string platformPath = Paths.Combine(Paths.FileSystem, "_bin", data.PlatformSfx.File);
+            string stamp = $"{Paths.MphKey}|{FileStamp(fontPath)}|{FileStamp(beamPath)}|{FileStamp(platformPath)}";
+
+            lock (_runtimeDataGate)
+            {
+                // These tables are process-wide immutable data. A room change
+                // used to reread the same multi-megabyte extracted binaries and
+                // recopy all slices on every match/rematch. Keep them until the
+                // selected ROM path or one of the source files actually changes.
+                if (String.Equals(_runtimeDataStamp, stamp, StringComparison.Ordinal))
+                    return;
+
+                // arm9.bin
+                byte[] bytes = File.ReadAllBytes(fontPath);
+                byte[] widths = bytes[data.FontWidths.Offset..(data.FontWidths.Offset + data.FontWidths.Size)];
+                byte[] offsets = bytes[data.FontOffsets.Offset..(data.FontOffsets.Offset + data.FontOffsets.Size)];
+                byte[] chars = bytes[data.FontCharData.Offset..(data.FontCharData.Offset + data.FontCharData.Size)];
+                byte[] enemyDamageSfx = bytes[data.EnemyDamageSfx.Offset..(data.EnemyDamageSfx.Offset + data.EnemyDamageSfx.Size)];
+                byte[] enemyDeathSfx = bytes[data.EnemyDeathSfx.Offset..(data.EnemyDeathSfx.Offset + data.EnemyDeathSfx.Size)];
+                Text.Font.Normal.SetData(widths, offsets, chars, minChar: 32);
+
+                // overlay9_2
+                bytes = File.ReadAllBytes(beamPath);
+                byte[] terrainSfx = bytes[data.TerrianSfx.Offset..(data.TerrianSfx.Offset + data.TerrianSfx.Size)];
+                byte[] beamSfx = bytes[data.BeamSfx.Offset..(data.BeamSfx.Offset + data.BeamSfx.Size)];
+                byte[] hunterSfx = bytes[data.HunterSfx.Offset..(data.HunterSfx.Offset + data.HunterSfx.Size)];
+                Metadata.SetTerrainSfxData(terrainSfx);
+                Metadata.SetBeamSfxData(beamSfx);
+                Metadata.SetHunterSfxData(hunterSfx);
+                Metadata.SetEnemyDamageSfxData(enemyDamageSfx);
+                Metadata.SetEnemyDeathSfxData(enemyDeathSfx);
+
+                // overlay9_15 (or overlay9_12 for A76E0)
+                bytes = File.ReadAllBytes(platformPath);
+                byte[] platformSfx = bytes[data.PlatformSfx.Offset..(data.PlatformSfx.Offset + data.PlatformSfx.Size)];
+                Metadata.SetPlatformSfxData(platformSfx);
+                _runtimeDataStamp = stamp;
             }
-            // arm9.bin
-            byte[] bytes = File.ReadAllBytes(Paths.Combine(Paths.FileSystem, "_bin", data.FontWidths.File));
-            byte[] widths = bytes[data.FontWidths.Offset..(data.FontWidths.Offset + data.FontWidths.Size)];
-            byte[] offsets = bytes[data.FontOffsets.Offset..(data.FontOffsets.Offset + data.FontOffsets.Size)];
-            byte[] chars = bytes[data.FontCharData.Offset..(data.FontCharData.Offset + data.FontCharData.Size)];
-            byte[] enemyDamageSfx = bytes[data.EnemyDamageSfx.Offset..(data.EnemyDamageSfx.Offset + data.EnemyDamageSfx.Size)];
-            byte[] enemyDeathSfx = bytes[data.EnemyDeathSfx.Offset..(data.EnemyDeathSfx.Offset + data.EnemyDeathSfx.Size)];
-            Text.Font.Normal.SetData(widths, offsets, chars, minChar: 32);
-            // overlay9_2
-            bytes = File.ReadAllBytes(Paths.Combine(Paths.FileSystem, "_bin", data.BeamSfx.File));
-            byte[] terrainSfx = bytes[data.TerrianSfx.Offset..(data.TerrianSfx.Offset + data.TerrianSfx.Size)];
-            byte[] beamSfx = bytes[data.BeamSfx.Offset..(data.BeamSfx.Offset + data.BeamSfx.Size)];
-            byte[] hunterSfx = bytes[data.HunterSfx.Offset..(data.HunterSfx.Offset + data.HunterSfx.Size)];
-            Metadata.SetTerrainSfxData(terrainSfx);
-            Metadata.SetBeamSfxData(beamSfx);
-            Metadata.SetHunterSfxData(hunterSfx);
-            Metadata.SetEnemyDamageSfxData(enemyDamageSfx);
-            Metadata.SetEnemyDeathSfxData(enemyDeathSfx);
-            // overlay9_15 (or overlay9_12 for A76E0)
-            bytes = File.ReadAllBytes(Paths.Combine(Paths.FileSystem, "_bin", data.PlatformSfx.File));
-            byte[] platformSfx = bytes[data.PlatformSfx.Offset..(data.PlatformSfx.Offset + data.PlatformSfx.Size)];
-            Metadata.SetPlatformSfxData(platformSfx);
+        }
+
+        private static string FileStamp(string path)
+        {
+            var info = new System.IO.FileInfo(path);
+            return $"{Path.GetFullPath(path)}:{info.Length}:{info.LastWriteTimeUtc.Ticks}";
         }
 
         private static readonly FrozenDictionary<string, RomData> _romData = Frozen.Create<string, RomData>(

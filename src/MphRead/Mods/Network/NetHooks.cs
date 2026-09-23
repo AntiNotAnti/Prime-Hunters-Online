@@ -388,7 +388,20 @@ namespace MphRead.Mods.Network
             }
             if (!NetSession.Active)
             {
-                return false;
+                // Local bot matches use the multiplayer intro/respawn path but
+                // have no network session to request the initial spawn for slot
+                // zero. Bots bypass that wait through IsBot; the human did not,
+                // so MnK/stylus stayed behind the intro camera until FIRE or the
+                // long respawn timer happened to release it. Match online
+                // behavior here: the local human enters play immediately, but
+                // only for the initial life. Normal offline respawn timing is
+                // untouched after Spawned has ever been set.
+                Scene scene = player.OwningScene;
+                return !Headless.Active
+                    && scene.GameState.Multiplayer
+                    && player == scene.Players.Main
+                    && !player.IsBot
+                    && !player.LoadFlags.TestFlag(LoadFlags.Spawned);
             }
             int slot = player.SlotIndex;
             if (slot < 0 || slot >= NetSession.SlotOccupied.Length)

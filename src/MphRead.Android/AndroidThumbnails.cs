@@ -28,8 +28,9 @@ namespace MphRead.Droid
     {
         public Task<int> RenderAsync(IReadOnlyList<string> rooms, Action<string> report)
         {
-            // A custom map has no picture until it has binaries to render.
-            AndroidMaps.EnsureBuilt();
+            // Workers build only their assigned custom rooms. Keeping generation
+            // inside the cancellable preview run prevents an all-map compile from
+            // sitting in front of a match the player just asked to start.
             // Installed from MainApplication.CustomizeAppBuilder, before any
             // activity exists, so the activity itself has to be looked up
             // when this is actually asked to render rather than captured then.
@@ -73,6 +74,15 @@ namespace MphRead.Droid
         /// they are done. Returns how many of the asked-for rooms now have a
         /// picture.
         /// </summary>
+        public static void Stop(Context context)
+        {
+            for (int i = 0; i < PreviewWorkerTypes.All.Count; i++)
+            {
+                try { context.StopService(new Intent(context, PreviewWorkerTypes.All[i])); }
+                catch { }
+            }
+        }
+
         public static int Run(Context context, IReadOnlyList<string> rooms, int width, int height,
             Action<string> report)
         {

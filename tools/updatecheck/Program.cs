@@ -48,6 +48,33 @@ Check(UpdateCheck.Parse(Release("v1.0.0"), new Version(1, 0, 1)) == null,
     "a newer installation is not downgraded");
 Check(UpdateCheck.Parse(Release("v1.1.0-rc1"), new Version(1, 0, 0)) == null,
     "prerelease is not offered as a stable update");
+
+string historyJson = "["
+    + Release("v1.2.0") + ","
+    + JsonSerializer.Serialize(new
+    {
+        tag_name = "v9.9.9",
+        draft = true,
+        prerelease = false,
+        assets = Array.Empty<object>()
+    }) + ","
+    + Release("v1.1.0") + ","
+    + JsonSerializer.Serialize(new
+    {
+        tag_name = "v1.3.0-rc1",
+        draft = false,
+        prerelease = true,
+        assets = Array.Empty<object>()
+    })
+    + "]";
+var history = UpdateCheck.ParseReleases(historyJson, 10);
+Check(history.Count == 2, "version manager keeps only published stable releases");
+Check(history.Count > 0 && history[0].Version == new Version(1, 2, 0),
+    "version manager keeps release ordering");
+Check(history.Count > 1 && history[1].Version == new Version(1, 1, 0),
+    "version manager includes older releases for explicit downgrade");
+Check(history.Count > 1 && UpdateDownload.SupportsDigest(history[1].AssetDigest),
+    "older release keeps its verified package digest");
 if (args.Length == 0)
     Check(!BuildVersion.IsRelease, "unstamped assembly remains a local build");
 else

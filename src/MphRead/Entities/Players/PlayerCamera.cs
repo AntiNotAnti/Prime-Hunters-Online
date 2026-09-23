@@ -926,13 +926,15 @@ namespace MphRead.Entities
 
         /// <summary>
         /// Low-latency translation for the local fixed-crosshair first-person camera.
-        /// The simulation camera still advances only at 60 Hz; extra pictures project
-        /// the stable part of its last motion into the fractional remainder of the
-        /// next step instead of holding one position for several refreshes. Prediction
-        /// is bounded to one observed step, fades while slowing, and stops on reversal.
+        /// The simulation camera still advances only at 60 Hz. Extra pictures project
+        /// the player's latest body translation into the fractional remainder of the
+        /// next step while interpolating camera-local visual offset (walk bob, landing
+        /// response and camera switching) between completed samples. Keeping those two
+        /// motions separate avoids both locomotion stair-steps and bob reversal snaps.
         /// Teleports/respawns already rebase the history through ModResetDrawState.
         /// </summary>
-        internal Vector3 ModGetResponsiveDrawPosition(double alpha)
+        internal Vector3 ModGetResponsiveDrawPosition(double alpha,
+            Vector3 previousBodyPosition, Vector3 currentBodyPosition)
         {
             if (!_drawStateValid || !Mods.Render.FrameTiming.HighRefreshPresentation)
             {
@@ -940,36 +942,36 @@ namespace MphRead.Entities
             }
 
             float t = (float)Math.Clamp(alpha, 0.0, 1.0);
-            Vector3 step = _drawCurrentPosition - _drawPreviousPosition;
-            float stepLengthSquared = step.LengthSquared;
-            if (!IsFinite(step) || stepLengthSquared <= 0.0000000001f)
+            if (!IsFinite(previousBodyPosition) || !IsFinite(currentBodyPosition))
             {
                 return _drawCurrentPosition;
             }
 
-            float confidence = 1f;
-            Vector3 priorStep = _drawPreviousPosition - _drawOlderPosition;
-            float priorLengthSquared = priorStep.LengthSquared;
-            if (IsFinite(priorStep) && priorLengthSquared > 0.0000000001f)
+            Vector3 bodyStep = currentBodyPosition - previousBodyPosition;
+            // A respawn/teleport is a discontinuity, not velocity to predict.
+            if (!IsFinite(bodyStep) || bodyStep.LengthSquared > 16f)
             {
-                // A reversal is a new motion, not evidence that the old one should
-                // continue into the next picture.
-                if (Vector3.Dot(step, priorStep) <= 0)
-                {
-                    return _drawCurrentPosition;
-                }
-
-                // If collision or released input is already slowing the camera,
-                // shrink the projection with it so the render pose cannot surge
-                // through the authoritative stop point.
-                if (stepLengthSquared < priorLengthSquared)
-                {
-                    confidence = Math.Clamp(
-                        MathF.Sqrt(stepLengthSquared / priorLengthSquared), 0f, 1f);
-                }
+                return _drawCurrentPosition;
             }
 
-            Vector3 predicted = _drawCurrentPosition + step * (t * confidence);
+            // CameraInfo.Position contains two different kinds of motion:
+            // locomotion and camera-local visual motion (walk bob, landing
+            // response, camera switching). Predicting the whole vector made
+            // bob reverse direction between 60 Hz samples and abruptly trip
+            // the old direction/confidence guards, which appeared as a small
+            // hitch while simply walking. Project only the body translation.
+            // The visual offset is interpolated one sample behind, so it stays
+            // continuous through the exact point where bob changes direction.
+            Vector3 previousOffset = _drawPreviousPosition - previousBodyPosition;
+            Vector3 currentOffset = _drawCurrentPosition - currentBodyPosition;
+            if (!IsFinite(previousOffset) || !IsFinite(currentOffset))
+            {
+                return _drawCurrentPosition;
+            }
+
+            Vector3 predictedBody = currentBodyPosition + bodyStep * t;
+            Vector3 visualOffset = Vector3.Lerp(previousOffset, currentOffset, t);
+            Vector3 predicted = predictedBody + visualOffset;
             return IsFinite(predicted) ? predicted : _drawCurrentPosition;
         }
 
@@ -1010,11 +1012,184 @@ namespace MphRead.Entities
             return true;
         }
 
+        /// <summary>
+        /// Local first-person legacy aiming needs angular interpolation rather
+        /// than target-point interpolation: the target is just a direction endpoint,
+        /// and during a fast spin two endpoints can cross through the camera.
+        /// Scripted/replay/spectator cameras keep <see cref="ModGetDrawPose"/>,
+        /// where the target may be an authored world-space point.
+        /// </summary>
+        internal bool ModGetFirstPersonDrawPose(double alpha, out Vector3 position,
+            out Vector3 target, out Vector3 up, out float fov)
+        {
+            if (!_drawStateValid)
+            {
+                position = Position;
+                Vector3 facingNow = Target - Position;
+                if (!ModInterpolateDirection(facingNow, facingNow, 1, out Vector3 initialFacing))
+                {
+                    target = Target;
+                    up = Vector3.UnitY;
+                    fov = Fov;
+                    return false;
+                }
+                up = UpVector;
+                up -= initialFacing * Vector3.Dot(up, initialFacing);
+                if (!IsFinite(up) || up.LengthSquared < 0.000001f)
+                {
+                    Vector3 reference = MathF.Abs(initialFacing.Y) < 0.999f
+                        ? Vector3.UnitY : Vector3.UnitZ;
+                    up = reference - initialFacing * Vector3.Dot(reference, initialFacing);
+                }
+                if (!IsFinite(up) || up.LengthSquared < 0.000001f)
+                {
+                    target = Target;
+                    fov = Fov;
+                    return false;
+                }
+                up = up.Normalized();
+                target = position + initialFacing * Math.Max(facingNow.Length, 1f);
+                fov = Fov;
+                return true;
+            }
+
+            float t = (float)Math.Clamp(alpha, 0.0, 1.0);
+            position = Vector3.Lerp(_drawPreviousPosition, _drawCurrentPosition, t);
+
+            Vector3 previousFacing = _drawPreviousTarget - _drawPreviousPosition;
+            Vector3 currentFacing = _drawCurrentTarget - _drawCurrentPosition;
+            if (!ModInterpolateDirection(previousFacing, currentFacing, t, out Vector3 facing))
+            {
+                target = Target;
+                up = UpVector;
+                fov = Fov;
+                return false;
+            }
+
+            float previousDistance = previousFacing.Length;
+            float currentDistance = currentFacing.Length;
+            if (!Single.IsFinite(previousDistance) || previousDistance < 0.000001f)
+            {
+                previousDistance = 1f;
+            }
+            if (!Single.IsFinite(currentDistance) || currentDistance < 0.000001f)
+            {
+                currentDistance = previousDistance;
+            }
+            float distance = previousDistance + (currentDistance - previousDistance) * t;
+            target = position + facing * distance;
+
+            if (!ModInterpolateDirection(_drawPreviousUp, _drawCurrentUp, t, out up))
+            {
+                up = Vector3.UnitY;
+            }
+            up -= facing * Vector3.Dot(up, facing);
+            if (!IsFinite(up) || up.LengthSquared < 0.000001f)
+            {
+                Vector3 reference = MathF.Abs(facing.Y) < 0.999f
+                    ? Vector3.UnitY : Vector3.UnitZ;
+                up = reference - facing * Vector3.Dot(reference, facing);
+            }
+            if (!IsFinite(up) || up.LengthSquared < 0.000001f)
+            {
+                fov = Fov;
+                return false;
+            }
+            up = up.Normalized();
+
+            fov = _drawPreviousFov + (_drawCurrentFov - _drawPreviousFov) * t;
+            return IsFinite(position) && IsFinite(target)
+                && (target - position).LengthSquared >= 0.000001f;
+        }
+
         internal float ModGetDrawFov(double alpha)
         {
             if (!_drawStateValid) return Fov;
             float t = (float)Math.Clamp(alpha, 0.0, 1.0);
             return _drawPreviousFov + (_drawCurrentFov - _drawPreviousFov) * t;
+        }
+
+        /// <summary>
+        /// Interpolate an orientation on the unit sphere instead of linearly
+        /// blending world-space target points. Fast camera turns can put the
+        /// two target vectors on opposite sides of the camera; target lerp then
+        /// cuts through the camera itself and briefly produces a near-zero
+        /// LookAt direction, which reads as a doubled/ghosted frame.
+        /// </summary>
+        internal static bool ModInterpolateDirection(Vector3 from, Vector3 to,
+            float amount, out Vector3 direction)
+        {
+            direction = Vector3.Zero;
+            if (!IsFinite(from) || !IsFinite(to)
+                || from.LengthSquared < 0.000001f || to.LengthSquared < 0.000001f)
+            {
+                return false;
+            }
+
+            Vector3 a = from.Normalized();
+            Vector3 b = to.Normalized();
+            float t = Math.Clamp(amount, 0f, 1f);
+            float dot = Math.Clamp(Vector3.Dot(a, b), -1f, 1f);
+
+            if (dot > 0.9995f)
+            {
+                Vector3 blended = Vector3.Lerp(a, b, t);
+                if (!IsFinite(blended) || blended.LengthSquared < 0.000001f)
+                {
+                    return false;
+                }
+                direction = blended.Normalized();
+                return true;
+            }
+
+            if (dot < -0.9995f)
+            {
+                // Exactly opposite vectors have infinitely many valid great
+                // circles. Camera turns are overwhelmingly yaw, so prefer the
+                // world-up rotation axis whenever the direction is not itself
+                // vertical. That keeps a 180-degree horizontal spin horizontal
+                // instead of choosing an arbitrary path through the sky.
+                Vector3 axis = MathF.Abs(a.Y) < 0.999f
+                    ? Vector3.UnitY : Vector3.UnitX;
+                if (MathF.Abs(Vector3.Dot(axis, a)) > 0.999f)
+                {
+                    axis = Vector3.UnitZ;
+                }
+                axis -= a * Vector3.Dot(axis, a);
+                if (!IsFinite(axis) || axis.LengthSquared < 0.000001f)
+                {
+                    return false;
+                }
+                axis = axis.Normalized();
+                float angle = MathF.PI * t;
+                float cos = MathF.Cos(angle);
+                float sin = MathF.Sin(angle);
+                direction = a * cos + Vector3.Cross(axis, a) * sin
+                    + axis * Vector3.Dot(axis, a) * (1 - cos);
+                if (!IsFinite(direction) || direction.LengthSquared < 0.000001f)
+                {
+                    return false;
+                }
+                direction = direction.Normalized();
+                return true;
+            }
+
+            float theta = MathF.Acos(dot);
+            float sinTheta = MathF.Sin(theta);
+            if (MathF.Abs(sinTheta) < 0.000001f)
+            {
+                direction = a;
+                return true;
+            }
+            float wa = MathF.Sin((1 - t) * theta) / sinTheta;
+            float wb = MathF.Sin(t * theta) / sinTheta;
+            direction = a * wa + b * wb;
+            if (!IsFinite(direction) || direction.LengthSquared < 0.000001f)
+            {
+                return false;
+            }
+            direction = direction.Normalized();
+            return true;
         }
 
         private static bool IsFinite(Vector3 value)

@@ -351,6 +351,25 @@ namespace MphRead.Mods.Input
             var processTouchInput = typeof(PlayerEntity).GetMethod("ProcessTouchInput",
                 BindingFlags.Instance | BindingFlags.NonPublic)!;
 
+            // Offline multiplayer must enter play the same way online does.
+            // Otherwise slot zero remains behind the multiplayer intro camera
+            // while bots spawn immediately, which makes MnK/stylus aim appear
+            // locked to screen centre. Only the never-spawned initial life is
+            // forced; ordinary later respawns keep their timer.
+            GameMode originalMode = scene.GameState.Mode;
+            scene.GameState.Mode = GameMode.Battle;
+            player.LoadFlags &= ~LoadFlags.Spawned;
+            Require(Mods.Network.NetHooks.ForceSpawn(player),
+                "offline multiplayer local human auto-spawns from intro camera");
+            player.LoadFlags |= LoadFlags.Spawned;
+            Require(!Mods.Network.NetHooks.ForceSpawn(player),
+                "offline multiplayer later lives keep normal respawn timing");
+            player.LoadFlags &= ~LoadFlags.Spawned;
+            scene.GameState.Mode = GameMode.SinglePlayer;
+            Require(!Mods.Network.NetHooks.ForceSpawn(player),
+                "single-player keeps authored spawn flow");
+            scene.GameState.Mode = originalMode;
+
             // The shell and the match share one OpenTK window. Scroll is an absolute
             // position for that window, so the first scene must baseline whatever the
             // launcher accumulated instead of treating it as a gameplay wheel edge.

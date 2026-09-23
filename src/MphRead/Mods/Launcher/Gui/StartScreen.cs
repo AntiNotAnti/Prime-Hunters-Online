@@ -19,9 +19,13 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly PrimeShell _prime;
         private readonly LobbySessionCoordinator _session = new();
         private LobbyScreen? _lobby;
-        private bool _finished, _updatable, _updating, _bypassGuard;
+        private bool _finished, _updating, _bypassGuard;
         private bool _returnToMapStudio;
         private bool _spectateNextMatch;
+        private readonly PrimeUiPulse _updateWatcher;
+        private UpdateInfo? _pendingUpdatePrompt;
+        private string? _lastPromptedUpdateTag;
+        private bool _loadingVersions;
         public LaunchPlan Plan { get; private set; }
         public event EventHandler<LaunchPlan>? Done;
         public event EventHandler<LaunchPlan>? MatchRequested;
@@ -32,10 +36,10 @@ namespace MphRead.Mods.Launcher.Gui
         public StartScreen(MenuSettings settings, IReadOnlyList<string> rooms)
         {
             _settings = settings; _rooms = new List<string>(rooms); Focusable = true;
-            _prime = new PrimeShell(CreateWorkspace, () => { if (_updatable) UpdateNow(); });
+            _prime = new PrimeShell(CreateWorkspace, OpenVersionManager);
             Content = _prime;
             _prime.Router.CanNavigate = CanNavigate;
-            _prime.Router.Changed += _ => UpdateReplayBackground();
+            _prime.Router.Changed += _ => { UpdateReplayBackground(); TryShowUpdatePrompt(); };
             _prime.BackRequested = () =>
             {
                 if (_prime.Router.Current == PrimeRoute.Lobby)
@@ -53,9 +57,9 @@ namespace MphRead.Mods.Launcher.Gui
             AttachedToVisualTree += (_, _) => timer.Start();
             DetachedFromVisualTree += (_, _) => timer.Stop();
 #endif
-            if (LauncherPrefs.AutoUpdate)
-                Updater.CheckInBackground(_ => Dispatcher.UIThread.Post(RefreshVersionLine),
-                    () => Dispatcher.UIThread.Post(RefreshVersionLine));
+            _updateWatcher = new PrimeUiPulse(TimeSpan.FromMinutes(5), CheckForUpdates);
+            AttachedToVisualTree += (_, _) => { _updateWatcher.Start(); CheckForUpdates(); };
+            DetachedFromVisualTree += (_, _) => _updateWatcher.Stop();
             RefreshVersionLine();
             _ = CatchUpPreviews();
         }
@@ -184,7 +188,7 @@ namespace MphRead.Mods.Launcher.Gui
             if (!GameFiles.Ready) OpenSetup();
         }
         public bool GoBack() { _prime.Back(); return true; }
-        public void Dispose() { Content = null; _session.Dispose(); _prime.Overlays.Clear(); _prime.Dispose(); }
+        public void Dispose() { Content = null; _session.Dispose(); _updateWatcher.Dispose(); _prime.Overlays.Clear(); _prime.Dispose(); }
         private void ShowGround(bool show)
         {
             _prime.Header.IsVisible = show; _prime.Footer.IsVisible = show;
@@ -192,7 +196,11 @@ namespace MphRead.Mods.Launcher.Gui
             _prime.Background = show ? PrimeTheme.BackgroundBrush : Brushes.Transparent;
         }
         private void Push(Control view) => _prime.Overlays.Show(view);
-        private void Pop() => _prime.Overlays.Close();
+        private void Pop()
+        {
+            _prime.Overlays.Close();
+            Dispatcher.UIThread.Post(TryShowUpdatePrompt, DispatcherPriority.Background);
+        }
         private void Finish(LaunchPlan plan)
         {
             if (_finished) return;
@@ -445,7 +453,6 @@ namespace MphRead.Mods.Launcher.Gui
 
         private void Say(string text, Color colour, bool pressable = false)
         {
-            _updatable = pressable;
             _prime.Footer.SetStatus(text);
         }
 
@@ -467,41 +474,181 @@ namespace MphRead.Mods.Launcher.Gui
             string number = VersionNumber();
             if (Updater.Available is UpdateInfo update)
             {
-                Say($"UPDATE AVAILABLE  //  {number} > {update.Version.ToString(3)}  //  UPDATE NOW",
+                Say($"UPDATE AVAILABLE  //  {number} > {update.Version.ToString(3)}  //  OPEN VERSIONS",
                     HubTheme.Warm, pressable: true);
                 return;
             }
-            Say($"SIM: 60 HZ  //  BUILD  //  {number}", BuildVersion.IsRelease && Updater.Checked
+            Say($"SIM: 60 HZ  //  BUILD  //  {number}  //  VERSIONS", BuildVersion.IsRelease && Updater.Checked
                 ? GuiTheme.Good : GuiTheme.TextDim);
         }
 
-        /// <summary>
-        /// Take the update.
-        ///
-        /// On the desktop that still means opening the release page: a release
-        /// is an archive somebody unpacks over their own copy, and a program
-        /// that rewrote its own files while running would have to solve
-        /// restarting itself on three operating systems to save one unzip.
-        /// Where the platform can install for itself -- a phone, today -- it
-        /// fetches the file and hands it to the system installer instead.
-        /// </summary>
-        private void UpdateNow()
+        private void CheckForUpdates()
         {
-            UpdateInfo? found = Updater.Available;
-            if (found == null)
+            if (!LauncherPrefs.AutoUpdate || Updater.Disabled || _updating)
             {
                 return;
             }
-            UpdateInfo update = found.Value;
+            Updater.CheckInBackground(
+                update => Dispatcher.UIThread.Post(() =>
+                {
+                    RefreshVersionLine();
+                    QueueUpdatePrompt(update);
+                }),
+                () => Dispatcher.UIThread.Post(RefreshVersionLine));
+        }
+
+        private void QueueUpdatePrompt(UpdateInfo update)
+        {
+            if (_lastPromptedUpdateTag == update.Tag)
+            {
+                return;
+            }
+            _lastPromptedUpdateTag = update.Tag;
+            _pendingUpdatePrompt = update;
+            TryShowUpdatePrompt();
+        }
+
+        /// <summary>
+        /// Do not throw a modal over a lobby/settings screen. Remember it and
+        /// show it the next time the player reaches the hub instead.
+        /// </summary>
+        private void TryShowUpdatePrompt()
+        {
+            if (_pendingUpdatePrompt is not UpdateInfo update
+                || _prime.Overlays.IsOpen || _prime.Router.Current != PrimeRoute.News
+                || !_prime.Header.IsVisible || TopLevel.GetTopLevel(this) == null
+                || NetSession.Active || _updating || _loadingVersions
+                || !GameFiles.Ready)
+            {
+                return;
+            }
+            _pendingUpdatePrompt = null;
+            var prompt = new ConfirmScreen(
+                $"Project Prime {update.Tag} is available.\n\n"
+                + $"Installed: v{VersionNumber()}\nLatest: {update.Tag}\n\n"
+                + "Install it now?",
+                yes: "update now", no: "later");
+            prompt.Answered += (_, yes) =>
+            {
+                Pop();
+                if (yes)
+                {
+                    InstallVersion(update);
+                }
+            };
+            Push(prompt);
+        }
+
+        private void OpenVersionManager()
+        {
+            if (_loadingVersions || _updating)
+            {
+                return;
+            }
+            if (Updater.Disabled)
+            {
+                Say($"BUILD  //  {VersionNumber()}  //  VERSION CHECKS DISABLED FOR THIS RUN",
+                    GuiTheme.TextDim);
+                return;
+            }
+            _ = LoadVersionManager();
+        }
+
+        private async Task LoadVersionManager()
+        {
+            _loadingVersions = true;
+            string number = VersionNumber();
+            Say($"BUILD  //  {number}  //  LOADING RELEASES...", GuiTheme.TextDim);
+            IReadOnlyList<UpdateInfo> releases =
+                await Task.Run(() => UpdateCheck.Releases(30));
+            string reason = UpdateCheck.LastReason ?? "no releases were found";
+            _loadingVersions = false;
+            if (TopLevel.GetTopLevel(this) == null) return;
+            if (releases.Count == 0)
+            {
+                Say($"BUILD  //  {number}  //  {reason}", HubTheme.Warm);
+                return;
+            }
+
+            var view = new VersionManagerView(releases, BuildVersion.Current);
+            view.Closed += (_, _) => Pop();
+            view.VersionSelected += AskToSwitchVersion;
+            Push(view);
+        }
+
+        private void AskToSwitchVersion(UpdateInfo target)
+        {
+            Version? raw = BuildVersion.Current;
+            Version? current = raw == null ? null : BuildVersion.Normalise(raw);
+            if (current != null && target.Version == current)
+            {
+                return;
+            }
+            bool downgrade = current != null && target.Version < current;
+            string from = current == null ? "a local build" : $"v{current.ToString(3)}";
+            string verb = downgrade ? "Downgrade" : "Switch";
+            var prompt = new ConfirmScreen(
+                $"{verb} Project Prime from {from} to {target.Tag}?\n\n"
+                + "The application will restart when an in-place switch is supported. "
+                + "Any active lobby will be left.",
+                yes: downgrade ? "downgrade" : "switch", no: "cancel");
+            prompt.Answered += (_, yes) =>
+            {
+                Pop(); // confirmation
+                if (!yes)
+                {
+                    return;
+                }
+                Pop(); // version manager
+                InstallVersion(target);
+            };
+            Push(prompt);
+        }
+
+        /// <summary>
+        /// Explicitly install one published release. Automatic checks never call
+        /// this with an older build; only Version Manager can request a
+        /// downgrade.
+        /// </summary>
+        private void InstallVersion(UpdateInfo update)
+        {
+            Version? raw = BuildVersion.Current;
+            Version? current = raw == null ? null : BuildVersion.Normalise(raw);
+            bool downgrade = current != null && update.Version < current;
+
+            // Android's package manager rejects a lower versionCode as an
+            // in-place install. Do not download 60 MB only to hand the player a
+            // guaranteed failure dialog.
+            if (OperatingSystem.IsAndroid() && downgrade)
+            {
+                string currentText = current == null ? "" : $" over v{current.ToString(3)}";
+                Say($"ANDROID DOWNGRADE  //  {update.Tag}{currentText} REQUIRES UNINSTALL OR ADB",
+                    HubTheme.Warm);
+                if (!Updater.OpenPage(update))
+                {
+                    Say(update.PageUrl, GuiTheme.Warm);
+                }
+                return;
+            }
+
             if (UpdateInstall.CanInstall(update))
             {
                 _ = FetchAndInstall(update, UpdateInstall.Current!);
                 return;
             }
-            if (!Updater.OpenPage(update))
+
+            // macOS keeps its signed bundle intact, and a read-only desktop
+            // install or unverifiable old package also belongs on the release
+            // page rather than being half-applied.
+            if (Updater.OpenPage(update))
             {
-                // No browser to open, or it refused. Putting the address on the
-                // line beats a button that appears to do nothing.
+                string action = OperatingSystem.IsMacOS()
+                    ? "REPLACE THE SIGNED APP BUNDLE FROM THE RELEASE PAGE"
+                    : "OPENED RELEASE PAGE FOR MANUAL SWITCH";
+                Say($"{update.Tag}  //  {action}", HubTheme.Warm);
+            }
+            else
+            {
                 Say(update.PageUrl, GuiTheme.Warm);
             }
         }
