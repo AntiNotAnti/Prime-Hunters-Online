@@ -486,7 +486,7 @@ namespace MphRead.Entities
             bool smoothLegacyCamera = false;
             if (!Features.FixedCrosshair && Mods.Render.FrameTiming.HighRefreshPresentation)
             {
-                smoothLegacyCamera = CameraInfo.ModGetDrawPose(presentationAlpha,
+                smoothLegacyCamera = CameraInfo.ModGetFirstPersonDrawPose(presentationAlpha,
                     out drawCameraPosition, out drawCameraTarget,
                     out drawCameraUp, out drawCameraFov);
             }
