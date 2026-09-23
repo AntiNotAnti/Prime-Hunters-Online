@@ -1448,6 +1448,27 @@ namespace MphRead.Droid
                 _input.Apply(controls.RolltLeft, left);
                 _input.Apply(controls.RollRight, right);
 
+                // Samus/Kanden/Spire/Noxus do not use the aim-side drag to turn
+                // while transformed. Treat that drag as a second temporary roll
+                // stick instead. The physical/floating movement stick wins when
+                // both are active, avoiding contradictory directions.
+                if (main.IsAltForm
+                    && Mods.Input.AltFormGesture.UsesRollMovement(main.Hunter)
+                    && dir == TouchControls.Dir.None
+                    && !GameState.DialogPause
+                    && !_controls.IsHeld(TouchAction.WeaponMenu))
+                {
+                    Mods.Input.AltMoveDirection move = _controls.AltMove;
+                    _input.Apply(controls.RollUp,
+                        (move & Mods.Input.AltMoveDirection.Up) != 0);
+                    _input.Apply(controls.RollDown,
+                        (move & Mods.Input.AltMoveDirection.Down) != 0);
+                    _input.Apply(controls.RolltLeft,
+                        (move & Mods.Input.AltMoveDirection.Left) != 0);
+                    _input.Apply(controls.RollRight,
+                        (move & Mods.Input.AltMoveDirection.Right) != 0);
+                }
+
                 // JUMP, or two quick taps on the aiming side, which is how the
                 // DS jumped with a stylus in hand.
                 //
@@ -1480,12 +1501,13 @@ namespace MphRead.Droid
                 // One button on the DS, and the same key here by default:
                 // jumping on foot is boosting in the ball.
                 _input.Apply(controls.Boost, jump);
-                // A quick flick on the aim side also boosts, the way a stylus
-                // flick did on the DS -- see PlayerInput's boost handling for
-                // how this one-shot is consumed. Only the ball boosts, and
-                // telling the controls that is what keeps a fast turn on foot
-                // from being read as a flick.
-                _controls.SwipeBoostEnabled = main.IsAltForm;
+                // Fast gestures layer a one-shot ability on top of the drag:
+                // Samus gets the aimed boost and Spire gets the canonical
+                // AltAttack press. Other transformed hunters keep the drag for
+                // movement/aim without having it swallowed as a flick.
+                _controls.SwipeBoostEnabled = main.IsAltForm
+                    && Mods.Input.AltFormGesture.FlickAction(main.Hunter)
+                        != Mods.Input.AltFlickAction.None;
                 (bool Fired, float X, float Y) swipe = _controls.TakeSwipeBoost();
                 if (swipe.Fired && main.IsAltForm)
                 {

@@ -98,6 +98,9 @@ namespace MphRead.Entities
             }
             else
             {
+                // A pointer gesture made on foot must never survive into a
+                // later morph and fire an ability the player did not just ask for.
+                ModClearAltFlick();
                 ProcessBiped();
             }
         }
@@ -1689,11 +1692,9 @@ namespace MphRead.Entities
                         // native charge-and-release boost. Keep the dedicated Boost bind
                         // too, so existing keyboard/controller layouts remain additive.
                         bool buttonBoost = Controls.Boost.IsDown || Controls.Zoom.IsDown;
-                        // A whip of the mouse or desktop stylus is the same gesture from
-                        // the pointer's end and asks for the boost through the same
-                        // one-shot. See Mods.Input.MouseFlick.
-                        ModCheckMouseFlick(buttonBoost);
-                        // A touch platform's swipe gesture is a flick, not a
+                        // Desktop mouse/pen flick detection already ran in the
+                        // hardware-input pass, before network press history. A
+                        // touch platform's swipe gesture is a flick, not a
                         // hold-and-release: it forces a full charge straight
                         // into the release branch below instead of building
                         // one up over several frames.
@@ -2602,6 +2603,12 @@ namespace MphRead.Entities
                 {
                     // Stylus actions are additive; raw tip capture happens before bindings.
                     ApplyStylusZone(player);
+                    // Pointer-driven rolling and one-shot alt-form flicks must
+                    // land on the canonical controls before NetHooks records
+                    // press history. Android's swipe request is already queued
+                    // by GameView; desktop mouse/pen flicks are detected here.
+                    player.ModApplyStylusAltMove();
+                    player.ModPrepareAltFlick();
                 }
                 player._ignoreClick = false;
                 if (mouseSnap.IsButtonDown(MouseButton.Left) && prevMouseSnap?.IsButtonDown(MouseButton.Left) != true)
