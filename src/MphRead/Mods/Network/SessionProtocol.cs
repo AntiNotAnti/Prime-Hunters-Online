@@ -7,7 +7,10 @@ namespace MphRead.Mods.Network
     // Fixed, bounded control packets. TryRead is the only wire entry point.
     public struct SessionStatePacket
     {
-        public const int Size = 35 + HostRequestPacket.MaxRoomBytes;
+        private const int LegacySize = 35 + HostRequestPacket.MaxRoomBytes;
+        public const int Size = LegacySize + 5;
+        public uint StartGeneration;
+        public StartStage StartStage;
         public ulong AuthorityEpoch;
         public SessionPhase Phase;
         public ServerSessionPolicy Policy;
@@ -24,6 +27,8 @@ namespace MphRead.Mods.Network
         public void Write(Span<byte> dest)
         {
             dest[..Size].Clear();
+            BinaryPrimitives.WriteUInt32LittleEndian(dest[LegacySize..], StartGeneration);
+            dest[LegacySize + 4] = (byte)StartStage;
             dest[0] = (byte)Phase; dest[1] = (byte)Policy;
             BinaryPrimitives.WriteUInt16LittleEndian(dest[2..], Revision);
             BinaryPrimitives.WriteUInt16LittleEndian(dest[4..], MatchId);
@@ -38,13 +43,13 @@ namespace MphRead.Mods.Network
             dest[22] = Match.CustomTeams.TeamB; dest[23] = Match.CustomTeams.TeamC; dest[24] = Match.CustomTeams.TeamD;
             dest[25] = WorldProfile.EntityLayerPlayers; dest[26] = (byte)WorldProfile.Resources;
             NetText.Write(dest.Slice(27, HostRequestPacket.MaxRoomBytes), Match.RoomKey);
-            BinaryPrimitives.WriteUInt64LittleEndian(dest[(Size - 8)..], AuthorityEpoch);
+            BinaryPrimitives.WriteUInt64LittleEndian(dest[(LegacySize - 8)..], AuthorityEpoch);
         }
 
         public static bool TryRead(ReadOnlySpan<byte> src, out SessionStatePacket state)
         {
             state = default;
-            if (src.Length != Size || src[0] > (byte)SessionPhase.PostMatch
+            if (src.Length != Size || src[LegacySize + 4] > (byte)StartStage.InMatch || src[0] > (byte)SessionPhase.PostMatch
                 || src[1] > (byte)ServerSessionPolicy.Lobby || src[7] is < 1 or > 8
                 || (src[6] != byte.MaxValue && src[6] >= src[7])
                 || (src[16] & ~((1 << src[7]) - 1)) != 0 || (src[17] & ~src[16]) != 0
@@ -54,10 +59,12 @@ namespace MphRead.Mods.Network
             if (((ushort)flags & ~255) != 0) return false;
             state = new SessionStatePacket
             {
+                StartGeneration = BinaryPrimitives.ReadUInt32LittleEndian(src[LegacySize..]),
+                StartStage = (StartStage)src[LegacySize + 4],
                 Phase = (SessionPhase)src[0], Policy = (ServerSessionPolicy)src[1],
                 Revision = BinaryPrimitives.ReadUInt16LittleEndian(src[2..]),
                 MatchId = BinaryPrimitives.ReadUInt16LittleEndian(src[4..]),
-                AuthorityEpoch = BinaryPrimitives.ReadUInt64LittleEndian(src[(Size - 8)..]),
+                AuthorityEpoch = BinaryPrimitives.ReadUInt64LittleEndian(src[(LegacySize - 8)..]),
                 OwnerSlot = src[6], MaxPlayers = src[7], RuleFlags = flags,
                 ExpectedParticipants = src[16], LoadedParticipants = src[17],
                 StartCountdownMilliseconds = BinaryPrimitives.ReadUInt16LittleEndian(src[18..]),
@@ -168,29 +175,39 @@ namespace MphRead.Mods.Network
         }
     }
 
-    public readonly record struct MatchLoadedPacket(ushort MatchId)
+    public readonly record struct MatchLoadedPacket(ushort MatchId, ulong AuthorityEpoch = 0, uint StartGeneration = 0)
     {
-        public const int Size = 2;
-        public void Write(Span<byte> dest) => BinaryPrimitives.WriteUInt16LittleEndian(dest, MatchId);
+        public const int Size = 14;
+        public MatchStartIdentity Identity => new(MatchId, AuthorityEpoch, StartGeneration);
+        public void Write(Span<byte> dest)
+        {
+            BinaryPrimitives.WriteUInt16LittleEndian(dest, MatchId);
+            BinaryPrimitives.WriteUInt64LittleEndian(dest[2..], AuthorityEpoch);
+            BinaryPrimitives.WriteUInt32LittleEndian(dest[10..], StartGeneration);
+        }
         public static bool TryRead(ReadOnlySpan<byte> src, out MatchLoadedPacket packet)
         {
-            packet = src.Length == Size ? new(BinaryPrimitives.ReadUInt16LittleEndian(src)) : default;
+            packet = src.Length == Size ? new(BinaryPrimitives.ReadUInt16LittleEndian(src),
+                BinaryPrimitives.ReadUInt64LittleEndian(src[2..]), BinaryPrimitives.ReadUInt32LittleEndian(src[10..])) : default;
             return src.Length == Size;
         }
     }
 
-    public readonly record struct MatchLoadFailedPacket(ushort MatchId, string Reason)
+    public readonly record struct MatchLoadFailedPacket(ushort MatchId, string Reason, ulong AuthorityEpoch = 0, uint StartGeneration = 0)
     {
-        public const int Size = 98;
+        public const int Size = MatchLoadedPacket.Size + 96;
+        public MatchStartIdentity Identity => new(MatchId, AuthorityEpoch, StartGeneration);
         public void Write(Span<byte> dest)
         {
-            BinaryPrimitives.WriteUInt16LittleEndian(dest, MatchId);
-            NetText.Write(dest.Slice(2, 96), Reason);
+            new MatchLoadedPacket(MatchId, AuthorityEpoch, StartGeneration).Write(dest);
+            NetText.Write(dest.Slice(MatchLoadedPacket.Size, 96), Reason);
         }
         public static bool TryRead(ReadOnlySpan<byte> src, out MatchLoadFailedPacket packet)
         {
-            packet = src.Length == Size ? new(BinaryPrimitives.ReadUInt16LittleEndian(src), NetText.Read(src.Slice(2, 96))) : default;
-            return src.Length == Size;
+            packet = default;
+            if (src.Length != Size || !MatchLoadedPacket.TryRead(src[..MatchLoadedPacket.Size], out var identity)) return false;
+            packet = new(identity.MatchId, NetText.Read(src.Slice(MatchLoadedPacket.Size, 96)), identity.AuthorityEpoch, identity.StartGeneration);
+            return true;
         }
     }
 }

@@ -13,7 +13,8 @@ old IDs at a reused endpoint are rejected before ACK processing. ClientId alone
 no longer silently migrates a connection to another endpoint. A rejoin requires
 new admission; it does not authenticate an account or transport encryption.
 
-Max datagram remains 1232 bytes; max established payload is 1208. Replay stores
+Max datagram is 1472 bytes (IPv4 Ethernet UDP); max established payload is 1448.
+The old 1232-byte budget could not hold eight players plus 56 health spawns. Replay stores
 application packets, not live UDP envelopes. Replay-world fragmentation and
 snapshot tails respect the new payload budget. Historical v16 baselines remain
 in tools/nettest/baselines; protocol-bound replay compatibility rules are retained.

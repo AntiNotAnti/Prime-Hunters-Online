@@ -53,7 +53,7 @@ namespace MphRead.Mods.Network
 
         private static void ProtocolChecks()
         {
-            Check(NetConfig.ProtocolVersion == 16 && (byte)PacketType.SessionState == 36
+            Check(NetConfig.ProtocolVersion == 17 && (byte)PacketType.SessionState == 36
                 && (byte)PacketType.MapOffer == 32 && (byte)PacketType.MapDone == 35,
                 "combined protocol and non-overlapping map/lobby IDs");
             var state = new SessionStatePacket { Phase = SessionPhase.Starting, Policy = ServerSessionPolicy.Lobby,
@@ -139,7 +139,7 @@ namespace MphRead.Mods.Network
                 bytes[5] = (byte)(NetConfig.ProtocolVersion - 1);
                 File.WriteAllBytes(path, bytes);
                 Check(!DemoPlayback.Join(path) && !DemoPlayback.IsActive
-                    && DemoPlayback.LastError?.Contains("requires protocol") == true,
+                    && DemoPlayback.LastResult == ReplayOpenResult.ProtocolMismatch,
                     "incompatible demo fails before scene or session construction");
                 using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
                 Check(exclusive.Length >= DemoFile.HeaderSize, "rejected demo releases its file handle");
@@ -256,7 +256,7 @@ namespace MphRead.Mods.Network
                 Send(PacketType.Hello, bytes);
             }
             public void Identify(byte hunter = 0)
-            { byte[] bytes = new byte[8]; bytes[0] = hunter; NetText.Write(bytes.AsSpan(2), $"Test{Id}"); Send(PacketType.Identify, bytes); }
+            { byte[] bytes = new byte[2 + RosterPacket.MaxNameBytes]; bytes[0] = hunter; NetText.Write(bytes.AsSpan(2), $"Test{Id}"); Send(PacketType.Identify, bytes); }
             public void Send(PacketType type, byte[] bytes) => Transport.Send(Server, type, bytes);
             public LobbyCommandPacket Command(LobbyCommandType type, bool ready = false, SessionStatePacket? config = null,
                 byte target = 255, sbyte team = -1, ushort? revision = null)
@@ -268,7 +268,7 @@ namespace MphRead.Mods.Network
             public void Resend(LobbyCommandPacket command)
             { byte[] bytes = new byte[LobbyCommandPacket.Size]; command.Write(bytes); Send(PacketType.LobbyCommand, bytes); }
             public void Loaded(ushort? id = null)
-            { byte[] bytes = new byte[2]; new MatchLoadedPacket(id ?? State!.Value.MatchId).Write(bytes); Send(PacketType.MatchLoaded, bytes); }
+            { byte[] bytes = new byte[MatchLoadedPacket.Size]; new MatchLoadedPacket(id ?? State!.Value.MatchId, State!.Value.AuthorityEpoch, State.Value.StartGeneration).Write(bytes); Send(PacketType.MatchLoaded, bytes); }
             public void ReadyResults()
             { var intent = new IntentPacket { Frame = ++_frame, Buttons = IntentButtons.ReadyState,
                 MatchId = State!.Value.MatchId, AuthorityEpoch = State.Value.AuthorityEpoch,
@@ -296,7 +296,7 @@ namespace MphRead.Mods.Network
                         && MapChoicesPacket.Read(packet.Payload).Open != 0) OpenMapChoices++;
                 }
             }
-            public void Rebind() { Transport.Dispose(); Transport = new NetTransport(0); Transport.AnswerPingsImmediately(); Hello(); }
+            public void Rebind() { Hello(); }
             public void Dispose() { Send(PacketType.Bye, Array.Empty<byte>()); Transport.Dispose(); }
         }
 
@@ -310,6 +310,7 @@ namespace MphRead.Mods.Network
             {
                 Server = new DedicatedServer(0, 8, MapRotation.SingleMatch(Rooms()[0], GameMode.Battle, 0, 0))
                     { SessionPolicy = policy, OwnerToken = token, RunsTheMatch = false };
+                Server.SetSessionOptions(requireReady: true, allowJoinInProgress: true);
                 _thread = new Thread(() => { try { Server.Run(); } catch (Exception ex) { _error = ex; } }) { IsBackground = true };
                 _thread.Start(); Wait(() => Server.Listening, "server listening");
             }
@@ -388,8 +389,8 @@ namespace MphRead.Mods.Network
             rig.ReadyAll();
             var start = a.Command(LobbyCommandType.StartMatch); rig.Expect(a, start, LobbyResultCode.Ok);
             Check(a.State.Value.Phase == SessionPhase.Starting, "start enters barrier");
-            Check(a.State.Value.StartCountdownMilliseconds is > 0 and <= 1500,
-                "start publishes overlapping countdown");
+            Check(a.State.Value.StartCountdownMilliseconds == 0,
+                "loading waits before starting countdown");
             a.Loaded((ushort)(a.State.Value.MatchId - 1));
             a.Loaded(); rig.Wait(() => a.State.Value.LoadedParticipants == (1 << a.Slot), "one participant loaded");
             Check(a.State.Value.Phase == SessionPhase.Starting, "one loaded cannot release barrier");
@@ -399,7 +400,7 @@ namespace MphRead.Mods.Network
             Client late = rig.Add(3); Check((late.State!.Value.ExpectedParticipants & (1 << late.Slot)) == 0, "late join excluded from barrier");
             b.Loaded();
             rig.Wait(() => a.State.Value.Phase == SessionPhase.InMatch,
-                "barrier releases when loads and overlapping countdown are complete");
+                "barrier releases after ready countdown");
             b.EndMatch();
             rig.Wait(() => a.State.Value.Phase == SessionPhase.PostMatch, "results entered");
             Check(rig.Clients.All(c => c.OpenMapChoices == 0),
@@ -419,7 +420,7 @@ namespace MphRead.Mods.Network
             Check(a.State.Value.MatchId != firstMatch, "new match id on same map");
             a.Dispose(); rig.Clients.Remove(a);
             rig.Wait(() => b.State!.Value.OwnerSlot == b.Slot, "oldest peer becomes owner");
-            b.Rebind(); rig.Stable(); Check(b.Slot == slotB && b.State.Value.OwnerSlot == slotB, "owner rebind keeps identity and slot");
+            b.Rebind(); rig.Stable(); Check(b.Slot == slotB && b.State.Value.OwnerSlot == slotB, "same-endpoint admission refresh keeps identity and slot");
         }
 
         private static void ReadyOptionalScenario()
@@ -539,8 +540,9 @@ namespace MphRead.Mods.Network
             config = owner.State.Value; config.Match = config.Match with { Format = MatchFormat.TwoVsTwoVsTwoVsTwo };
             rig.Expect(owner, owner.Command(LobbyCommandType.UpdateMatch, config: config), LobbyResultCode.Ok);
             rig.Expect(owner, owner.Command(LobbyCommandType.StartMatch), LobbyResultCode.Ok);
+            foreach (Client ready in rig.Clients.Take(7)) ready.Loaded();
             rig.Wait(() => owner.State.Value.Phase == SessionPhase.InMatch,
-                "load timeout releases barrier after countdown", 22000);
+                "load timeout removes missing participant before countdown", 22000);
         }
 
         private static void CustomScenario()
@@ -611,8 +613,8 @@ namespace MphRead.Mods.Network
             rig.Wait(() => rig.Clients[7].Chats.Any(c => c.Text == "A only"), "team chat reaches non-parity ally");
             Check(rig.Clients.Skip(1).Take(6).All(c => c.Chats.All(chat => chat.Text != "A only")), "team chat excluded opposing teams");
             Client rebound = rig.Clients[5]; ushort beforeRebind = owner.State!.Value.Revision; rebound.Rebind();
-            rig.Wait(() => owner.State!.Value.Revision != beforeRebind, "rebind advances roster revision"); rig.Stable();
-            Check(owner.Roster.Teams[5] == 2, "reconnect preserves explicit team");
+            rig.Wait(() => owner.State!.Value.Revision != beforeRebind, "admission refresh advances roster revision"); rig.Stable();
+            Check(owner.Roster.Teams[5] == 2, "same connection preserves explicit team");
             rig.Expect(owner, owner.Command(LobbyCommandType.StartMatch), LobbyResultCode.Ok);
             foreach (Client client in rig.Clients) client.Loaded();
             rig.Wait(() => owner.State.Value.Phase == SessionPhase.InMatch, "four-team barrier starts");
@@ -625,7 +627,9 @@ namespace MphRead.Mods.Network
             ushort match = client.State.Value.MatchId;
             client.EndMatch();
             rig.Wait(() => client.State.Value.Phase == SessionPhase.PostMatch, "continuous results"); client.ReadyResults();
-            rig.Wait(() => client.State.Value.Phase == SessionPhase.InMatch && client.State.Value.MatchId != match, "continuous rotates automatically", 18000);
+            rig.Wait(() => client.State.Value.Phase == SessionPhase.Starting && client.State.Value.MatchId != match, "continuous rotates into load barrier", 18000);
+            client.Loaded();
+            rig.Wait(() => client.State.Value.Phase == SessionPhase.InMatch, "continuous starts after load countdown");
         }
 
         private static void ClientSessionScenario()
@@ -661,9 +665,9 @@ namespace MphRead.Mods.Network
             Check(NetSession.FreezeGameplay, "gameplay frozen before loaded");
             Check(NetSession.IsStarting && NetSession.ConnectionPort == port,
                 "lobby connection survives the load barrier");
-            PumpUntil(() => NetSession.StartCountdownRemainingSeconds > 0,
-                "real start publishes overlapping countdown");
+            Check(NetSession.StartCountdownRemainingSeconds == 0, "countdown waits for local readiness");
             NetSession.MarkMatchLoaded();
+            PumpUntil(() => NetSession.StartCountdownRemainingSeconds > 0, "ready client receives countdown");
             PumpUntil(() => NetSession.IsPlaying, "real load ack starts match");
             Check(!NetSession.FreezeGameplay, "gameplay released after barrier");
             NetSession.SendMatchEnd();

@@ -339,7 +339,7 @@ namespace MphRead.Mods.Network
                             // processing. Duplicate entries share only immutable bytes.
                             byte[] heldCopy = data.AsSpan(0, length).ToArray();
                             lock (_heldLock) _heldIn.Enqueue(NowMilliseconds,
-                                new ReceivedPacket(sender, heldCopy, heldCopy.Length));
+                                new ReceivedPacket(sender, heldCopy, heldCopy.Length), lossOverride: NetLag.LossPercent / 100);
                             continue;
                         }
                         handedOff = AcceptDatagram(sender, data, length);
@@ -548,7 +548,7 @@ namespace MphRead.Mods.Network
             {
                 byte[] copy = buffer.ToArray();
                 lock (_heldLock) _heldOut.Enqueue(NowMilliseconds, (target, copy, copy.Length),
-                    extraHoldTicks * 1000.0 / Stopwatch.Frequency);
+                    extraHoldTicks * 1000.0 / Stopwatch.Frequency, lossOverride: NetLag.LossPercent / 100);
                 return;
             }
             SendNow(target, buffer);

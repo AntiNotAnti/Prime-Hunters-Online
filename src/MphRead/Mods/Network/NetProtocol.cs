@@ -1994,7 +1994,7 @@ namespace MphRead.Mods.Network
         // Keep application datagrams within the IPv6 minimum-MTU budget after
         // UDP/IP headers. Compact PlayerState leaves worst-case 8-player
         // snapshots comfortably below this bound.
-        public const int MaxPacketSize = 1232;
+        public const int MaxPacketSize = 1472; // IPv4 Ethernet UDP; full eight-player + health snapshot fits.
         public const int MaxPayloadSize = MaxPacketSize - NetHeader.Size;
         /// <summary>
         /// Bumped when the wire format changes in a way an older build would

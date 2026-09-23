@@ -22,7 +22,7 @@ namespace MphRead.Mods.Network
             IsStarting ? Math.Max(0, _startCountdownEndsAt - Clock) : 0;
         public static bool CanEditLobby => IsInLobby && LocalIsLobbyOwner;
         public static bool PersistentLobby => ServerSession?.Policy == ServerSessionPolicy.Lobby;
-        public static bool FreezeGameplay => PersistentLobby && SessionPhase is SessionPhase.Lobby or SessionPhase.Starting;
+        public static bool FreezeGameplay => SessionPhase is SessionPhase.Lobby or SessionPhase.Starting;
         public static bool ShouldLoadMatch => ServerSession is { } session
             && (session.Phase == SessionPhase.InMatch || (session.Phase == SessionPhase.Starting
                 && LocalSlot >= 0 && (session.ExpectedParticipants & (1 << LocalSlot)) != 0));
@@ -32,10 +32,10 @@ namespace MphRead.Mods.Network
         public static bool SessionTimedOut => IsClient && !DemoPlayback.IsActive && _hostEndPoint != null
             && Clock - _lastServerPacket > NetConfig.TimeoutSeconds;
         public static double Clock => Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
-        private const double LoadAckRetrySeconds = 0.10;
         private static Guid _ownerToken;
         private static uint _nextCommandId;
         private static ushort? _loadedMatch;
+        private static MatchStartIdentity? _loadedStart;
         private static ushort _rosterSessionRevision;
         private static double _lastLoadAck, _lastIdentity, _startCountdownEndsAt;
         private sealed class PendingLobbyCommand
@@ -86,9 +86,7 @@ namespace MphRead.Mods.Network
                 pending.Attempts++; pending.SentAt = now;
                 SendLobbyPacket(pending.Packet);
             }
-            if (_loadedMatch == ServerSession?.MatchId && IsStarting
-                && now - _lastLoadAck >= LoadAckRetrySeconds)
-                MarkMatchLoaded();
+
             // Identity updates are also eventually reliable, without a second identity protocol.
             if (now - _lastIdentity >= 1)
             { _lastIdentity = now; SendIdentify(); }
@@ -112,7 +110,7 @@ namespace MphRead.Mods.Network
             }
             bool newMatch = ServerSession?.MatchId != state.MatchId;
             bool returningToLobby = state.Phase == SessionPhase.Lobby && !IsInLobby;
-            if (state.Policy == ServerSessionPolicy.Lobby && (newMatch || returningToLobby))
+            if (newMatch || returningToLobby)
             {
                 // A direct PostMatch -> Starting transition keeps the scene alive long
                 // enough for NetRoomChange to compare the old loaded match id with the
@@ -152,7 +150,7 @@ namespace MphRead.Mods.Network
                         | (state.Match.ShadowFreeze ? 0 : MatchStatePacket.FlagNoShadowFreeze)
                         | MatchStatePacket.RuleFlags(1, state.Match.AffinityWeapons)) }, rotated: false);
             }
-            if (newMatch) _loadedMatch = null;
+            if (newMatch || _loadedStart?.StartGeneration != state.StartGeneration) { _loadedMatch = null; _loadedStart = null; }
         }
 
         private static void ApplyLobbyResult(LobbyCommandResultPacket result)
@@ -163,25 +161,27 @@ namespace MphRead.Mods.Network
 
         public static void MarkMatchLoaded()
         {
-            if (!PersistentLobby || ServerSession == null || _hostEndPoint == null) return;
-            if (_loadedMatch == ServerSession.Value.MatchId
-                && Clock - _lastLoadAck < LoadAckRetrySeconds) return;
-            _loadedMatch = ServerSession.Value.MatchId;
+            if (ServerSession == null || _hostEndPoint == null) return;
+            var state = ServerSession.Value;
+            var identity = new MatchStartIdentity(state.MatchId, state.AuthorityEpoch, state.StartGeneration);
+            if (_loadedStart == identity) return;
+            _loadedStart = identity; _loadedMatch = state.MatchId;
             _lastLoadAck = Clock;
-            new MatchLoadedPacket(_loadedMatch.Value).Write(_scratch);
+            new MatchLoadedPacket(state.MatchId, state.AuthorityEpoch, state.StartGeneration).Write(_scratch);
             _transport?.Send(_hostEndPoint, PacketType.MatchLoaded, _scratch.AsSpan(0, MatchLoadedPacket.Size));
         }
 
         public static void ReportMatchLoadFailed(string reason)
         {
             if (ServerSession == null || _hostEndPoint == null) return;
-            new MatchLoadFailedPacket(ServerSession.Value.MatchId, reason).Write(_scratch);
+            new MatchLoadFailedPacket(ServerSession.Value.MatchId, reason, ServerSession.Value.AuthorityEpoch, ServerSession.Value.StartGeneration).Write(_scratch);
             _transport?.Send(_hostEndPoint, PacketType.MatchLoadFailed, _scratch.AsSpan(0, MatchLoadFailedPacket.Size));
         }
 
         // The socket, local slot, identity, authoritative roster and lobby state survive this reset.
         public static void ResetMatchState(bool preserveRoomChange = false)
         {
+            NetTelemetry.NewMatch();
             NetHealthSync.BeginRoom();
             NetPlayerSetup.Reset(); SpectatorMode.Reset(); NetMatchSync.Reset();
             NetSlotManager.Reset(); NetDamage.Reset(resetSessionTotals: false);
@@ -198,7 +198,7 @@ namespace MphRead.Mods.Network
 
         private static void ResetLobbySession()
         {
-            ServerSession = null; _pendingLobby.Clear(); _loadedMatch = null;
+            ServerSession = null; _pendingLobby.Clear(); _loadedMatch = null; _loadedStart = null;
             _rosterRevision = 0; _hasRoster = false; _ownerToken = Guid.Empty;
             _rosterSessionRevision = 0;
             LobbyMessage = ""; _lastLoadAck = _lastIdentity = _startCountdownEndsAt = 0;

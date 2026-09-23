@@ -24,9 +24,9 @@ namespace MphRead.Mods.Network
         // may terminate the server process itself. An ordinary first-player owner on
         // a persistent dedicated server may close/reset the current lobby, not the daemon.
         private uint _processOwnerClientId;
-        private const double StartCountdownSeconds = 1.5;
-        private byte _expectedLoadedSlots, _loadedSlots;
-        private double _startDeadline, _startCountdownDeadline;
+        private readonly NetMatchStart _start = new();
+        private bool _checkingLoadBarrier;
+        private MatchStartIdentity CurrentStartIdentity => new(_matchId, _authorityEpoch, _start.Identity.StartGeneration);
 
         private MatchDefinition CurrentDefinition => SessionPolicy == ServerSessionPolicy.Lobby
             ? (_phase == SessionPhase.Lobby ? _lobbyMatch : _frozenMatch)
@@ -72,10 +72,9 @@ namespace MphRead.Mods.Network
             RuleFlags = CurrentDefinition.Rules | (RequireReady ? SessionRules.RequireReady : 0)
                 | (AllowJoinInProgress ? SessionRules.AllowJoinInProgress : 0)
                 | (LockTeams ? SessionRules.LockTeams : 0),
-            ExpectedParticipants = _expectedLoadedSlots, LoadedParticipants = _loadedSlots,
-            StartCountdownMilliseconds = _phase == SessionPhase.Starting && _startCountdownDeadline > _now
-                ? (ushort)Math.Clamp((int)Math.Ceiling((_startCountdownDeadline - _now) * 1000), 1, ushort.MaxValue)
-                : (ushort)0
+            ExpectedParticipants = _start.Expected, LoadedParticipants = _start.Loaded,
+            StartGeneration = _start.Identity.StartGeneration, StartStage = _start.Stage,
+            StartCountdownMilliseconds = _start.RemainingMilliseconds(_now)
         };
 
         private void BroadcastSessionState(int copies = 1)
@@ -268,20 +267,16 @@ namespace MphRead.Mods.Network
             foreach (Peer connected in _peers)
                 connected.LastIntentFrame = 0;
             _matchEndedAt = -1;
-            _expectedLoadedSlots = 0;
-            _loadedSlots = 0;
-            // The visible countdown overlaps room loading. Gameplay still
-            // releases only after BOTH the countdown and load barrier finish.
-            _startCountdownDeadline = now + StartCountdownSeconds;
+            byte participants = 0;
             foreach (Peer participant in _peers)
-                _expectedLoadedSlots |= (byte)(1 << participant.SlotIndex);
+            { participants |= (byte)(1 << participant.SlotIndex); participant.MatchReady = false; }
 
             // Publish Starting before the server's own synchronous room build.
             // Clients can now load in parallel with the authority instead of
             // paying server load time and client load time back-to-back.
             double buildStarted = NetSession.Clock;
             _matchId = NetLifecycleTracker.Next(_matchId);
-            _startDeadline = now + 15;
+            _start.Begin(_matchId, _authorityEpoch, participants);
             SetPhase(SessionPhase.Starting);
             // StartSimulation is intentionally synchronous and can take several
             // seconds on a cold server. A client that lost the one Starting
@@ -289,7 +284,7 @@ namespace MphRead.Mods.Network
             // loading after the authority finished. Redundant tiny control
             // packets make the parallel-load handoff robust without moving the
             // engine onto a second thread.
-            BroadcastSessionState(copies: 2);
+            BroadcastSessionState();
             try
             {
                 StartSimulation();
@@ -309,13 +304,15 @@ namespace MphRead.Mods.Network
             // Preserve the full client grace period even when the authority's
             // own cold load was expensive.
             double buildSeconds = NetSession.Clock - buildStarted;
-            _startDeadline += buildSeconds;
+
             double afterBuild = now + buildSeconds;
+            _start.AuthorityReady(afterBuild);
+            TouchLobbyRevision("authority ready; waiting for loaded participants");
             _now = Math.Max(_now, afterBuild);
             SyncSimulationState(afterBuild);
             CheckLoadBarrier(afterBuild);
             Log($"[lobby] authority loaded {_frozenMatch.RoomKey} in {buildSeconds:0.00}s; "
-                + $"waiting for slots mask {_expectedLoadedSlots:X2}");
+                + $"waiting for slots mask {_start.Expected:X2}");
             return true;
         }
 
@@ -327,10 +324,7 @@ namespace MphRead.Mods.Network
             _lobbyMatch = match;
             if (RunsTheMatch) Mods.RoomPrewarm.Begin(_lobbyMatch.RoomKey);
             _matchEndedAt = -1;
-            _expectedLoadedSlots = 0;
-            _loadedSlots = 0;
-            _startDeadline = 0;
-            _startCountdownDeadline = 0;
+            _start.Reset();
             CloseBallot();
             BroadcastMapChoices();
             InvalidateLobbyReady();
@@ -368,10 +362,7 @@ namespace MphRead.Mods.Network
             _authority = null;
             _lobbyOwnerClientId = 0;
             _processOwnerClientId = 0;
-            _expectedLoadedSlots = 0;
-            _loadedSlots = 0;
-            _startDeadline = 0;
-            _startCountdownDeadline = 0;
+            _start.Reset();
             _matchEndedAt = -1;
             _snapshotSeen = false;
             Array.Clear(_slotLives);
@@ -396,42 +387,55 @@ namespace MphRead.Mods.Network
         private void HandleMatchLoaded(ReceivedPacket packet, double now)
         {
             Peer? peer = Find(packet.Sender);
-            if (peer == null || !MatchLoadedPacket.TryRead(packet.Payload, out var loaded) || loaded.MatchId != _matchId) return;
+            if (peer == null || !MatchLoadedPacket.TryRead(packet.Payload, out var loaded)
+                || loaded.Identity != CurrentStartIdentity) return;
             peer.LastSeen = now;
-            byte mask = (byte)(1 << peer.SlotIndex);
-            if (_phase != SessionPhase.Starting || (_expectedLoadedSlots & mask) == 0 || (_loadedSlots & mask) != 0) return;
-            _loadedSlots |= mask;
+            if (_phase == SessionPhase.InMatch)
+            {
+                // Individual late join readiness never changes the global barrier.
+                peer.MatchReady = true;
+                if (_lastSnapshotLength != 0) _transport?.Send(peer.EndPoint, PacketType.Snapshot,
+                    _lastSnapshot.AsSpan(0, _lastSnapshotLength));
+                return;
+            }
+            if (_phase != SessionPhase.Starting || !_start.MarkLoaded(peer.SlotIndex, loaded.Identity)) return;
+            peer.MatchReady = true;
             TouchLobbyRevision($"slot {peer.SlotIndex} loaded match {_matchId}");
             CheckLoadBarrier(now);
         }
 
         private void CheckLoadBarrier(double now)
         {
-            if (_phase != SessionPhase.Starting) return;
-
-            bool allLoaded = (_loadedSlots & _expectedLoadedSlots) == _expectedLoadedSlots;
-            bool loadTimedOut = !allLoaded && now >= _startDeadline;
-            bool countdownDone = _startCountdownDeadline <= 0 || now >= _startCountdownDeadline;
-            if (!countdownDone || (!allLoaded && !loadTimedOut))
-                return;
-
-            Log(allLoaded
-                ? "[lobby] all clients loaded; releasing synchronized start"
-                : "[lobby] load timeout; releasing start, late clients may join in progress");
-            _startCountdownDeadline = 0;
-            _matchStarted = now;
-            SetPhase(SessionPhase.InMatch);
-            // The phase flip is the gate clients use to reveal and unfreeze
-            // gameplay. Redundancy keeps one lost control packet from putting
-            // a player a full periodic-broadcast tick behind.
-            BroadcastSessionState(copies: 2);
-            BroadcastMatchState(now);
+            if (_phase != SessionPhase.Starting || _checkingLoadBarrier) return;
+            _checkingLoadBarrier = true;
+            try
+            {
+                byte missing = _start.MissingAtDeadline(now);
+                // Timeout resolves only missing participants through normal removal;
+                // none remain counted as a participant on an unbuilt scene.
+                for (int i = _peers.Count - 1; i >= 0; i--)
+                    if ((missing & (1 << _peers[i].SlotIndex)) != 0)
+                    {
+                        SendRefusal(_peers[i].EndPoint, RefusedPacket.ReasonKicked);
+                        Remove(_peers[i], "match load timeout");
+                    }
+                if (_phase != SessionPhase.Starting || !_start.Advance(now)) return;
+                if (_start.Stage == StartStage.Countdown)
+                { TouchLobbyRevision("all participants ready; countdown started"); return; }
+                if (_start.Stage != StartStage.InMatch) return;
+                _matchStarted = now;
+                SetPhase(SessionPhase.InMatch);
+                BroadcastSessionState();
+                BroadcastMatchState(now);
+            }
+            finally { _checkingLoadBarrier = false; }
         }
 
         private void HandleMatchLoadFailed(ReceivedPacket packet)
         {
             Peer? peer = Find(packet.Sender);
-            if (peer == null || !MatchLoadFailedPacket.TryRead(packet.Payload, out var failed) || failed.MatchId != _matchId) return;
+            if (peer == null || !MatchLoadFailedPacket.TryRead(packet.Payload, out var failed)
+                || failed.Identity != CurrentStartIdentity) return;
             Remove(peer, $"could not load match: {failed.Reason}");
         }
 
@@ -446,8 +450,7 @@ namespace MphRead.Mods.Network
 
         private void LobbyPeerRemoved(Peer peer)
         {
-            _expectedLoadedSlots &= (byte)~(1 << peer.SlotIndex);
-            _loadedSlots &= (byte)~(1 << peer.SlotIndex);
+            _start.Remove(peer.SlotIndex);
 
             bool processOwned = _processOwnerClientId != 0;
             bool processOwnerLeft = peer.ClientId != 0
@@ -479,10 +482,7 @@ namespace MphRead.Mods.Network
                     CancelMapVote(_now);
                     CloseBallot();
                     _rotation.ClearPending();
-                    _expectedLoadedSlots = 0;
-                    _loadedSlots = 0;
-                    _startDeadline = 0;
-                    _startCountdownDeadline = 0;
+                    _start.Reset();
                     _matchEndedAt = -1;
                     _snapshotSeen = false;
                     Array.Clear(_slotLives);

@@ -75,3 +75,15 @@ background work follows simulation, and peer token buckets isolate intent floods
 `--queue-budget` covers a 10,000-packet burst and one abusive plus seven healthy
 senders. Fault injection operates before transport ACK/dedup, with bounded
 promotion. No unbounded receive drain remains in live transports.
+
+## P2-A
+
+A server-owned NetMatchStart freezes the participant set and fences load reports
+by MatchId/AuthorityEpoch/StartGeneration. Preparation, loading, countdown and
+InMatch are explicit. Missing participants are removed rather than admitted on a
+black screen; late joins use individual readiness. Continuous rotation shares the
+barrier. The broader existing lobby suite is now invoked by `--load-lifecycle`.
+It exposed stale fixture assumptions about ready defaults, truncated test names,
+replay error wording and the old packet budget. Fixtures now assert current behavior.
+The full eight-player/56-health-spawn snapshot requires 1418 bytes with the transport
+envelope, so protocol 17 uses the IPv4 Ethernet UDP limit of 1472.

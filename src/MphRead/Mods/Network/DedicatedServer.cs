@@ -72,6 +72,7 @@ namespace MphRead.Mods.Network
             /// match that is ending and not the one before it.
             /// </summary>
             public bool PostMatchReady;
+            public bool MatchReady;
             public bool LobbyReady;
             public sbyte TeamIndex = -1;
             public readonly Dictionary<uint, LobbyCommandResultPacket> Commands = new();
@@ -682,47 +683,13 @@ namespace MphRead.Mods.Network
         {
             ServerReplayRecorder.Stop(matchEnded: true);
             RotationEntry entry = _rotation.Advance();
-            _phase = SessionPhase.InMatch;
             NormalizeTeams();
-            _matchStarted = now;
-            _matchEndedAt = -1;
-            _matchId = NetLifecycleTracker.Next(_matchId);
-            _snapshotSeen = false;
-            Array.Clear(_slotLives);
-            foreach (Peer connected in _peers) connected.LastIntentFrame = 0;
-            TouchLobbyRevision("rotation advanced");
-            // Votes belong to one match. No prompt, result or cooldown may
-            // leak into the next room.
             CancelMapVote(now);
-            // Ready describes the match that just ended. Carried into the next
-            // one it would rotate the following map the moment it finished.
-            for (int i = 0; i < _peers.Count; i++)
-            {
-                _peers[i].PostMatchReady = false;
-            }
-            // The ballot has been acted on; there is no next map to choose
-            // again until this one is over. Closed *after* Advance has taken
-            // what the picks made pending, which is the line above it.
-            CloseBallot();
-            BroadcastMapChoices();
+            foreach (Peer peer in _peers) peer.PostMatchReady = false;
+            CloseBallot(); BroadcastMapChoices();
             Log($"rotating to {entry}");
-            MatchStatePacket state = BuildState(now);
-            // The simulation follows a rotation the way every client does:
-            // NetRoomChange watches the match state and loads the new room as
-            // a *transition* rather than rebuilding the scene. Reusing that
-            // path rather than restarting the sim is deliberate -- it is the
-            // one that carries the fixes for the intro camera sequence and the
-            // settling window, and a second path here would have neither.
-            if (_sim != null)
-            {
-                NetSession.ApplyMatchState(state, rotated: true);
-            }
-            state.Write(_scratch);
-            for (int i = 0; i < _peers.Count; i++)
-            {
-                _transport?.Send(_peers[i].EndPoint, PacketType.MapChange,
-                    _scratch.AsSpan(0, MatchStatePacket.Size));
-            }
+            if (!BeginLobbyMatch(CurrentDefinition, now, out string reason))
+                Log($"rotation could not start: {reason}");
         }
 
         private MatchStatePacket BuildState(double now)
@@ -2014,7 +1981,7 @@ namespace MphRead.Mods.Network
             {
                 return;
             }
-            if (_phase == SessionPhase.Starting && (_expectedLoadedSlots & (1 << peer.SlotIndex)) != 0) return;
+            if (_phase == SessionPhase.Starting && (_start.Expected & (1 << peer.SlotIndex)) != 0) return;
             byte hunter = packet.Payload[0];
             byte color = packet.Payload[1];
             if (hunter >= Launcher.Hunters.Playable || color > 3) return;
@@ -2197,7 +2164,7 @@ namespace MphRead.Mods.Network
             // No authority and not simulating means nobody would act on this.
             // When this server is the authority there is no client to wait
             // for, which is the whole point.
-            if (peer == null || (_authority == null && !Simulating))
+            if (peer == null || RunsTheMatch && !peer.MatchReady || (_authority == null && !Simulating))
             {
                 return;
             }
@@ -2373,6 +2340,9 @@ namespace MphRead.Mods.Network
             // Promote rather than end the session: the remaining players keep
             // playing, and the new authority's snapshots simply take over.
             _authority = _peers.Count > 0 ? _peers[0] : null;
+            // A load acknowledgement belongs to one authority incarnation.
+            // Cancel an in-flight legacy start rather than mixing epochs.
+            if (_phase == SessionPhase.Starting) EnterLobby(_frozenMatch);
             _authorityEpoch++;
             _snapshotSeen = false;
             BroadcastMatchState(_now);

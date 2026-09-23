@@ -9,7 +9,8 @@ namespace MphRead.Mods.Multiplayer
         public static void Run(Action<bool, string> check)
         {
             // These checks never initialize/render an entity or process a world frame.
-            PlayerEntity.Construct(null!);
+            var scene = new Scene(default, null!, null!, _ => { }, () => { }, initializeRuntime: false);
+            PlayerEntity.Construct(scene);
             try
             {
                 GameState.Teams = true;
