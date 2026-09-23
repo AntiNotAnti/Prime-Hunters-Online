@@ -121,6 +121,7 @@ namespace MphRead.Droid
                 return Task.FromResult(0);
             }
             _renderingPreviews = true;
+            _stopPreviews = false;
             void Report(string line) => RunOnUiThread(() => report(line));
             // A preview run is every core the device has, in worker processes
             // with GL contexts of their own; the front screen's moving layer
@@ -167,6 +168,7 @@ namespace MphRead.Droid
                 finally
                 {
                     _renderingPreviews = false;
+                    _stopPreviews = false;
                     RunOnUiThread(() =>
                     {
                         if (!InMatch)
