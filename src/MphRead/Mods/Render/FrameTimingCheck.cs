@@ -107,6 +107,7 @@ namespace MphRead.Mods.Render
             failures += RunStallCase() ? 0 : 1;
             failures += RunPresentationAlphaCase() ? 0 : 1;
             failures += RunFirstPersonPresentationCase() ? 0 : 1;
+            failures += RunResponsiveCameraTranslationCase() ? 0 : 1;
             failures += RunLockjawNoiseCases();
             Console.WriteLine(failures == 0
                 ? "FRAMETIMING all cases pass"
@@ -220,6 +221,76 @@ namespace MphRead.Mods.Render
                 + $" | offset error {(mappedOffset - expectedOffset).Length:0.000000}"
                 + $" | facing error {(mappedFacing - toFacing).Length:0.000000}");
             return ok;
+        }
+
+        /// <summary>
+        /// Modern first-person translation should fill the fractional gap between
+        /// 60 Hz simulation steps without adding a one-tick interpolation delay.
+        /// Stable motion projects forward, deceleration reduces that projection,
+        /// reversal stops it, discontinuities rebase, and 60 Hz remains exact.
+        /// </summary>
+        private static bool RunResponsiveCameraTranslationCase()
+        {
+            int priorCap = FrameTiming.FrameRateCap;
+            try
+            {
+                FrameTiming.FrameRateCap = 144;
+                FrameTiming.Reset();
+                FrameTiming.ResetDiagnostics();
+
+                var camera = new CameraInfo
+                {
+                    Position = Vector3.Zero,
+                    Target = -Vector3.UnitZ,
+                    UpVector = Vector3.UnitY,
+                    Fov = 78
+                };
+                camera.ModResetDrawState();
+
+                camera.Position = Vector3.UnitX;
+                camera.ModCaptureDrawState();
+                camera.Position = Vector3.UnitX * 2;
+                camera.ModCaptureDrawState();
+
+                Vector3 steady = camera.ModGetResponsiveDrawPosition(0.5);
+                bool steadyOk = MathF.Abs(steady.X - 2.5f) < 0.000001f;
+
+                camera.Position = new Vector3(2.25f, 0, 0);
+                camera.ModCaptureDrawState();
+                Vector3 decelerating = camera.ModGetResponsiveDrawPosition(0.5);
+                // Current step is 1/4 of the prior step, so confidence is 1/4.
+                bool decelerationOk = MathF.Abs(decelerating.X - 2.28125f) < 0.000001f;
+
+                camera.Position = new Vector3(2f, 0, 0);
+                camera.ModCaptureDrawState();
+                Vector3 reversed = camera.ModGetResponsiveDrawPosition(0.5);
+                bool reversalOk = (reversed - camera.Position).LengthSquared < 0.0000000001f;
+
+                camera.Position = new Vector3(10f, 0, 0);
+                camera.ModCaptureDrawState();
+                Vector3 rebased = camera.ModGetResponsiveDrawPosition(0.5);
+                bool rebaseOk = (rebased - camera.Position).LengthSquared < 0.0000000001f;
+
+                FrameTiming.FrameRateCap = 60;
+                camera.Position = new Vector3(11f, 0, 0);
+                Vector3 sixty = camera.ModGetResponsiveDrawPosition(0.5);
+                bool sixtyOk = (sixty - camera.Position).LengthSquared < 0.0000000001f;
+
+                bool ok = steadyOk && decelerationOk && reversalOk && rebaseOk && sixtyOk;
+                Console.WriteLine($"FRAMETIMING {(ok ? "ok  " : "FAIL")} responsive camera translation"
+                    + $" | steady {steady.X:0.00000}"
+                    + $" | decel {decelerating.X:0.00000}"
+                    + $" | reverse {reversed.X:0.00000}"
+                    + $" | rebase {rebased.X:0.00000}"
+                    + $" | 60 Hz {sixty.X:0.00000}");
+                return ok;
+            }
+            finally
+            {
+                FrameTiming.FrameRateCap = priorCap;
+                FrameTiming.Reset();
+                FrameTiming.ResetDiagnostics();
+            }
         }
 
         /// <summary>
