@@ -297,9 +297,38 @@ namespace MphRead.Mods.Input
             var setButton = typeof(MouseState).GetProperty("Item",
                 BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)!.SetMethod!
                 .CreateDelegate<Action<MouseState, MouseButton, bool>>();
+            var setScroll = typeof(MouseState).GetProperty("Scroll",
+                BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)!.SetMethod!
+                .CreateDelegate<Action<MouseState, OpenTK.Mathematics.Vector2>>();
             var controls = player.Controls;
             var processTouchInput = typeof(PlayerEntity).GetMethod("ProcessTouchInput",
                 BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+            // The shell and the match share one OpenTK window. Scroll is an absolute
+            // position for that window, so the first scene must baseline whatever the
+            // launcher accumulated instead of treating it as a gameplay wheel edge.
+            setScroll(mouse, new OpenTK.Mathematics.Vector2(0, 7));
+            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            Require(!controls.NextWeapon.IsPressed && !controls.PrevWeapon.IsPressed,
+                "first gameplay sample baselines launcher wheel history");
+            setScroll(mouse, new OpenTK.Mathematics.Vector2(0, 8));
+            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            Require(controls.PrevWeapon.IsPressed,
+                "wheel still produces a real edge after startup baseline");
+            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            Require(!controls.NextWeapon.IsPressed && !controls.PrevWeapon.IsPressed,
+                "absolute wheel position does not repeat without another notch");
+
+            // Additive sources (controller/stylus) write after the raw keyboard
+            // pass. An unbound keyboard action used to skip that pass completely,
+            // leaving the previous additive IsPressed/IsDown latched forever.
+            controls.NextWeapon.Type = ButtonType.Key;
+            controls.NextWeapon.Key = Keys.Unknown;
+            controls.NextWeapon.IsDown = controls.NextWeapon.IsPressed = true;
+            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            Require(!controls.NextWeapon.IsDown && !controls.NextWeapon.IsPressed
+                && !controls.NextWeapon.IsReleased,
+                "unbound keyboard action clears previous additive state");
 
             // Suppressed gameplay must clear the shared Keybind surface and still
             // advance its raw baselines. Otherwise a one-frame press stays asserted
@@ -336,10 +365,32 @@ namespace MphRead.Mods.Input
             setKey(keyboard, Keys.H, false);
             PlayerEntity.ProcessInput(keyboard, mouse, false);
 
+            // The stylus WPN action writes directly into NextWeapon after the
+            // raw pass. If its keyboard side is unbound, that contribution must
+            // still last exactly one simulation frame.
+            controls.NextWeapon.Type = ButtonType.Key;
+            controls.NextWeapon.Key = Keys.Unknown;
             PointerDevice.Reset();
             PointerInput.StylusMode = true;
             StylusZone.Enabled = true;
             StylusZone.SetRect(0, 0, 1);
+            StylusZone.Button wpn = Array.Find(StylusZone.Buttons,
+                button => button.Region == StylusRegion.Weapons);
+            float wpnX = wpn.X / StylusZone.DsWidth * 1920;
+            float wpnY = wpn.Y / StylusZone.DsHeight * StylusZone.Height * 1080;
+            Frame(wpnX, wpnY, false);
+            Frame(wpnX, wpnY, true);
+            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            Require(controls.NextWeapon.IsDown && controls.NextWeapon.IsPressed,
+                "stylus reaches keyboard-unbound WPN action once");
+            Frame(wpnX, wpnY, false);
+            PointerDevice.AdvanceSimulationStep();
+            Frame(wpnX, wpnY, false);
+            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            Require(!controls.NextWeapon.IsDown && !controls.NextWeapon.IsPressed,
+                "stylus WPN contribution clears after release when keyboard side is unbound");
+
+            // Continue with the ordinary aim/capture path.
             Frame(1000, 600, false);
             Frame(1000, 600, true);
             setButton(mouse, MouseButton.Left, true);
@@ -361,6 +412,30 @@ namespace MphRead.Mods.Input
             Require(!controls.Shoot.IsDown && !controls.AltAttack.IsDown && !controls.Jump.IsDown,
                 "real input pass captures all LMB-bound actions");
             GamepadContexts.Current = GamepadContext.Gameplay;
+
+            // Exercise the real additive controller path on a keyboard-unbound
+            // action. AffinitySlot ships unbound on keyboard, which made it the
+            // cleanest reproduction of the permanent IsPressed latch.
+            PadBindings.Reset();
+            PadBindings.SetSlot(PadAction.AffinitySlot, 0, GamepadButtons.X);
+            GamepadManager.UpdateDevice("pointercheck", new GamepadState { Connected = true }, mapped: true);
+            GamepadInput.BeginFrame(); // adopt the binding revision on neutral input
+            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            GamepadInput.Apply(player);
+            GamepadManager.UpdateDevice("pointercheck",
+                new GamepadState { Connected = true, Buttons = GamepadButtons.X }, mapped: true);
+            GamepadInput.BeginFrame();
+            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            GamepadInput.Apply(player);
+            Require(controls.AffinitySlot.IsDown && controls.AffinitySlot.IsPressed,
+                "controller reaches keyboard-unbound weapon action once");
+            GamepadManager.UpdateDevice("pointercheck", new GamepadState { Connected = true }, mapped: true);
+            GamepadInput.BeginFrame();
+            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            GamepadInput.Apply(player);
+            Require(!controls.AffinitySlot.IsDown && !controls.AffinitySlot.IsPressed,
+                "released controller cannot leave keyboard-unbound weapon action latched");
+
             // Establish the default binding revision on a neutral frame first. A binding
             // change intentionally blocks buttons already held at that transition so
             // remapping cannot leak the capture press into gameplay.

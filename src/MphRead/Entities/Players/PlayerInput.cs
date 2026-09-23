@@ -2477,7 +2477,16 @@ namespace MphRead.Entities
                 long contextRevision = Mods.Input.GamepadContexts.Revision;
                 bool contextChanged = player.Input.ContextRevision != contextRevision;
                 player.Input.ContextRevision = contextRevision;
-                if (noPlayerInput || contextChanged)
+
+                // A scene is created inside the same long-lived window as the launcher.
+                // OpenTK mouse-wheel position is cumulative for the lifetime of that
+                // window, and keys/buttons can still be physically held from the click
+                // that started the match. The first gameplay sample therefore establishes
+                // a baseline only; treating "no previous snapshot" as an all-up device
+                // turns launcher input into a fresh gameplay edge on the first match.
+                bool firstInputSample = player.Input.KeyboardState == null
+                    && player.Input.MouseState == null;
+                if (noPlayerInput || contextChanged || firstInputSample)
                 {
                     player.Controls.ClearAll();
                     player.Input.SynchronizeSuppressed(keyboardSnap, mouseSnap);
@@ -2511,6 +2520,18 @@ namespace MphRead.Entities
                     for (int j = 0; j < player.Controls.All.Length; j++)
                     {
                         Keybind control = player.Controls.All[j];
+
+                        // Rebuild the local control surface from raw input every simulation
+                        // step before controller/stylus add their contribution. Additive
+                        // sources deliberately only turn flags on. If a keyboard action is
+                        // unbound (Keys.Unknown), the old code skipped it entirely and left
+                        // whatever an additive source wrote last frame behind forever. One
+                        // controller/stylus NextWeapon press could therefore remain
+                        // IsPressed=true and cycle weapons at the full 60 Hz simulation rate.
+                        control.IsDown = false;
+                        control.IsPressed = false;
+                        control.IsReleased = false;
+
                         if (control.Type == ButtonType.Key)
                         {
                             if (control.Key != Keys.Unknown)
