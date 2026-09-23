@@ -49,7 +49,6 @@ namespace MphRead.Mods.Launcher.Gui
         private string _controllerPrompt = "";
 
         private bool _finished;
-        private bool _updatable;
         private bool _updating;
         private bool _groundShown = true;
 #if MPHREAD_SHELL
@@ -57,6 +56,10 @@ namespace MphRead.Mods.Launcher.Gui
 #endif
         private bool _browsingLobbyHome;
         private readonly DispatcherTimer _lobbyKeeper;
+        private readonly DispatcherTimer _updateWatcher;
+        private UpdateInfo? _pendingUpdatePrompt;
+        private string? _lastPromptedUpdateTag;
+        private bool _loadingVersions;
 
         /// <summary>What the screen decided. Kind None means it was closed.</summary>
         public LaunchPlan Plan { get; private set; }
@@ -107,6 +110,23 @@ namespace MphRead.Mods.Launcher.Gui
             _lobbyKeeper.Tick += (_, _) => MaintainLobby();
             AttachedToVisualTree += (_, _) => _lobbyKeeper.Start();
             DetachedFromVisualTree += (_, _) => _lobbyKeeper.Stop();
+
+            // A release can appear while the launcher has been open for hours.
+            // Poll slowly enough to stay friendly to GitHub's anonymous API,
+            // then react on the UI thread when a genuinely new tag appears.
+            _updateWatcher = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMinutes(5)
+            };
+            _updateWatcher.Tick += (_, _) => CheckForUpdates();
+            AttachedToVisualTree += (_, _) =>
+            {
+                _updateWatcher.Start();
+                // Also check immediately whenever the launcher comes back from
+                // a detached state, such as returning from a long match.
+                CheckForUpdates();
+            };
+            DetachedFromVisualTree += (_, _) => _updateWatcher.Stop();
             root.Children.Add(_menu);
 
             _version = new TextBlock
@@ -136,16 +156,16 @@ namespace MphRead.Mods.Launcher.Gui
             _versionBox.Focusable = true;
             _versionBox.KeyDown += (_, e) =>
             {
-                if ((e.Key == Key.Enter || e.Key == Key.Space) && _updatable)
-                { e.Handled = true; UpdateNow(); }
+                if (e.Key == Key.Enter || e.Key == Key.Space)
+                {
+                    e.Handled = true;
+                    OpenVersionManager();
+                }
             };
             _versionBox.PointerPressed += (_, e) =>
             {
-                if (_updatable)
-                {
-                    e.Handled = true;
-                    UpdateNow();
-                }
+                e.Handled = true;
+                OpenVersionManager();
             };
             root.Children.Add(_versionBox);
             var help = new TextBlock
@@ -194,15 +214,9 @@ namespace MphRead.Mods.Launcher.Gui
             DetachedFromVisualTree += (_, _) => timer.Stop();
 #endif
 
-            if (LauncherPrefs.AutoUpdate)
-            {
-                // In the background, and never blocking the window: a launcher
-                // that will not draw until GitHub answers looks broken on a bad
-                // connection.
-                Updater.CheckInBackground(
-                    _ => Dispatcher.UIThread.Post(RefreshVersionLine),
-                    () => Dispatcher.UIThread.Post(RefreshVersionLine));
-            }
+            // The first automatic check runs when this view is attached. That
+            // same hook fires when the launcher returns after a match, so a
+            // release published while playing does not wait for a restart.
             RefreshVersionLine();
             _ = CatchUpPreviews();
         }
@@ -426,6 +440,7 @@ namespace MphRead.Mods.Launcher.Gui
             _hub.SetLobbyActive(_lobby != null && NetSession.Active, LobbyPlayerCount());
             _hub.RefreshProfile();
             RefreshVersionLine();
+            TryShowUpdatePrompt();
             HubMotion.Enter(_hub, lift: -6);
             Dispatcher.UIThread.Post(() => Focus(), DispatcherPriority.Background);
         }
@@ -961,7 +976,6 @@ namespace MphRead.Mods.Launcher.Gui
             _version.Foreground = new SolidColorBrush(colour);
             _version.FontFamily = pressable ? HubTheme.DataBold : HubTheme.Data;
             _version.FontSize = pressable ? 9 : 8.5;
-            _updatable = pressable;
             _versionBox.Background = pressable
                 ? HubTheme.AccentPanel(HubTheme.Warm, 68)
                 : HubTheme.PanelBrush;
@@ -972,8 +986,9 @@ namespace MphRead.Mods.Launcher.Gui
             _versionBox.Padding = pressable
                 ? new Thickness(10, 5)
                 : new Thickness(8, 4);
-            _versionBox.Cursor = new Cursor(
-                pressable ? StandardCursorType.Hand : StandardCursorType.Arrow);
+            // The build chip always opens Version Manager, even when there
+            // is no newer release.
+            _versionBox.Cursor = new Cursor(StandardCursorType.Hand);
         }
 
         /// <summary>
@@ -994,41 +1009,178 @@ namespace MphRead.Mods.Launcher.Gui
             string number = VersionNumber();
             if (Updater.Available is UpdateInfo update)
             {
-                Say($"UPDATE AVAILABLE  //  {number} > {update.Version.ToString(3)}  //  UPDATE NOW",
+                Say($"UPDATE AVAILABLE  //  {number} > {update.Version.ToString(3)}  //  OPEN VERSIONS",
                     HubTheme.Warm, pressable: true);
                 return;
             }
-            Say($"BUILD  //  {number}", BuildVersion.IsRelease && Updater.Checked
+            Say($"BUILD  //  {number}  //  VERSIONS", BuildVersion.IsRelease && Updater.Checked
                 ? GuiTheme.Good : GuiTheme.TextDim);
         }
 
-        /// <summary>
-        /// Take the update.
-        ///
-        /// On the desktop that still means opening the release page: a release
-        /// is an archive somebody unpacks over their own copy, and a program
-        /// that rewrote its own files while running would have to solve
-        /// restarting itself on three operating systems to save one unzip.
-        /// Where the platform can install for itself -- a phone, today -- it
-        /// fetches the file and hands it to the system installer instead.
-        /// </summary>
-        private void UpdateNow()
+        private void CheckForUpdates()
         {
-            UpdateInfo? found = Updater.Available;
-            if (found == null)
+            if (!LauncherPrefs.AutoUpdate || Updater.Disabled || _updating)
             {
                 return;
             }
-            UpdateInfo update = found.Value;
+            Updater.CheckInBackground(
+                update => Dispatcher.UIThread.Post(() =>
+                {
+                    RefreshVersionLine();
+                    QueueUpdatePrompt(update);
+                }),
+                () => Dispatcher.UIThread.Post(RefreshVersionLine));
+        }
+
+        private void QueueUpdatePrompt(UpdateInfo update)
+        {
+            if (_lastPromptedUpdateTag == update.Tag)
+            {
+                return;
+            }
+            _lastPromptedUpdateTag = update.Tag;
+            _pendingUpdatePrompt = update;
+            TryShowUpdatePrompt();
+        }
+
+        /// <summary>
+        /// Do not throw a modal over a lobby/settings screen. Remember it and
+        /// show it the next time the player reaches the hub instead.
+        /// </summary>
+        private void TryShowUpdatePrompt()
+        {
+            if (_pendingUpdatePrompt is not UpdateInfo update
+                || _stack.Count != 0 || _updating || _loadingVersions
+                || !GameFiles.Ready)
+            {
+                return;
+            }
+            _pendingUpdatePrompt = null;
+            var prompt = new ConfirmScreen(
+                $"Project Prime {update.Tag} is available.\n\n"
+                + $"Installed: v{VersionNumber()}\nLatest: {update.Tag}\n\n"
+                + "Install it now?",
+                yes: "update now", no: "later");
+            prompt.Answered += (_, yes) =>
+            {
+                Pop();
+                if (yes)
+                {
+                    InstallVersion(update);
+                }
+            };
+            Push(prompt);
+        }
+
+        private void OpenVersionManager()
+        {
+            if (_loadingVersions || _updating)
+            {
+                return;
+            }
+            if (Updater.Disabled)
+            {
+                Say($"BUILD  //  {VersionNumber()}  //  VERSION CHECKS DISABLED FOR THIS RUN",
+                    GuiTheme.TextDim);
+                return;
+            }
+            _ = LoadVersionManager();
+        }
+
+        private async Task LoadVersionManager()
+        {
+            _loadingVersions = true;
+            string number = VersionNumber();
+            Say($"BUILD  //  {number}  //  LOADING RELEASES...", GuiTheme.TextDim);
+            IReadOnlyList<UpdateInfo> releases =
+                await Task.Run(() => UpdateCheck.Releases(30));
+            string reason = UpdateCheck.LastReason ?? "no releases were found";
+            _loadingVersions = false;
+            if (releases.Count == 0)
+            {
+                Say($"BUILD  //  {number}  //  {reason}", HubTheme.Warm);
+                return;
+            }
+
+            var view = new VersionManagerView(releases, BuildVersion.Current);
+            view.Closed += (_, _) => Pop();
+            view.VersionSelected += AskToSwitchVersion;
+            Push(view);
+        }
+
+        private void AskToSwitchVersion(UpdateInfo target)
+        {
+            Version? raw = BuildVersion.Current;
+            Version? current = raw == null ? null : BuildVersion.Normalise(raw);
+            if (current != null && target.Version == current)
+            {
+                return;
+            }
+            bool downgrade = current != null && target.Version < current;
+            string from = current == null ? "a local build" : $"v{current.ToString(3)}";
+            string verb = downgrade ? "Downgrade" : "Switch";
+            var prompt = new ConfirmScreen(
+                $"{verb} Project Prime from {from} to {target.Tag}?\n\n"
+                + "The application will restart when an in-place switch is supported. "
+                + "Any active lobby will be left.",
+                yes: downgrade ? "downgrade" : "switch", no: "cancel");
+            prompt.Answered += (_, yes) =>
+            {
+                Pop(); // confirmation
+                if (!yes)
+                {
+                    return;
+                }
+                Pop(); // version manager
+                InstallVersion(target);
+            };
+            Push(prompt);
+        }
+
+        /// <summary>
+        /// Explicitly install one published release. Automatic checks never call
+        /// this with an older build; only Version Manager can request a
+        /// downgrade.
+        /// </summary>
+        private void InstallVersion(UpdateInfo update)
+        {
+            Version? raw = BuildVersion.Current;
+            Version? current = raw == null ? null : BuildVersion.Normalise(raw);
+            bool downgrade = current != null && update.Version < current;
+
+            // Android's package manager rejects a lower versionCode as an
+            // in-place install. Do not download 60 MB only to hand the player a
+            // guaranteed failure dialog.
+            if (OperatingSystem.IsAndroid() && downgrade)
+            {
+                string currentText = current == null ? "" : $" over v{current.ToString(3)}";
+                Say($"ANDROID DOWNGRADE  //  {update.Tag}{currentText} REQUIRES UNINSTALL OR ADB",
+                    HubTheme.Warm);
+                if (!Updater.OpenPage(update))
+                {
+                    Say(update.PageUrl, GuiTheme.Warm);
+                }
+                return;
+            }
+
             if (UpdateInstall.CanInstall(update))
             {
                 _ = FetchAndInstall(update, UpdateInstall.Current!);
                 return;
             }
-            if (!Updater.OpenPage(update))
+
+            // macOS keeps its signed bundle intact, and a read-only desktop
+            // install or unverifiable old package also belongs on the release
+            // page rather than being half-applied.
+            if (Updater.OpenPage(update))
             {
-                // No browser to open, or it refused. Putting the address on the
-                // line beats a button that appears to do nothing.
+                string action = OperatingSystem.IsMacOS()
+                    ? "REPLACE THE SIGNED APP BUNDLE FROM THE RELEASE PAGE"
+                    : "OPENED RELEASE PAGE FOR MANUAL SWITCH";
+                Say($"{update.Tag}  //  {action}", HubTheme.Warm);
+            }
+            else
+            {
                 Say(update.PageUrl, GuiTheme.Warm);
             }
         }

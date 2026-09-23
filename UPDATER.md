@@ -44,18 +44,24 @@ Tags must use `vMAJOR.MINOR.PATCH`.
 
 ## Client behavior
 
-Release builds are stamped with the tag version. On launcher startup the client asks:
+Release builds are stamped with the tag version. When automatic update checks are enabled, the launcher asks for the latest release at startup and then every five minutes while the launcher UI is attached:
 
 `https://api.github.com/repos/AntiNotAnti/Prime-Hunters-Online/releases/latest`
 
-When a newer stable version exists:
+A newly discovered stable release updates the build chip immediately. When the player is on the hub it also opens an in-app update prompt; if another launcher screen is active, the prompt is deferred until the player returns to the hub. Choosing **Later** suppresses that tag for the rest of the current process, while a newer tag can still prompt.
 
-- Windows and writable Linux installs download the matching archive, verify GitHub's SHA-256 asset digest, unpack to a staging directory, launch the new binary as the updater, replace the old application files, and restart.
-- Android downloads the APK, verifies GitHub's SHA-256 asset digest, verifies the APK signer matches the installed application, and hands it to Android's installer.
-- macOS opens this repository's release page because copying individual files into a signed app bundle invalidates its resource seal.
-- Dedicated servers keep the existing safe-update behavior and only swap when the server lifecycle says it is safe.
+The build chip also opens **Version Manager**. It reads the stable published release history from:
 
-Desktop replacement copies the new release over the installation. It does not delete unrelated player data such as settings, saves, extracted game data, or replays.
+`https://api.github.com/repos/AntiNotAnti/Prime-Hunters-Online/releases`
+
+Automatic updates remain forward-only. Version Manager is the explicit path that may select an older release.
+
+- Windows and writable Linux installs can switch both forward and backward. The matching archive is downloaded, GitHub's SHA-256 asset digest is verified, the release is unpacked to a staging directory, the staged binary applies the swap, and Project Prime restarts.
+- Android upgrades keep the existing verified APK installer. Android does not allow a lower APK version code to be installed over a newer one, so downgrades are presented as a manual release-page path instead of downloading a package that the system will reject.
+- macOS opens the selected release page for both upgrades and downgrades because copying individual files into a signed app bundle invalidates its resource seal.
+- Dedicated servers keep the existing safe-update behavior and only swap when the server lifecycle says it is safe. The client Version Manager does not change server auto-update policy.
+
+Desktop replacement copies the selected release over the installation. It does not delete unrelated player data such as settings, saves, extracted game data, or replays.
 
 ## Security model
 
