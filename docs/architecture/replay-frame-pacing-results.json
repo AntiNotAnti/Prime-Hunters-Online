@@ -370,7 +370,19 @@
       "All eight clients completed 37800 ticks and passed; real GL, 400x300, 100 ms RTT, 2% loss, client and server recording.",
       "Host also ran emulator, replay diagnostics and builds. 48.2-49.5 simulation/draw callbacks per wall-clock second; not high-refresh acceptance.",
       "Logged spikes are rate limited; they are not a complete frametime trace."
-    ]
+    ],
+    "determinism": {
+      "gameplayAndPresentationFrames": 29632,
+      "coldAndCachedSeeks": 14,
+      "playbackRates": [
+        0.25,
+        0.5,
+        1,
+        2,
+        4
+      ],
+      "passed": true
+    }
   },
   "renderedCadenceCheck": {
     "hz": [
@@ -417,9 +429,34 @@
     "foundIssue": "Retained Replay Studio Image referred to a disposed bitmap after detachment; fixed with clear-before-dispose and preview reload on reattachment.",
     "limitations": [
       "Physical Android GPU/frame pacing not measured",
-      "Emulator rendering has banding/noise",
-      "Fixed lifecycle requires fresh APK retest"
-    ]
+      "Emulator rendering has banding/noise"
+    ],
+    "clipDeterminism": {
+      "gameplayAndPresentationFrames": 1981,
+      "coldAndCachedSeeks": 14,
+      "passed": true
+    },
+    "fullRecordingDeterminism": {
+      "frames": 5342,
+      "strictCheckPassed": false,
+      "firstPresentationMismatchFrame": 3592,
+      "mismatch": "Two one-ULP projectile transform float values: -0.22488949 vs -0.22488947 and -0.003751457 vs -0.0037514567",
+      "gameplayOnlyDiagnosticPassed": true,
+      "notes": "Temporary diagnostic compared gameplay half of each projection across the complete recording, cold/cached seeks and five playback rates. Strict production checker remains unchanged in what it compares; failure diagnostics now identify which projection differs."
+    },
+    "previewRegression": {
+      "beforeFix": "fails clear-before-dispose assertion on archived main",
+      "afterFix": "420 headless UI checks pass",
+      "freshApkRetest": {
+        "ciRun": 35866141753,
+        "commit": "e3067d1",
+        "installTime": "2026-09-23 08:25:29",
+        "playbackToLibraryCycles": 3,
+        "sameProcessThroughout": true,
+        "fatalExceptions": 0,
+        "passed": true
+      }
+    }
   },
   "threeVersionRenderComparison": {
     "clientsPerVersion": 8,
@@ -807,5 +844,11 @@
       "Historical v0.1.11 completed all 5400 ticks but its combat feature coverage assertions failed; main and updated passed.",
       "Allocation improves substantially versus main; aggregate p99 and p999 do not. Stable frametime acceptance remains unproven."
     ]
+  },
+  "implementationCi": {
+    "commit": "e3067d11579b11034cc9f19ac5bbd4e044a451ea",
+    "run": 35866141753,
+    "conclusion": "success",
+    "mergedMain": "2ad66faf734c9570f32643f07eabcbdf986d98e9"
   }
 }

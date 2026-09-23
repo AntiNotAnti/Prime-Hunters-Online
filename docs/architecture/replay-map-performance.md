@@ -164,7 +164,19 @@ validate on desktop. SwiftShader shows visual banding/noise, so this is not GPU
 quality or physical-device performance evidence. Testing exposed a retained
 Replay Studio preview referencing a disposed bitmap after detachment. The fix
 clears its Image source before disposal and reloads on reattachment, with a
-regression in the headless UI suite. A fresh APK lifecycle retest is still required.
+regression that fails on archived main and passes among 420 headless UI checks.
+All CI jobs pass for e3067d1 (run 35866141753), which includes main 2ad66fa.
+Its fresh Android APK also passes three playback-to-library return cycles in
+the same process, with no fatal exception.
+
+Strict determinism also passes 29,632 gameplay/presentation frames from a live
+rendered desktop recording, plus 1,981 frames of the Android-generated clip,
+including cold/cached seeks and five playback rates. The longer Android recording
+fails strict presentation equality at a cold seek to frame 3,592: two projectile
+transform floats differ by one ULP when replayed on macOS. A temporary gameplay-only
+diagnostic verifies all 5,342 gameplay frames and the seeks/rates. The strict
+checker has not been relaxed; its error now distinguishes gameplay from presentation.
+Cross-platform bit-identical presentation remains an explicitly failed check.
 
 Remaining acceptance: controlled frametime/FPS-distribution comparisons, the full
 scenario matrix on physical high-refresh displays and physical Android devices.

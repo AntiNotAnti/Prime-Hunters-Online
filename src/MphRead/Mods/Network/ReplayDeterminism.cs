@@ -53,8 +53,11 @@ internal static class ReplayDeterminism
             {
                 trace.Position = frame * 64L;
                 Span<byte> reference = stackalloc byte[64]; trace.ReadExactly(reference);
-                if (!Projection(scene, frame).AsSpan().SequenceEqual(reference))
-                    throw new InvalidOperationException($"First gameplay/presentation divergence at frame {frame}.");
+                byte[] actual = Projection(scene, frame);
+                if (!actual.AsSpan().SequenceEqual(reference))
+                    throw new InvalidOperationException($"First gameplay/presentation divergence at frame {frame}. "
+                        + $"gameplay equal={actual.AsSpan(0, 32).SequenceEqual(reference[..32])}, "
+                        + $"presentation equal={actual.AsSpan(32).SequenceEqual(reference[32..])}.");
             }
             var random = new Random(2718);
             uint[] targets = new[] { 0u, Math.Min(60u, duration), Math.Min(300u, duration), duration / 3, duration * 2 / 3, duration }
@@ -98,7 +101,8 @@ internal static class ReplayDeterminism
                 trace.Position = 0; int original = trace.ReadByte(); trace.Position = 0; trace.WriteByte((byte)(original ^ 1));
                 bool detected = false;
                 try { Compare(probe.Current.Scene, 0); }
-                catch (InvalidOperationException ex) when (ex.Message.EndsWith("frame 0.", StringComparison.Ordinal)) { detected = true; }
+                catch (InvalidOperationException ex) when (ex.Message.StartsWith(
+                    "First gameplay/presentation divergence at frame 0.", StringComparison.Ordinal)) { detected = true; }
                 trace.Position = 0; trace.WriteByte((byte)original);
                 if (!detected) throw new InvalidDataException("The checker accepted a damaged reference hash.");
             }
