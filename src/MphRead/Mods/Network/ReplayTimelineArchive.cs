@@ -114,6 +114,25 @@ internal static class ReplayTimelineArchive
             throw new InvalidDataException("Invalid replay semantic fact length/slot.");
         return new(frame, tick, ReplayFactKind.Event, ReadOnlySpan<byte>.Empty, new(kind, actor, target, value, kill, weapon, flags));
     }
+    // The existing v4 hidden lead-in carries the interval from the retained
+    // checkpoint to the visible start. Saving needs no reconstruction or new Scene.
+    internal static void SaveFrozen(ReplayTimelineClip clip, string path)
+    {
+        using var checkpoint = PassiveReplayScene.Checkpoint(clip);
+        var players = new System.Collections.Generic.List<ReplayPlayerInfo>(8);
+        RosterPacket? visibleRoster = null;
+        foreach (var record in clip.RestorePoint.Records)
+            if (record.Kind == ReplayFactKind.Roster && RosterPacket.TryRead(record.Payload[1..], out var roster)) visibleRoster = roster;
+        foreach (var record in clip.Records)
+        {
+            if (record.RecordingFrame > clip.StartRecordingFrame) break;
+            if (record.Kind == ReplayFactKind.Roster && RosterPacket.TryRead(record.Payload[1..], out var roster)) visibleRoster = roster;
+        }
+        if (visibleRoster is { } visible)
+            for (int i = 0; i < visible.Count; i++)
+                players.Add(new(visible.Slots[i], visible.Hunters[i], visible.Teams[i], visible.Names[i]));
+        Save(clip, checkpoint.ClipMetadata(checked(clip.StartRecordingFrame - checkpoint.Frame), players), path);
+    }
     internal static void Save(ReplayTimelineClip clip, PassiveReplayScene start, string path)
     {
         if (start.Session.CurrentFrame != clip.StartRecordingFrame)
@@ -126,8 +145,8 @@ internal static class ReplayTimelineArchive
         try
         {
             EndFrame(writer, 0);
-            foreach (var record in clip.Records) Write(writer, record, clip.StartRecordingFrame);
-            EndFrame(writer, clip.EndRecordingFrame - clip.StartRecordingFrame);
+            foreach (var record in clip.Records) Write(writer, record, metadata.OriginRecordingFrame);
+            EndFrame(writer, clip.EndRecordingFrame - metadata.OriginRecordingFrame);
         }
         catch { writer.Abort(); throw; }
     }

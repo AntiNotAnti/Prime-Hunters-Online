@@ -6,7 +6,7 @@ using OpenTK.Mathematics;
 namespace MphRead.Mods.Network;
 
 /// <summary>Instant-clip selection over the shared bounded replay timeline.
-/// Frozen facts survive reset; private warmup uses at most 24 steps or 1 ms per tick.</summary>
+/// Frozen facts survive reset; existing v4 lead-in removes save-time world construction.</summary>
 internal static class DemoClip
 {
     public static readonly int[] Lengths = { 15, 30, 60, 120 };
@@ -17,7 +17,6 @@ internal static class DemoClip
     private static string? _pendingPath;
     private static uint _start, _finish;
     private static ReplayTimelineClip? _clip;
-    private static PassiveReplayPlayer? _preparing;
     private static Task? _writing;
     static DemoClip() { ReplayCapture.Recorder.Resetting += Freeze; }
     public static bool IsSaving => _pendingPath != null;
@@ -74,18 +73,9 @@ internal static class DemoClip
                 Chat.ChatBox.System("Saved replay clip: " + Path.GetFileName(_pendingPath));
                 Clear(); return;
             }
-            _preparing ??= new PassiveReplayPlayer(_clip, size);
-            if (!_preparing.Ready) _preparing.Update(maximumSteps: 24, maximumMilliseconds: 1);
-            if (!_preparing.Ready) return;
-            if (_writing == null)
-            {
-                var frozen = _clip;
-                var metadata = ReplayTimelineArchive.Metadata(_preparing.Current, ReplayType.Clip);
-                string path = _pendingPath!;
-                _writing = Task.Run(() => ReplayTimelineArchive.Save(frozen, metadata, path));
-                _preparing.Dispose(); _preparing = null;
-                return;
-            }
+            var frozen = _clip;
+            string path = _pendingPath!;
+            _writing = Task.Run(() => ReplayTimelineArchive.SaveFrozen(frozen, path));
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException) { Fail(ex); }
     }
@@ -111,6 +101,6 @@ internal static class DemoClip
     }
     private static void Clear()
     {
-        _preparing?.Dispose(); _preparing = null; _clip?.Dispose(); _clip = null; _pendingPath = null; _writing = null;
+        _clip?.Dispose(); _clip = null; _pendingPath = null; _writing = null;
     }
 }

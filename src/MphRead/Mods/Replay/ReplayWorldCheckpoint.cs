@@ -46,6 +46,17 @@ internal sealed class ReplayWorldCheckpoint : IDisposable
         catch { data.Release(); throw; }
     }
 
+    // Detached metadata only: safe to read on a writer worker, no Scene/resource access.
+    internal ReplayMetadata ClipMetadata(uint leadIn, IReadOnlyList<ReplayPlayerInfo> players)
+    {
+        using var stream = _data.OpenRead(); using var reader = new BinaryReader(stream);
+        reader.ReadUInt32(); reader.ReadUInt16(); reader.ReadString();
+        string room = reader.ReadString(); var mode = (GameMode)reader.ReadInt32(); ulong map = reader.ReadUInt64();
+        uint origin = reader.ReadUInt32();
+        return new ReplayMetadata { FormatVersion = 4, Type = ReplayType.Clip, RoomKey = room, Mode = mode,
+            MapHash = map, OriginRecordingFrame = origin, LeadInFrames = leadIn,
+            WorldCheckpoint = Bytes.ToArray(), Players = players };
+    }
     internal ReplayReplicaCheckpoint ConstructionState()
     {
         using var stream = _data.OpenRead(); using var reader = new BinaryReader(stream);

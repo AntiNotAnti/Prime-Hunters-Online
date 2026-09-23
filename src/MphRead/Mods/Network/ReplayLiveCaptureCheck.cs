@@ -91,6 +91,13 @@ internal static class ReplayLiveCaptureCheck
                 string saved = Path.Combine(directory, "clip.ppdemo");
                 ReplayTimelineArchive.Save(clip, player.Current, saved);
                 CompareFile(saved, start, 250);
+                string frozenSaved = Path.Combine(directory, "frozen-clip.ppdemo");
+                ReplayTimelineArchive.SaveFrozen(clip, frozenSaved);
+                CompareFile(frozenSaved, start, 250);
+                string frozenNested = Path.Combine(directory, "frozen-nested.ppdemo");
+                if (ReplayArchive.Extract(frozenSaved, 40, 120, frozenNested) != ReplayOpenResult.Success)
+                    throw new InvalidDataException("Could not extract a frozen lead-in clip.");
+                CompareFile(frozenNested, start + 40, 80);
                 string subrange = Path.Combine(directory, "subrange.ppdemo");
                 if (ReplayArchive.Extract(saved, 40, 120, subrange) != ReplayOpenResult.Success)
                     throw new InvalidDataException("Could not extract a durable world subrange.");
