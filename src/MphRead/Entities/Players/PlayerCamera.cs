@@ -932,7 +932,8 @@ namespace MphRead.Entities
         /// is bounded to one observed step, fades while slowing, and stops on reversal.
         /// Teleports/respawns already rebase the history through ModResetDrawState.
         /// </summary>
-        internal Vector3 ModGetResponsiveDrawPosition(double alpha)
+        internal Vector3 ModGetResponsiveDrawPosition(double alpha,
+            Vector3 previousBodyPosition, Vector3 currentBodyPosition)
         {
             if (!_drawStateValid || !Mods.Render.FrameTiming.HighRefreshPresentation)
             {
@@ -940,36 +941,36 @@ namespace MphRead.Entities
             }
 
             float t = (float)Math.Clamp(alpha, 0.0, 1.0);
-            Vector3 step = _drawCurrentPosition - _drawPreviousPosition;
-            float stepLengthSquared = step.LengthSquared;
-            if (!IsFinite(step) || stepLengthSquared <= 0.0000000001f)
+            if (!IsFinite(previousBodyPosition) || !IsFinite(currentBodyPosition))
             {
                 return _drawCurrentPosition;
             }
 
-            float confidence = 1f;
-            Vector3 priorStep = _drawPreviousPosition - _drawOlderPosition;
-            float priorLengthSquared = priorStep.LengthSquared;
-            if (IsFinite(priorStep) && priorLengthSquared > 0.0000000001f)
+            Vector3 bodyStep = currentBodyPosition - previousBodyPosition;
+            // A respawn/teleport is a discontinuity, not velocity to predict.
+            if (!IsFinite(bodyStep) || bodyStep.LengthSquared > 16f)
             {
-                // A reversal is a new motion, not evidence that the old one should
-                // continue into the next picture.
-                if (Vector3.Dot(step, priorStep) <= 0)
-                {
-                    return _drawCurrentPosition;
-                }
-
-                // If collision or released input is already slowing the camera,
-                // shrink the projection with it so the render pose cannot surge
-                // through the authoritative stop point.
-                if (stepLengthSquared < priorLengthSquared)
-                {
-                    confidence = Math.Clamp(
-                        MathF.Sqrt(stepLengthSquared / priorLengthSquared), 0f, 1f);
-                }
+                return _drawCurrentPosition;
             }
 
-            Vector3 predicted = _drawCurrentPosition + step * (t * confidence);
+            // CameraInfo.Position contains two different kinds of motion:
+            // locomotion and camera-local visual motion (walk bob, landing
+            // response, camera switching). Predicting the whole vector made
+            // bob reverse direction between 60 Hz samples and abruptly trip
+            // the old direction/confidence guards, which appeared as a small
+            // hitch while simply walking. Project only the body translation.
+            // The visual offset is interpolated one sample behind, so it stays
+            // continuous through the exact point where bob changes direction.
+            Vector3 previousOffset = _drawPreviousPosition - previousBodyPosition;
+            Vector3 currentOffset = _drawCurrentPosition - currentBodyPosition;
+            if (!IsFinite(previousOffset) || !IsFinite(currentOffset))
+            {
+                return _drawCurrentPosition;
+            }
+
+            Vector3 predictedBody = currentBodyPosition + bodyStep * t;
+            Vector3 visualOffset = Vector3.Lerp(previousOffset, currentOffset, t);
+            Vector3 predicted = predictedBody + visualOffset;
             return IsFinite(predicted) ? predicted : _drawCurrentPosition;
         }
 
@@ -998,16 +999,34 @@ namespace MphRead.Entities
 
             float t = (float)Math.Clamp(alpha, 0.0, 1.0);
             position = Vector3.Lerp(_drawPreviousPosition, _drawCurrentPosition, t);
-            target = Vector3.Lerp(_drawPreviousTarget, _drawCurrentTarget, t);
-            up = Vector3.Lerp(_drawPreviousUp, _drawCurrentUp, t);
-            fov = _drawPreviousFov + (_drawCurrentFov - _drawPreviousFov) * t;
-            if (!IsFinite(position) || !IsFinite(target) || !IsFinite(up)
-                || (target - position).LengthSquared < 0.000001f || up.LengthSquared < 0.000001f)
+
+            Vector3 previousFacing = _drawPreviousTarget - _drawPreviousPosition;
+            Vector3 currentFacing = _drawCurrentTarget - _drawCurrentPosition;
+            if (!ModInterpolateDirection(previousFacing, currentFacing, t, out Vector3 facing))
             {
                 return false;
             }
-            up = up.Normalized();
-            return true;
+
+            float previousDistance = previousFacing.Length;
+            float currentDistance = currentFacing.Length;
+            if (!Single.IsFinite(previousDistance) || previousDistance < 0.000001f)
+            {
+                previousDistance = 1f;
+            }
+            if (!Single.IsFinite(currentDistance) || currentDistance < 0.000001f)
+            {
+                currentDistance = previousDistance;
+            }
+            float distance = previousDistance + (currentDistance - previousDistance) * t;
+            target = position + facing * distance;
+
+            if (!ModInterpolateDirection(_drawPreviousUp, _drawCurrentUp, t, out up))
+            {
+                up = Vector3.UnitY;
+            }
+            fov = _drawPreviousFov + (_drawCurrentFov - _drawPreviousFov) * t;
+            return IsFinite(position) && IsFinite(target) && IsFinite(up)
+                && (target - position).LengthSquared >= 0.000001f;
         }
 
         internal float ModGetDrawFov(double alpha)
@@ -1015,6 +1034,87 @@ namespace MphRead.Entities
             if (!_drawStateValid) return Fov;
             float t = (float)Math.Clamp(alpha, 0.0, 1.0);
             return _drawPreviousFov + (_drawCurrentFov - _drawPreviousFov) * t;
+        }
+
+        /// <summary>
+        /// Interpolate an orientation on the unit sphere instead of linearly
+        /// blending world-space target points. Fast camera turns can put the
+        /// two target vectors on opposite sides of the camera; target lerp then
+        /// cuts through the camera itself and briefly produces a near-zero
+        /// LookAt direction, which reads as a doubled/ghosted frame.
+        /// </summary>
+        internal static bool ModInterpolateDirection(Vector3 from, Vector3 to,
+            float amount, out Vector3 direction)
+        {
+            direction = Vector3.Zero;
+            if (!IsFinite(from) || !IsFinite(to)
+                || from.LengthSquared < 0.000001f || to.LengthSquared < 0.000001f)
+            {
+                return false;
+            }
+
+            Vector3 a = from.Normalized();
+            Vector3 b = to.Normalized();
+            float t = Math.Clamp(amount, 0f, 1f);
+            float dot = Math.Clamp(Vector3.Dot(a, b), -1f, 1f);
+
+            if (dot > 0.9995f)
+            {
+                Vector3 blended = Vector3.Lerp(a, b, t);
+                if (!IsFinite(blended) || blended.LengthSquared < 0.000001f)
+                {
+                    return false;
+                }
+                direction = blended.Normalized();
+                return true;
+            }
+
+            if (dot < -0.9995f)
+            {
+                // Exactly opposite vectors have infinitely many valid great
+                // circles. Pick a stable perpendicular axis deterministically
+                // so a 180-degree spin remains finite and continuous.
+                Vector3 basis = MathF.Abs(a.Y) < 0.9f ? Vector3.UnitY : Vector3.UnitX;
+                Vector3 axis = Vector3.Cross(a, basis);
+                if (!IsFinite(axis) || axis.LengthSquared < 0.000001f)
+                {
+                    basis = Vector3.UnitZ;
+                    axis = Vector3.Cross(a, basis);
+                }
+                if (!IsFinite(axis) || axis.LengthSquared < 0.000001f)
+                {
+                    return false;
+                }
+                axis = axis.Normalized();
+                float angle = MathF.PI * t;
+                float cos = MathF.Cos(angle);
+                float sin = MathF.Sin(angle);
+                direction = a * cos + Vector3.Cross(axis, a) * sin
+                    + axis * Vector3.Dot(axis, a) * (1 - cos);
+                if (!IsFinite(direction) || direction.LengthSquared < 0.000001f)
+                {
+                    return false;
+                }
+                direction = direction.Normalized();
+                return true;
+            }
+
+            float theta = MathF.Acos(dot);
+            float sinTheta = MathF.Sin(theta);
+            if (MathF.Abs(sinTheta) < 0.000001f)
+            {
+                direction = a;
+                return true;
+            }
+            float wa = MathF.Sin((1 - t) * theta) / sinTheta;
+            float wb = MathF.Sin(t * theta) / sinTheta;
+            direction = a * wa + b * wb;
+            if (!IsFinite(direction) || direction.LengthSquared < 0.000001f)
+            {
+                return false;
+            }
+            direction = direction.Normalized();
+            return true;
         }
 
         private static bool IsFinite(Vector3 value)
