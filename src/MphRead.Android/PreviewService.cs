@@ -31,6 +31,7 @@ namespace MphRead.Droid
     /// </summary>
     public abstract class PreviewService : Service
     {
+        private volatile bool _stopRequested;
         internal const string RoomsExtra = "rooms";
         internal const string MarkerExtra = "marker";
         internal const string WidthExtra = "width";
@@ -38,9 +39,16 @@ namespace MphRead.Droid
 
         public override IBinder? OnBind(Intent? intent) => null;
 
+        public override void OnDestroy()
+        {
+            _stopRequested = true;
+            base.OnDestroy();
+        }
+
         public override StartCommandResult OnStartCommand(Intent? intent,
             StartCommandFlags flags, int startId)
         {
+            _stopRequested = false;
             string[]? rooms = intent?.GetStringArrayExtra(RoomsExtra);
             string? marker = intent?.GetStringExtra(MarkerExtra);
             int width = intent?.GetIntExtra(WidthExtra, PreviewRun.Width) ?? PreviewRun.Width;
@@ -93,12 +101,15 @@ namespace MphRead.Droid
                 return;
             }
             GameFiles.ApplyPaths();
+            AndroidMaps.EnsureBuilt(rooms, () => _stopRequested);
+            if (_stopRequested)
+                return;
             ThumbnailGenerator.EnsureCacheDirectory();
             // STB ships no native for Android; the framework's encoder does.
             ScreenCapture.PngWriter = AndroidPng.Write;
             using var gl = OffscreenGl.Create(width, height);
             PreviewRun.Render(rooms, width, height,
-                line => Console.WriteLine(line));
+                line => Console.WriteLine(line), () => _stopRequested);
         }
 
         private static void Finish(string? marker)
