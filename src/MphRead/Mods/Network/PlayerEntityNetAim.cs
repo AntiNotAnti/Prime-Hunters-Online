@@ -504,15 +504,14 @@ namespace MphRead.Entities
             }
             else
             {
-                // Keep modern aiming low-latency in both halves of the pose.
-                // Orientation remains current + late latch. Translation uses the
-                // bounded fractional projection of the 60 Hz camera history, so
-                // walking/jumping/knockback do not appear as tiny positional steps
-                // on a high-refresh display.
-                if (Features.FixedCrosshair)
+                // Keep fixed-crosshair aiming low latency in orientation, but keep
+                // camera translation on the same previous/current presentation
+                // timeline as the world. Forward-extrapolating body motion made
+                // each 60 Hz correction visible as a tiny positional hitch while
+                // walking, strafing, jumping or landing.
+                if (Features.FixedCrosshair && Mods.Render.FrameTiming.HighRefreshPresentation)
                 {
-                    cameraPosition = CameraInfo.ModGetResponsiveDrawPosition(
-                        presentationAlpha, PrevPosition, Position);
+                    cameraPosition = CameraInfo.ModGetDrawPosition(presentationAlpha);
                 }
 
                 // Fixed-crosshair / modern first-person aiming is intentionally
