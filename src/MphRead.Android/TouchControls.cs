@@ -927,17 +927,25 @@ namespace MphRead.Droid
             {
                 return;
             }
-            if (_aimPresentationCount == AimPresentationCapacity)
+            if (_aimPresentationCount > 0)
             {
                 int newest = (_aimPresentationHead + _aimPresentationCount - 1)
                     % AimPresentationCapacity;
-                _aimPresentationX[newest] += x;
-                _aimPresentationY[newest] += y;
-                if (presentAt > _aimPresentationAt[newest])
+                // A second MotionEvent can arrive before the tail of the
+                // previous batch has been presented. Keep the ring ordered so
+                // a newly delivered historical sample cannot sit behind a
+                // later timestamp and then release as another clump.
+                if (presentAt < _aimPresentationAt[newest])
                 {
-                    _aimPresentationAt[newest] = presentAt;
+                    presentAt = _aimPresentationAt[newest];
                 }
-                return;
+                if (_aimPresentationCount == AimPresentationCapacity)
+                {
+                    _aimPresentationX[newest] += x;
+                    _aimPresentationY[newest] += y;
+                    _aimPresentationAt[newest] = presentAt;
+                    return;
+                }
             }
             int index = (_aimPresentationHead + _aimPresentationCount)
                 % AimPresentationCapacity;
@@ -1459,6 +1467,7 @@ namespace MphRead.Droid
                 _direction = Dir.None;
                 _aimDeltaX = 0;
                 _aimDeltaY = 0;
+                ResetAimPresentationLocked();
             }
         }
 
