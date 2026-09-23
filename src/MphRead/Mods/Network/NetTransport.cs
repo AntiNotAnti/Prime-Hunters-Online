@@ -1,5 +1,6 @@
 using System;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -52,6 +53,18 @@ namespace MphRead.Mods.Network
     public sealed class NetTransport : IDisposable
     {
         public NetTransportTelemetry Telemetry { get; } = new();
+        // Connection state belongs to this transport. The socket worker and
+        // simulation sender serialize access, including sequence allocation.
+        private readonly object _connectionLock = new();
+        private readonly Dictionary<IPEndPoint, NetConnection> _connections = new();
+        private readonly Dictionary<IPEndPoint, uint> _pendingConnections = new();
+        public NetConnectionSnapshot? ConnectionStats(IPEndPoint endpoint)
+        { lock (_connectionLock) return _connections.TryGetValue(endpoint, out var peer) ? peer.Capture() : null; }
+        public void ForgetConnection(IPEndPoint endpoint)
+        { lock (_connectionLock) { _connections.Remove(endpoint); _pendingConnections.Remove(endpoint); } }
+        private static bool Unsequenced(PacketType type) => type is PacketType.Hello or PacketType.StatusQuery
+            or PacketType.StatusReply or PacketType.MasterQuery or PacketType.MasterList or PacketType.MasterHeartbeat
+            or PacketType.HostRequest or PacketType.HostReply;
         private readonly UdpClient? _socket;
         private readonly Thread? _worker;
         private readonly ConcurrentQueue<ReceivedPacket> _inbox = new();
@@ -278,7 +291,7 @@ namespace MphRead.Mods.Network
                     // more. Blocking costs nothing -- the thread exists for
                     // this and does nothing else -- and hands the packet over
                     // the moment the kernel has it.
-                    byte[] data = ArrayPool<byte>.Shared.Rent(NetConfig.MaxPacketSize);
+                    byte[] data = ArrayPool<byte>.Shared.Rent(NetConfig.MaxPacketSize + 1);
                     bool handedOff = false;
                     try
                     {
@@ -286,7 +299,7 @@ namespace MphRead.Mods.Network
                         int length;
                         try
                         {
-                            length = _socket!.Client.ReceiveFrom(data, 0, NetConfig.MaxPacketSize,
+                            length = _socket!.Client.ReceiveFrom(data, 0, NetConfig.MaxPacketSize + 1,
                                 SocketFlags.None, ref remote);
                         }
                         catch (SocketException ex) when (ex.SocketErrorCode == SocketError.TimedOut)
@@ -297,8 +310,10 @@ namespace MphRead.Mods.Network
                         if (length == 0 || length > NetConfig.MaxPacketSize
                             || remote is not IPEndPoint sender)
                         {
+                            Telemetry.Invalid(length > NetConfig.MaxPacketSize);
                             continue;
                         }
+                        if (!Unwrap(sender, data, ref length)) continue;
 
                         if (_autoPong && (PacketType)data[0] == PacketType.Ping)
                         {
@@ -487,19 +502,85 @@ namespace MphRead.Mods.Network
             long extraHoldTicks = 0)
         {
             Span<byte> buffer = stackalloc byte[NetConfig.MaxPacketSize];
-            buffer[0] = (byte)type;
-            payload.CopyTo(buffer[1..]);
+            int length;
+            lock (_connectionLock)
+            {
+                if (type == PacketType.Hello && payload.Length >= 1 && payload[0] == NetConfig.ProtocolVersion)
+                {
+                    uint clientId = payload.Length >= 6 ? BinaryPrimitives.ReadUInt32LittleEndian(payload[2..]) : 0;
+                    if (_pendingConnections.Count < 64 || _pendingConnections.ContainsKey(target)) _pendingConnections[target] = clientId;
+                }
+                if (type == PacketType.Welcome && payload.Length == 17)
+                {
+                    uint clientId = BinaryPrimitives.ReadUInt32LittleEndian(payload[1..]);
+                    if (!_connections.TryGetValue(target, out var existing) || existing.ClientId != clientId)
+                    {
+                        if (_connections.Count >= 64) throw new InvalidOperationException("Connection capacity exceeded");
+                        _connections[target] = new NetConnection(target, NetConnection.NewId(), clientId);
+                    }
+                }
+                if (!Unsequenced(type) && _connections.TryGetValue(target, out var connection))
+                {
+                    if (payload.Length > NetConfig.MaxPayloadSize) throw new ArgumentOutOfRangeException(nameof(payload));
+                    connection.Send(type, NowMilliseconds).Write(buffer);
+                    payload.CopyTo(buffer[NetHeader.Size..]); length = NetHeader.Size + payload.Length;
+                }
+                else
+                {
+                    // Before admission only discovery/Hello/refusal and probe pings
+                    // are allowed. Established gameplay never has an unbound path.
+                    if (!Unsequenced(type) && type is not (PacketType.Refused or PacketType.Ping or PacketType.Pong)) return;
+                    if (payload.Length > NetConfig.MaxPacketSize - 1) throw new ArgumentOutOfRangeException(nameof(payload));
+                    buffer[0] = (byte)type; payload.CopyTo(buffer[1..]); length = payload.Length + 1;
+                }
+            }
+            Dispatch(target, buffer[..length], extraHoldTicks);
+        }
+
+        private static double NowMilliseconds => Stopwatch.GetTimestamp() * 1000.0 / Stopwatch.Frequency;
+        private void Dispatch(IPEndPoint target, ReadOnlySpan<byte> buffer, long extraHoldTicks = 0)
+        {
+            // Send consumes the caller's span before return. Fault injection owns
+            // an exact copy because its lifetime crosses this stack frame.
             if (_lagWorker != null)
             {
-                byte[] copy = buffer[..(payload.Length + 1)].ToArray();
-                lock (_heldLock)
-                {
-                    _heldOut.Enqueue(Stopwatch.GetTimestamp() * 1000.0 / Stopwatch.Frequency,
-                        (target, copy, copy.Length), extraHoldTicks * 1000.0 / Stopwatch.Frequency);
-                }
+                byte[] copy = buffer.ToArray();
+                lock (_heldLock) _heldOut.Enqueue(NowMilliseconds, (target, copy, copy.Length),
+                    extraHoldTicks * 1000.0 / Stopwatch.Frequency);
                 return;
             }
-            SendNow(target, buffer[..(payload.Length + 1)]);
+            SendNow(target, buffer);
+        }
+
+        private bool Unwrap(IPEndPoint sender, byte[] data, ref int length)
+        {
+            lock (_connectionLock)
+            {
+                if (data[0] != NetHeader.Marker)
+                {
+                    var type = (PacketType)data[0];
+                    if (Unsequenced(type) || type == PacketType.Refused && !_connections.ContainsKey(sender)
+                        || type is PacketType.Ping or PacketType.Pong && !_connections.ContainsKey(sender)) return true;
+                    Telemetry.Invalid(); return false;
+                }
+                if (!NetHeader.TryRead(data.AsSpan(0, length), out var header)) { Telemetry.Invalid(); return false; }
+                if (!_connections.TryGetValue(sender, out var connection))
+                {
+                    if (header.Type != PacketType.Welcome || length != NetHeader.Size + 17
+                        || !_pendingConnections.TryGetValue(sender, out uint clientId)
+                        || BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(NetHeader.Size + 1)) != clientId)
+                    { Telemetry.Invalid(); return false; }
+                    connection = new NetConnection(sender, header.ConnectionId, clientId);
+                    _connections.Add(sender, connection); _pendingConnections.Remove(sender);
+                }
+                if (!connection.Accepts(sender, header)) { Telemetry.Invalid(); return false; }
+                var result = connection.Receive(header, NowMilliseconds);
+                if (result is SequenceResult.Duplicate or SequenceResult.TooOld) return false;
+                if ((header.Flags & NetHeaderFlags.AckOnly) != 0) return false;
+                data.AsSpan(NetHeader.Size, length - NetHeader.Size).CopyTo(data.AsSpan(1));
+                data[0] = (byte)header.Type; length -= NetHeader.Size - 1;
+                return true;
+            }
         }
 
         private void SendNow(IPEndPoint target, ReadOnlySpan<byte> datagram)

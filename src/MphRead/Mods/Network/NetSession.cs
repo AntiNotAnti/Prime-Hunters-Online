@@ -1182,21 +1182,6 @@ namespace MphRead.Mods.Network
                 NetPlayerLifecycle.SetOccupant(peer.SlotIndex, 0);
                 peer = null;
             }
-            if (peer == null && clientId != 0)
-            {
-                // The same player from a new address. See NetSession.ClientId.
-                for (int i = 0; i < _peers.Count; i++)
-                {
-                    if (_peers[i].ClientId == clientId)
-                    {
-                        peer = _peers[i];
-                        Console.WriteLine($"[net] slot {peer.SlotIndex} came back on "
-                            + $"{packet.Sender} (was {peer.EndPoint})");
-                        peer.EndPoint = packet.Sender;
-                        break;
-                    }
-                }
-            }
             if (peer == null)
             {
                 int slot = NextFreeSlot();
@@ -1869,7 +1854,7 @@ namespace MphRead.Mods.Network
                 {
                     continue;
                 }
-                if (offset + PlayerState.Size > NetConfig.MaxPacketSize - 1)
+                if (offset + PlayerState.Size > NetConfig.MaxPayloadSize)
                 {
                     break;
                 }
@@ -1914,7 +1899,7 @@ namespace MphRead.Mods.Network
             }
             NetMatchTimeSync.Write(_scratch.AsSpan(offset));
             offset += NetMatchTimeSync.Size;
-            offset += NetHealthSync.Write(_scratch.AsSpan(offset, NetConfig.MaxPacketSize - 1 - offset));
+            offset += NetHealthSync.Write(_scratch.AsSpan(offset, NetConfig.MaxPayloadSize - offset));
             var header = new SnapshotHeader
             {
                 MatchId = CurrentMatchId,

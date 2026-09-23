@@ -10,7 +10,7 @@ namespace MphRead.Mods.Network;
 /// authority snapshot enters the recorder, so file checkpoints need no partial assembly.</summary>
 internal sealed class ReplayAuthorityWire
 {
-    internal const int HeaderSize = 21, PartBytes = NetConfig.MaxPacketSize - 1 - HeaderSize;
+    internal const int HeaderSize = 21, PartBytes = NetConfig.MaxPayloadSize - HeaderSize;
     private byte[]? _pending;
     private ulong _received;
     private uint _tick;

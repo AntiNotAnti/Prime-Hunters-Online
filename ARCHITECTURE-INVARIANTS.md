@@ -6,7 +6,7 @@ This file is the short, machine-oriented source of truth for architectural assum
 
 ## Network protocol
 
-- The current wire protocol is **16** (`NetConfig.ProtocolVersion`).
+- The current wire protocol is **17** (`NetConfig.ProtocolVersion`).
 - Protocol mismatches are refused during the Hello handshake. Do not make incompatible wire or simulation changes without a protocol bump.
 - Dated protocol 6/7/8 measurements in `.claude/` are historical A/B evidence, not the current architecture.
 

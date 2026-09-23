@@ -160,7 +160,7 @@ namespace MphRead.NetTest
             {
                 Check(System.Threading.SpinWait.SpinUntil(() => server.BoundPort != 0 || running.IsCompleted, 3000)
                     && !running.IsCompleted, "hosted server starts without assets");
-                using var socket = new System.Net.Sockets.UdpClient(0);
+                using var socket = new LoopbackPeer();
                 socket.Client.ReceiveTimeout = 2000;
                 var endpoint = new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, server.BoundPort);
                 byte[] hello = new byte[7] { (byte)PacketType.Hello, NetConfig.ProtocolVersion, 255, 42, 0, 0, 0 };
@@ -387,10 +387,11 @@ namespace MphRead.NetTest
         {
             using var transport = new NetTransport(0);
             transport.EnableRealtimeStateCoalescing();
-            using var sender = new System.Net.Sockets.UdpClient(0);
+            using var sender = new LoopbackPeer();
             var endpoint = new System.Net.IPEndPoint(System.Net.IPAddress.Loopback,
                 transport.LocalPort);
 
+            Protocol17Tests.Connect(sender.Transport, transport);
             sender.Send(new byte[] { (byte)PacketType.Snapshot, 1 }, 2, endpoint);
             sender.Send(new byte[] { (byte)PacketType.Snapshot, 2 }, 2, endpoint);
             sender.Send(new byte[] { (byte)PacketType.Snapshot, 3 }, 2, endpoint);

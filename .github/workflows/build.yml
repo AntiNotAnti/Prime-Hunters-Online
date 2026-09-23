@@ -116,6 +116,7 @@ jobs:
           dotnet run --project tools/nettest/nettest.csproj -c Release -- --health-shots
           dotnet run --project tools/nettest/nettest.csproj -c Release -- --architecture
           dotnet run --project tools/nettest/nettest.csproj -c Release -- --allocations
+          dotnet run --project tools/nettest/nettest.csproj -c Release -- --protocol17
           dotnet run --project tools/nettest/nettest.csproj -c Release -- --network-benchmark --smoke
 
       # Windows and Linux targets remain cross-published on Ubuntu.

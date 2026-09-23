@@ -1833,33 +1833,6 @@ namespace MphRead.Mods.Network
                 Remove(peer, "replaced connection");
                 peer = null;
             }
-            if (peer == null && clientId != 0)
-            {
-                // The same player, from an address this server has not seen.
-                //
-                // A connection that drops and comes back comes back through a
-                // new NAT binding, so the endpoint -- the only thing that used
-                // to identify a peer -- changes. Every reconnection therefore
-                // read as a new player: a second slot with a second hunter,
-                // while the slot the player actually held stood frozen in the
-                // room until it timed out half a minute later. Matching on
-                // who rather than on where is the whole fix; the peer keeps
-                // its slot, its name, its hunter and its score, and simply
-                // starts being spoken to at the new address.
-                for (int i = 0; i < _peers.Count; i++)
-                {
-                    if (_peers[i].ClientId == clientId)
-                    {
-                        peer = _peers[i];
-                        Log($"slot {peer.SlotIndex} ({peer.Name}) came back on "
-                            + $"{packet.Sender}, was {peer.EndPoint}");
-                        peer.EndPoint = packet.Sender;
-                        // The authority is held as a reference to this same
-                        // object, so nothing else has to be told.
-                        break;
-                    }
-                }
-            }
             if (peer == null)
             {
                 // Honour the slot the client asks for when it is free. A
@@ -1929,7 +1902,7 @@ namespace MphRead.Mods.Network
                     _authorityEpoch++;
                     _snapshotSeen = false;
                     Log($"{packet.Sender} joined as slot {slot} (authority)");
-                    NotifyAuthority(peer);
+                    // Admission Welcome must establish the transport first.
                 }
                 else
                 {
@@ -1954,6 +1927,7 @@ namespace MphRead.Mods.Network
             BinaryPrimitives.WriteUInt64LittleEndian(_scratch.AsSpan(7), _authorityEpoch);
             BinaryPrimitives.WriteUInt16LittleEndian(_scratch.AsSpan(15), _slotGenerations[peer.SlotIndex]);
             _transport?.Send(peer.EndPoint, PacketType.Welcome, _scratch.AsSpan(0, 17));
+            if (_authority == peer && !RunsTheMatch) NotifyAuthority(peer);
             // Immediately follow with the running match, so a client that
             // arrives mid-round loads the right map and adopts the server's
             // clock rather than starting a fresh one of its own.
@@ -2376,6 +2350,7 @@ namespace MphRead.Mods.Network
         private void Remove(Peer peer, string reason)
         {
             CareerPeerLeaving(peer);
+            _transport?.ForgetConnection(peer.EndPoint);
             _peers.Remove(peer);
             LobbyPeerRemoved(peer);
             BroadcastRoster();

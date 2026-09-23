@@ -1995,6 +1995,7 @@ namespace MphRead.Mods.Network
         // UDP/IP headers. Compact PlayerState leaves worst-case 8-player
         // snapshots comfortably below this bound.
         public const int MaxPacketSize = 1232;
+        public const int MaxPayloadSize = MaxPacketSize - NetHeader.Size;
         /// <summary>
         /// Bumped when the wire format changes in a way an older build would
         /// misread rather than notice. Version 2 added the ping to the roster:
@@ -2093,7 +2094,7 @@ namespace MphRead.Mods.Network
         /// directional momentum as the collision that produced the claim.
         /// Mixed v15/v16 peers must be refused because claim entry size changed.
         /// </summary>
-        public const int ProtocolVersion = 16;
+        public const int ProtocolVersion = 17;
         /// <summary>
         /// Frames between intent packets. One, so every frame.
         ///

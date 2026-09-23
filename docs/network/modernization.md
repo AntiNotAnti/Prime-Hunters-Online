@@ -51,3 +51,11 @@ baselines. Slot replacement resets occupant counters. Unmeasured ages/percentile
 are null. Legacy combat/rewind counters retain their producer's reset scope.
 `-netdebug` prints the unified surface once per second. The benchmark consumes
 `NetTransportTelemetry` too. No gameplay decision consumes diagnostic counters.
+
+## P1-A
+
+Protocol 17 uses an endpoint-bound random connection ID and 24-byte envelope.
+Receive-window tests cover all 32 bits, duplicate/reorder/loss, exact 32/33 jumps,
+uint wrap, stale IDs and wrong endpoints. Localhost UDP tests use the production
+transport and validate admission, payloads, ACK-derived RTT and spoofed endpoints.
+The lifecycle suite still passes with its loopback peer using the new transport.
