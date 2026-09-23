@@ -845,6 +845,8 @@ namespace MphRead.Droid
                 {
                     Scene = _build(_input, _size);
                     Scene.OnLoad();
+                    MphRead.Mods.Network.NetSession.ReportMatchLoadProgress(
+                        MphRead.Mods.Network.MatchLoadStage.SceneReady);
                     MphRead.Mods.Network.NetSession.MarkMatchLoaded();
                 }
                 catch (Exception ex)

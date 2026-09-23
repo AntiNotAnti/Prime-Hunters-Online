@@ -91,8 +91,8 @@ namespace MphRead.Mods.Launcher.Gui
         internal static void PrepareStudioPreview(MapGen.MapDefinition definition) => _studioPreview = definition;
         // While a persistent-lobby client has finished its local room build but
         // the server is still waiting for the other participants, keep the
-        // lobby/loading surface over the scene. Revealing only after InMatch
-        // makes the server's load barrier visible, not merely authoritative.
+        // lobby/loading surface over the scene. Reveal on the committed
+        // countdown edge instead of whichever frame the InMatch packet arrives.
         private static bool _matchLoading;
 
         /// <summary>
@@ -207,7 +207,7 @@ namespace MphRead.Mods.Launcher.Gui
 
             if (_matchLoading && window.HasScene)
             {
-                if (!NetSession.PersistentLobby || NetSession.IsPlaying)
+                if (!NetSession.FreezeGameplay)
                 {
                     _matchLoading = false;
                     UiSurface.Current?.Hide();

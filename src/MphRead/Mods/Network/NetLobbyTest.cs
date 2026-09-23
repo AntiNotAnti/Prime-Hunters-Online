@@ -269,6 +269,10 @@ namespace MphRead.Mods.Network
             { byte[] bytes = new byte[LobbyCommandPacket.Size]; command.Write(bytes); Send(PacketType.LobbyCommand, bytes); }
             public void Loaded(ushort? id = null)
             { byte[] bytes = new byte[MatchLoadedPacket.Size]; new MatchLoadedPacket(id ?? State!.Value.MatchId, State!.Value.AuthorityEpoch, State.Value.StartGeneration).Write(bytes); Send(PacketType.MatchLoaded, bytes); }
+            public void LoadFailed(string reason = "test load failure")
+            { byte[] bytes = new byte[MatchLoadFailedPacket.Size]; new MatchLoadFailedPacket(State!.Value.MatchId,
+                reason, State.Value.AuthorityEpoch, State.Value.StartGeneration).Write(bytes);
+                Send(PacketType.MatchLoadFailed, bytes); }
             public void ReadyResults()
             { var intent = new IntentPacket { Frame = ++_frame, Buttons = IntentButtons.ReadyState,
                 MatchId = State!.Value.MatchId, AuthorityEpoch = State.Value.AuthorityEpoch,
@@ -541,8 +545,9 @@ namespace MphRead.Mods.Network
             rig.Expect(owner, owner.Command(LobbyCommandType.UpdateMatch, config: config), LobbyResultCode.Ok);
             rig.Expect(owner, owner.Command(LobbyCommandType.StartMatch), LobbyResultCode.Ok);
             foreach (Client ready in rig.Clients.Take(7)) ready.Loaded();
+            rig.Clients[^1].LoadFailed();
             rig.Wait(() => owner.State.Value.Phase == SessionPhase.InMatch,
-                "load timeout removes missing participant before countdown", 22000);
+                "explicit load failure removes missing participant before countdown");
         }
 
         private static void CustomScenario()

@@ -97,6 +97,12 @@ namespace MphRead.Mods.Launcher
                 return false;
             }
 
+            // Measure the whole critical path, including custom-map preflight.
+            // The previous timer started after GenerateMissing and understated
+            // exactly the cold-load stalls the barrier needs to diagnose.
+            double loadStarted = NetSession.Clock;
+            NetSession.ReportMatchLoadProgress(MatchLoadStage.Preflight);
+
             // Only the selected custom room belongs on the critical path.
             // Scanning every installed custom map before every stock match made
             // "Start Match" pay filesystem/manifest work for maps nobody chose.
@@ -113,7 +119,7 @@ namespace MphRead.Mods.Launcher
                 return false;
             }
 
-            double loadStarted = NetSession.Clock;
+            NetSession.ReportMatchLoadProgress(MatchLoadStage.WorldBuild);
             EnsureScene(window);
             // The server's rotation decides the mode as well as the map; a
             // client that kept its own menu choice would score a different
@@ -151,7 +157,9 @@ namespace MphRead.Mods.Launcher
             window.AddRoom(roomKey, mode, playerCount: NetSession.Active
                 ? NetLaunch.RoomPlayerCount
                 : 0);
+            NetSession.ReportMatchLoadProgress(MatchLoadStage.PresentationLoad);
             window.LoadScene();
+            NetSession.ReportMatchLoadProgress(MatchLoadStage.SceneReady);
             Mods.RoomPrewarm.Release(roomKey);
             double loadSeconds = NetSession.Clock - loadStarted;
             Console.WriteLine($"[launcher] loaded {roomKey} in {loadSeconds:0.00}s");

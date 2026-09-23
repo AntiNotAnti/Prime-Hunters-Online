@@ -872,13 +872,32 @@ namespace MphRead.Droid
             _content.AddView(_notice);
         }
 
-        /// <summary>The room is loaded and the match is drawing.</summary>
+        /// <summary>The room is loaded; reveal it only at the shared start edge.</summary>
         private void MatchLoaded()
         {
-            HideNotice();
             // The load is over, so a resize is one frame's wait rather than a
             // freeze; the phone can turn end for end again.
             RequestedOrientation = ScreenOrientation.SensorLandscape;
+            ReleaseLoadedMatch();
+        }
+
+        private void ReleaseLoadedMatch()
+        {
+            if (!InMatch)
+            {
+                return;
+            }
+            if (!MphRead.Mods.Network.NetSession.FreezeGameplay)
+            {
+                HideNotice();
+                return;
+            }
+            double remaining = MphRead.Mods.Network.NetSession.StartCountdownRemainingSeconds;
+            ShowNotice(remaining > 0
+                ? $"Match starts in {Math.Max(1, (int)Math.Ceiling(remaining))}..."
+                : "Waiting for players...");
+            _notice?.BringToFront();
+            _content?.PostDelayed(ReleaseLoadedMatch, 50);
         }
 
         private void HideNotice()
