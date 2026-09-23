@@ -116,7 +116,11 @@ Two things come free from owning the context:
   driver-dependent and caused resume crashes on physical devices. The context is
   retained, the replacement window surface is created on resume, frame pacing is
   re-based only after that surface binds, and the display-rate request is applied
-  again to the new surface.
+  again to the new surface. A replacement window can exist briefly before it is
+  ready to become current: `EGL_BAD_CURRENT_SURFACE`, `EGL_BAD_NATIVE_WINDOW`
+  and `EGL_BAD_SURFACE` from `eglMakeCurrent` discard only that failed surface
+  and retry later. Context/configuration failures remain fatal because recovering
+  those would require rebuilding every loaded GL resource.
 - **Pausing is still a flag, not a handshake**, so `OnPause` cannot block the UI
   thread. Touch/gamepad ownership is cleared at the boundary so interrupted
   gestures cannot resume as stuck input.
