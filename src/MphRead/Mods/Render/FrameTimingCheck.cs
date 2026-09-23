@@ -337,7 +337,8 @@ namespace MphRead.Mods.Render
                 && Single.IsFinite(oppositeHalf.X) && Single.IsFinite(oppositeHalf.Y)
                 && Single.IsFinite(oppositeHalf.Z)
                 && MathF.Abs(oppositeHalf.Length - 1f) < 0.00001f
-                && MathF.Abs(Vector3.Dot(oppositeHalf, Vector3.UnitZ)) < 0.001f;
+                && MathF.Abs(Vector3.Dot(oppositeHalf, Vector3.UnitZ)) < 0.001f
+                && MathF.Abs(oppositeHalf.Y) < 0.001f;
 
             var camera = new CameraInfo
             {
