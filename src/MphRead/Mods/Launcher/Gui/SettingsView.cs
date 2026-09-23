@@ -41,6 +41,7 @@ namespace MphRead.Mods.Launcher.Gui
     {
         private readonly MenuSettings _settings;
         private readonly bool _inGame;
+        private readonly ScenePlayerRegistry? _players;
 
         private readonly Panel _pages = new();
         private readonly List<(string Name, Control Page)> _sections = new();
@@ -208,10 +209,11 @@ namespace MphRead.Mods.Launcher.Gui
         /// <summary>True when this was opened over a match rather than the launcher.</summary>
         public bool InGame => _inGame;
 
-        public SettingsView(MenuSettings settings, bool inGame = false)
+        public SettingsView(MenuSettings settings, bool inGame = false, ScenePlayerRegistry? players = null)
         {
             _settings = settings;
             _inGame = inGame;
+            _players = players;
 
             Background = Brushes.Transparent;
             Focusable = true;
@@ -1670,11 +1672,11 @@ namespace MphRead.Mods.Launcher.Gui
             }
             InputSettings.Save();
             // The players in the match already have their own copies of these.
-            // In-game settings must target the live match explicitly: launcher
-            // previews and other side scenes are allowed to exist at the same time.
-            if (_inGame && Shell.Window is { HasScene: true } window)
+            // In-game settings target the registry supplied by the owning match:
+            // launcher previews and other side scenes may exist at the same time.
+            if (_inGame && _players != null)
             {
-                InputSettings.ApplyToPlayers(window.Scene.Players);
+                InputSettings.ApplyToPlayers(_players);
             }
             else
             {
