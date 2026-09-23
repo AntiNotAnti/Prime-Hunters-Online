@@ -696,7 +696,46 @@ namespace MphRead.Droid
                 }
                 if (!EGL14.EglMakeCurrent(_display, _eglSurface, _eglSurface, _context))
                 {
-                    return Fail($"eglMakeCurrent failed (0x{EGL14.EglGetError():X})");
+                    int error = EGL14.EglGetError();
+                    EGLSurface? failedSurface = _eglSurface;
+                    _eglSurface = null;
+                    // The native window can be between generations while a
+                    // SurfaceView is being resumed, translated back on screen,
+                    // or otherwise relaid out. These errors describe that
+                    // window/surface boundary, not a lost GL context. Destroy
+                    // the failed wrapper and let the render loop retry once
+                    // Android has a usable native window instead of ending the
+                    // match.
+                    try
+                    {
+                        if (failedSurface != null
+                            && !failedSurface.Equals(EGL14.EglNoSurface))
+                        {
+                            EGL14.EglDestroySurface(_display, failedSurface);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[android] discarding a failed EGL surface failed: {ex.Message}");
+                    }
+
+                    const int EglBadCurrentSurface = 0x3007;
+                    const int EglBadNativeWindow = 0x300B;
+                    const int EglBadSurface = 0x300D;
+                    if (error == EglBadCurrentSurface
+                        || error == EglBadNativeWindow
+                        || error == EglBadSurface)
+                    {
+                        Console.WriteLine("[android] eglMakeCurrent is waiting for a replacement "
+                            + $"window surface (0x{error:X})");
+                        return false;
+                    }
+
+                    // EGL_CONTEXT_LOST and configuration/context errors are not
+                    // recoverable without rebuilding every GL resource owned by
+                    // the loaded scene, so keep those fatal rather than limping
+                    // on with invalid objects.
+                    return Fail($"eglMakeCurrent failed (0x{error:X})");
                 }
                 lock (_lock)
                 {
