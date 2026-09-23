@@ -350,7 +350,7 @@ namespace MphRead.Mods.Render
             camera.ModResetDrawState();
             camera.Target = Vector3.UnitZ;
             camera.ModCaptureDrawState();
-            bool pose = camera.ModGetDrawPose(.5,
+            bool pose = camera.ModGetFirstPersonDrawPose(.5,
                 out Vector3 pos, out Vector3 target, out Vector3 up, out _);
             Vector3 poseFacing = target - pos;
             bool poseOk = pose && poseFacing.LengthSquared > .99f
