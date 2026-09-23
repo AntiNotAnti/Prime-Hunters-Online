@@ -438,7 +438,6 @@ namespace MphRead.Mods.Network
                     {
                         Handle(packet, now);
                     }
-                    DropTimedOut(now);
                     // After the packets and before anything that reads the
                     // world: the intents that arrived this pass are the input
                     // to the steps this pass owes, exactly as a client applies
@@ -447,6 +446,10 @@ namespace MphRead.Mods.Network
                     if (_phase is SessionPhase.InMatch or SessionPhase.PostMatch) _sim?.Advance(now);
                     EnsureCareerMatchStarted(now);
                     foreach (ReceivedPacket packet in _transport.Drain(NetPumpBudget.AfterSimulation)) Handle(packet, now);
+                    // Pongs and load-progress heartbeats are background control.
+                    // After a long synchronous room build they may already be in
+                    // the inbox; consume them before deciding a peer was silent.
+                    DropTimedOut(now);
 
                     // The server owns the match clock, not the authority client:
                     // that is what lets a joiner adopt a running match's timer
