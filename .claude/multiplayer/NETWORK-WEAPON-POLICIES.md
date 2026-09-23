@@ -50,3 +50,11 @@ policy equivalence and bounds. `--health-shots` covers all nine weapons through
 production intent/lifecycle and prediction/claim regression paths. These
 asset-free tests do not claim to simulate every weapon's collision physics;
 asset-backed combat and rendered eight-player validation remain release gates.
+
+A separately tested lifecycle fix binds a player homing target to SlotGeneration
+and LifeId at acquisition. Every Process step releases a target whose identity
+changed, including during catch-up. Launches inside a rewind additionally require
+history for that current target incarnation. Replay scenes retain their own target
+references and do not consult the live network lifecycle. The encoded owner slot
+remains a suggestion checked against the authoritative selector, not an identity
+that may follow a respawn or slot replacement.

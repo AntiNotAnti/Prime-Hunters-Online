@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using MphRead;
+using MphRead.Entities;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using MphRead.Mods.Network;
 
 namespace MphRead.NetTest;
@@ -38,10 +41,27 @@ internal static class WeaponPolicyTests
             }
             NetArchitectureTests.Check(weapons.Count == 9, "all nine multiplayer weapons covered");
             NetArchitectureTests.Check(WeaponLagPolicies.CurrentVolume.CatchUpFrames(45) == 0, "melee and area stay on current timeline");
+            HealthShotTests.Session();
+            var target = HealthShotTests.Player(1);
+            var beam = (BeamProjectileEntity)RuntimeHelpers.GetUninitializedObject(typeof(BeamProjectileEntity));
+            typeof(EntityBase).GetField("_scene", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(beam, typeof(EntityBase).GetField("_scene", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(target));
+            beam.Target = target;
+            var validate = typeof(BeamProjectileEntity).GetMethod("ValidateHomingTarget", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            validate.Invoke(beam, null);
+            NetArchitectureTests.Check(beam.Target == target, "homing retains same target life");
+            HealthShotTests.Snapshot(2, HealthShotTests.State(8));
+            validate.Invoke(beam, null);
+            NetArchitectureTests.Check(beam.Target == null, "homing cannot follow a respawned target through an old object reference");
+            beam.Target = target;
+            NetPlayerLifecycle.SetOccupant(1, 11);
+            validate.Invoke(beam, null);
+            NetArchitectureTests.Check(beam.Target == null, "homing cannot inherit a reused slot");
+            NetSession.Stop();
             Console.WriteLine(ServerSim.Available(out string reason) ? "Asset-backed simulation available" : $"Asset-backed simulation unavailable: {reason}");
             Console.WriteLine($"PASS: {profiles} weapon timing profiles, all MP variants, bounded catch-up equivalence");
             return 0;
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
+        finally { NetSession.Stop(); }
     }
 }

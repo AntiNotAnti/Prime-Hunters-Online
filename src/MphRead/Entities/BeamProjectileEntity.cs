@@ -66,7 +66,30 @@ namespace MphRead.Entities
         public WeaponInfo? RicochetWeapon { get; set; }
         public EffectEntry? Effect { get; set; }
         public EffectEntry? MuzzleEffect { get; set; }
-        public EntityBase? Target { get; set; }
+        private EntityBase? _target;
+        private ushort _targetGeneration, _targetLife;
+        private bool _targetLifeBound;
+        public EntityBase? Target
+        {
+            get => _target;
+            set
+            {
+                _targetLifeBound = false;
+                if (value is PlayerEntity player && !_scene.Services.IsReplica && NetSession.Active)
+                {
+                    if (!NetUnlagged.HistoricalTargetAvailable(player)) { _target = null; return; }
+                    _targetGeneration = NetPlayerLifecycle.Generation(player.SlotIndex);
+                    _targetLife = NetPlayerLifecycle.Get(player.SlotIndex);
+                    _targetLifeBound = true;
+                }
+                _target = value;
+            }
+        }
+        internal void ValidateHomingTarget()
+        {
+            if (_targetLifeBound && _target is PlayerEntity player
+                && !NetPlayerLifecycle.Matches(player.SlotIndex, _targetGeneration, _targetLife)) Target = null;
+        }
         public EquipInfo? Equip { get; set; }
 
         public int DamageInterpolation { get; set; }
@@ -132,6 +155,7 @@ namespace MphRead.Entities
 
         public override bool Process()
         {
+            ValidateHomingTarget();
             if (Lifespan <= 0)
             {
                 return false;

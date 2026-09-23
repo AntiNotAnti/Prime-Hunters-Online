@@ -629,6 +629,7 @@ namespace MphRead.Mods.Network
             }
             // The exact point the shooter's screen was at, fraction and all.
             double target = NetSession.NetFrame - rewind;
+            _shotTargetFrame = target;
             if (!Reconcile(slot, target))
             {
                 HistoryMisses++;
@@ -859,6 +860,14 @@ namespace MphRead.Mods.Network
         /// out of lifespan -- which is what makes a point-blank shot cost one
         /// step instead of twenty-four.
         /// </summary>
+        private static double _shotTargetFrame;
+        internal static bool HistoricalTargetAvailable(PlayerEntity target)
+        {
+            if (!_inProgress || _shooter == null) return true;
+            return _shotTargetFrame >= 1 && PositionAt(target.SlotIndex, (uint)Math.Floor(_shotTargetFrame),
+                NetPlayerLifecycle.Generation(target.SlotIndex), NetPlayerLifecycle.Get(target.SlotIndex), out _);
+        }
+
         private static WeaponLagPolicy _shotPolicy;
         public static long CatchUpShots { get; private set; }
         public static long CatchUpTruncations { get; private set; }
