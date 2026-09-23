@@ -16,7 +16,7 @@ namespace MphRead.Mods.Launcher.Gui
     /// anything changes, so the shell gets its motion from discrete focus and
     /// hover changes while the OpenGL scene remains free to animate underneath.
     /// </summary>
-    internal sealed class HubNavButton : ContentControl
+    internal class HubNavButton : ContentControl
     {
         private readonly Border _frame;
         private readonly Border _rail;
@@ -87,7 +87,7 @@ namespace MphRead.Mods.Launcher.Gui
                 Text = label,
                 FontFamily = HubTheme.Ui,
                 FontWeight = FontWeight.SemiBold,
-                FontSize = compact ? 11 : 14,
+                FontSize = compact ? PrimeTypography.BodySmall : PrimeTypography.HeadingSmall,
                 Foreground = primary ? _accent : HubTheme.TextBrush,
                 VerticalAlignment = VerticalAlignment.Center
             };
