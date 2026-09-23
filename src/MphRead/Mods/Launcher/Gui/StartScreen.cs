@@ -119,7 +119,13 @@ namespace MphRead.Mods.Launcher.Gui
                 Interval = TimeSpan.FromMinutes(5)
             };
             _updateWatcher.Tick += (_, _) => CheckForUpdates();
-            AttachedToVisualTree += (_, _) => _updateWatcher.Start();
+            AttachedToVisualTree += (_, _) =>
+            {
+                _updateWatcher.Start();
+                // Also check immediately whenever the launcher comes back from
+                // a detached state, such as returning from a long match.
+                CheckForUpdates();
+            };
             DetachedFromVisualTree += (_, _) => _updateWatcher.Stop();
             root.Children.Add(_menu);
 
@@ -208,13 +214,9 @@ namespace MphRead.Mods.Launcher.Gui
             DetachedFromVisualTree += (_, _) => timer.Stop();
 #endif
 
-            if (LauncherPrefs.AutoUpdate)
-            {
-                // In the background, and never blocking the window: a launcher
-                // that will not draw until GitHub answers looks broken on a bad
-                // connection.
-                CheckForUpdates();
-            }
+            // The first automatic check runs when this view is attached. That
+            // same hook fires when the launcher returns after a match, so a
+            // release published while playing does not wait for a restart.
             RefreshVersionLine();
             _ = CatchUpPreviews();
         }
