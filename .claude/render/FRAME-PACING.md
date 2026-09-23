@@ -130,11 +130,12 @@ regression.
 
 **Fixed-crosshair / modern aiming** keeps the current 60 Hz camera orientation and
 may late-latch pointer/touch input that arrived after the last simulation step.
-Translation is presentation-only above 60 Hz: three completed camera samples project
-at most the fractional remainder of one observed motion step, fading the projection
-while slowing and cancelling it on reversal. That removes the 60 Hz positional
-stair-step during walking, strafing, jumping and knockback without adding a full
-simulation tick of interpolation latency. Teleports and respawns rebase the history.
+Translation is presentation-only above 60 Hz, but it stays strictly between the
+previous and current completed camera samples. The earlier forward projection could
+overshoot the next real 60 Hz body position and then correct on the following step,
+which appeared as Pro-HUD-only micro-jitter while walking, strafing, jumping or
+landing. Known-state interpolation removes that correction loop; 60 Hz still renders
+the current camera state. Teleports and respawns rebase the history.
 
 The important invariant is enforced explicitly: `TransformCamera` prepares one
 `FirstPersonRenderPose` per picture, and the arm cannon consumes that exact pose
