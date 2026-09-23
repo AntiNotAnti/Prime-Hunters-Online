@@ -1,0 +1,186 @@
+{
+  "date": "2026-09-23",
+  "baseCommit": "55e78f424978b6b9fa6e7da7368384db3854ea40",
+  "platform": "macOS arm64, .NET 10.0.12",
+  "configuration": {
+    "clients": 8,
+    "secondsPerClient": 630,
+    "matchSeconds": 600,
+    "latencyMs": 100,
+    "lossPercent": 2,
+    "rendering": false,
+    "clientRecording": true,
+    "canonicalServerRecording": true
+  },
+  "clients": [
+    {
+      "name": "ALPHA",
+      "steps": 37800,
+      "movingPeers": 7,
+      "recordingError": null,
+      "captureError": null,
+      "sampleNearSimulationFrame": 29993,
+      "rollingSimulationP50Ms": 0.189,
+      "rollingSimulationP95Ms": 0.575,
+      "rollingSimulationP99Ms": 2.141,
+      "maximumSimulationMsIncludingStartup": 86.022,
+      "loggedSpikesAfter600Frames": [
+        {
+          "frame": 771,
+          "simulationMs": 21.54,
+          "checkpointMs": 0.0
+        }
+      ]
+    },
+    {
+      "name": "BRAVO",
+      "steps": 37800,
+      "movingPeers": 7,
+      "recordingError": null,
+      "captureError": null,
+      "sampleNearSimulationFrame": 29993,
+      "rollingSimulationP50Ms": 0.185,
+      "rollingSimulationP95Ms": 0.55,
+      "rollingSimulationP99Ms": 2.036,
+      "maximumSimulationMsIncludingStartup": 116.231,
+      "loggedSpikesAfter600Frames": []
+    },
+    {
+      "name": "CHARLIE",
+      "steps": 37800,
+      "movingPeers": 7,
+      "recordingError": null,
+      "captureError": null,
+      "sampleNearSimulationFrame": 29994,
+      "rollingSimulationP50Ms": 0.189,
+      "rollingSimulationP95Ms": 0.559,
+      "rollingSimulationP99Ms": 1.491,
+      "maximumSimulationMsIncludingStartup": 124.058,
+      "loggedSpikesAfter600Frames": [
+        {
+          "frame": 18367,
+          "simulationMs": 22.16,
+          "checkpointMs": 0.0
+        }
+      ]
+    },
+    {
+      "name": "DELTA",
+      "steps": 37800,
+      "movingPeers": 7,
+      "recordingError": null,
+      "captureError": null,
+      "sampleNearSimulationFrame": 29994,
+      "rollingSimulationP50Ms": 0.187,
+      "rollingSimulationP95Ms": 0.56,
+      "rollingSimulationP99Ms": 1.889,
+      "maximumSimulationMsIncludingStartup": 117.406,
+      "loggedSpikesAfter600Frames": []
+    },
+    {
+      "name": "ECHO",
+      "steps": 37800,
+      "movingPeers": 7,
+      "recordingError": null,
+      "captureError": null,
+      "sampleNearSimulationFrame": 29994,
+      "rollingSimulationP50Ms": 0.192,
+      "rollingSimulationP95Ms": 0.559,
+      "rollingSimulationP99Ms": 1.543,
+      "maximumSimulationMsIncludingStartup": 133.155,
+      "loggedSpikesAfter600Frames": [
+        {
+          "frame": 18124,
+          "simulationMs": 36.96,
+          "checkpointMs": 0.0
+        }
+      ]
+    },
+    {
+      "name": "FOXTROT",
+      "steps": 37800,
+      "movingPeers": 7,
+      "recordingError": null,
+      "captureError": null,
+      "sampleNearSimulationFrame": 29994,
+      "rollingSimulationP50Ms": 0.201,
+      "rollingSimulationP95Ms": 0.556,
+      "rollingSimulationP99Ms": 1.382,
+      "maximumSimulationMsIncludingStartup": 127.259,
+      "loggedSpikesAfter600Frames": []
+    },
+    {
+      "name": "GOLF",
+      "steps": 37800,
+      "movingPeers": 7,
+      "recordingError": null,
+      "captureError": null,
+      "sampleNearSimulationFrame": 29994,
+      "rollingSimulationP50Ms": 0.202,
+      "rollingSimulationP95Ms": 0.556,
+      "rollingSimulationP99Ms": 2.03,
+      "maximumSimulationMsIncludingStartup": 130.864,
+      "loggedSpikesAfter600Frames": []
+    },
+    {
+      "name": "HOTEL",
+      "steps": 37800,
+      "movingPeers": 7,
+      "recordingError": null,
+      "captureError": null,
+      "sampleNearSimulationFrame": 29994,
+      "rollingSimulationP50Ms": 0.209,
+      "rollingSimulationP95Ms": 0.58,
+      "rollingSimulationP99Ms": 1.516,
+      "maximumSimulationMsIncludingStartup": 139.169,
+      "loggedSpikesAfter600Frames": []
+    }
+  ],
+  "clipRun": {
+    "secondsPerClient": 90,
+    "requestedClipsPerClient": 2,
+    "validatedFiles": 16,
+    "clients": [
+      {
+        "name": "ALPHA",
+        "result": "[netchecksim] steps=5400 remoteFrames=34561 movingPeers=7 clips=2 clipsPassed=True recordingError=none captureError=none",
+        "loggedSpikesDuringSaveWindow": []
+      },
+      {
+        "name": "BRAVO",
+        "result": "[netchecksim] steps=5400 remoteFrames=35258 movingPeers=7 clips=2 clipsPassed=True recordingError=none captureError=none",
+        "loggedSpikesDuringSaveWindow": []
+      },
+      {
+        "name": "CHARLIE",
+        "result": "[netchecksim] steps=5400 remoteFrames=35728 movingPeers=7 clips=2 clipsPassed=True recordingError=none captureError=none",
+        "loggedSpikesDuringSaveWindow": []
+      },
+      {
+        "name": "DELTA",
+        "result": "[netchecksim] steps=5400 remoteFrames=35962 movingPeers=7 clips=2 clipsPassed=True recordingError=none captureError=none",
+        "loggedSpikesDuringSaveWindow": []
+      },
+      {
+        "name": "ECHO",
+        "result": "[netchecksim] steps=5400 remoteFrames=35942 movingPeers=7 clips=2 clipsPassed=True recordingError=none captureError=none",
+        "loggedSpikesDuringSaveWindow": []
+      },
+      {
+        "name": "FOXTROT",
+        "result": "[netchecksim] steps=5400 remoteFrames=35697 movingPeers=7 clips=2 clipsPassed=True recordingError=none captureError=none",
+        "loggedSpikesDuringSaveWindow": []
+      },
+      {
+        "name": "GOLF",
+        "result": "[netchecksim] steps=5400 remoteFrames=35193 movingPeers=7 clips=2 clipsPassed=True recordingError=none captureError=none",
+        "loggedSpikesDuringSaveWindow": []
+      },
+      {
+        "name": "HOTEL",
+        "result": "[netchecksim] steps=5400 remoteFrames=34459 movingPeers=7 clips=2 clipsPassed=True recordingError=none captureError=none",
+        "loggedSpikesDuringSaveWindow": []
+      }
+    ]
+  }
+}
