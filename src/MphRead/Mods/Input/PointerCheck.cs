@@ -148,10 +148,19 @@ namespace MphRead.Mods.Input
             Frame(1510, 604, true, acceptsInput: false);
             Frame(1800, 650, true, acceptsInput: false);
             Frame(1810, 650, true);
-            Require(PointerDevice.TakeDelta() == (0f, 0f), "pause/focus return cannot replay accumulated aim");
+            Require(!StylusZone.Aiming && PointerDevice.TakeDelta() == (0f, 0f),
+                "pause/focus return quarantines held stylus input");
             Frame(1820, 650, true, id: 2);
-            Require(StylusZone.Aiming && PointerDevice.TakeDelta() == (0f, 0f),
-                "pointer id churn keeps the held stylus gesture without injecting aim");
+            Require(!StylusZone.Aiming && !StylusZone.CapturingPointer
+                && PointerDevice.TakeDelta() == (0f, 0f),
+                "pointer id churn cannot escape the held-input quarantine");
+            Frame(1820, 650, false, id: 2);
+            Frame(1830, 650, true, id: 3);
+            Require(StylusZone.Held == StylusRegion.Aim && !StylusZone.Aiming,
+                "real release rearms stylus aim without a touchdown jump");
+            Frame(1840, 655, true, id: 3);
+            Require(StylusZone.Aiming && PointerDevice.TakeDelta() == (10f, 5f),
+                "rearmed stylus aim resumes after the first drag sample");
 
             // A real tablet can rotate native pointer IDs while the tip is still
             // physically touching the same WPN/affinity icon. That must remain
