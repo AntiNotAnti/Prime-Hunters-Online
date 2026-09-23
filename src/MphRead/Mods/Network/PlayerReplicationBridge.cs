@@ -92,18 +92,6 @@ namespace MphRead.Mods.Network
         public long NodeLookupsUnresolved;
 
         /// <summary>
-        /// How far this machine's own player may be from the authority's copy
-        /// of it before it is pulled back.
-        ///
-        /// Wide on purpose. The authority's copy is this client's own report
-        /// from a round trip ago, so under boost across a bad line the two
-        /// are several units apart while nothing at all is wrong, and a
-        /// threshold tight enough to call that a desync is a threshold that
-        /// fires constantly. This is here for corruption, not for latency.
-        /// </summary>
-        private const float DesyncDistance = 30f;
-
-        /// <summary>
         /// The fastest a puppet may be said to be travelling, in units per
         /// frame. Boost -- the quickest a hunter moves under its own power --
         /// caps at 0.6, so this is eight times anything legitimate and exists
@@ -705,8 +693,7 @@ namespace MphRead.Mods.Network
         /// are the match, and a client that decided them for itself was
         /// playing a different one -- but keeps its facing, because aim has to
         /// answer the mouse now rather than after a round trip, and keeps its
-        /// own position -- see the isLocal branch, and
-        /// <see cref="DesyncDistance"/> for the one case that overrides it.
+        /// own position and velocity throughout the same life.
         /// </summary>
         private readonly ushort[] _appliedLifeId = new ushort[PlayerEntity.SlotCapacity];
         private readonly bool[] _lifeApplied = new bool[PlayerEntity.SlotCapacity];
@@ -781,12 +768,6 @@ namespace MphRead.Mods.Network
             }
             else
             {
-                if (!fresh && _host.GameplayReady && Diverged(player, state, slot))
-                {
-                    Move(player, state.Position);
-                    player.Speed = state.Speed;
-                    _divergedFrames[slot] = 0;
-                }
                 player.Health = _host.HealthFor(player, state.Health, local: true);
             }
             player.ModSetFrozen((state.Flags & PlayerState.FlagFrozen) != 0);
@@ -838,58 +819,6 @@ namespace MphRead.Mods.Network
             => slot < 0 || slot >= _formReconciliation.Length ? FormCorrection.None
                 : _formReconciliation[slot].Step(frame, desiredAlt, actualAlt, morphing, unmorphing, ping);
 
-        private readonly int[] _divergedFrames = new int[PlayerEntity.SlotCapacity];
-
-        /// <summary>
-        /// How long this machine's own player must look wrong before it is
-        /// moved. Long enough that nothing latency can produce survives it.
-        /// </summary>
-        private const int DivergedFramesBeforeCorrecting = 60;
-
-        /// <summary>
-        /// Whether the authority's copy of this machine's own player is
-        /// somewhere it cannot be explained by the trip.
-        ///
-        /// Comparing it against where the player is *now* is the wrong
-        /// question, and asking it that way was a bug of its own. The
-        /// authority's copy is this client's own report from a round trip
-        /// ago, so under anything fast the two are legitimately far apart:
-        /// a player falling out of the level covers thirty units in the half
-        /// second a 250 ms link takes to answer, and correcting that hauled it
-        /// back up out of the fall, over and over, so it could never die.
-        /// Seventy-seven of those in one run, and the peers watching saw a
-        /// player jumping 64 units at a time.
-        ///
-        /// So compare it against where this player *was* when the authority
-        /// was looking -- its own recorded position, a ping's worth of frames
-        /// back. That is the same instant, and a difference then is a real
-        /// disagreement rather than a stale reading. It still has to persist,
-        /// because one bad snapshot is not a desync.
-        /// </summary>
-        private bool Diverged(PlayerEntity player, in PlayerState state, int slot)
-        {
-            if (slot < 0 || slot >= _divergedFrames.Length)
-            {
-                return false;
-            }
-            Vector3 then = player.Position;
-            int lagFrames = slot < PlayerEntity.SlotCapacity
-                ? Math.Clamp(_host.Ping(slot) * 60 / 1000, 0, 100)
-                : 0;
-            if (lagFrames > 0 && _host.Frame > (uint)lagFrames
-                && player.ModGetNetworkPosition(_host.Frame - (uint)lagFrames, out Vector3 past))
-            {
-                then = past;
-            }
-            if ((state.Position - then).LengthSquared <= DesyncDistance * DesyncDistance)
-            {
-                _divergedFrames[slot] = 0;
-                return false;
-            }
-            _divergedFrames[slot]++;
-            return _divergedFrames[slot] >= DivergedFramesBeforeCorrecting;
-        }
-
         /// <summary>
         /// Forget where the authority had everybody standing, because it was
         /// in a different room. The next snapshot that reports a player
@@ -901,7 +830,6 @@ namespace MphRead.Mods.Network
             Array.Clear(_formReconciliation);
             Array.Clear(_lifeApplied);
             Array.Clear(_reportSeen);
-            Array.Clear(_divergedFrames);
         }
 
         public void Reset()
@@ -925,7 +853,6 @@ namespace MphRead.Mods.Network
             Array.Clear(ShootPressAge);
             _pressHistory = default;
             _hasLatch = false;
-            Array.Clear(_divergedFrames);
             Array.Clear(_lastReportPosition);
             Array.Clear(_lastReportFrame);
             Array.Clear(_reportSeen);
@@ -976,7 +903,6 @@ namespace MphRead.Mods.Network
                 _hasLatch = false;
                 _latchedCharge = _latchedBoostDamage = 0;
             }
-            _divergedFrames[slot] = 0;
             _lastReportPosition[slot] = Vector3.Zero;
             _lastReportFrame[slot] = 0;
             _reportSeen[slot] = false;
@@ -1211,8 +1137,8 @@ namespace MphRead.Mods.Network
         /// A frozen player cannot move: any position that arrives while the
         /// timer runs describes a moment before the ice, so there is nothing
         /// to lose by ignoring it. The local simulation still runs -- a frozen
-        /// player falls -- and whatever the two copies disagree about by the
-        /// time it thaws is what <see cref="Diverged"/> is for.
+        /// player falls. Once thawed, owner reports resume; snapshots never
+        /// correct the local owner's same-life position or velocity.
         /// </summary>
         private bool FrozenInPlace(PlayerEntity player)
         {

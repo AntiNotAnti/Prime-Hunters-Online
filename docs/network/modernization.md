@@ -20,11 +20,12 @@ remain the compatibility boundary.
   growth; timings are observations, not portable CI thresholds. Missing gameplay
   metrics are explicitly unavailable, never invented zeros.
 
-## Known baseline conflict
+## Owner movement invariant
 
-`PlayerReplicationBridge.ApplyState` contains an old extreme-divergence owner
-position correction (30 units for 60 updates). P0 records the current behavior;
-modernization must remove this separately before meeting the requested invariant.
+The baseline contained an extreme-divergence owner correction (30 units for
+60 updates). A separate behavior fix removes it; a functional production-bridge
+test applies 180 divergent same-life snapshots and verifies position, previous
+position and velocity remain unchanged. Lifecycle spawn placement is preserved.
 
 ## External validation
 

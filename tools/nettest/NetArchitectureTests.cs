@@ -81,10 +81,53 @@ internal static class NetArchitectureTests
             var player = HealthShotTests.Player(1);
             NetPlayerBridge.ApplyReportedPosition(player, new IntentPacket { Frame = 10, SlotGeneration = 10, LifeId = 7, Buttons = IntentButtons.InPlayState, Position = intent.Position });
             Check(player.Position == intent.Position, "production bridge accepts owner movement for authoritative collision");
+            var bridge = (PlayerReplicationBridge)Activator.CreateInstance(typeof(PlayerReplicationBridge),
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+                binder: null, args: new object[] { new OwnerHost() }, culture: null)!;
+            var state = new PlayerState { SlotIndex = 1, SlotGeneration = 10, LifeId = 7,
+                Health = 100, Flags = PlayerState.FlagSpawned, Facing = Vector3.UnitZ };
+            var lives = new ushort[PlayerEntity.SlotCapacity]; lives[1] = 7;
+            var applied = new bool[PlayerEntity.SlotCapacity]; applied[1] = true;
+            HealthShotTests.Field(bridge, "_appliedLifeId", lives);
+            HealthShotTests.Field(bridge, "_lifeApplied", applied);
+            player.Position = new Vector3(100, 20, 30); player.Speed = new Vector3(1, 2, 3);
+            Vector3 position = player.Position, speed = player.Speed, previous = player.PrevPosition;
+            state.Position = new Vector3(-1000, 300, 200); state.Speed = new Vector3(-3, -2, -1);
+            for (int i = 0; i < 180; i++) bridge.ApplyState(player, state, isLocal: true);
+            Check(player.Position == position && player.Speed == speed && player.PrevPosition == previous,
+                "same-life snapshots cannot correct owner's physical position or velocity");
             Console.WriteLine("PASS: architecture, owner position, full snapshots and v16 byte fixture");
             return 0;
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
         finally { NetSession.Stop(); }
     }
+    private sealed class OwnerHost : IPlayerReplicationHost
+    {
+        public bool IsReplica => true;
+        public bool Active => true;
+        public bool IsAuthority => false;
+        public bool IsHost => false;
+        public int LocalSlot => 1;
+        public uint Frame => 1000;
+        public bool Settling => false;
+        public bool GameplayReady => true;
+        public bool CanSpawn => true;
+        public int Ping(int slot) => 100;
+        public bool Matches(int slot, ushort generation, ushort life) => generation == 10 && life == 7;
+        public bool TryGetIntent(int slot, out IntentPacket intent) { intent = default; return false; }
+        public bool TryGetState(int slot, out PlayerState state) { state = default; return false; }
+        public uint IntentAge(int slot) => 0;
+        public void OnSpawn(PlayerEntity player) { }
+        public void BeginLife(PlayerEntity player, in PlayerState state) { }
+        public void Spawn(PlayerEntity player, in PlayerState state) { }
+        public void ReplayDamage(PlayerEntity player, in PlayerState state) { }
+        public void ReplayDeath(PlayerEntity player) { }
+        public void NoteDeath(int slot) { }
+        public int HealthFor(PlayerEntity player, int health, bool local) => health;
+        public bool SamplePosition(int slot, bool presentation, out Vector3 position, out bool alt)
+        { position = default; alt = false; return false; }
+        public void StampAcknowledgement(ref IntentPacket intent) { }
+    }
+
 }

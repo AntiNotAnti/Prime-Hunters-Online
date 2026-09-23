@@ -34,9 +34,9 @@ This file is the short, machine-oriented source of truth for architectural assum
   baseline reconstruction or damage sidecars from reverted PR #28.
 - P0 wire optimizations must remain byte-identical to protocol 16. The protocol-17
   envelope/reliability/queue/start changes form one unreleased migration train.
-- Spawn placements are lifecycle operations, not movement reconciliation. The
-  baseline still contains an extreme-divergence owner correction; remove it as
-  a separately tested behavior fix before declaring modernization complete.
+- Spawn placements are lifecycle operations, not movement reconciliation.
+  Same-life snapshots never correct the local owner collision body or velocity;
+  the architecture suite exercises prolonged, extreme position disagreement.
 - Scratch buffers belong to their session/server owner. Synchronous sends consume
   their spans before returning; delayed sends and replay records must own copies.
 
