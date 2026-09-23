@@ -53,6 +53,13 @@ play-type, offline/adventure and settings-category landing screens are removed.
 - Spectate joins an available ordinary player slot and then enters the existing
   spectator camera after loading. It does not bypass server capacity, passwords,
   admission rules or add a new spectator network protocol.
+- Bot results offer a searchable tactical arena grid, selected destination,
+  countdown and an immediate next-match action. When no arena is selected,
+  the current arena repeats with the same hunter, mode, bots and difficulty.
+  Desktop and Android queue the continuation through their existing launch
+  paths; Forge playtests and Adventure retain their return behavior.
+- The lobby map sheet uses the same tactical cards with search, a larger arena
+  preview and explicit Cancel/Use Map actions.
 - Invite copies the current address on explicit interaction. Locally hosted
   loopback addresses are labeled as requiring a LAN/public address for sharing.
 
@@ -99,5 +106,5 @@ Manual release acceptance still requires actual mouse/touch/controller sessions
 on target hardware, an Android landscape device, a live multi-client lobby
 (start/leave/rejoin while visiting other tabs), and recorded replay/Forge
 playtest round trips. The local game-window smoke also exercises Offline launch, fullscreen/resize,
-pause/settings and match return. Automated builds and landscape captures do not substitute
+pause/settings, default bot rematches, selected next-map transitions and explicit match return. Automated builds and landscape captures do not substitute
 for these device and multiplayer checks.

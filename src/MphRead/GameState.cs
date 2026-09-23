@@ -622,36 +622,9 @@ namespace MphRead
             }
         }
 
-        /// <summary>
-        /// Load the map the results screen picked, offline, instead of going
-        /// back to the launcher.
-        ///
-        /// A rotation is what a server does with the answer to "where next";
-        /// with nobody else in the match there is no server, so the shell does
-        /// it -- the same two requests the pause menu's "Leave match" and the
-        /// front screen's "Start" already use, sent on one frame. False when
-        /// there is nothing to do: no shell, not an offline match of one's
-        /// own, or nothing picked. The caller then fades out to the launcher
-        /// exactly as it always did.
-        /// </summary>
-        private bool PlayPickedMap()
-        {
-#if MPHREAD_SHELL
-            if (!Mods.Launcher.Gui.Shell.CanPlayAnother)
-            {
-                return false;
-            }
-            string room = Mods.MapPick.Chosen();
-            if (room.Length == 0)
-            {
-                return false;
-            }
-            Mods.Launcher.Gui.Shell.PlayAnother(room);
-            return true;
-#else
-            return false;
-#endif
-        }
+        // Both graphical heads queue the next local match without returning
+        // control to the launcher. With no selection, repeat the current arena.
+        private bool PlayPickedMap() => Mods.Launcher.OfflineRematch.Continue();
 
         private void EnsureIntroCamSeq()
         {

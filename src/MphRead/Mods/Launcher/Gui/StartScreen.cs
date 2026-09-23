@@ -127,7 +127,7 @@ namespace MphRead.Mods.Launcher.Gui
                         if (!CanLaunchLocal()) return;
                         _returnToMapStudio = true;
                         Shell.PrepareStudioPreview(definition);
-                        Finish(new LaunchPlan { Kind = LaunchKind.Offline, RoomKey = definition.Name,
+                        Finish(new LaunchPlan { Kind = LaunchKind.Offline, RoomKey = definition.Name, IsPlaytest = true,
                             Hunter = Hunter.Samus, Mode = GameMode.Battle, Bots = 0, BotLevel = 5, PlayerName = "Map author" });
                     };
                     return forge;

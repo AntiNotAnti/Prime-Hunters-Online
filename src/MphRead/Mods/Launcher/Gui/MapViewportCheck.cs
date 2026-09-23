@@ -126,7 +126,7 @@ internal static class MapViewportCheck
             UiOverlay.Draw(window.FramebufferSize.X, window.FramebufferSize.Y);
             Check(ScreenCapture.SaveWindow(window.FramebufferSize.X, window.FramebufferSize.Y,
                 Path.Combine(directory, "map-studio-renderer.png")), "full editor composite capture");
-            var back = studio.GetVisualDescendants().OfType<Avalonia.Controls.Button>().First(b => b.Content as string == "Back");
+            var back = studio.GetVisualDescendants().OfType<PrimeButton>().First(b => b.Label == "BACK");
             var backCenter = back.TranslatePoint(new Point(back.Bounds.Width / 2, back.Bounds.Height / 2), surface.Root)!.Value;
             GL.ReadPixels((int)(backCenter.X / surface.WindowWidth * window.FramebufferSize.X),
                 window.FramebufferSize.Y - (int)(backCenter.Y / surface.WindowHeight * window.FramebufferSize.Y),

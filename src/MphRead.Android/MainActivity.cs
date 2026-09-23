@@ -833,6 +833,14 @@ namespace MphRead.Droid
             {
                 return;
             }
+            OfflineRematch.StartNext = selected =>
+            {
+                if (NetSession.Active || !OfflineRematch.TryPlan(plan, selected, out var next)) return false;
+                // Queue onto Android's UI thread; never stop/join the render
+                // thread from the results update that is currently running on it.
+                RunOnUiThread(() => { EndMatch(); StartMatch(next); });
+                return true;
+            };
             _gameView = new GameView(this, _controls, input,
                 (i, size) => AndroidMatch.Build(i, size, plan, () => RunOnUiThread(EndMatch)),
                 () => RunOnUiThread(EndMatch),
@@ -1139,6 +1147,7 @@ namespace MphRead.Droid
             {
                 return;
             }
+            OfflineRematch.StartNext = null;
             _pending = null;
             _pauseMenuOpen = false;
             HideNotice();

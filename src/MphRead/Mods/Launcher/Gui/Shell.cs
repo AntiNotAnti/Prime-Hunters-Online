@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
 using MphRead.Mods.Network;
@@ -140,6 +141,7 @@ namespace MphRead.Mods.Launcher.Gui
                 PublishNativeHandle(window);
                 _window = window;
                 Active = true;
+                OfflineRematch.StartNext = PlayAnother;
                 ShowFrontScreen();
                 window.Run();
                 return true;
@@ -153,6 +155,7 @@ namespace MphRead.Mods.Launcher.Gui
             finally
             {
                 Active = false;
+                OfflineRematch.StartNext = null;
                 _window = null;
                 _pending = null;
                 _endMatch = false;
@@ -427,7 +430,7 @@ namespace MphRead.Mods.Launcher.Gui
         /// Online there is a server with a rotation and this is not its
         /// business; a story match and a demo have no next map to pick.
         /// </summary>
-        public static bool CanPlayAnother => Active && _pending == null
+        public static bool CanPlayAnother => Active && _pending == null && !NetSession.Active
             && _played is LaunchPlan plan && plan.Kind == LaunchKind.Offline;
 
         /// <summary>
@@ -440,15 +443,16 @@ namespace MphRead.Mods.Launcher.Gui
         /// again without ever being drawn. Offline that is the whole of what a
         /// rotation is.
         /// </summary>
-        public static void PlayAnother(string roomKey)
+        public static bool PlayAnother(string roomKey)
         {
-            if (!CanPlayAnother || String.IsNullOrWhiteSpace(roomKey)
-                || _played is not LaunchPlan plan)
+            if (!CanPlayAnother || _played is not LaunchPlan plan
+                || !OfflineRematch.TryPlan(plan, roomKey, out var next))
             {
-                return;
+                return false;
             }
             _endMatch = true;
-            _pending = plan with { RoomKey = roomKey };
+            _pending = next;
+            return true;
         }
 
         private static void StartMatch(RenderWindow window, LaunchPlan plan)
@@ -862,8 +866,23 @@ namespace MphRead.Mods.Launcher.Gui
                 UiSurface.Current?.ClickOn(c => c is DeckButton tab && tab.Text == "Change hunter");
                 Wait(30);
             },
-            w => { Shot(w, "shell-endgame-hunter"); ReleaseResults(); Wait(20); },
-            _ => { EndShotMatch(); Wait(90); },
+            w => { Shot(w, "shell-endgame-hunter"); MapPick.Reset(); ReleaseResults(); Wait(90); },
+            w =>
+            {
+                CheckShotRematch(w, _played?.RoomKey);
+                Shot(w, "shell-bot-rematch"); HoldResults(); Wait(20);
+            },
+            _ =>
+            {
+                _shotNextRoom = MapPick.Order.FirstOrDefault(room => !MapPick.IsReturnToLobby(room));
+                if (_shotNextRoom != null) MapPick.Choose(MapPick.IndexOf(_shotNextRoom));
+                ReleaseResults(); Wait(90);
+            },
+            w =>
+            {
+                CheckShotRematch(w, _shotNextRoom);
+                Shot(w, "shell-bot-next-map"); RequestEndMatch(); Wait(90);
+            },
             w => { Shot(w, "shell-back-fullscreen"); Mods.WindowMode.Toggle(w); Wait(25); },
             w => { Shot(w, "shell-back"); Wait(5); }
         };
@@ -1000,7 +1019,7 @@ namespace MphRead.Mods.Launcher.Gui
         /// <summary>
         /// Put the match at its results and keep it there.
         ///
-        /// <see cref="EndShotMatch"/> shortens the results to a fifth of a
+        /// The continuation check shortens the results to a fifth of a
         /// second because the capture it belongs to is about what comes
         /// *after* them. This one is about the results themselves, so the
         /// clock is given thirty seconds instead -- the screen it photographs
@@ -1036,10 +1055,17 @@ namespace MphRead.Mods.Launcher.Gui
             GameState.MatchTime = 0.2f;
         }
 
-        private static void EndShotMatch()
+        private static string? _shotNextRoom;
+        private static void CheckShotRematch(RenderWindow window, string? expected)
         {
-            GameState.MatchState = MatchState.Ending;
-            GameState.MatchTime = 0.2f;
+            int expectedId = expected == null ? -1 : Metadata.GetRoomByName(expected).Item2;
+            if (!window.HasScene || GameState.MatchState != MatchState.InProgress
+                || expectedId < 0 || window.Scene.RoomId != expectedId)
+            {
+                ShotMisses++;
+                Console.WriteLine($"[shellshot] bot rematch failed: expected {expected}, scene={window.HasScene}, state={GameState.MatchState}");
+            }
+            else Console.WriteLine($"[shellshot] bot rematch loaded {expected}");
         }
 
         private static void Shot(RenderWindow window, string name)

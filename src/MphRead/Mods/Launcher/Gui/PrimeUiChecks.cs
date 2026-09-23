@@ -132,6 +132,31 @@ namespace MphRead.Mods.Launcher.Gui
                     shell.Footer.SetStatus("DOWNLOADING 42%"); shell.Refresh();
                     Check(shell.Footer.Version.Label == "DOWNLOADING 42%", "telemetry refresh preserves update progress");
                     shell.Footer.SetStatus("SIM: 60 HZ // BUILD LOCAL");
+                    var played = new LaunchPlan { Kind = LaunchKind.Offline, RoomKey = "MP1 SANCTORUS",
+                        Mode = GameMode.Battle, Bots = 5, BotLevel = 3, Hunter = Hunter.Trace, PlayerName = "CHECK" };
+                    Check(OfflineRematch.TryPlan(played, "", out var same) && same.RoomKey == played.RoomKey,
+                        "unselected bot results repeat current arena");
+                    Check(OfflineRematch.TryPlan(played, "MP3 PROVING GROUND", out var next)
+                        && next.RoomKey == "MP3 PROVING GROUND" && next.Bots == 5 && next.BotLevel == 3
+                        && next.Hunter == Hunter.Trace && next.Mode == played.Mode && next.PlayerName == played.PlayerName,
+                        "next arena retains bot match configuration");
+                    Check(!OfflineRematch.TryPlan(played with { Kind = LaunchKind.Online }, "MP3 PROVING GROUND", out _)
+                        && !OfflineRematch.TryPlan(played with { Kind = LaunchKind.Adventure }, "", out _)
+                        && !OfflineRematch.TryPlan(played with { IsPlaytest = true }, "", out _),
+                        "local rematch excludes network and Adventure sessions");
+                    string? picked = null;
+                    var picker = new MapCardPicker(new[] { "MP1 SANCTORUS", "MP3 PROVING GROUND" }, "MP1 SANCTORUS");
+                    picker.Done += (_, room) => picked = room;
+                    shell.Overlays.Show(picker); Drain(window);
+                    var search = (TextBox)ControllerNav.Find(picker, "map-picker.search")!;
+                    search.Text = "PROVING"; Drain(window);
+                    var cards = picker.GetVisualDescendants().OfType<DeckTile>().ToArray();
+                    Check(cards.Count(c => c.IsVisible) == 1, "map picker filters arena cards");
+                    var card = cards.Single(c => c.IsVisible); card.Focus(); FocusNavigator.Key(card, Key.Enter);
+                    var use = ControllerNav.Find(picker, "map-picker.use")!;
+                    use.Focus(); FocusNavigator.Key(use, Key.Enter);
+                    Check(picked == "MP3 PROVING GROUND", "map picker confirms selected arena");
+                    shell.Overlays.Close();
                     window.Content = null; window.Close();
                     if (directory != null)
                     {
@@ -144,6 +169,10 @@ namespace MphRead.Mods.Launcher.Gui
                             Check(UiCapture.Capture(shell, path, size), "capture " + path);
                             Geometry(shell, size, route);
                         }
+                        shell.Router.Navigate(PrimeRoute.Play);
+                        shell.Overlays.Show(new MapCardPicker(new[] { "MP1 SANCTORUS", "MP3 PROVING GROUND" }, "MP1 SANCTORUS"));
+                        Check(UiCapture.Capture(shell, Path.Combine(directory, "prime-map-picker-1280x720.png"), new Size(1280,720)), "map picker capture");
+                        shell.Overlays.Close();
                     }
                     shell.Dispose();
                     Deck.Still = false;
