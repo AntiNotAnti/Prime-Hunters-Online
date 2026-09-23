@@ -44,7 +44,7 @@ public static class NetHistoricalTrace
     {
         // Imperialist's first travel segment is a practical read-only trace.
         // Other mechanics need a private simulation, not a second live Process.
-        if (shooter.CurrentWeapon != BeamType.Imperialist || direction.LengthSquared < .001f)
+        if (WeaponLagPolicies.Resolve(shooter.EquipInfo.Weapon).Mode != LagCompensationMode.HistoricalTrace || direction.LengthSquared < .001f)
             return ShadowOutcome.HistoricalDataUnavailable;
         var scene = shooter.OwningScene;
         // Dynamic occluders/secondary bodies have no complete historical model.

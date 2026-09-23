@@ -121,6 +121,7 @@ jobs:
           dotnet run --project tools/nettest/nettest.csproj -c Release -- --queue-budget
           dotnet run --project tools/nettest/nettest.csproj -c Release -- --load-lifecycle
           dotnet run --project tools/nettest/nettest.csproj -c Release -- --lagcomp-shadow
+          dotnet run --project tools/nettest/nettest.csproj -c Release -- --weapon-policy
           dotnet run --project tools/nettest/nettest.csproj -c Release -- --network-benchmark --smoke
 
       # Windows and Linux targets remain cross-published on Ubuntu.

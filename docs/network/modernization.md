@@ -96,3 +96,11 @@ presentation-delay reports. Release rejects enforcement. Fractional existing
 rewind remains unchanged; missing timing/history is explicit. Historical biped
 Imperialist first-segment comparisons are read-only geometric diagnostics, not
 second damage applications or full projectile outcome predictions.
+
+## P2-C
+
+Weapon policy resolves actual MP mechanics and charge flags, including charged
+affinity ice-wave area timing. It preserves projectile catch-up for Imperialist
+and new continuous beams. Fixed limits, early termination, missing-history stops
+and shot/step/collision/truncation counters bound work. All 18 MP entries pass
+1,620 timing-policy profiles. Health/shot impairment coverage includes Omega.

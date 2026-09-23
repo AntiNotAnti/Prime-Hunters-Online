@@ -354,6 +354,7 @@ namespace MphRead.Mods.Network
         public static void Reset()
         {
             LagCompensationPolicy.Reset();
+            CatchUpShots = CatchUpTruncations = 0; MaximumCatchUpSteps = 0;
             Array.Clear(_stamp);
             Array.Clear(_moved);
             _newest = 0;
@@ -487,7 +488,7 @@ namespace MphRead.Mods.Network
         /// the ack is the exact frame the client is answering -- and having
         /// only one of them means there is only one thing to be wrong.
         /// </summary>
-        private static double RewindFor(int slot, out int requested)
+        private static double RewindFor(int slot, bool allowPressAge, out int requested)
         {
             requested = 0;
             if (slot < 0 || slot >= Slots || slot == NetSession.LocalSlot)
@@ -525,7 +526,7 @@ namespace MphRead.Mods.Network
             // it reached here. The ack belongs to the packet that carried the
             // edge, not to the frame the edge happened on, and those are the
             // same frame only when nothing was lost.
-            if (PressAgeEnabled && slot < NetPlayerBridge.ShootPressAge.Length)
+            if (PressAgeEnabled && allowPressAge && slot < NetPlayerBridge.ShootPressAge.Length)
             {
                 int age = NetPlayerBridge.ShootPressAge[slot];
                 if (age > 0)
@@ -582,8 +583,10 @@ namespace MphRead.Mods.Network
                 return;
             }
             int slot = shooter.SlotIndex;
-            double rewind = RewindFor(slot, out int requested);
-            if (LagCompensationPolicy.Plausibility != LagCompPlausibility.Off && rewind > 0)
+            _shotPolicy = WeaponLagPolicies.Resolve(shooter.EquipInfo);
+            if (!_shotPolicy.UsesHistoricalPlayers) return;
+            double rewind = RewindFor(slot, _shotPolicy.AllowPressAge, out int requested);
+            if (_shotPolicy.UseShadowPlausibility && LagCompensationPolicy.Plausibility != LagCompPlausibility.Off && rewind > 0)
             {
                 var decision = LagCompensationPolicy.Evaluate(Math.Max(rewind, requested), LagCompensationPolicy.Timing(slot),
                     PressAgeEnabled ? NetPlayerBridge.ShootPressAge[slot] : 0, ceiling: MaxRewindFrames);
@@ -856,6 +859,11 @@ namespace MphRead.Mods.Network
         /// out of lifespan -- which is what makes a point-blank shot cost one
         /// step instead of twenty-four.
         /// </summary>
+        private static WeaponLagPolicy _shotPolicy;
+        public static long CatchUpShots { get; private set; }
+        public static long CatchUpTruncations { get; private set; }
+        public static int MaximumCatchUpSteps { get; private set; }
+
         public static void EndShot(PlayerEntity shooter)
         {
             if (shooter.SceneServices.IsReplica) return;
@@ -890,7 +898,11 @@ namespace MphRead.Mods.Network
                 _inProgress = false;
                 return;
             }
-            for (int step = 1; step <= _rewind && newCount > 0; step++)
+            int steps = _shotPolicy.CatchUpFrames(_rewind);
+            CatchUpShots++;
+            if (steps < _rewind) CatchUpTruncations++;
+            int completed = 0;
+            for (int step = 1; step <= steps && newCount > 0; step++)
             {
                 uint frame = NetSession.NetFrame - (uint)(_rewind - step);
                 if (!Reconcile(slot, frame))
@@ -902,7 +914,7 @@ namespace MphRead.Mods.Network
                         // resolve the rest of this shot against a world nobody
                         // was ever shown, so stop and leave it where it got to
                         // -- at worst the behaviour with none of this.
-                        HistoryMisses++;
+                        HistoryMisses++; CatchUpTruncations++;
                         break;
                     }
                     // Not a gap. The frame this shot is being fired in has no
@@ -914,6 +926,7 @@ namespace MphRead.Mods.Network
                     // short of the present on every shot.
                     Restore();
                 }
+                completed++;
                 for (int i = 0; i < beams.Length; i++)
                 {
                     if (!_beamsBefore[i])
@@ -934,6 +947,7 @@ namespace MphRead.Mods.Network
                     }
                 }
             }
+            MaximumCatchUpSteps = Math.Max(MaximumCatchUpSteps, completed);
             Restore();
             _shooter = null;
             _rewind = 0;

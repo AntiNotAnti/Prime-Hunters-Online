@@ -39,6 +39,7 @@ namespace MphRead.NetTest
             if (args.Length > 0 && args[0] == "--queue-budget") return QueueBudgetTests.Run();
             if (args.Length > 0 && args[0] == "--load-lifecycle") return LoadLifecycleTests.Run();
             if (args.Length > 0 && args[0] == "--lagcomp-shadow") return LagCompensationTests.Run();
+            if (args.Length > 0 && args[0] == "--weapon-policy") return WeaponPolicyTests.Run();
             string host = args.Length > 0 ? args[0] : "127.0.0.1";
             int port = args.Length > 1 && Int32.TryParse(args[1], out int p)
                 ? p : NetConfig.DefaultPort;

@@ -297,7 +297,7 @@ namespace MphRead.NetTest
                 foreach (double duplicate in new[] { 0, .01, .03 })
                 foreach (double reorder in new[] { 0, .01, .03 })
                 foreach (BeamType weapon in new[] { BeamType.PowerBeam, BeamType.Missile, BeamType.Imperialist,
-                    BeamType.Magmaul, BeamType.ShockCoil, BeamType.Judicator, BeamType.Battlehammer, BeamType.VoltDriver })
+                    BeamType.Magmaul, BeamType.ShockCoil, BeamType.Judicator, BeamType.Battlehammer, BeamType.VoltDriver, BeamType.OmegaCannon })
                 {
                     // Two independent delivery streams model authority and observer arrival.
                     // This matrix checks production input/lifecycle, not weapon physics (the asset check does that).
