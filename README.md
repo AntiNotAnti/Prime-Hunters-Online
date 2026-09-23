@@ -167,8 +167,10 @@ ProjectPrime.exe
 #### Linux
 
 ```bash
-./ProjectPrime -launcher
+./ProjectPrime
 ```
+
+A normal Linux client launch opens the graphical Project Prime hub, matching Windows and macOS. On a headless Linux session such as SSH, startup falls back to the text launcher. `-launcher` remains available as an explicit launcher flag, while `-menu` opens the legacy console menu.
 
 #### macOS
 
