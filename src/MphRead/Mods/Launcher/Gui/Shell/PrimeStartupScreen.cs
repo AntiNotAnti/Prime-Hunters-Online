@@ -42,8 +42,8 @@ namespace MphRead.Mods.Launcher.Gui
                 {
                     StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
                     EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
-                    GradientStops = { new GradientStop(Color.FromArgb(0, 4, 11, 18), 0),
-                        new GradientStop(Color.FromArgb(235, 4, 11, 18), 1) }
+                    GradientStops = { new GradientStop(Color.FromArgb(0, PrimeTheme.BackgroundDeep.R, PrimeTheme.BackgroundDeep.G, PrimeTheme.BackgroundDeep.B), 0),
+                        new GradientStop(Color.FromArgb(235, PrimeTheme.BackgroundDeep.R, PrimeTheme.BackgroundDeep.G, PrimeTheme.BackgroundDeep.B), 1) }
                 } };
             layers.Children.Add(_shade);
             _prompt = new TextBlock { Text = "PRESS START TO CONTINUE", FontFamily = PrimeTypography.Label,

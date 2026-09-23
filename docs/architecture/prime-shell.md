@@ -16,7 +16,9 @@ startup bitmap and flash timer are released after continuing.
 The shared palette uses Project Prime blue `#1C72E1` for primary actions,
 electric blue `#2B9EF7` for interactive highlights, bright blue `#61B6F6` for
 accent text, and deep blue `#175AB1` for pressed actions. Semantic success,
-warning and error colors remain distinct.
+warning and error colors remain distinct. Backgrounds, panel gradients, borders
+and neutral text share a cool blue-gray hue; legacy backdrop washes use the same
+palette rather than adding teal or green tints.
 
 ## Implementation map
 

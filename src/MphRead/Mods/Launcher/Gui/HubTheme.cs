@@ -28,10 +28,10 @@ namespace MphRead.Mods.Launcher.Gui
             Color.FromArgb(0xd8, PanelHot.R, PanelHot.G, PanelHot.B),
             Color.FromArgb(0xe2, Panel.R, Panel.G, Panel.B));
         public static readonly IBrush PanelStrongBrush = PanelGradient(
-            Color.FromArgb(0xf2, 0x12, 0x22, 0x31),
+            Color.FromArgb(0xf2, PrimeTheme.PanelRaised.R, PrimeTheme.PanelRaised.G, PrimeTheme.PanelRaised.B),
             Color.FromArgb(0xf2, Panel.R, Panel.G, Panel.B));
         public static readonly IBrush PanelHotBrush = PanelGradient(
-            Color.FromArgb(0xf4, 0x18, 0x31, 0x43),
+            Color.FromArgb(0xf4, PanelHot.R, PanelHot.G, PanelHot.B),
             Color.FromArgb(0xf2, PanelHot.R, PanelHot.G, PanelHot.B));
         public static readonly IBrush EdgeBrush = new SolidColorBrush(Edge);
         public static readonly IBrush AccentBrush = new SolidColorBrush(Accent);
