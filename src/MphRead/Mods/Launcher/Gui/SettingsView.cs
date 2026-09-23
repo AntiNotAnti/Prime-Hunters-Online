@@ -1670,7 +1670,16 @@ namespace MphRead.Mods.Launcher.Gui
             }
             InputSettings.Save();
             // The players in the match already have their own copies of these.
-            InputSettings.ApplyToPlayers();
+            // In-game settings must target the live match explicitly: launcher
+            // previews and other side scenes are allowed to exist at the same time.
+            if (_inGame && Shell.Window?.HasScene == true)
+            {
+                InputSettings.ApplyToPlayers(Shell.Window.Scene.Players);
+            }
+            else
+            {
+                InputSettings.ApplyToPlayers();
+            }
             // Launcher preferences
             if (_playerName.Value.Trim().Length > 0)
             {
