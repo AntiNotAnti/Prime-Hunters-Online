@@ -115,12 +115,14 @@ namespace MphRead.Entities
             }
 
             // Android already recognized the swipe against real touch timing.
-            // Desktop mouse/pen uses the shared delta recognizer here.
-            if (!global::System.OperatingSystem.IsAndroid())
+            // Spire needs its edge before network press history is captured, so
+            // desktop mouse/pen detection runs here only for Spire. Samus keeps
+            // its existing simulation-time detector where controller-held boost
+            // is already visible and can suppress an accidental release.
+            if (action == Mods.Input.AltFlickAction.SpireAttack
+                && !global::System.OperatingSystem.IsAndroid())
             {
-                bool suppressForCharge = action == Mods.Input.AltFlickAction.SamusBoost
-                    && (Controls.Boost.IsDown || Controls.Zoom.IsDown);
-                ModCheckMouseFlick(suppressForCharge);
+                ModCheckMouseFlick(buttonBoostDown: false);
             }
 
             if (action == Mods.Input.AltFlickAction.SpireAttack && SwipeBoostRequested)

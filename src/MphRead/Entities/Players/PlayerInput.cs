@@ -1692,9 +1692,13 @@ namespace MphRead.Entities
                         // native charge-and-release boost. Keep the dedicated Boost bind
                         // too, so existing keyboard/controller layouts remain additive.
                         bool buttonBoost = Controls.Boost.IsDown || Controls.Zoom.IsDown;
-                        // Desktop mouse/pen flick detection already ran in the
-                        // hardware-input pass, before network press history. A
-                        // touch platform's swipe gesture is a flick, not a
+                        // Samus does not need a network press edge for boost, so
+                        // desktop mouse/pen flick detection stays here after the
+                        // controller contribution has been applied. That preserves
+                        // the rule that a held manual boost charge suppresses a
+                        // movement-triggered flick.
+                        ModCheckMouseFlick(buttonBoost);
+                        // A touch platform's swipe gesture is a flick, not a
                         // hold-and-release: it forces a full charge straight
                         // into the release branch below instead of building
                         // one up over several frames.
