@@ -32,7 +32,7 @@ public sealed class NetPacketQueue
     public static NetPacketPriority Priority(PacketType type) => type switch
     {
         PacketType.Intent or PacketType.SlotIntent or PacketType.Snapshot or PacketType.HitClaim or PacketType.HitVerdict
-            or PacketType.ReplayWorld => NetPacketPriority.Realtime,
+            or PacketType.ReplayWorld or PacketType.MatchStartCommit => NetPacketPriority.Realtime,
         PacketType.Hello or PacketType.Welcome or PacketType.Bye or PacketType.Refused or PacketType.SessionState
             or PacketType.Roster or PacketType.MatchState or PacketType.MapChange or PacketType.Authority
             or PacketType.MatchLoaded or PacketType.MatchLoadFailed or PacketType.MatchEnd

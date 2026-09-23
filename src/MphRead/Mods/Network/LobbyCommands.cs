@@ -26,6 +26,7 @@ namespace MphRead.Mods.Network
         private uint _processOwnerClientId;
         private readonly NetMatchStart _start = new();
         private bool _checkingLoadBarrier;
+        private double _lastStartCommitBroadcast;
         private MatchStartIdentity CurrentStartIdentity => new(_matchId, _authorityEpoch, _start.Identity.StartGeneration);
 
         private MatchDefinition CurrentDefinition => SessionPolicy == ServerSessionPolicy.Lobby
@@ -269,7 +270,13 @@ namespace MphRead.Mods.Network
             _matchEndedAt = -1;
             byte participants = 0;
             foreach (Peer participant in _peers)
-            { participants |= (byte)(1 << participant.SlotIndex); participant.MatchReady = false; }
+            {
+                participants |= (byte)(1 << participant.SlotIndex);
+                participant.MatchReady = false;
+                participant.MatchLoadStage = MatchLoadStage.None;
+                participant.MatchLoadProgressAt = 0;
+                participant.SlowLoadLogged = false;
+            }
 
             // Publish Starting before the server's own synchronous room build.
             // Clients can now load in parallel with the authority instead of
@@ -277,6 +284,7 @@ namespace MphRead.Mods.Network
             double buildStarted = NetSession.Clock;
             _matchId = NetLifecycleTracker.Next(_matchId);
             _start.Begin(_matchId, _authorityEpoch, participants);
+            _lastStartCommitBroadcast = 0;
             SetPhase(SessionPhase.Starting);
             // StartSimulation is intentionally synchronous and can take several
             // seconds on a cold server. A client that lost the one Starting
@@ -325,6 +333,7 @@ namespace MphRead.Mods.Network
             if (RunsTheMatch) Mods.RoomPrewarm.Begin(_lobbyMatch.RoomKey);
             _matchEndedAt = -1;
             _start.Reset();
+            _lastStartCommitBroadcast = 0;
             CloseBallot();
             BroadcastMapChoices();
             InvalidateLobbyReady();
@@ -404,25 +413,74 @@ namespace MphRead.Mods.Network
             CheckLoadBarrier(now);
         }
 
+        private void HandleMatchLoadProgress(ReceivedPacket packet, double now)
+        {
+            Peer? peer = Find(packet.Sender);
+            if (peer == null || !MatchLoadProgressPacket.TryRead(packet.Payload, out var progress)
+                || progress.Identity != CurrentStartIdentity || _phase != SessionPhase.Starting
+                || (_start.Expected & (1 << peer.SlotIndex)) == 0) return;
+            peer.LastSeen = now;
+            peer.MatchLoadProgressAt = now;
+            if (progress.Stage <= peer.MatchLoadStage) return;
+            peer.MatchLoadStage = progress.Stage;
+            Log($"[lobby] slot {peer.SlotIndex} loading: {progress.Stage}");
+        }
+
+        private void BroadcastStartCommit(double now, bool force = false)
+        {
+            if (_start.Stage != StartStage.Countdown || _transport == null) return;
+            if (!force && now - _lastStartCommitBroadcast < 0.10) return;
+            _lastStartCommitBroadcast = now;
+            var commit = new MatchStartCommitPacket(_matchId, _authorityEpoch,
+                _start.Identity.StartGeneration, _start.RemainingMilliseconds(now));
+            commit.Write(_scratch);
+            for (int i = 0; i < _peers.Count; i++)
+                if ((_start.Expected & (1 << _peers[i].SlotIndex)) != 0)
+                    _transport.Send(_peers[i].EndPoint, PacketType.MatchStartCommit,
+                        _scratch.AsSpan(0, MatchStartCommitPacket.Size));
+        }
+
         private void CheckLoadBarrier(double now)
         {
             if (_phase != SessionPhase.Starting || _checkingLoadBarrier) return;
             _checkingLoadBarrier = true;
             try
             {
+                byte slow = _start.MissingAtSlowDeadline(now);
+                for (int i = 0; i < _peers.Count; i++)
+                {
+                    Peer peer = _peers[i];
+                    if ((slow & (1 << peer.SlotIndex)) == 0 || peer.SlowLoadLogged) continue;
+                    peer.SlowLoadLogged = true;
+                    string stage = peer.MatchLoadStage == MatchLoadStage.None
+                        ? "no progress reported" : peer.MatchLoadStage.ToString();
+                    Log($"[lobby] slot {peer.SlotIndex} is still loading after "
+                        + $"{NetMatchStart.SlowLoadSeconds:0}s ({stage}); keeping the client in the barrier");
+                }
+
                 byte missing = _start.MissingAtDeadline(now);
-                // Timeout resolves only missing participants through normal removal;
-                // none remain counted as a participant on an unbuilt scene.
+                // The old 15-second deadline disconnected healthy cold loaders.
+                // It is now only a warning; this hard boundary is for genuinely
+                // stuck clients and is deliberately much longer.
                 for (int i = _peers.Count - 1; i >= 0; i--)
                     if ((missing & (1 << _peers[i].SlotIndex)) != 0)
                     {
-                        SendRefusal(_peers[i].EndPoint, RefusedPacket.ReasonKicked);
-                        Remove(_peers[i], "match load timeout");
+                        SendRefusal(_peers[i].EndPoint, RefusedPacket.ReasonLoadTimeout);
+                        Remove(_peers[i], "match load hard timeout");
                     }
-                if (_phase != SessionPhase.Starting || !_start.Advance(now)) return;
+
+                if (_phase != SessionPhase.Starting) return;
+                bool advanced = _start.Advance(now);
                 if (_start.Stage == StartStage.Countdown)
-                { TouchLobbyRevision("all participants ready; countdown started"); return; }
-                if (_start.Stage != StartStage.InMatch) return;
+                {
+                    if (advanced) TouchLobbyRevision("all participants ready; countdown started");
+                    // SessionState is reliable state, but a retransmission carries
+                    // the old remaining value. A fresh disposable commitment every
+                    // 100 ms keeps the release edge tight under loss/jitter.
+                    BroadcastStartCommit(now, force: advanced);
+                    return;
+                }
+                if (!advanced || _start.Stage != StartStage.InMatch) return;
                 _matchStarted = now;
                 SetPhase(SessionPhase.InMatch);
                 BroadcastSessionState();

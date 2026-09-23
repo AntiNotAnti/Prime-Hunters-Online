@@ -26,6 +26,8 @@ namespace MphRead.Droid
         public static Scene Build(AndroidInput input, Vector2i size, LaunchPlan plan, Action close)
         {
             GameFiles.ApplyPaths();
+            if (NetSession.Active)
+                NetSession.ReportMatchLoadProgress(MatchLoadStage.Preflight);
             // Cheap once the binaries exist -- a file check per map -- and the
             // one place that is guaranteed to run before a room is loaded, so
             // a map added since the last launch is built rather than missing.
@@ -183,9 +185,11 @@ namespace MphRead.Droid
             // plays to a scoreboard nobody else on the server has. Which slot
             // lands on which side is BuildPlayers' own rule, the one
             // NetSlotManager uses, so every client agrees without being told.
+            NetSession.ReportMatchLoadProgress(MatchLoadStage.WorldBuild);
             NetLaunch.BuildPlayers(scene, plan.Hunter, localRecolor: 0,
                 teams: GameState.IsTeamMode(mode));
             scene.AddRoom(roomKey, mode, playerCount: NetLaunch.RoomPlayerCount);
+            NetSession.ReportMatchLoadProgress(MatchLoadStage.PresentationLoad);
         }
 
         private static void AddLocalPlayers(Scene scene, LaunchPlan plan, bool teamPlay)

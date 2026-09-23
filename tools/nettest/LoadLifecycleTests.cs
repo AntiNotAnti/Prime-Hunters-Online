@@ -30,17 +30,41 @@ internal static class LoadLifecycleTests
             }
             var missing = new NetMatchStart(); missing.Begin(1, 1, 7); missing.AuthorityReady(0);
             missing.MarkLoaded(0, missing.Identity); missing.MarkLoaded(1, missing.Identity);
-            NetArchitectureTests.Check(missing.MissingAtDeadline(14.9) == 0 && missing.MissingAtDeadline(15) == 4, "15 second deadline identifies only missing participant");
-            missing.Remove(2); missing.Advance(15);
-            NetArchitectureTests.Check(missing.Expected == 3 && missing.Stage == StartStage.Countdown, "timeout removal preserves healthy participants");
+            NetArchitectureTests.Check(missing.MissingAtSlowDeadline(14.9) == 0
+                && missing.MissingAtSlowDeadline(15) == 4, "15 seconds flags a slow loader without dropping it");
+            NetArchitectureTests.Check(missing.MissingAtDeadline(59.9) == 0
+                && missing.MissingAtDeadline(60) == 4, "60 second hard deadline identifies a stuck participant");
+            missing.Remove(2); missing.Advance(60);
+            NetArchitectureTests.Check(missing.Expected == 3 && missing.Stage == StartStage.Countdown, "hard-timeout removal preserves healthy participants");
             missing.Remove(0);
             NetArchitectureTests.Check(missing.Expected == 2 && missing.Loaded == 2, "owner disconnect cannot poison countdown");
             NetArchitectureTests.Check(!missing.MarkLoaded(3, missing.Identity), "new join cannot enlarge frozen barrier");
             var bytes = new byte[MatchLoadedPacket.Size];
             new MatchLoadedPacket(42, 9, 17).Write(bytes);
-            NetArchitectureTests.Check(MatchLoadedPacket.TryRead(bytes, out var loaded) && loaded.Identity == new MatchStartIdentity(42, 9, 17), "load wire identity");
-            for (int size = 0; size < bytes.Length; size++) NetArchitectureTests.Check(!MatchLoadedPacket.TryRead(bytes.AsSpan(0, size), out _), "truncated load rejected");
-            Console.WriteLine("PASS: ready barrier, slow loaders, generation, failures, disconnect and rematch");
+            NetArchitectureTests.Check(MatchLoadedPacket.TryRead(bytes, out var loaded)
+                && loaded.Identity == new MatchStartIdentity(42, 9, 17), "load wire identity");
+            for (int size = 0; size < bytes.Length; size++)
+                NetArchitectureTests.Check(!MatchLoadedPacket.TryRead(bytes.AsSpan(0, size), out _), "truncated load rejected");
+
+            var commitBytes = new byte[MatchStartCommitPacket.Size];
+            new MatchStartCommitPacket(42, 9, 17, 1234).Write(commitBytes);
+            NetArchitectureTests.Check(MatchStartCommitPacket.TryRead(commitBytes, out var commit)
+                && commit.Identity == loaded.Identity && commit.RemainingMilliseconds == 1234,
+                "fresh start commitment round trip");
+            NetArchitectureTests.Check(!NetReliableChannel.IsReliable(PacketType.MatchStartCommit),
+                "start commitments stay disposable so retransmits cannot carry stale remaining time");
+            NetArchitectureTests.Check(!NetMatchStart.ClientReleaseReady(StartStage.Loading, 10, 11)
+                && !NetMatchStart.ClientReleaseReady(StartStage.Countdown, 10, 9.99)
+                && NetMatchStart.ClientReleaseReady(StartStage.Countdown, 10, 10),
+                "client releases on the committed countdown edge");
+
+            var progressBytes = new byte[MatchLoadProgressPacket.Size];
+            new MatchLoadProgressPacket(42, 9, 17, MatchLoadStage.PresentationLoad).Write(progressBytes);
+            NetArchitectureTests.Check(MatchLoadProgressPacket.TryRead(progressBytes, out var progress)
+                && progress.Identity == loaded.Identity && progress.Stage == MatchLoadStage.PresentationLoad,
+                "load progress identity/stage round trip");
+
+            Console.WriteLine("PASS: ready barrier, soft/hard loading, synchronized commitment, generation, failures, disconnect and rematch");
             return NetLobbyTest.Run();
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }

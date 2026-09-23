@@ -74,6 +74,9 @@ namespace MphRead.Mods.Network
             /// </summary>
             public bool PostMatchReady;
             public bool MatchReady;
+            public MatchLoadStage MatchLoadStage;
+            public double MatchLoadProgressAt;
+            public bool SlowLoadLogged;
             public float? PresentationDelay;
             public double TimingReportedAt;
             public ushort TimingMatch;
@@ -926,6 +929,7 @@ namespace MphRead.Mods.Network
                     break;
                 case PacketType.MatchLoaded: HandleMatchLoaded(packet, now); break;
                 case PacketType.MatchLoadFailed: HandleMatchLoadFailed(packet); break;
+                case PacketType.MatchLoadProgress: HandleMatchLoadProgress(packet, now); break;
                 case PacketType.Hello:
                     HandleHello(packet, now);
                     break;

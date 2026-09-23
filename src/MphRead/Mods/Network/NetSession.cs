@@ -801,6 +801,9 @@ namespace MphRead.Mods.Network
                 case PacketType.SessionState when Role == NetRole.Client:
                     if (SessionStatePacket.TryRead(packet.Payload, out var session)) ApplySessionState(session);
                     break;
+                case PacketType.MatchStartCommit when Role == NetRole.Client:
+                    if (MatchStartCommitPacket.TryRead(packet.Payload, out var commit)) ApplyStartCommit(commit);
+                    break;
                 case PacketType.LobbyCommandResult when Role == NetRole.Client:
                     if (LobbyCommandResultPacket.TryRead(packet.Payload, out var result)) ApplyLobbyResult(result);
                     break;

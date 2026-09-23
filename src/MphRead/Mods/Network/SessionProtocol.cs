@@ -193,6 +193,54 @@ namespace MphRead.Mods.Network
         }
     }
 
+    public readonly record struct MatchStartCommitPacket(ushort MatchId, ulong AuthorityEpoch,
+        uint StartGeneration, ushort RemainingMilliseconds)
+    {
+        public const int Size = MatchLoadedPacket.Size + 2;
+        public MatchStartIdentity Identity => new(MatchId, AuthorityEpoch, StartGeneration);
+        public void Write(Span<byte> dest)
+        {
+            new MatchLoadedPacket(MatchId, AuthorityEpoch, StartGeneration).Write(dest);
+            BinaryPrimitives.WriteUInt16LittleEndian(dest[MatchLoadedPacket.Size..], RemainingMilliseconds);
+        }
+        public static bool TryRead(ReadOnlySpan<byte> src, out MatchStartCommitPacket packet)
+        {
+            packet = default;
+            if (src.Length != Size
+                || !MatchLoadedPacket.TryRead(src[..MatchLoadedPacket.Size], out var identity)) return false;
+            packet = new(identity.MatchId, identity.AuthorityEpoch, identity.StartGeneration,
+                BinaryPrimitives.ReadUInt16LittleEndian(src[MatchLoadedPacket.Size..]));
+            return true;
+        }
+    }
+
+    public enum MatchLoadStage : byte
+    {
+        None, StartReceived, Preflight, WorldBuild, PresentationLoad, SceneReady
+    }
+
+    public readonly record struct MatchLoadProgressPacket(ushort MatchId, ulong AuthorityEpoch,
+        uint StartGeneration, MatchLoadStage Stage)
+    {
+        public const int Size = MatchLoadedPacket.Size + 1;
+        public MatchStartIdentity Identity => new(MatchId, AuthorityEpoch, StartGeneration);
+        public void Write(Span<byte> dest)
+        {
+            new MatchLoadedPacket(MatchId, AuthorityEpoch, StartGeneration).Write(dest);
+            dest[MatchLoadedPacket.Size] = (byte)Stage;
+        }
+        public static bool TryRead(ReadOnlySpan<byte> src, out MatchLoadProgressPacket packet)
+        {
+            packet = default;
+            if (src.Length != Size || src[MatchLoadedPacket.Size] is < (byte)MatchLoadStage.StartReceived
+                or > (byte)MatchLoadStage.SceneReady
+                || !MatchLoadedPacket.TryRead(src[..MatchLoadedPacket.Size], out var identity)) return false;
+            packet = new(identity.MatchId, identity.AuthorityEpoch, identity.StartGeneration,
+                (MatchLoadStage)src[MatchLoadedPacket.Size]);
+            return true;
+        }
+    }
+
     public readonly record struct MatchLoadFailedPacket(ushort MatchId, string Reason, ulong AuthorityEpoch = 0, uint StartGeneration = 0)
     {
         public const int Size = MatchLoadedPacket.Size + 96;

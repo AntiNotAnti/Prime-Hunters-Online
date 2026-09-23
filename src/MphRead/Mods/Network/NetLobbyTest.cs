@@ -54,8 +54,9 @@ namespace MphRead.Mods.Network
         private static void ProtocolChecks()
         {
             Check(NetConfig.ProtocolVersion == 17 && (byte)PacketType.SessionState == 36
-                && (byte)PacketType.MapOffer == 32 && (byte)PacketType.MapDone == 35,
-                "combined protocol and non-overlapping map/lobby IDs");
+                && (byte)PacketType.MapOffer == 32 && (byte)PacketType.MapDone == 35
+                && (byte)PacketType.MatchStartCommit == 44 && (byte)PacketType.MatchLoadProgress == 45,
+                "combined protocol and non-overlapping map/lobby/start IDs");
             var state = new SessionStatePacket { Phase = SessionPhase.Starting, Policy = ServerSessionPolicy.Lobby,
                 OwnerSlot = 7, MaxPlayers = 8, Revision = ushort.MaxValue, MatchId = 19,
                 RuleFlags = SessionRules.RequireReady | SessionRules.AllowJoinInProgress | SessionRules.LockTeams,
@@ -214,6 +215,7 @@ namespace MphRead.Mods.Network
                 OwnerSlot = 255, Match = new MatchDefinition { RoomKey = Rooms()[0], Mode = GameMode.Battle } };
             NetSession.ApplySessionState(state);
             state.Revision = 0; state.Phase = SessionPhase.Starting; state.MatchId++;
+            state.StartStage = StartStage.Countdown; state.StartGeneration = 1;
             state.StartCountdownMilliseconds = 3000;
             NetSession.ApplySessionState(state);
             Check(NetSession.IsStarting && NetSession.ServerSession?.MatchId == 5,
@@ -269,6 +271,10 @@ namespace MphRead.Mods.Network
             { byte[] bytes = new byte[LobbyCommandPacket.Size]; command.Write(bytes); Send(PacketType.LobbyCommand, bytes); }
             public void Loaded(ushort? id = null)
             { byte[] bytes = new byte[MatchLoadedPacket.Size]; new MatchLoadedPacket(id ?? State!.Value.MatchId, State!.Value.AuthorityEpoch, State.Value.StartGeneration).Write(bytes); Send(PacketType.MatchLoaded, bytes); }
+            public void LoadFailed(string reason = "test load failure")
+            { byte[] bytes = new byte[MatchLoadFailedPacket.Size]; new MatchLoadFailedPacket(State!.Value.MatchId,
+                reason, State.Value.AuthorityEpoch, State.Value.StartGeneration).Write(bytes);
+                Send(PacketType.MatchLoadFailed, bytes); }
             public void ReadyResults()
             { var intent = new IntentPacket { Frame = ++_frame, Buttons = IntentButtons.ReadyState,
                 MatchId = State!.Value.MatchId, AuthorityEpoch = State.Value.AuthorityEpoch,
@@ -541,8 +547,9 @@ namespace MphRead.Mods.Network
             rig.Expect(owner, owner.Command(LobbyCommandType.UpdateMatch, config: config), LobbyResultCode.Ok);
             rig.Expect(owner, owner.Command(LobbyCommandType.StartMatch), LobbyResultCode.Ok);
             foreach (Client ready in rig.Clients.Take(7)) ready.Loaded();
+            rig.Clients[^1].LoadFailed();
             rig.Wait(() => owner.State.Value.Phase == SessionPhase.InMatch,
-                "load timeout removes missing participant before countdown", 22000);
+                "explicit load failure removes missing participant before countdown");
         }
 
         private static void CustomScenario()
