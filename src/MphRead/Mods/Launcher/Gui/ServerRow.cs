@@ -194,7 +194,6 @@ namespace MphRead.Mods.Launcher.Gui
             Height = SlabHeight;
             Focusable = true;
             Cursor = new Cursor(StandardCursorType.Hand);
-            Avalonia.Media.RenderOptions.SetEdgeMode(this, EdgeMode.Aliased);
             // A second click joins, as it does in the map list. See UiListRow.
             DoubleTapped += (_, _) =>
             {
