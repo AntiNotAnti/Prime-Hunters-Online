@@ -59,6 +59,8 @@ namespace MphRead.Mods.Update
         /// <summary>The only host this asks, and only ever for metadata.</summary>
         private const string _api =
             "https://api.github.com/repos/" + Mods.Branding.ReleaseRepository + "/releases/latest";
+        private const string _releasesApi =
+            "https://api.github.com/repos/" + Mods.Branding.ReleaseRepository + "/releases";
 
         /// <summary>Never silently, and never for long.</summary>
         private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(20);
@@ -149,6 +151,146 @@ namespace MphRead.Mods.Update
                 return null;
             }
             return json;
+        }
+
+        /// <summary>
+        /// Published stable releases for the version manager, newest first.
+        ///
+        /// Unlike <see cref="Latest"/>, this deliberately does not compare a
+        /// release to the installed version. Selecting an older published build
+        /// is an explicit player action, while automatic updating remains
+        /// forward-only.
+        /// </summary>
+        public static IReadOnlyList<UpdateInfo> Releases(int limit = 30,
+            CancellationToken cancel = default)
+        {
+            LastReason = null;
+            limit = Math.Clamp(limit, 1, 100);
+            string json;
+            try
+            {
+                using var client = new HttpClient { Timeout = _timeout };
+                client.DefaultRequestHeaders.Add("User-Agent",
+                    $"{Mods.Branding.FileName}/{BuildVersion.Display}");
+                client.DefaultRequestHeaders.Add("Accept",
+                    "application/vnd.github+json");
+                using HttpResponseMessage response = SyncHttp.Send(client,
+                    new HttpRequestMessage(HttpMethod.Get, $"{_releasesApi}?per_page={limit}"),
+                    HttpCompletionOption.ResponseContentRead, cancel);
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    LastReason = "no releases have been published yet";
+                    return Array.Empty<UpdateInfo>();
+                }
+                if (response.StatusCode == (System.Net.HttpStatusCode)403
+                    || response.StatusCode == (System.Net.HttpStatusCode)429)
+                {
+                    LastReason = "GitHub is rate-limiting this address; try later";
+                    return Array.Empty<UpdateInfo>();
+                }
+                if (!response.IsSuccessStatusCode)
+                {
+                    LastReason = $"GitHub answered {(int)response.StatusCode}";
+                    return Array.Empty<UpdateInfo>();
+                }
+                json = response.Content.ReadAsStringAsync(cancel).GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                LastReason = $"could not reach GitHub ({ex.GetType().Name})";
+                return Array.Empty<UpdateInfo>();
+            }
+            return ParseReleases(json, limit);
+        }
+
+        /// <summary>
+        /// Parse GitHub's release-list response without applying update
+        /// direction. Drafts, prereleases and non-semantic tags stay out of the
+        /// stable version picker.
+        /// </summary>
+        public static IReadOnlyList<UpdateInfo> ParseReleases(string json, int limit = 30)
+        {
+            LastReason = null;
+            limit = Math.Clamp(limit, 1, 100);
+            var releases = new List<UpdateInfo>();
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(json);
+                if (document.RootElement.ValueKind != JsonValueKind.Array)
+                {
+                    LastReason = "GitHub's release list could not be read";
+                    return releases;
+                }
+                foreach (JsonElement root in document.RootElement.EnumerateArray())
+                {
+                    if ((root.TryGetProperty("draft", out JsonElement draft)
+                            && draft.ValueKind == JsonValueKind.True)
+                        || (root.TryGetProperty("prerelease", out JsonElement prerelease)
+                            && prerelease.ValueKind == JsonValueKind.True))
+                    {
+                        continue;
+                    }
+
+                    string tag = root.TryGetProperty("tag_name", out JsonElement t)
+                        ? t.GetString() ?? "" : "";
+                    Version? version = BuildVersion.Parse(tag);
+                    if (version == null)
+                    {
+                        continue;
+                    }
+                    string notes = root.TryGetProperty("body", out JsonElement b)
+                        ? b.GetString() ?? "" : "";
+                    string page = root.TryGetProperty("html_url", out JsonElement h)
+                        ? h.GetString() ?? "" : "";
+                    var assets = new List<(string Name, string Url, long Size, string Digest)>();
+                    if (root.TryGetProperty("assets", out JsonElement list))
+                    {
+                        foreach (JsonElement asset in list.EnumerateArray())
+                        {
+                            string name = asset.TryGetProperty("name", out JsonElement n)
+                                ? n.GetString() ?? "" : "";
+                            if (name.Length == 0)
+                            {
+                                continue;
+                            }
+                            string url = asset.TryGetProperty("browser_download_url",
+                                out JsonElement u) ? u.GetString() ?? "" : "";
+                            long size = asset.TryGetProperty("size", out JsonElement z)
+                                && z.TryGetInt64(out long parsedSize) ? parsedSize : 0;
+                            string digest = asset.TryGetProperty("digest", out JsonElement d)
+                                ? d.GetString() ?? "" : "";
+                            assets.Add((name, url, size, digest));
+                        }
+                    }
+                    (string Name, string Url, long Size, string Digest)? package =
+                        PickAsset(assets);
+                    releases.Add(new UpdateInfo
+                    {
+                        Tag = tag,
+                        Version = version,
+                        AssetName = package?.Name ?? "",
+                        AssetUrl = package?.Url ?? "",
+                        AssetSize = package?.Size ?? 0,
+                        AssetDigest = package?.Digest ?? "",
+                        PageUrl = page.Length > 0 ? page : ReleasesPage,
+                        Notes = notes
+                    });
+                    if (releases.Count >= limit)
+                    {
+                        break;
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+                LastReason = "GitHub's release list could not be read";
+                return Array.Empty<UpdateInfo>();
+            }
+            if (releases.Count == 0 && LastReason == null)
+            {
+                LastReason = "no stable releases were found";
+            }
+            return releases;
         }
 
         /// <summary>
