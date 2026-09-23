@@ -40,8 +40,19 @@ public sealed class RollingReplayTimeline : IReplayTimeline
 
     internal void SetHistoryFrames(uint frames)
     {
-        _historyFrames = Math.Clamp(frames, DefaultHistoryFrames, 125 * 60);
+        frames = Math.Clamp(frames, DefaultHistoryFrames, 125 * 60);
+        if (_historyFrames == frames) return;
+        _historyFrames = frames;
         TrimAge();
+    }
+
+    public bool AdvanceFrame(uint frame, uint serverTick)
+    {
+        if (_frontier is uint previous && frame < previous) return false;
+        _frontier = frame;
+        if (_segments.Count == 0) return false;
+        Observe(frame, serverTick); TrimAge();
+        return true;
     }
 
     public bool Append(ReplayTimelineRecord record)

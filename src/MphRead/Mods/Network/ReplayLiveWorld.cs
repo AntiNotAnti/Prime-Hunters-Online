@@ -68,23 +68,23 @@ internal sealed class ReplayLiveWorld : IDisposable
                     new(ReplayMarkerKind.WeaponFired, (byte)slot, byte.MaxValue, weapon));
             }
             else if (_world.Session.CurrentFrame == frame) return;
-            var timer = Stopwatch.StartNew();
+            long started = Stopwatch.GetTimestamp();
             using (ReplayPerfTelemetry.Measure(ReplayPerfOperation.Step))
                 _world.StepLive(frame, _pending);
             _pending.Clear(); _pendingBytes = 0;
-            LastStepMilliseconds = timer.Elapsed.TotalMilliseconds;
+            LastStepMilliseconds = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
             if (_recorder.Timeline.NeedsRestorePoint || frame - _lastCheckpoint >= 300)
             {
-                timer.Restart();
+                started = Stopwatch.GetTimestamp();
                 var checkpoint = ReplayWorldCheckpoint.Capture(_world);
                 if (!_recorder.AppendWorldCheckpoint(frame, _world.State.ServerTick, checkpoint.Bytes))
                     throw new InvalidDataException("The timeline rejected its world checkpoint.");
                 _lastCheckpoint = frame; CaptureCount++;
-                LastCaptureMilliseconds = timer.Elapsed.TotalMilliseconds;
+                LastCaptureMilliseconds = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
             }
             // A quiet simulation frame still extends the available clip, even
             // when no network snapshot or input arrived on that frame.
-            _recorder.Timeline.Append(new(frame, _world.State.ServerTick, ReplayFactKind.Presentation, ReadOnlySpan<byte>.Empty));
+            _recorder.Timeline.AdvanceFrame(frame, _world.State.ServerTick);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         { Fail(ex.Message); _world?.Dispose(); _world = null; }

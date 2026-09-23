@@ -11,6 +11,7 @@ namespace MphRead.Mods.Network
         internal static ReplayLiveWorld WorldCapture { get; private set; } = new(Recorder);
         private static readonly byte[] Snapshot = new byte[NetConfig.MaxPacketSize];
         private static int _snapshotLength;
+        private static uint _historyFrames;
         private static string? _room;
         private static ulong _mapHash;
         private static readonly PlayerState[] Previous = new PlayerState[RosterPacket.MaxSlots];
@@ -40,7 +41,12 @@ namespace MphRead.Mods.Network
             using var perf = ReplayPerfTelemetry.Measure(ReplayPerfOperation.Capture);
             DemoClip.Tick(scene.Size);
             if (DemoPlayback.IsActive || !NetSession.Active || !scene.GameState.Multiplayer) return;
-            Recorder.Timeline.SetHistoryFrames((uint)Math.Max(45, DemoClip.Seconds + DemoClip.PostRollSeconds) * 60);
+            uint historyFrames = (uint)Math.Max(45, DemoClip.Seconds + DemoClip.PostRollSeconds) * 60;
+            if (historyFrames != _historyFrames)
+            {
+                Recorder.Timeline.SetHistoryFrames(historyFrames);
+                _historyFrames = historyFrames;
+            }
             if (NetSession.IsAuthority && !_worldCaptureFailed
                 && (NetSession.NetFrame % 6 == 0 || LatestAuthorityWorld?.Phase != scene.GameState.MatchState))
             {
