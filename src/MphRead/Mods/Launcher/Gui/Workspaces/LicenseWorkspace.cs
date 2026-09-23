@@ -574,7 +574,7 @@ namespace MphRead.Mods.Launcher.Gui
             Control Metric(string label, string value, string detail, IBrush? color = null)
             {
                 var content = PrimeChrome.Stack(PrimeChrome.Text(label, 11, PrimeTheme.TextSecondaryBrush, true),
-                    PrimeChrome.Text(value, 26, color ?? PrimeTheme.CyanStrongBrush, true),
+                    PrimeChrome.Text(value, 26, color ?? PrimeTheme.PrimaryBrush, true),
                     PrimeChrome.Text(detail, 11, PrimeTheme.TextSecondaryBrush, true));
                 content.Spacing = 3;
                 return new PrimePanel(content) { Padding = new Thickness(12, 8) };

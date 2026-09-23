@@ -29,7 +29,7 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly ChoiceRow _suit;
         private readonly Note _count = new("");
         private readonly TextBlock _next = PrimeChrome.Text("CURRENT ARENA // REMATCH", PrimeTypography.DataSmall,
-            PrimeTheme.CyanBrush, data: true);
+            PrimeTheme.HighlightBrush, data: true);
         private readonly TextBox _search = new() { PlaceholderText = "Search arenas" };
 
         /// <summary>What the ballot face says before the server has sent one.</summary>

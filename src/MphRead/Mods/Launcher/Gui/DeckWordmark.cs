@@ -73,7 +73,7 @@ namespace MphRead.Mods.Launcher.Gui
         {
             return new FormattedText(text, CultureInfo.InvariantCulture,
                 FlowDirection.LeftToRight,
-                new Typeface(GuiTheme.PixelBold, FontStyle.Normal, FontWeight.Normal),
+                new Typeface(PrimeTypography.Display, FontStyle.Normal, FontWeight.Bold),
                 Size, brush);
         }
 
@@ -132,7 +132,7 @@ namespace MphRead.Mods.Launcher.Gui
         {
             return new FormattedText(word, CultureInfo.InvariantCulture,
                 FlowDirection.LeftToRight,
-                new Typeface(GuiTheme.PixelBold, FontStyle.Normal, FontWeight.Normal),
+                new Typeface(PrimeTypography.Display, FontStyle.Normal, FontWeight.Bold),
                 size, brush);
         }
     }

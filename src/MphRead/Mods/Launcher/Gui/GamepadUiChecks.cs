@@ -348,6 +348,33 @@ namespace MphRead.Mods.Launcher.Gui
             Pad(0); FocusNavigator.Key(binding, Avalonia.Input.Key.Enter);
             GamepadManager.RemoveDevice("ui-test"); binding.Check();
             GamepadChecks.Check(!GamepadContexts.Capturing, "disconnect exits binding capture");
+            foreach (var accept in new[] { GamepadButtons.Start, GamepadButtons.A })
+            {
+                using var startup = new PrimeStartupScreen();
+                var startupRoot = new Panel(); startupRoot.Children.Add(startup);
+                int continued = 0; startup.Continued += () => continued++;
+                window.Content = startupRoot; window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+                var startupNav = new GamepadNavigation();
+                void StartupPad(GamepadButtons buttons)
+                {
+                    GamepadManager.UpdateDevice("startup-test", new GamepadState
+                        { Connected = true, Name = "Startup test", Buttons = buttons }, true);
+                    startupNav.Update(startupRoot);
+                }
+                StartupPad(0); StartupPad(0);
+                StartupPad(GamepadButtons.B); StartupPad(0); StartupPad(GamepadButtons.RightBumper); StartupPad(0);
+                GamepadChecks.Check(continued == 0, "startup ignores controller Back and tab switching");
+                StartupPad(accept); StartupPad(accept);
+                GamepadChecks.Check(continued == 1, "controller " + accept + " continues startup exactly once");
+                GamepadManager.RemoveDevice("startup-test");
+            }
+            using (var startup = new PrimeStartupScreen())
+            {
+                int continued = 0; startup.Continued += () => continued++;
+                window.Content = startup; window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+                Click(window, startup);
+                GamepadChecks.Check(continued == 1, "pointer continues startup");
+            }
             window.Close();
         }
 

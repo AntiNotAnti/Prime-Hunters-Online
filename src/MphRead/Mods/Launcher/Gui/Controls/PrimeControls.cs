@@ -39,7 +39,7 @@ namespace MphRead.Mods.Launcher.Gui
             Background = PrimeTheme.PanelHighlightBrush;
             Padding = new Thickness(8, 4);
             CornerRadius = new CornerRadius(2);
-            Child = PrimeChrome.Text(text, PrimeTypography.DataSmall, color ?? PrimeTheme.CyanBrush, data: true);
+            Child = PrimeChrome.Text(text, PrimeTypography.DataSmall, color ?? PrimeTheme.HighlightBrush, data: true);
         }
     }
     internal sealed class PrimeStatBar : StackPanel
@@ -50,7 +50,7 @@ namespace MphRead.Mods.Launcher.Gui
             Children.Add(PrimeChrome.Text(label, PrimeTypography.DataSmall, data: true));
             Children.Add(new ProgressBar { Minimum = 0, Maximum = Math.Max(1, maximum),
                 Value = Math.Clamp(value, 0, Math.Max(1, maximum)), Height = 6,
-                Foreground = color ?? PrimeTheme.CyanStrongBrush, Background = PrimeTheme.PanelHighlightBrush });
+                Foreground = color ?? PrimeTheme.PrimaryBrush, Background = PrimeTheme.PanelHighlightBrush });
         }
     }
     internal static class PrimeChrome

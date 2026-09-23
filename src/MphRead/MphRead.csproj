@@ -136,20 +136,6 @@
     <!-- The launcher's two faces and its backdrop: fonts from
          OpenQuake3/defrag's ui/font, whose UI this one is built to. -->
     <AvaloniaResource Include="Assets\Fonts\heyNovember.ttf" />
-    <!-- Pixelify Sans, SIL OFL 1.1 (licence beside it). The deck theme's
-         display face: Balatro sets its whole UI in a pixel font and the
-         chunky faces read as web buttons without one.
-
-         Three static instances cut from the upstream variable file
-         (tools/cut-pixelify.py), not the variable file itself: Avalonia's
-         font manager does not set a variation axis, so asking a wght-variable
-         face for 600 got the 400 default with a synthesised bold over it:
-         every label a stem too heavy, which on a pixel face is the whole
-         difference between the reference's buttons and ours. 400 for the
-         rows, 600 for the labels, 700 for the wordmark. -->
-    <AvaloniaResource Include="Assets\Fonts\PixelifySans-Regular.ttf" />
-    <AvaloniaResource Include="Assets\Fonts\PixelifySans-SemiBold.ttf" />
-    <AvaloniaResource Include="Assets\Fonts\PixelifySans-Bold.ttf" />
     <!-- JetBrains Mono, SIL OFL 1.1 (licence beside it). The deck theme's
          body face, and it is not interchangeable with the display one: the
          reference sets its labels, its headings and its wordmark in the pixel
@@ -171,7 +157,7 @@
          megabyte, which is the price of the question being answered offline. -->
     <AvaloniaResource Include="Assets\Geo\ipcountry.bin.gz" />
     <AvaloniaResource Include="Assets\Fonts\Roboto-Bold.ttf" />
-    <AvaloniaResource Include="Assets\Backgrounds\launcher-bg.jpg" />
+    <AvaloniaResource Include="Assets\Backgrounds\launcher-bg.png" />
   </ItemGroup>
 
   <ItemGroup>
@@ -181,7 +167,7 @@
          LauncherPhoto.cs, which explains why), and that side of the window
          knows nothing about avares://. Not inside the Avalonia group: the
          server build carries no toolkit and still compiles the file. -->
-    <EmbeddedResource Include="Assets\Backgrounds\launcher-bg.jpg" />
+    <EmbeddedResource Include="Assets\Backgrounds\launcher-bg.png" />
   </ItemGroup>
 
   <ItemGroup>

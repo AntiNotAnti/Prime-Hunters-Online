@@ -184,6 +184,7 @@ namespace MphRead.Mods.Launcher.Gui
                         shell.Overlays.Close();
                     }
                     shell.Dispose();
+                    CheckStartup(directory);
                     Deck.Still = false;
                     var animated = new PrimePanel(PrimeChrome.Text("motion"));
                     HubMotion.Enter(animated); Dispatcher.UIThread.RunJobs();
@@ -210,6 +211,43 @@ namespace MphRead.Mods.Launcher.Gui
         }
         private static void Drain(Window window)
         { for (int i = 0; i < 4; i++) { Dispatcher.UIThread.RunJobs(); window.UpdateLayout(); } }
+        private static void CheckStartup(string? directory)
+        {
+            bool autoUpdate = LauncherPrefs.AutoUpdate;
+            LauncherPrefs.AutoUpdate = false;
+            try
+            {
+                using var front = new StartScreen(new MenuSettings(), new[] { "MP1 SANCTORUS" });
+                var shell = front.Prime;
+                var header = shell.Header;
+                if (directory != null)
+                    foreach (var size in Sizes)
+                        Check(UiCapture.Capture(front, Path.Combine(directory,
+                            $"prime-startup-{size.Width:0}x{size.Height:0}.png"), size), "startup landscape capture");
+                var window = new Window { Width = 1280, Height = 720, Content = front,
+                    ShowInTaskbar = false, Position = new PixelPoint(-4000,-4000) };
+                try
+                {
+                    window.Show(); Drain(window);
+                    var startup = front.GetVisualDescendants().OfType<PrimeStartupScreen>().Single();
+                    Check(startup.IsFocused && !shell.IsVisible && !shell.Overlays.IsOpen,
+                        "startup owns focus and defers setup prompts");
+                    shell.Router.Navigate(PrimeRoute.Settings);
+                    Check(shell.Router.Current == PrimeRoute.News, "startup blocks shell routes");
+                    FocusNavigator.Key(startup, Key.Escape); FocusNavigator.Key(startup, Key.E);
+                    Check(startup.IsVisible && !startup.Leaving, "startup consumes back and tab navigation");
+                    FocusNavigator.Key(startup, Key.Enter); Drain(window);
+                    Check(shell.IsVisible && shell.IsEnabled && ReferenceEquals(header, shell.Header)
+                        && !front.GetVisualDescendants().OfType<PrimeStartupScreen>().Any(),
+                        "Enter reveals the same mounted shell and removes startup");
+                    startup.Continue(); front.Reset(); Drain(window);
+                    Check(shell.IsVisible && !front.GetVisualDescendants().OfType<PrimeStartupScreen>().Any(),
+                        "repeat input and match return never reopen startup");
+                }
+                finally { window.Content = null; window.Close(); }
+            }
+            finally { LauncherPrefs.AutoUpdate = autoUpdate; }
+        }
         private static void Geometry(PrimeShell shell, Size size, PrimeRoute route)
         {
             foreach (var element in shell.GetVisualDescendants().OfType<Control>())

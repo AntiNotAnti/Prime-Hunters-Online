@@ -5,6 +5,19 @@ Forge, Offline, Settings) and one session-owned Lobby route. `StartScreen` owns
 setup, updates and game handoff; `PrimeRouter` changes only the workspace.
 The header, footer and overlay host remain mounted while navigating.
 
+The launcher first shows the bundled `launcher-bg.png` artwork with a flashing
+press-start prompt. Enter/Space, controller Start/A, or a click/tap reveals the
+already mounted shell through a short fade. The gate appears once per launcher
+instance; match returns retain the shell. Setup and update prompts wait until the
+gate is dismissed, and shell navigation stays blocked during the transition.
+Reduced motion keeps the prompt steady and makes the reveal immediate. The
+startup bitmap and flash timer are released after continuing.
+
+The shared palette uses Project Prime blue `#1C72E1` for primary actions,
+electric blue `#2B9EF7` for interactive highlights, bright blue `#61B6F6` for
+accent text, and deep blue `#175AB1` for pressed actions. Semantic success,
+warning and error colors remain distinct.
+
 ## Implementation map
 
 | Plan area | Implementation |
@@ -105,7 +118,10 @@ keyboard/controller modal confinement, settings/category discard (including a
 fresh controller preset), update status, server capacity and eight-player roster
 bounds. It writes PNG and geometry JSON for all eight routes at 1920×1080,
 1600×900, 1440×900, 1366×768, 1280×720 and 830×390. Primary action bounds are
-checked against the complete canvas. CI uploads these as `prime-shell-layouts`.
+checked against the complete canvas. Six additional startup captures check the
+artwork and bottom prompt at those sizes. Startup checks cover keyboard,
+controller Start/A, pointer activation, blocked navigation, deferred setup and
+one-time entry. CI uploads these as `prime-shell-layouts`.
 
 Captures may contain the user's locally extracted game imagery and are not
 committed. CI runs without proprietary assets. Local image review accompanies

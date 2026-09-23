@@ -47,6 +47,14 @@ namespace MphRead.Mods.Launcher.Gui
             Changed?.Invoke();
             Control? root = _keyboard?.NavigationRoot ?? _root;
             if (root == null) return;
+            var startup = root.GetVisualDescendants().OfType<PrimeStartupScreen>()
+                .FirstOrDefault(s => s.IsEffectivelyVisible);
+            if (startup != null)
+            {
+                if (action == UiAction.Accept || (action == UiAction.Back
+                    && GamepadManager.Snapshot.State.Down(GamepadButtons.Start))) startup.Continue();
+                return;
+            }
             var focused = FocusNavigator.Ensure(root);
             if (focused == null) return;
             if (action == UiAction.Accept && focused is KeyRow keyboardRow)

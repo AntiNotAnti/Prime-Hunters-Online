@@ -73,7 +73,7 @@ namespace MphRead.Mods.Launcher.Gui
             var art = new Grid { MinHeight = 170, Background = PrimeTheme.BackgroundDeepBrush, ClipToBounds = true };
             art.Children.Add(new Image { Source = MapShot.For("MP1 SANCTORUS"), Stretch = Stretch.UniformToFill });
             art.Children.Add(new TextBlock { Text = "PROJECT PRIME\nCOMBAT SYSTEMS ONLINE", FontFamily = PrimeTypography.Data,
-                FontSize = 22, Foreground = PrimeTheme.CyanBrush, Margin = new Thickness(20), VerticalAlignment = VerticalAlignment.Bottom });
+                FontSize = 22, Foreground = PrimeTheme.HighlightBrush, Margin = new Thickness(20), VerticalAlignment = VerticalAlignment.Bottom });
             var heroGrid = new Grid { RowDefinitions = new("Auto,Auto,Auto,*,Auto"), RowSpacing = 14 };
             Control[] heroParts = { new PrimeBadge("PROJECT DISPATCH // LOCAL EDITION"),
                 PrimeChrome.Text(hero.Title, PrimeTypography.DisplayLarge), PrimeChrome.Text(hero.Summary, 16), art,

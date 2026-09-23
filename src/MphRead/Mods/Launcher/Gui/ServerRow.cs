@@ -455,8 +455,8 @@ namespace MphRead.Mods.Launcher.Gui
             var rect = new Rect(Bounds.Size);
             bool active = _selected || IsFocused || _hot;
             context.FillRectangle(active ? PrimeTheme.PanelHighlightBrush : PrimeTheme.PanelBrush, rect);
-            context.DrawRectangle(new Pen(active ? PrimeTheme.CyanBrush : PrimeTheme.BorderBrush, 1), rect.Deflate(.5));
-            context.FillRectangle(active ? PrimeTheme.CyanStrongBrush : PrimeTheme.BorderBrush, new Rect(1, 8, 5, Math.Max(0, Bounds.Height - 16)));
+            context.DrawRectangle(new Pen(active ? PrimeTheme.HighlightBrush : PrimeTheme.BorderBrush, 1), rect.Deflate(.5));
+            context.FillRectangle(active ? PrimeTheme.PrimaryBrush : PrimeTheme.BorderBrush, new Rect(1, 8, 5, Math.Max(0, Bounds.Height - 16)));
             void Text(string value, double x, double y, double width, double size, IBrush ink, bool mono = false)
             {
                 if (width <= 0) return;

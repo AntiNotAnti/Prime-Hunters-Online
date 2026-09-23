@@ -10,7 +10,7 @@ namespace MphRead.Mods.Launcher.Gui
     /// <summary>
     /// Shared launcher palette and typography.
     ///
-    /// The FPS-hub direction uses cold dark panels, cyan focus/selection,
+    /// The FPS-hub direction uses cold dark panels, blue focus/selection,
     /// restrained semantic status colours and Inter as the player-facing UI
     /// face. JetBrains Mono is reserved for technical data. Older deck controls
     /// still consume these tokens while their layouts are migrated, which is
@@ -27,7 +27,7 @@ namespace MphRead.Mods.Launcher.Gui
         public static readonly Color Text = PrimeTheme.Text;
         public static readonly Color TextDim = PrimeTheme.TextSecondary;
         /// <summary>The primary focus/selection colour across hub and migrated screens.</summary>
-        public static readonly Color Accent = PrimeTheme.CyanStrong;
+        public static readonly Color Accent = PrimeTheme.Primary;
         public static readonly Color Warm = PrimeTheme.Warning;
         // The deck palette's, not the old neon pair: #6ee787 and #ff6b6b were
         // chosen against a flat dark panel and buzz on this one, which is two
@@ -81,23 +81,6 @@ namespace MphRead.Mods.Launcher.Gui
         /// </summary>
         public static readonly FontFamily Prose =
             new("avares://ProjectPrime/Assets/Fonts/Roboto-Bold.ttf#Roboto");
-
-        /// <summary>
-        /// Legacy Pixelify asset retained while old wordmark/deck code is
-        /// retired. It is no longer the launcher display role.
-        /// </summary>
-        public static readonly FontFamily Pixel =
-            new("avares://ProjectPrime/Assets/Fonts/PixelifySans-Regular.ttf#Pixelify Sans");
-
-        /// <summary>
-        /// Legacy static Pixelify weights. Kept only until the remaining
-        /// Pixelify-specific controls/assets are removed.
-        /// </summary>
-        public static readonly FontFamily PixelSemi =
-            new("avares://ProjectPrime/Assets/Fonts/PixelifySans-SemiBold.ttf#Pixelify Sans");
-
-        public static readonly FontFamily PixelBold =
-            new("avares://ProjectPrime/Assets/Fonts/PixelifySans-Bold.ttf#Pixelify Sans");
 
         /// <summary>
         /// Legacy Pixelify grid helper. New Inter text must not use it.

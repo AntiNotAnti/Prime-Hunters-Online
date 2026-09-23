@@ -19,11 +19,11 @@ namespace MphRead.Mods.Launcher.Gui
             var origin = new Point(Bounds.Width / 2, Bounds.Height - 24);
             double radius = Math.Min(Bounds.Width / 2 - 10, Bounds.Height - 50);
             double angle = Math.Clamp(_fov(), 20, 150) * Math.PI / 360;
-            var pen = new Pen(PrimeTheme.CyanStrongBrush, 2);
+            var pen = new Pen(PrimeTheme.PrimaryBrush, 2);
             context.DrawLine(pen, origin, new Point(origin.X - Math.Sin(angle) * radius, origin.Y - Math.Cos(angle) * radius));
             context.DrawLine(pen, origin, new Point(origin.X + Math.Sin(angle) * radius, origin.Y - Math.Cos(angle) * radius));
-            context.DrawEllipse(PrimeTheme.CyanStrongBrush, null, origin, 4, 4);
-            context.DrawText(GuiTheme.Lay($"FOV // {_fov()}°", 12, PrimeTheme.CyanBrush, true), new Point(12,12));
+            context.DrawEllipse(PrimeTheme.PrimaryBrush, null, origin, 4, 4);
+            context.DrawText(GuiTheme.Lay($"FOV // {_fov()}°", 12, PrimeTheme.HighlightBrush, true), new Point(12,12));
         }
     }
 }

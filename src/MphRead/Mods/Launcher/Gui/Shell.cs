@@ -709,7 +709,21 @@ namespace MphRead.Mods.Launcher.Gui
         private static Action<RenderWindow>[] Script => new Action<RenderWindow>[]
         {
             _ => Wait(20),
-            w => { Shot(w, "shell-start"); Escape(); Wait(15); },
+            w =>
+            {
+                Shot(w, "shell-startup");
+                var startup = _front?.GetVisualDescendants().OfType<PrimeStartupScreen>().FirstOrDefault();
+                if (startup == null) { ShotMisses++; Console.WriteLine("[shellshot] startup gate was missing"); }
+                else Key(Keys.Enter);
+                Wait(12);
+            },
+            w => { Shot(w, "shell-startup-transition"); Wait(25); },
+            w =>
+            {
+                if (_front?.Prime is not { IsVisible: true, IsEnabled: true })
+                { ShotMisses++; Console.WriteLine("[shellshot] startup did not reveal the shell"); }
+                Shot(w, "shell-start"); Escape(); Wait(15);
+            },
             // Escape on the front screen is the quit prompt, so a second
             // picture that differs from the first is the keyboard reaching a
             // screen that is no longer a window.

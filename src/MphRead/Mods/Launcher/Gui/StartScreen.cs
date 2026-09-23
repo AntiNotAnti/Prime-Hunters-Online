@@ -17,6 +17,8 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly MenuSettings _settings;
         private readonly List<string> _rooms;
         private readonly PrimeShell _prime;
+        private readonly Panel _layers = new();
+        private PrimeStartupScreen? _startup;
         private readonly LobbySessionCoordinator _session = new();
         private LobbyScreen? _lobby;
         private bool _finished, _updating, _bypassGuard;
@@ -37,7 +39,12 @@ namespace MphRead.Mods.Launcher.Gui
         {
             _settings = settings; _rooms = new List<string>(rooms); Focusable = true;
             _prime = new PrimeShell(CreateWorkspace, OpenVersionManager);
-            Content = _prime;
+            _prime.IsVisible = false; _prime.IsEnabled = false;
+            _layers.Children.Add(_prime);
+            _startup = new PrimeStartupScreen();
+            _startup.Continued += ContinueStartup;
+            _layers.Children.Add(_startup);
+            Content = _layers;
             _prime.Router.CanNavigate = CanNavigate;
             _prime.Router.Changed += _ => { UpdateReplayBackground(); TryShowUpdatePrompt(); };
             _prime.BackRequested = () =>
@@ -66,11 +73,33 @@ namespace MphRead.Mods.Launcher.Gui
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
             base.OnAttachedToVisualTree(e);
-            if (!GameFiles.Ready && !_prime.Overlays.IsOpen)
-                Deck.NextFrame(this, () => { if (!GameFiles.Ready && !_prime.Overlays.IsOpen) OpenSetup(); });
+            if (_startup == null) ShowInitialPrompt();
+        }
+        private void ContinueStartup()
+        {
+            if (_startup == null) return;
+            _prime.IsVisible = true;
+            _startup.Reveal(() =>
+            {
+                var startup = _startup; _startup = null;
+                if (startup != null) { _layers.Children.Remove(startup); startup.Dispose(); }
+                _prime.IsEnabled = true;
+                FocusNavigator.Ensure(_prime);
+                ShowInitialPrompt();
+            });
+        }
+        private void ShowInitialPrompt()
+        {
+            Deck.NextFrame(this, () =>
+            {
+                if (_startup != null || TopLevel.GetTopLevel(this) == null) return;
+                if (!GameFiles.Ready && !_prime.Overlays.IsOpen) OpenSetup();
+                else TryShowUpdatePrompt();
+            });
         }
         private bool CanNavigate(PrimeRoute route)
         {
+            if (_startup != null) return false;
             if (_bypassGuard) return true;
             if (_prime.Overlays.IsOpen) return false;
             if (route == PrimeRoute.Lobby && _lobby == null) return false;
@@ -187,8 +216,8 @@ namespace MphRead.Mods.Launcher.Gui
             if (_prime.Router.Current == PrimeRoute.Lobby) _prime.Router.Navigate(PrimeRoute.Play);
             if (!GameFiles.Ready) OpenSetup();
         }
-        public bool GoBack() { _prime.Back(); return true; }
-        public void Dispose() { Content = null; _session.Dispose(); _updateWatcher.Dispose(); _prime.Overlays.Clear(); _prime.Dispose(); }
+        public bool GoBack() { if (_startup == null) _prime.Back(); return true; }
+        public void Dispose() { _startup?.Dispose(); _startup = null; Content = null; _session.Dispose(); _updateWatcher.Dispose(); _prime.Overlays.Clear(); _prime.Dispose(); }
         private void ShowGround(bool show)
         {
             _prime.Header.IsVisible = show; _prime.Footer.IsVisible = show;
@@ -206,7 +235,13 @@ namespace MphRead.Mods.Launcher.Gui
             if (_finished) return;
             _finished = true; Plan = plan; Done?.Invoke(this, plan);
         }
-        internal void OpenMapStudio() => _prime.Router.Navigate(PrimeRoute.Forge);
+        internal void OpenMapStudio()
+        {
+            // An explicit editor launch bypasses the ordinary startup gate.
+            if (_startup != null) { _layers.Children.Remove(_startup); _startup.Dispose(); _startup = null; }
+            _prime.IsVisible = true; _prime.IsEnabled = true;
+            _prime.Router.Navigate(PrimeRoute.Forge);
+        }
         private void OpenCreateServer()
         {
             if (NetSession.Active) { _prime.Router.Navigate(PrimeRoute.Lobby); return; }
@@ -515,7 +550,7 @@ namespace MphRead.Mods.Launcher.Gui
         private void TryShowUpdatePrompt()
         {
             if (_pendingUpdatePrompt is not UpdateInfo update
-                || _prime.Overlays.IsOpen || _prime.Router.Current != PrimeRoute.News
+                || _startup != null || _prime.Overlays.IsOpen || _prime.Router.Current != PrimeRoute.News
                 || !_prime.Header.IsVisible || TopLevel.GetTopLevel(this) == null
                 || NetSession.Active || _updating || _loadingVersions
                 || !GameFiles.Ready)

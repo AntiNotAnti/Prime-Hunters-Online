@@ -11,8 +11,8 @@ namespace MphRead.Mods.Launcher.Gui
         public static readonly Color Panel = PrimeTheme.Panel;
         public static readonly Color PanelHot = PrimeTheme.PanelHighlight;
         public static readonly Color Edge = PrimeTheme.Border;
-        public static readonly Color Accent = PrimeTheme.CyanStrong;
-        public static readonly Color AccentSoft = PrimeTheme.Cyan;
+        public static readonly Color Accent = PrimeTheme.Primary;
+        public static readonly Color AccentSoft = PrimeTheme.Highlight;
         public static readonly Color Text = PrimeTheme.Text;
         public static readonly Color TextDim = PrimeTheme.TextSecondary;
         public static readonly Color Good = PrimeTheme.Green;

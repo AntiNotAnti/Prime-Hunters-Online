@@ -277,10 +277,10 @@ namespace MphRead.Mods.Launcher.Gui
                     Info(context, w, h, em);
                     Badge(context, w, em);
                 }
-                var border = _chosen || Leader ? PrimeTheme.CyanStrongBrush
+                var border = _chosen || Leader ? PrimeTheme.PrimaryBrush
                     : hot ? PrimeTheme.TextBrush : PrimeTheme.BorderBrush;
                 context.DrawRectangle(null, new Pen(border, hot || _chosen ? 2 : 1), rect);
-                if (_chosen) context.FillRectangle(PrimeTheme.CyanStrongBrush, new Rect(1, 1, 4, Math.Max(0, h - 2)));
+                if (_chosen) context.FillRectangle(PrimeTheme.PrimaryBrush, new Rect(1, 1, 4, Math.Max(0, h - 2)));
                 return;
             }
 
@@ -681,7 +681,7 @@ namespace MphRead.Mods.Launcher.Gui
         {
             if (Tactical)
             {
-                var codeText = DeckText.Run(Code.ToUpperInvariant(), new Typeface(PrimeTypography.Data), 11, PrimeTheme.CyanBrush);
+                var codeText = DeckText.Run(Code.ToUpperInvariant(), new Typeface(PrimeTypography.Data), 11, PrimeTheme.HighlightBrush);
                 context.FillRectangle(PrimeTheme.BackgroundBrush, new Rect(8, 8, Math.Min(w - 16, codeText.Width + 12), 20));
                 context.DrawText(codeText, new Point(14, 11));
                 string label = _chosen ? "SELECTED // " + Blurb : Blurb;

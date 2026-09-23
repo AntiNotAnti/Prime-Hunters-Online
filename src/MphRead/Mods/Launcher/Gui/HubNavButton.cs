@@ -241,11 +241,11 @@ namespace MphRead.Mods.Launcher.Gui
             if (_tactical)
             {
                 bool hot = _pointer || IsFocused;
-                _frame.Background = _primary ? (hot ? PrimeTheme.CyanBrush : PrimeTheme.CyanStrongBrush)
+                _frame.Background = _primary ? (_pressed ? PrimeTheme.AccentDeepBrush : hot ? PrimeTheme.GlowBrush : PrimeTheme.PrimaryBrush)
                     : hot || _selected ? PrimeTheme.PanelHighlightBrush : _tab ? Brushes.Transparent : PrimeTheme.PanelRaisedBrush;
-                _frame.BorderBrush = hot || _selected ? PrimeTheme.CyanStrongBrush : _tab ? Brushes.Transparent : PrimeTheme.BorderBrush;
+                _frame.BorderBrush = hot || _selected ? PrimeTheme.GlowBrush : _tab ? Brushes.Transparent : PrimeTheme.BorderBrush;
                 _frame.BorderThickness = _tab && !IsFocused ? new Thickness(0, 0, 0, _selected ? 2 : 0) : new Thickness(1);
-                _label.Foreground = _primary ? PrimeTheme.BackgroundDeepBrush : hot || _selected ? PrimeTheme.CyanBrush : PrimeTheme.TextBrush;
+                _label.Foreground = _primary ? (hot && !_pressed ? PrimeTheme.BackgroundDeepBrush : Brushes.White) : hot || _selected ? PrimeTheme.HighlightBrush : PrimeTheme.TextBrush;
                 _frame.Opacity = _pressed ? .76 : IsEnabled && IsEffectivelyEnabled ? 1 : .48;
                 _shift.X = 0;
                 return;

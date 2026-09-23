@@ -370,7 +370,7 @@ namespace MphRead.Mods.Launcher.Gui
                 var calibration = new PrimeFovPreview(() => _fovRow.Value);
                 _fovRow.ValueChanged += (_, _) => calibration.InvalidateVisual();
                 var diagnostics = PrimeChrome.Stack(new PrimeBadge("CALIBRATION VIEWPORT"), calibration,
-                    PrimeChrome.Text("HARDWARE DIAGNOSTICS", 12, PrimeTheme.CyanBrush, true),
+                    PrimeChrome.Text("HARDWARE DIAGNOSTICS", 12, PrimeTheme.HighlightBrush, true),
                     PrimeChrome.Text($"PLATFORM // {System.Runtime.InteropServices.RuntimeInformation.OSDescription}\n"
                         + $"PROCESS // {System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture}\n"
                         + $"LOGICAL CORES // {Environment.ProcessorCount}\nSIMULATION // 60 HZ", 11, data: true));
