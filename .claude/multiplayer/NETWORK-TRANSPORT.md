@@ -45,3 +45,15 @@ Duplicated fault entries hold immutable bytes and obtain separate pooled decode
 buffers. Promotion is bounded to 256 arrivals per pump. Reliable servicing sends
 at most four due attempts per connection/pass and also runs every 50 ms on the
 receive worker, so a synchronous room load cannot stop control retransmission.
+
+An explicit pending Hello allows a restarted server to supply a new connection
+incarnation on the existing client socket. Superseded connection IDs cannot be
+restored by a delayed Welcome, including during another outstanding Hello.
+The remembered superseded-ID set is bounded at 64; a transport must be recreated
+before a 65th server incarnation. ClientId alone never moves a live admission to
+a different endpoint. A secure endpoint-rebinding handshake is outside this train.
+
+Connected sends cache a connection-owned SocketAddress and use synchronous
+Socket.SendTo over the caller's span. This removes the measured 72 B/send endpoint
+serialization allocation. Discovery/admission, delayed fault injection and replay
+ownership copies are separately scoped; the live send allocation test excludes them.

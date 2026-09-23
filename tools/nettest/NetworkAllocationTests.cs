@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Buffers.Binary;
+using System.Net;
 using MphRead.Mods.Network;
 
 namespace MphRead.NetTest;
@@ -49,6 +50,16 @@ internal static class NetworkAllocationTests
                 Console.WriteLine($"{name}: {allocated / 10000.0:F2} B/op");
                 if (!reportOnly) NetArchitectureTests.Check(allocated == 0, $"{name} allocation regression: {allocated}");
             }
+            using var server = new NetTransport(0);
+            using var client = new NetTransport(0);
+            Protocol17Tests.Connect(server, client);
+            var endpoint = new IPEndPoint(IPAddress.Loopback, server.LocalPort);
+            for (int i = 0; i < 10000; i++) client.Send(endpoint, PacketType.Intent, intentBytes);
+            long sendStart = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 10000; i++) client.Send(endpoint, PacketType.Intent, intentBytes);
+            long sendBytes = GC.GetAllocatedBytesForCurrentThread() - sendStart;
+            Console.WriteLine($"NetTransport.Send UDP: {sendBytes / 10000.0:F2} B/op (receive/fault/replay ownership excluded)");
+            if (!reportOnly) NetArchitectureTests.Check(sendBytes == 0, "steady connected UDP send allocation regression");
             return 0;
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }

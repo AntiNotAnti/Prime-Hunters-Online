@@ -471,6 +471,13 @@ namespace MphRead.Mods.Network
                         {
                             var stats = _transport.Telemetry.Capture();
                             Log($"[netstats] rx={stats.PacketsReceived} tx={stats.PacketsSent} queue={stats.QueueCurrent}/{stats.QueueHighWater} drops={stats.QueueDrops}");
+                            foreach (var peer in _peers)
+                            {
+                                var connection = _transport.ConnectionStats(peer.EndPoint);
+                                var intent = peer.Telemetry.Capture();
+                                var timing = LagCompensationPolicy.Timing(peer.SlotIndex);
+                                Log($"[netstats] peer={peer.SlotIndex} rtt={connection?.RttMilliseconds:F1}ms jitter={connection?.RttJitterMilliseconds:F1}ms lostEstimate={connection?.EstimatedLost} reorder={connection?.Reordered} intentGap={intent.FrameGaps} intentDup={intent.Duplicate} delay={timing.PresentationDelayFrames:F2}f");
+                            }
                         }
                         // Order matters only in that the roster carries the last
                         // measurement: ping first, publish second.

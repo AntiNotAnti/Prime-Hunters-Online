@@ -60,6 +60,8 @@ namespace MphRead.Mods.Network
         private readonly object _connectionLock = new();
         private readonly Dictionary<IPEndPoint, NetConnection> _connections = new();
         private readonly Dictionary<IPEndPoint, uint> _pendingConnections = new();
+        private readonly HashSet<ulong> _supersededIds = new(); // bounded by 64 reconnects per transport
+
         public NetReliableSnapshot? ReliableStats(IPEndPoint endpoint)
         { lock (_connectionLock) return _connections.TryGetValue(endpoint, out var peer) ? peer.Reliable.Capture(NowMilliseconds) : null; }
         public NetConnectionSnapshot? ConnectionStats(IPEndPoint endpoint)
@@ -570,16 +572,24 @@ namespace MphRead.Mods.Network
                     Telemetry.Invalid(); return false;
                 }
                 if (!NetHeader.TryRead(data.AsSpan(0, length), out var header)) { Telemetry.Invalid(); return false; }
-                if (!_connections.TryGetValue(sender, out var connection))
+                _connections.TryGetValue(sender, out var connection);
+                if (connection == null || connection.Id != header.ConnectionId)
                 {
-                    int bootstrapOffset = NetHeader.Size + ((header.Flags & NetHeaderFlags.Reliable) != 0 ? 4 : 0);
-                    if (header.Type != PacketType.Welcome || length != bootstrapOffset + 17
+                    const int bootstrapOffset = NetHeader.Size + 4;
+                    if (header.Type != PacketType.Welcome || (header.Flags & NetHeaderFlags.Reliable) == 0
+                        || length != bootstrapOffset + 17 || _supersededIds.Contains(header.ConnectionId)
                         || !_pendingConnections.TryGetValue(sender, out uint clientId)
-                        || BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(bootstrapOffset + 1)) != clientId)
+                        || BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(bootstrapOffset + 1)) != clientId
+                        || connection != null && _supersededIds.Count >= 64)
                     { Telemetry.Invalid(); return false; }
+                    // A server restart can answer an explicit Hello with a new
+                    // incarnation at the same endpoint. Old incarnations never
+                    // replace it, even while a subsequent Hello is outstanding.
+                    if (connection != null) _supersededIds.Add(connection.Id);
                     connection = new NetConnection(sender, header.ConnectionId, clientId);
-                    _connections.Add(sender, connection); _pendingConnections.Remove(sender);
+                    _connections[sender] = connection; _pendingConnections.Remove(sender);
                 }
+                else if (header.Type == PacketType.Welcome) _pendingConnections.Remove(sender);
                 if (!connection.Accepts(sender, header)) { Telemetry.Invalid(); return false; }
                 if ((header.Flags & NetHeaderFlags.AckOnly) == 0 && !connection.Allow(header.Type, NowMilliseconds))
                 { Telemetry.Drop(); return false; }
@@ -658,7 +668,10 @@ namespace MphRead.Mods.Network
             if (_socket == null) return;
             try
             {
-                _socket.Send(datagram, target);
+                SocketAddress address;
+                lock (_connectionLock)
+                    address = _connections.TryGetValue(target, out var connection) ? connection.SendAddress : target.Serialize();
+                _socket.Client.SendTo(datagram, SocketFlags.None, address);
                 Telemetry.Sent(datagram.Length);
                 Interlocked.Increment(ref TotalPacketsSent);
             }

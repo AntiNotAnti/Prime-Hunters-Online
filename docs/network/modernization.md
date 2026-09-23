@@ -104,3 +104,12 @@ affinity ice-wave area timing. It preserves projectile catch-up for Imperialist
 and new continuous beams. Fixed limits, early termination, missing-history stops
 and shot/step/collision/truncation counters bound work. All 18 MP entries pass
 1,620 timing-policy profiles. Health/shot impairment coverage includes Omega.
+
+## Additional integration fixes
+
+Production intent ordering and eight-edge recovery now handle uint frame zero
+without reopening duplicate actions. A live ClientId cannot claim a new endpoint.
+Pending Hello permits a server restart to replace the connection incarnation while
+rejecting delayed Welcome packets for superseded IDs. Graceful shutdown retains
+ACK/retry service for a bounded two seconds. Warmed connected UDP sends improved
+from 72 B/op to 0 B/op by caching the connection's native address.

@@ -84,7 +84,7 @@ public readonly record struct NetPresentationSnapshot(double Delay, double Jitte
     long Held, long Starved, long Snaps, long StalledFrames, int LongestStall);
 public readonly record struct NetLagCompSnapshot(long Shots, double? MeanApplied, int WorstApplied,
     int WorstRequested, int? RequestedP50, int? RequestedP95, int? RequestedP99, long Clamped,
-    long FramesRefused, long PressAgeShots, long PressAgeFrames, long HistoryMisses, long CatchUpSteps, long CatchUpHits);
+    long FramesRefused, long PressAgeShots, long PressAgeFrames, long HistoryMisses, long CatchUpSteps, long CatchUpHits, long CatchUpShots, int MaximumCatchUpSteps, long CatchUpTruncations);
 public readonly record struct NetCombatSnapshot(long Predicted, long Confirmed, long Denied, long ClaimsReceived,
     long ClaimsApplied, long ClaimsDuplicate, long ClaimsRejected, long ClaimsTooOld, long DeadShooter, long DeadVictim);
 public readonly record struct NetTelemetrySnapshot(NetTransportSnapshot? Transport, long SnapshotsAccepted,
@@ -122,7 +122,8 @@ public static class NetTelemetry
         new(NetUnlagged.ShotsCompensated, NetUnlagged.ShotsCompensated == 0 ? null : (double)NetUnlagged.FramesRewound / NetUnlagged.ShotsCompensated,
             NetUnlagged.WorstRewind, NetUnlagged.WorstRequested, Percentile(.5), Percentile(.95), Percentile(.99),
             NetUnlagged.ShotsClamped, NetUnlagged.FramesRefused, NetUnlagged.StalePresses, NetUnlagged.StalePressFrames,
-            NetUnlagged.HistoryMisses, NetUnlagged.CatchUpSteps, NetUnlagged.CatchUpHits),
+            NetUnlagged.HistoryMisses, NetUnlagged.CatchUpSteps, NetUnlagged.CatchUpHits,
+            NetUnlagged.CatchUpShots, NetUnlagged.MaximumCatchUpSteps, NetUnlagged.CatchUpTruncations),
         new(NetHitPrediction.Predicted, NetHitPrediction.Confirmed, NetHitPrediction.Denied, NetHitClaims.Received,
             NetHitClaims.AppliedHere, NetHitClaims.DuplicateHere, NetHitClaims.RefusedHere, NetHitClaims.TooOldHere,
             NetHitClaims.VoidedDeadShooter, NetHitClaims.VoidedDeadVictim), LagCompensationPolicy.CaptureTotal());

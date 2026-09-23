@@ -17,7 +17,7 @@ internal static class Protocol17Tests
         client.Send(serverAddress, PacketType.Hello, new byte[] { NetConfig.ProtocolVersion, 255, 42, 0, 0, 0 });
         Span<byte> welcome = stackalloc byte[17]; welcome.Clear(); welcome[1] = 42;
         server.Send(clientAddress, PacketType.Welcome, welcome);
-        Check(SpinWait.SpinUntil(() => client.ConnectionStats(serverAddress).HasValue, 2000), "connection established on UDP");
+        Check(SpinWait.SpinUntil(() => client.ConnectionStats(serverAddress)?.ConnectionId == server.ConnectionStats(clientAddress)?.ConnectionId, 2000), "connection established on UDP");
         foreach (var packet in server.Drain()) { }
         foreach (var packet in client.Drain()) { }
     }
@@ -70,6 +70,21 @@ internal static class Protocol17Tests
             long invalid = server.Telemetry.Capture().Invalid;
             stranger.Send(forged, serverAddress);
             Check(SpinWait.SpinUntil(() => server.Telemetry.Capture().Invalid > invalid, 2000), "known connection from wrong endpoint rejected over UDP");
+            ulong prior = client.ConnectionStats(serverAddress)!.Value.ConnectionId;
+            server.ForgetConnection(clientAddress);
+            Connect(server, client);
+            ulong replacement = client.ConnectionStats(serverAddress)!.Value.ConnectionId;
+            Check(replacement != prior, "server restart establishes a new incarnation on the existing client socket");
+            client.Send(serverAddress, PacketType.Hello, new byte[] { NetConfig.ProtocolVersion, 255, 42, 0, 0, 0 });
+            byte[] staleWelcome = new byte[NetHeader.Size + 4 + 17];
+            new NetHeader(PacketType.Welcome, NetHeaderFlags.Reliable, prior, 999, 0, 0).Write(staleWelcome);
+            staleWelcome[NetHeader.Size + 4 + 1] = 42;
+            // Inject from the real server socket to exercise the endpoint as well as ID fence.
+            var socket = (UdpClient)typeof(NetTransport).GetField("_socket", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(server)!;
+            long beforeStale = client.Telemetry.Capture().Invalid;
+            socket.Send(staleWelcome, clientAddress);
+            Check(SpinWait.SpinUntil(() => client.Telemetry.Capture().Invalid > beforeStale, 2000)
+                && client.ConnectionStats(serverAddress)!.Value.ConnectionId == replacement, "old Welcome cannot restore superseded connection");
             Console.WriteLine("PASS: protocol 17 sequences, ACK bits, wrap, identity and UDP integration"); return 0;
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }

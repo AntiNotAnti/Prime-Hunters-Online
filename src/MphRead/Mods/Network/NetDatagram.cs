@@ -96,11 +96,13 @@ public sealed class NetConnection
     public double? RetiredAt { get; set; }
     public ulong Id { get; }
     public IPEndPoint Endpoint { get; }
+    // Immutable connection-owned native address; SendTo consumes it synchronously.
+    internal SocketAddress SendAddress { get; }
     public uint ClientId { get; }
     public NetConnection(IPEndPoint endpoint, ulong id, uint clientId = 0, uint initialSequence = 0)
     {
         if (id == 0) throw new ArgumentOutOfRangeException(nameof(id));
-        Endpoint = new IPEndPoint(endpoint.Address, endpoint.Port); Id = id; ClientId = clientId; _nextSequence = initialSequence;
+        Endpoint = new IPEndPoint(endpoint.Address, endpoint.Port); SendAddress = Endpoint.Serialize(); Id = id; ClientId = clientId; _nextSequence = initialSequence;
     }
     public static ulong NewId()
     {
