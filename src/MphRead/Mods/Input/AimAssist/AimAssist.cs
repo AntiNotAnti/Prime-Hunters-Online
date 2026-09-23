@@ -16,7 +16,7 @@ namespace MphRead.Mods.Input.AimAssist
                 return new(raw.X, raw.Y);
             }
 
-            float intent = stickIntent > .08f ? 1 : moveIntent > .20f ? .5f : 0;
+            float intent = stickIntent > .08f ? 1 : 0;
             if (intent == 0)
             {
                 state.Reset();
