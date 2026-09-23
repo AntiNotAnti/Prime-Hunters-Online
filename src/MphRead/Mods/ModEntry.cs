@@ -526,22 +526,19 @@ namespace MphRead.Mods
             // no X or Wayland session. -text asks for the text one on a machine
             // that has both.
             //
-            // No arguments means somebody double-clicked the binary, and on the
-            // platforms where that is how a program is normally started that
-            // has to be the launcher: the console menu behind it is for people
-            // who typed something, and -menu is how they still get it. On Linux
-            // a bare invocation has always opened upstream's console menu and
-            // still does -- that is a screen people are already using, not an
-            // empty spot to fill.
-            bool doubleClicked = args.Length == 0
-                && (OperatingSystem.IsWindows() || OperatingSystem.IsMacOS());
+            // No arguments means ordinary desktop client startup, so every
+            // supported desktop opens the Project Prime launcher by default.
+            // The old console menu remains available explicitly through -menu.
+            // On a headless Linux session GuiLauncher.TryRun() fails cleanly and
+            // the text launcher below remains the fallback.
+            bool defaultLauncher = args.Length == 0;
 #if MPHREAD_SERVER
             // Except in the server package, which has no launcher of either
             // kind and ships without game files: a bare invocation there is
             // answered further down by ServerUsage, which says what the binary
             // is for. Double-clicking ProjectPrimeServer.exe must not open a
             // text launcher offering matches it cannot play.
-            doubleClicked = false;
+            defaultLauncher = false;
 #endif
             // The launcher's own screens, looked at without anybody sitting
             // in front of them. Here rather than with the rest of the
@@ -631,7 +628,7 @@ namespace MphRead.Mods
             {
                 WindowMode.ForceStartup(WindowStartMode.Windowed);
             }
-            if ((HasFlag(args, "launcher") || doubleClicked) && !HasFlag(args, "menu"))
+            if ((HasFlag(args, "launcher") || defaultLauncher) && !HasFlag(args, "menu"))
             {
 #if MPHREAD_AVALONIA
                 if (!HasFlag(args, "text") && Launcher.Gui.GuiLauncher.TryRun())
