@@ -290,3 +290,13 @@ not select them.
 - **Hosted-server process isolation is intentional.** `NetSession` remains
   static; do not move hosted matches back in-process unless that state is first
   made instance-safe.
+
+## Protocol 17 migration
+
+Transport identity, selective reliable control and pump budgets are described in
+NETWORK-TRANSPORT.md and NETWORK-RELIABILITY.md. Match preparation/loading uses
+NETWORK-START-LIFECYCLE.md: no authoritative gameplay before all retained
+participants are ready and the 1.5-second countdown expires. Missing participants
+are removed at 15 seconds. Late joins have individual readiness. Owner-reported
+position remains the collision position; no movement commands or reconciliation
+were introduced. Same-life owner snapshot corrections were removed separately.

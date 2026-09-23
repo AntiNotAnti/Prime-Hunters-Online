@@ -154,6 +154,7 @@ namespace MphRead.Mods.Network
             // offscreen targets.
             GL.Viewport(0, 0, ClientSize.X, ClientSize.Y);
             Scene.OnResize();
+            NetSession.MarkMatchLoaded();
         }
 
         protected override void OnRenderFrame(FrameEventArgs args)

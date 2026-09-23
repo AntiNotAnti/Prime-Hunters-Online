@@ -262,3 +262,12 @@ of the feature. For what it is worth, two pairs both favoured `on`: 33.9% vs
   packet is longer, and a version 4 authority would read it correctly and then
   resolve every remote shot against the present. Deploy the server before
   handing out clients.
+
+## Protocol 17 policy migration
+
+The default ceiling remains 45 frames with 128 history frames and press-age
+recovery. WeaponLagPolicies centralizes actual mechanics without retuning their
+timing. LagCompensationPolicy defaults to Shadow and preserves fractional ACK
+rewind exactly; Release builds reject enforcement. Read-only historical trace
+comparisons never apply damage or mutate the live scene. See NETWORK-LAGCOMP-POLICY.md
+and NETWORK-WEAPON-POLICIES.md for timing sources, coverage and release gates.

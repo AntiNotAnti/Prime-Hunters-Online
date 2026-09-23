@@ -38,6 +38,7 @@ namespace MphRead.Mods.Network
         public int SlotIndex = -1;
         public IntentPacket LatestIntent;
         public uint LastIntentFrame;
+        public bool HasIntentFrame;
         public double LastSeenTime;
         /// <summary>Who this peer says it is, across address changes. See
         /// <see cref="NetSession.ClientId"/>. Zero from an older client.</summary>
@@ -403,6 +404,7 @@ namespace MphRead.Mods.Network
 
         public static void Stop()
         {
+            NetTelemetry.FullSessionReset();
             ResetLobbySession();
             _playback = false;
             NetPlayerSetup.Reset();
@@ -1182,20 +1184,8 @@ namespace MphRead.Mods.Network
                 peer = null;
             }
             if (peer == null && clientId != 0)
-            {
-                // The same player from a new address. See NetSession.ClientId.
-                for (int i = 0; i < _peers.Count; i++)
-                {
-                    if (_peers[i].ClientId == clientId)
-                    {
-                        peer = _peers[i];
-                        Console.WriteLine($"[net] slot {peer.SlotIndex} came back on "
-                            + $"{packet.Sender} (was {peer.EndPoint})");
-                        peer.EndPoint = packet.Sender;
-                        break;
-                    }
-                }
-            }
+                foreach (var connected in _peers)
+                    if (connected.ClientId == clientId) return; // a different endpoint cannot claim a live admission
             if (peer == null)
             {
                 int slot = NextFreeSlot();
@@ -1241,11 +1231,11 @@ namespace MphRead.Mods.Network
             // UDP reorders; an older frame must not overwrite a newer one --
             // unless it is so much older that the peer restarted its counter.
             // See HandleSlotIntent.
-            if (peer.LastIntentFrame != 0 && !NetLifecycleTracker.Newer(intent.Frame, peer.LastIntentFrame))
+            if (peer.HasIntentFrame && !NetLifecycleTracker.Newer(intent.Frame, peer.LastIntentFrame))
             {
                 return;
             }
-            peer.LastIntentFrame = intent.Frame;
+            peer.LastIntentFrame = intent.Frame; peer.HasIntentFrame = true;
             peer.LatestIntent = intent;
             peer.LastSeenTime = time;
             RemoteIntents[peer.SlotIndex] = intent;
@@ -1293,14 +1283,22 @@ namespace MphRead.Mods.Network
             {
                 return;
             }
+            NetIntentRejection reason = intent.MatchId != CurrentMatchId ? NetIntentRejection.WrongMatch
+                : intent.AuthorityEpoch != AuthorityEpoch ? NetIntentRejection.WrongEpoch
+                : intent.SlotGeneration != NetPlayerLifecycle.Generation(slot) ? NetIntentRejection.WrongGeneration
+                : intent.LifeId != NetPlayerLifecycle.Get(slot) ? NetIntentRejection.WrongLife : NetIntentRejection.None;
             // Identity is checked before ordering. A new occupant/life clears
             // the frame baseline; a late packet can never reset it.
-            if (!NetPlayerLifecycle.AcceptIntent(slot, intent)) return;
-            if (_lastSlotIntentFrame[slot] != 0 && !NetLifecycleTracker.Newer(intent.Frame, _lastSlotIntentFrame[slot]))
+            if (!NetPlayerLifecycle.AcceptIntent(slot, intent))
+            { NetTelemetry.Intent(slot, intent.Frame, reason == NetIntentRejection.None ? NetIntentRejection.Invalid : reason); return; }
+            if (RemoteIntentValid[slot] && !NetLifecycleTracker.Newer(intent.Frame, _lastSlotIntentFrame[slot]))
             {
                 IntentsOutOfOrder++;
+                NetTelemetry.Intent(slot, intent.Frame, intent.Frame == _lastSlotIntentFrame[slot]
+                    ? NetIntentRejection.Duplicate : NetIntentRejection.Reordered);
                 return;
             }
+            NetTelemetry.Intent(slot, intent.Frame, NetIntentRejection.None);
             _lastSlotIntentFrame[slot] = intent.Frame;
             RemoteIntents[slot] = intent;
             RemoteIntentValid[slot] = true;
@@ -1334,6 +1332,7 @@ namespace MphRead.Mods.Network
             {
                 return;
             }
+            NetTelemetry.NewLife(slot);
             ContinuousPhase.ResetSlot(slot);
             _lastSlotIntentFrame[slot] = 0;
             RemoteIntentArrived[slot] = 0;
@@ -1346,7 +1345,7 @@ namespace MphRead.Mods.Network
             {
                 if (_peers[i].SlotIndex == slot)
                 {
-                    _peers[i].LastIntentFrame = 0;
+                    _peers[i].LastIntentFrame = 0; _peers[i].HasIntentFrame = false;
                 }
             }
         }
@@ -1558,6 +1557,7 @@ namespace MphRead.Mods.Network
                     }
                 }
                 else if (newMatch) NetPlayerLifecycle.ResetLives();
+                if (newMatch) NetTelemetry.NewMatch();
                 SnapshotStreamResets++;
             }
             if (newMatch || previous?.RoomKey != state.RoomKey)
@@ -1585,6 +1585,8 @@ namespace MphRead.Mods.Network
             if (epoch == 0 || epoch != AuthorityEpoch) { NetPlayerLifecycle.CrossAuthority++; return false; }
             return true;
         }
+
+        public static NetTelemetrySnapshot CaptureTelemetry() => NetTelemetry.Capture(_transport);
 
         public static long SnapshotsOutOfOrder { get; private set; }
 
@@ -1856,7 +1858,7 @@ namespace MphRead.Mods.Network
                 {
                     continue;
                 }
-                if (offset + PlayerState.Size > NetConfig.MaxPacketSize - 1)
+                if (offset + PlayerState.Size > NetConfig.MaxPayloadSize)
                 {
                     break;
                 }
@@ -1901,7 +1903,7 @@ namespace MphRead.Mods.Network
             }
             NetMatchTimeSync.Write(_scratch.AsSpan(offset));
             offset += NetMatchTimeSync.Size;
-            offset += NetHealthSync.Write(_scratch.AsSpan(offset, NetConfig.MaxPacketSize - 1 - offset));
+            offset += NetHealthSync.Write(_scratch.AsSpan(offset, NetConfig.MaxPayloadSize - offset));
             var header = new SnapshotHeader
             {
                 MatchId = CurrentMatchId,

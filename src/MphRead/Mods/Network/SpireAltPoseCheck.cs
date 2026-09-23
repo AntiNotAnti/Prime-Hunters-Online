@@ -46,7 +46,7 @@ namespace MphRead.Mods.Network
                 Vector3 firstRight = Vector3.Zero;
                 Vector3 previousLeft = Vector3.Zero;
                 Vector3 previousRight = Vector3.Zero;
-                var presses = new uint[IntentPacket.PressHistory];
+                var presses = new PressHistoryBuffer();
                 PlayerEntity player = PlayerEntity.Players[0];
                 for (uint frame = 1; frame <= 240; frame++)
                 {
@@ -66,7 +66,7 @@ namespace MphRead.Mods.Network
                         buttons |= IntentButtons.AltAttack;
                         attackSent = true;
                     }
-                    Array.Clear(presses);
+                    presses = default;
                     presses[0] = (uint)(buttons & (IntentButtons.Morph | IntentButtons.AltAttack));
                     NetSession.AcceptSlotIntent(0, new IntentPacket
                     {

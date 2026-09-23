@@ -34,6 +34,7 @@ namespace MphRead.NetTest
                 OldLifeShootPressIsRejected();
                 RecoveredShootPressCannotCrossLife();
                 DuplicateIntentDoesNotDuplicateShot();
+                FrameWrapDoesNotDuplicateShot();
                 ReorderedIntentDoesNotDuplicateShot();
                 DeadHeldFireDoesNotSpawnGhostShot();
                 GhostShotFaultMatrix();
@@ -182,7 +183,7 @@ namespace MphRead.NetTest
             MatchId = 51, AuthorityEpoch = 4, SlotGeneration = 10, LifeId = life, Frame = frame,
             AckFrame = frame, Aim = Vector3.UnitZ, WeaponSelect = 255,
             Buttons = (playing ? IntentButtons.InPlayState : 0) | (shooting ? IntentButtons.Shoot : 0),
-            Presses = new uint[IntentPacket.PressHistory]
+            Presses = new PressHistoryBuffer()
         };
         private static void OldLifeShootPressIsRejected()
         {
@@ -198,6 +199,21 @@ namespace MphRead.NetTest
             Snapshot(2, State(8)); NetPlayerBridge.ForgetSlot(1); NetPlayerBridge.ApplyIntent(shooter, old);
             NetPlayerBridge.ApplyIntent(shooter, Intent(16, life: 8));
             Check(!shooter.Controls.Shoot.IsPressed, nameof(RecoveredShootPressCannotCrossLife));
+        }
+        private static void FrameWrapDoesNotDuplicateShot()
+        {
+            Session(); var shooter = Player(1);
+            var baseline = Intent(uint.MaxValue - 2);
+            NetSession.AcceptSlotIntent(1, baseline); NetPlayerBridge.ApplyIntent(shooter, baseline);
+            var shot = Intent(0); shot.Presses[1] = (uint)IntentButtons.Shoot;
+            NetSession.AcceptSlotIntent(1, shot); NetPlayerBridge.ApplyIntent(shooter, NetSession.RemoteIntents[1]);
+            Check(shooter.Controls.Shoot.IsPressed, "recovered press crosses uint wrap");
+            long accepted = NetSession.IntentsReceived;
+            NetSession.AcceptSlotIntent(1, shot);
+            NetPlayerBridge.ApplyIntent(shooter, NetSession.RemoteIntents[1]);
+            Check(NetSession.IntentsReceived == accepted && !shooter.Controls.Shoot.IsPressed, "frame zero duplicate cannot repeat action");
+            NetSession.AcceptSlotIntent(1, Intent(uint.MaxValue, shooting: true));
+            Check(NetSession.IntentsReceived == accepted, "pre-wrap reorder refused");
         }
         private static void DuplicateIntentDoesNotDuplicateShot() => Ordering(false);
         private static void ReorderedIntentDoesNotDuplicateShot() => Ordering(true);
@@ -297,7 +313,7 @@ namespace MphRead.NetTest
                 foreach (double duplicate in new[] { 0, .01, .03 })
                 foreach (double reorder in new[] { 0, .01, .03 })
                 foreach (BeamType weapon in new[] { BeamType.PowerBeam, BeamType.Missile, BeamType.Imperialist,
-                    BeamType.Magmaul, BeamType.ShockCoil, BeamType.Judicator, BeamType.Battlehammer, BeamType.VoltDriver })
+                    BeamType.Magmaul, BeamType.ShockCoil, BeamType.Judicator, BeamType.Battlehammer, BeamType.VoltDriver, BeamType.OmegaCannon })
                 {
                     // Two independent delivery streams model authority and observer arrival.
                     // This matrix checks production input/lifecycle, not weapon physics (the asset check does that).
@@ -320,7 +336,7 @@ namespace MphRead.NetTest
                                 var input = Intent(frame, frame < 60 ? (ushort)7 : (ushort)8, shooting, alive);
                                 input.WeaponSelect = (byte)weapon;
                                 // A dead press repeated in history must not become an alive action.
-                                if (frame is >= 30 and < 35) input.Presses[frame - 30] = (uint)IntentButtons.Shoot;
+                                if (frame is >= 30 and < 35) input.Presses[(int)(frame - 30)] = (uint)IntentButtons.Shoot;
                                 byte[] bytes = new byte[IntentPacket.FullSize]; input.Write(bytes);
                                 queue.Enqueue(frame * 1000.0 / 60, bytes);
                             }

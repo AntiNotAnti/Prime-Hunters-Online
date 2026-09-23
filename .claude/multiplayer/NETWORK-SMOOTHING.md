@@ -157,3 +157,11 @@ them to compare two arms of the same scenario, never as absolutes.
   read point is the only honest answer to "what was I looking at", so
   `CaptureIntent` replaces the snapshot-frame ack with it rather than choosing
   between them.
+
+## Protocol 17 telemetry
+
+Smoothing behavior and displayed-world ACK timestamps are unchanged. A client
+reports its actual Delay once per second for shadow plausibility; the server
+validates the current match/epoch and the finite 0–8 range, with a three-second
+freshness limit. Missing reports remain unavailable. This does not authorize a
+new smoothing default or any owner-body correction. See NETWORK-LAGCOMP-POLICY.md.

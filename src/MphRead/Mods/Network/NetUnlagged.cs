@@ -353,6 +353,8 @@ namespace MphRead.Mods.Network
 
         public static void Reset()
         {
+            LagCompensationPolicy.Reset();
+            CatchUpShots = CatchUpTruncations = 0; MaximumCatchUpSteps = 0;
             Array.Clear(_stamp);
             Array.Clear(_moved);
             _newest = 0;
@@ -440,6 +442,22 @@ namespace MphRead.Mods.Network
         /// of impact is nowhere near the body this returns. Read-only -- it
         /// moves nobody, unlike <see cref="Reconcile"/>.
         /// </summary>
+        internal static bool TryHistoricalBiped(PlayerEntity player, double target, out Vector3 position)
+        {
+            position = default;
+            if (!double.IsFinite(target) || target < 1) return false;
+            uint frame = (uint)Math.Floor(target); int slot = player.SlotIndex;
+            if (!PositionAt(slot, frame, NetPlayerLifecycle.Generation(slot), NetPlayerLifecycle.Get(slot), out position)) return false;
+            int index = (int)(frame % HistoryFrames);
+            if (_altForm[slot, index]) return false;
+            float fraction = (float)(target - frame);
+            int next = (int)((frame + 1) % HistoryFrames);
+            if (fraction > .0001f && !_altForm[slot, next]
+                && PositionAt(slot, frame + 1, NetPlayerLifecycle.Generation(slot), NetPlayerLifecycle.Get(slot), out Vector3 then)
+                && (then - position).LengthSquared <= 16f) position += (then - position) * fraction;
+            return true;
+        }
+
         public static bool PositionAt(int slot, uint frame, ushort expectedGeneration, ushort expectedLife, out Vector3 position)
         {
             position = Vector3.Zero;
@@ -470,9 +488,9 @@ namespace MphRead.Mods.Network
         /// the ack is the exact frame the client is answering -- and having
         /// only one of them means there is only one thing to be wrong.
         /// </summary>
-        private static double RewindFor(int slot, out int requested)
+        private static double RewindFor(int slot, bool allowPressAge, out int requested, out double rawRequested)
         {
-            requested = 0;
+            requested = 0; rawRequested = 0;
             if (slot < 0 || slot >= Slots || slot == NetSession.LocalSlot)
             {
                 // The authority's own player already aims and resolves
@@ -508,7 +526,7 @@ namespace MphRead.Mods.Network
             // it reached here. The ack belongs to the packet that carried the
             // edge, not to the frame the edge happened on, and those are the
             // same frame only when nothing was lost.
-            if (PressAgeEnabled && slot < NetPlayerBridge.ShootPressAge.Length)
+            if (PressAgeEnabled && allowPressAge && slot < NetPlayerBridge.ShootPressAge.Length)
             {
                 int age = NetPlayerBridge.ShootPressAge[slot];
                 if (age > 0)
@@ -521,6 +539,7 @@ namespace MphRead.Mods.Network
             // Recorded before the clamp, because the clamp is the thing being
             // measured. A depth past the ring is filed in the last cell rather
             // than dropped: it is still a shot that asked for more than it got.
+            rawRequested = Math.Max(0, depth);
             requested = (int)Math.Min(Math.Round(depth), HistoryFrames);
             if (depth > MaxRewindFrames)
             {
@@ -551,7 +570,7 @@ namespace MphRead.Mods.Network
         /// they are in the same packet as the trigger, and
         /// <see cref="NetPlayerBridge"/> has already put them there.
         /// </summary>
-        public static void BeginShot(PlayerEntity shooter)
+        public static void BeginShot(PlayerEntity shooter, Vector3 origin = default, Vector3 direction = default)
         {
             if (shooter.SceneServices.IsReplica) return;
             if (_inProgress)
@@ -565,7 +584,24 @@ namespace MphRead.Mods.Network
                 return;
             }
             int slot = shooter.SlotIndex;
-            double rewind = RewindFor(slot, out int requested);
+            _shotPolicy = WeaponLagPolicies.Resolve(shooter.EquipInfo);
+            if (!_shotPolicy.UsesHistoricalPlayers) return;
+            double rewind = RewindFor(slot, _shotPolicy.AllowPressAge, out int requested, out double rawRequested);
+            if (_shotPolicy.UseShadowPlausibility && LagCompensationPolicy.Plausibility != LagCompPlausibility.Off && rewind > 0)
+            {
+                var decision = LagCompensationPolicy.Evaluate(rawRequested, LagCompensationPolicy.Timing(slot),
+                    PressAgeEnabled ? NetPlayerBridge.ShootPressAge[slot] : 0, ceiling: MaxRewindFrames);
+                // Preserve fractional ACK time exactly; rounded histograms must
+                // never become the gameplay time source, including in Shadow.
+                decision = decision with { HardAppliedFrames = rewind,
+                    FramesShadowRefused = Math.Max(0, rewind - (decision.ShadowAllowedFrames ?? rewind)),
+                    WouldClamp = decision.ShadowAllowedFrames.HasValue && rewind > decision.ShadowAllowedFrames.Value };
+                var outcome = decision.ShadowAllowedFrames.HasValue
+                    ? NetHistoricalTrace.CompareShot(shooter, origin, direction, rewind, Math.Min(rewind, decision.ShadowAllowedFrames.Value))
+                    : ShadowOutcome.HistoricalDataUnavailable;
+                LagCompensationPolicy.Record(slot, NetShotDiagnostics.Bucket(shooter.CurrentWeapon), decision, outcome);
+                rewind = LagCompensationPolicy.Applied(decision);
+            }
             if (requested > 0 && requested < DepthHistogram.Length)
             {
                 DepthHistogram[requested]++;
@@ -594,6 +630,7 @@ namespace MphRead.Mods.Network
             }
             // The exact point the shooter's screen was at, fraction and all.
             double target = NetSession.NetFrame - rewind;
+            _shotTargetFrame = target;
             if (!Reconcile(slot, target))
             {
                 HistoryMisses++;
@@ -824,6 +861,19 @@ namespace MphRead.Mods.Network
         /// out of lifespan -- which is what makes a point-blank shot cost one
         /// step instead of twenty-four.
         /// </summary>
+        private static double _shotTargetFrame;
+        internal static bool HistoricalTargetAvailable(PlayerEntity target)
+        {
+            if (!_inProgress || _shooter == null) return true;
+            return _shotTargetFrame >= 1 && PositionAt(target.SlotIndex, (uint)Math.Floor(_shotTargetFrame),
+                NetPlayerLifecycle.Generation(target.SlotIndex), NetPlayerLifecycle.Get(target.SlotIndex), out _);
+        }
+
+        private static WeaponLagPolicy _shotPolicy;
+        public static long CatchUpShots { get; private set; }
+        public static long CatchUpTruncations { get; private set; }
+        public static int MaximumCatchUpSteps { get; private set; }
+
         public static void EndShot(PlayerEntity shooter)
         {
             if (shooter.SceneServices.IsReplica) return;
@@ -858,7 +908,11 @@ namespace MphRead.Mods.Network
                 _inProgress = false;
                 return;
             }
-            for (int step = 1; step <= _rewind && newCount > 0; step++)
+            int steps = _shotPolicy.CatchUpFrames(_rewind);
+            CatchUpShots++;
+            if (steps < _rewind) CatchUpTruncations++;
+            int completed = 0;
+            for (int step = 1; step <= steps && newCount > 0; step++)
             {
                 uint frame = NetSession.NetFrame - (uint)(_rewind - step);
                 if (!Reconcile(slot, frame))
@@ -870,7 +924,7 @@ namespace MphRead.Mods.Network
                         // resolve the rest of this shot against a world nobody
                         // was ever shown, so stop and leave it where it got to
                         // -- at worst the behaviour with none of this.
-                        HistoryMisses++;
+                        HistoryMisses++; CatchUpTruncations++;
                         break;
                     }
                     // Not a gap. The frame this shot is being fired in has no
@@ -882,6 +936,7 @@ namespace MphRead.Mods.Network
                     // short of the present on every shot.
                     Restore();
                 }
+                completed++;
                 for (int i = 0; i < beams.Length; i++)
                 {
                     if (!_beamsBefore[i])
@@ -902,6 +957,7 @@ namespace MphRead.Mods.Network
                     }
                 }
             }
+            MaximumCatchUpSteps = Math.Max(MaximumCatchUpSteps, completed);
             Restore();
             _shooter = null;
             _rewind = 0;
@@ -968,6 +1024,10 @@ namespace MphRead.Mods.Network
                     text += $" (+{StalePressFrames / (double)StalePresses:F1} frames each)";
                 }
             }
+            var shadow = LagCompensationPolicy.CaptureTotal();
+            text += $"; shadow {LagCompensationPolicy.Plausibility}: {shadow.WouldClamp}/{shadow.TimedShots} timed shots would clamp, "
+                + $"{shadow.ShadowRefusedFrames:F1} frames refused, geometry unavailable {shadow.OutcomeCount}/{shadow.Shots}; "
+                + $"catch-up maximum {MaximumCatchUpSteps}, truncations {CatchUpTruncations}";
             return text;
         }
 

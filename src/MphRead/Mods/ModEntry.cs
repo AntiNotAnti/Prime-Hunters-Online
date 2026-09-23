@@ -197,6 +197,7 @@ namespace MphRead.Mods
             // dedicated server alike -- so a fault that only shows up at 200
             // ms can be reproduced against the real server rather than only
             // behind a proxy in front of a local one. See Mods/Network/NetLag.
+            Network.NetDiagnostics.Enabled = HasFlag(args, "netdebug");
             string? netLag = ValueAfter(args, "netlag");
             if (netLag != null && !Network.NetLag.Configure(netLag))
             {
@@ -298,6 +299,9 @@ namespace MphRead.Mods
             // that raises it has to be otherwise identical to the run that
             // did not. Read on the machine that simulates the match, which is
             // the only one that rewinds anything.
+            string? plausibility = ValueAfter(args, "lagcompplausibility");
+            if (plausibility != null && !Network.LagCompensationPolicy.Configure(plausibility))
+                Console.WriteLine("[net] lagcomp plausibility refused; off/shadow supported, enforce requires a Debug build");
             string? maxRewind = ValueAfter(args, "maxrewind");
             if (maxRewind != null)
             {

@@ -30,9 +30,9 @@ namespace MphRead.Mods.Network
 
         private static bool Probability(double value) => double.IsFinite(value) && value >= 0 && value <= 1;
 
-        public void Enqueue(double nowMs, T value, double extraDelayMs = 0)
+        public void Enqueue(double nowMs, T value, double extraDelayMs = 0, double? lossOverride = null)
         {
-            if (_random.NextDouble() < _loss) { Dropped++; return; }
+            if (_random.NextDouble() < (lossOverride ?? _loss)) { Dropped++; return; }
             // Jitter alone retains the old FIFO contract. Explicit reordering
             // delays one datagram without holding the following datagrams back.
             double due = Math.Max(_lastDue, nowMs + _delay + _random.NextDouble() * _jitter + extraDelayMs);

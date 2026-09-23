@@ -900,3 +900,27 @@ and needs no game state, so there is nothing for it to wait for a frame for.
 
 Measured on loopback, where the true round trip is nil: **8-11 ms before,
 1 ms after.**
+
+## Modernization telemetry
+
+The canonical value API is `NetTelemetry.Capture` / `NetSession.CaptureTelemetry`.
+Transport instances own atomic byte/packet/queue/error/processing counters.
+`NetTelemetry.Match` and `Session` keep separate per-slot intent acceptance and
+lifecycle rejection totals; a new life clears timing baselines, a new match clears
+match totals, slot replacement/Stop clears occupant/session totals. Existing
+smoothing, rewind and combat counters are bridged with their existing reset scope.
+Unavailable measurements are nullable. Capture does not mutate network state.
+The once-per-second `-netdebug` output includes a compact `[netstats] line`.
+
+Modernization checks: nettest flags `--architecture`, `--allocations`, `--protocol17`,
+`--reliable`, `--queue-budget`, `--load-lifecycle`, `--lagcomp-shadow`,
+`--weapon-policy`, `--transport-stress` and `--network-benchmark --smoke` complement
+`--lifecycle` and `--health-shots`. `--extended` runs all 2,016 codec impairment
+profiles. The eight-peer UDP check includes mixed RTTs through 400 ms, 5% loss,
+3% reordering, 1% duplication, a 400 ms pump stall and acknowledged graceful close.
+It is transport validation, not an asset-backed match or a gameplay-feel result.
+
+The periodic netstats line includes shadow would-clamp and timed/total samples.
+`NetTelemetrySnapshot.Shadow` exposes totals; `LagCompensationPolicy.Capture`
+provides shooter/weapon/RTT/jitter/delay groups and outcome counts. Missing timing
+has dedicated buckets and cannot masquerade as measured zero latency.

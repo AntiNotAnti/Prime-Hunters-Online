@@ -43,7 +43,7 @@ namespace MphRead.Mods.Network
                 shooter.Health = victim.Health = 99;
                 uint frame = 200;
                 foreach (BeamType weapon in new[] { BeamType.PowerBeam, BeamType.Missile, BeamType.Imperialist,
-                    BeamType.Magmaul, BeamType.ShockCoil, BeamType.Judicator, BeamType.Battlehammer, BeamType.VoltDriver })
+                    BeamType.Magmaul, BeamType.ShockCoil, BeamType.Judicator, BeamType.Battlehammer, BeamType.VoltDriver, BeamType.OmegaCannon })
                 {
                     shooter.ModArmWeapon(weapon);
                     int before = NetDamage.Fired[0];
@@ -122,7 +122,7 @@ namespace MphRead.Mods.Network
             Frame = frame, AckFrame = NetSession.NetFrame, Aim = Vector3.UnitZ, Position = player.Position,
             WeaponSelect = 255, AmmoUa = 400, AmmoMissiles = 50,
             Buttons = (playing ? IntentButtons.InPlayState : 0) | (shoot ? IntentButtons.Shoot : 0),
-            Presses = new uint[IntentPacket.PressHistory]
+            Presses = new PressHistoryBuffer()
         };
 
         private static void PrepareClaims()

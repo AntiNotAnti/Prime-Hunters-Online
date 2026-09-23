@@ -6,7 +6,7 @@ This file is the short, machine-oriented source of truth for architectural assum
 
 ## Network protocol
 
-- The current wire protocol is **16** (`NetConfig.ProtocolVersion`).
+- The current wire protocol is **17** (`NetConfig.ProtocolVersion`).
 - Protocol mismatches are refused during the Hello handshake. Do not make incompatible wire or simulation changes without a protocol bump.
 - Dated protocol 6/7/8 measurements in `.claude/` are historical A/B evidence, not the current architecture.
 
@@ -19,6 +19,26 @@ This file is the short, machine-oriented source of truth for architectural assum
 - The server is authoritative for combat, health, score, match state and match end. Player movement position is still supplied by the owning client's `IntentPacket.Position`; this is not a fully server-derived movement model.
 - A dedicated game server requires the user's extracted game data and a valid `paths.txt` beside the server binary. It must refuse to start rather than silently fall back to client authority when those files are unavailable.
 - The directory/master server does not simulate a match and does not require game files.
+
+## Netcode modernization boundaries
+
+- Movement remains owner-reported through `IntentPacket.Position`; the server
+  validates lifecycle/order and resolves combat/world state at 60 Hz.
+- Preserve `AckFrame`, `AckSubFrame`, eight rising-edge frames, MatchId,
+  AuthorityEpoch, SlotGeneration and LifeId. Snapshots are independently decodable
+  full states; remote presentation continues to use NetSmoothing.
+- Never restore movement command streams, movement ACKs, prediction histories,
+  reconciliation/rollback/input replay, server-derived owner movement, velocity
+  reconciliation, defender-aware rewind or protocol-18 movement semantics.
+- Never restore IntentBundle, observer bundling, snapshot keyframes/deltas,
+  baseline reconstruction or damage sidecars from reverted PR #28.
+- P0 wire optimizations must remain byte-identical to protocol 16. The protocol-17
+  envelope/reliability/queue/start changes form one unreleased migration train.
+- Spawn placements are lifecycle operations, not movement reconciliation.
+  Same-life snapshots never correct the local owner collision body or velocity;
+  the architecture suite exercises prolonged, extreme position disagreement.
+- Scratch buffers belong to their session/server owner. Synchronous sends consume
+  their spans before returning; delayed sends and replay records must own copies.
 
 ## Hit registration
 

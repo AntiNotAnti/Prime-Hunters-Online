@@ -39,10 +39,12 @@ namespace MphRead.Mods.Network
     {
         private sealed class Peer
         {
+            public readonly NetPeerTelemetry Telemetry = new();
             public IPEndPoint EndPoint = null!;
             public int SlotIndex = -1;
             public double LastSeen;
             public uint LastIntentFrame;
+            public bool HasIntentFrame;
             public string Name = "";
             public byte Hunter;
             /// <summary>The suit this player asked for, 0-3. See PlayerColors.</summary>
@@ -71,6 +73,11 @@ namespace MphRead.Mods.Network
             /// match that is ending and not the one before it.
             /// </summary>
             public bool PostMatchReady;
+            public bool MatchReady;
+            public float? PresentationDelay;
+            public double TimingReportedAt;
+            public ushort TimingMatch;
+            public ulong TimingEpoch;
             public bool LobbyReady;
             public sbyte TeamIndex = -1;
             public readonly Dictionary<uint, LobbyCommandResultPacket> Commands = new();
@@ -186,7 +193,9 @@ namespace MphRead.Mods.Network
         /// RunsTheMatch=false compatibility/test path.
         /// </summary>
         private ServerSim? _sim;
-        private byte[]? _lastSnapshot;
+        // Owned by the server loop; Send consumes synchronously, recorder takes its own copy.
+        private readonly byte[] _lastSnapshot = new byte[NetConfig.MaxPacketSize];
+        private int _lastSnapshotLength;
         private volatile bool _running;
         private double _matchStarted;
         /// <summary>
@@ -422,7 +431,7 @@ namespace MphRead.Mods.Network
                 {
                     double now = clock.Elapsed.TotalSeconds;
                     _now = now;
-                    foreach (ReceivedPacket packet in _transport.Drain())
+                    foreach (ReceivedPacket packet in _transport.Drain(NetPumpBudget.BeforeSimulation))
                     {
                         Handle(packet, now);
                     }
@@ -434,6 +443,7 @@ namespace MphRead.Mods.Network
                     CheckLoadBarrier(now);
                     if (_phase is SessionPhase.InMatch or SessionPhase.PostMatch) _sim?.Advance(now);
                     EnsureCareerMatchStarted(now);
+                    foreach (ReceivedPacket packet in _transport.Drain(NetPumpBudget.AfterSimulation)) Handle(packet, now);
 
                     // The server owns the match clock, not the authority client:
                     // that is what lets a joiner adopt a running match's timer
@@ -457,6 +467,18 @@ namespace MphRead.Mods.Network
                     if (now - lastStateBroadcast >= 1.0)
                     {
                         lastStateBroadcast = now;
+                        if (NetDiagnostics.Enabled)
+                        {
+                            var stats = _transport.Telemetry.Capture();
+                            Log($"[netstats] rx={stats.PacketsReceived} tx={stats.PacketsSent} queue={stats.QueueCurrent}/{stats.QueueHighWater} drops={stats.QueueDrops}");
+                            foreach (var peer in _peers)
+                            {
+                                var connection = _transport.ConnectionStats(peer.EndPoint);
+                                var intent = peer.Telemetry.Capture();
+                                var timing = LagCompensationPolicy.Timing(peer.SlotIndex);
+                                Log($"[netstats] peer={peer.SlotIndex} rtt={connection?.RttMilliseconds:F1}ms jitter={connection?.RttJitterMilliseconds:F1}ms lostEstimate={connection?.EstimatedLost} reorder={connection?.Reordered} intentGap={intent.FrameGaps} intentDup={intent.Duplicate} delay={timing.PresentationDelayFrames:F2}f");
+                            }
+                        }
                         // Order matters only in that the roster carries the last
                         // measurement: ping first, publish second.
                         PingPeers(now);
@@ -673,47 +695,13 @@ namespace MphRead.Mods.Network
         {
             ServerReplayRecorder.Stop(matchEnded: true);
             RotationEntry entry = _rotation.Advance();
-            _phase = SessionPhase.InMatch;
             NormalizeTeams();
-            _matchStarted = now;
-            _matchEndedAt = -1;
-            _matchId = NetLifecycleTracker.Next(_matchId);
-            _snapshotSeen = false;
-            Array.Clear(_slotLives);
-            foreach (Peer connected in _peers) connected.LastIntentFrame = 0;
-            TouchLobbyRevision("rotation advanced");
-            // Votes belong to one match. No prompt, result or cooldown may
-            // leak into the next room.
             CancelMapVote(now);
-            // Ready describes the match that just ended. Carried into the next
-            // one it would rotate the following map the moment it finished.
-            for (int i = 0; i < _peers.Count; i++)
-            {
-                _peers[i].PostMatchReady = false;
-            }
-            // The ballot has been acted on; there is no next map to choose
-            // again until this one is over. Closed *after* Advance has taken
-            // what the picks made pending, which is the line above it.
-            CloseBallot();
-            BroadcastMapChoices();
+            foreach (Peer peer in _peers) peer.PostMatchReady = false;
+            CloseBallot(); BroadcastMapChoices();
             Log($"rotating to {entry}");
-            MatchStatePacket state = BuildState(now);
-            // The simulation follows a rotation the way every client does:
-            // NetRoomChange watches the match state and loads the new room as
-            // a *transition* rather than rebuilding the scene. Reusing that
-            // path rather than restarting the sim is deliberate -- it is the
-            // one that carries the fixes for the intro camera sequence and the
-            // settling window, and a second path here would have neither.
-            if (_sim != null)
-            {
-                NetSession.ApplyMatchState(state, rotated: true);
-            }
-            state.Write(_scratch);
-            for (int i = 0; i < _peers.Count; i++)
-            {
-                _transport?.Send(_peers[i].EndPoint, PacketType.MapChange,
-                    _scratch.AsSpan(0, MatchStatePacket.Size));
-            }
+            if (!BeginLobbyMatch(CurrentDefinition, now, out string reason))
+                Log($"rotation could not start: {reason}");
         }
 
         private MatchStatePacket BuildState(double now)
@@ -836,7 +824,8 @@ namespace MphRead.Mods.Network
         /// </summary>
         private void SendSnapshot(ReadOnlySpan<byte> payload)
         {
-            _lastSnapshot = payload.ToArray();
+            payload.CopyTo(_lastSnapshot);
+            _lastSnapshotLength = payload.Length;
             EnsureCanonicalReplay(payload);
             for (int i = 0; i < _peers.Count; i++)
             {
@@ -926,6 +915,15 @@ namespace MphRead.Mods.Network
             switch (packet.Type)
             {
                 case PacketType.LobbyCommand: HandleLobbyCommand(packet, now); break;
+                case PacketType.PeerTiming:
+                    Peer? timingPeer = Find(packet.Sender);
+                    if (timingPeer != null && PeerTimingPacket.TryRead(packet.Payload, out var timing)
+                        && timing.MatchId == _matchId && timing.AuthorityEpoch == _authorityEpoch)
+                    {
+                        timingPeer.PresentationDelay = timing.DelayFrames; timingPeer.TimingReportedAt = now;
+                        timingPeer.TimingMatch = timing.MatchId; timingPeer.TimingEpoch = timing.AuthorityEpoch;
+                    }
+                    break;
                 case PacketType.MatchLoaded: HandleMatchLoaded(packet, now); break;
                 case PacketType.MatchLoadFailed: HandleMatchLoadFailed(packet); break;
                 case PacketType.Hello:
@@ -1825,32 +1823,8 @@ namespace MphRead.Mods.Network
                 peer = null;
             }
             if (peer == null && clientId != 0)
-            {
-                // The same player, from an address this server has not seen.
-                //
-                // A connection that drops and comes back comes back through a
-                // new NAT binding, so the endpoint -- the only thing that used
-                // to identify a peer -- changes. Every reconnection therefore
-                // read as a new player: a second slot with a second hunter,
-                // while the slot the player actually held stood frozen in the
-                // room until it timed out half a minute later. Matching on
-                // who rather than on where is the whole fix; the peer keeps
-                // its slot, its name, its hunter and its score, and simply
-                // starts being spoken to at the new address.
-                for (int i = 0; i < _peers.Count; i++)
-                {
-                    if (_peers[i].ClientId == clientId)
-                    {
-                        peer = _peers[i];
-                        Log($"slot {peer.SlotIndex} ({peer.Name}) came back on "
-                            + $"{packet.Sender}, was {peer.EndPoint}");
-                        peer.EndPoint = packet.Sender;
-                        // The authority is held as a reference to this same
-                        // object, so nothing else has to be told.
-                        break;
-                    }
-                }
-            }
+                foreach (var connected in _peers)
+                    if (connected.ClientId == clientId) return; // a different endpoint cannot claim a live admission
             if (peer == null)
             {
                 // Honour the slot the client asks for when it is free. A
@@ -1890,7 +1864,7 @@ namespace MphRead.Mods.Network
                     CloseBallot();
                     _matchId = NetLifecycleTracker.Next(_matchId);
                     _snapshotSeen = false;
-                    _lastSnapshot = null;
+                    _lastSnapshotLength = 0;
                     Array.Clear(_slotLives);
                 }
                 if (_phase == SessionPhase.InMatch && !AllowJoinInProgress)
@@ -1920,18 +1894,18 @@ namespace MphRead.Mods.Network
                     _authorityEpoch++;
                     _snapshotSeen = false;
                     Log($"{packet.Sender} joined as slot {slot} (authority)");
-                    NotifyAuthority(peer);
+                    // Admission Welcome must establish the transport first.
                 }
                 else
                 {
                     Log($"{packet.Sender} joined as slot {slot}");
-                    if (Simulating && _lastSnapshot != null)
+                    if (Simulating && _lastSnapshotLength != 0)
                     {
                         // A world to stand in before the next one is composed.
                         // Without it a joiner sees an empty room for a frame,
                         // which is the same gap NotifyAuthority closes for the
                         // client it promotes.
-                        _transport?.Send(peer.EndPoint, PacketType.Snapshot, _lastSnapshot);
+                        _transport?.Send(peer.EndPoint, PacketType.Snapshot, _lastSnapshot.AsSpan(0, _lastSnapshotLength));
                     }
                 }
             }
@@ -1945,6 +1919,7 @@ namespace MphRead.Mods.Network
             BinaryPrimitives.WriteUInt64LittleEndian(_scratch.AsSpan(7), _authorityEpoch);
             BinaryPrimitives.WriteUInt16LittleEndian(_scratch.AsSpan(15), _slotGenerations[peer.SlotIndex]);
             _transport?.Send(peer.EndPoint, PacketType.Welcome, _scratch.AsSpan(0, 17));
+            if (_authority == peer && !RunsTheMatch) NotifyAuthority(peer);
             // Immediately follow with the running match, so a client that
             // arrives mid-round loads the right map and adopts the server's
             // clock rather than starting a fresh one of its own.
@@ -2030,7 +2005,7 @@ namespace MphRead.Mods.Network
             {
                 return;
             }
-            if (_phase == SessionPhase.Starting && (_expectedLoadedSlots & (1 << peer.SlotIndex)) != 0) return;
+            if (_phase == SessionPhase.Starting && (_start.Expected & (1 << peer.SlotIndex)) != 0) return;
             byte hunter = packet.Payload[0];
             byte color = packet.Payload[1];
             if (hunter >= Launcher.Hunters.Playable || color > 3) return;
@@ -2089,14 +2064,15 @@ namespace MphRead.Mods.Network
             RosterPacket roster = BuildRoster();
             roster.Write(_scratch);
             _transport?.Send(peer.EndPoint, PacketType.Roster, _scratch.AsSpan(0, RosterPacket.Size));
-            if (_lastSnapshot != null)
+            if (_lastSnapshotLength != 0)
             {
                 SnapshotHeader header = SnapshotHeader.Read(_lastSnapshot);
                 if (header.MatchId == _matchId)
                 {
                     // Seed the successor from the last world, in its new stream.
                     // Frame zero cannot block its own local simulation clock.
-                    byte[] seed = (byte[])_lastSnapshot.Clone();
+                    Span<byte> seed = stackalloc byte[_lastSnapshotLength];
+                    _lastSnapshot.AsSpan(0, _lastSnapshotLength).CopyTo(seed);
                     header.AuthorityEpoch = _authorityEpoch;
                     header.Frame = 0;
                     header.Write(seed);
@@ -2212,7 +2188,7 @@ namespace MphRead.Mods.Network
             // No authority and not simulating means nobody would act on this.
             // When this server is the authority there is no client to wait
             // for, which is the whole point.
-            if (peer == null || (_authority == null && !Simulating))
+            if (peer == null || RunsTheMatch && !peer.MatchReady || (_authority == null && !Simulating))
             {
                 return;
             }
@@ -2222,8 +2198,18 @@ namespace MphRead.Mods.Network
             {
                 IntentPacket intent = IntentPacket.Read(packet.Payload);
                 ushort life = _sim != null ? NetPlayerLifecycle.Get(peer.SlotIndex) : _slotLives[peer.SlotIndex];
-                if (intent.MatchId != _matchId || intent.AuthorityEpoch != _authorityEpoch
-                    || intent.SlotGeneration != _slotGenerations[peer.SlotIndex] || intent.LifeId != life) return;
+                var rejection = intent.MatchId != _matchId ? NetIntentRejection.WrongMatch
+                    : intent.AuthorityEpoch != _authorityEpoch ? NetIntentRejection.WrongEpoch
+                    : intent.SlotGeneration != _slotGenerations[peer.SlotIndex] ? NetIntentRejection.WrongGeneration
+                    : intent.LifeId != life ? NetIntentRejection.WrongLife : NetIntentRejection.None;
+                if (rejection != NetIntentRejection.None) { peer.Telemetry.Intent(intent.Frame, rejection); return; }
+                var connection = _transport?.ConnectionStats(peer.EndPoint);
+                LagCompensationPolicy.SetTiming(peer.SlotIndex, new LagTiming(
+                    connection?.RttMilliseconds ?? (peer.Ping > 0 ? peer.Ping : null),
+                    connection?.RttJitterMilliseconds,
+                    connection?.MinimumRttMilliseconds,
+                    peer.TimingMatch == _matchId && peer.TimingEpoch == _authorityEpoch
+                        && now - peer.TimingReportedAt <= 3 ? peer.PresentationDelay : null));
                 if (_sim != null)
                 {
                     // Straight into the simulation, one hop earlier than a
@@ -2247,11 +2233,14 @@ namespace MphRead.Mods.Network
                 // noticed it had gone -- would otherwise have every packet of
                 // its new session refused until the counter climbed back past
                 // the old one. Same ten seconds NetSession allows.
-                if (peer.LastIntentFrame != 0 && !NetLifecycleTracker.Newer(intent.Frame, peer.LastIntentFrame))
+                if (peer.HasIntentFrame && !NetLifecycleTracker.Newer(intent.Frame, peer.LastIntentFrame))
                 {
+                    peer.Telemetry.Intent(intent.Frame, peer.LastIntentFrame == intent.Frame
+                        ? NetIntentRejection.Duplicate : NetIntentRejection.Reordered);
                     return;
                 }
-                peer.LastIntentFrame = intent.Frame;
+                peer.Telemetry.Intent(intent.Frame, NetIntentRejection.None);
+                peer.LastIntentFrame = intent.Frame; peer.HasIntentFrame = true;
                 // Only meaningful between the end of one match and the start
                 // of the next; read unconditionally because it costs nothing
                 // and a client that sets it early is simply ready early.
@@ -2326,7 +2315,8 @@ namespace MphRead.Mods.Network
             }
             _snapshotSeen = true;
             _snapshotFrame = header.Frame;
-            _lastSnapshot = packet.Payload.ToArray();
+            packet.Payload.CopyTo(_lastSnapshot);
+            _lastSnapshotLength = packet.Payload.Length;
             for (int i = 0; i < _peers.Count; i++)
             {
                 if (_peers[i] != peer)
@@ -2359,6 +2349,7 @@ namespace MphRead.Mods.Network
         private void Remove(Peer peer, string reason)
         {
             CareerPeerLeaving(peer);
+            _transport?.RetireConnection(peer.EndPoint);
             _peers.Remove(peer);
             LobbyPeerRemoved(peer);
             BroadcastRoster();
@@ -2380,6 +2371,9 @@ namespace MphRead.Mods.Network
             // Promote rather than end the session: the remaining players keep
             // playing, and the new authority's snapshots simply take over.
             _authority = _peers.Count > 0 ? _peers[0] : null;
+            // A load acknowledgement belongs to one authority incarnation.
+            // Cancel an in-flight legacy start rather than mixing epochs.
+            if (_phase == SessionPhase.Starting) EnterLobby(_frozenMatch);
             _authorityEpoch++;
             _snapshotSeen = false;
             BroadcastMatchState(_now);

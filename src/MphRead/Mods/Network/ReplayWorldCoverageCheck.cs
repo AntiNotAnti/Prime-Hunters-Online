@@ -128,7 +128,7 @@ internal static class ReplayWorldCoverageCheck
                 IntentButtons buttons = dead ? 0 : IntentButtons.InPlayState;
                 if (alt) buttons |= IntentButtons.AltFormState;
                 if (fire) buttons |= alt ? IntentButtons.AltAttack : IntentButtons.Shoot;
-                var presses = new uint[IntentPacket.PressHistory];
+                var presses = new PressHistoryBuffer();
                 if (fire && frame % 30 == 0) presses[0] = (uint)(alt ? IntentButtons.AltAttack : IntentButtons.Shoot);
                 var intent = new IntentPacket { MatchId = matchId, AuthorityEpoch = epoch, SlotGeneration = 1, LifeId = life,
                     Frame = frame, Buttons = buttons, Presses = presses, HasState = true, AmmoUa = 999, AmmoMissiles = 99,

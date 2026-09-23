@@ -30,6 +30,23 @@ namespace MphRead.NetTest
         {
             if (args.Length > 0 && args[0] == "--health-shots") return HealthShotTests.Run();
             if (args.Length > 0 && args[0] == "--lifecycle") return LifecycleTests.Run();
+            if (args.Length > 0 && args[0] == "--architecture") return NetArchitectureTests.Run();
+            if (Array.IndexOf(args, "--network-benchmark") >= 0 || Array.IndexOf(args, "--network-benchmark-json") >= 0)
+                return NetworkBenchmark.Run(args);
+            if (args.Length > 0 && args[0] == "--allocations") return NetworkAllocationTests.Run(Array.IndexOf(args, "--report-only") >= 0);
+            if (args.Length > 0 && args[0] == "--protocol17") return Protocol17Tests.Run();
+            if (args.Length > 0 && args[0] == "--reliable") return ReliableTests.Run();
+            if (args.Length > 0 && args[0] == "--queue-budget") return QueueBudgetTests.Run();
+            if (args.Length > 0 && args[0] == "--load-lifecycle") return LoadLifecycleTests.Run();
+            if (args.Length > 0 && args[0] == "--lagcomp-shadow") return LagCompensationTests.Run();
+            if (args.Length > 0 && args[0] == "--weapon-policy") return WeaponPolicyTests.Run();
+            if (args.Length > 0 && args[0] == "--transport-stress") return TransportStressTests.Run();
+            if (args.Length > 1 && args[0] == "--combat-scene")
+            {
+                System.IO.Directory.SetCurrentDirectory(System.IO.Path.GetFullPath(args[1]));
+                Paths.UpdatePaths(); Paths.ChooseMphPath();
+                return NetCombatCheck.Run(args.Length > 2 ? args[2] : "MP1 SANCTORUS");
+            }
             string host = args.Length > 0 ? args[0] : "127.0.0.1";
             int port = args.Length > 1 && Int32.TryParse(args[1], out int p)
                 ? p : NetConfig.DefaultPort;
@@ -69,7 +86,7 @@ namespace MphRead.NetTest
         /// <summary>A simulated client that holds its slot until disposed.</summary>
         private sealed class FakeClient : IDisposable
         {
-            private readonly UdpClient _socket;
+            private readonly LoopbackPeer _socket;
             private readonly IPEndPoint _server;
             private readonly Thread _pump;
             private volatile bool _running = true;
@@ -81,10 +98,9 @@ namespace MphRead.NetTest
             public FakeClient(string name, string host, int port)
             {
                 Name = name;
-                _socket = new UdpClient(AddressFamily.InterNetwork);
+                _socket = new LoopbackPeer();
                 // Bind explicitly: UdpClient only binds implicitly on the
                 // first Send, and this client's receive pump starts first.
-                _socket.Client.Bind(new IPEndPoint(IPAddress.Any, 0));
                 _socket.Client.ReceiveTimeout = 500;
                 IPAddress ip = Dns.GetHostAddresses(host)
                     .First(a => a.AddressFamily == AddressFamily.InterNetwork);
