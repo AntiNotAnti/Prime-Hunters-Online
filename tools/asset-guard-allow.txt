@@ -11,8 +11,7 @@
 src/MphRead/Assets/project-prime-mark.png
 src/MphRead/Assets/project-prime-mark-server.png
 
-# The launcher's legacy backdrop fixture. The player-facing modern hub now uses
-# locally generated map art and graded fallbacks, but this exact file remains
-# available to compatibility/design checks. It is exempted by exact path so a
-# second game-derived picture cannot slip through the guard accidentally.
-src/MphRead/Assets/Backgrounds/launcher-bg.jpg
+# Supplied Project Prime branding artwork: startup screen and banner. Keep
+# exact paths; locally extracted game previews are still excluded.
+src/MphRead/Assets/Backgrounds/launcher-bg.png
+src/MphRead/Assets/project-prime-banner.png
