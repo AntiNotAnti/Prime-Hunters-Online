@@ -867,7 +867,7 @@ namespace MphRead.Entities
         // Render-only camera history. Gameplay always reads the public fields
         // above; this history exists solely to turn 60 Hz spectator/replay
         // cameras into smooth high-refresh presentation.
-        private Vector3 _drawPreviousPosition, _drawCurrentPosition;
+        private Vector3 _drawOlderPosition, _drawPreviousPosition, _drawCurrentPosition;
         private Vector3 _drawPreviousTarget, _drawCurrentTarget;
         private Vector3 _drawPreviousUp = Vector3.UnitY, _drawCurrentUp = Vector3.UnitY;
         private float _drawPreviousFov, _drawCurrentFov;
@@ -885,7 +885,7 @@ namespace MphRead.Entities
 
         internal void ModResetDrawState()
         {
-            _drawPreviousPosition = _drawCurrentPosition = Position;
+            _drawOlderPosition = _drawPreviousPosition = _drawCurrentPosition = Position;
             _drawPreviousTarget = _drawCurrentTarget = Target;
             _drawPreviousUp = _drawCurrentUp = UpVector;
             _drawPreviousFov = _drawCurrentFov = Fov;
@@ -899,6 +899,7 @@ namespace MphRead.Entities
                 ModResetDrawState();
                 return;
             }
+            _drawOlderPosition = _drawPreviousPosition;
             _drawPreviousPosition = _drawCurrentPosition;
             _drawPreviousTarget = _drawCurrentTarget;
             _drawPreviousUp = _drawCurrentUp;
@@ -914,6 +915,55 @@ namespace MphRead.Entities
             if (!_drawStateValid) return Position;
             float t = (float)Math.Clamp(alpha, 0.0, 1.0);
             return Vector3.Lerp(_drawPreviousPosition, _drawCurrentPosition, t);
+        }
+
+        /// <summary>
+        /// Low-latency translation for the local fixed-crosshair first-person camera.
+        /// The simulation camera still advances only at 60 Hz; extra pictures project
+        /// the stable part of its last motion into the fractional remainder of the
+        /// next step instead of holding one position for several refreshes. Prediction
+        /// is bounded to one observed step, fades while slowing, and stops on reversal.
+        /// Teleports/respawns already rebase the history through ModResetDrawState.
+        /// </summary>
+        internal Vector3 ModGetResponsiveDrawPosition(double alpha)
+        {
+            if (!_drawStateValid || !Mods.Render.FrameTiming.HighRefreshPresentation)
+            {
+                return Position;
+            }
+
+            float t = (float)Math.Clamp(alpha, 0.0, 1.0);
+            Vector3 step = _drawCurrentPosition - _drawPreviousPosition;
+            float stepLengthSquared = step.LengthSquared;
+            if (!IsFinite(step) || stepLengthSquared <= 0.0000000001f)
+            {
+                return _drawCurrentPosition;
+            }
+
+            float confidence = 1f;
+            Vector3 priorStep = _drawPreviousPosition - _drawOlderPosition;
+            float priorLengthSquared = priorStep.LengthSquared;
+            if (IsFinite(priorStep) && priorLengthSquared > 0.0000000001f)
+            {
+                // A reversal is a new motion, not evidence that the old one should
+                // continue into the next picture.
+                if (Vector3.Dot(step, priorStep) <= 0)
+                {
+                    return _drawCurrentPosition;
+                }
+
+                // If collision or released input is already slowing the camera,
+                // shrink the projection with it so the render pose cannot surge
+                // through the authoritative stop point.
+                if (stepLengthSquared < priorLengthSquared)
+                {
+                    confidence = Math.Clamp(
+                        MathF.Sqrt(stepLengthSquared / priorLengthSquared), 0f, 1f);
+                }
+            }
+
+            Vector3 predicted = _drawCurrentPosition + step * (t * confidence);
+            return IsFinite(predicted) ? predicted : _drawCurrentPosition;
         }
 
         internal Matrix4 ModGetDrawView(double alpha)

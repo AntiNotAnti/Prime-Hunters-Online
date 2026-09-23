@@ -458,6 +458,16 @@ namespace MphRead.Entities
             }
             else
             {
+                // Keep modern aiming low-latency in both halves of the pose.
+                // Orientation remains current + late latch. Translation uses the
+                // bounded fractional projection of the 60 Hz camera history, so
+                // walking/jumping/knockback do not appear as tiny positional steps
+                // on a high-refresh display.
+                if (Features.FixedCrosshair)
+                {
+                    cameraPosition = CameraInfo.ModGetResponsiveDrawPosition(presentationAlpha);
+                }
+
                 // Fixed-crosshair / modern first-person aiming is intentionally
                 // low latency. Apply only unsimulated input on top of the current
                 // simulation pose and attach the gun to the exact same basis.
