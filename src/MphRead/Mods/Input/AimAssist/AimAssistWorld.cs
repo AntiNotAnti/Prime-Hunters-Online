@@ -42,13 +42,15 @@ namespace MphRead.Entities
                 return new AimAssistResult(x, y);
             var snapshot = GamepadInput.FrameSnapshot;
             long context = GamepadContexts.Revision;
-            if (_assistDeviceRevision != snapshot.Revision || _assistContextRevision != context                || _aimSourceRevision != AimInputSourceTracker.Revision || !ReferenceEquals(_assistRoom, _scene.Room))
+            if (_assistDeviceRevision != snapshot.Revision || _assistContextRevision != context
+                || _aimSourceRevision != AimInputSourceTracker.Revision || !ReferenceEquals(_assistRoom, _scene.Room))
             { _controllerAssist.Reset(); _assistDeviceRevision = snapshot.Revision; _assistContextRevision = context; }
-            _aimSourceRevision = AimInputSourceTracker.Revision; _assistRoom = _scene.Room;
+            _assistRoom = _scene.Room;
             AimInputSourceTracker.Pointer(Input.MouseDeltaX, Input.MouseDeltaY,
                 PointerDevice.Active && PointerDevice.Current.Device != PointerDeviceType.Mouse, Environment.TickCount64);
             var aim = GamepadInput.AimStick;
             AimInputSourceTracker.Stick(aim.X, aim.Y, Environment.TickCount64);
+            _aimSourceRevision = AimInputSourceTracker.Revision;
             bool eligible = snapshot.State.Connected && GamepadContexts.Focused && !GamepadContexts.MenuVisible
                 && GamepadContexts.Current == GamepadContext.Gameplay && !GamepadInput.WheelHeld
                 && AimInputSourceTracker.Current == AimInputSource.Gamepad && Health > 0
@@ -73,18 +75,30 @@ namespace MphRead.Entities
                 var volume = PlayerVolumes[(int)target.Hunter, target.IsAltForm ? 2 : 0];
                 Vector3 center = target.Position + volume.SpherePosition;
                 float height = Fixed.ToFloat(target.Values.MaxPickupHeight);
-                Vector3 chest = target.IsAltForm ? center : Vector3.Lerp(center, target.Position + new Vector3(0, height - .3f, 0), .65f);
+                Vector3 chest = target.IsAltForm ? center
+                    : Vector3.Lerp(center, target.Position + new Vector3(0, height - .3f, 0), .65f);
                 Vector3 head = target.Position + new Vector3(0, height - .15f, 0);
                 float distance = (chest - CameraInfo.Position).Length;
                 var bodyError = AssistAngles(chest);
                 if (!AimAssistMath.Finite(bodyError) || !float.IsFinite(distance) || distance > 60
                     || bodyError.Length() > profile.ReleaseCone) continue;
+
+                long targetLife = NetSession.Active
+                    ? ((long)NetPlayerLifecycle.Generation(target.SlotIndex) << 16)
+                        | NetPlayerLifecycle.Get(target.SlotIndex)
+                    : 0;
+                bool retained = target.SlotIndex == _controllerAssist.TargetSlot
+                    && targetLife == _controllerAssist.TargetLife;
                 bool visible = AssistVisible(chest);
-                if (!visible) continue;
+                if (!visible && !retained) continue;
+
                 var headError = AssistAngles(head);
-                bool headVisible = !target.IsAltForm && profile.Head && headError.Length() < 1.5f && AssistVisible(head);
-                long targetLife = 0;
-                candidates[count++] = new(target.SlotIndex, targetLife, bodyError, headError, distance, visible, headVisible,
+                bool headVisible = visible && !target.IsAltForm && profile.Head
+                    && AimAssistMath.Finite(headError)
+                    && headError.Length() < AimAssistTuning.HeadReleaseCone
+                    && AssistVisible(head);
+                candidates[count++] = new(target.SlotIndex, targetLife, bodyError, headError, distance,
+                    visible, headVisible,
                     BodyPointType: target.IsAltForm ? AimAssistPointType.CenterMass : AimAssistPointType.UpperChest);
                 if (count == candidates.Length) break;
             }
@@ -100,7 +114,11 @@ namespace MphRead.Entities
             foreach (ref readonly var candidate in candidates[..count]) if (candidate.Slot == result.TargetSlot) chosen = candidate;
             if (AimAssistDebug.UnassistedArm)
             {
-                result = result with { X = x, Y = y, Friction = 1, RotationStrength = 0, HeadBlend = 0, PointType = chosen.BodyPointType };
+                result = result with
+                {
+                    X = x, Y = y, Friction = 1, RotationStrength = 0, HeadBlend = 0,
+                    PointType = chosen.BodyPointType, HeadPrediction = 0, Occluded = false, Saturated = false
+                };
                 _controllerAssist.PreviousOutput = new(x, y);
             }
             AimAssistDebug.Result = result; AimAssistDebug.Target = chosen;
