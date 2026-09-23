@@ -1317,7 +1317,7 @@ namespace MphRead.Droid
                     _input.ApplyKey(Keys.D, (dir & TouchControls.Dir.Right) != 0);
                     _input.ApplyKey(Mods.Network.DemoPlayback.IsActive ? Keys.E : Keys.Space, _controls.IsHeld(TouchAction.Jump));
                     _input.ApplyKey(Keys.V, _controls.IsHeld(TouchAction.Morph));
-                    (float X, float Y) look = _controls.TakeAimDelta();
+                    (float X, float Y) look = _controls.TakeAimDelta(preservePresentation: false);
                     if (look.X != 0 || look.Y != 0)
                     {
                         // The same call the desktop's mouse move makes, in the
@@ -1332,7 +1332,7 @@ namespace MphRead.Droid
                     // Riding along behind somebody's eyes: their view, not
                     // ours. Taken rather than left, so it cannot arrive as a
                     // lurch on the frame the free camera comes back.
-                    _controls.TakeAimDelta();
+                    _controls.TakeAimDelta(preservePresentation: false);
                 }
                 _controls.TakeSwipeBoost();
                 _controls.TakeDoubleTapJump();
@@ -1559,7 +1559,7 @@ namespace MphRead.Droid
                     _dialogClickDown = tap.Down;
                     // Swallowed, so the aim does not lurch by however far the
                     // finger travelled once the box is gone.
-                    _controls.TakeAimDelta();
+                    _controls.TakeAimDelta(preservePresentation: false);
                     return;
                 }
                 // The weapon wheel is the other part that reads a position off
@@ -1596,7 +1596,7 @@ namespace MphRead.Droid
                     {
                         _input.PlacePointer(aim.X, aim.Y);
                     }
-                    _controls.TakeAimDelta();
+                    _controls.TakeAimDelta(preservePresentation: false);
                 }
                 else
                 {
