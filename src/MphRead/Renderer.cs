@@ -1776,6 +1776,12 @@ namespace MphRead
 
         private void RunSimulationFrame()
         {
+            // Pointer/button debouncing must advance on the same fixed clock that
+            // consumes gameplay input. RenderWindow can draw 120/144/240 pictures
+            // per second, but those extra pictures must never make a stylus release
+            // mature early or manufacture an additional weapon-selection edge.
+            Mods.Input.PointerDevice.AdvanceSimulationStep();
+
             if (Mods.Network.NetSession.FreezeGameplay)
             {
                 if (Mods.Network.NetSession.IsStarting) Mods.Network.NetSession.MarkMatchLoaded();
