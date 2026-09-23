@@ -178,6 +178,26 @@ namespace MphRead.Droid
         private float _aimLastY;
         private float _aimDeltaX;
         private float _aimDeltaY;
+
+        // Android may deliver several finger positions in one MotionEvent. The
+        // simulation still consumes their exact total at 60 Hz, but rendering
+        // replays the batch over its original short time span so a 90/120/144
+        // Hz display sees motion instead of a hold followed by one large jump.
+        //
+        // These are deltas waiting for their render-time presentation moment.
+        // The fixed ring avoids allocating on the UI thread while a finger is
+        // moving. If Android ever hands us more than it can hold before the GL
+        // thread catches up, the newest entry absorbs the excess rather than
+        // dropping distance.
+        private const int AimPresentationCapacity = 96;
+        private readonly float[] _aimPresentationX = new float[AimPresentationCapacity];
+        private readonly float[] _aimPresentationY = new float[AimPresentationCapacity];
+        private readonly long[] _aimPresentationAt = new long[AimPresentationCapacity];
+        private int _aimPresentationHead;
+        private int _aimPresentationCount;
+        private float _aimPresentationOffsetX;
+        private float _aimPresentationOffsetY;
+
         private float _aimAbsX;
         private float _aimAbsY;
         private bool _aimDown;
@@ -854,31 +874,98 @@ namespace MphRead.Droid
         /// applied. Density still belongs to button sizing, tap slop and gesture
         /// thresholds; it does not belong in relative camera motion.
         /// </summary>
-        public (float X, float Y) TakeAimDelta()
+        public (float X, float Y) TakeAimDelta(bool preservePresentation = true)
         {
             lock (_lock)
             {
+                long now = Environment.TickCount64;
+                AdvanceAimPresentationLocked(now);
                 float x = _aimDeltaX;
                 float y = _aimDeltaY;
                 _aimDeltaX = 0;
                 _aimDeltaY = 0;
-                Mods.Input.AimInputSourceTracker.Pointer(x, y, true, System.Environment.TickCount64);
+
+                if (preservePresentation)
+                {
+                    // The simulation is about to move its real camera by the
+                    // whole raw delta. Subtract that same amount from the
+                    // render-only offset so the picture does not jump at the
+                    // 60 Hz boundary. Any still-scheduled samples then bring
+                    // the offset smoothly back to zero at their presentation
+                    // times.
+                    _aimPresentationOffsetX -= x;
+                    _aimPresentationOffsetY -= y;
+                }
+                else
+                {
+                    ResetAimPresentationLocked();
+                }
+
+                Mods.Input.AimInputSourceTracker.Pointer(x, y, true, now);
                 return (x, y);
             }
         }
 
         /// <summary>
-        /// Non-destructive copy of aim movement waiting for the next 60 Hz
-        /// input step. Uses the same window-pixel units as <see cref="TakeAimDelta"/>
-        /// so render-time late aim and simulation aim can never disagree by the
-        /// device density factor.
+        /// Render-time touch movement relative to the most recently simulated
+        /// camera pose. Batched Android samples are advanced by their scheduled
+        /// presentation times; gameplay still receives the exact unsmoothed
+        /// total through <see cref="TakeAimDelta"/>.
         /// </summary>
         public (float X, float Y) PeekAimDelta()
         {
             lock (_lock)
             {
-                return (_aimDeltaX, _aimDeltaY);
+                AdvanceAimPresentationLocked(Environment.TickCount64);
+                return (_aimPresentationOffsetX, _aimPresentationOffsetY);
             }
+        }
+
+        private void QueueAimPresentationLocked(float x, float y, long presentAt)
+        {
+            if (x == 0 && y == 0)
+            {
+                return;
+            }
+            if (_aimPresentationCount == AimPresentationCapacity)
+            {
+                int newest = (_aimPresentationHead + _aimPresentationCount - 1)
+                    % AimPresentationCapacity;
+                _aimPresentationX[newest] += x;
+                _aimPresentationY[newest] += y;
+                if (presentAt > _aimPresentationAt[newest])
+                {
+                    _aimPresentationAt[newest] = presentAt;
+                }
+                return;
+            }
+            int index = (_aimPresentationHead + _aimPresentationCount)
+                % AimPresentationCapacity;
+            _aimPresentationX[index] = x;
+            _aimPresentationY[index] = y;
+            _aimPresentationAt[index] = presentAt;
+            _aimPresentationCount++;
+        }
+
+        private void AdvanceAimPresentationLocked(long now)
+        {
+            while (_aimPresentationCount > 0
+                && _aimPresentationAt[_aimPresentationHead] <= now)
+            {
+                _aimPresentationOffsetX += _aimPresentationX[_aimPresentationHead];
+                _aimPresentationOffsetY += _aimPresentationY[_aimPresentationHead];
+                _aimPresentationHead = (_aimPresentationHead + 1)
+                    % AimPresentationCapacity;
+                _aimPresentationCount--;
+            }
+        }
+
+        private void ResetAimPresentationLocked()
+        {
+            _aimPresentationHead = 0;
+            _aimPresentationCount = 0;
+            _aimPresentationOffsetX = 0;
+            _aimPresentationOffsetY = 0;
         }
 
         /// <summary>
@@ -1148,9 +1235,8 @@ namespace MphRead.Droid
         }
 
         /// <summary>Called with the lock already held.</summary>
-        private void CheckSwipeBoost(SwipeTracker tracker, float x, float y)
+        private void CheckSwipeBoost(SwipeTracker tracker, float x, float y, long now)
         {
-            long now = Environment.TickCount64;
             tracker.Add(x, y, now);
             if (!_swipeBoostEnabled || now - _lastSwipeBoostTime < SwipeBoostCooldownMs)
             {
@@ -1172,10 +1258,12 @@ namespace MphRead.Droid
                 // aim as well would swing the camera through the whole of it.
                 _aimDeltaX = 0;
                 _aimDeltaY = 0;
+                ResetAimPresentationLocked();
             }
         }
 
-        public void PointerMove(int pointerId, float x, float y)
+        public bool PointerMove(int pointerId, float x, float y,
+            long eventTime, long presentAt)
         {
             lock (_lock)
             {
@@ -1224,11 +1312,11 @@ namespace MphRead.Droid
                             _direction |= Dir.Right;
                         }
                     }
-                    return;
+                    return true;
                 }
                 if (pointerId == _aimPointer)
                 {
-                    CheckSwipeBoost(_aimSwipe, x, y);
+                    CheckSwipeBoost(_aimSwipe, x, y, eventTime);
                     if (!_tapMoved)
                     {
                         float tapDx = x - _tapDownX;
@@ -1236,25 +1324,31 @@ namespace MphRead.Droid
                         float slop = TapSlopDp * Density;
                         _tapMoved = tapDx * tapDx + tapDy * tapDy > slop * slop;
                     }
-                    _aimDeltaX += x - _aimLastX;
-                    _aimDeltaY += y - _aimLastY;
+                    float dx = x - _aimLastX;
+                    float dy = y - _aimLastY;
+                    _aimDeltaX += dx;
+                    _aimDeltaY += dy;
+                    QueueAimPresentationLocked(dx, dy, presentAt);
                     _aimLastX = x;
                     _aimLastY = y;
                     _aimAbsX = x;
                     _aimAbsY = y;
-                    return;
+                    return false;
                 }
                 if (pointerId == _fireAimPointer)
                 {
                     // FIRE stays held here regardless of how far the thumb
                     // drags: this pointer skips the "slides off a button
                     // releases it" rule below on purpose.
-                    CheckSwipeBoost(_fireAimSwipe, x, y);
-                    _aimDeltaX += x - _fireAimLastX;
-                    _aimDeltaY += y - _fireAimLastY;
+                    CheckSwipeBoost(_fireAimSwipe, x, y, eventTime);
+                    float dx = x - _fireAimLastX;
+                    float dy = y - _fireAimLastY;
+                    _aimDeltaX += dx;
+                    _aimDeltaY += dy;
+                    QueueAimPresentationLocked(dx, dy, presentAt);
                     _fireAimLastX = x;
                     _fireAimLastY = y;
-                    return;
+                    return false;
                 }
                 if (pointerId == _wheelPointer)
                 {
@@ -1263,7 +1357,7 @@ namespace MphRead.Droid
                     // letting go of the button. No aim delta -- see the field.
                     _wheelX = x;
                     _wheelY = y;
-                    return;
+                    return false;
                 }
                 // a thumb that slides off a button releases it, and one that
                 // slides onto another does not press it: a button press is
@@ -1278,11 +1372,13 @@ namespace MphRead.Droid
                             {
                                 _buttonPointers.Remove(pointerId);
                                 ReleaseAction(action);
+                                return true;
                             }
-                            return;
+                            return false;
                         }
                     }
                 }
+                return false;
             }
         }
 
