@@ -2460,11 +2460,31 @@ namespace MphRead.Entities
                 {
                     continue;
                 }
-                if (noPlayerInput || i != Mods.Network.NetHooks.LocalSlot
+                if (i != Mods.Network.NetHooks.LocalSlot
                     || Mods.SpectatorMode.IsSpectating) // todo: multiple input?
                 {
                     continue;
                 }
+
+                // Menus, settings, focus changes and binding capture all share the same
+                // gameplay controls. Never leave the last gameplay Keybind snapshot alive
+                // while one of those surfaces owns input: an IsPressed bit that survives
+                // even one suppressed simulation step is read again as a fresh action
+                // (most visibly Next/Prev weapon), and a held UI key can otherwise become
+                // a gameplay edge the instant the overlay closes. The context revision is
+                // the cross-device ownership boundary, so it covers keyboard/mouse,
+                // controller and stylus with the same rule.
+                long contextRevision = Mods.Input.GamepadContexts.Revision;
+                bool contextChanged = player.Input.ContextRevision != contextRevision;
+                player.Input.ContextRevision = contextRevision;
+                if (noPlayerInput || contextChanged)
+                {
+                    player.Controls.ClearAll();
+                    player.Input.SynchronizeSuppressed(keyboardSnap, mouseSnap);
+                    player._ignoreClick = false;
+                    continue;
+                }
+
                 player.Input.HasInput = false;
                 KeyboardState? prevKeyboardSnap = player.Input.KeyboardState;
                 MouseState? prevMouseSnap = player.Input.MouseState;
@@ -2628,7 +2648,29 @@ namespace MphRead.Entities
                 ? Mods.Input.PointerDevice.Current.X : MouseState?.X ?? 0;
             public float PointerY => Mods.Input.PointerDevice.Active
                 ? Mods.Input.PointerDevice.Current.Y : MouseState?.Y ?? 0;
+            public long ContextRevision { get; set; } = Mods.Input.GamepadContexts.Revision;
             private bool _loggedCapture;
+
+            /// <summary>
+            /// Advance raw input baselines while gameplay does not own input, without
+            /// producing any gameplay edge. This is the keyboard/mouse/stylus half of
+            /// the controller held-input barrier in GamepadInput.BeginFrame.
+            /// </summary>
+            public void SynchronizeSuppressed(KeyboardState keyboard, MouseState mouse)
+            {
+                PrevKeyboardState = KeyboardState = keyboard;
+                PrevMouseState = MouseState = mouse;
+                bool active = Mods.Input.PointerDevice.Active;
+                bool captured = Mods.Input.StylusZone.CapturingPrimaryButton || Mods.Input.StylusZone.Placing;
+                Primary.Synchronize(active ? Mods.Input.PointerDevice.PrimaryDown
+                    : mouse.IsButtonDown(MouseButton.Left), !active && captured);
+                Mods.Input.PointerDevice.TakeDelta();
+                Mods.Input.StylusZone.TakePressed();
+                MouseDeltaX = MouseDeltaY = 0;
+                ClickX = ClickY = -1;
+                StylusWeaponMenuDown = false;
+                HasInput = false;
+            }
 
             public void UpdatePointer()
             {
