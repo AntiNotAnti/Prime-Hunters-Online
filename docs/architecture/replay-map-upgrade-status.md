@@ -1,14 +1,16 @@
 # Replay and Map Studio architecture acceptance
 
 The implementation of [the requested plan](replay-map-upgrade-plan.md) is complete
-in the stacked implementation branches. The changes preserve the current Studio,
-network protocol and map formats while replacing replay ownership, history,
-seeking and editor build/invalidation internals. Merge the PRs in dependency order;
-they have not been merged automatically.
+on `codex/replay-map-integration`, which targets current `main`. The changes preserve
+the current Studio, network protocol and map formats while replacing replay
+ownership, history, seeking and editor build/invalidation internals. The integration
+PR includes the complete stack and the newer README from main. No merge to main
+was performed as part of final delivery.
 
 ## Baselines and compatibility
 
 - Target main: `c4cbf9b204af0c9c5d7f60183ffc48ddccb8645d` (2026-09-22).
+- Integration main: `d34f3cab29c9d714c63852cea8c518dbdb162ba8`; its newer README is preserved.
 - Reborn reference: `1a3726ee764393a295d80152b55e7a8e6ec58a49`.
 - Existing target work retained: Map Studio #23, replay/killcam #26/#31,
   presentation #37, protocol rollback #38 and Android surface lifecycle #39.
@@ -135,8 +137,12 @@ in [NETWORK-DEMOS.md](../../.claude/multiplayer/NETWORK-DEMOS.md). Map authoring
 contracts are in [MAP-STUDIO.md](../../.claude/mapgen/MAP-STUDIO.md). Runtime fixtures
 are generated from the tester's local assets and are deliberately not committed.
 
-The PR stack starts at [#40](https://github.com/AntiNotAnti/Prime-Hunters-Online/pull/40).
-Each branch targets the preceding branch, preserving reviewable increments:
+The review stack starts at [#40](https://github.com/AntiNotAnti/Prime-Hunters-Online/pull/40)
+and ends at [#62](https://github.com/AntiNotAnti/Prime-Hunters-Online/pull/62). PR #40
+is in main; #41–54 were merged into their preceding feature branches. The final
+`codex/replay-map-integration` PR therefore targets main with the complete result.
+Use that integration PR to land the upgrade; the smaller PRs retain the review
+breakdown and need not also be merged individually:
 
 | PRs | Scope |
 | --- | --- |
@@ -148,7 +154,7 @@ Each branch targets the preceding branch, preserving reviewable increments:
 | #55–57 | Killcam controller, shared Studio/clips and presentation/export |
 | #58–60 | Authoritative world facts, durable seeks and mutable asset isolation |
 | #61 | Profiling and diagnostics |
-| Final cleanup | Remove gated legacy paths, strengthen lifecycle checks, reconcile documentation |
+| #62 | Remove gated legacy paths, strengthen lifecycle checks, reconcile documentation |
 
 No protocol rollback is undone and no newer target feature is replaced by an older
 reference implementation. The remaining compatibility host is contained inside
