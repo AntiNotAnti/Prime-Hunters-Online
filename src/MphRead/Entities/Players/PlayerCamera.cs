@@ -846,6 +846,7 @@ namespace MphRead.Entities
 
     public class CameraInfo
     {
+        private const float HorizontalBasisEpsilon = 1f / 4096f;
         internal MatchRandom Random { get; set; } = Rng.Current;
         public Vector3 Position;
         public Vector3 PrevPosition;
@@ -880,6 +881,12 @@ namespace MphRead.Entities
             Target = Vector3.Zero;
             UpVector = Vector3.UnitY;
             Fov = 39 * 2;
+            // The roll/alt-form movement basis is valid before the first
+            // camera update and remains the fallback for vertical geometry.
+            Field48 = 0;
+            Field4C = -1;
+            Field50 = -1;
+            Field54 = 0;
             ModResetDrawState();
         }
 
@@ -1085,7 +1092,7 @@ namespace MphRead.Entities
             float facingX = Facing.X;
             float facingZ = Facing.Z;
             float hMag = MathF.Sqrt(facingX * facingX + facingZ * facingZ);
-            if (hMag > 0.000001f && Single.IsFinite(hMag))
+            if (hMag > HorizontalBasisEpsilon && Single.IsFinite(hMag))
             {
                 Field48 = facingX / hMag;
                 Field4C = facingZ / hMag;
@@ -1093,7 +1100,7 @@ namespace MphRead.Entities
             else
             {
                 float oldMag = MathF.Sqrt(Field48 * Field48 + Field4C * Field4C);
-                if (oldMag > 0.000001f && Single.IsFinite(oldMag))
+                if (oldMag > HorizontalBasisEpsilon && Single.IsFinite(oldMag))
                 {
                     Field48 /= oldMag;
                     Field4C /= oldMag;

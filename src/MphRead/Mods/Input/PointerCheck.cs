@@ -19,6 +19,7 @@ namespace MphRead.Mods.Input
                 _checks = 0;
                 CheckBindings();
                 CheckMovement();
+                CheckCameraBasis();
                 CheckZone();
                 CheckPlayerInput();
                 CheckSettings();
@@ -113,6 +114,52 @@ namespace MphRead.Mods.Input
             PointerInput.JumpPixels = 0;
             Require(PointerInput.Filter(900, 900) == (900f, 900f), "zero threshold disables filtering");
             PointerInput.JumpPixels = 600;
+
+            Require(AltFormGesture.Direction(0, -20, 5) == AltMoveDirection.Up,
+                "alt gesture maps upward drag to roll up");
+            Require(AltFormGesture.Direction(20, -20, 5)
+                == (AltMoveDirection.Up | AltMoveDirection.Right),
+                "alt gesture preserves diagonal movement");
+            Require(AltFormGesture.Direction(3, 2, 5) == AltMoveDirection.None,
+                "alt gesture dead zone rejects pointer jitter");
+            Require(AltFormGesture.Direction(float.NaN, 10, 0) == AltMoveDirection.None,
+                "alt gesture rejects non-finite input");
+            Require(AltFormGesture.UsesRollMovement(global::MphRead.Hunter.Samus)
+                && AltFormGesture.UsesRollMovement(global::MphRead.Hunter.Kanden)
+                && AltFormGesture.UsesRollMovement(global::MphRead.Hunter.Spire)
+                && AltFormGesture.UsesRollMovement(global::MphRead.Hunter.Noxus)
+                && !AltFormGesture.UsesRollMovement(global::MphRead.Hunter.Trace)
+                && !AltFormGesture.UsesRollMovement(global::MphRead.Hunter.Sylux)
+                && !AltFormGesture.UsesRollMovement(global::MphRead.Hunter.Weavel),
+                "only rolling alt forms consume pointer drags as movement");
+            Require(AltFormGesture.FlickAction(global::MphRead.Hunter.Samus)
+                    == AltFlickAction.SamusBoost
+                && AltFormGesture.FlickAction(global::MphRead.Hunter.Spire)
+                    == AltFlickAction.SpireAttack
+                && AltFormGesture.FlickAction(global::MphRead.Hunter.Kanden)
+                    == AltFlickAction.None,
+                "flick routing is ability-specific");
+        }
+
+        private static void CheckCameraBasis()
+        {
+            var camera = new CameraInfo();
+            camera.Reset();
+            Require(camera.Field48 == 0 && camera.Field4C == -1
+                && camera.Field50 == -1 && camera.Field54 == 0,
+                "camera reset supplies a valid roll basis");
+            camera.Position = OpenTK.Mathematics.Vector3.Zero;
+            camera.Target = new OpenTK.Mathematics.Vector3(3, 2, 4);
+            camera.Update();
+            float forwardX = camera.Field48;
+            float forwardZ = camera.Field4C;
+            float leftX = camera.Field50;
+            float leftZ = camera.Field54;
+            camera.Target = OpenTK.Mathematics.Vector3.UnitY;
+            camera.Update();
+            Require(camera.Field48 == forwardX && camera.Field4C == forwardZ
+                && camera.Field50 == leftX && camera.Field54 == leftZ,
+                "vertical camera preserves the last trustworthy roll basis");
         }
 
         private static void Frame(float x, float y, bool down, bool independentDown = false,

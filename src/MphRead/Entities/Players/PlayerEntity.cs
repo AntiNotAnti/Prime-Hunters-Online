@@ -266,16 +266,15 @@ namespace MphRead.Entities
         private ushort _bombOveruse = 0;
         private ushort _boostCharge = 0;
         private ushort _boostDamage = 0;
-        // Set by a touch platform's swipe gesture, and consumed as a forced
-        // full charge by the boost handling below -- see the "touch boost"
-        // note there.
+        // Legacy names are retained because replay/checkpoint schemas include
+        // these backing fields. Semantically this is now the shared one-shot
+        // alt-form flick: Samus consumes it as an aimed boost and Spire turns it
+        // into the canonical AltAttack press before network press history is read.
         public bool SwipeBoostRequested { get; set; }
         /// <summary>
-        /// Which way that flick went, as the screen saw it: X to the right,
-        /// Y downwards, unit length. The boost goes where the thumb went
-        /// rather than where the ball happened to be pointing, so it is
-        /// turned into a world direction against the same camera-relative
-        /// basis the ball rolls with. Zero means "wherever it is heading".
+        /// Screen-space direction of the pending alt-form flick: X right, Y
+        /// down, normalized. Samus converts it through the camera-relative roll
+        /// basis; Spire only needs the one-shot edge.
         /// </summary>
         public float SwipeBoostX { get; set; }
         public float SwipeBoostY { get; set; }

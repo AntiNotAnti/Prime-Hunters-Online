@@ -209,6 +209,10 @@ namespace MphRead.Droid
         private int _fireAimPointer = -1;
         private float _fireAimLastX;
         private float _fireAimLastY;
+        private float _fireAimOriginX;
+        private float _fireAimOriginY;
+        private float _fireAimX;
+        private float _fireAimY;
 
         // WEAPON is the same trick for a different reason: the finger that
         // opens the wheel is also the one that picks off it. Press, drag into
@@ -228,6 +232,10 @@ namespace MphRead.Droid
         // GameView.CollectInput and PlayerInput's boost handling for the
         // other half of this. Tracked on both the free-look aim pointer and
         // the FIRE-drag pointer, since either thumb might do the flick.
+        // Rolling alternate forms also treat a drag as a temporary movement
+        // stick. The anchor is where the aim-side finger went down, so holding
+        // the drag keeps moving instead of requiring a stream of new deltas.
+        private const float AltMoveDeadzoneDp = 18f;
         private const float SwipeBoostDistanceDp = 50f;
         private const long SwipeBoostWindowMs = 120;
         private const long SwipeBoostCooldownMs = 350;
@@ -1069,6 +1077,28 @@ namespace MphRead.Droid
             }
         }
 
+        public AltMoveDirection AltMove
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    float deadZone = AltMoveDeadzoneDp * Density;
+                    if (_aimPointer != -1)
+                    {
+                        return AltFormGesture.Direction(
+                            _aimAbsX - _tapDownX, _aimAbsY - _tapDownY, deadZone);
+                    }
+                    if (_fireAimPointer != -1)
+                    {
+                        return AltFormGesture.Direction(
+                            _fireAimX - _fireAimOriginX, _fireAimY - _fireAimOriginY, deadZone);
+                    }
+                    return AltMoveDirection.None;
+                }
+            }
+        }
+
         public void PointerDown(int pointerId, float x, float y)
         {
             bool revealed = false;
@@ -1125,6 +1155,8 @@ namespace MphRead.Droid
                         _fireAimPointer = pointerId;
                         _fireAimLastX = x;
                         _fireAimLastY = y;
+                        _fireAimOriginX = _fireAimX = x;
+                        _fireAimOriginY = _fireAimY = y;
                         _fireAimSwipe.Reset();
                     }
                     else if (button.Action == TouchAction.WeaponMenu)
@@ -1356,6 +1388,8 @@ namespace MphRead.Droid
                     QueueAimPresentationLocked(dx, dy, presentAt);
                     _fireAimLastX = x;
                     _fireAimLastY = y;
+                    _fireAimX = x;
+                    _fireAimY = y;
                     return false;
                 }
                 if (pointerId == _wheelPointer)
