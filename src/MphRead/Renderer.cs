@@ -1886,7 +1886,7 @@ namespace MphRead
                 }
                 bool noPlayerInput = _inputMode == InputMode.CameraOnly
                     || Mods.PauseMenu.Open || Mods.Chat.ChatBox.Composing;
-                PlayerEntity.ProcessInput(_keyboardState, _mouseState, noPlayerInput);
+                PlayerEntity.ProcessInput(this.Players, _keyboardState, _mouseState, noPlayerInput);
                 if (!noPlayerInput && !Mods.SpectatorMode.IsSpectating)
                 {
                     Mods.Input.GamepadInput.Apply(this.Players.Main);
