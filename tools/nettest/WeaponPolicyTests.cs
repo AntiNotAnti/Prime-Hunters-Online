@@ -41,6 +41,8 @@ internal static class WeaponPolicyTests
             }
             NetArchitectureTests.Check(weapons.Count == 9, "all nine multiplayer weapons covered");
             NetArchitectureTests.Check(WeaponLagPolicies.CurrentVolume.CatchUpFrames(45) == 0, "melee and area stay on current timeline");
+            NetArchitectureTests.Check(typeof(BeamProjectileEntity).GetField("<Target>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic) != null,
+                "homing target retains the explicit replay checkpoint field contract");
             HealthShotTests.Session();
             var target = HealthShotTests.Player(1);
             var beam = (BeamProjectileEntity)RuntimeHelpers.GetUninitializedObject(typeof(BeamProjectileEntity));

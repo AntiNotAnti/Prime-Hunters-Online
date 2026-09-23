@@ -66,28 +66,27 @@ namespace MphRead.Entities
         public WeaponInfo? RicochetWeapon { get; set; }
         public EffectEntry? Effect { get; set; }
         public EffectEntry? MuzzleEffect { get; set; }
-        private EntityBase? _target;
         private ushort _targetGeneration, _targetLife;
         private bool _targetLifeBound;
         public EntityBase? Target
         {
-            get => _target;
+            get => field; // retain the checkpoint schema backing field
             set
             {
                 _targetLifeBound = false;
                 if (value is PlayerEntity player && !_scene.Services.IsReplica && NetSession.Active)
                 {
-                    if (!NetUnlagged.HistoricalTargetAvailable(player)) { _target = null; return; }
+                    if (!NetUnlagged.HistoricalTargetAvailable(player)) { field = null; return; }
                     _targetGeneration = NetPlayerLifecycle.Generation(player.SlotIndex);
                     _targetLife = NetPlayerLifecycle.Get(player.SlotIndex);
                     _targetLifeBound = true;
                 }
-                _target = value;
+                field = value;
             }
         }
         internal void ValidateHomingTarget()
         {
-            if (_targetLifeBound && _target is PlayerEntity player
+            if (_targetLifeBound && Target is PlayerEntity player
                 && !NetPlayerLifecycle.Matches(player.SlotIndex, _targetGeneration, _targetLife)) Target = null;
         }
         public EquipInfo? Equip { get; set; }
