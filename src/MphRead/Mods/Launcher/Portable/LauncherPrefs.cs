@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Collections.Generic;
 using System.IO;
 using MphRead.Mods;
 
@@ -37,6 +38,8 @@ namespace MphRead.Mods.Launcher
         /// </summary>
         public const string DefaultServer = "51.161.113.128";
         private const string LegacyDefaultServer = "89.160.162.50";
+
+        public static HashSet<string> FavoriteServers { get; } = new(StringComparer.OrdinalIgnoreCase);
 
         public static string ServerAddress { get; set; } = DefaultServer;
         public static int ServerPort { get; set; } = Network.NetConfig.DefaultPort;
@@ -201,6 +204,11 @@ namespace MphRead.Mods.Launcher
                     string value = line[(split + 1)..].Trim();
                     switch (key)
                     {
+                        case "favorite_servers":
+                            FavoriteServers.Clear();
+                            foreach (string endpoint in value.Split('|', StringSplitOptions.RemoveEmptyEntries))
+                                FavoriteServers.Add(endpoint);
+                            break;
                         case "bright_skins":
                             if (Boolean.TryParse(value, out bool brightSkins))
                             {
@@ -435,6 +443,7 @@ namespace MphRead.Mods.Launcher
                 {
                     $"# {Branding.Name} launcher preferences.",
                     $"server_address={ServerAddress}",
+                    $"favorite_servers={string.Join("|", FavoriteServers)}",
                     $"server_port={ServerPort.ToString(CultureInfo.InvariantCulture)}",
                     $"master_host={MasterHost}",
                     $"master_port={MasterPort.ToString(CultureInfo.InvariantCulture)}",

@@ -18,7 +18,7 @@ using MphRead.Mods.MapGen;
 
 namespace MphRead.Mods.Launcher.Gui
 {
-    internal sealed class MapStudioScreen : UserControl
+    internal sealed class MapStudioScreen : UserControl, IDisposable
     {
         public event EventHandler? Closed;
         public event EventHandler<MapDefinition>? PlayRequested;
@@ -32,6 +32,8 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly TextBox _path = new() { PlaceholderText="Project filename (.json)" };
         private readonly TextBlock _status = new() { Foreground=GuiTheme.TextDimBrush, TextWrapping=TextWrapping.Wrap };
         private readonly TextBox _search = new() { PlaceholderText="Search objects" };
+        private readonly PrimeOverlayHost? _overlays;
+        private Control? _sheet;
         private readonly Border _modal = new() { Background=GuiTheme.ScrimBrush, IsVisible=false };
         private readonly DispatcherTimer _idle = new() { Interval=TimeSpan.FromSeconds(2) };
         private readonly MapCatalog _catalog = new(CustomRooms.MapDirectory);
@@ -60,8 +62,9 @@ namespace MphRead.Mods.Launcher.Gui
             return 0;
         }
 
-        public MapStudioScreen()
+        public MapStudioScreen(PrimeOverlayHost? overlays = null, bool preview = false)
         {
+            _overlays = overlays;
             Background=GuiTheme.InkBrush;Focusable=true;
             var toolbar=new WrapPanel { Orientation=Orientation.Horizontal };
             AddButton(toolbar,"Back",Close);AddButton(toolbar,"Library",ShowLibrary);AddButton(toolbar,"New",NewMap);
@@ -129,21 +132,46 @@ namespace MphRead.Mods.Launcher.Gui
                 catch(Exception ex) when(ex is IOException or UnauthorizedAccessException){_status.Text="Autosave failed: "+ex.Message;}
             };
             AttachedToVisualTree+=(_,_)=>{LauncherBackdrop.Set(LauncherBackdropScene.MapEditor);_idle.Start();};
-            DetachedFromVisualTree+=(_,_)=>{_idle.Stop();_work?.Cancel();foreach(var bitmap in _images)bitmap.Dispose();_images.Clear();};
-            ShowLibrary();
+            DetachedFromVisualTree+=(_,_)=>{_idle.Stop();_work?.Cancel();};
+            if (preview) Load(MapTemplates.Create("Studio example", true)); else ShowLibrary();
+        }
+        public void Dispose()
+        {
+            _idle.Stop(); _work?.Cancel();
+            if (_document != null) _document.Changed -= Changed;
+            foreach (var bitmap in _images) bitmap.Dispose();
+            _images.Clear();
         }
         internal void ShowStatus(string message)=>_status.Text=message;
         private static TextBlock Text(string text)=>new(){Text=text,Foreground=GuiTheme.TextBrush,TextWrapping=TextWrapping.Wrap};
         private static void AddButton(Panel panel,string title,Action action)
-        {var button=new Avalonia.Controls.Button {Content=title,Margin=new Thickness(2),Padding=new Thickness(8,4)};button.Click+=(_,_)=>action();panel.Children.Add(button);}
+        {var button=new PrimeButton(title.ToUpperInvariant(), action) {Margin=new Thickness(2),MinHeight=28,Height=28,MinWidth=60};panel.Children.Add(button);}
         private void Modal(Control control)
-        {_modal.Child=new Border {Background=GuiTheme.PanelBrush,Padding=new Thickness(20),MaxWidth=800,MaxHeight=620,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Child=control};_modal.IsVisible=true;}
-        private void Dismiss(){_modal.IsVisible=false;_modal.Child=null;}
+        {
+            if (_overlays != null)
+            {
+                if (_sheet != null) _overlays.Close(_sheet);
+                _sheet = control;
+                _overlays.Show(control, PrimeModalSize.Large, Dismiss);
+                return;
+            }
+            _modal.Child=new Border {Background=GuiTheme.PanelBrush,Padding=new Thickness(20),MaxWidth=800,MaxHeight=620,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Child=control};_modal.IsVisible=true;}
+        private void Dismiss(){if (_sheet != null) { _overlays?.Close(_sheet); _sheet=null; } _modal.IsVisible=false;_modal.Child=null;}
         private void Confirm(string message,Action yes)
         {var view=new ConfirmScreen(message);view.Answered+=(_,answer)=>{Dismiss();if(answer)yes();};Modal(view);}
         private void WithUnsaved(Action action)
         {if(_document?.IsDirty==true)Confirm("Discard unsaved changes? A recovery copy will remain available.",()=>{_document.Autosave(CustomRooms.MapDirectory);action();});else action();}
-        private void Close()=>WithUnsaved(()=>Closed?.Invoke(this,EventArgs.Empty));
+        internal bool IsDirty => _document?.IsDirty == true;
+        internal bool SaveRecovery()
+        {
+            try { if (_document?.IsDirty == true) _document.Autosave(CustomRooms.MapDirectory); return true; }
+            catch (Exception ex) { Failure(ex); return false; }
+        }
+        private void Close()
+        {
+            if (_overlays != null) Closed?.Invoke(this, EventArgs.Empty);
+            else WithUnsaved(() => Closed?.Invoke(this, EventArgs.Empty));
+        }
         internal void Load(MapProject project,string? path=null)
         {
             _lastBuild = null;

@@ -20,7 +20,7 @@ namespace MphRead.Mods.Launcher.Gui
     /// supplied license-card reference while staying inside the FPS hub's flat
     /// tactical language and existing controller navigation.
     /// </summary>
-    internal sealed class HubHunterLicenseView : UserControl
+    internal sealed class LicenseWorkspace : UserControl
     {
         private enum Face
         {
@@ -44,6 +44,8 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly HubNavButton _accountButton;
         private HunterLicenseSnapshot _snapshot = HunterLicenseClient.LocalSnapshot();
         private Face _face;
+        private readonly Dictionary<Face, Control> _tabCache = new();
+        private bool _loaded;
         private CancellationTokenSource? _load;
         private string _pendingEmail = "";
         private string _pendingPassword = "";
@@ -52,7 +54,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         public event EventHandler? Closed;
 
-        public HubHunterLicenseView()
+        public LicenseWorkspace(bool loadProfile = true)
         {
             Focusable = true;
             Background = Brushes.Transparent;
@@ -60,7 +62,7 @@ namespace MphRead.Mods.Launcher.Gui
             var root = new Grid
             {
                 Margin = new Thickness(24, 20, 24, 30),
-                RowDefinitions = new RowDefinitions("Auto,*,Auto"),
+                RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto"),
                 RowSpacing = 14
             };
             root.Children.Add(HubChrome.Header(
@@ -74,15 +76,15 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 ColumnDefinitions = new ColumnDefinitions("230,*"),
                 ColumnSpacing = 12,
-                MinHeight = 480
+                MinHeight = 0
             };
-            Grid.SetRow(body, 1);
+            Grid.SetRow(body, 2);
             root.Children.Add(body);
 
             var railPanel = new StackPanel { Spacing = 7 };
             _stand = new HunterStand
             {
-                Height = 160,
+                Height = 290,
                 MinWidth = 180,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 Name2 = HunterName(_snapshot.Profile.FavoriteHunter),
@@ -90,7 +92,7 @@ namespace MphRead.Mods.Launcher.Gui
             };
             railPanel.Children.Add(new Border
             {
-                Height = 168,
+                Height = 300,
                 Background = HubTheme.PanelStrongBrush,
                 BorderBrush = HubTheme.EdgeBrush,
                 BorderThickness = new Thickness(1),
@@ -131,6 +133,14 @@ namespace MphRead.Mods.Launcher.Gui
             _accountButton = AddNav(railPanel, Face.Account, "SECURE LICENSE",
                 accent: HubTheme.Warm);
 
+            var categoryTabs = new WrapPanel { Orientation = Orientation.Horizontal };
+            foreach (var tab in _nav.Values)
+            {
+                railPanel.Children.Remove(tab);
+                tab.Margin = new Thickness(0, 0, 6, 0);
+                categoryTabs.Children.Add(tab);
+            }
+            Grid.SetRow(categoryTabs, 1); root.Children.Add(categoryTabs);
             var rail = new Border
             {
                 Background = HubTheme.InkBrush,
@@ -156,7 +166,14 @@ namespace MphRead.Mods.Launcher.Gui
             Grid.SetColumn(contentFrame, 1);
             body.Children.Add(contentFrame);
 
-            var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+            var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"), ColumnSpacing = 8 };
+            var refresh = new PrimeButton("SYNC LICENSE", () =>
+            {
+                if (!loadProfile) return;
+                _load?.Cancel(); _load?.Dispose(); _load = new CancellationTokenSource();
+                _ = RefreshAsync(_load.Token);
+            });
+            Grid.SetColumn(refresh, 1); footer.Children.Add(refresh);
             _status.FontFamily = HubTheme.DataBold;
             _status.FontSize = 8.5;
             _status.Foreground = HubTheme.TextDimBrush;
@@ -165,9 +182,9 @@ namespace MphRead.Mods.Launcher.Gui
             var back = new HubNavButton("BACK", compact: true);
             ControllerNav.Identify(back, "hunter-license.back");
             back.Click += (_, _) => Closed?.Invoke(this, EventArgs.Empty);
-            Grid.SetColumn(back, 1);
+            Grid.SetColumn(back, 2);
             footer.Children.Add(back);
-            Grid.SetRow(footer, 2);
+            Grid.SetRow(footer, 3);
             root.Children.Add(footer);
 
             Content = root;
@@ -177,6 +194,7 @@ namespace MphRead.Mods.Launcher.Gui
             AttachedToVisualTree += (_, _) =>
             {
                 LauncherBackdrop.Set(LauncherBackdropScene.Home);
+                if (_loaded || !loadProfile) return;
                 _load?.Cancel();
                 _load = new CancellationTokenSource();
                 _ = RefreshAsync(_load.Token);
@@ -187,10 +205,9 @@ namespace MphRead.Mods.Launcher.Gui
         private HubNavButton AddNav(StackPanel panel, Face face, string label,
             bool initial = false, Color? accent = null)
         {
-            var button = new HubNavButton(label, compact: true, accent: accent);
+            var button = new PrimeTabButton(label, () => Show(face));
             ControllerNav.Identify(button, "hunter-license." + face.ToString().ToLowerInvariant(),
                 initial: initial);
-            button.Click += (_, _) => Show(face);
             _nav.Add(face, button);
             panel.Children.Add(button);
             return button;
@@ -210,6 +227,8 @@ namespace MphRead.Mods.Launcher.Gui
             if (token.IsCancellationRequested) return;
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
+                _loaded = true;
+                _tabCache.Clear();
                 _snapshot = snapshot;
                 ApplySnapshot(snapshot);
                 Show(_face);
@@ -237,7 +256,9 @@ namespace MphRead.Mods.Launcher.Gui
             foreach ((Face key, HubNavButton button) in _nav)
                 button.Selected = key == face;
 
-            _page.Content = face switch
+            if (face != Face.Account && _tabCache.TryGetValue(face, out var cached))
+            { _page.Content = cached; return; }
+            Control page = face switch
             {
                 Face.Overview => Overview(),
                 Face.Stats => Stats(),
@@ -250,6 +271,8 @@ namespace MphRead.Mods.Launcher.Gui
                 Face.Comparison => Comparison(),
                 _ => Account()
             };
+            if (face != Face.Account) _tabCache[face] = page;
+            _page.Content = page;
         }
 
         private Control Account()
@@ -546,106 +569,44 @@ namespace MphRead.Mods.Launcher.Gui
 
         private Control Overview()
         {
-            HunterLicenseStats s = _snapshot.Stats;
-            HunterLicenseProfile p = _snapshot.Profile;
-
-            var root = new StackPanel { Spacing = 12 };
-            var hero = new Grid { ColumnDefinitions = new ColumnDefinitions("*,220"), ColumnSpacing = 12 };
-            var name = new StackPanel { Spacing = 3 };
-            name.Children.Add(HubChrome.Kicker("HUNTER PROFILE"));
-            name.Children.Add(new TextBlock
-            {
-                Text = p.DisplayName,
-                FontFamily = HubTheme.Ui,
-                FontSize = 27,
-                FontWeight = FontWeight.Bold,
-                Foreground = HubTheme.TextBrush
-            });
-            name.Children.Add(new TextBlock
-            {
-                Text = "HUNTER ID  " + HunterId(p.PlayerId),
-                FontFamily = HubTheme.Data,
-                FontSize = 10,
-                Foreground = HubTheme.TextDimBrush
-            });
-            hero.Children.Add(name);
-
-            var rating = new Border
-            {
-                Background = HubTheme.AccentPanel(HubTheme.Accent, 24),
-                BorderBrush = HubTheme.AccentBrush,
-                BorderThickness = new Thickness(1),
-                Padding = new Thickness(12, 10)
+            var s = _snapshot.Stats;
+            var p = _snapshot.Profile;
+            Control Metric(string label, string value, string detail, IBrush? color = null) => new PrimePanel(PrimeChrome.Stack(
+                PrimeChrome.Text(label, 11, PrimeTheme.TextSecondaryBrush, true),
+                PrimeChrome.Text(value, 26, color ?? PrimeTheme.CyanStrongBrush, true),
+                PrimeChrome.Text(detail, 11, PrimeTheme.TextSecondaryBrush, true))) { Padding = new Thickness(12, 8) };
+            var metrics = new Grid { ColumnDefinitions = new("*,*"), RowDefinitions = new("*,*"), ColumnSpacing = 10, RowSpacing = 10 };
+            Control[] cards = {
+                Metric("WIN RATE", Percent(s.Wins, s.GamesPlayed), $"{s.Wins:N0} W / {s.Losses:N0} L", PrimeTheme.GreenBrush),
+                Metric("K / D RATIO", Ratio(s.Kills, s.Deaths), $"{s.Kills:N0} K / {s.Deaths:N0} D"),
+                Metric("HEADSHOTS", s.Headshots.ToString("N0"), "CAREER TOTAL"),
+                Metric("LONGEST STREAK", s.LongestKillStreak.ToString("N0"), "CONSECUTIVE ELIMINATIONS", PrimeTheme.TextBrush)
             };
-            var ratingCopy = new StackPanel { Spacing = 4 };
-            ratingCopy.Children.Add(HubChrome.Kicker("RANK"));
-            ratingCopy.Children.Add(new TextBlock
+            for (int i = 0; i < cards.Length; i++) { Grid.SetRow(cards[i], i / 2); Grid.SetColumn(cards[i], i % 2); metrics.Children.Add(cards[i]); }
+            var telemetry = PrimeChrome.Stack(PrimeChrome.Title("COMBAT TELEMETRY LOG"));
+            telemetry.Spacing = 2;
+            AddStat(telemetry, "GAMES PLAYED", s.GamesPlayed.ToString("N0"));
+            AddStat(telemetry, "TOTAL DAMAGE", s.Damage.ToString("N0"));
+            AddStat(telemetry, "OCTOLITH SCORES", s.OctolithScores.ToString("N0"));
+            AddStat(telemetry, "NODES CAPTURED", s.NodesCaptured.ToString("N0"));
+            AddStat(telemetry, "ASSISTS", s.Assists.ToString("N0"));
+            AddStat(telemetry, "TIME PLAYED", FormatTicks(s.PlayedTicks));
+            var center = PrimeChrome.Stack(metrics, new PrimePanel(telemetry));
+            var history = PrimeChrome.Stack(new PrimePanel(PrimeChrome.Stack(new PrimeBadge("LICENSE RANK"),
+                PrimeChrome.Title(RankText(p)), PrimeChrome.Text($"{p.RatingPoints:N0} RATING POINTS", 12, PrimeTheme.GreenBrush, true))),
+                PrimeChrome.Title("MATCH HISTORY"));
+            if (_snapshot.Matches.Count == 0)
+                history.Children.Add(PrimeChrome.Text("No accepted matches yet. Complete an eligible online match to start your career record.", 13, PrimeTheme.TextSecondaryBrush));
+            foreach (var match in _snapshot.Matches.Take(4))
             {
-                Text = RankText(p),
-                FontFamily = HubTheme.DataBold,
-                FontSize = 14,
-                Foreground = HubTheme.AccentSoftBrush
-            });
-            rating.Child = ratingCopy;
-            Grid.SetColumn(rating, 1);
-            hero.Children.Add(rating);
-            root.Children.Add(hero);
-            root.Children.Add(HubChrome.Divider());
-
-            var stats = new Border
-            {
-                Background = HubTheme.PanelBrush,
-                BorderBrush = HubTheme.EdgeBrush,
-                BorderThickness = new Thickness(1),
-                Padding = new Thickness(12, 6)
-            };
-            var rows = new StackPanel { Spacing = 0 };
-            AddStat(rows, "GAMES PLAYED", s.GamesPlayed.ToString("N0"));
-            AddStat(rows, "WINS", s.Wins.ToString("N0"));
-            AddStat(rows, "LOSSES", s.Losses.ToString("N0"));
-            AddStat(rows, "TIES", s.Ties.ToString("N0"));
-            AddStat(rows, "WIN PERCENTAGE", Percent(s.Wins, s.GamesPlayed));
-            AddStat(rows, "KILLS", s.Kills.ToString("N0"));
-            AddStat(rows, "DEATHS", s.Deaths.ToString("N0"));
-            AddStat(rows, "K/D RATIO", Ratio(s.Kills, s.Deaths));
-            AddStat(rows, "ASSISTS", s.Assists.ToString("N0"));
-            AddStat(rows, "HEADSHOTS", s.Headshots.ToString("N0"));
-            AddStat(rows, "LONGEST KILL STREAK", s.LongestKillStreak.ToString("N0"));
-            AddStat(rows, "TIME PLAYED", FormatTicks(s.PlayedTicks));
-            stats.Child = rows;
-            root.Children.Add(stats);
-
-            var license = new Border
-            {
-                Background = HubTheme.PanelStrongBrush,
-                BorderBrush = HubTheme.EdgeBrush,
-                BorderThickness = new Thickness(1),
-                Padding = new Thickness(12, 10)
-            };
-            var progress = new StackPanel { Spacing = 6 };
-            progress.Children.Add(HubChrome.Kicker("LICENSE RATING"));
-            progress.Children.Add(new ProgressBar
-            {
-                Minimum = 0,
-                Maximum = Math.Max(1000, p.RatingPoints + 250),
-                Value = Math.Max(0, p.RatingPoints),
-                Height = 8,
-                Foreground = HubTheme.AccentBrush,
-                Background = HubTheme.PanelBrush
-            });
-            progress.Children.Add(new TextBlock
-            {
-                Text = p.RatingPoints > 0
-                    ? $"{p.RatingPoints:N0} RATING POINTS"
-                    : "COMPLETE ELIGIBLE ONLINE MATCHES TO ESTABLISH A RATING",
-                FontFamily = HubTheme.Data,
-                FontSize = 8.5,
-                Foreground = HubTheme.TextDimBrush
-            });
-            license.Child = progress;
-            root.Children.Add(license);
-
-            return Scroll(root);
+                string result = match.Tied ? "TIE" : match.Won ? "VICTORY" : "DEFEAT";
+                string map = Metadata.RoomMetadata.TryGetValue(match.RoomKey, out var metadata) ? metadata.InGameName ?? match.RoomKey : match.RoomKey;
+                history.Children.Add(new PrimePanel(PrimeChrome.Stack(
+                    PrimeChrome.Text(map.ToUpperInvariant(), 15),
+                    PrimeChrome.Text(result, 11, match.Won ? PrimeTheme.GreenBrush : PrimeTheme.TextSecondaryBrush, true),
+                    PrimeChrome.Text($"{match.Kills} K / {match.Deaths} D // {FormatTicks(match.PlayedTicks)}", 11, data: true))));
+            }
+            return PrimeChrome.Columns("1.65*,1*", Scroll(center), Scroll(history));
         }
 
         private Control Stats()

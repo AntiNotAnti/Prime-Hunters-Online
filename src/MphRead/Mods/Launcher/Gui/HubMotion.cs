@@ -29,6 +29,12 @@ namespace MphRead.Mods.Launcher.Gui
             control.RenderTransform = move;
             int frame = 0;
             DispatcherTimer? timer = null;
+            EventHandler<Avalonia.VisualTreeAttachmentEventArgs>? detached = null;
+            void Finish()
+            {
+                timer?.Stop(); control.Opacity = 1; control.RenderTransform = null;
+                if (detached != null) control.DetachedFromVisualTree -= detached;
+            }
             timer = new DispatcherTimer(
                 TimeSpan.FromMilliseconds(16),
                 DispatcherPriority.Render,
@@ -41,12 +47,11 @@ namespace MphRead.Mods.Launcher.Gui
                     move.Y = lift * (1 - eased);
                     if (t >= 1)
                     {
-                        timer?.Stop();
-                        control.Opacity = 1;
-                        control.RenderTransform = null;
+                        Finish();
                     }
                 });
-            control.DetachedFromVisualTree += (_, _) => timer?.Stop();
+            detached = (_, _) => Finish();
+            control.DetachedFromVisualTree += detached;
             timer.Start();
         }
     }

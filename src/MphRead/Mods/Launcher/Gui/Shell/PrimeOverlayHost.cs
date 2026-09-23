@@ -38,6 +38,10 @@ namespace MphRead.Mods.Launcher.Gui
             _stack.Add((frame, cancel, focused));
             Present();
         }
+        public void Close(Control view)
+        {
+            if (IsOpen && _stack[^1].View is Border frame && ReferenceEquals(frame.Child, view)) Close();
+        }
         public void Close()
         {
             if (!IsOpen) return;

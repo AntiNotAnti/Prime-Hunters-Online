@@ -129,6 +129,13 @@ namespace MphRead.Mods
             Input.AimAssist.AimAssistDebug.UnassistedArm = HasFlag(args, "gamepadassistbaseline");
             Input.AimAssist.AimAssistTelemetry.Configure(ValueAfter(args, "gamepadassisttelemetry"));
 
+#if MPHREAD_SHELL
+            if (HasFlag(args, "primeuicheck"))
+            {
+                Environment.ExitCode = Launcher.Gui.PrimeUiChecks.Run(ValueAfter(args, "shots"));
+                return true;
+            }
+#endif
             if (HasFlag(args, "gamepadcheck"))
             {
                 Environment.ExitCode = Input.GamepadChecks.Run(ValueAfter(args, "shots"));

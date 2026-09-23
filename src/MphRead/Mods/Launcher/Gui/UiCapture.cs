@@ -158,23 +158,15 @@ namespace MphRead.Mods.Launcher.Gui
                 new StartScreen(settings, rooms), _phonePortrait);
             yield return ("start-phone-landscape",
                 new StartScreen(settings, rooms), _phoneLandscape);
-            yield return ("hub-home", new HubHomeView(), _windowSize);
-            yield return ("hub-home-phone-portrait", new HubHomeView(), _phonePortrait);
-            yield return ("hub-home-phone-landscape", new HubHomeView(), _phoneLandscape);
-            yield return ("play", new HubPlayView(), _windowSize);
-            yield return ("play-phone-portrait", new HubPlayView(), _phonePortrait);
-            yield return ("play-phone-landscape", new HubPlayView(), _phoneLandscape);
             yield return ("multiplayer",
-                new HubMultiplayerView(HubBrowserSample()), _windowSize);
+                new PlayWorkspace(HubBrowserSample()), _windowSize);
             yield return ("multiplayer-phone-portrait",
-                new HubMultiplayerView(HubBrowserSample()), _phonePortrait);
+                new PlayWorkspace(HubBrowserSample()), _phonePortrait);
             yield return ("multiplayer-phone-landscape",
-                new HubMultiplayerView(HubBrowserSample()), _phoneLandscape);
+                new PlayWorkspace(HubBrowserSample()), _phoneLandscape);
             yield return ("map-editor",
                 new MapStudioScreen(),
                 _windowSize);
-            yield return ("hub-settings", new HubSettingsView(), _windowSize);
-            yield return ("hub-settings-phone-portrait", new HubSettingsView(), _phonePortrait);
             // Every face of the one screen that replaced seven. They share a
             // layout and nothing else -- the list, the settings beside it and
             // the word on the tick are different on each -- so one picture of
@@ -188,15 +180,10 @@ namespace MphRead.Mods.Launcher.Gui
                 new PlayScreen(settings, rooms, PlayScreen.Face.Online), _phonePortrait);
             yield return ("play-online-phone-landscape",
                 new PlayScreen(settings, rooms, PlayScreen.Face.Online), _phoneLandscape);
-            yield return ("offline", new HubOfflineView(settings, rooms), _windowSize);
-            yield return ("offline-phone-landscape",
-                new HubOfflineView(settings, rooms), _phoneLandscape);
-            yield return ("adventure", new HubAdventureView(), _windowSize);
-            yield return ("adventure-phone-portrait",
-                new HubAdventureView(), _phonePortrait);
-            yield return ("replay-studio", new HubReplayStudioView(), _windowSize);
+            yield return ("offline", new OfflineWorkspace(settings, rooms, new PrimeOverlayHost()), _windowSize);
+            yield return ("replay-studio", new TheatreWorkspace(manageStorage: false), _windowSize);
             yield return ("replay-studio-phone-landscape",
-                new HubReplayStudioView(), _phoneLandscape);
+                new TheatreWorkspace(manageStorage: false), _phoneLandscape);
             yield return ("play-vote",
                 new PlayScreen(settings, rooms, PlayScreen.Face.Vote, overGame: true),
                 _windowSize);
@@ -554,7 +541,12 @@ namespace MphRead.Mods.Launcher.Gui
             }
             finally
             {
-                window?.Close();
+                if (window != null)
+                {
+                    window.Content = null;
+                    Dispatcher.UIThread.RunJobs();
+                    window.Close();
+                }
             }
         }
 

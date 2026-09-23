@@ -50,6 +50,8 @@ namespace MphRead.Mods.Launcher.Gui
     internal sealed class PrimeFooter : Border
     {
         private readonly TextBlock _hints = PrimeChrome.Text("", 10, data: true);
+        private string? _statusOverride;
+        public void SetStatus(string text) { _statusOverride = text; Version.Label = text; }
         public readonly PrimeButton Version = new("BUILD // LOCAL");
         public PrimeFooter(Action update)
         {
@@ -67,7 +69,7 @@ namespace MphRead.Mods.Launcher.Gui
             _hints.Text = Mods.Input.InputSourceTracker.Current == Mods.Input.InputSource.Gamepad
                 ? $"{Mods.Input.InputPrompt.For(Mods.Input.UiAction.Accept).Glyph} SELECT  //  {Mods.Input.InputPrompt.For(Mods.Input.UiAction.PreviousTab).Glyph} / {Mods.Input.InputPrompt.For(Mods.Input.UiAction.NextTab).Glyph} TABS  //  {Mods.Input.InputPrompt.For(Mods.Input.UiAction.Back).Glyph} BACK"
                 : "[ENTER] SELECT   //   [Q / E] SWITCH TAB   //   [ESC] BACK";
-            Version.Label = state.UpdateAvailable ? "UPDATE AVAILABLE // INSTALL" : "SIM: 60 HZ  //  BUILD " + state.BuildVersion;
+            Version.Label = _statusOverride ?? (state.UpdateAvailable ? "UPDATE AVAILABLE // INSTALL" : "SIM: 60 HZ  //  BUILD " + state.BuildVersion);
         }
     }
 }

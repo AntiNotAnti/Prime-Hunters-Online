@@ -24,12 +24,13 @@ namespace MphRead.Mods.Launcher.Gui
         public PrimeButton(string text, Action? action = null, bool primary = false, bool danger = false)
             : base(text, primary: primary, compact: true, accent: danger ? PrimeTheme.Danger : null)
         {
+            UseTacticalStyle();
             if (action != null) Click += (_, _) => action();
         }
     }
     internal sealed class PrimeTabButton : PrimeButton
     {
-        public PrimeTabButton(string text, Action action) : base(text, action) { }
+        public PrimeTabButton(string text, Action action) : base(text, action) { UseTacticalStyle(tab: true); }
     }
     internal sealed class PrimeBadge : Border
     {

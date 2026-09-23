@@ -169,6 +169,8 @@ namespace MphRead.Mods.Launcher.Gui
                     window.Context.MakeCurrent();
                     UiSurface.Current?.ReleaseMapRenderer();
                 }
+                _front?.Dispose();
+                _front = null;
                 window?.Dispose();
             }
         }
@@ -478,6 +480,11 @@ namespace MphRead.Mods.Launcher.Gui
                     // every participant the same visible start boundary.
                     _matchLoading = true;
                 }
+                else if (plan.Kind == LaunchKind.Demo && _front != null)
+                {
+                    _front.ShowReplayEditor(RequestEndMatch, () => UiSurface.Current?.Hide());
+                    UiSurface.Current?.Show(_front);
+                }
                 else
                 {
                     UiSurface.Current?.Hide();
@@ -766,7 +773,7 @@ namespace MphRead.Mods.Launcher.Gui
                 ClickIfReady(c => c is ServerRow row && row.IsLive);
                 Wait(25);
             },
-            w => { Shot(w, "shell-server-side"); Key(Keys.Right); Wait(15); },
+            w => { Shot(w, "shell-server-side"); ClickIfReady(c => FrontAction(c, "OFFLINE")); Wait(15); },
             // A card, not a row: the offline face is every map at once now.
             // See DeckTile.
             // Land the pointer in the middle of the grid, then scroll it for
@@ -780,14 +787,15 @@ namespace MphRead.Mods.Launcher.Gui
                 Scroll(60, 1);
                 Wait(10);
             },
-            w => { ClickIfReady(c => c is DeckTile); Wait(25); },
+            w => { ClickIfReady(c => c.GetValue(ControllerNav.NavIdProperty) == "offline.map"); Wait(25); },
             w =>
             {
                 // Still the play screen, with the drawer open beside it: a
                 // press on a card picks it and starts nothing. A picture of a
                 // room here is the regression.
                 Shot(w, "shell-play-selected");
-                ClickIfReady(c => c is DeckButton go && go.Text == "START");
+                ClickIfReady(c => c is UiListRow);
+                ClickIfReady(c => c.GetValue(ControllerNav.NavIdProperty) == "offline.start");
                 Wait(40);
             },
             w =>

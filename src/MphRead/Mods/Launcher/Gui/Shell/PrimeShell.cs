@@ -21,7 +21,7 @@ namespace MphRead.Mods.Launcher.Gui
         public PrimeShell(Func<PrimeRoute, Control> create, Action update)
         {
             Background = PrimeTheme.BackgroundBrush;
-            Workspaces = new PrimeWorkspaceHost(create);
+            Workspaces = new PrimeWorkspaceHost(create) { HasOverlay = () => Overlays.IsOpen };
             Header = new PrimeHeader(r => Router.Navigate(r));
             Footer = new PrimeFooter(update);
             var main = new Grid { RowDefinitions = new("Auto,*,Auto") };
@@ -49,6 +49,7 @@ namespace MphRead.Mods.Launcher.Gui
         }
         private void HandleKey(object? sender, KeyEventArgs e)
         {
+            if (Mods.Input.GamepadContexts.Capturing || e.Source is KeyRow { Listening: true }) return;
             if (e.Key == Key.Escape) { Back(); e.Handled = true; return; }
             // Text entry and binding capture own letter keys.
             if (e.Source is TextBox || Mods.Input.GamepadContexts.Capturing || e.Source is KeyRow { Listening: true }) return;
@@ -68,7 +69,7 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 // Below the safe tactical layout, scale the entire canvas including
                 // focus rings and modals; never clip a primary action off-screen.
-                double factor = Math.Min(availableSize.Width / 1280, availableSize.Height / 720);
+                double factor = Math.Min(availableSize.Width / 1440, availableSize.Height / 810);
                 factor = Math.Min(1.5, factor);
                 if (Math.Abs(factor - _scale) > .001)
                 { _scale = factor; _canvas.LayoutTransform = new ScaleTransform(factor, factor); }
