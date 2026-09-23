@@ -64,8 +64,8 @@ namespace MphRead.Mods.Input.AimAssist
             var opposed = Apply(raw: new(-2, -2));
             Check(Math.Abs(opposed.X + 2) < .00001f && Math.Abs(opposed.Y + 2) < .00001f,
                 "strong opposing input overrides both axes");
-            Check(Apply(0, .5f, raw: Vector2.Zero).RotationStrength > 0,
-                "movement intent permits reduced tracking");
+            Check(Apply(0, .5f, raw: Vector2.Zero).RotationStrength == 0,
+                "movement stick cannot rotate a neutral aim camera");
             Check(Apply(0, 0, raw: Vector2.Zero).RotationStrength == 0,
                 "no intent clears rotation");
 

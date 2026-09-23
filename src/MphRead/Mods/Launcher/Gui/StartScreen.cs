@@ -789,7 +789,7 @@ namespace MphRead.Mods.Launcher.Gui
         /// being two menus.
         /// </summary>
         public void ShowPauseMenu(Action onResume, Action onLeave, Action onQuit,
-            Action? onSpectate = null, Action? onRejoin = null)
+            Action? onSpectate = null, Action? onRejoin = null, ScenePlayerRegistry? players = null)
         {
             // Everything on this stack is read over the match: the menu, the
             // settings it opens and the map vote all ask for the scrim alone.
@@ -841,7 +841,7 @@ namespace MphRead.Mods.Launcher.Gui
             };
             view.SettingsRequested += (_, _) =>
             {
-                var settings = new SettingsView(_settings, inGame: true);
+                var settings = new SettingsView(_settings, inGame: true, players: players);
                 settings.Closed += (_, _) => Pop();
                 Push(settings);
             };

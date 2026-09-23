@@ -354,11 +354,16 @@ namespace MphRead.Mods
         /// </summary>
         public static void ApplyToPlayers()
         {
+            ApplyToPlayers(PlayerEntity.LegacyRegistry);
+        }
+
+        public static void ApplyToPlayers(ScenePlayerRegistry players)
+        {
             try
             {
-                for (int i = 0; i < PlayerEntity.Players.Count; i++)
+                for (int i = 0; i < players.Items.Count; i++)
                 {
-                    Apply(PlayerEntity.Players[i].Controls);
+                    Apply(players.Items[i].Controls);
                 }
             }
             catch (Exception)

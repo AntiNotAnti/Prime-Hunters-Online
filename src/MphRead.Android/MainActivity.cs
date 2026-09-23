@@ -1081,7 +1081,8 @@ namespace MphRead.Droid
             AndroidApp.Home?.ShowPauseMenu(
                 ClosePauseMenu, EndMatch, () => Finish(),
                 () => { _gameView?.RequestSpectate(); },
-                () => { _gameView?.RequestRejoin(); });
+                () => { _gameView?.RequestRejoin(); },
+                _gameView?.Scene?.Players);
         }
 
         private void ClosePauseMenu()

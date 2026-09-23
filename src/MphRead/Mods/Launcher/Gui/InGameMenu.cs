@@ -33,14 +33,16 @@ namespace MphRead.Mods.Launcher.Gui
     internal sealed class InGameMenu : Panel
     {
         private readonly MenuSettings _settings;
+        private readonly ScenePlayerRegistry? _players;
         private readonly List<Control> _stack = new();
 
         /// <summary>Raised when the last screen is popped: back to the match.</summary>
         public event EventHandler? Emptied;
 
-        public InGameMenu(MenuSettings settings)
+        public InGameMenu(MenuSettings settings, ScenePlayerRegistry? players = null)
         {
             _settings = settings;
+            _players = players;
             // Transparent all the way down: each screen paints its own scrim,
             // and what neither of them paints is the match.
             Background = Brushes.Transparent;
@@ -138,7 +140,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         private void OpenSettings()
         {
-            var view = new SettingsView(_settings, inGame: true);
+            var view = new SettingsView(_settings, inGame: true, players: _players);
             view.Closed += (_, _) => Pop();
             // Placing the pen zone happens on the game, not in a settings
             // page, so the whole menu gets out of the way: the view has

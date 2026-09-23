@@ -586,7 +586,9 @@ namespace MphRead.Mods.Launcher.Gui
             // The settings page in the menu commits its own copy of the file,
             // so the one the menu is built with is read now rather than kept
             // from whenever the match started.
-            var menu = new InGameMenu(GameState.LoadSettings());
+            ScenePlayerRegistry? players = _window is { HasScene: true } window
+                ? window.Scene.Players : null;
+            var menu = new InGameMenu(GameState.LoadSettings(), players);
             menu.Emptied += (_, _) => CloseMenu();
             _menu = menu;
             surface.Show(menu);

@@ -334,7 +334,7 @@ namespace MphRead.Mods.Input
                 initializeRuntime: false);
             typeof(Scene).GetField("_cameraMode", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .SetValue(scene, CameraMode.Player);
-            var player = PlayerEntity.Main;
+            var player = scene.Players.Main;
             player.LoadFlags = LoadFlags.Active;
             var keyboard = SyntheticInput.CreateKeyboard();
             var mouse = SyntheticInput.CreateMouse();
@@ -355,14 +355,26 @@ namespace MphRead.Mods.Input
             // position for that window, so the first scene must baseline whatever the
             // launcher accumulated instead of treating it as a gameplay wheel edge.
             setScroll(mouse, new OpenTK.Mathematics.Vector2(0, 7));
-            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, false);
             Require(!controls.NextWeapon.IsPressed && !controls.PrevWeapon.IsPressed,
                 "first gameplay sample baselines launcher wheel history");
             setScroll(mouse, new OpenTK.Mathematics.Vector2(0, 8));
-            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, false);
             Require(controls.PrevWeapon.IsPressed,
                 "wheel still produces a real edge after startup baseline");
-            PlayerEntity.ProcessInput(keyboard, mouse, false);
+
+            // A side/preview scene may become the compatibility registry while the
+            // foreground match is still alive. Gameplay input must stay attached to
+            // the scene that owns this simulation step, not whichever scene most
+            // recently touched the legacy static bridge.
+            ScenePlayerRegistry foregroundRegistry = PlayerEntity.LegacyRegistry;
+            PlayerEntity.LegacyRegistry = new ScenePlayerRegistry();
+            PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, false);
+            Require(!controls.NextWeapon.IsPressed && !controls.PrevWeapon.IsPressed,
+                "side scene cannot steal foreground keyboard/mouse/stylus input");
+            PlayerEntity.LegacyRegistry = foregroundRegistry;
+
+            PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, false);
             Require(!controls.NextWeapon.IsPressed && !controls.PrevWeapon.IsPressed,
                 "absolute wheel position does not repeat without another notch");
 
@@ -372,7 +384,7 @@ namespace MphRead.Mods.Input
             controls.NextWeapon.Type = ButtonType.Key;
             controls.NextWeapon.Key = Keys.Unknown;
             controls.NextWeapon.IsDown = controls.NextWeapon.IsPressed = true;
-            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, false);
             Require(!controls.NextWeapon.IsDown && !controls.NextWeapon.IsPressed
                 && !controls.NextWeapon.IsReleased,
                 "unbound keyboard action clears previous additive state");
@@ -384,18 +396,18 @@ namespace MphRead.Mods.Input
             controls.NextWeapon.Type = ButtonType.Key;
             controls.NextWeapon.Key = Keys.H;
             setKey(keyboard, Keys.H, true);
-            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, false);
             Require(controls.NextWeapon.IsDown && controls.NextWeapon.IsPressed,
                 "keyboard weapon edge begins normally");
-            PlayerEntity.ProcessInput(keyboard, mouse, true);
+            PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, true);
             Require(!controls.NextWeapon.IsDown && !controls.NextWeapon.IsPressed
                 && !controls.NextWeapon.IsReleased,
                 "suppressed gameplay clears stale held and pressed keybind state");
-            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, false);
             Require(controls.NextWeapon.IsDown && !controls.NextWeapon.IsPressed,
                 "held UI key resumes as state, not a new gameplay edge");
             setKey(keyboard, Keys.H, false);
-            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, false);
 
             // The overlay can open and close entirely between two simulation steps
             // on a high-refresh display. The context revision must still quarantine
@@ -403,14 +415,14 @@ namespace MphRead.Mods.Input
             setKey(keyboard, Keys.H, true);
             Mods.Input.GamepadContexts.MenuVisible = true;
             Mods.Input.GamepadContexts.MenuVisible = false;
-            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, false);
             Require(!controls.NextWeapon.IsDown && !controls.NextWeapon.IsPressed,
                 "between-step UI transition cannot leak a held key into gameplay");
-            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, false);
             Require(controls.NextWeapon.IsDown && !controls.NextWeapon.IsPressed,
                 "post-transition held key remains edge-neutral until release");
             setKey(keyboard, Keys.H, false);
-            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, false);
 
             // The stylus WPN action writes directly into NextWeapon after the
             // raw pass. If its keyboard side is unbound, that contribution must
@@ -427,13 +439,13 @@ namespace MphRead.Mods.Input
             float wpnY = wpn.Y / StylusZone.DsHeight * StylusZone.Height * 1080;
             Frame(wpnX, wpnY, false);
             Frame(wpnX, wpnY, true);
-            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, false);
             Require(controls.NextWeapon.IsDown && controls.NextWeapon.IsPressed,
                 "stylus reaches keyboard-unbound WPN action once");
             Frame(wpnX, wpnY, false);
             PointerDevice.AdvanceSimulationStep();
             Frame(wpnX, wpnY, false);
-            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, false);
             Require(!controls.NextWeapon.IsDown && !controls.NextWeapon.IsPressed,
                 "stylus WPN contribution clears after release when keyboard side is unbound");
 
@@ -446,16 +458,16 @@ namespace MphRead.Mods.Input
             controls.AltAttack.Key = Keys.G;
             setKey(keyboard, Keys.F, true);
             setKey(keyboard, Keys.G, true);
-            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, false);
             Require(controls.Shoot.IsDown && controls.Shoot.IsPressed && controls.AltAttack.IsDown,
                 "real input pass preserves rebound Shoot and AltAttack during tip contact");
             Frame(1010, 605, true);
-            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, false);
             Require(controls.Shoot.IsDown && !controls.Shoot.IsPressed && StylusZone.Aiming,
                 "real input pass keeps firing while aiming");
             controls.Shoot.Type = controls.AltAttack.Type = controls.Jump.Type = ButtonType.Mouse;
             controls.Shoot.MouseButton = controls.AltAttack.MouseButton = controls.Jump.MouseButton = MouseButton.Left;
-            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, false);
             Require(!controls.Shoot.IsDown && !controls.AltAttack.IsDown && !controls.Jump.IsDown,
                 "real input pass captures all LMB-bound actions");
             GamepadContexts.Current = GamepadContext.Gameplay;
@@ -467,18 +479,18 @@ namespace MphRead.Mods.Input
             PadBindings.SetSlot(PadAction.AffinitySlot, 0, GamepadButtons.X);
             GamepadManager.UpdateDevice("pointercheck", new GamepadState { Connected = true }, mapped: true);
             GamepadInput.BeginFrame(); // adopt the binding revision on neutral input
-            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, false);
             GamepadInput.Apply(player);
             GamepadManager.UpdateDevice("pointercheck",
                 new GamepadState { Connected = true, Buttons = GamepadButtons.X }, mapped: true);
             GamepadInput.BeginFrame();
-            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, false);
             GamepadInput.Apply(player);
             Require(controls.AffinitySlot.IsDown && controls.AffinitySlot.IsPressed,
                 "controller reaches keyboard-unbound weapon action once");
             GamepadManager.UpdateDevice("pointercheck", new GamepadState { Connected = true }, mapped: true);
             GamepadInput.BeginFrame();
-            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, false);
             GamepadInput.Apply(player);
             Require(!controls.AffinitySlot.IsDown && !controls.AffinitySlot.IsPressed,
                 "released controller cannot leave keyboard-unbound weapon action latched");
@@ -504,7 +516,7 @@ namespace MphRead.Mods.Input
                 PointerDevice.AdvanceSimulationStep();
                 Frame(0, 0, false);
                 Frame(button.X / StylusZone.DsWidth * 1920, button.Y / StylusZone.DsHeight * StylusZone.Height * 1080, true);
-                PlayerEntity.ProcessInput(keyboard, mouse, false);
+                PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, false);
                 Require(!controls.Shoot.IsDown && !controls.AltAttack.IsDown, $"{button.Label} does not fire in real input pass");
                 Keybind bind = button.Region switch
                 {
@@ -537,7 +549,7 @@ namespace MphRead.Mods.Input
                 button => button.Region == StylusRegion.WeaponSelect);
             Frame(select.X / StylusZone.DsWidth * 1920,
                 select.Y / StylusZone.DsHeight * StylusZone.Height * 1080, true);
-            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, false);
             processTouchInput.Invoke(player, null);
             Require(player.Flags1.TestFlag(PlayerFlags1.WeaponMenuOpen),
                 "stylus SEL opens weapon menu");
@@ -546,7 +558,7 @@ namespace MphRead.Mods.Input
             PointerDevice.AdvanceSimulationStep();
             Frame(select.X / StylusZone.DsWidth * 1920,
                 select.Y / StylusZone.DsHeight * StylusZone.Height * 1080, false);
-            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, false);
             processTouchInput.Invoke(player, null);
             Require(!player.Flags1.TestFlag(PlayerFlags1.WeaponMenuOpen)
                 && !player.Flags1.TestFlag(PlayerFlags1.NoAimInput),
@@ -555,9 +567,9 @@ namespace MphRead.Mods.Input
             PointerInput.StylusMode = false;
             Frame(1000, 600, true);
             setButton(mouse, MouseButton.Left, false);
-            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, false);
             setButton(mouse, MouseButton.Left, true);
-            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, false);
             Require(controls.Shoot.IsDown && controls.AltAttack.IsDown && controls.Jump.IsPressed,
                 "normal mouse restores all primary bindings");
             PlayerEntity.Reset();
