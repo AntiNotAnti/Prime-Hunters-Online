@@ -365,10 +365,32 @@ namespace MphRead.Mods.Input
             setKey(keyboard, Keys.H, false);
             PlayerEntity.ProcessInput(keyboard, mouse, false);
 
+            // The stylus WPN action writes directly into NextWeapon after the
+            // raw pass. If its keyboard side is unbound, that contribution must
+            // still last exactly one simulation frame.
+            controls.NextWeapon.Type = ButtonType.Key;
+            controls.NextWeapon.Key = Keys.Unknown;
             PointerDevice.Reset();
             PointerInput.StylusMode = true;
             StylusZone.Enabled = true;
             StylusZone.SetRect(0, 0, 1);
+            StylusZone.Button wpn = Array.Find(StylusZone.Buttons,
+                button => button.Region == StylusRegion.Weapons);
+            float wpnX = wpn.X / StylusZone.DsWidth * 1920;
+            float wpnY = wpn.Y / StylusZone.DsHeight * StylusZone.Height * 1080;
+            Frame(wpnX, wpnY, false);
+            Frame(wpnX, wpnY, true);
+            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            Require(controls.NextWeapon.IsDown && controls.NextWeapon.IsPressed,
+                "stylus reaches keyboard-unbound WPN action once");
+            Frame(wpnX, wpnY, false);
+            PointerDevice.AdvanceSimulationStep();
+            Frame(wpnX, wpnY, false);
+            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            Require(!controls.NextWeapon.IsDown && !controls.NextWeapon.IsPressed,
+                "stylus WPN contribution clears after release when keyboard side is unbound");
+
+            // Continue with the ordinary aim/capture path.
             Frame(1000, 600, false);
             Frame(1000, 600, true);
             setButton(mouse, MouseButton.Left, true);
