@@ -222,7 +222,7 @@ namespace MphRead.Mods.Launcher
             // Back to the four a DS game had: a previous offline match in
             // the same session may have raised this to eight, and the
             // story's own setup counts on the retail number.
-            PlayerEntity.MaxPlayers = 4;
+            window.Scene.Players.MaxPlayers = 4;
             window.AddPlayer(plan.Hunter, recolor: LauncherPrefs.LastColor, team: -1);
             window.AddRoom(roomKey, GameMode.SinglePlayer);
             window.LoadScene();
@@ -319,7 +319,7 @@ namespace MphRead.Mods.Launcher
             // asking for seven opponents would silently produce three. Set
             // rather than raise: the launcher comes back between matches now,
             // and a seven-bot match must not leave the next one at eight.
-            PlayerEntity.MaxPlayers = Math.Max(4, bots + 1);
+            renderer.Scene.Players.MaxPlayers = Math.Max(4, bots + 1);
             // The player's own suit, and the first one for each bot: they are
             // each a different hunter (see below), so nobody collides and
             // there is nothing for PlayerColors to resolve offline.
@@ -331,9 +331,9 @@ namespace MphRead.Mods.Launcher
                 renderer.AddPlayer(hunter, recolor: 0, team: teamPlay ? i % 2 : -1);
             }
             int level = Math.Clamp(plan.BotLevel, 0, 3);
-            for (int i = 0; i < PlayerEntity.Players.Count; i++)
+            for (int i = 0; i < renderer.Scene.Players.Items.Count; i++)
             {
-                PlayerEntity player = PlayerEntity.Players[i];
+                PlayerEntity player = renderer.Scene.Players.Items[i];
                 if (player.IsBot)
                 {
                     player.BotLevel = level;
