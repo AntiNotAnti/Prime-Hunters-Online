@@ -798,6 +798,13 @@ namespace MphRead.Mods.Network
             }
             var sim = new ServerSim();
             MatchDefinition entry = CurrentDefinition;
+            // Join the lobby's in-flight prewarm before the authoritative scene
+            // opens custom-map outputs. A fast START used to race the compiler,
+            // duplicating work or observing files while they were being replaced.
+            if (!Mods.RoomPrewarm.JoinForLoad(entry.RoomKey))
+                Mods.MapGen.CustomRooms.GenerateMissing(entry.RoomKey);
+            if (Mods.MapGen.CustomRooms.WhyUnplayable(entry.RoomKey) is { } unplayable)
+                throw new ProgramException(unplayable);
             if (!sim.Start(entry.RoomKey, entry.Mode, _maxPlayers, SendSnapshot,
                 () => EndMatch(_now, "score"), BuildRoster(), BuildSessionState()))
             {
@@ -809,7 +816,8 @@ namespace MphRead.Mods.Network
             {
                 foreach (var peer in _peers) _transport?.Send(peer.EndPoint, PacketType.ReplayWorld, payload);
             };
-            Mods.RoomPrewarm.Release(entry.RoomKey);
+            // Keep the bounded one-room prewarm cache for same-map rematches.
+            // It is replaced automatically if the lobby selects another room.
             // This server arbitrates its clients' hit claims for as long as it
             // is running the match, so it needs a way to answer them.
             // NetHitClaims.
