@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using MphRead.Mods;
 using MphRead.Mods.Launcher;
 using MphRead.Mods.MapGen;
 
