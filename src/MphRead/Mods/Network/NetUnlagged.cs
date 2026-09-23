@@ -488,9 +488,9 @@ namespace MphRead.Mods.Network
         /// the ack is the exact frame the client is answering -- and having
         /// only one of them means there is only one thing to be wrong.
         /// </summary>
-        private static double RewindFor(int slot, bool allowPressAge, out int requested)
+        private static double RewindFor(int slot, bool allowPressAge, out int requested, out double rawRequested)
         {
-            requested = 0;
+            requested = 0; rawRequested = 0;
             if (slot < 0 || slot >= Slots || slot == NetSession.LocalSlot)
             {
                 // The authority's own player already aims and resolves
@@ -539,6 +539,7 @@ namespace MphRead.Mods.Network
             // Recorded before the clamp, because the clamp is the thing being
             // measured. A depth past the ring is filed in the last cell rather
             // than dropped: it is still a shot that asked for more than it got.
+            rawRequested = Math.Max(0, depth);
             requested = (int)Math.Min(Math.Round(depth), HistoryFrames);
             if (depth > MaxRewindFrames)
             {
@@ -585,10 +586,10 @@ namespace MphRead.Mods.Network
             int slot = shooter.SlotIndex;
             _shotPolicy = WeaponLagPolicies.Resolve(shooter.EquipInfo);
             if (!_shotPolicy.UsesHistoricalPlayers) return;
-            double rewind = RewindFor(slot, _shotPolicy.AllowPressAge, out int requested);
+            double rewind = RewindFor(slot, _shotPolicy.AllowPressAge, out int requested, out double rawRequested);
             if (_shotPolicy.UseShadowPlausibility && LagCompensationPolicy.Plausibility != LagCompPlausibility.Off && rewind > 0)
             {
-                var decision = LagCompensationPolicy.Evaluate(Math.Max(rewind, requested), LagCompensationPolicy.Timing(slot),
+                var decision = LagCompensationPolicy.Evaluate(rawRequested, LagCompensationPolicy.Timing(slot),
                     PressAgeEnabled ? NetPlayerBridge.ShootPressAge[slot] : 0, ceiling: MaxRewindFrames);
                 // Preserve fractional ACK time exactly; rounded histograms must
                 // never become the gameplay time source, including in Shadow.

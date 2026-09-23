@@ -24,3 +24,9 @@ application. ACKs piggyback, with idle ACK-only packets for reliable completion.
 `--reliable` uses the production channel, datagram state and seeded fault scheduler
 under 5% loss, 80 ms jitter, 3% reordering and 1% duplication. It checks exactly-once
 application, retry completion, reserves, dedup span and bounded failure.
+
+Graceful client shutdown leaves its socket and ACK maintenance alive for up to
+two seconds to finish a queued Bye. It does not cancel the retry immediately
+after sending. An unacknowledged close is logged and exposed as
+UnacknowledgedCloseEvents; permanent loss falls back to the existing peer timeout.
+Dispose is idempotent. The eight-peer impaired UDP test also checks this close path.

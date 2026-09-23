@@ -19,6 +19,18 @@ records, not declarations that their old protocol/profile is still current.
 Depth for a given area lives in `.claude/` (indexed in
 `.claude/CLAUDE-INDEX.md`).
 
+## Network modernization
+
+The current transport is protocol 17: endpoint-bound connection IDs, sequence/ACK
+windows, selective reliable control, bounded priority queues and a generation-fenced
+load barrier. The entire migration is one unreleased train. Movement remains
+owner-reported; full snapshots never reconcile the local owner's same-life body.
+Lag-compensation plausibility defaults to Shadow. Weapon timing policy preserves
+existing mechanics and bounds catch-up; homing targets carry lifecycle identity.
+See `docs/network/modernization.md` for evidence and external release gates, and
+`.claude/multiplayer/NETWORK-{TRANSPORT,RELIABILITY,START-LIFECYCLE,LAGCOMP-POLICY,WEAPON-POLICIES}.md`
+for implementation contracts.
+
 ## Where things are
 
 | Path | What |

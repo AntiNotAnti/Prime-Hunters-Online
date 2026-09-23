@@ -14,7 +14,7 @@ public readonly record struct LagTiming(double? RttMilliseconds, double? JitterM
 public readonly record struct LagDecision(double RequestedFrames, double HardAppliedFrames,
     double? ShadowAllowedFrames, bool WouldClamp, double FramesShadowRefused);
 public readonly record struct LagShadowSnapshot(long Shots, long WouldClamp, double RequestedFrames,
-    double HardAppliedFrames, double ShadowRefusedFrames, double WorstRequestedFrames, long OutcomeCount);
+    double HardAppliedFrames, double ShadowRefusedFrames, double WorstRequestedFrames, long OutcomeCount, long TimedShots, double ShadowAllowedFrames);
 
 /// <summary>Connection plausibility is diagnostic by default. ACK time remains
 /// the source of shot time. No defender state participates in this policy.</summary>
@@ -56,7 +56,7 @@ public static class LagCompensationPolicy
     // Server-thread-owned, bounded, match-scoped. Connection observations are
     // refreshed on accepted intent; captures never mutate gameplay or counters.
     private static readonly LagTiming[] _timing = new LagTiming[8];
-    private struct Cell { public long Shots, Clamps; public double Requested, Hard, Refused, Worst; }
+    private struct Cell { public long Shots, Clamps, Timed; public double Requested, Hard, Refused, Worst, Allowed; }
     private const int Weapons = NetShotDiagnostics.WeaponCount, Rtts = 7, Jitters = 4, Delays = 4, Outcomes = 7;
     private static readonly Cell[] _cells = new Cell[8 * Weapons * Rtts * Jitters * Delays];
     private static readonly long[] _outcomes = new long[_cells.Length * Outcomes];
@@ -79,24 +79,25 @@ public static class LagCompensationPolicy
         int at = Index(slot, weapon, RttBucket(timing.RttMilliseconds), JitterBucket(timing.JitterMilliseconds), DelayBucket(timing.PresentationDelayFrames));
         ref Cell cell = ref _cells[at]; cell.Shots++; if (decision.WouldClamp) cell.Clamps++;
         cell.Requested += decision.RequestedFrames; cell.Hard += decision.HardAppliedFrames;
+        if (decision.ShadowAllowedFrames.HasValue) { cell.Timed++; cell.Allowed += decision.ShadowAllowedFrames.Value; }
         cell.Refused += decision.FramesShadowRefused; cell.Worst = Math.Max(cell.Worst, decision.RequestedFrames);
         _outcomes[at * Outcomes + (int)outcome]++;
     }
     public static LagShadowSnapshot CaptureTotal(ShadowOutcome outcome = ShadowOutcome.HistoricalDataUnavailable)
     {
-        long shots = 0, clamps = 0, outcomes = 0; double requested = 0, hard = 0, refused = 0, worst = 0;
+        long shots = 0, clamps = 0, outcomes = 0, timed = 0; double requested = 0, hard = 0, refused = 0, worst = 0, allowed = 0;
         for (int i = 0; i < _cells.Length; i++)
         {
             ref Cell c = ref _cells[i]; shots += c.Shots; clamps += c.Clamps;
             requested += c.Requested; hard += c.Hard; refused += c.Refused; worst = Math.Max(worst, c.Worst);
-            outcomes += _outcomes[i * Outcomes + (int)outcome];
+            outcomes += _outcomes[i * Outcomes + (int)outcome]; timed += c.Timed; allowed += c.Allowed;
         }
-        return new(shots, clamps, requested, hard, refused, worst, outcomes);
+        return new(shots, clamps, requested, hard, refused, worst, outcomes, timed, allowed);
     }
     public static LagShadowSnapshot Capture(int slot, int weapon, int rtt, int jitter, int delay, ShadowOutcome outcome)
     {
         int at = Index(slot, weapon, rtt, jitter, delay); ref Cell c = ref _cells[at];
-        return new(c.Shots, c.Clamps, c.Requested, c.Hard, c.Refused, c.Worst, _outcomes[at * Outcomes + (int)outcome]);
+        return new(c.Shots, c.Clamps, c.Requested, c.Hard, c.Refused, c.Worst, _outcomes[at * Outcomes + (int)outcome], c.Timed, c.Allowed);
     }
 }
 

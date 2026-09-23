@@ -62,7 +62,7 @@ internal static class NetworkBenchmark
                     {
                         var packet = new Datagram(peer, kind == 1, frame);
                         queue.Enqueue(now, packet);
-                        int length = kind == 0 ? IntentPacket.FullSize + 1 : SnapshotHeader.Size + s.Players * PlayerState.Size + 1;
+                        int length = kind == 0 ? IntentPacket.FullSize + NetHeader.Size : SnapshotHeader.Size + s.Players * PlayerState.Size + NetHeader.Size;
                         telemetry.Sent(length);
                         sent++; bytesSent += length; maxPacket = Math.Max(maxPacket, length);
                     }
@@ -77,7 +77,7 @@ internal static class NetworkBenchmark
                     intent.Frame = packet.Frame; intent.Write(buffer);
                     var decoded = IntentPacket.Read(buffer.AsSpan(0, IntentPacket.FullSize));
                     NetArchitectureTests.Check(decoded.Position == intent.Position && decoded.Frame == packet.Frame, "benchmark intent mismatch");
-                    bytesReceived += IntentPacket.FullSize + 1;
+                    bytesReceived += IntentPacket.FullSize + NetHeader.Size;
                 }
                 else
                 {
@@ -88,7 +88,7 @@ internal static class NetworkBenchmark
                         var decoded = PlayerState.Read(buffer.AsSpan(SnapshotHeader.Size + slot * PlayerState.Size));
                         NetArchitectureTests.Check(decoded.SlotIndex == slot && decoded.Position == state.Position, "benchmark snapshot mismatch");
                     }
-                    bytesReceived += SnapshotHeader.Size + s.Players * PlayerState.Size + 1;
+                    bytesReceived += SnapshotHeader.Size + s.Players * PlayerState.Size + NetHeader.Size;
                 }
                 uint previous = newest[kind, packet.Peer];
                 if (seen[kind, packet.Peer])
@@ -99,7 +99,7 @@ internal static class NetworkBenchmark
                 }
                 if (!seen[kind, packet.Peer] || NetLifecycleTracker.Newer(packet.Frame, previous)) newest[kind, packet.Peer] = packet.Frame;
                 seen[kind, packet.Peer] = true;
-                telemetry.Received(kind == 0 ? IntentPacket.FullSize + 1 : SnapshotHeader.Size + s.Players * PlayerState.Size + 1);
+                telemetry.Received(kind == 0 ? IntentPacket.FullSize + NetHeader.Size : SnapshotHeader.Size + s.Players * PlayerState.Size + NetHeader.Size);
                 telemetry.Processed(Stopwatch.GetTimestamp() - start);
                 received++; processed++;
                 timings.Add(Stopwatch.GetElapsedTime(start).TotalMicroseconds);

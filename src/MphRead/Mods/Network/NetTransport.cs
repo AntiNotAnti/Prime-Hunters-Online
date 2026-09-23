@@ -674,8 +674,31 @@ namespace MphRead.Mods.Network
             }
         }
 
+        private int _disposed;
+        public int UnacknowledgedCloseEvents { get; private set; }
+        private int PendingCloseEvents()
+        {
+            lock (_connectionLock)
+            {
+                int count = 0;
+                foreach (var connection in _connections.Values) if (connection.Reliable.HasPending(PacketType.Bye)) count++;
+                return count;
+            }
+        }
         public void Dispose()
         {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            // Keep the socket/ACK worker alive for bounded graceful close.
+            // Disposing immediately after Send(Bye) would cancel its retries.
+            double deadline = NowMilliseconds + 2000;
+            while (_running && PendingCloseEvents() > 0 && NowMilliseconds < deadline)
+            {
+                ServiceConnections();
+                if (_lagWorker != null) PromoteHeldArrivals();
+                Thread.Sleep(5);
+            }
+            UnacknowledgedCloseEvents = PendingCloseEvents();
+            if (UnacknowledgedCloseEvents > 0) NetLog.Event("graceful close deadline expired; remote timeout will finish removal");
             _running = false;
             _cancel.Cancel();
             _socket?.Dispose();

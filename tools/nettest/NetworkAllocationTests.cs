@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Buffers.Binary;
 using MphRead.Mods.Network;
 
 namespace MphRead.NetTest;
@@ -16,8 +17,22 @@ internal static class NetworkAllocationTests
             var intent = IntentPacket.Read(intentBytes);
             var player = new PlayerState();
             var header = new SnapshotHeader { PlayerCount = 8 };
+            var claim = new HitClaimPacket();
+            var envelope = new NetHeader(PacketType.Intent, NetHeaderFlags.AckValid, 7, 9, 8, 255);
+            byte[] envelopeBytes = new byte[NetHeader.Size]; envelope.Write(envelopeBytes);
+            byte[] health = new byte[NetHealthSync.HeaderSize + 56 * NetHealthSync.EntrySize];
+            health[2] = 56;
+            for (short i = 0; i < 56; i++) BinaryPrimitives.WriteInt16LittleEndian(health.AsSpan(3 + i * NetHealthSync.EntrySize), i);
+            NetHealthSync.BeginRoom();
             var operations = new Dictionary<string, Action>
             {
+                ["NetHeader.Read"] = () => { NetHeader.TryRead(envelopeBytes, out var value); _sink = value.Sequence; },
+                ["NetHeader.Write"] = () => envelope.Write(envelopeBytes),
+                ["HitClaim.Read"] = () => _sink = HitClaimPacket.Read(bytes).ClaimId,
+                ["HitClaim.Write"] = () => claim.Write(bytes),
+                ["Health.Validate56"] = () => _sink = NetHealthSync.Validate(health) ? 1u : 0u,
+                ["Health.Receive56"] = () => NetHealthSync.Receive(health),
+                ["Health.ComposeEmpty"] = () => _sink = (uint)NetHealthSync.Write(bytes),
                 ["IntentPacket.Read"] = () => _sink = IntentPacket.Read(intentBytes).Frame,
                 ["IntentPacket.Write"] = () => intent.Write(bytes),
                 ["PlayerState.Read"] = () => _sink = PlayerState.Read(bytes).LifeId,
