@@ -51,6 +51,7 @@ namespace MphRead.Mods.Network
     /// </summary>
     public sealed class NetTransport : IDisposable
     {
+        public NetTransportTelemetry Telemetry { get; } = new();
         private readonly UdpClient? _socket;
         private readonly Thread? _worker;
         private readonly ConcurrentQueue<ReceivedPacket> _inbox = new();
@@ -134,6 +135,7 @@ namespace MphRead.Mods.Network
                     {
                         _latestSnapshot.Value.Release();
                         Interlocked.Increment(ref _statePacketsCoalesced);
+                        Telemetry.Coalesce();
                     }
                     _latestSnapshot = packet;
                     return true;
@@ -147,6 +149,7 @@ namespace MphRead.Mods.Network
                         {
                             _latestSlotIntent[slot]!.Value.Release();
                             Interlocked.Increment(ref _statePacketsCoalesced);
+                        Telemetry.Coalesce();
                         }
                         _latestSlotIntent[slot] = packet;
                         return true;
@@ -195,6 +198,7 @@ namespace MphRead.Mods.Network
             }
             catch (SocketException)
             {
+                Telemetry.Error();
                 // A system that refuses the size keeps its default; the
                 // session still works, it just tolerates less of a stall.
             }
@@ -289,6 +293,7 @@ namespace MphRead.Mods.Network
                         {
                             continue;
                         }
+                        Telemetry.Received(length);
                         if (length == 0 || length > NetConfig.MaxPacketSize
                             || remote is not IPEndPoint sender)
                         {
@@ -340,11 +345,13 @@ namespace MphRead.Mods.Network
                                 Interlocked.Decrement(ref _inboxCount);
                                 dropped.Release();
                             }
+                            Telemetry.Drop();
                             PacketsDropped++;
                             Interlocked.Increment(ref TotalPacketsDropped);
                         }
                         Interlocked.Increment(ref _inboxCount);
                         _inbox.Enqueue(received);
+                        Telemetry.Queue(Volatile.Read(ref _inboxCount));
                         handedOff = true;
                     }
                     finally
@@ -357,6 +364,7 @@ namespace MphRead.Mods.Network
                 }
                 catch (SocketException)
                 {
+                    Telemetry.Error();
                     // Transient: an ICMP unreachable from a peer that left.
                     // Keep serving the peers that are still here.
                 }
@@ -377,6 +385,8 @@ namespace MphRead.Mods.Network
             while (_inbox.TryDequeue(out ReceivedPacket packet))
             {
                 Interlocked.Decrement(ref _inboxCount);
+                Telemetry.Queue(Volatile.Read(ref _inboxCount));
+                long processingStart = Stopwatch.GetTimestamp();
                 if (_socket == null) _playbackBytes -= packet.Length;
                 try
                 {
@@ -384,6 +394,7 @@ namespace MphRead.Mods.Network
                 }
                 finally
                 {
+                    Telemetry.Processed(Stopwatch.GetTimestamp() - processingStart);
                     packet.Release();
                 }
             }
@@ -497,10 +508,12 @@ namespace MphRead.Mods.Network
             try
             {
                 _socket.Send(datagram, target);
+                Telemetry.Sent(datagram.Length);
                 Interlocked.Increment(ref TotalPacketsSent);
             }
             catch (SocketException)
             {
+                Telemetry.Error();
                 // Same rationale as above: one unreachable peer must not
                 // take down the session for everyone else.
             }

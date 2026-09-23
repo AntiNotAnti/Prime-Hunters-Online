@@ -54,6 +54,8 @@ namespace MphRead.Mods.Network
             }
             _lastReport = time;
 
+            var stats = NetSession.CaptureTelemetry();
+            Console.WriteLine($"[netstats] rx={stats.Transport?.PacketsReceived} tx={stats.Transport?.PacketsSent} queue={stats.Transport?.QueueCurrent}/{stats.Transport?.QueueHighWater} drop={stats.Transport?.QueueDrops} delay={stats.Presentation.Delay:F2}f jitter={stats.Presentation.JitterFrames:F2}f rewind={stats.LagComp.MeanApplied:F2}f p95={stats.LagComp.RequestedP95}");
             var line = new StringBuilder();
             line.Append(NetPlayerLifecycle.Describe()).Append(" | ");
             line.Append("[netdbg] role=").Append(NetSession.Role);

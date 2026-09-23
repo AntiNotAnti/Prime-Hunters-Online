@@ -900,3 +900,14 @@ and needs no game state, so there is nothing for it to wait for a frame for.
 
 Measured on loopback, where the true round trip is nil: **8-11 ms before,
 1 ms after.**
+
+## Modernization telemetry
+
+The canonical value API is `NetTelemetry.Capture` / `NetSession.CaptureTelemetry`.
+Transport instances own atomic byte/packet/queue/error/processing counters.
+`NetTelemetry.Match` and `Session` keep separate per-slot intent acceptance and
+lifecycle rejection totals; a new life clears timing baselines, a new match clears
+match totals, slot replacement/Stop clears occupant/session totals. Existing
+smoothing, rewind and combat counters are bridged with their existing reset scope.
+Unavailable measurements are nullable. Capture does not mutate network state.
+The once-per-second `-netdebug` output includes a compact `[netstats] line`.

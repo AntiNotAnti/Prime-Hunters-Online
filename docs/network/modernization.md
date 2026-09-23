@@ -40,3 +40,14 @@ snapshot compose/decode each measure 0 B/op. CaptureIntent copies inline values.
 DedicatedServer keeps an owner-local snapshot buffer; replay still owns copies.
 The byte fixture, full lifecycle/health suite and 16 benchmark cases pass.
 `network-v16-optimized.json` records the post-change workload.
+
+## P0-C
+
+`NetTelemetry.Capture` returns value snapshots bridging transport, accepted and
+rejected intents, snapshots, NetSmoothing, NetUnlagged and combat diagnostics.
+Transport metrics belong to each transport and use atomic counters. Intent match
+and session counters have distinct reset methods; life changes clear arrival/frame
+baselines. Slot replacement resets occupant counters. Unmeasured ages/percentiles
+are null. Legacy combat/rewind counters retain their producer's reset scope.
+`-netdebug` prints the unified surface once per second. The benchmark consumes
+`NetTransportTelemetry` too. No gameplay decision consumes diagnostic counters.

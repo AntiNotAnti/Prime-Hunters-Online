@@ -403,6 +403,7 @@ namespace MphRead.Mods.Network
 
         public static void Stop()
         {
+            NetTelemetry.FullSessionReset();
             ResetLobbySession();
             _playback = false;
             NetPlayerSetup.Reset();
@@ -1293,14 +1294,22 @@ namespace MphRead.Mods.Network
             {
                 return;
             }
+            NetIntentRejection reason = intent.MatchId != CurrentMatchId ? NetIntentRejection.WrongMatch
+                : intent.AuthorityEpoch != AuthorityEpoch ? NetIntentRejection.WrongEpoch
+                : intent.SlotGeneration != NetPlayerLifecycle.Generation(slot) ? NetIntentRejection.WrongGeneration
+                : intent.LifeId != NetPlayerLifecycle.Get(slot) ? NetIntentRejection.WrongLife : NetIntentRejection.None;
             // Identity is checked before ordering. A new occupant/life clears
             // the frame baseline; a late packet can never reset it.
-            if (!NetPlayerLifecycle.AcceptIntent(slot, intent)) return;
+            if (!NetPlayerLifecycle.AcceptIntent(slot, intent))
+            { NetTelemetry.Intent(slot, intent.Frame, reason == NetIntentRejection.None ? NetIntentRejection.Invalid : reason); return; }
             if (_lastSlotIntentFrame[slot] != 0 && !NetLifecycleTracker.Newer(intent.Frame, _lastSlotIntentFrame[slot]))
             {
                 IntentsOutOfOrder++;
+                NetTelemetry.Intent(slot, intent.Frame, intent.Frame == _lastSlotIntentFrame[slot]
+                    ? NetIntentRejection.Duplicate : NetIntentRejection.Reordered);
                 return;
             }
+            NetTelemetry.Intent(slot, intent.Frame, NetIntentRejection.None);
             _lastSlotIntentFrame[slot] = intent.Frame;
             RemoteIntents[slot] = intent;
             RemoteIntentValid[slot] = true;
@@ -1334,6 +1343,7 @@ namespace MphRead.Mods.Network
             {
                 return;
             }
+            NetTelemetry.NewLife(slot);
             ContinuousPhase.ResetSlot(slot);
             _lastSlotIntentFrame[slot] = 0;
             RemoteIntentArrived[slot] = 0;
@@ -1558,6 +1568,7 @@ namespace MphRead.Mods.Network
                     }
                 }
                 else if (newMatch) NetPlayerLifecycle.ResetLives();
+                if (newMatch) NetTelemetry.NewMatch();
                 SnapshotStreamResets++;
             }
             if (newMatch || previous?.RoomKey != state.RoomKey)
@@ -1585,6 +1596,8 @@ namespace MphRead.Mods.Network
             if (epoch == 0 || epoch != AuthorityEpoch) { NetPlayerLifecycle.CrossAuthority++; return false; }
             return true;
         }
+
+        public static NetTelemetrySnapshot CaptureTelemetry() => NetTelemetry.Capture(_transport);
 
         public static long SnapshotsOutOfOrder { get; private set; }
 

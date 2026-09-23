@@ -40,6 +40,17 @@ internal static class NetArchitectureTests
     {
         try
         {
+            var counters = new NetPeerTelemetry();
+            counters.Intent(10, NetIntentRejection.None, 100);
+            counters.Intent(12, NetIntentRejection.None, 200);
+            counters.Intent(12, NetIntentRejection.Duplicate, 201);
+            var captured = counters.Capture(300);
+            Check(captured.Accepted == 2 && captured.Duplicate == 1 && captured.FrameGaps == 1,
+                "telemetry counts accepted and rejected separately");
+            Check(counters.Capture(300) == captured, "telemetry reads are pure");
+            counters.NewLife(); counters.Intent(1, NetIntentRejection.None, 400);
+            Check(counters.Capture(500).FrameGaps == 1, "new life cannot inherit frame gaps");
+            counters.Reset(); Check(counters.Capture().SilenceMilliseconds == null, "unavailable age is explicit");
             var fixture = IntentFixture();
             var intent = IntentPacket.Read(fixture);
             Check(intent.Position == new Vector3(123.25f, -42.5f, 17.75f), "owner position survives wire");

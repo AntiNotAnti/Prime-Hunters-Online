@@ -51,6 +51,7 @@ internal static class NetworkBenchmark
         for (int i = 0; i < 1000; i++) { intent.Write(buffer); _ = IntentPacket.Read(buffer); state.Write(buffer); _ = PlayerState.Read(buffer); }
         long allocated = GC.GetAllocatedBytesForCurrentThread();
         int g0 = GC.CollectionCount(0), g1 = GC.CollectionCount(1), g2 = GC.CollectionCount(2);
+        var telemetry = new NetTransportTelemetry();
         var clock = Stopwatch.StartNew();
         for (uint frame = 1; frame <= ticks + 120; frame++)
         {
@@ -62,9 +63,10 @@ internal static class NetworkBenchmark
                         var packet = new Datagram(peer, kind == 1, frame);
                         queue.Enqueue(now, packet);
                         int length = kind == 0 ? IntentPacket.FullSize + 1 : SnapshotHeader.Size + s.Players * PlayerState.Size + 1;
+                        telemetry.Sent(length);
                         sent++; bytesSent += length; maxPacket = Math.Max(maxPacket, length);
                     }
-            high = Math.Max(high, queue.Count);
+            high = Math.Max(high, queue.Count); telemetry.Queue(queue.Count);
             int processed = 0;
             while (queue.TryDequeue(now, out Datagram packet))
             {
@@ -97,6 +99,8 @@ internal static class NetworkBenchmark
                 }
                 if (!seen[kind, packet.Peer] || NetLifecycleTracker.Newer(packet.Frame, previous)) newest[kind, packet.Peer] = packet.Frame;
                 seen[kind, packet.Peer] = true;
+                telemetry.Received(kind == 0 ? IntentPacket.FullSize + 1 : SnapshotHeader.Size + s.Players * PlayerState.Size + 1);
+                telemetry.Processed(Stopwatch.GetTimestamp() - start);
                 received++; processed++;
                 timings.Add(Stopwatch.GetElapsedTime(start).TotalMicroseconds);
             }
@@ -105,7 +109,7 @@ internal static class NetworkBenchmark
         long allocationBytes = GC.GetAllocatedBytesForCurrentThread() - allocated;
         clock.Stop(); timings.Sort();
         NetArchitectureTests.Check(queue.Count == 0 && maxPacket <= NetConfig.MaxPacketSize, "drained queue and packet budget");
-        return new { scenario = s, durationSeconds = 10, packetsSent = sent, packetsReceived = received, bytesSent, bytesReceived,
+        return new { telemetry = telemetry.Capture(), scenario = s, durationSeconds = 10, packetsSent = sent, packetsReceived = received, bytesSent, bytesReceived,
             intentPackets = ticks * s.Players, snapshotPackets = ticks * s.Players, controlPackets = 0,
             transportQueueHighWater = high, injectedDrops = queue.Dropped, transportDrops = 0, coalescedPackets = 0,
             meanProcessingMicroseconds = timings.Average(), p95ProcessingMicroseconds = timings[(int)(timings.Count * .95)],

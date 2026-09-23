@@ -71,6 +71,7 @@ namespace MphRead.Mods.Network
 
         public static void OnSlotChanged(int slot)
         {
+            NetTelemetry.ForgetSlot(slot);
             NetPlayerBridge.ForgetSlot(slot);
             NetDamage.ForgetSlot(slot);
             NetHitPrediction.ForgetSlot(slot);

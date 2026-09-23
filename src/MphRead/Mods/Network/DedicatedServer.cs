@@ -39,6 +39,7 @@ namespace MphRead.Mods.Network
     {
         private sealed class Peer
         {
+            public readonly NetPeerTelemetry Telemetry = new();
             public IPEndPoint EndPoint = null!;
             public int SlotIndex = -1;
             public double LastSeen;
@@ -459,6 +460,11 @@ namespace MphRead.Mods.Network
                     if (now - lastStateBroadcast >= 1.0)
                     {
                         lastStateBroadcast = now;
+                        if (NetDiagnostics.Enabled)
+                        {
+                            var stats = _transport.Telemetry.Capture();
+                            Log($"[netstats] rx={stats.PacketsReceived} tx={stats.PacketsSent} queue={stats.QueueCurrent}/{stats.QueueHighWater} drops={stats.QueueDrops}");
+                        }
                         // Order matters only in that the roster carries the last
                         // measurement: ping first, publish second.
                         PingPeers(now);
@@ -2226,8 +2232,11 @@ namespace MphRead.Mods.Network
             {
                 IntentPacket intent = IntentPacket.Read(packet.Payload);
                 ushort life = _sim != null ? NetPlayerLifecycle.Get(peer.SlotIndex) : _slotLives[peer.SlotIndex];
-                if (intent.MatchId != _matchId || intent.AuthorityEpoch != _authorityEpoch
-                    || intent.SlotGeneration != _slotGenerations[peer.SlotIndex] || intent.LifeId != life) return;
+                var rejection = intent.MatchId != _matchId ? NetIntentRejection.WrongMatch
+                    : intent.AuthorityEpoch != _authorityEpoch ? NetIntentRejection.WrongEpoch
+                    : intent.SlotGeneration != _slotGenerations[peer.SlotIndex] ? NetIntentRejection.WrongGeneration
+                    : intent.LifeId != life ? NetIntentRejection.WrongLife : NetIntentRejection.None;
+                if (rejection != NetIntentRejection.None) { peer.Telemetry.Intent(intent.Frame, rejection); return; }
                 if (_sim != null)
                 {
                     // Straight into the simulation, one hop earlier than a
@@ -2253,8 +2262,11 @@ namespace MphRead.Mods.Network
                 // the old one. Same ten seconds NetSession allows.
                 if (peer.LastIntentFrame != 0 && !NetLifecycleTracker.Newer(intent.Frame, peer.LastIntentFrame))
                 {
+                    peer.Telemetry.Intent(intent.Frame, peer.LastIntentFrame == intent.Frame
+                        ? NetIntentRejection.Duplicate : NetIntentRejection.Reordered);
                     return;
                 }
+                peer.Telemetry.Intent(intent.Frame, NetIntentRejection.None);
                 peer.LastIntentFrame = intent.Frame;
                 // Only meaningful between the end of one match and the start
                 // of the next; read unconditionally because it costs nothing
