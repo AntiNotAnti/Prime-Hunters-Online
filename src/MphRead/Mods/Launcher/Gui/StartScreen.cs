@@ -184,7 +184,7 @@ namespace MphRead.Mods.Launcher.Gui
             if (!GameFiles.Ready) OpenSetup();
         }
         public bool GoBack() { _prime.Back(); return true; }
-        public void Dispose() { _session.Stop(); _session.Screen = null; _prime.Overlays.Clear(); _prime.Workspaces.Dispose(); Content = null; }
+        public void Dispose() { Content = null; _session.Dispose(); _prime.Overlays.Clear(); _prime.Dispose(); }
         private void ShowGround(bool show)
         {
             _prime.Header.IsVisible = show; _prime.Footer.IsVisible = show;
@@ -471,7 +471,7 @@ namespace MphRead.Mods.Launcher.Gui
                     HubTheme.Warm, pressable: true);
                 return;
             }
-            Say($"BUILD  //  {number}", BuildVersion.IsRelease && Updater.Checked
+            Say($"SIM: 60 HZ  //  BUILD  //  {number}", BuildVersion.IsRelease && Updater.Checked
                 ? GuiTheme.Good : GuiTheme.TextDim);
         }
 

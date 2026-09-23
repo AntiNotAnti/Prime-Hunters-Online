@@ -8,7 +8,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 namespace MphRead.Mods.Launcher.Gui
 {
-    internal sealed class PrimeShell : UserControl
+    internal sealed class PrimeShell : UserControl, IDisposable
     {
         public PrimeRouter Router { get; } = new();
         public PrimeWorkspaceHost Workspaces { get; }
@@ -17,6 +17,7 @@ namespace MphRead.Mods.Launcher.Gui
         public PrimeFooter Footer { get; }
         public Func<bool>? BackRequested { get; set; }
         private readonly LayoutTransformControl _canvas;
+        private readonly PrimeUiPulse _pulse;
         private double _scale = 1;
         public PrimeShell(Func<PrimeRoute, Control> create, Action update)
         {
@@ -34,12 +35,12 @@ namespace MphRead.Mods.Launcher.Gui
             Router.Changed += route => { Workspaces.Show(route); Header.SetRoute(route); Refresh(); };
             AddHandler(KeyDownEvent, HandleKey, RoutingStrategies.Tunnel);
             AddHandler(KeyDownEvent, HandleDirection, RoutingStrategies.Bubble);
-            var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-            timer.Tick += (_, _) => Refresh();
-            AttachedToVisualTree += (_, _) => { timer.Start(); Refresh(); };
-            DetachedFromVisualTree += (_, _) => timer.Stop();
+            _pulse = new PrimeUiPulse(TimeSpan.FromSeconds(1), Refresh);
+            AttachedToVisualTree += (_, _) => { _pulse.Start(); Refresh(); };
+            DetachedFromVisualTree += (_, _) => _pulse.Stop();
             Header.SetRoute(PrimeRoute.News);
         }
+        public void Dispose() { Content = null; _pulse.Dispose(); Workspaces.Dispose(); }
         public void Start() => Workspaces.Show(Router.Current);
         public void Refresh() { var state = PrimeGlobalState.Read(); Header.Refresh(state); Footer.Refresh(state); }
         public bool Back()

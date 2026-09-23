@@ -244,7 +244,7 @@ namespace MphRead.Mods.Launcher.Gui
                 _frame.BorderBrush = hot || _selected ? PrimeTheme.CyanStrongBrush : _tab ? Brushes.Transparent : PrimeTheme.BorderBrush;
                 _frame.BorderThickness = _tab && !IsFocused ? new Thickness(0, 0, 0, _selected ? 2 : 0) : new Thickness(1);
                 _label.Foreground = _primary ? PrimeTheme.BackgroundDeepBrush : hot || _selected ? PrimeTheme.CyanBrush : PrimeTheme.TextBrush;
-                _frame.Opacity = _pressed ? .76 : IsEffectivelyEnabled ? 1 : .48;
+                _frame.Opacity = _pressed ? .76 : IsEnabled && IsEffectivelyEnabled ? 1 : .48;
                 _shift.X = 0;
                 return;
             }
@@ -255,7 +255,7 @@ namespace MphRead.Mods.Launcher.Gui
             _rail.Opacity = emphasized || _primary ? 1 : 0.35;
             _label.Foreground = emphasized || _primary ? _accent : HubTheme.TextBrush;
             _shift.X = interactive && IsEffectivelyEnabled ? 2 : 0;
-            _frame.Opacity = _pressed ? 0.76 : IsEffectivelyEnabled ? 1 : 0.48;
+            _frame.Opacity = _pressed ? 0.76 : IsEnabled && IsEffectivelyEnabled ? 1 : 0.48;
         }
     }
 }

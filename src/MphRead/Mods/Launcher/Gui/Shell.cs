@@ -858,8 +858,8 @@ namespace MphRead.Mods.Launcher.Gui
             w =>
             {
                 Shot(w, "shell-endgame");
-                if (Mods.EndScreen.CharacterChangeEnabled)
-                    Click(c => c is DeckButton tab && tab.Text == "Change hunter");
+                // Some rule sets do not expose character changes at results.
+                UiSurface.Current?.ClickOn(c => c is DeckButton tab && tab.Text == "Change hunter");
                 Wait(30);
             },
             w => { Shot(w, "shell-endgame-hunter"); ReleaseResults(); Wait(20); },

@@ -142,7 +142,20 @@ namespace MphRead.Mods.Launcher.Gui
                             Geometry(shell, size, route);
                         }
                     }
-                    shell.Workspaces.Dispose();
+                    shell.Dispose();
+                    Deck.Still = false;
+                    var animated = new PrimePanel(PrimeChrome.Text("motion"));
+                    HubMotion.Enter(animated); Dispatcher.UIThread.RunJobs();
+                    Check(animated.Opacity == 1 && animated.RenderTransform == null, "headless frame clock completes route motion");
+                    Deck.Still = true;
+                    int pulses = 0;
+                    using var pulse = new PrimeUiPulse(TimeSpan.FromMilliseconds(10), () =>
+                    { Check(Dispatcher.UIThread.CheckAccess(), "wall-clock pulse runs on UI thread"); pulses++; });
+                    pulse.Start(); System.Threading.Thread.Sleep(60); Dispatcher.UIThread.RunJobs();
+                    Check(pulses > 0, "embedded shell pulse advances without a native event loop");
+                    pulse.Stop(); int stopped = pulses;
+                    System.Threading.Thread.Sleep(30); Dispatcher.UIThread.RunJobs();
+                    Check(pulses == stopped, "detached shell pulse stops");
                 });
                 Console.WriteLine($"[primeuicheck] PASS: {_checks} checks"); return 0;
             }

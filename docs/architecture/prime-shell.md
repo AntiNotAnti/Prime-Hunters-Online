@@ -38,6 +38,8 @@ play-type, offline/adventure and settings-category landing screens are removed.
 - Roster topology changes create/remove rows. Readiness, hunter, team, selection
   and ping changes update existing rows. Display refreshes are throttled to one
   second; pending commands/start barriers retain their existing backend cadence.
+  Both coordinator and chrome use a bounded UI-thread pulse that also works in
+  the embedded desktop event loop. No lobby pulse runs without an active screen.
 - `PrimeGlobalState` refreshes chrome once per second. Simulation is **60 Hz**;
   no 128 Hz, player population, GPU latency, rank or server health is invented.
   Update progress is preserved across telemetry refreshes.
@@ -45,7 +47,8 @@ play-type, offline/adventure and settings-category landing screens are removed.
   directional navigation and restores prior focus. Escape/B closes the top sheet
   first. Android Back is consumed at the root; quitting requires the system menu.
 - Q/E belongs to text/binding capture or the focused Forge viewport when editing;
-  otherwise it switches routes. The replay editor uses existing transport,
+  otherwise it switches routes. Route motion uses the renderer frame callback,
+  including the headless desktop compositor. The replay editor uses existing transport,
   timeline, cameras and export controls; explicit fullscreen hides the shell.
 - Spectate joins an available ordinary player slot and then enters the existing
   spectator camera after loading. It does not bypass server capacity, passwords,
@@ -95,5 +98,6 @@ geometry checks; these are not pixel-equality tests against concept art.
 Manual release acceptance still requires actual mouse/touch/controller sessions
 on target hardware, an Android landscape device, a live multi-client lobby
 (start/leave/rejoin while visiting other tabs), and recorded replay/Forge
-playtest round trips. Automated builds and landscape captures do not substitute
+playtest round trips. The local game-window smoke also exercises Offline launch, fullscreen/resize,
+pause/settings and match return. Automated builds and landscape captures do not substitute
 for these device and multiplayer checks.
