@@ -141,6 +141,7 @@ namespace MphRead.Mods.Input
             Frame(1530, 615, true, independentDown: true);
             Require(PointerDevice.PrimaryDown, "native independent mouse is not captured");
             Frame(1540, 620, false);
+            PointerDevice.AdvanceSimulationStep();
             Frame(100, 600, false);
             Frame(1500, 600, true);
             Frame(1505, 602, true); // touchdown picture had no simulation step
