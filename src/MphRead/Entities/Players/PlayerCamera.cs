@@ -1000,11 +1000,69 @@ namespace MphRead.Entities
 
             float t = (float)Math.Clamp(alpha, 0.0, 1.0);
             position = Vector3.Lerp(_drawPreviousPosition, _drawCurrentPosition, t);
+            target = Vector3.Lerp(_drawPreviousTarget, _drawCurrentTarget, t);
+            up = Vector3.Lerp(_drawPreviousUp, _drawCurrentUp, t);
+            fov = _drawPreviousFov + (_drawCurrentFov - _drawPreviousFov) * t;
+            if (!IsFinite(position) || !IsFinite(target) || !IsFinite(up)
+                || (target - position).LengthSquared < 0.000001f || up.LengthSquared < 0.000001f)
+            {
+                return false;
+            }
+            up = up.Normalized();
+            return true;
+        }
+
+        /// <summary>
+        /// Local first-person legacy aiming needs angular interpolation rather
+        /// than target-point interpolation: the target is just a direction endpoint,
+        /// and during a fast spin two endpoints can cross through the camera.
+        /// Scripted/replay/spectator cameras keep <see cref="ModGetDrawPose"/>,
+        /// where the target may be an authored world-space point.
+        /// </summary>
+        internal bool ModGetFirstPersonDrawPose(double alpha, out Vector3 position,
+            out Vector3 target, out Vector3 up, out float fov)
+        {
+            if (!_drawStateValid)
+            {
+                position = Position;
+                Vector3 facingNow = Target - Position;
+                if (!ModInterpolateDirection(facingNow, facingNow, 1, out Vector3 facing))
+                {
+                    target = Target;
+                    up = Vector3.UnitY;
+                    fov = Fov;
+                    return false;
+                }
+                up = UpVector;
+                up -= facing * Vector3.Dot(up, facing);
+                if (!IsFinite(up) || up.LengthSquared < 0.000001f)
+                {
+                    Vector3 reference = MathF.Abs(facing.Y) < 0.999f
+                        ? Vector3.UnitY : Vector3.UnitZ;
+                    up = reference - facing * Vector3.Dot(reference, facing);
+                }
+                if (!IsFinite(up) || up.LengthSquared < 0.000001f)
+                {
+                    target = Target;
+                    fov = Fov;
+                    return false;
+                }
+                up = up.Normalized();
+                target = position + facing * Math.Max(facingNow.Length, 1f);
+                fov = Fov;
+                return true;
+            }
+
+            float t = (float)Math.Clamp(alpha, 0.0, 1.0);
+            position = Vector3.Lerp(_drawPreviousPosition, _drawCurrentPosition, t);
 
             Vector3 previousFacing = _drawPreviousTarget - _drawPreviousPosition;
             Vector3 currentFacing = _drawCurrentTarget - _drawCurrentPosition;
             if (!ModInterpolateDirection(previousFacing, currentFacing, t, out Vector3 facing))
             {
+                target = Target;
+                up = UpVector;
+                fov = Fov;
                 return false;
             }
 
@@ -1025,10 +1083,6 @@ namespace MphRead.Entities
             {
                 up = Vector3.UnitY;
             }
-            // LookAt's up hint must not collapse toward the facing vector
-            // during a fast turn. Remove any forward component and rebuild a
-            // deterministic fallback only when the authored up becomes nearly
-            // parallel to the interpolated direction.
             up -= facing * Vector3.Dot(up, facing);
             if (!IsFinite(up) || up.LengthSquared < 0.000001f)
             {
