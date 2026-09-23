@@ -248,7 +248,7 @@ namespace MphRead.Mods.Network
         /// </summary>
         public static (string RoomKey, GameMode Mode)? ServerRoom()
         {
-            if (DemoPlayback.IsIsolated && DemoPlayback.Session.Host.Match is { } replayMatch)
+            if (DemoPlayback.IsActive && DemoPlayback.Session.Host.Match is { } replayMatch)
                 return (replayMatch.RoomKey, (GameMode)replayMatch.Mode);
             if (NetSession.ActiveMatchDefinition is { } definition)
                 return (definition.RoomKey, definition.Mode);

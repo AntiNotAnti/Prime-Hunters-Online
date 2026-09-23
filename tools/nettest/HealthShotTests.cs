@@ -63,12 +63,9 @@ namespace MphRead.NetTest
             roster.Slots[0] = 0; roster.Generations[0] = 9;
             roster.Slots[1] = 1; roster.Generations[1] = 10;
             NetSession.ApplyRoster(roster);
-            byte[] welcome = new byte[18]; welcome[0] = (byte)PacketType.Welcome;
-            BinaryPrimitives.WriteUInt32LittleEndian(welcome.AsSpan(2), NetSession.ClientId);
-            BinaryPrimitives.WriteUInt16LittleEndian(welcome.AsSpan(6), 51);
-            BinaryPrimitives.WriteUInt64LittleEndian(welcome.AsSpan(8), 4);
-            BinaryPrimitives.WriteUInt16LittleEndian(welcome.AsSpan(16), 9);
-            Deliver(welcome);
+            // This packet-only prediction fixture supplies its local actor directly.
+            // Playback must reject Welcome; real UDP admission has its own test.
+            typeof(NetSession).GetProperty(nameof(NetSession.LocalSlot))!.SetValue(null, 0);
             var own = State(2); own.SlotIndex = 0; own.SlotGeneration = 9;
             NetPlayerLifecycle.AcceptState(own, 1);
             Snapshot(1, State());

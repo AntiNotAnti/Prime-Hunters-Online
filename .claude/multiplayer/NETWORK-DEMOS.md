@@ -1,91 +1,85 @@
 # Replay system
 
-`ReplayLiveWorld` now produces the live timeline's world checkpoints from a private
-canonical replica, using accepted facts rather than live scene references. It steps
-on the scene owner and captures every 300 frames. Pending values are bounded to
-8,192 records/4 MiB; capture failure invalidates history until reset. Quiet frames
-advance clip availability. `-replaylivecheck FILE` verifies frozen playback through
-a source match reset and backward seek. Initial reconstruction only knows facts
-captured since joining; it cannot reconstruct projectiles predating that boundary.
+The [architecture acceptance report](../../docs/architecture/replay-map-upgrade-status.md)
+and [measurements](../../docs/architecture/replay-map-performance.md) describe the
+completed migration. Older packet-stream design notes are retained separately in
+[NETWORK-DEMOS-HISTORY.md](NETWORK-DEMOS-HISTORY.md); those are historical.
 
-`-replayworldcheck FILE [-output DIR]` generates asset-backed synthetic fixtures
-for all 12 multiplayer modes with eight actors and all seven hunters. Detached
-restores, continuation, interleaved worlds and frozen-clip seeks run through
-weapons, alt forms, afflictions, death and respawn. Effect asset binding uses
-element ordinals because names may repeat. Timed goals apply before room loading;
-historical match clocks interpolate between accepted updates, preserving no-limit
-and ending behavior. This is synthetic coverage, not live combat acceptance.
+## Ownership and accepted facts
 
-New recordings and instant clips use `.ppdemo` v4: v3's CRC/index envelope plus
-bounded exact initial-world bytes, source origin and hidden warmup. Versions 2/3
-remain readable without format changes. Client/server full recordings and instant
-clips subscribe to one accepted-fact recorder. Clip disk writes run off the scene
-owner; frozen values survive reset. Extraction preserves the source world and all
-required warmup facts, including nested ranges and v2 compatibility construction.
+`ReplayCapture` feeds one `ReplayRecorder` with accepted match/configuration,
+roster, lifecycle-filtered snapshots, remote intents, local submitted input and
+semantic events. Local input is presentation evidence, never hit authority.
+`ReplayTimeline` is independent of UI, renderer, sockets and files. Values own
+their payloads; frozen clips remain valid after reset. History retains at least
+45 seconds, grows to cover configured clips/post-roll, and is capped at 64 MiB.
+Eviction removes whole restore segments. A missing fact invalidates continuation.
 
-Foreground Studio uses `PassiveReplayPlayer`. `DemoPlayback`/`ReplayController`
-bridge only presentation/transport; normal playback never starts `NetSession`.
-The theatre packet host is explicit diagnostic compatibility only. The private
-player owns seeking, world lifetime and GL cleanup. Watching another actor changes
-presentation only; fixed replica perspective keeps simulation RNG deterministic.
-Replay Lab detaches a selected actor into offline practice only without a live
-connection. Protocol mismatch is refused before decoding.
+`ReplayLiveWorld` consumes those accepted facts in a private canonical replica,
+steps on the scene owner and captures world checkpoints every 300 frames. Pending
+facts are bounded to 8,192 records/4 MiB. Failure invalidates capture until reset;
+it cannot invent projectiles predating the initial capture boundary. Quiet frames
+advance availability. Network baselines are not complete world checkpoints.
 
-Scenes now own player allocation, match arrays/rules, RNG, camera sequences,
-rotating-item state and enemy/platform projectile pools. Creating another scene
-allocates fresh actors; a passive scene never changes foreground facade bindings.
-Entity/effect randomness comes from the owning scene. Controller aim processing
-is skipped for puppets and replica actors. The passive scene uses its own fixed step and replication bridge, health-spawn
-state, continuous-weapon phases, HUD queue and silent sound backend. It never
-polls live input or resolves damage. Replica rendering uploads an explicit camera
-and excludes foreground HUD/Studio side effects. Scene texture allocations and
-shared model leases allow both worlds to coexist in one context.
+`PassiveReplayScene` owns its player registry, match state, RNG, camera sequences,
+projectile pools, replication/lifecycle/order histories, HUD messages and silent
+sound routing. It never polls live input, opens a socket, resolves authoritative
+damage or rebinds foreground facades. Replica nodes, materials, meshes, matrices,
+portals and room collision activation belong to that scene. Immutable asset
+geometry/animation definitions may be shared; native resources have explicit
+owner lifetimes. Disposing a sibling cannot change the foreground or another replay.
 
-The rolling recorder also retains accepted remote intents, submitted local input
-for presentation and recorded session rules. Network baselines include held input
-only for the matching occupant generation and life. Local input is never evidence
-of a confirmed hit. Ricochet scratch equipment belongs to each projectile.
+`DemoPlayback` and `ReplayController` bridge foreground Studio presentation and
+transport to `PassiveReplayPlayer`. Both files and frozen clips use that player.
+The only legacy network-host adapter is private to `ReplayFormatCheck`, where it
+checks old packet compatibility. There is no production theatre fallback, pose
+killcam ring, live historical draw substitution or replay sampler in `NetSmoothing`.
 
-`-replayreplicacheck FILE [-shots DIR]` compares two scenes interleaved at different
-rates and checks foreground network/RNG/player/bridge sentinels every frame and
-through teardown. With screenshots it additionally requires identical pictures
-before and after disposing the sibling. On a 1,801-frame protocol-16 recording,
-357 frames contained projectiles and all checks passed on macOS OpenGL 2.1.
-Gameplay hash schema 3 covers gameplay RNG, projectile/bomb membership and state,
-pickups, scores, players and objectives. A separate presentation projection checks
-model animation, projectile trails and effect particles. Presentation-only changes
-do not invalidate gameplay hashes; older hash schemas are explicitly skipped while
-their replay packets remain readable. The check compares both projections on every
-frame, including when the sibling scene runs in batches.
-These per-frame checks establish deterministic reconstruction from packet-visible
-facts. Historical authoritative world/objective capture and killcam integration
-remain outstanding; detached restore validation is described below.
+## Historical world and checkpoints
 
-Detached checkpoint components now include a versioned, bounded replica-decoder
-payload and model animation state. Decoder restore retains packet ordering,
-occupants, death tombstones, input ages, rules, RNG and pickup state, and validates
-into a temporary owner before applying. Animation restore refers to model names
-and group ordinals, never GPU handles or live model references. These components
-are **not** full scene restore points by themselves; the world capsule below
-assembles entity membership, links, simulation and effect state.
-The replica check restores decoder values every frame and deliberately perturbs
-and restores all entity-model animations between batches.
+`ReplayWorldCheckpoint` is a bounded explicit value contract (8 MiB/32,768 graph
+objects), with decoder/order/lifecycle/input-age state, entity membership/pool
+order, links, queues, animation, effects/particles, clocks and RNG. World version 2
+also preserves mutable model/material/node state and room/portal activation;
+version 1 remains readable. Payloads use asset identities and construction anchors,
+never live references or GPU handles. Restore targets an unpublished replica with
+matching room content and construction baseline, rebinds its own resources and
+publishes only after validation. Unknown contracts fail closed.
 
-`ReplayWorldCheckpoint` now assembles those components with an explicit field
-contract for multiplayer entities, membership/pool order, local links, queued
-messages, effects/particles, clocks, RNG and replication/continuous-fire history.
-Capsules own bounded bytes (8 MiB/32,768 objects), never native handles or live
-objects. Asset identities and construction anchors resolve in an independently
-loaded scene with matching room content and initial decoder baseline. Resource
-rebinding does not call gameplay initialization. Unsupported schemas fail closed.
+Optional protocol-16 packet 42 supplies replay-only authoritative world facts:
+flags and carriers, capture nodes/progress/occupants, pickup spawners, stable-ID
+dropped items, doors/collision, team scores, Prime actor, match phase/clock and
+ending cause. The bounded extension uses atomic fragment assembly; live clients
+record it without applying it to gameplay. Legacy recordings still reconstruct
+from the evidence their original format actually contains. Semantic events include
+headshots, flag/node captures, Prime changes and match point; no overtime event is
+fabricated for modes that have no overtime rule.
 
-`PassiveReplayPlayer` owns file/frozen-clip playback and a 64 MiB/128-entry cache,
-with checkpoints every 300 frames and at most 120 seek steps per update. Restore
-only targets an unpublished replica; it replaces the presented scene after success.
-Frozen clips require `ReplicaCheckpoint` and continue after timeline reset. The
-1,801-frame fixture passes seven restores, 1,500 continuation frames, seven exact
-restored images and 61 seek/clip comparisons. This is not all-mode/live killcam
-acceptance. Live checkpoint capture and foreground consumer migration remain.
+The player caches at most 128 checkpoints/64 MiB and chooses the nearest usable
+in-memory or durable file checkpoint. Every host update performs at most 120 seek
+steps; audio and presentation stay suppressed until ready. Invalid optional file
+checkpoints are rejected and reconstruction uses a valid earlier source. The
+original recording is never modified. New files retain at most 4,096 durable
+checkpoints/256 MiB compressed, spooled to a private temporary file during capture.
+Seek diagnostics show source, restore frame, work, elapsed time and rejected entries.
+
+## Killcams
+
+`KillCam` reads live lifecycle and routes boundary input/presentation to an
+instance `KillcamController`. Personal replays freeze 120 pre-death frames and
+hold EOF for at most 15 ticks. Authoritative respawn, occupant/life change,
+disconnect, disable, match/epoch change and skip end them immediately. Gameplay
+continues behind the private scene. Held fire must be released before a new press
+can skip; the transition clears input so it cannot fire into the live match.
+Android callbacks enqueue skip requests; only the scene owner disposes GL/audio.
+
+Kill identity includes match, authority epoch, server tick, damage event, killer
+and victim generations, and victim life. Final candidates freeze up to 300 frames,
+play at 2x and fit the existing match-ending window. New authorities identify the
+exact ending cause/kill. Older servers use a bounded causal/timed fallback; a stale
+unrelated kill cannot become the final replay. Missing history simply skips replay.
+The replay owns its HUD and versioned audio lease. Every projectile, effect and
+attacker animation comes from that historical scene, with no live draw substitutions.
 
 ## Controls and clock
 
@@ -132,67 +126,57 @@ The replay HUD shows time, duration, rate, watched player/camera, event marks,
 and stopped/error state; it dims after inactivity. Presentation is suppressed
 and audio is muted/stopped during fast-forward seek batches.
 
-## V3 storage and safety
+## Presentation and export
 
-`ReplayFormatV3.cs` contains a bounded binary reader/writer with no new package.
-The uncompressed dispatch prefix remains `PPDM`, format byte, protocol byte.
-It is followed by length/CRC-protected metadata: tick rate, build identity,
-UTC date, full-match/clip type, room, mode, content hash, roster, and bootstrap.
-Bootstrap packets reuse the current SessionState, MatchState, Roster and
-Snapshot wire structs. SessionState is applied before the room is built so
-match rules that affect map entities (for example disabled powerups) are
-faithful in playback without forward packet search or reopen/rewind.
-V2 retains its old bounded match/roster search and duration scan/cache.
+`ReplayPoseStream` has its own accepted-snapshot cursor with six-frame lookahead,
+12-frame history and at most 24 poses per slot. It never reads live arrival jitter
+or advances simulation/RNG. Body/camera interpolation fences occupant/life,
+spawn/death, form changes and teleports. Watching another actor changes only the
+view; replica stepping fixes its simulation perspective to keep RNG deterministic.
+Camera tracks sample fractional recorded frames.
 
-Packet chunks normally cover 120 simulation frames and are independently
-Deflated. Each has first/last frame, record count, compressed/raw lengths and
-CRC32. The footer contains the duration, chunk index and event index; a fixed
-trailer locates it. A metadata-only library read retains neither the packet
-stream nor all event/chunk entries. A checksum-valid header/footer means
-integrity **Unknown**, not Healthy; Healthy requires a full chunk validation.
+Export walks 60 Hz simulation and produces genuine 30/60/120 FPS images; 120 FPS
+uses half-frame presentation samples. Native world/HUD targets support 720p, 1080p,
+1440p and 4K independently of the preview window. Jobs preserve image sequences and
+an exact encoding command; available FFmpeg encodes H.264 MP4. Transport/export
+status overlays stay out of movies. The exporter remains video-only, with no
+new deterministic audio track. Replay Lab explicitly detaches a selected actor
+into offline practice and refuses takeover while a live connection exists.
 
-Limits include 1024 bytes per metadata string, eight players, 32 bootstrap
-packets, 128 KiB metadata, 2 MiB raw chunks, 16 MiB footer, 200,000 chunk/event
-entries, and seven days of frame numbers. V3 packet size is the current wire
-limit (1024 bytes). V2 retains its UInt16 packet size. Index extents, frame
-order, record counts, compressed/decompressed lengths and checksums are checked
-before data is accepted. Corruption and partial records are explicit results,
-not ordinary EOF. A v2 Deflate stream has no checksum/footer; a truncated stream
-that happens to end on a complete record cannot always be identified.
+## Storage, clips and library
 
-Full recordings write `filename.ppdemo.part` with complete chunks flushed to
-disk. Successful close writes footer/trailer, closes the file, then renames it
-without replacing an existing replay. I/O errors stop recording without
-crashing the match and preserve recoverable data. Recovery creates a separate
-marked file containing only complete CRC-valid chunks; it retains the source.
-A full-match recording closes at match/map rotation so the next match cannot
-inherit the old map hash/bootstrap.
+New full client/server recordings and instant clips use `.ppdemo` v4. V2/v3 remain
+readable. V4 extends the v3 CRC/index envelope with an exact initial world, source
+origin, hidden warmup and an optional durable checkpoint index. Metadata retains
+room/mode/content hash, protocol/build, rules, roster, UTC date and replay type.
+Protocol mismatch is refused before decoding; identified room content must match.
+Map and package formats are unchanged.
 
-Map identity hashes actual room model, collision, entities, node data,
-animation and texture files. Missing/different identified map content refuses
-playback. Build identity is shown separately from protocol compatibility.
-No protocol conversion or silent interpretation of incompatible packet structs
-is performed.
+Chunks are independently compressed and bounded. Readers validate order, extents,
+lengths, CRCs, counts and decompression before accepting data. Metadata inspection
+alone does not mark a replay healthy: that requires a complete integrity scan.
+Malformed/corrupt/truncated input has an explicit result. A legacy v2 stream cut
+exactly at a record boundary can lack enough evidence to detect truncation.
 
-## Recording, clips and annotations
+Recordings flush complete chunks to `.ppdemo.part`; successful close writes the
+footer and atomically publishes without replacing another file. I/O failure stops
+recording without ending the match. Recovery writes a separate file and preserves
+the source, retaining valid chunks and optional valid checkpoints. Rotation closes
+the previous map before opening another recording.
 
-`DemoClip` uses 64 KiB pooled packet pages with a bootstrap captured before the
-page's first packet. It retains 15/30/60/120 seconds (30 by default), with a
-24 MiB bound that also accounts for record descriptors and bootstrap overhead.
-A frame-clock stall or a flood of tiny packets cannot bypass the memory bound.
-Windows are page-aligned, so duration can include up to about a second of slack.
-Post-roll options are 0/2/3/5 seconds, default 3. A second save finishes the
-pending clip and creates a distinct new request; it cannot overwrite the first.
-Disconnect during post-roll saves the available part. Keyboard, controller-menu
-and touch-menu paths call the same save operation.
+`DemoClip` freezes the shared timeline, with 15/30/60/120-second windows (default
+30) and 0/2/3/5-second post-roll (default 3). A second save finishes the pending
+request and starts a distinct one; disconnect saves available post-roll. Disk
+serialization runs on a worker with frozen values; world construction/disposal
+stays on the scene owner. There is no duplicate pooled packet history. Extraction
+and nested clips preserve exact initial worlds and required hidden warmup, including
+v2/v3 compatibility reconstruction; frames/events are rebased without rerecording.
 
-Events are annotations and never drive simulation. Roster, match, accepted
-snapshot and objective scoring hooks annotate joins/leaves, spawn/death/kill,
-damage, score, objectives and match boundaries. Source-replay extraction copies
-packets and events, rebases frames, and creates a packet bootstrap at the In
-point. It never re-records engine output.
+Events/annotations do not drive simulation. Studio derives deterministic highlights
+and analytics from accepted events. `.studio.json` sidecars retain bookmarks,
+named ranges and annotations without rewriting replay facts.
 
-The Replay Studio library displays v3 metadata and offers watch, display rename,
+The Replay Studio library displays versioned metadata and offers watch, display rename,
 favorite, delete, export, folder reveal on desktop, and `.part` recovery.
 It supports live search across names/maps/modes/players and user annotations,
 filters for full replays/clips/favorites/recovery, and newest/oldest/name/longest
@@ -211,281 +195,46 @@ frames rather than depending on a temporary cache file. The replay settings page
 limit and pruning policy; favorites are always protected and materialized clips
 are protected unless the user explicitly allows clip pruning.
 
-## Reset, seek and verification
+## Validation commands
 
-Forward seeking advances from the exact world already in memory instead of
-throwing that state away. Backward seeking first tries an in-memory checkpoint
-captured every ten seconds. A checkpoint records value-type/array engine state,
-RNG state and exact entity membership; v3 packet playback then repositions
-through the footer chunk index. The restored gameplay hash is checked
-immediately and on subsequent frames against the original linear pass. Any
-mismatch permanently rejects that checkpoint for the session and falls back to
-the proven frame-zero reconstruction path. Replay session startup resets both
-RNG streams and the otherwise process-global item rotation seed. Playback
-uses a socket-free transport; connection-control packets cannot assign a local
-slot, promote authority, or terminate the spectator session. Normal recorded
-bursts are retained; pathological single-frame queues fail explicitly at 65,536
-packets or 32 MiB instead of silently dropping packets.
+Asset-free checks:
 
-Commands:
+- `dotnet run --project tools/replay-timeline-check -c Release`
+- `ProjectPrime -replayformatcheck`: v2/v3/v4 compatibility, bounds, CRC, recovery,
+  extraction, world extension, semantic identity, session and socket isolation.
+- `ProjectPrime -replaycontrolcheck`: rates, pause/step, fractional camera tracks,
+  discontinuities, event analytics/highlights, annotations and controller context.
+- `dotnet run --project tools/nettest -c Release -- --lifecycle`
+- `dotnet run --project tools/nettest -c Release -- --health-shots`
 
-- `-replaycontrolcheck`: rate arithmetic, pause, step, resume and presentation-rate independence.
-- `-replayformatcheck`: v2/v3 records, metadata, protocol rejection, malformed lengths/CRC,
-  recovery, extraction/rebased events, packet bursts, socket isolation and stalled clip-buffer bounds.
-- `-replayvalidate FILE`: complete integrity scan.
-- `-replayrecover FILE`: recover complete chunks into a new replay.
-- `-replaydeterminism FILE`: real engine linear/reconstructed seek comparisons and
-  every-frame gameplay comparisons at all playback rates; needs extracted game assets.
-- `-replayclipcheck SOURCE -clip CLIP -start FRAME`: replays the source range and
-  extracted clip separately, normalizes source `FRAME` to clip frame 0, then compares
-  the explicit gameplay hash every frame and reports the first divergence. This is the
-  clip-fidelity check; it needs extracted game assets.
-- `-replaydeterminism FILE -replayhashout OUTPUT.ppdemo`: after all comparisons pass,
-  creates a separate v3 copy with expected gameplay hashes every 300 frames and at
-  EOF. The source and packet contents are preserved. A matching engine build/hash
-  schema verifies these references during playback and stops explicitly on a mismatch.
-  Different builds/schemas report that reference verification is skipped.
-- `-demoinfo FILE -replay`: original snapshot/intent distribution diagnostic, now
-  also reports corruption. Network bursts already present in a source recording
-  can still fail its historical burst/gap threshold.
+Checks with locally extracted game assets:
 
-Verification for this branch included a 22-second two-player stock-map
-recording and 32-second four-player TEST ARENA recordings. All four arena
-clients passed their gameplay harness and produced distinct instant clips.
-Real engine comparisons passed on a combat recording and an instant clip at
-sampled targets, all replay rates, and frozen EOF. The comparison hashes scene
-and entity/player scalar state, positions, match score/timers and packet counts;
-it is a replay-versus-replay check, not a claim of identical live-client state.
-The verifier also writes a temporary disk-backed SHA-256 trace of an explicit
-gameplay projection (player transforms, health, form/weapon/spawn state, scores,
-match timers and flag/node objectives). It compares every complete simulation
-frame inside seek/rate batches, reporting the first differing gameplay frame.
-Camera/render/audio state is excluded. The optional v3 expected-hash footer stores
-the hash schema and reference engine build separately from the recording build.
-These hashes are produced offline from the replay baseline: a live local player's
-prediction is not a valid expected state for a replay puppet. Source clips and
-recovered files intentionally require their own reference pass.
-Desktop and dedicated-server builds were clean. Android builds passed with
-existing binding/XML warnings; device interaction remains unverified.
+- `-replayreplicacheck FILE [-shots DIR]`: interleaved worlds, foreground sentinels,
+  mutable asset isolation, immediate restored hashes/images, continuation and seeks.
+- `-replayworldcheck FILE [-output DIR]`: eight actors/all hunters in all 12 modes,
+  afflictions, alt forms, projectiles, death/respawn and detached restores.
+- `-replaylivecheck FILE`: accepted recorder facts through frozen world playback,
+  source reset and backward seeks.
+- `-replaykillcamcheck FILE [-shots DIR]`: use a world-coverage fixture; historical
+  state, repeated lifecycle/skip/disconnect, resize, authority/slot changes,
+  controller disconnect, final freeze and versioned audio handoff.
+- `-replaytheatrecheck FILE [-shots DIR]`: normal Studio routing, cameras, transport,
+  live-state isolation and offline Replay Lab handoff.
+- `-replaydeterminism FILE [-replayhashout OUTPUT.ppdemo]`: linear/reconstructed,
+  random seek/rates/EOF comparisons and optional versioned reference hashes.
+- `-replayclipcheck SOURCE -clip CLIP -start FRAME`: every-frame source/clip
+  gameplay and presentation equality.
+- `-replaydurablecheck FILE -output DIR`: cold indexed seeks, nested ranges,
+  corrupt optional checkpoint fallback and recovery.
+- `-replayexportcheck FILE -output DIR`: repeated rendered images, true half-frame
+  samples, cadence/seek consistency, output dimensions and gameplay invariance.
+- `-replaybenchmark FILE -output DIR`: indexed/unindexed seek costs, CPU,
+  allocations, timeline retention and private killcam memory.
+- `-replayvalidate FILE`, `-replayrecover FILE`, `-demoinfo FILE [-replay]`:
+  integrity/recovery and recorded fact-cadence diagnostics.
 
-## Replay Studio additions and remaining validation
-
-This branch adds the editor/presentation layer on top of packet-faithful replay:
-
-- Dedicated servers that simulate the match create canonical recordings from
-  accepted slot intents plus their own authoritative snapshots, roster and
-  match-state stream. Recording failure is isolated from the match and rotation
-  closes the prior map's replay.
-- Replay Studio provides a zoomable draggable timeline, draggable clip In/Out
-  handles with a shaded selection, event/automatic-highlight/camera-key markers,
-  user bookmarks and named highlight ranges, per-player analytics, replay/network
-  debug overlays, cinematic camera authoring and Replay Lab's "Take Control"
-  branch handoff. User-authored annotations live in a `.studio.json` sidecar
-  and never rewrite replay packets.
-- Video export walks deterministic replay simulation frames and writes clean
-  scene-target PNGs or HUD-inclusive window captures. It supports 720p/1080p/
-  1440p/4K output jobs and 30/60/120 fps encoding; when `ffmpeg` is available
-  it starts H.264 MP4 encoding, otherwise it preserves the image sequence and
-  exact `encode.txt` command.
-
-Important limits remain deliberate:
-
-- Checkpoints are an optimization, not a new replay truth source. They are
-  in-memory, conservative, and may reject themselves when hidden networking or
-  entity state cannot be reproduced exactly. The fallback remains deterministic
-  frame-zero reconstruction.
-- The explicit gameplay hash is not a complete serialization of every hidden
-  engine field. Reference hashes still require the offline verifier.
-- Packet bootstraps capture packet-visible match/player state, not every live
-  projectile/pickup/entity timer at an arbitrary mid-match cut. Broad
-  mode/map/network-loss/8-player and clip-versus-source equivalence testing is
-  still valuable before treating every custom-map edge case as proven.
-- The MP4 exporter currently captures video frames only; it does not mux a
-  deterministic game-audio track.
-
-## V2 implementation history
-
-The notes below preserve the reasons for the original packet-stream design.
-They describe the v2 implementation before the controls and v3 changes above.
-# Demos: recording a match and watching it back
-
-`Mods/Network/DemoRecorder.cs`, `DemoFile.cs`, `DemoPlayback.cs`,
-`DemoInfo.cs`. Started and stopped from the pause menu ("Record replay",
-online matches only) and from `-netcheck ... -recorddemo`; watched from the
-front screen's Replay Studio library, which runs `MatchStart.LaunchDemo`.
-
-## The design, in one line
-
-A demo is **every packet this client received, verbatim**, replayed into the
-same `NetSession` on the same frame it originally arrived on. Nothing is
-re-encoded, so every packet-type handler, room transition and match-end
-sequence runs unchanged during playback; the player decides only *when* a
-packet is handed over, never what it means.
-
-That decision has consequences worth knowing before touching any of it.
-
-## Two things a demo has to synthesize
-
-A client does not receive everything it knows. Two holes, both filled by
-writing the packet this machine was about to send in the shape it would have
-arrived in:
-
-| Hole | Why | Filled by |
-|---|---|---|
-| This player's own input | the server never relays your `SlotIntent` back to you; you already know what you pressed | `DemoRecorder.RecordOwnIntent`, from `NetSession.SendIntent` |
-| The authority's own snapshot | `DedicatedServer.HandleSnapshot` forwards to every peer **except the sender** | `DemoRecorder.RecordOwnSnapshot`, from `NetSession.BroadcastSnapshot` |
-
-The second one was missing and it mattered more than it sounds. The
-authority is whichever client connected first, which is normally whoever set
-the match up, so it is the common case rather than a corner one. Measured on
-the harness: an authority recording for 30 s **received 31 snapshots** (the
-once-a-second `NotifyAuthority` echo) while sending 1800. And the snapshot is
-not one stream among several -- it is the only carrier of health, score, the
-damage sequence and the spawn flag, and `NetPlayerBridge.ApplyState` is the
-only thing during playback that ever calls `ModNetSpawn`. So the host's demo
-did not look thin, it opened on **an empty room**: nobody was ever placed,
-nothing was ever hit, no score ever moved.
-
-## Frames, not milliseconds
-
-Format version 1 stamped each record with `Environment.TickCount64` and the
-player released them against a `Stopwatch`. Three separate faults, all
-visible as the same complaint -- the replay is choppy and drops things:
-
-- **The engine's clock is not the wall clock.** `Renderer` advances the
-  simulation by a fixed 1/60 s per frame however long the frame took, so a
-  replay at 58 fps consumed 60 frames of recording every 60 frames, fell
-  behind real time, and caught up in bursts. Only the newest of a burst
-  survives: `RemoteStates` and `RemoteIntents` are one slot each.
-- **`TickCount64` ticks every 15.6 ms on Windows.** A 60 Hz stream stamped on
-  a 64 Hz clock clumps and drifts against the frame boundaries, producing the
-  same bursts on a machine holding a perfect 60 fps.
-- **The room loads after the stopwatch starts.** `DemoPlayback.Join` returns,
-  `renderer.AddRoom` takes seconds, nothing is pumped, and the first frame
-  afterwards released all of it at once -- so the replay opened several
-  seconds in with everything between discarded.
-
-Version 2 stamps `NetSession.NetFrame - startFrame` and `PumpFrame` releases
-one frame's worth per simulated frame. None of the three can happen: the
-recorder counts the frames the simulation counts, and a load in the middle
-costs nothing because no time passes.
-
-Measured with `-demoinfo FILE -replay` on a real 27 s recording:
-**99.5% of replayed frames got exactly one fresh snapshot, 1 frame in 1499
-got more than one, longest run with none: 6** (a hitch that was in the
-recording, faithfully reproduced).
-
-`Join` also stopped waiting on a clock. It reads records until the match
-state is known plus a 120-frame grace for the roster, which is a few hundred
-frames of parsing rather than the up-to-8-second wall-clock wait it was.
-
-### And then it rewinds
-
-The search is not free: it hands its records to the session to be acted on,
-and there is no scene yet to act on them. So the first one to three seconds
-of every recording were parsed and thrown away, and the replay opened that
-far in. Reported as **"the first shot isn't in the demo"** -- a charged
-missile fired right after pressing record. It was in the demo; it was never
-played.
-
-`DemoPlayback.Rewind` reopens the file at frame 0 once the room key is known,
-and `NetSession.RewindPlayback` clears the bookkeeping that would otherwise
-refuse the rewound packets as stale -- `_lastSnapshotFrame`,
-`_lastSlotIntentFrame`, the bridge and damage baselines -- while **keeping**
-what the search was for: `ServerMatch`, `SlotOccupied`, `SlotHunter`,
-`GameState.Nicknames`, all of which `NetLaunch.BuildPlayers` reads on the
-next line. Re-delivering the same `MatchState` is a no-op (`HandleMatchState`
-only raises `MapChanged` when the room key differs), so nothing reloads.
-
-Measured on a 25 s authority recording, frames 1-1500 with 1410 SlotIntent
-records:
-
-| | frames replayed | intents applied |
-|---|---|---|
-| before | 1499 of 1620 | 1496 of 1666 |
-| after | **1501 of 1500** | **1410 of 1410** |
-
-Every intent in the file now reaches the simulation, and 99.9% of frames get
-exactly one snapshot with no frame taking two.
-
-## The file
-
-```
-"PPDM" | version (2) | protocol      <- 6 bytes, never compressed
---- deflate ---
-[frame delta: 1 byte, 0xFF = escape + uint32] [length: uint16] [packet bytes]
-...
-```
-
-Deflated because the stream is 60 snapshots a second whose neighbours differ
-in a few floats. Flushed every 15 frames rather than per record: a sync flush
-costs 14% at one per record and a fraction of a percent at this rate, and a
-quarter of a second is what a demo that dies with the game loses.
-
-Measured on the harness, 2 players:
-
-| | v1 rules | v2 |
-|---|---|---|
-| non-authority, 27 s | ~381 KiB (14.1 KiB/s) | **76.6 KiB** (2.8 KiB/s), 4.7x |
-| authority, 30 s | ~138 KiB *and no snapshots* | **68.6 KiB** (2.3 KiB/s), 5.5x |
-
-So the authority's demo became correct -- 1831 snapshots instead of 31 -- and
-still came out at half the size of the broken one.
-
-**Version 1 files are refused, not read.** Their timestamps mean something
-else and their body is not compressed, so there is nothing that could read
-one by accident.
-
-## Checking a demo
-
-```bash
-MphRead -demoinfo "path/to/x.ppdemo"            # what is in it
-MphRead -demoinfo "path/to/x.ppdemo" -replay    # and how it lands, frame by frame
-# Optional private wrapper, when available: run-demo.sh 30 authority
-```
-
-`-demoinfo` needs no game files, no window and no server. Read it in this
-order: the `Snapshot` row (none means an empty room -- it says so), then the
-`KiB/s`, then, with `-replay`, the percentage of frames that got a snapshot.
-Exit code 1 for a demo with no snapshots, or a replay where more than 5% of
-frames took a burst or a gap ran past 10 frames.
-
-Note the working directory: `ConsoleSetup.Run` does
-`Directory.SetCurrentDirectory(BaseDirectory)`, so a relative path is
-relative to the binary, not to the shell. Pass an absolute one.
-
-## Gotchas
-
-- **`LocalSlot` stays -1 for the whole playback session**, on purpose
-  (`NetSession.StartPlayback`). There is no local player, so every slot is a
-  puppet driven by the recorded intent stream, and `NetHooks.LocalSlot`
-  returns -1 rather than falling through to 0 the way "connected, Welcome
-  hasn't landed" does.
-- **The viewer is a spectator and cannot be anything else.** `Renderer`
-  starts `SpectatorMode` on the first frame anyone is available; F
-  toggles a free camera on top of it.
-- **Nothing spawns without a snapshot.** `NetHooks.ForceSpawn` returns false
-  during playback -- neither host nor authority -- so placement comes only
-  from `ApplyState`'s `FlagSpawned` branch. This is why the missing authority
-  snapshots produced an empty room rather than a degraded one.
-- **A demo recorded on a listen host (`NetSession.StartHost`) has no
-  `MatchState` in it** and so cannot be played back: `Join` needs a room key
-  and only a dedicated server sends one. Every path the launcher offers goes
-  through a dedicated server, in-process or otherwise, so this is a note
-  rather than a bug.
-
-Killcams now freeze the canonical world timeline and present through an instance-owned `KillcamController`. Personal and final replay scenes have been exercised with two real clients, latency and packet loss. `-replaykillcamcheck FILE [-shots DIR]` verifies cancellation, bounded warmup, historical frames, source reset, resize, input release and versioned audio ownership. Full playback/Studio, disk clips and larger-match/Android acceptance are still migration work.
-
-`-replaytheatrecheck FILE [-shots DIR]` checks normal Studio routing, camera/slot
-changes, pause, seeks and live-state sentinels. `-replaydeterminism` and
-`-replayclipcheck` now run the same private player, comparing both gameplay and
-presentation every visible frame. `-demoinfo -replay` uses the private decoder and
-reports source cadence without calling sparse snapshots a playback failure.
-
-Presentation now reads a bounded six-frame lookahead of accepted snapshots in a
-separate cursor. Its 24-pose-per-slot bound and lifecycle/teleport fences are
-independent of networking. Simulation keeps its own transforms. Video manifests
-v2 contain real 30/60/120 FPS samples; 120 uses half-frame interpolation, including
-fractional camera tracks. Native offscreen world/HUD targets support 720p through
-4K independently of window size. `-replayexportcheck FILE -output DIR` verifies
-repeated image identity, distinct half-frames and unchanged gameplay hashes.
+Gameplay hashes (schema 3) cover the explicit gameplay projection; a separate
+projection covers animation, trails and particles. These compare reconstructed
+replay worlds, not a predicting live client's hidden state. Reference verification
+requires a matching engine/hash schema; old schemas do not prevent packet playback.
+See the acceptance report for runtime coverage and platform limitations.

@@ -25,14 +25,7 @@ namespace MphRead.Entities
         // the generic draw interpolation; the local view uses render-time
         // late latching below.
         protected override bool InterpolateDrawTransform
-            => _scene.Services.IsReplica || DemoPlayback.IsActive || (!IsMainPlayer && !NetSession.Active);
-
-        /// <summary>
-        /// The generic entity interpolation point for this picture. Replay
-        /// cameras use it only as the baseline from which the replay-specific
-        /// authority-frame smoother offsets the watched hunter.
-        /// </summary>
-        internal Vector3 ModPresentationPosition => ModDrawTransform().Row3.Xyz;
+            => _scene.Services.IsReplica || (!IsMainPlayer && !NetSession.Active);
 
         internal bool ModReplayPresentationCamera(double alpha, out Matrix4 view,
             out Vector3 position, out float fov)
@@ -52,45 +45,7 @@ namespace MphRead.Entities
                 view = Matrix4.LookAt(replicaPosition, replicaTarget, replicaUp);
                 return true;
             }
-            if (_scene.Services.IsReplica || !DemoPlayback.IsActive
-                || !NetSmoothing.SampleReplayPresentation(SlotIndex,
-                    out Vector3 replayPosition, out Vector3 replayFacing,
-                    out bool replayAlt)
-                || !CameraInfo.ModGetDrawPose(alpha, out Vector3 cameraPosition,
-                    out Vector3 cameraTarget, out Vector3 cameraUp, out float cameraFov))
-            {
-                return false;
-            }
-
-            Vector3 presented = _scene.PlayerReplication.InFormFor(
-                this, replayPosition, replayAlt);
-            Vector3 delta = presented - ModPresentationPosition;
-            cameraPosition += delta;
-
-            float lookDistance = (cameraTarget - CameraInfo.ModGetDrawPosition(alpha)).Length;
-            if (!Single.IsFinite(lookDistance) || lookDistance < 0.1f)
-                lookDistance = 1;
-            cameraTarget = cameraPosition + replayFacing * lookDistance;
-            if ((cameraTarget - cameraPosition).LengthSquared < 0.000001f)
-                return false;
-
-            Vector3 look = (cameraTarget - cameraPosition).Normalized();
-            Vector3 up = cameraUp;
-            if (!Single.IsFinite(up.X) || !Single.IsFinite(up.Y)
-                || !Single.IsFinite(up.Z) || up.LengthSquared < 0.000001f
-                || MathF.Abs(Vector3.Dot(look, up.Normalized())) > 0.999f)
-            {
-                up = MathF.Abs(look.Y) < 0.999f ? Vector3.UnitY : Vector3.UnitZ;
-            }
-            Vector3 right = Vector3.Cross(look, up);
-            if (right.LengthSquared < 0.000001f)
-                return false;
-            up = Vector3.Cross(right.Normalized(), look).Normalized();
-
-            position = cameraPosition;
-            fov = cameraFov;
-            view = Matrix4.LookAt(cameraPosition, cameraTarget, up);
-            return true;
+            return false;
         }
 
         protected override Matrix4 GetModelTransform(ModelInstance inst, int index)

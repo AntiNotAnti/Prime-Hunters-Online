@@ -267,8 +267,6 @@ namespace MphRead.Mods.Network
                         if (NetSession.IsAuthority) _authorityKill = identity;
                         Mods.KillCam.NoteKill(marker, NetSession.NetFrame);
                     }
-                    MphRead.Mods.KillCam.NoteDeath(slot, state.AttackerSlot,
-                        authoritativeFrame ?? NetSession.NetFrame);
                 }
                 if (old.DamageEventId != state.DamageEventId)
                 {

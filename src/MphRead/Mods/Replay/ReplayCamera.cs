@@ -188,13 +188,6 @@ namespace MphRead
             Vector3 facing = player.CameraInfo.Facing;
             if (ReplayPoses?.Sample(player.SlotIndex, ReplayRenderAlpha, out _, out var replicaFacing) == true)
                 facing = replicaFacing;
-            if (!Services.IsReplica && Mods.Network.NetSmoothing.SampleReplayPresentation(player.SlotIndex,
-                out Vector3 replayPosition, out Vector3 replayFacing, out bool replayAlt))
-            {
-                playerPosition = Mods.Network.NetPlayerBridge.InFormFor(
-                    player, replayPosition, replayAlt);
-                facing = replayFacing;
-            }
 
             Vector3 target = playerPosition
                 + Vector3.UnitY * Math.Clamp(Mods.Replay.ReplayCamera.Height, 0.5f, 8);

@@ -136,7 +136,6 @@ namespace MphRead.Mods.Network
 
         internal static void AfterFrame(Scene scene)
         {
-            if (!scene.Services.IsReplica) Replay.ReplayCheckpointManager.AfterFrame(scene);
             ReplayMetadata? metadata = DemoPlayback.Metadata;
             if (metadata == null || metadata.HashSchema != ReplayStateHash.Schema
                 || metadata.HashBuildId != ReplayStateHash.BuildId || _nextHash >= metadata.ExpectedHashes.Count) return;

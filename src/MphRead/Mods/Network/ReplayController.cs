@@ -35,12 +35,9 @@ namespace MphRead.Mods.Network
         public static void Restart() => Current.Restart();
         public static void JumpEvent(bool forward) => Current.JumpEvent(forward);
         public static void Seek(uint frame, bool? resume = null) => Current.Seek(frame, resume);
-        public static bool TakeRebuild(out uint frame, out bool resume) => Current.TakeRebuild(out frame, out resume);
-        public static void ContinueSeek(uint frame, bool resume) => Current.ContinueSeek(frame, resume);
         internal static void ClearSelection() => Current.ClearSelection();
         internal static void Begin() => Current.Begin();
         internal static void Stop() => Current.Stop();
-        internal static void RequestFullRebuild(uint frame, bool resume) => Current.RequestFullRebuild(frame, resume);
         internal static int FramesDue() => Current.FramesDue();
         internal static void AfterFrame() => Current.AfterFrame();
     }

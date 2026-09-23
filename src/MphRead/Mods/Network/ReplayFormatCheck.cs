@@ -10,6 +10,24 @@ namespace MphRead.Mods.Network
 {
     internal static class ReplayFormatCheck
     {
+        // Only this compatibility diagnostic enters the socket-free legacy packet
+        // pipeline. Production file playback and killcams always own a replica.
+        private sealed class LegacyReplayDiagnosticHost : IReplaySessionHost
+        {
+            public bool IsPassive => false;
+            public MatchStatePacket? Match => NetSession.ServerMatch;
+            public void Prepare(string path, bool pathChanged) { }
+            public void Start() => NetSession.StartPlayback();
+            public void Stop() => NetSession.Stop();
+            public void Rewind() => NetSession.RewindPlayback();
+            public void Inject(byte[] packet, uint frame) => NetSession.InjectPlaybackPacket(
+                packet, packet.Length, ReplayPlaybackSession.PlaybackArrivalTicks(frame));
+            public void Advance(double seconds) => NetSession.Update(seconds);
+            public void RestoreClock(uint frame) => NetSession.PreparePlaybackCheckpoint(frame);
+            public void ResetDiagnostics() { }
+            public void SeekTo(uint frame) { }
+        }
+
         public static int Run()
         {
             string directory = Path.Combine(Path.GetTempPath(), "fruity-replay-check-" + Guid.NewGuid().ToString("N"));
@@ -285,7 +303,8 @@ namespace MphRead.Mods.Network
                     int delivered = 0; foreach (var unused in transport.Drain()) delivered++;
                     Require(delivered == 4096 && transport.PacketsDropped == 0, "recorded packet burst is not dropped");
                 }
-                Require(DemoPlayback.JoinLegacy(clean), "matching protocol bootstrap joins");
+                using var legacySession = new ReplayPlaybackSession(new LegacyReplayDiagnosticHost());
+                Require(legacySession.Join(clean), "matching protocol bootstrap joins");
                 Require(NetSession.ActiveMatchDefinition?.DisablePowerups == true,
                     "session rules survive replay bootstrap");
                 foreach (byte[] control in new[] { new byte[] { (byte)PacketType.Welcome, 0 },
@@ -294,7 +313,7 @@ namespace MphRead.Mods.Network
                 NetSession.Update(0);
                 Require(NetSession.Active && NetSession.LocalSlot == -1 && !NetSession.IsAuthority,
                     "reconnect/control packets cannot create a local player or end playback");
-                DemoPlayback.Stop(); NetSession.Stop();
+                legacySession.Stop(); NetSession.Stop();
                 string extracted = Path.Combine(directory, "extracted.ppdemo");
                 Require(ReplayArchive.Extract(clean, 60, 180, extracted) == ReplayOpenResult.Success, "extract clip");
                 using (var reader = DemoReader.Open(extracted))

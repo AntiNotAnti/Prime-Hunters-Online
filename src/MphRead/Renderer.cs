@@ -1656,7 +1656,7 @@ namespace MphRead
         {
             if (Mods.Network.DemoPlayback.Presentation(this) is { IsReplayLab: true } lab)
             { lab.OnSimulationFrame(); return; }
-            if (Mods.Network.DemoPlayback.IsIsolated && (!Services.IsReplica || Mods.Network.DemoPlayback.Owns(this)))
+            if (Mods.Network.DemoPlayback.IsActive && (!Services.IsReplica || Mods.Network.DemoPlayback.Owns(this)))
             { Mods.Network.DemoPlayback.Update(this); return; }
             if (Services.IsReplica)
                 throw new InvalidOperationException("Replica scenes must be stepped by their replay session, not the foreground host.");
@@ -3118,78 +3118,60 @@ namespace MphRead
             {
                 if (_cameraMode == CameraMode.Player)
                 {
-                    if (Mods.KillCam.TryGetHistoricalCamera(out Mods.KillCamCameraPose killCamera))
-                    {
-                        Vector3 target = killCamera.Target;
-                        if ((target - killCamera.Position).LengthSquared < 0.000001f)
-                            target = killCamera.Position + Vector3.UnitZ;
-                        Vector3 up = killCamera.Up.LengthSquared < 0.000001f
-                            ? Vector3.UnitY : killCamera.Up;
-                        _viewMatrix = Matrix4.LookAt(killCamera.Position, target, up);
-                        float fov = killCamera.Fov > 0
-                            ? killCamera.Fov : Mods.RenderOptions.DefaultFov;
-                        _viewModelFov = MathHelper.DegreesToRadians(
-                            Math.Clamp(fov, 1f, 175f));
-                        _cameraFov = MathHelper.DegreesToRadians(
-                            Mods.RenderOptions.ScaleCameraFov(fov));
-                    }
-                    else
-                    {
-                        PlayerEntity main = this.Players.Main;
-                        CameraInfo camera = main.CameraInfo;
-                        main.ModInvalidateFirstPersonRenderPose();
-                        double presentationAlpha = Services.IsReplica ? ReplayRenderAlpha : Mods.Render.FrameTiming.PresentationAlpha;
-                        bool replayCamera = main.ModReplayPresentationCamera(
-                            presentationAlpha, out Matrix4 replayView,
-                            out _, out float replayFov);
-                        bool interpolatedCamera = Services.IsReplica || Mods.Render.FrameTiming.Active
-                            && (Mods.SpectatorMode.IsSpectating || Mods.Network.DemoPlayback.IsActive);
+                    PlayerEntity main = this.Players.Main;
+                    CameraInfo camera = main.CameraInfo;
+                    main.ModInvalidateFirstPersonRenderPose();
+                    double presentationAlpha = Services.IsReplica ? ReplayRenderAlpha : Mods.Render.FrameTiming.PresentationAlpha;
+                    bool replayCamera = main.ModReplayPresentationCamera(
+                        presentationAlpha, out Matrix4 replayView,
+                        out _, out float replayFov);
+                    bool interpolatedCamera = Services.IsReplica || Mods.Render.FrameTiming.Active
+                        && (Mods.SpectatorMode.IsSpectating || Mods.Network.DemoPlayback.IsActive);
 
-                        _viewMatrix = replayCamera
-                            ? replayView
-                            : interpolatedCamera
-                                ? camera.ModGetDrawView(presentationAlpha)
-                                : camera.ViewMatrix;
+                    _viewMatrix = replayCamera
+                        ? replayView
+                        : interpolatedCamera
+                            ? camera.ModGetDrawView(presentationAlpha)
+                            : camera.ViewMatrix;
 
-                        bool firstPersonPose = false;
-                        float firstPersonFov = camera.Fov;
-                        if (!replayCamera && !interpolatedCamera
-                            && !Mods.PauseMenu.Open && !this.GameState.MenuPause
-                            && !this.GameState.DialogPause && !Mods.EndScreen.Available)
+                    bool firstPersonPose = false;
+                    float firstPersonFov = camera.Fov;
+                    if (!replayCamera && !interpolatedCamera
+                        && !Mods.PauseMenu.Open && !this.GameState.MenuPause
+                        && !this.GameState.DialogPause && !Mods.EndScreen.Available)
+                    {
+                        // One preparation call owns the render-time pointer/stick
+                        // delta for both the camera and the camera-attached arm
+                        // cannon. The gun draw later consumes the pose cached here;
+                        // it does not poll input or calculate another delta.
+                        (float padX, float padY) = Mods.Input.GamepadInput.RenderAim(
+                            Mods.Render.FrameTiming.Alpha);
+                        if (main.ModPrepareFirstPersonRenderPose(
+                                presentationAlpha, _lateAimX, _lateAimY, padX, padY,
+                                out Matrix4 firstPersonView, out _, out float renderFov))
                         {
-                            // One preparation call owns the render-time pointer/stick
-                            // delta for both the camera and the camera-attached arm
-                            // cannon. The gun draw later consumes the pose cached here;
-                            // it does not poll input or calculate another delta.
-                            (float padX, float padY) = Mods.Input.GamepadInput.RenderAim(
-                                Mods.Render.FrameTiming.Alpha);
-                            if (main.ModPrepareFirstPersonRenderPose(
-                                    presentationAlpha, _lateAimX, _lateAimY, padX, padY,
-                                    out Matrix4 firstPersonView, out _, out float renderFov))
-                            {
-                                _viewMatrix = firstPersonView;
-                                firstPersonFov = renderFov;
-                                firstPersonPose = true;
-                            }
+                            _viewMatrix = firstPersonView;
+                            firstPersonFov = renderFov;
+                            firstPersonPose = true;
                         }
-
-                        float authoredFov = replayCamera
-                            ? replayFov
-                            : interpolatedCamera
-                                ? camera.ModGetDrawFov(presentationAlpha)
-                                : firstPersonPose ? firstPersonFov : camera.Fov;
-                        float fov = authoredFov > 0
-                            ? authoredFov
-                            : Mods.RenderOptions.DefaultFov;
-                        // Keep the camera-authored projection for first-person
-                        // geometry. The player's FOV widens the world, not the arm
-                        // cannon attached to the camera.
-                        _viewModelFov = MathHelper.DegreesToRadians(Math.Clamp(fov, 1f, 175f));
-                        // Preserve zoom/scope magnification in projection space,
-                        // where tan(FOV / 2) is the quantity that scales linearly.
-                        fov = Mods.RenderOptions.ScaleCameraFov(fov);
-                        _cameraFov = MathHelper.DegreesToRadians(fov);
                     }
+
+                    float authoredFov = replayCamera
+                        ? replayFov
+                        : interpolatedCamera
+                            ? camera.ModGetDrawFov(presentationAlpha)
+                            : firstPersonPose ? firstPersonFov : camera.Fov;
+                    float fov = authoredFov > 0
+                        ? authoredFov
+                        : Mods.RenderOptions.DefaultFov;
+                    // Keep the camera-authored projection for first-person
+                    // geometry. The player's FOV widens the world, not the arm
+                    // cannon attached to the camera.
+                    _viewModelFov = MathHelper.DegreesToRadians(Math.Clamp(fov, 1f, 175f));
+                    // Preserve zoom/scope magnification in projection space,
+                    // where tan(FOV / 2) is the quantity that scales linearly.
+                    fov = Mods.RenderOptions.ScaleCameraFov(fov);
+                    _cameraFov = MathHelper.DegreesToRadians(fov);
                 }
                 else
                 {
@@ -3228,36 +3210,29 @@ namespace MphRead
             }
             else if (_cameraMode == CameraMode.Player)
             {
-                if (Mods.KillCam.TryGetHistoricalCamera(out Mods.KillCamCameraPose killCamera))
+                PlayerEntity main = this.Players.Main;
+                CameraInfo camera = main.CameraInfo;
+                if (main.ModReplayPresentationCamera(
+                    Services.IsReplica ? ReplayRenderAlpha : Mods.Render.FrameTiming.PresentationAlpha,
+                    out _, out Vector3 replayPosition, out _))
                 {
-                    _cameraPosition = killCamera.Position;
+                    _cameraPosition = replayPosition;
+                }
+                else if (main.ModGetFirstPersonRenderCameraPosition(
+                    out Vector3 firstPersonPosition))
+                {
+                    // TransformCamera prepared this exact position together
+                    // with the view matrix. Frustum/culling must not silently
+                    // fall back to a different simulation timestamp.
+                    _cameraPosition = firstPersonPosition;
                 }
                 else
                 {
-                    PlayerEntity main = this.Players.Main;
-                    CameraInfo camera = main.CameraInfo;
-                    if (main.ModReplayPresentationCamera(
-                        Services.IsReplica ? ReplayRenderAlpha : Mods.Render.FrameTiming.PresentationAlpha,
-                        out _, out Vector3 replayPosition, out _))
-                    {
-                        _cameraPosition = replayPosition;
-                    }
-                    else if (main.ModGetFirstPersonRenderCameraPosition(
-                        out Vector3 firstPersonPosition))
-                    {
-                        // TransformCamera prepared this exact position together
-                        // with the view matrix. Frustum/culling must not silently
-                        // fall back to a different simulation timestamp.
-                        _cameraPosition = firstPersonPosition;
-                    }
-                    else
-                    {
-                        bool interpolate = Services.IsReplica || Mods.Render.FrameTiming.Active
-                            && (Mods.SpectatorMode.IsSpectating || Mods.Network.DemoPlayback.IsActive);
-                        _cameraPosition = interpolate
-                            ? camera.ModGetDrawPosition(Services.IsReplica ? ReplayRenderAlpha : Mods.Render.FrameTiming.PresentationAlpha)
-                            : camera.Position;
-                    }
+                    bool interpolate = Services.IsReplica || Mods.Render.FrameTiming.Active
+                        && (Mods.SpectatorMode.IsSpectating || Mods.Network.DemoPlayback.IsActive);
+                    _cameraPosition = interpolate
+                        ? camera.ModGetDrawPosition(Services.IsReplica ? ReplayRenderAlpha : Mods.Render.FrameTiming.PresentationAlpha)
+                        : camera.Position;
                 }
             }
         }
@@ -7960,36 +7935,6 @@ namespace MphRead
                 return;
             }
 #endif
-            if (Mods.Network.DemoPlayback.IsActive && !Mods.Network.DemoPlayback.IsIsolated
-                && Mods.Network.ReplayController.TakeRebuild(out uint target, out bool resume))
-            {
-                if (Mods.Replay.ReplayCheckpointManager.TryRestore(
-                    Scene, target, resume, out uint checkpointFrame))
-                {
-                    Console.WriteLine($"[replay] restored checkpoint {checkpointFrame} for seek to {target}");
-                    Mods.Network.ReplayController.ContinueSeek(target, resume);
-                    Mods.Render.FrameTiming.Reset();
-                }
-                else
-                {
-                    string path = Mods.Network.DemoPlayback.CurrentPath!;
-                    EndScene();
-                    Mods.Network.DemoPlayback.Stop();
-                    Mods.SpectatorMode.Reset();
-                    var plan = new Mods.Launcher.LaunchPlan
-                    {
-                        Kind = Mods.Launcher.LaunchKind.Demo,
-                        DemoPath = path
-                    };
-                    if (!Mods.Launcher.MatchStart.Begin(this, new MenuSettings(), plan))
-                    {
-                        EndOrClose();
-                        return;
-                    }
-                    Mods.Network.ReplayController.ContinueSeek(target, resume);
-                    Mods.Render.FrameTiming.Reset();
-                }
-            }
             // The pause menu wants the pointer back, and so does the results
             // screen: its hunter picker is something you click, and a grabbed
             // cursor has no position on screen to click with.

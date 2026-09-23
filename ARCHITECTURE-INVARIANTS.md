@@ -75,7 +75,7 @@ This file is the short, machine-oriented source of truth for architectural assum
 - Dated measurements and old protocol comparisons are valuable, but must be labeled **historical** when the architecture they measured is no longer current.
 - `KNOWN-GAPS.md` contains only unresolved/unverified items. Move fixed items out instead of leaving them as warnings.
 
-## Replay timeline migration
+## Replay ownership
 
 - Rolling timeline records own immutable payload copies and evict whole restore segments.
 - A dropped fact invalidates its dependent continuation; clips must not cross gaps.
@@ -83,13 +83,13 @@ This file is the short, machine-oriented source of truth for architectural assum
 - Decoder and animation checkpoint components own detached payloads. Decoder restore validates before mutation; animation restore resolves groups against the destination asset. A component alone must never be advertised as a complete world checkpoint.
 - `ReplayWorldCheckpoint` combines those components with an explicit entity/effect/clock/link field contract. Its payload contains values, asset keys and construction anchors, never live references or native handles. Restore is restricted to an unpublished replica with matching room content and construction baseline. Unknown contracts/anchors fail closed. Resource binding does not call gameplay initialization.
 - `PassiveReplayPlayer` owns a 64 MiB/128-entry checkpoint cache. File and frozen-world-clip seeks share its fixed stepping, with at most 120 steps per host update. The presented scene is replaced only after reconstruction succeeds; a frozen clip remains valid after its timeline is reset.
-- Replay readers and transport scheduling belong to session instances. Passive hosts own their decoded lifecycle state and never access live NetSession. Normal Studio uses the private player too. The explicit legacy theatre host is diagnostic compatibility only.
-- Each scene owns its player registry, match state, random streams, camera sequences and enemy/platform beam pools. Legacy static facades refer only to the foreground scene. Replica construction and cleanup never rebind those facades. Replica scenes use an explicit fixed-step entry, instance replication/lifecycle histories, silent sound routing and private HUD queues. They cannot author outgoing input or resolve combat. Texture names are GL allocated and scene owned; shared model display lists have scene leases. Full historical checkpoints and killcam replacement remain gated on acceptance.
+- Replay readers and transport scheduling belong to session instances. Passive hosts own their decoded lifecycle state and never access live NetSession. Normal Studio uses the private player too. A private legacy host exists only inside the format diagnostic; production has no alternate replay path.
+- Each scene owns its player registry, match state, random streams, camera sequences and enemy/platform beam pools. Legacy static facades refer only to the foreground scene. Replica construction and cleanup never rebind those facades. Replica scenes use an explicit fixed-step entry, instance replication/lifecycle histories, silent sound routing and private HUD queues. They cannot author outgoing input or resolve combat. Replica mutable model/material/node/mesh state and room portal/collision activation are private. Immutable definitions may be shared; GL resources have explicit owner lifetimes.
 - Exact kill markers fence match, authority, event, server tick, occupant generations and victim life. Ambiguous cumulative deaths are not exact kill candidates.
 - Timeline intent baselines must match the recorded occupant generation and life. Submitted local input is presentation evidence, never accepted hit/damage authority. Versioned gameplay hashes include world/projectile state; animation/effect projections are checked separately.
 - Effect checkpoint assets use effect ID plus element ordinal; element names are not unique. Match rules apply before room construction; timed objective targets and the recorded clock retain their mode-specific meaning.
 - Live checkpoint production consumes immutable accepted facts in a canonical private replica. Pending facts are bounded; gaps/failure invalidate history rather than yielding incomplete clips. Capture and private scene resource lifetime run on the scene owner; network callbacks never allocate or dispose GL resources. History cannot claim knowledge of projectiles predating capture.
-- Keep current replay/Studio/killcam paths until isolated scene and runtime acceptance gates pass. See `docs/architecture/replay-map-upgrade-status.md` for remaining work.
+- Production replay and killcams share the private player. Do not reintroduce a pose ring, live historical draw substitution, duplicate clip history or live-network replay smoother. Acceptance evidence is in `docs/architecture/replay-map-upgrade-status.md`.
 
 ## Map Studio ownership
 
@@ -116,3 +116,5 @@ This file is the short, machine-oriented source of truth for architectural assum
   fragment assembly must validate before recording. Replays apply it only inside
   private scenes; actor links fence occupant generation and life. New-server final
   killcams use the confirmed ending cause and exact kill identity.
+
+- World capsules are explicitly versioned (current v2, v1 readable). V4 files may index bounded durable checkpoints; invalid optional entries fall back to valid reconstruction. New capture spools at most 4,096 checkpoints / 256 MiB compressed and never stores live references or native handles.

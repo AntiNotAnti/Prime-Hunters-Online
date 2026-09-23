@@ -128,8 +128,6 @@ namespace MphRead.Mods.Network
                     "stale kill was accepted as final");
                 Require(!MphRead.Mods.KillCam.IsRecentFinalKill(121, 120),
                     "future kill frame was accepted as final");
-                Require(!MphRead.Mods.KillCam.IsHistoricalCameraOwner(0),
-                    "kill cam hid the killer model from its own historical camera");
                 Require(MphRead.Mods.KillCam.WeaponName((int)BeamType.Imperialist)
                         == "IMPERIALIST"
                     && MphRead.Mods.KillCam.WeaponName(999) == "",

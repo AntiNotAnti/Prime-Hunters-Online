@@ -107,6 +107,23 @@ internal static class ReplayKillcamCheck
             Require(controller.Presentation?.Size == live.Size, "Resize did not reach the private scene.");
             controller.Update(live, context with { MatchId = (ushort)(match.MatchId + 1) });
             Require(!controller.Active && controller.EndReason == KillcamEndReason.MatchChanged, "Match transition retained replay.");
+            Begin();
+            controller.Update(live, context with { Epoch = (ushort)(context.Epoch + 1) });
+            Require(!controller.Active && controller.EndReason == KillcamEndReason.MatchChanged, "Authority handover retained replay.");
+            Begin();
+            controller.Update(live, context with { LocalGeneration = (ushort)(context.LocalGeneration + 1) });
+            Require(!controller.Active && controller.EndReason == KillcamEndReason.Respawn, "Slot reuse retained replay.");
+            Begin();
+            GamepadManager.UpdateDevice("killcam-check", new GamepadState { Connected = true,
+                Buttons = GamepadButtons.RightTrigger }, mapped: true);
+            GamepadInput.BeginFrame();
+            GamepadManager.RemoveDevice("killcam-check");
+            GamepadInput.BeginFrame();
+            controller.Input(false, false);
+            controller.Update(live, context);
+            Require(controller.Visible && !GamepadInput.Active && GamepadInput.AimDeltaX == 0
+                && GamepadInput.AimDeltaY == 0, "Controller disconnect interrupted replay or retained input.");
+            controller.Skip();
             Require(KillcamController.FinalEligible(100, 220, false, true), "Causal boundary rejected.");
             Require(!KillcamController.FinalEligible(100, 221, false, true), "Stale causal kill admitted.");
             Require(KillcamController.FinalEligible(100, 580, true, false), "Timed boundary rejected.");
@@ -135,6 +152,7 @@ internal static class ReplayKillcamCheck
         catch (Exception ex) { Console.WriteLine("[killcam] FAIL: " + ex); return 1; }
         finally
         {
+            GamepadManager.RemoveDevice("killcam-check");
             controller.Dispose(); capture.Dispose(); live.DoCleanup(); live.UnloadGl();
 #if !ANDROID
             window?.Dispose();

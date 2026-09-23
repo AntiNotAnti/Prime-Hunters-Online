@@ -407,28 +407,6 @@ namespace MphRead.Mods.Network
             }
         }
 
-        public bool TakeControl(int slot, out string? branchPath)
-        {
-            branchPath = null;
-            if (!IsActive || CurrentPath == null || !_host.CanTakeControl(slot)) return false;
-            string source = CurrentPath;
-            uint frame = CurrentFrame;
-            try
-            {
-                if (!_host.TakeControl(slot)) return false;
-                CloseReader();
-                Transport.Stop();
-                _host.Detached();
-                branchPath = Replay.ReplayLab.WriteBranch(source, frame, slot);
-                return true;
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
-                or InvalidOperationException or ArgumentException)
-            {
-                LastError = "Could not take control of replay: " + ex.Message;
-                return false;
-            }
-        }
 
         public void Stop()
         {

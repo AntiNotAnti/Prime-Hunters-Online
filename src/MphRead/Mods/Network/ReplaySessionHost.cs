@@ -1,5 +1,3 @@
-using System;
-using MphRead.Entities;
 
 namespace MphRead.Mods.Network
 {
@@ -17,56 +15,6 @@ namespace MphRead.Mods.Network
         void RestoreClock(uint frame);
         void ResetDiagnostics();
         void SeekTo(uint frame);
-        bool CanTakeControl(int slot) => false;
-        bool TakeControl(int slot) => false;
-        void Detached() { }
-    }
-
-    /// <summary>The sole adapter allowed to use the legacy foreground packet pipeline.</summary>
-    internal sealed class TheatreReplaySessionHost : IReplaySessionHost
-    {
-        public bool IsPassive => false;
-        public MatchStatePacket? Match => NetSession.ServerMatch;
-        public void Prepare(string path, bool pathChanged)
-        {
-            Rng.SetRng1(Rng.Rng1StartValue);
-            Rng.SetRng2(Rng.Rng2StartValue);
-            SpinningEntityBase.ResetReplayRotation();
-            if (pathChanged) Replay.ReplayCamera.ClearBookmarks();
-            Replay.ReplayCheckpointManager.NoteReplay(path);
-        }
-        public void Start() => NetSession.StartPlayback();
-        public void Stop()
-        {
-            ReplayVerification.Reset();
-            if (Replay.ReplayVideoExporter.Active) Replay.ReplayVideoExporter.Cancel();
-            Replay.ReplayStudio.ResetCache();
-            Replay.ReplayCheckpointManager.NoteReplay(null);
-            Replay.ReplayNetworkDiagnostics.Reset();
-            Replay.ReplayHud.Reset();
-            Replay.ReplayCamera.Reset();
-        }
-        public void Rewind() => NetSession.RewindPlayback();
-        public void Inject(byte[] packet, uint frame)
-        {
-            Replay.ReplayNetworkDiagnostics.OnPacket(frame, packet);
-            NetSession.InjectPlaybackPacket(packet, packet.Length,
-                ReplayPlaybackSession.PlaybackArrivalTicks(frame));
-        }
-        public void Advance(double seconds) => NetSession.Update(seconds);
-        public void RestoreClock(uint frame) => NetSession.PreparePlaybackCheckpoint(frame);
-        public void ResetDiagnostics() => Replay.ReplayNetworkDiagnostics.Reset();
-        public void SeekTo(uint frame) => ReplayVerification.SeekTo(frame);
-        public bool CanTakeControl(int slot) => SpectatorMode.IsSpectating
-            && (uint)slot < PlayerEntity.Players.Count
-            && PlayerEntity.Players[slot].LoadFlags.TestFlag(LoadFlags.Active)
-            && PlayerEntity.Players[slot].LoadFlags.TestFlag(LoadFlags.Spawned);
-        public bool TakeControl(int slot)
-        {
-            NetSession.DetachPlaybackForLab(slot);
-            return SpectatorMode.TakeReplayControl(slot);
-        }
-        public void Detached() => Stop();
     }
 
     /// <summary>No transport, connection, lobby, presentation singleton or live lifecycle access.</summary>

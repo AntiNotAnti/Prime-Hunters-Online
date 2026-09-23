@@ -117,7 +117,6 @@ namespace MphRead.Mods.Network
         private static double _readFrame;
         private static double _previousReadFrame;
         private static double _presentationReadFrame;
-        private static double _reviewReadFrame;
         private static bool _presentationValid;
         private static bool _running;
 
@@ -184,7 +183,6 @@ namespace MphRead.Mods.Network
         }
 
         private static readonly Vector3[,] _position = new Vector3[Slots, HistoryFrames];
-        private static readonly Vector3[,] _facing = new Vector3[Slots, HistoryFrames];
         private static readonly bool[,] _altForm = new bool[Slots, HistoryFrames];
         private static readonly bool[,] _live = new bool[Slots, HistoryFrames];
         private static readonly uint[] _stamp = new uint[HistoryFrames];
@@ -258,7 +256,6 @@ namespace MphRead.Mods.Network
                 _generation[slot, index] = states[i].SlotGeneration;
                 _live[slot, index] = inPlay;
                 _position[slot, index] = states[i].Position;
-                _facing[slot, index] = states[i].Facing;
                 _altForm[slot, index] = (states[i].Flags & PlayerState.FlagAltForm) != 0;
             }
             if (!_running || frame > _newest)
@@ -270,7 +267,6 @@ namespace MphRead.Mods.Network
                 _running = true;
                 _readFrame = Math.Max(1.0, frame - Delay);
                 _previousReadFrame = _presentationReadFrame = _readFrame;
-                _reviewReadFrame = _readFrame;
                 _presentationValid = true;
             }
         }
@@ -305,7 +301,6 @@ namespace MphRead.Mods.Network
             _newest = 0;
             _previousReadFrame = 0;
             _presentationReadFrame = 0;
-            _reviewReadFrame = 0;
             _presentationValid = false;
             _running = false;
             _haveTransit = false;
@@ -393,13 +388,9 @@ namespace MphRead.Mods.Network
             _presentationReadFrame = _previousReadFrame
                 + (_readFrame - _previousReadFrame) * t;
             _presentationReadFrame = Math.Clamp(_presentationReadFrame, 1.0, _newest);
-            _reviewReadFrame = _presentationReadFrame;
 
-            // Live play must never present a world the authority cannot name
-            // for hit registration, so packet loss holds the nearest recorded
-            // frame. Replay review uses _reviewReadFrame instead and can
-            // interpolate across that missing frame because there is no shot
-            // or authority reconciliation happening during offline review.
+            // Live presentation and hit-registration acknowledgements must name
+            // a received authority frame; offline replicas own their pose stream.
             _presentationReadFrame = RecordedPoint(_presentationReadFrame);
             _presentationValid = true;
         }
@@ -408,125 +399,6 @@ namespace MphRead.Mods.Network
         {
             double point = _presentationValid ? _presentationReadFrame : _readFrame;
             return SampleAt(slot, point, countDiagnostics: false, out position, out altForm);
-        }
-
-        /// <summary>
-        /// Presentation sampler for recorded replays.
-        ///
-        /// Unlike live play, review is allowed to interpolate across a missing
-        /// authority frame. The file is already history; there is no shot to
-        /// reconcile and no reason to freeze a hunter for two frames then jump
-        /// when the next received snapshot is available. Search a bounded
-        /// window for the nearest snapshots on both sides of the read point and
-        /// blend them by their authority frame numbers. Life/form changes and
-        /// teleports still cut rather than smear.
-        /// </summary>
-        public static bool SampleReplayPresentation(int slot, out Vector3 position,
-            out Vector3 facing, out bool altForm)
-        {
-            position = Vector3.Zero;
-            facing = Vector3.UnitZ;
-            altForm = false;
-            if (!Active || slot < 0 || slot >= Slots)
-                return false;
-
-            double point = _presentationValid ? _reviewReadFrame : _readFrame;
-            uint floor = (uint)Math.Floor(point);
-            const uint search = 16;
-
-            bool haveA = false, haveB = false;
-            uint frameA = 0, frameB = 0;
-            Vector3 posA = default, posB = default;
-            Vector3 faceA = default, faceB = default;
-            bool altA = false, altB = false;
-
-            for (uint back = 0; back <= search && floor >= back + 1; back++)
-            {
-                uint frame = floor - back;
-                if (LookupReplay(slot, frame, out posA, out faceA, out altA))
-                {
-                    frameA = frame;
-                    haveA = true;
-                    break;
-                }
-            }
-
-            uint ceil = (uint)Math.Ceiling(point);
-            if (ceil < 1) ceil = 1;
-            for (uint forward = 0; forward <= search && ceil + forward <= _newest; forward++)
-            {
-                uint frame = ceil + forward;
-                if (LookupReplay(slot, frame, out posB, out faceB, out altB))
-                {
-                    frameB = frame;
-                    haveB = true;
-                    break;
-                }
-            }
-
-            if (!haveA && !haveB)
-                return false;
-            if (!haveA)
-            {
-                position = posB;
-                facing = SafeFacing(faceB);
-                altForm = altB;
-                return true;
-            }
-            if (!haveB || frameB <= frameA || altA != altB)
-            {
-                position = posA;
-                facing = SafeFacing(faceA);
-                altForm = altA;
-                return true;
-            }
-
-            uint gap = frameB - frameA;
-            Vector3 travel = posB - posA;
-            float maxTravel = Math.Max(SnapDistance, gap * 1.0f);
-            if (travel.LengthSquared > maxTravel * maxTravel)
-            {
-                position = posA;
-                facing = SafeFacing(faceA);
-                altForm = altA;
-                return true;
-            }
-
-            float t = (float)Math.Clamp((point - frameA) / gap, 0.0, 1.0);
-            position = Vector3.Lerp(posA, posB, t);
-            Vector3 aFacing = SafeFacing(faceA);
-            Vector3 bFacing = SafeFacing(faceB);
-            Vector3 blended = Vector3.Lerp(aFacing, bFacing, t);
-            facing = blended.LengthSquared > 0.000001f ? blended.Normalized() : aFacing;
-            altForm = altA;
-            return true;
-        }
-
-        private static Vector3 SafeFacing(Vector3 value)
-            => Single.IsFinite(value.X) && Single.IsFinite(value.Y)
-                && Single.IsFinite(value.Z) && value.LengthSquared > 0.000001f
-                    ? value.Normalized()
-                    : Vector3.UnitZ;
-
-        private static bool LookupReplay(int slot, uint frame, out Vector3 position,
-            out Vector3 facing, out bool altForm)
-        {
-            position = Vector3.Zero;
-            facing = Vector3.UnitZ;
-            altForm = false;
-            if (frame == 0 || frame > _newest)
-                return false;
-            int index = (int)(frame % HistoryFrames);
-            if (_stamp[index] != frame || !_live[slot, index]
-                || !NetPlayerLifecycle.Matches(slot, _generation[slot, index], _life[slot, index]))
-            {
-                return false;
-            }
-            position = _position[slot, index];
-            facing = _facing[slot, index];
-            altForm = _altForm[slot, index];
-            return Single.IsFinite(position.X) && Single.IsFinite(position.Y)
-                && Single.IsFinite(position.Z);
         }
 
         private static bool SampleAt(int slot, double readFrame, bool countDiagnostics,
@@ -714,7 +586,6 @@ namespace MphRead.Mods.Network
             _readFrame = 0;
             _previousReadFrame = 0;
             _presentationReadFrame = 0;
-            _reviewReadFrame = 0;
             _presentationValid = false;
             _running = false;
             _haveTransit = false;
@@ -750,7 +621,6 @@ namespace MphRead.Mods.Network
             _readFrame = 0;
             _previousReadFrame = 0;
             _presentationReadFrame = 0;
-            _reviewReadFrame = 0;
             _presentationValid = false;
             _running = false;
             _haveTransit = false;

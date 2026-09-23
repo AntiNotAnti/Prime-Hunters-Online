@@ -10,19 +10,16 @@ namespace MphRead.Mods.Network;
 /// an isolated player; only this presentation adapter touches foreground UI.</summary>
 public static class DemoPlayback
 {
-    private static readonly ReplayPlaybackSession Legacy = new(new TheatreReplaySessionHost());
     private static ReplayPlaybackSession _prepared = new(new PassiveReplaySessionHost());
     private static PassiveReplayPlayer? _player;
     private static Scene? _shell;
     private static Scene? _lab;
     private static ulong _audio;
-    private static bool _legacy;
     private static bool _failed;
-    internal static ReplayPlaybackSession Session => _legacy ? Legacy : _player?.Current.Session ?? _prepared;
-    internal static bool IsIsolated => !_legacy && IsActive;
+    internal static ReplayPlaybackSession Session => _player?.Current.Session ?? _prepared;
     internal static Scene? ReplicaScene => _player?.Current.Scene;
     internal static Scene? PresentationScene => _lab ?? (_player?.Ready == true ? _player.Current.Scene : null);
-    internal static bool Owns(Scene scene) => !_legacy && ReferenceEquals(_player?.Current.Scene, scene);
+    internal static bool Owns(Scene scene) => ReferenceEquals(_player?.Current.Scene, scene);
     internal static Scene? Presentation(Scene shell) => ReferenceEquals(_shell, shell) ? PresentationScene : null;
     public static bool IsActive => Session.IsActive;
     public static string? CurrentPath => Session.CurrentPath;
@@ -37,22 +34,18 @@ public static class DemoPlayback
     public static string? LastError => Session.LastError;
     public static bool Join(string path, int timeoutMs = 8000)
     {
-        Stop(); _legacy = false;
+        Stop();
         _prepared = new(new PassiveReplaySessionHost());
         bool opened = _prepared.Join(path, timeoutMs);
         if (opened) { ReplayCamera.ClearBookmarks(); ReplayCamera.Reset(); ReplayHud.Reset(); ReplayStudio.ResetCache(); }
         return opened;
     }
-    // Explicit adapter for old verification tools during migration. Shipping
-    // playback never selects the network compatibility host.
-    internal static bool JoinLegacy(string path)
-    { Stop(); _legacy = true; return Legacy.Join(path); }
     internal static int CheckpointCount => _player?.CheckpointCount ?? 0;
     internal static string SeekDiagnostics => _player == null ? "" :
         $"{_player.CheckpointSource} restore {_player.SeekRestoreFrame} · {_player.SeekSimulationSteps} steps · {_player.SeekMilliseconds:0.0} ms · {_player.RejectedCheckpoints} rejected";
     internal static void Update(Scene shell)
     {
-        if (!IsIsolated || _failed) return;
+        if (!IsActive || _failed) return;
         try { UpdateCore(shell); }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         {
@@ -123,12 +116,11 @@ public static class DemoPlayback
         _player?.Dispose(); _player = null;
         Scene? lab = _lab; _lab = null;
         lab?.DoCleanup(); lab?.UnloadGl(); _shell = null;
-        _prepared.Stop(); Legacy.Stop(); _failed = false;
+        _prepared.Stop(); _failed = false;
     }
     public static bool TakeControl(int slot, out string? branchPath)
     {
         branchPath = null;
-        if (_legacy) return Legacy.TakeControl(slot, out branchPath);
         if (_player?.Ready != true || NetSession.Active || (uint)slot >= 8
             || _player.Current.Scene.Players.Items[slot].Health == 0
             || !_player.Current.Scene.Players.Items[slot].LoadFlags.TestFlag(LoadFlags.Spawned)) return false;
@@ -146,7 +138,6 @@ public static class DemoPlayback
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
         { Console.WriteLine("[replay] Cannot create practice branch: " + ex.Message); return false; }
     }
-    internal static bool Reposition(uint frame, uint netFrame) => Session.Reposition(frame, netFrame);
     internal static void FailVerification(string error) => Session.FailVerification(error);
     internal static long PlaybackArrivalTicks(uint frame) => ReplayPlaybackSession.PlaybackArrivalTicks(frame);
 }

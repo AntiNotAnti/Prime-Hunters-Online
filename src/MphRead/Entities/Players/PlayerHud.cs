@@ -1492,15 +1492,6 @@ namespace MphRead.Entities
             // comment below gives about that one: a vote is asked during a
             // running match and answered from wherever the player is looking.
             ModDrawVote();
-            ModDrawKillCam();
-            if (Mods.KillCam.Active)
-            {
-                // A kill cam is a replay presentation, not the player's live
-                // visor or the post-match results UI. Keep chat and the
-                // kill-cam banner only so both personal and final replays are
-                // visually unmistakable.
-                return;
-            }
             // With the chat and before every early return below it, for the
             // same reason: the results screen is drawn during MatchState
             // GameOver *and* Ending, and the block further down handles those
@@ -1675,7 +1666,7 @@ namespace MphRead.Entities
 
         public void DrawHudModels()
         {
-            if (Mods.ThumbnailMode.Active || Mods.KillCam.Active)
+            if (Mods.ThumbnailMode.Active)
             {
                 return;
             }
