@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using MphRead.Mods.Launcher;
 using MphRead.Mods.MapGen;
@@ -117,15 +118,54 @@ namespace MphRead.Droid
             try
             {
                 if (!GameFiles.Ready)
-                {
                     return;
-                }
                 GameFiles.ApplyPaths();
                 CustomRooms.GenerateMissing();
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[android] could not build the custom maps: {ex.Message}");
+            }
+        }
+
+        public static void EnsureBuilt(string roomName)
+        {
+            if (String.IsNullOrWhiteSpace(roomName))
+                return;
+            try
+            {
+                if (!GameFiles.Ready)
+                    return;
+                GameFiles.ApplyPaths();
+                if (!RoomPrewarm.JoinForLoad(roomName))
+                    CustomRooms.GenerateMissing(roomName);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[android] could not build {roomName}: {ex.Message}");
+            }
+        }
+
+        public static void EnsureBuilt(IReadOnlyList<string> rooms, Func<bool>? cancelled = null)
+        {
+            try
+            {
+                if (!GameFiles.Ready)
+                    return;
+                GameFiles.ApplyPaths();
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < rooms.Count; i++)
+                {
+                    if (cancelled?.Invoke() == true)
+                        return;
+                    string room = rooms[i];
+                    if (seen.Add(room))
+                        CustomRooms.GenerateMissing(room);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[android] could not build preview maps: {ex.Message}");
             }
         }
     }
