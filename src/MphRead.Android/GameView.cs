@@ -725,6 +725,10 @@ namespace MphRead.Droid
                     _eglSurface = null;
                     _boundTo = null;
                     _holdingSurface = false;
+                    // SetFrameRate belongs to the Android window surface, not
+                    // the long-lived EGL context. A replacement surface must be
+                    // told again even when the requested cap did not change.
+                    _requestedFrameRate = -1;
                     Monitor.PulseAll(_lock);
                 }
                 if (_display == null || surface == null)
