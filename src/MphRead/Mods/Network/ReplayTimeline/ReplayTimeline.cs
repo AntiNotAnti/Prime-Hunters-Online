@@ -78,7 +78,7 @@ public sealed class ReplayRestorePoint : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        foreach (var record in Records) record.Release();
+        if (Records != null) foreach (var record in Records) record.Release();
         GC.SuppressFinalize(this);
     }
     ~ReplayRestorePoint() => Dispose();
@@ -102,8 +102,8 @@ public sealed class ReplayTimelineClip : IDisposable
     public void Dispose()
     {
         if (_disposed) return;
-        _disposed = true; RestorePoint.Dispose();
-        foreach (var record in Records) record.Release();
+        _disposed = true; RestorePoint?.Dispose();
+        if (Records != null) foreach (var record in Records) record.Release();
         GC.SuppressFinalize(this);
     }
     ~ReplayTimelineClip() => Dispose();

@@ -43,7 +43,7 @@ namespace MphRead.Mods.Network
         {
             var checkpoint = Replay.ReplayWorldCheckpoint.FromBytes(_reader!.ReadCheckpoint(index));
             if (checkpoint.Frame != (ulong)index.Frame + (_reader.Metadata?.OriginRecordingFrame ?? 0))
-                throw new InvalidDataException("Durable checkpoint clock differs from its index.");
+            { checkpoint.Dispose(); throw new InvalidDataException("Durable checkpoint clock differs from its index."); }
             return checkpoint;
         }
         internal bool IsWarming => LeadInFrames > 0 && (!_started || _frame < LeadInFrames);
@@ -70,7 +70,7 @@ namespace MphRead.Mods.Network
             if (!_live || _started && frame != _frame + 1) throw new InvalidOperationException("Live replica frames must be contiguous.");
             foreach (var record in records)
                 if (record.Kind is ReplayFactKind.Match or ReplayFactKind.Roster or ReplayFactKind.Snapshot or ReplayFactKind.Intent or ReplayFactKind.AuthorityWorld)
-                    _host.Inject(record.Payload.ToArray(), record.RecordingFrame);
+                    _host.Inject(record.Payload, record.RecordingFrame);
             _frame = LastFrame = frame; _started = true;
         }
 
@@ -200,7 +200,7 @@ namespace MphRead.Mods.Network
                 {
                     if (_host is not PassiveReplaySessionHost passive)
                         throw new InvalidDataException("This replay requires the isolated world player.");
-                    var world = Replay.ReplayWorldCheckpoint.FromBytes(metadata.WorldCheckpoint);
+                    using var world = Replay.ReplayWorldCheckpoint.FromBytes(metadata.WorldCheckpoint);
                     if (world.Frame != metadata.OriginRecordingFrame)
                         throw new InvalidDataException("Replay origin differs from its initial world.");
                     passive.State.RestoreCheckpoint(world.ConstructionState());
@@ -367,7 +367,7 @@ namespace MphRead.Mods.Network
                 {
                     var record = _clip.Records[_clipIndex++];
                     if (record.Kind is ReplayFactKind.Match or ReplayFactKind.Roster or ReplayFactKind.Snapshot or ReplayFactKind.Intent or ReplayFactKind.AuthorityWorld)
-                        _host.Inject(record.Payload.ToArray(), record.RecordingFrame);
+                        _host.Inject(record.Payload, record.RecordingFrame);
                 }
                 _host.Advance(_frame / 60.0);
                 return;

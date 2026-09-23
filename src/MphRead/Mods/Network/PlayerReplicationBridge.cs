@@ -347,9 +347,9 @@ namespace MphRead.Mods.Network
             // which is what lets a puppet's charge climb with its owner's while
             // the trigger is held.
             _hasLatch = false;
-            if (NetLog.Enabled && (intent.Buttons.HasFlag(IntentButtons.Shoot) || player.Controls.Shoot.IsReleased))
+            if (NetLog.Enabled && (((intent.Buttons & IntentButtons.Shoot) == IntentButtons.Shoot) || player.Controls.Shoot.IsReleased))
                 NetShotDiagnostics.Trace("input", ShotKey.For(player.SlotIndex, intent.AckFrame), player.CurrentWeapon,
-                    $"intentFrame={intent.Frame} intentLife={intent.LifeId} inPlay={intent.Buttons.HasFlag(IntentButtons.InPlayState)} shoot={player.Controls.Shoot.IsDown} press={player.Controls.Shoot.IsPressed}");
+                    $"intentFrame={intent.Frame} intentLife={intent.LifeId} inPlay={((intent.Buttons & IntentButtons.InPlayState) == IntentButtons.InPlayState)} shoot={player.Controls.Shoot.IsDown} press={player.Controls.Shoot.IsPressed}");
             return intent;
         }
 
@@ -425,38 +425,38 @@ namespace MphRead.Mods.Network
             {
                 ShootPressAge[player.SlotIndex] = shootAge;
             }
-            _respawnRequested[player.SlotIndex] = !intent.Buttons.HasFlag(IntentButtons.InPlayState)
-                && intent.Buttons.HasFlag(IntentButtons.Shoot);
-            if (!intent.Buttons.HasFlag(IntentButtons.InPlayState))
+            _respawnRequested[player.SlotIndex] = !((intent.Buttons & IntentButtons.InPlayState) == IntentButtons.InPlayState)
+                && ((intent.Buttons & IntentButtons.Shoot) == IntentButtons.Shoot);
+            if (!((intent.Buttons & IntentButtons.InPlayState) == IntentButtons.InPlayState))
             {
                 // Consume history, but never turn a dead player's respawn button into
                 // a weapon press (or a charged-shot release) on an ahead-of-owner puppet.
                 c.ClearAll();
                 ShootPressAge[player.SlotIndex] = 0;
-                player.ModSetSpectating(intent.Buttons.HasFlag(IntentButtons.SpectatingState));
+                player.ModSetSpectating(((intent.Buttons & IntentButtons.SpectatingState) == IntentButtons.SpectatingState));
                 return;
             }
-            Set(c.MoveLeft, intent.Buttons.HasFlag(IntentButtons.MoveLeft), missed.HasFlag(IntentButtons.MoveLeft));
-            Set(c.MoveRight, intent.Buttons.HasFlag(IntentButtons.MoveRight), missed.HasFlag(IntentButtons.MoveRight));
-            Set(c.MoveUp, intent.Buttons.HasFlag(IntentButtons.MoveUp), missed.HasFlag(IntentButtons.MoveUp));
-            Set(c.MoveDown, intent.Buttons.HasFlag(IntentButtons.MoveDown), missed.HasFlag(IntentButtons.MoveDown));
-            Set(c.Shoot, intent.Buttons.HasFlag(IntentButtons.Shoot), missed.HasFlag(IntentButtons.Shoot));
-            Set(c.Zoom, intent.Buttons.HasFlag(IntentButtons.Zoom), missed.HasFlag(IntentButtons.Zoom));
-            Set(c.Jump, intent.Buttons.HasFlag(IntentButtons.Jump), missed.HasFlag(IntentButtons.Jump));
-            Set(c.Morph, intent.Buttons.HasFlag(IntentButtons.Morph), missed.HasFlag(IntentButtons.Morph));
+            Set(c.MoveLeft, ((intent.Buttons & IntentButtons.MoveLeft) == IntentButtons.MoveLeft), ((missed & IntentButtons.MoveLeft) == IntentButtons.MoveLeft));
+            Set(c.MoveRight, ((intent.Buttons & IntentButtons.MoveRight) == IntentButtons.MoveRight), ((missed & IntentButtons.MoveRight) == IntentButtons.MoveRight));
+            Set(c.MoveUp, ((intent.Buttons & IntentButtons.MoveUp) == IntentButtons.MoveUp), ((missed & IntentButtons.MoveUp) == IntentButtons.MoveUp));
+            Set(c.MoveDown, ((intent.Buttons & IntentButtons.MoveDown) == IntentButtons.MoveDown), ((missed & IntentButtons.MoveDown) == IntentButtons.MoveDown));
+            Set(c.Shoot, ((intent.Buttons & IntentButtons.Shoot) == IntentButtons.Shoot), ((missed & IntentButtons.Shoot) == IntentButtons.Shoot));
+            Set(c.Zoom, ((intent.Buttons & IntentButtons.Zoom) == IntentButtons.Zoom), ((missed & IntentButtons.Zoom) == IntentButtons.Zoom));
+            Set(c.Jump, ((intent.Buttons & IntentButtons.Jump) == IntentButtons.Jump), ((missed & IntentButtons.Jump) == IntentButtons.Jump));
+            Set(c.Morph, ((intent.Buttons & IntentButtons.Morph) == IntentButtons.Morph), ((missed & IntentButtons.Morph) == IntentButtons.Morph));
             if (c.Morph.IsPressed)
             {
                 Log($"slot {player.SlotIndex} morph press received, now {player.ModFormState()}");
             }
-            Set(c.Boost, intent.Buttons.HasFlag(IntentButtons.Boost), missed.HasFlag(IntentButtons.Boost));
-            Set(c.AltAttack, intent.Buttons.HasFlag(IntentButtons.AltAttack), missed.HasFlag(IntentButtons.AltAttack));
-            Set(c.ScanVisor, intent.Buttons.HasFlag(IntentButtons.ScanVisor), missed.HasFlag(IntentButtons.ScanVisor));
-            Set(c.NextWeapon, intent.Buttons.HasFlag(IntentButtons.NextWeapon), missed.HasFlag(IntentButtons.NextWeapon));
-            Set(c.PrevWeapon, intent.Buttons.HasFlag(IntentButtons.PrevWeapon), missed.HasFlag(IntentButtons.PrevWeapon));
-            Set(c.RolltLeft, intent.Buttons.HasFlag(IntentButtons.RollLeft), missed.HasFlag(IntentButtons.RollLeft));
-            Set(c.RollRight, intent.Buttons.HasFlag(IntentButtons.RollRight), missed.HasFlag(IntentButtons.RollRight));
-            Set(c.RollUp, intent.Buttons.HasFlag(IntentButtons.RollUp), missed.HasFlag(IntentButtons.RollUp));
-            Set(c.RollDown, intent.Buttons.HasFlag(IntentButtons.RollDown), missed.HasFlag(IntentButtons.RollDown));
+            Set(c.Boost, ((intent.Buttons & IntentButtons.Boost) == IntentButtons.Boost), ((missed & IntentButtons.Boost) == IntentButtons.Boost));
+            Set(c.AltAttack, ((intent.Buttons & IntentButtons.AltAttack) == IntentButtons.AltAttack), ((missed & IntentButtons.AltAttack) == IntentButtons.AltAttack));
+            Set(c.ScanVisor, ((intent.Buttons & IntentButtons.ScanVisor) == IntentButtons.ScanVisor), ((missed & IntentButtons.ScanVisor) == IntentButtons.ScanVisor));
+            Set(c.NextWeapon, ((intent.Buttons & IntentButtons.NextWeapon) == IntentButtons.NextWeapon), ((missed & IntentButtons.NextWeapon) == IntentButtons.NextWeapon));
+            Set(c.PrevWeapon, ((intent.Buttons & IntentButtons.PrevWeapon) == IntentButtons.PrevWeapon), ((missed & IntentButtons.PrevWeapon) == IntentButtons.PrevWeapon));
+            Set(c.RolltLeft, ((intent.Buttons & IntentButtons.RollLeft) == IntentButtons.RollLeft), ((missed & IntentButtons.RollLeft) == IntentButtons.RollLeft));
+            Set(c.RollRight, ((intent.Buttons & IntentButtons.RollRight) == IntentButtons.RollRight), ((missed & IntentButtons.RollRight) == IntentButtons.RollRight));
+            Set(c.RollUp, ((intent.Buttons & IntentButtons.RollUp) == IntentButtons.RollUp), ((missed & IntentButtons.RollUp) == IntentButtons.RollUp));
+            Set(c.RollDown, ((intent.Buttons & IntentButtons.RollDown) == IntentButtons.RollDown), ((missed & IntentButtons.RollDown) == IntentButtons.RollDown));
             if (intent.WeaponSelect != 0xFF)
             {
                 player.ModSetWeapon((BeamType)intent.WeaponSelect);
@@ -479,12 +479,12 @@ namespace MphRead.Mods.Network
             // After the weapon, because zoom belongs to one and the engine
             // refuses it on a weapon that cannot. Taken as state rather than
             // rebuilt from the press: see IntentButtons.ZoomedState.
-            player.ModSetZoom(intent.Buttons.HasFlag(IntentButtons.ZoomedState));
+            player.ModSetZoom(((intent.Buttons & IntentButtons.ZoomedState) == IntentButtons.ZoomedState));
             // The owner's own answer about whether it is still in the match.
             // On the authority this is what makes a spectator stop being a
             // target; from there the snapshot's FlagSpectating carries it to
             // everybody else.
-            player.ModSetSpectating(intent.Buttons.HasFlag(IntentButtons.SpectatingState));
+            player.ModSetSpectating(((intent.Buttons & IntentButtons.SpectatingState) == IntentButtons.SpectatingState));
             // And which form its owner says it is in -- but only here, on the
             // machine that answers that question for everybody else.
             //
@@ -513,7 +513,7 @@ namespace MphRead.Mods.Network
             // long enough for the puppet to be pulled both ways.
             if (_host.IsAuthority)
             {
-                ApplyForm(player, intent.Buttons.HasFlag(IntentButtons.AltFormState));
+                ApplyForm(player, ((intent.Buttons & IntentButtons.AltFormState) == IntentButtons.AltFormState));
             }
             // And what this player's next shot is worth, from the one machine
             // that knows -- charge, ram, double damage, the Prime Hunter
@@ -931,7 +931,7 @@ namespace MphRead.Mods.Network
                 return;
             }
             Vector3 reported = InForm(player, intent.Position,
-                intent.Buttons.HasFlag(IntentButtons.AltFormState));
+                ((intent.Buttons & IntentButtons.AltFormState) == IntentButtons.AltFormState));
             NoteReportedVelocity(player, reported, intent.Frame);
             Vector3 delta = reported - player.Position;
             float distance = delta.Length;
@@ -1031,12 +1031,12 @@ namespace MphRead.Mods.Network
                 return;
             }
             Move(player, InForm(player, intent.Position,
-                intent.Buttons.HasFlag(IntentButtons.AltFormState)));
+                ((intent.Buttons & IntentButtons.AltFormState) == IntentButtons.AltFormState)));
         }
 
         private bool StaleSinceSpawn(PlayerEntity player, in IntentPacket intent) =>
             !_host.Matches(player.SlotIndex, intent.SlotGeneration, intent.LifeId)
-            || !intent.Buttons.HasFlag(IntentButtons.InPlayState);
+            || !((intent.Buttons & IntentButtons.InPlayState) == IntentButtons.InPlayState);
 
         private readonly Vector3[] _lastReportPosition = new Vector3[PlayerEntity.SlotCapacity];
         private readonly uint[] _lastReportFrame = new uint[PlayerEntity.SlotCapacity];

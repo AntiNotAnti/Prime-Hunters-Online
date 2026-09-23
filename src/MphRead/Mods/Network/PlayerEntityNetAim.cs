@@ -101,7 +101,7 @@ namespace MphRead.Entities
         /// <summary>Where this player's gun points. Sent as the aim in every intent.</summary>
         internal Vector3 ModGunVector => _gunVec1;
 
-        private readonly struct FirstPersonRenderPose
+        internal readonly struct FirstPersonRenderPose
         {
             public readonly Matrix4 View;
             public readonly Vector3 CameraPosition;

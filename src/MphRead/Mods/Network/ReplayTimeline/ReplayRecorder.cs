@@ -115,14 +115,31 @@ internal sealed class ReplayRecorder
         if (_worldWire.Accept(payload, _matchId, _epoch) is { } world) AcceptWorld(world, frame);
     }
     internal void AcceptWorld(ReplayAuthorityWorld world, uint frame)
+        => AcceptWorld(world, frame, world.Encode());
+    internal void AcceptWorld(ReplayAuthorityWorld world, uint frame, ReadOnlySpan<byte> encoded, bool send = false)
     {
         if (world.MatchId != _matchId || world.Epoch != _epoch) return;
-        foreach (byte[] packet in ReplayAuthorityWire.Packets(world))
-            PublishTransient(new(frame, world.Tick, ReplayFactKind.AuthorityWorld, packet));
+        Span<byte> packet = stackalloc byte[NetConfig.MaxPacketSize];
+        int parts = (encoded.Length + ReplayAuthorityWire.PartBytes - 1) / ReplayAuthorityWire.PartBytes;
+        for (int part = 0; part < parts; part++)
+        {
+            int length = ReplayAuthorityWire.WritePacket(world, encoded, part, packet);
+            PublishTransient(new(frame, world.Tick, ReplayFactKind.AuthorityWorld, packet[..length]));
+            if (send) NetSession.SendReplayWorldPacket(packet.Slice(1, length - 1));
+        }
     }
     public void Marker(uint frame, uint tick, ReplayMarker marker)
     {
         PublishTransient(new(frame, tick, ReplayFactKind.Event, ReadOnlySpan<byte>.Empty, marker));
+    }
+
+    internal void SeedWorld(Action<ReplayTimelineRecord> accept)
+    {
+        if (_match is { } match) accept(match);
+        if (_configuration is { } configuration) accept(configuration);
+        if (_roster is { } roster) accept(roster);
+        if (_snapshot is { } snapshot) accept(snapshot);
+        foreach (var intent in _intents) if (intent is { } record) accept(record);
     }
 
     private void PublishTransient(ReplayTimelineRecord record)
@@ -135,14 +152,22 @@ internal sealed class ReplayRecorder
         Accepted?.Invoke(record);
     }
 
-    internal bool AppendWorldCheckpoint(uint frame, uint tick, ReadOnlySpan<byte> bytes)
+    internal bool AppendWorldCheckpoint(uint frame, uint tick, ReplayPayload payload)
     {
-        if (_match == null || _roster == null || _snapshot == null) return false;
+        payload.Retain();
+        return AppendWorldCheckpoint(new ReplayTimelineRecord(frame, tick, ReplayFactKind.World, payload));
+    }
+    internal bool AppendWorldCheckpoint(uint frame, uint tick, ReadOnlySpan<byte> bytes)
+        => AppendWorldCheckpoint(new ReplayTimelineRecord(frame, tick, ReplayFactKind.World, bytes));
+    private bool AppendWorldCheckpoint(ReplayTimelineRecord world)
+    {
+        if (_match == null || _roster == null || _snapshot == null) { world.Release(); return false; }
+        uint frame = world.RecordingFrame, tick = world.ServerTick;
         // Packet baselines remain available to metadata/compatibility tools. Only
         // the World record is allowed to restore a replica scene.
         var records = new List<ReplayTimelineRecord> { _match.Value, _roster.Value, _snapshot.Value };
         if (_configuration != null) records.Insert(0, _configuration.Value);
-        var world = new ReplayTimelineRecord(frame, tick, ReplayFactKind.World, bytes); records.Add(world);
+        records.Add(world);
         try
         {
             if (!Timeline.AppendRestorePoint(new(frame, tick, ReplayRestoreKind.ReplicaCheckpoint, records))) return false;

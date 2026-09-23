@@ -22,6 +22,11 @@ internal sealed class ReplayModelCheckpoint
     {
         using var stream = new MemoryStream(160);
         using var writer = new BinaryWriter(stream);
+        Write(writer, model);
+        return new(stream.ToArray());
+    }
+    internal static void Write(BinaryWriter writer, ModelInstance model)
+    {
         writer.Write(Schema); writer.Write(model.Model.Name); writer.Write(model.Model.FirstHunt);
         writer.Write(model.Active); writer.Write(model.IsPlaceholder); writer.Write(model.NodeAnimIgnoreRoot);
         AnimationInfo animation = model.AnimInfo;
@@ -36,8 +41,6 @@ internal sealed class ReplayModelCheckpoint
         writer.Write(animation.Material.Slot); writer.Write(Index(groups.Material, animation.Material.Group));
         writer.Write(animation.Texcoord.Slot); writer.Write(Index(groups.Texcoord, animation.Texcoord.Group));
         writer.Write(animation.Texture.Slot); writer.Write(Index(groups.Texture, animation.Texture.Group));
-        writer.Flush();
-        return new(stream.ToArray());
     }
 
     private static int Index<T>(IReadOnlyList<T> groups, T? group) where T : class

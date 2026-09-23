@@ -15,6 +15,10 @@ namespace MphRead.Entities
 
     public partial class PlayerEntity
     {
+        // Query scratch is not historical simulation state.
+        private readonly CollisionResult[] _collisionScratch = new CollisionResult[40];
+        private readonly CollisionResult[] _cameraCollisionScratch = new CollisionResult[8];
+
         private EntityCollision? _collidedEntCol = null;
         private EntityCollision? _standingEntCol = null;
 
@@ -398,7 +402,8 @@ namespace MphRead.Entities
             _standingEntCol = null;
             _collidedEntCol = null;
             _terrainDamage = false;
-            var results = new CollisionResult[40];
+            var results = _collisionScratch;
+            Array.Clear(results);
             CollisionVolume altVolume = PlayerVolumes[(int)Hunter, 2];
             Vector3 point1;
             Vector3 point2;

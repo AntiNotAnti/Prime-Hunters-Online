@@ -18,24 +18,27 @@ internal static class ReplayWorldCoverageCheck
         Directory.CreateDirectory(directory);
         try
         {
-            using var reader = DemoReader.Open(source, out var result) ?? throw new InvalidDataException(result.ToString());
-            var decoder = new ReplayReplicaState();
-            if (reader.Metadata is { } metadata)
-                foreach (var packet in metadata.Bootstrap.Packets) decoder.Accept(packet, 0);
-            Vector3? origin = null;
-            while (reader.ReadNext() is DemoRecord record)
+            Headless.Enter();
+            string room = "TEST ARENA";
+            Vector3 origin = new(0, 1, 0);
+            if (source != "synthetic")
             {
-                decoder.Accept(record.Data, record.Frame);
-                for (int slot = 0; slot < 8; slot++)
-                    if (decoder.TryGetPlayer(slot, out var player) && player.Health > 0)
-                    { origin = player.Position; break; }
-                if (origin.HasValue && decoder.Match.HasValue) break;
+                using var seed = new PassiveReplayScene(source, new Vector2i(256, 192));
+                bool found = false;
+                do
+                {
+                    for (int slot = 0; slot < 8; slot++)
+                        if (seed.State.TryGetPlayer(slot, out var player) && player.Health > 0)
+                        { origin = player.Position; found = true; break; }
+                    if (found) break;
+                } while (seed.Step());
+                if (!found || seed.State.Match is not { } match) throw new InvalidDataException("Source needs a room and an alive player.");
+                room = match.RoomKey;
             }
-            if (origin == null || decoder.Match == null) throw new InvalidDataException("Source needs a room and an alive player.");
             for (GameMode mode = GameMode.Battle; mode <= GameMode.PrimeHunter; mode++)
             {
                 string path = Path.Combine(directory, mode + ".ppdemo");
-                Write(path, decoder.Match.Value.RoomKey, mode, origin.Value);
+                Write(path, room, mode, origin);
                 Console.WriteLine($"[replayworld] {mode}: eight actors, all hunters, weapon/alt/affliction/death/respawn transitions");
                 if (ReplayReplicaCheck.Run(path) != 0) return 1;
             }

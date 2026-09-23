@@ -6,7 +6,7 @@ using OpenTK.Mathematics;
 namespace MphRead.Mods.Network;
 
 /// <summary>Instant-clip selection over the shared bounded replay timeline.
-/// Frozen facts survive reset; private warmup uses at most 120 steps per tick.</summary>
+/// Frozen facts survive reset; private warmup uses at most 24 steps or 1 ms per tick.</summary>
 internal static class DemoClip
 {
     public static readonly int[] Lengths = { 15, 30, 60, 120 };
@@ -69,13 +69,13 @@ internal static class DemoClip
             if (_writing != null)
             {
                 if (!_writing.IsCompleted) return;
-                _writing.GetAwaiter().GetResult();
+                if (_writing.IsFaulted) throw _writing.Exception!.GetBaseException();
                 LastSavedPath = _pendingPath;
                 Chat.ChatBox.System("Saved replay clip: " + Path.GetFileName(_pendingPath));
                 Clear(); return;
             }
             _preparing ??= new PassiveReplayPlayer(_clip, size);
-            if (!_preparing.Ready) _preparing.Update();
+            if (!_preparing.Ready) _preparing.Update(maximumSteps: 24, maximumMilliseconds: 1);
             if (!_preparing.Ready) return;
             if (_writing == null)
             {

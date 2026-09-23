@@ -200,7 +200,7 @@ namespace MphRead.Formats.Collision
     }
 
     // size: 16
-    public readonly struct CollisionData
+    public readonly struct CollisionData : IEquatable<CollisionData>
     {
         public readonly int Counter; // only set at runtime
         public readonly ushort PlaneIndex;
@@ -209,6 +209,14 @@ namespace MphRead.Formats.Collision
         public readonly ushort PaddingA;
         public readonly ushort PointIndexCount; // does not include the copy of the first index at the end of the sequence
         public readonly ushort PointStartIndex;
+
+        // Match ValueType's field equality without boxing on every collision-set lookup.
+        public bool Equals(CollisionData other) => Counter == other.Counter && PlaneIndex == other.PlaneIndex
+            && Flags == other.Flags && LayerMask == other.LayerMask && PaddingA == other.PaddingA
+            && PointIndexCount == other.PointIndexCount && PointStartIndex == other.PointStartIndex;
+        public override bool Equals(object? other) => other is CollisionData value && Equals(value);
+        public override int GetHashCode() => HashCode.Combine(Counter, PlaneIndex, Flags, LayerMask,
+            PaddingA, PointIndexCount, PointStartIndex);
 
         // bits 3-4
         public int Slipperiness => ((ushort)Flags & 0x18) >> 3;

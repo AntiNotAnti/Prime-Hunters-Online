@@ -34,6 +34,21 @@ internal sealed class ReplayAuthorityWire
             bytes.AsSpan(offset, length).CopyTo(span[HeaderSize..]); yield return packet;
         }
     }
+    internal static int WritePacket(ReplayAuthorityWorld world, ReadOnlySpan<byte> bytes, int part, Span<byte> packet)
+    {
+        int parts = (bytes.Length + PartBytes - 1) / PartBytes;
+        if (bytes.Length is <= 0 or > ReplayAuthorityWorld.MaximumBytes || (uint)part >= parts)
+            throw new InvalidDataException("Invalid authority fragment range.");
+        int offset = part * PartBytes, length = Math.Min(PartBytes, bytes.Length - offset);
+        packet[0] = (byte)PacketType.ReplayWorld;
+        var span = packet[1..]; span[0] = 1;
+        BinaryPrimitives.WriteUInt16LittleEndian(span[1..], world.MatchId);
+        BinaryPrimitives.WriteUInt64LittleEndian(span[3..], world.Epoch);
+        BinaryPrimitives.WriteUInt32LittleEndian(span[11..], world.Tick);
+        BinaryPrimitives.WriteInt32LittleEndian(span[15..], bytes.Length); span[19] = (byte)part; span[20] = (byte)parts;
+        bytes.Slice(offset, length).CopyTo(span[HeaderSize..]);
+        return 1 + HeaderSize + length;
+    }
     internal static bool ValidPart(ReadOnlySpan<byte> payload)
     {
         if (payload.Length < HeaderSize || payload[0] != 1) return false;

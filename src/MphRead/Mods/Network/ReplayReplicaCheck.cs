@@ -72,6 +72,9 @@ namespace MphRead.Mods.Network
                         projectileCheckpoint |= captureProjectile;
                         var timer = System.Diagnostics.Stopwatch.StartNew();
                         var checkpoint = Replay.ReplayWorldCheckpoint.Capture(first);
+                        using (var reference = Replay.ReplayWorldCheckpoint.Capture(first, boundAccessors: false))
+                            if (!checkpoint.Bytes.SequenceEqual(reference.Bytes))
+                                throw new InvalidDataException("Bound checkpoint capture changed serialized bytes.");
                         if (checkpoint.Frame == 900) clipCheckpoint = checkpoint;
                         double captureMs = timer.Elapsed.TotalMilliseconds; timer.Restart();
                         restored?.Dispose(); restored = new PassiveReplayScene(path, size);
@@ -93,6 +96,7 @@ namespace MphRead.Mods.Network
                                 throw new InvalidDataException($"Detached world picture differs at frame {checkpoint.Frame}.");
                         }
                         Console.WriteLine($"[replayreplica] restored frame {checkpoint.Frame}: {checkpoint.Bytes.Length} bytes; capture {captureMs:F2} ms, create/restore {restoreMs:F2} ms");
+                        if (checkpoint != clipCheckpoint) checkpoint.Dispose();
                     }
                     hashes.Enqueue((ReplayStateHash.Compute(first.Scene, first.Session.CurrentFrame),
                         first.Scene.ReplayPresentationHash(first.Session.CurrentFrame), first.State.CaptureCheckpoint()));
@@ -147,7 +151,8 @@ namespace MphRead.Mods.Network
                         throw new InvalidOperationException("Disposing a replica changed another scene's picture.");
                 }
                 second.Dispose();
-                ReplayReplicaSeekChecks.Run(path, size, referenceFrames, clipCheckpoint, comparePresentation: screenshots == null);
+                using (clipCheckpoint)
+                    ReplayReplicaSeekChecks.Run(path, size, referenceFrames, clipCheckpoint, comparePresentation: screenshots == null);
                 if (Sentinel(live) != before || !ReferenceEquals(global::MphRead.Sound.Sfx.Instance, foregroundAudio))
                     throw new InvalidDataException("Replica teardown changed foreground state.");
                 if (steps == 0) throw new InvalidDataException("No replica frames were simulated.");

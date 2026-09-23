@@ -7,7 +7,7 @@ namespace MphRead.Mods.Network
     {
         internal const uint MaxIntentAge = 30;
 
-        private struct Clock
+        internal struct Clock
         {
             public ulong Phase;
             public ulong SceneFrame;

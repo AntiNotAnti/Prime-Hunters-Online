@@ -26,6 +26,11 @@ internal sealed partial class ReplayReplicaState
     {
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream);
+        WriteCheckpoint(writer);
+        return new(stream.GetBuffer().AsSpan(0, checked((int)stream.Length)));
+    }
+    internal void WriteCheckpoint(BinaryWriter writer)
+    {
         writer.Write(CheckpointMagic); writer.Write(CheckpointVersion); writer.Write((byte)NetConfig.ProtocolVersion);
         writer.Write(RecordingFrame); writer.Write(MatchRecordingFrame); writer.Write(ServerTick);
         writer.Write(Rng1); writer.Write(Rng2);
@@ -35,12 +40,12 @@ internal sealed partial class ReplayReplicaState
         writer.Write(Match.HasValue);
         if (Match is { } match)
         {
-            byte[] bytes = new byte[MatchStatePacket.Size]; match.Write(bytes); writer.Write(bytes);
+            Span<byte> bytes = stackalloc byte[MatchStatePacket.Size]; match.Write(bytes); writer.Write(bytes);
         }
         writer.Write(Configuration.HasValue);
         if (Configuration is { } configuration)
         {
-            byte[] bytes = new byte[SessionStatePacket.Size]; configuration.Write(bytes); writer.Write(bytes);
+            Span<byte> bytes = stackalloc byte[SessionStatePacket.Size]; configuration.Write(bytes); writer.Write(bytes);
         }
         var roster = RosterPacket.Create();
         roster.MatchId = Match?.MatchId ?? 0; roster.AuthorityEpoch = Match?.AuthorityEpoch ?? 0;
@@ -54,8 +59,9 @@ internal sealed partial class ReplayReplicaState
             roster.Hunters[index] = (byte)occupant.Hunter; roster.Colors[index] = occupant.Color;
             roster.Teams[index] = occupant.Team; roster.Names[index] = occupant.Name;
         }
-        byte[] rosterBytes = new byte[RosterPacket.Size]; roster.Write(rosterBytes); writer.Write(rosterBytes);
-        byte[] playerBytes = new byte[PlayerState.Size], intentBytes = new byte[IntentPacket.FullSize];
+        Span<byte> rosterBytes = stackalloc byte[RosterPacket.Size]; roster.Write(rosterBytes); writer.Write(rosterBytes);
+        Span<byte> playerBytes = stackalloc byte[PlayerState.Size];
+        Span<byte> intentBytes = stackalloc byte[IntentPacket.FullSize];
         for (int i = 0; i < _roster.Length; i++)
         {
             var life = _lives[i].Capture();
@@ -65,11 +71,11 @@ internal sealed partial class ReplayReplicaState
             writer.Write(_intentReceivedFrame[i]);
         }
         writer.Write(_worldTail.Length); writer.Write(_worldTail);
-        byte[] authority = AuthorityWorld?.Encode() ?? Array.Empty<byte>();
-        writer.Write(authority.Length); writer.Write(authority);
+        long authorityAt = Replay.ReplayCheckpointWriter.BeginComponent(writer);
+        AuthorityWorld?.Encode(writer);
+        Replay.ReplayCheckpointWriter.EndComponent(writer, authorityAt);
         writer.Write(AuthorityAppliedTick.HasValue); if (AuthorityAppliedTick is uint applied) writer.Write(applied);
-        writer.Flush();
-        return new(stream.GetBuffer().AsSpan(0, checked((int)stream.Length)));
+
     }
 
     internal void RestoreCheckpoint(ReplayReplicaCheckpoint checkpoint)

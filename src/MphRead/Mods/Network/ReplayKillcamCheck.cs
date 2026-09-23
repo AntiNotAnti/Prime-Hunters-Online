@@ -59,7 +59,7 @@ internal static class ReplayKillcamCheck
             const uint death = 1602;
             var identity = new ReplayKillIdentity(match.MatchId, match.AuthorityEpoch, death, 2,
                 1, state.Occupant(1).Generation, 0, state.Occupant(0).Generation, 1);
-            var marker = new ReplayMarker(ReplayMarkerKind.Kill, 1, 0, Kill: identity, Weapon: 1);
+            var marker = new ReplayMarker(ReplayMarkerKind.Kill, 1, 0, Kill: identity, Weapon: 1, DamageFlags: (byte)DamageFlags.Headshot);
             var context = new KillcamContext(match.MatchId, match.AuthorityEpoch, death, 0,
                 identity.VictimGeneration, 1, false, true, true, true);
             int checks = 0;
@@ -70,6 +70,11 @@ internal static class ReplayKillcamCheck
                 for (int warm = 0; warm < 8 && !controller.Visible; warm++) controller.Update(live, context);
                 Require(controller.Visible && controller.Kind == KillCamKind.Personal, "Personal killcam did not become visible.");
             }
+            var shortContext = context with { Frame = 120 };
+            controller.NoteKill(marker with { Kill = identity with { ServerTick = 120 } }, 120, shortContext);
+            for (int i = 0; i < 8 && !controller.Visible; i++) controller.Update(live, shortContext);
+            Require(controller.Visible && controller.Frame <= 1, "Short history did not clamp its start to the available boundary.");
+            controller.Reset(KillcamEndReason.Completed);
             Begin();
             Require(controller.Input(true, true) && controller.Active, "Held fire skipped before release.");
             controller.Input(false, false); controller.Input(true, true);
@@ -85,7 +90,11 @@ internal static class ReplayKillcamCheck
                 Require(ReplayStateHash.Compute(live, 0) == sentinel, "Killcam changed live simulation state.");
             }
             Begin();
+            Require(controller.Frame == death - 300 && controller.Progress == 0, "Personal replay does not begin five seconds before death.");
+            Require(controller.Playing == marker, "Kill identity, weapon or headshot changed.");
             int compared = 0;
+            uint priorFrame = controller.Frame;
+            bool reachedEnd = false;
             while (controller.Active)
             {
                 if (controller.Replica is { } replica)
@@ -98,10 +107,17 @@ internal static class ReplayKillcamCheck
                         ScreenCapture.Save(replica.Scene, Path.Combine(shots, $"personal-{compared}.png"));
                     }
                 }
+                if (controller.Progress == 1) reachedEnd = true;
                 compared++;
                 controller.Update(live, context);
+                if (controller.Active)
+                {
+                    Require(controller.Frame == Math.Min(death, priorFrame + 1), "Personal playback must advance at 1x.");
+                    priorFrame = controller.Frame;
+                }
                 Require(compared < 400, "Personal killcam did not complete.");
             }
+            Require(reachedEnd && compared >= 300, "Personal progress never completed 300 frames.");
             Require(controller.EndReason == KillcamEndReason.Completed, "Personal end hold did not finish.");
             Begin(); live.Size = new(960, 600); controller.Camera(live.Size);
             Require(controller.Presentation?.Size == live.Size, "Resize did not reach the private scene.");
@@ -134,7 +150,15 @@ internal static class ReplayKillcamCheck
             for (int i = 0; i < 8 && !controller.Visible; i++) controller.Update(live, context);
             Require(controller.Visible && controller.Kind == KillCamKind.Final, "Final did not become visible.");
             recorder.Reset(); // the final clip was frozen before room/lobby handoff
-            for (int i = 0; i < 180; i++) controller.Update(live, context);
+            Require(controller.Frame == death - 300 && controller.Progress == 0, "Final range is not 300 frames.");
+            for (int i = 0; i < 300; i++)
+            {
+                uint before = controller.Frame;
+                controller.Update(live, context);
+                Require(controller.Frame == before + 1, "Final playback must advance at 1x.");
+                Require(ReplayStateHash.Compute(controller.Replica!.Scene, controller.Frame) == hashes[controller.Frame], "Final historical frame changed after reset.");
+            }
+            Require(controller.Progress == 1, "Final progress did not reach EOF.");
             Require(controller.State == KillcamState.AwaitCompletion, "Final did not hold its immutable EOF.");
             if (shots != null && controller.Presentation is { } final)
             { final.OnDrawFrame(); final.OnRenderFrame(); ScreenCapture.Save(final, Path.Combine(shots, "final.png")); }

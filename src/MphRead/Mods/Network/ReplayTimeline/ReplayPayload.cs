@@ -12,6 +12,7 @@ internal sealed class ReplayPayload
     private readonly int _length;
     private int _references = 1;
     internal ReadOnlySpan<byte> Span => (_buffer ?? throw new ObjectDisposedException(nameof(ReplayPayload))).AsSpan(0, _length);
+    internal System.IO.MemoryStream OpenRead() => new(_buffer ?? throw new ObjectDisposedException(nameof(ReplayPayload)), 0, _length, writable: false);
     internal int Capacity => _buffer?.Length ?? 0;
     private ReplayPayload(byte[] buffer, int length) { _buffer = buffer; _length = length; }
     internal static ReplayPayload Copy(ReadOnlySpan<byte> bytes)

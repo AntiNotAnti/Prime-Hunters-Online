@@ -16,7 +16,7 @@ internal static class ReplayTimelineArchive
     internal static ReplayMetadata Metadata(PassiveReplayScene world, ReplayType type)
     {
         var match = world.State.Match ?? throw new InvalidDataException("Replay has no match.");
-        var checkpoint = ReplayWorldCheckpoint.Capture(world, world.Session.RecordingFrame);
+        using var checkpoint = ReplayWorldCheckpoint.Capture(world, world.Session.RecordingFrame);
         return new ReplayMetadata
         {
             FormatVersion = 4, Type = type, RoomKey = match.RoomKey, Mode = (GameMode)match.Mode,

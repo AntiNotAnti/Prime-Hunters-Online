@@ -412,7 +412,8 @@ namespace MphRead.Entities
                 margin = Fixed.ToFloat(Values.Field90);
                 candidates = CollisionDetection.GetCandidatesForLimits(point1, point2,
                     margin, null, Vector3.Zero, includeEntities: true, _scene);
-                var results = new CollisionResult[8];
+                var results = _cameraCollisionScratch;
+            Array.Clear(results);
                 int count = CollisionDetection.CheckSphereBetweenPoints(candidates, point1, point2, margin,
                     limit: 8, includeOffset: true, TestFlags.Players, _scene, results);
                 bool v85 = false;
@@ -728,7 +729,8 @@ namespace MphRead.Entities
             float margin = 0.5f;
             IReadOnlyList<CollisionCandidate> candidates = CollisionDetection.GetCandidatesForLimits(point1, point2,
                 margin, null, Vector3.Zero, includeEntities: true, _scene);
-            var results = new CollisionResult[8];
+            var results = _cameraCollisionScratch;
+            Array.Clear(results);
             int count = CollisionDetection.CheckSphereBetweenPoints(candidates, point1, point2, margin,
                 limit: 8, includeOffset: false, TestFlags.Players, _scene, results);
             for (int i = 0; i < count; i++)

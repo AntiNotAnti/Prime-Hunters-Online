@@ -7,6 +7,7 @@ namespace MphRead
     public static class GameState
     {
         internal static SceneGameState Current { get; set; } = new SceneGameState(PlayerEntity.LegacyRegistry);
+        public const float MatchFinalCameraSeconds = SceneGameState.MatchFinalCameraSeconds;
         public const float MatchEndingSeconds = SceneGameState.MatchEndingSeconds;
         public static GameMode Mode { get => Current.Mode; set => Current.Mode = value; }
         public static bool SinglePlayer { get => Current.SinglePlayer; }

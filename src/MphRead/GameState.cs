@@ -60,8 +60,9 @@ namespace MphRead
         /// <summary>
         /// How long the results screen is left up, in seconds. Paired with
         /// <c>Mods.Network.DedicatedServer.EndSequenceSeconds</c>, which has
-        /// to cover this and the three seconds of winner's camera before it.
+        /// to cover this and MatchFinalCameraSeconds before it.
         /// </summary>
+        public const float MatchFinalCameraSeconds = 5;
         public const float MatchEndingSeconds = 10;
 
         public GameMode Mode { get; set; } = GameMode.SinglePlayer;
@@ -530,7 +531,7 @@ namespace MphRead
                     }
                     // todo: 1P time up? isn't that handled by death countdown etc.?
                     MatchState = MatchState.GameOver;
-                    MatchTime = 90 / 30f;
+                    MatchTime = MatchFinalCameraSeconds;
                     scene.SetFade(FadeType.None, length: 0, overwrite: true);
                     _stateChanged = true;
                     _matchEndTime = scene.GlobalElapsedTime;
@@ -553,7 +554,7 @@ namespace MphRead
             {
                 if (Mods.KillCam.IsFinal)
                 {
-                    // The final-kill replay owns the entire three-second
+                    // The final-kill replay owns the entire five-second
                     // GameOver camera window. Do not let the stock winner
                     // camera or intro sequence rewrite camera state underneath
                     // it; Ending takes over immediately after this window.
@@ -579,7 +580,7 @@ namespace MphRead
                         EnsureIntroCamSeq();
                     }
                 }
-                if (MatchTime == 0)
+                if (MatchTime == 0 && (scene.Services.IsReplica || !Mods.KillCam.FinalPresentationPending))
                 {
                     Mods.KillCam.EndFinal();
                     MatchState = MatchState.Ending;
