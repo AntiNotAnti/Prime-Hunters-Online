@@ -33,7 +33,8 @@ position and velocity remain unchanged. Lifecycle spawn placement is preserved.
 The asset-backed runs use eight real hidden OpenGL clients and an authoritative
 server, with the existing gameplay script, native collision/damage and replay
 capture. Impairment is locally injected; this is not geographically separate WAN
-validation or human gameplay-feel review. Those two checks remain external.
+validation or human gameplay-feel review. Human gameplay-feel acceptance remains
+external to these automated checks.
 
 `tools/nettest/run-assets.py` stages binaries and only the configured paths file;
 it reads existing extracted game assets without copying or downloading them.
@@ -197,5 +198,6 @@ client exit, so their counts need not equal scripted client frames. The severe
 extended run reached the 45-step catch-up bound with zero truncations. Its shadow
 summary and unavailable geometry counts are preserved in the JSON. Mean server
 step cost stayed below 1 ms; occasional dropped wall-clock ticks are not hidden.
-Human gameplay-feel and geographically separate WAN acceptance are still required
-before calling the entire release acceptance complete.
+Human gameplay-feel acceptance remains before calling the entire release
+acceptance complete. The injected profiles do not establish behavior on every
+geographically separate Internet route.
