@@ -95,11 +95,9 @@ namespace MphRead.Droid
             base.OnCreate(savedInstanceState);
             GamepadBridge.Start(this);
             MphRead.Mods.Input.GamepadContexts.MenuVisible = true;
-            // The desktop builds missing map binaries from ModEntry.TryHandle;
-            // this head has no Main for that to live in. Off the UI thread:
-            // it reads the extracted game files and writes three binaries per
-            // map, and only the first launch after a map changes does any work.
-            System.Threading.Tasks.Task.Run(AndroidMaps.EnsureBuilt);
+            // Build custom-map binaries only when the selected match or a
+            // preview actually needs them. Eager all-map compilation here could
+            // still be saturating storage/CPU when START was pressed.
             _content = FindViewById(Android.Resource.Id.Content) as ViewGroup;
             _launcherView = _content?.GetChildAt(0);
         }
@@ -208,6 +206,9 @@ namespace MphRead.Droid
             _stopPreviews = false;
             try
             {
+                AndroidMaps.EnsureBuilt(rooms, () => _stopPreviews);
+                if (_stopPreviews)
+                    return 0;
                 using var gl = OffscreenGl.Create(PreviewRun.Width, PreviewRun.Height);
                 return PreviewRun.Render(rooms, PreviewRun.Width, PreviewRun.Height, report,
                     () => _stopPreviews);
@@ -539,6 +540,13 @@ namespace MphRead.Droid
                 // what a player does when the first press seems to do nothing.
                 Console.WriteLine("[android] a match is already starting; ignoring");
                 return;
+            }
+            if (_renderingPreviews)
+            {
+                // Worker processes have separate GL contexts but still compete
+                // for CPU, storage and GPU bandwidth during the critical load.
+                PreviewWorkers.Stop(this);
+                _stopPreviews = true;
             }
             if (_renderingHere)
             {
