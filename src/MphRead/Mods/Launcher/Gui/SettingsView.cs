@@ -1344,7 +1344,7 @@ namespace MphRead.Mods.Launcher.Gui
                 $"{LauncherPrefs.ServerAddress}:{LauncherPrefs.ServerPort}", boxWidth: 220));
             _masterRow = Add(page, new FieldRow("Server directory",
                 $"{LauncherPrefs.MasterHost}:{LauncherPrefs.MasterPort}", boxWidth: 220));
-            _autoUpdate = Add(page, new ToggleRow("Check for updates on startup",
+            _autoUpdate = Add(page, new ToggleRow("Check for updates automatically",
                 LauncherPrefs.AutoUpdate));
 
             Heading(page, "Game files");
