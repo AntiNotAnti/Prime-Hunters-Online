@@ -30,6 +30,7 @@ public sealed class NetReliableChannel
     private int _count, _ordinary, _high;
     private long _refused, _reserve, _spanRefused, _retransmissions, _duplicates;
     public bool Failed { get; private set; }
+    internal void Fail() => Failed = true;
     public bool HasPending(PacketType type)
     { foreach (var pending in _pending) if (pending?.Type == type) return true; return false; }
     public static bool IsReliable(PacketType type) => type is PacketType.Welcome or PacketType.SessionState

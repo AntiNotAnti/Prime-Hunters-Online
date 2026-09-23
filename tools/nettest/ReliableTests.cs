@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Net.Sockets;
+using System.Threading;
 using MphRead.Mods.Network;
 
 namespace MphRead.NetTest;
@@ -58,6 +60,18 @@ internal static class ReliableTests
             NetArchitectureTests.Check(expiry.Failed, "bounded retransmit lifetime");
             foreach (var type in new[] { PacketType.Intent, PacketType.SlotIntent, PacketType.Snapshot, PacketType.Ping, PacketType.Pong })
                 NetArchitectureTests.Check(!NetReliableChannel.IsReliable(type), "realtime never reliable");
+            using var transport = new NetTransport(0);
+            using var blackhole = new UdpClient(0);
+            var address = new IPEndPoint(IPAddress.Loopback, ((IPEndPoint)blackhole.Client.LocalEndPoint!).Port);
+            transport.Send(address, PacketType.Welcome, new byte[17]);
+            for (int i = 0; i <= NetReliableChannel.OrdinaryCapacity; i++)
+                transport.Send(address, PacketType.LobbyCommandResult, BitConverter.GetBytes(i));
+            bool disconnected = false;
+            NetArchitectureTests.Check(SpinWait.SpinUntil(() =>
+            {
+                foreach (var packet in transport.Drain()) disconnected |= packet.Type == PacketType.Bye;
+                return disconnected;
+            }, 2000), "production transport surfaces ordinary control exhaustion as disconnect");
             Console.WriteLine("PASS: reliability under 5% loss / 80ms jitter / 3% reorder / 1% duplicate; capacity, dedup span and expiry"); return 0;
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }

@@ -522,7 +522,11 @@ namespace MphRead.Mods.Network
                     if (payload.Length > NetConfig.MaxPayloadSize) throw new ArgumentOutOfRangeException(nameof(payload));
                     if (NetReliableChannel.IsReliable(type))
                     {
-                        connection.Reliable.TryQueue(type, payload, NowMilliseconds, out _);
+                        // Send has no backpressure return value. Losing an ordinary
+                        // command/result must surface through the same disconnect
+                        // path as critical exhaustion, rather than silently diverge.
+                        if (!connection.Reliable.TryQueue(type, payload, NowMilliseconds, out _))
+                            connection.Reliable.Fail();
                         FlushReliable(connection, NowMilliseconds);
                         return;
                     }
