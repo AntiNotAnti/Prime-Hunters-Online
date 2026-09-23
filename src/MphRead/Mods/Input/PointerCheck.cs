@@ -156,9 +156,11 @@ namespace MphRead.Mods.Input
                 && PointerDevice.TakeDelta() == (0f, 0f),
                 "pointer id churn cannot escape the held-input quarantine");
             Frame(1820, 650, false, id: 2);
+            PointerDevice.AdvanceSimulationStep();
+            Frame(1820, 650, false, id: 2);
             Frame(1830, 650, true, id: 3);
             Require(StylusZone.Held == StylusRegion.Aim && !StylusZone.Aiming,
-                "real release rearms stylus aim without a touchdown jump");
+                "stable release rearms stylus aim without a touchdown jump");
             Frame(1840, 655, true, id: 3);
             Require(StylusZone.Aiming && PointerDevice.TakeDelta() == (10f, 5f),
                 "rearmed stylus aim resumes after the first drag sample");
@@ -227,8 +229,15 @@ namespace MphRead.Mods.Input
                 "held UI contact cannot click through into gameplay");
             Frame(weaponX, weaponY, false, acceptsInput: true, id: 20);
             Frame(weaponX, weaponY, true, acceptsInput: true, id: 21);
+            Require(!StylusZone.CapturingPointer
+                && StylusZone.TakePressed() == StylusRegion.None,
+                "transient UI-contact release cannot escape quarantine");
+            Frame(weaponX, weaponY, false, acceptsInput: true, id: 21);
+            PointerDevice.AdvanceSimulationStep();
+            Frame(weaponX, weaponY, false, acceptsInput: true, id: 21);
+            Frame(weaponX, weaponY, true, acceptsInput: true, id: 22);
             Require(StylusZone.TakePressed() == StylusRegion.Weapons,
-                "UI-owned contact rearms only after a real release");
+                "UI-owned contact rearms only after a stable release");
 
             foreach (StylusZone.Button button in StylusZone.Buttons)
             {
