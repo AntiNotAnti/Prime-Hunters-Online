@@ -122,7 +122,8 @@ namespace MphRead.Mods.Launcher.Gui
             var host = new Border
             {
                 Child = new PrimePanel(stack),
-                Width = Deck.Phone ? 300 : 380,
+                // Preserve the original scoreboard's deaths-column clearance.
+                Width = Deck.Phone ? 285 : 340,
                 HorizontalAlignment = HorizontalAlignment.Right,
                 VerticalAlignment = VerticalAlignment.Stretch,
                 Margin = new Thickness(0, 14, 14, 14)
