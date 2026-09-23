@@ -54,8 +54,9 @@ namespace MphRead.Mods.Network
         private static void ProtocolChecks()
         {
             Check(NetConfig.ProtocolVersion == 17 && (byte)PacketType.SessionState == 36
-                && (byte)PacketType.MapOffer == 32 && (byte)PacketType.MapDone == 35,
-                "combined protocol and non-overlapping map/lobby IDs");
+                && (byte)PacketType.MapOffer == 32 && (byte)PacketType.MapDone == 35
+                && (byte)PacketType.MatchStartCommit == 44 && (byte)PacketType.MatchLoadProgress == 45,
+                "combined protocol and non-overlapping map/lobby/start IDs");
             var state = new SessionStatePacket { Phase = SessionPhase.Starting, Policy = ServerSessionPolicy.Lobby,
                 OwnerSlot = 7, MaxPlayers = 8, Revision = ushort.MaxValue, MatchId = 19,
                 RuleFlags = SessionRules.RequireReady | SessionRules.AllowJoinInProgress | SessionRules.LockTeams,

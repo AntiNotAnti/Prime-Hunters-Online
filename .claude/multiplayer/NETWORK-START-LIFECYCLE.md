@@ -4,23 +4,32 @@ Each start freezes MatchId, AuthorityEpoch, a nonzero uint StartGeneration, matc
 configuration and the eligible participant mask. Internal stages are Preparing,
 Loading, Countdown and InMatch; the public session remains Starting until the
 last stage. The authority marks itself ready only after synchronous room creation.
-The 15-second client grace starts after that creation, and the 1.5-second countdown
-starts only after every remaining expected participant is loaded.
+A 15-second boundary now marks/logs a slow loader without removing it; the hard
+stuck-loader deadline is 60 seconds and starts after authority creation. The
+1.5-second countdown starts only after every remaining expected participant is loaded.
 
 SessionState carries the start generation/stage and reliable match definition.
 MatchLoaded and MatchLoadFailed include all three identity fields and use the
 reliable channel. A client sends one loaded event per identity; transport retries
 replace the old 100ms application loop. Duplicate loads are idempotent and stale
-loads cannot release a barrier. Starting gameplay remains frozen. InMatch is the
-only authoritative reveal boundary; estimated countdown timing never unfreezes
-simulation on its own.
+loads cannot release a barrier. Clients also report identity-fenced load stages
+(StartReceived, Preflight, WorldBuild, PresentationLoad and SceneReady) so a slow
+machine is diagnosable without confusing it with a dead connection.
+
+Starting gameplay remains frozen through preparation/loading. Countdown is a
+server commitment made ahead of time: a disposable MatchStartCommit refreshes
+remaining time every 100 ms, and each client arms the same release edge using
+minimum RTT plus a bounded jitter safety margin. InMatch remains the authoritative
+server phase and confirms the transition instead of deciding the client's first
+playable frame by packet-arrival timing.
 
 A late-join scene that finishes before SessionState retains its MatchId/epoch
 until the matching start generation arrives. Teardown or a different match drops
 that pending readiness; a delayed packet cannot ready an unrelated scene.
 
-Timeout removes missing peers through the normal authoritative removal path.
-Explicit load failure removes that participant. Existing team-validity rules may
+The 15-second slow boundary only logs. At 60 seconds a still-missing participant
+is treated as stuck and removed through the normal authoritative removal path.
+Explicit load failure removes that participant immediately. Existing team-validity rules may
 cancel a start if removals leave an invalid match. Owner removal transfers lobby
 ownership normally. A new arrival never enlarges an active barrier. After InMatch,
 an individual late join loads and sends its own identity-fenced ready event before

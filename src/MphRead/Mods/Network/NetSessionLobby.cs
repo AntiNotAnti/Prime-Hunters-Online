@@ -187,10 +187,18 @@ namespace MphRead.Mods.Network
 
         private static void ArmStartCountdown(ushort remainingMilliseconds)
         {
-            double oneWay = LocalSlot >= 0 && LocalSlot < SlotPing.Length
-                ? Math.Clamp(SlotPing[LocalSlot] / 2000.0, 0, 0.15)
-                : 0;
-            double target = Clock + Math.Max(0, remainingMilliseconds / 1000.0 - oneWay + 0.03);
+            NetConnectionSnapshot? connection = _hostEndPoint == null
+                ? null : _transport?.ConnectionStats(_hostEndPoint);
+            double fallbackRtt = LocalSlot >= 0 && LocalSlot < SlotPing.Length
+                ? SlotPing[LocalSlot] : 0;
+            // Minimum RTT is the best estimate of propagation time; using the
+            // smoothed RTT here can subtract a jitter spike and release early.
+            double oneWay = Math.Clamp((connection?.MinimumRttMilliseconds ?? fallbackRtt) / 2000.0,
+                0, 0.15);
+            double jitterSafety = Math.Clamp(
+                (connection?.RttJitterMilliseconds ?? 0) / 1000.0 + 0.02, 0.03, 0.08);
+            double target = Clock + Math.Max(0,
+                remainingMilliseconds / 1000.0 - oneWay + jitterSafety);
             // A delayed reliable SessionState can carry an older remaining value.
             // Fresh 10 Hz commit packets may move the estimate earlier, never later.
             if (_startCountdownEndsAt <= 0 || target < _startCountdownEndsAt)
