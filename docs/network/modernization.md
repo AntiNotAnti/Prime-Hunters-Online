@@ -2,7 +2,8 @@
 
 Baseline: main 427199c, protocol 16, .NET 10.0.401 on macOS arm64.
 The supplied plan's reviewed commit was c4cbf9b; main now also includes the
-replay/map migration. Owner movement, full snapshots and current replay ownership
+replay/map migration. The implementation branch was subsequently rebased onto
+main 1a2863d (including both input-edge fixes). Owner movement, full snapshots and current replay ownership
 remain the compatibility boundary.
 
 ## P0-A
@@ -29,9 +30,33 @@ position and velocity remain unchanged. Lifecycle spawn placement is preserved.
 
 ## External validation
 
-Asset-backed LAN/WAN, mixed-quality eight-player runs and human gameplay-feel
-checks must be recorded separately from virtual-time codecs and headless tests.
-A passing synthetic workload is not evidence that those checks were run.
+The asset-backed runs use eight real hidden OpenGL clients and an authoritative
+server, with the existing gameplay script, native collision/damage and replay
+capture. Impairment is locally injected; this is not geographically separate WAN
+validation or human gameplay-feel review. Those two checks remain external.
+
+`tools/nettest/run-assets.py` stages binaries and only the configured paths file;
+it reads existing extracted game assets without copying or downloading them.
+For example, after building Release:
+
+```sh
+python3 tools/nettest/run-assets.py --game-data /path/to/game-data --out /tmp/net-assets
+
+dotnet run --project tools/nettest/nettest.csproj -c Release -- \
+  --combat-scene /path/to/game-data
+```
+
+The first command runs LAN for five minutes and each impaired arm for two minutes;
+`--scenario severe --seconds 300` extends the severe coverage. Output includes
+per-client logs, server logs, exit statuses, profiles and a JSON summary. The combat
+scene check passed 98 assertions through production spawning, damage and lifecycle
+paths, including Omega. No proprietary assets are checked in.
+
+The initial two-minute severe arm failed because seven observers never saw slot 0
+take authoritative damage. The local owner's three reported damage events were
+predicted locally; the session damage replay counters for that slot remained zero.
+That failed run is retained, and extended coverage is reported separately. A
+longer passing run must not be presented as making the initial result disappear.
 
 ## P0-B
 
@@ -113,3 +138,64 @@ Pending Hello permits a server restart to replace the connection incarnation whi
 rejecting delayed Welcome packets for superseded IDs. Graceful shutdown retains
 ACK/retry service for a bounded two seconds. Warmed connected UDP sends improved
 from 72 B/op to 0 B/op by caching the connection's native address.
+
+
+## Final regression verification
+
+All 12 network commands passed after the loaded-scene/replay fixes: architecture,
+allocations, protocol17, reliable, queue-budget, load-lifecycle, lagcomp-shadow,
+weapon-policy, transport-stress, lifecycle, health-shots and network-benchmark.
+The suites include 2,912 real-UDP lobby assertions, 3,680 lifecycle assertions,
+3,338,728 health/shot assertions (7,776 weapon/profile cases), 2,352 shadow profiles,
+and 1,620 weapon policy profiles. Extended codecs covered 2,016 scenarios. Replay
+timeline/format suites passed 36/703 assertions; architecture now also initializes
+the actual checkpoint schema so a removed reflected field cannot hide behind those
+format-only checks. The new replay fingerprint correctly rejects older incompatible
+world capsules. The homing target retains its existing serialized backing field.
+
+The final rebase changed only upstream pointer handling. Release build, pointer
+regressions, architecture and the 98-assertion asset-backed combat check passed
+after that rebase. The five-minute severe rerun uses this build. A subsequent transport-only fix
+makes ordinary reliable queue exhaustion disconnect visibly; the complete network
+suite is rerun for that change, including a production transport saturation test.
+
+`network-v17.json` records the final codec benchmark alongside both protocol-16
+baselines. Smoke allocation totals fell from 67,568–300,736 bytes before P0-B to
+368–32,832 after it; protocol 17 measures 480–32,944 including harness queue setup.
+Do not interpret these scenario totals as bytes per packet. The separately warmed
+hot-path tests measure 0 B/op. Historical benchmark commit IDs identify the actual
+pre-rebase measurements, rather than claiming a new run on a rewritten commit.
+
+Wall-clock server startup/GC/render contention is reported, not hard-gated as
+virtual-time tick loss. Deterministic tick/queue/packet bounds remain hard gates.
+Shadow would-clamp metrics are collected without changing damage; unsupported
+geometry is explicitly unavailable, never counted as agreement. The rendered
+script does not guarantee every weapon/charge/headshot/respawn combination in each
+arm, so the focused combat and lifecycle checks remain part of acceptance.
+
+
+## Rendered measurements
+
+All five profiles have a passing eight-client run. The severe arm required the
+five-minute coverage run; its initial two-minute failure is retained below and in
+`tools/nettest/baselines/rendered-v17.json`. The failure is consistent with sparse
+scripted damage coverage, but a longer pass alone does not prove the short-run
+behavior cannot recur. The original assertions were not weakened.
+
+| Profile | Scripted seconds | Client reports passed | Last server steps | Mean step ms | Dropped ticks | Queue high / drops |
+|---|---:|---:|---:|---:|---:|---|
+| lan | 300 | 8/8 | 19799 | 0.46 | 1 | unavailable |
+| moderate | 120 | 8/8 | 7199 | 0.52 | 1 | 16 / 0 |
+| poor | 120 | 8/8 | 7199 | 0.47 | 1 | 30 / 0 |
+| severe-initial | 120 | 1/8 | 7195 | 0.59 | 5 | 33 / 0 |
+| mixed | 120 | 8/8 | 7198 | 0.56 | 2 | 18 / 0 |
+| severe-extended | 300 | 8/8 | 19799 | 0.53 | 1 | 53 / 0 |
+
+Every run recorded zero simulation failures, zero server stalls and zero remote
+position snaps. Server step samples cover wall-clock time, including startup and
+client exit, so their counts need not equal scripted client frames. The severe
+extended run reached the 45-step catch-up bound with zero truncations. Its shadow
+summary and unavailable geometry counts are preserved in the JSON. Mean server
+step cost stayed below 1 ms; occasional dropped wall-clock ticks are not hidden.
+Human gameplay-feel and geographically separate WAN acceptance are still required
+before calling the entire release acceptance complete.

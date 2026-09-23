@@ -1,0 +1,742 @@
+{
+  "runtime": ".NET 10.0.12",
+  "sdk": "10.0.401",
+  "platform": "macOS arm64",
+  "protocol": 17,
+  "room": "MP1 SANCTORUS",
+  "method": "Eight real OpenGL clients against local authoritative server. Impairment applied at client transport, both directions. Scripted seconds count 60 Hz gameplay frames; elapsed is wall clock. No human gameplay-feel review or geographic WAN test.",
+  "notes": [
+    "Initial severe run failed authoritative damage coverage for slot 0; preserved rather than omitted.",
+    "LAN ran before the server debug flag was initialized early, so transport counters are unavailable.",
+    "Other initial arms precede the pending scene-ready fix.",
+    "Wall-clock dropped ticks are observed, not deterministic-harness losses.",
+    "Severe extended run passed all eight clients at 300 scripted seconds on commit 74dd09c. The later ordinary-control exhaustion fix is covered by a complete network-suite rerun."
+  ],
+  "runs": [
+    {
+      "label": "lan-eight",
+      "profiles": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "results": [
+        {
+          "peer": 0,
+          "exit": 0
+        },
+        {
+          "peer": 1,
+          "exit": 0
+        },
+        {
+          "peer": 2,
+          "exit": 0
+        },
+        {
+          "peer": 3,
+          "exit": 0
+        },
+        {
+          "peer": 4,
+          "exit": 0
+        },
+        {
+          "peer": 5,
+          "exit": 0
+        },
+        {
+          "peer": 6,
+          "exit": 0
+        },
+        {
+          "peer": 7,
+          "exit": 0
+        }
+      ],
+      "run": "lan",
+      "observations": {
+        "lastServerSample": {
+          "steps": 19799.0,
+          "meanMilliseconds": 0.46,
+          "worstMilliseconds": 95.7,
+          "overruns": 13.0,
+          "droppedTicks": 1.0,
+          "stalls": 0.0
+        },
+        "serverQueueHighWater": null,
+        "serverQueueDrops": null,
+        "simulationFailureLogged": false,
+        "peerReportsPassed": 8,
+        "lastShadowSample": null,
+        "remotePositionSnaps": 0,
+        "replayCaptureFailureLogged": false
+      },
+      "seconds": 300,
+      "scenario": "lan"
+    },
+    {
+      "scenario": "moderate",
+      "seconds": 120,
+      "elapsedSeconds": 147.46498575,
+      "profiles": [
+        [
+          100,
+          20,
+          1,
+          0
+        ],
+        [
+          100,
+          20,
+          1,
+          0
+        ],
+        [
+          100,
+          20,
+          1,
+          0
+        ],
+        [
+          100,
+          20,
+          1,
+          0
+        ],
+        [
+          100,
+          20,
+          1,
+          0
+        ],
+        [
+          100,
+          20,
+          1,
+          0
+        ],
+        [
+          100,
+          20,
+          1,
+          0
+        ],
+        [
+          100,
+          20,
+          1,
+          0
+        ]
+      ],
+      "results": [
+        {
+          "peer": 0,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 1,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 2,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 3,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 4,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 5,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 6,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 7,
+          "exit": 0,
+          "timedOut": false
+        }
+      ],
+      "run": "moderate",
+      "observations": {
+        "lastServerSample": {
+          "steps": 7199.0,
+          "meanMilliseconds": 0.52,
+          "worstMilliseconds": 111.7,
+          "overruns": 7.0,
+          "droppedTicks": 1.0,
+          "stalls": 0.0
+        },
+        "serverQueueHighWater": 16,
+        "serverQueueDrops": 0,
+        "simulationFailureLogged": false,
+        "peerReportsPassed": 8,
+        "lastShadowSample": {
+          "wouldClamp": 569.0,
+          "timedShots": 1240.0,
+          "refusedFrames": 1779.4,
+          "geometryUnavailable": 1215.0,
+          "shots": 1240.0,
+          "maximumCatchUpSteps": 25.0,
+          "catchUpTruncations": 0.0
+        },
+        "remotePositionSnaps": 0,
+        "replayCaptureFailureLogged": false
+      }
+    },
+    {
+      "scenario": "poor",
+      "seconds": 120,
+      "elapsedSeconds": 147.15160225,
+      "profiles": [
+        [
+          250,
+          40,
+          2,
+          0
+        ],
+        [
+          250,
+          40,
+          2,
+          0
+        ],
+        [
+          250,
+          40,
+          2,
+          0
+        ],
+        [
+          250,
+          40,
+          2,
+          0
+        ],
+        [
+          250,
+          40,
+          2,
+          0
+        ],
+        [
+          250,
+          40,
+          2,
+          0
+        ],
+        [
+          250,
+          40,
+          2,
+          0
+        ],
+        [
+          250,
+          40,
+          2,
+          0
+        ]
+      ],
+      "results": [
+        {
+          "peer": 0,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 1,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 2,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 3,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 4,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 5,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 6,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 7,
+          "exit": 0,
+          "timedOut": false
+        }
+      ],
+      "run": "poor",
+      "observations": {
+        "lastServerSample": {
+          "steps": 7199.0,
+          "meanMilliseconds": 0.47,
+          "worstMilliseconds": 114.3,
+          "overruns": 7.0,
+          "droppedTicks": 1.0,
+          "stalls": 0.0
+        },
+        "serverQueueHighWater": 30,
+        "serverQueueDrops": 0,
+        "simulationFailureLogged": false,
+        "peerReportsPassed": 8,
+        "lastShadowSample": {
+          "wouldClamp": 649.0,
+          "timedShots": 1341.0,
+          "refusedFrames": 1579.2,
+          "geometryUnavailable": 1312.0,
+          "shots": 1341.0,
+          "maximumCatchUpSteps": 39.0,
+          "catchUpTruncations": 0.0
+        },
+        "remotePositionSnaps": 0,
+        "replayCaptureFailureLogged": false
+      }
+    },
+    {
+      "scenario": "severe",
+      "seconds": 120,
+      "elapsedSeconds": 147.807635458,
+      "profiles": [
+        [
+          320,
+          80,
+          2,
+          1
+        ],
+        [
+          320,
+          80,
+          2,
+          1
+        ],
+        [
+          320,
+          80,
+          2,
+          1
+        ],
+        [
+          320,
+          80,
+          2,
+          1
+        ],
+        [
+          320,
+          80,
+          2,
+          1
+        ],
+        [
+          320,
+          80,
+          2,
+          1
+        ],
+        [
+          320,
+          80,
+          2,
+          1
+        ],
+        [
+          320,
+          80,
+          2,
+          1
+        ]
+      ],
+      "results": [
+        {
+          "peer": 0,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 1,
+          "exit": 1,
+          "timedOut": false
+        },
+        {
+          "peer": 2,
+          "exit": 1,
+          "timedOut": false
+        },
+        {
+          "peer": 3,
+          "exit": 1,
+          "timedOut": false
+        },
+        {
+          "peer": 4,
+          "exit": 1,
+          "timedOut": false
+        },
+        {
+          "peer": 5,
+          "exit": 1,
+          "timedOut": false
+        },
+        {
+          "peer": 6,
+          "exit": 1,
+          "timedOut": false
+        },
+        {
+          "peer": 7,
+          "exit": 1,
+          "timedOut": false
+        }
+      ],
+      "run": "severe-initial",
+      "observations": {
+        "lastServerSample": {
+          "steps": 7195.0,
+          "meanMilliseconds": 0.59,
+          "worstMilliseconds": 139.2,
+          "overruns": 9.0,
+          "droppedTicks": 5.0,
+          "stalls": 0.0
+        },
+        "serverQueueHighWater": 33,
+        "serverQueueDrops": 0,
+        "simulationFailureLogged": false,
+        "peerReportsPassed": 1,
+        "lastShadowSample": {
+          "wouldClamp": 683.0,
+          "timedShots": 1301.0,
+          "refusedFrames": 1682.7,
+          "geometryUnavailable": 1271.0,
+          "shots": 1301.0,
+          "maximumCatchUpSteps": 43.0,
+          "catchUpTruncations": 0.0
+        },
+        "remotePositionSnaps": 0,
+        "replayCaptureFailureLogged": false
+      }
+    },
+    {
+      "scenario": "mixed",
+      "seconds": 120,
+      "elapsedSeconds": 148.298853042,
+      "profiles": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          80,
+          20,
+          1,
+          0
+        ],
+        [
+          80,
+          20,
+          1,
+          0
+        ],
+        [
+          150,
+          20,
+          1,
+          0
+        ],
+        [
+          150,
+          20,
+          1,
+          0
+        ],
+        [
+          250,
+          40,
+          2,
+          0
+        ],
+        [
+          320,
+          80,
+          2,
+          1
+        ]
+      ],
+      "results": [
+        {
+          "peer": 0,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 1,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 2,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 3,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 4,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 5,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 6,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 7,
+          "exit": 0,
+          "timedOut": false
+        }
+      ],
+      "run": "mixed",
+      "observations": {
+        "lastServerSample": {
+          "steps": 7198.0,
+          "meanMilliseconds": 0.56,
+          "worstMilliseconds": 121.2,
+          "overruns": 6.0,
+          "droppedTicks": 2.0,
+          "stalls": 0.0
+        },
+        "serverQueueHighWater": 18,
+        "serverQueueDrops": 0,
+        "simulationFailureLogged": false,
+        "peerReportsPassed": 8,
+        "lastShadowSample": {
+          "wouldClamp": 621.0,
+          "timedShots": 1388.0,
+          "refusedFrames": 1967.1,
+          "geometryUnavailable": 1360.0,
+          "shots": 1388.0,
+          "maximumCatchUpSteps": 39.0,
+          "catchUpTruncations": 0.0
+        },
+        "remotePositionSnaps": 0,
+        "replayCaptureFailureLogged": false
+      }
+    },
+    {
+      "scenario": "severe",
+      "seconds": 300,
+      "elapsedSeconds": 333.22444779200003,
+      "profiles": [
+        [
+          320,
+          80,
+          2,
+          1
+        ],
+        [
+          320,
+          80,
+          2,
+          1
+        ],
+        [
+          320,
+          80,
+          2,
+          1
+        ],
+        [
+          320,
+          80,
+          2,
+          1
+        ],
+        [
+          320,
+          80,
+          2,
+          1
+        ],
+        [
+          320,
+          80,
+          2,
+          1
+        ],
+        [
+          320,
+          80,
+          2,
+          1
+        ],
+        [
+          320,
+          80,
+          2,
+          1
+        ]
+      ],
+      "results": [
+        {
+          "peer": 0,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 1,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 2,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 3,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 4,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 5,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 6,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 7,
+          "exit": 0,
+          "timedOut": false
+        }
+      ],
+      "host": "macOS-27.0-arm64-arm-64bit",
+      "assemblySha256": "c243c9312c54e842e84b5e9703aac8f81d35dc3e8208dad7a1613be1ec62d420",
+      "observations": {
+        "lastServerSample": {
+          "steps": 19799.0,
+          "meanMilliseconds": 0.53,
+          "worstMilliseconds": 114.8,
+          "overruns": 13.0,
+          "droppedTicks": 1.0,
+          "stalls": 0.0
+        },
+        "serverQueueHighWater": 53,
+        "serverQueueDrops": 0,
+        "simulationFailureLogged": false,
+        "peerReportsPassed": 8,
+        "lastShadowSample": {
+          "wouldClamp": 1987.0,
+          "timedShots": 4253.0,
+          "refusedFrames": 3361.0,
+          "geometryUnavailable": 4148.0,
+          "shots": 4253.0,
+          "maximumCatchUpSteps": 45.0,
+          "catchUpTruncations": 0.0
+        },
+        "remotePositionSnaps": 0,
+        "replayCaptureFailureLogged": false
+      },
+      "run": "severe-extended",
+      "sourceCommit": "74dd09ccaae826937050263e80f901d35f3e700e"
+    }
+  ]
+}

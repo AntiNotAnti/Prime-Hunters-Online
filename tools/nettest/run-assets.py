@@ -32,6 +32,8 @@ def observations(out):
     samples = re.findall(r"(\d+) step\(s\), ([\d.]+) ms mean, ([\d.]+) ms worst, "
         r"(\d+) overrun, (\d+) dropped, (\d+) stall\(s\)", server)
     queue = re.findall(r"queue=\d+/(\d+) drops=(\d+)", server)
+    shadow = re.findall(r"shadow Shadow: (\d+)/(\d+) timed shots would clamp, ([\d.]+) frames refused, "
+        r"geometry unavailable (\d+)/(\d+); catch-up maximum (\d+), truncations (\d+)", server)
     return {
         "lastServerSample": dict(zip(["steps", "meanMilliseconds", "worstMilliseconds", "overruns", "droppedTicks", "stalls"],
             map(float, samples[-1]))) if samples else None,
@@ -39,6 +41,8 @@ def observations(out):
         "serverQueueDrops": max((int(q[1]) for q in queue), default=None),
         "simulationFailureLogged": "[sim] step failed:" in server,
         "peerReportsPassed": sum("RESULT: PASS" in path.read_text(errors="replace") for path in out.glob("peer-*.log")),
+        "lastShadowSample": dict(zip(["wouldClamp", "timedShots", "refusedFrames", "geometryUnavailable", "shots", "maximumCatchUpSteps", "catchUpTruncations"],
+            map(float, shadow[-1]))) if shadow else None,
     }
 
 
