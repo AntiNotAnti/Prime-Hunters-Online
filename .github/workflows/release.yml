@@ -399,14 +399,15 @@ jobs:
           It is unpacked next to this program and the file is left alone. No
           game data is included in this download, and none is downloaded.
 
-            ./ProjectPrime -launcher
+            ./ProjectPrime
 
           opens the front screen: play online, play offline against bots, host
           a game, settings, and the game-files setup.
 
-          Over SSH, or on a machine with no desktop, the same command gives you
-          the same five entries as text instead. -launcher -text asks for that
-          anywhere.
+          Over SSH, or on a machine with no desktop, the same command falls
+          back to the text launcher. -launcher remains an explicit launcher
+          flag, -launcher -text forces the text launcher, and -menu opens the
+          legacy console menu.
 
           Everything it does also has a command of its own:
 
