@@ -314,6 +314,14 @@ namespace MphRead.Mods.Network
             double buildSeconds = NetSession.Clock - buildStarted;
 
             double afterBuild = now + buildSeconds;
+            // The server itself was blocked during StartSimulation and could not
+            // perform its normal liveness cadence. Give the frozen participants
+            // a fresh connection-health window here as well as a fresh load
+            // barrier window; otherwise a >30 s cold authority load can make the
+            // next loop time out clients for silence the server caused.
+            foreach (Peer participant in _peers)
+                if ((participants & (1 << participant.SlotIndex)) != 0)
+                    participant.LastSeen = Math.Max(participant.LastSeen, afterBuild);
             _start.AuthorityReady(afterBuild);
             TouchLobbyRevision("authority ready; waiting for loaded participants");
             _now = Math.Max(_now, afterBuild);

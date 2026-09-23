@@ -19,9 +19,12 @@ machine is diagnosable without confusing it with a dead connection.
 Starting gameplay remains frozen through preparation/loading. Countdown is a
 server commitment made ahead of time: a disposable MatchStartCommit refreshes
 remaining time every 100 ms, and each client arms the same release edge using
-minimum RTT plus a bounded jitter safety margin. InMatch remains the authoritative
-server phase and confirms the transition instead of deciding the client's first
-playable frame by packet-arrival timing.
+minimum RTT plus a bounded jitter safety margin. The commit is identity-fenced
+and may legitimately arrive before the reliable SessionState that first says
+Countdown; it is accepted in that order, while duplicate/reordered older commits
+cannot move the edge. InMatch remains the authoritative server phase and confirms
+the transition instead of deciding the client's first playable frame by
+packet-arrival timing.
 
 A late-join scene that finishes before SessionState retains its MatchId/epoch
 until the matching start generation arrives. Teardown or a different match drops
@@ -29,12 +32,21 @@ that pending readiness; a delayed packet cannot ready an unrelated scene.
 
 The 15-second slow boundary only logs. At 60 seconds a still-missing participant
 is treated as stuck and removed through the normal authoritative removal path.
-Explicit load failure removes that participant immediately. Existing team-validity rules may
+Queued Pong/load-progress liveness is drained before that timeout decision, and
+the authority refreshes participant liveness after its own synchronous room build
+so clients are not penalized for a server-side stall. Explicit load failure
+removes that participant immediately. Existing team-validity rules may
 cancel a start if removals leave an invalid match. Owner removal transfers lobby
 ownership normally. A new arrival never enlarges an active barrier. After InMatch,
 an individual late join loads and sends its own identity-fenced ready event before
 the authority accepts its gameplay intent. It receives the current full snapshot.
 Continuous rotations use the same barrier as persistent lobby rematches.
+
+Persistent lobby room prewarm is single-flight with the actual load: Start joins
+an in-flight selected-room compile/read/decode instead of racing a second copy.
+The one-room cache remains bounded to the currently advertised room and survives
+the match so a same-map rematch can reuse it; selecting or editing a different
+room invalidates/replaces it.
 
 `--load-lifecycle` combines virtual-time boundary tests with the real UDP lobby
 suite (admission, ownership, commands, rematches, teams, late join and rotation).

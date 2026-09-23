@@ -675,9 +675,10 @@ about files hold in an APK.
   release also had no diagnostics. Every wrong turn above was invisible until
   this existed.
 - **Nothing calls `ModEntry.TryHandle`** on this head -- the entry point is an
-  activity, not `Main` -- so the missing-binary build runs from
-  `AndroidMaps.EnsureBuilt`, off the UI thread at startup and again before a
-  match and before previews.
+  activity, not `Main` -- so missing binaries are built on demand through
+  `AndroidMaps.EnsureBuilt`. Match startup checks only the selected room, and
+  preview workers check only the rooms assigned to that worker. There is no
+  eager all-map compile at activity startup or on every match start.
 - **The map types are trimmer roots.** A release APK is trimmed, the map files
   are read with reflection-based JSON, and the trimmer cannot see that. What
   it produces is not a crash but a map that loads into an object of defaults:

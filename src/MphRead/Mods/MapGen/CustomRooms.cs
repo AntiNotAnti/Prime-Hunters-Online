@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using OpenTK.Mathematics;
 
 namespace MphRead.Mods.MapGen
@@ -241,20 +243,41 @@ namespace MphRead.Mods.MapGen
 
         private static void GenerateIfNeeded(MapDefinition def)
         {
-            // Compilation can resolve catalog metadata on a worker. Do not hold
-            // the catalog monitor while waiting for that worker to finish.
+            // Lobby prewarm, Android preview workers and the real match can ask
+            // for the same runtime outputs concurrently. Fence publication across
+            // threads/processes, then re-check after acquiring the lease so every
+            // waiter except the first becomes a cache hit.
             try
             {
+                using var lease = AcquireGenerationLease(def);
                 if (!NeedsGenerating(def))
-                {
                     return;
-                }
                 Console.WriteLine($"[mapgen] building {def.Name}");
                 MapPacker.Generate(def, ArchiveDirectory(def), EntityDirectory(), NodeDirectory(), verbose: false);
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[mapgen] {def.Name} could not be built: {ex.Message}");
+            }
+        }
+
+        private static FileStream AcquireGenerationLease(MapDefinition def)
+        {
+            // Share the editor/runtime publication lease as well as the
+            // runtime callers' lease; both write the same five destination files.
+            string path = OutputsFor(def).Manifest + ".lock";
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            var timeout = Stopwatch.StartNew();
+            while (true)
+            {
+                try
+                {
+                    return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                }
+                catch (IOException) when (timeout.Elapsed < TimeSpan.FromSeconds(60))
+                {
+                    Thread.Sleep(25);
+                }
             }
         }
 

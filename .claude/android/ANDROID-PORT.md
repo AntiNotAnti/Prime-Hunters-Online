@@ -680,7 +680,10 @@ listed the 27 cartridge rooms. A bundle is one file at the top of `maps/`, and
 `AndroidMaps.Install` unpacks it into the external directory beside the
 extracted game files, where a player can also drop one of their own over USB.
 The room binaries are still built on the device, from that player's own
-textures; `AndroidMaps.EnsureBuilt` is what runs the builder before a match.
+textures. Generation is now demand-driven: a match checks only its selected
+room, while preview workers check only their assigned rooms. Match start also
+cancels outstanding preview workers so background map/GL work cannot compete
+with the critical room load.
 
 ## Demos
 
