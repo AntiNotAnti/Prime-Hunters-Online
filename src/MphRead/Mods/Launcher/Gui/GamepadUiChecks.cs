@@ -199,14 +199,16 @@ namespace MphRead.Mods.Launcher.Gui
             ownedBitmap.SetValue(replayStudio, testBitmap);
             preview.Source = testBitmap;
             window.Content = null;
-            GamepadChecks.Check(preview.Source == null,
-                "Replay Studio detaches thumbnail before disposing it");
+            GamepadChecks.Check(ReferenceEquals(preview.Source, testBitmap),
+                "Theatre retains its thumbnail while visiting another route");
             window.Content = replayStudio;
             window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
             if (preview.Source != null)
                 _ = preview.Source.Size;
             GamepadChecks.Check(true,
                 "Replay Studio can reattach and measure after playback");
+            replayStudio.Dispose();
+            GamepadChecks.Check(preview.Source == null, "Theatre releases its thumbnail when ownership ends");
 
             panel = new StackPanel();
             window.Width = 600; window.Height = 400; window.Content = panel;

@@ -29,12 +29,14 @@ namespace MphRead.Mods.Launcher.Gui
             }
             foreach (var property in InputSettings.Bindings)
             {
-                var bind = InputSettings.Bind(property);
-                Add(() => (bind.Type, bind.Key, bind.MouseButton), v =>
+                Add(() => { var bind = InputSettings.Bind(property); return (bind.Type, bind.Key, bind.MouseButton); }, v =>
                 {
                     var saved = ((MphRead.Entities.ButtonType Type, OpenTK.Windowing.GraphicsLibraryFramework.Keys Key,
                         OpenTK.Windowing.GraphicsLibraryFramework.MouseButton MouseButton))v!;
-                    InputSettings.Rebind(property, saved.Type, saved.Key, saved.MouseButton);
+                    // Restore the exact snapshot, including unused key fields in
+                    // default mouse bindings; Rebind normalizes those fields.
+                    var bind = InputSettings.Bind(property);
+                    bind.Type = saved.Type; bind.Key = saved.Key; bind.MouseButton = saved.MouseButton;
                 });
             }
             foreach (var property in typeof(InputSettings).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static))
@@ -72,10 +74,12 @@ namespace MphRead.Mods.Launcher.Gui
                     int split = line.IndexOf('=');
                     if (split < 0) continue;
                     string key = line[..split], value = line[(split + 1)..];
-                    if (key == "prime_preset") pad.Bindings.Preset = value;
-                    else pad.Bindings.TryLoad(key, value);
+                    if (key != "prime_preset") pad.Bindings.TryLoad(key, value);
                 }
                 pad.Bindings.LoadSlots(lines);
+                // Loading individual slots marks the runtime Custom; retain the
+                // original preset only after all bindings have been restored.
+                pad.Bindings.Preset = lines.First(l => l.StartsWith("prime_preset=", StringComparison.Ordinal))[13..];
             }
         }
     }

@@ -70,12 +70,16 @@ namespace MphRead.Mods.Launcher.Gui
                         Position = new PixelPoint(-4000,-4000), WindowStartupLocation = WindowStartupLocation.Manual };
                     window.Show(); Drain(window);
                     var header = shell.Header; var footer = shell.Footer;
+                    var retained = new Dictionary<PrimeRoute, Control>();
                     foreach (var route in PrimeRouter.Tabs)
                     {
                         shell.Router.Navigate(route); Drain(window);
                         Check(ReferenceEquals(header, shell.Header) && ReferenceEquals(footer, shell.Footer), "persistent chrome: " + route);
                         Check(FocusNavigator.Ensure(shell.Workspaces) != null, "reachable workspace control: " + route);
+                        retained[route] = (Control)shell.Workspaces.Content!;
                     }
+                    foreach (var (route, view) in retained)
+                    { shell.Router.Navigate(route); Drain(window); Check(ReferenceEquals(view, shell.Workspaces.Content), "retained workspace " + route); }
                     shell.Router.Navigate(PrimeRoute.News); shell.Router.PreviousRoute();
                     Check(shell.Router.Current == PrimeRoute.Settings, "previous tab wraps");
                     shell.Router.NextRoute(); Check(shell.Router.Current == PrimeRoute.News, "next tab wraps");
@@ -88,6 +92,9 @@ namespace MphRead.Mods.Launcher.Gui
                     join.Focus(); shell.Router.Navigate(PrimeRoute.News); shell.Router.Navigate(PrimeRoute.Play); Drain(window);
                     Check(ReferenceEquals(play, shell.Workspaces.Content) && join.IsEnabled, "selected server survives navigation");
                     Check(join.IsFocused, "workspace focus is restored");
+                    FocusNavigator.Key(join, Key.Up); Drain(window);
+                    Check(FocusNavigator.Focused(shell) != join, "keyboard arrows move spatial focus");
+                    join.Focus();
                     shell.Overlays.Show(new PrimePanel(PrimeChrome.Stack(new PrimeButton("CANCEL", shell.Overlays.Close))), PrimeModalSize.Small);
                     Drain(window);
                     Check(ControllerNav.ModalRoot(shell) == shell.Overlays, "controller focus is trapped in modal");
@@ -107,6 +114,16 @@ namespace MphRead.Mods.Launcher.Gui
                     settings.ShowSection("Audio"); settings.ShowSection("Display");
                     Check(settings.IsDirty, "settings category retains draft");
                     settings.DiscardDraft(); Check(slider.Value == value && !settings.IsDirty, "Discard restores controls and clean state");
+                    var previousRuntime = Mods.Input.GamepadRuntimeConfig.Current;
+                    try
+                    {
+                        Mods.Input.GamepadRuntimeConfig.Current = new Mods.Input.GamepadRuntimeConfig();
+                        var defaults = new SettingsDraft(new Panel());
+                        Mods.Input.PadBindings.ApplyPreset("Southpaw");
+                        defaults.Discard();
+                        Check(!defaults.IsDirty, "default controller preset survives Discard");
+                    }
+                    finally { Mods.Input.GamepadRuntimeConfig.Current = previousRuntime; }
                     var rows = play.GetVisualDescendants().OfType<ServerRow>().ToArray();
                     Check(rows.Length == 2 && rows[0].CanJoin && !rows[1].CanJoin, "full server cannot be joined");
                     shell.Footer.SetStatus("DOWNLOADING 42%"); shell.Refresh();

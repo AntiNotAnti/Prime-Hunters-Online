@@ -7,6 +7,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -49,6 +50,8 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly Grid _root = new();
         private readonly Control _mainPage;
         private readonly StackPanel _players = new() { Spacing = 1 };
+        private bool _rosterTeams;
+        private string[] _targetNames = Array.Empty<string>();
         private readonly StackPanel _ownerControls = new() { Spacing = 2 };
         private readonly Note _status = new("");
         private readonly Note _chat = new("", lines: 0);
@@ -382,7 +385,7 @@ namespace MphRead.Mods.Launcher.Gui
             Grid.SetRow(_status, 2); comms.Children.Add(_status);
             _start.MinHeight = 64;
             var sessionActions = PrimeChrome.Stack(_start, _ready,
-                PrimeChrome.Columns("*,*", _mainMenu, _leave));
+                PrimeChrome.Columns("*,*,*", new PrimeButton("INVITE", Invite), _mainMenu, _leave));
             Grid.SetRow(sessionActions, 3); comms.Children.Add(sessionActions);
             var nativeBody = PrimeChrome.Columns("1.04*,1.05*,1*", nativeLeft, nativeMiddle, new PrimePanel(comms));
             Grid.SetRow(nativeBody, 1); frame.Children.Add(nativeBody);
@@ -487,6 +490,21 @@ namespace MphRead.Mods.Launcher.Gui
         public void Suspend()
         {
             _suspended = true;
+        }
+
+        private void Invite()
+        {
+            string endpoint = $"{LauncherPrefs.ServerAddress}:{LauncherPrefs.ServerPort}";
+            var status = PrimeChrome.Text(LauncherPrefs.ServerAddress is "127.0.0.1" or "localhost" or "::1"
+                ? "Hosted locally: replace the loopback host with your LAN or public address before sharing. Players join through Play / Direct Connect."
+                : "Share this address with another player. They can use Play / Direct Connect.", 13);
+            var content = PrimeChrome.Stack(new PrimeBadge("LOBBY ADDRESS"), PrimeChrome.Text(endpoint, 18, data: true), status,
+                new PrimeButton("COPY INVITE ADDRESS", async () =>
+                {
+                    if (TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
+                    { await clipboard.SetTextAsync(endpoint); status.Text = "Address copied."; }
+                }));
+            ShowSheet("INVITE PLAYER", content);
         }
 
         internal bool IsSuspended => _suspended;
@@ -595,15 +613,19 @@ namespace MphRead.Mods.Launcher.Gui
                 byte selected = _target.Index < _targetSlots.Count
                     ? _targetSlots[_target.Index]
                     : byte.MaxValue;
-                _players.Children.Clear();
+                bool teamMode = GameState.IsTeamMode(session.Match.Mode);
+                bool rebuild = _rosterTeams != teamMode || !_targetSlots.SequenceEqual(roster.Slots.Take(roster.Count));
+                _rosterTeams = teamMode;
+                if (rebuild) _players.Children.Clear();
                 _targetSlots.Clear();
                 var names = new List<string>();
                 for (int i = 0; i < roster.Count; i++)
                 {
                     byte slot = roster.Slots[i];
+                    if (rebuild)
+                    {
                     var playerRow = new LobbyPlayerRow(roster, i, session.OwnerSlot,
-                        showTeam: GameState.IsTeamMode(session.Match.Mode),
-                        selected: slot == selected);
+                        showTeam: teamMode, selected: slot == selected);
                     playerRow.Cursor = new Cursor(StandardCursorType.Hand);
                     playerRow.PointerPressed += (_, e) =>
                     {
@@ -617,13 +639,19 @@ namespace MphRead.Mods.Launcher.Gui
                         }
                     };
                     _players.Children.Add(playerRow);
+                    }
+                    else ((LobbyPlayerRow)_players.Children[i]).Update(roster, i, session.OwnerSlot, slot == selected);
                     _targetSlots.Add(slot);
                     string team = roster.Teams[i] < 0
                         ? "AUTO"
                         : $"TEAM {(char)('A' + roster.Teams[i])}";
                     names.Add($"{roster.Names[i]}  //  {team}");
                 }
-                _target.SetItems(names, Math.Max(0, _targetSlots.IndexOf(selected)));
+                if (!_targetNames.SequenceEqual(names))
+                {
+                    _targetNames = names.ToArray();
+                    _target.SetItems(names, Math.Max(0, _targetSlots.IndexOf(selected)));
+                }
             }
 
             if (_shownMatch != session.Match || _shownRules != session.RuleFlags)

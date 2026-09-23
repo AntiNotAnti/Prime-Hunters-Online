@@ -44,6 +44,7 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly HubNavButton _refresh;
         private readonly HubNavButton _join;
         private readonly PrimeButton _favorite;
+        private readonly PrimeButton _spectate;
         private string? _selectedEndpoint;
         private CancellationTokenSource? _discover;
         private CancellationTokenSource? _quickSearch;
@@ -141,6 +142,8 @@ namespace MphRead.Mods.Launcher.Gui
             Grid.SetRow(identity, 1); root.Children.Add(identity);
             _join = new PrimeButton("ENGAGE & JOIN", primary: true) { IsEnabled = false };
             ControllerNav.Identify(_join, "multiplayer.join");
+            _spectate = new PrimeButton("SPECTATE", () => _ = JoinAsync(spectate: true)) { IsEnabled = false };
+            ToolTip.SetTip(_spectate, "Join an available player slot and watch using the spectator camera.");
             _join.Click += (_, _) => _ = JoinAsync();
             var copy = new PrimeButton("COPY ADDRESS", async () =>
             {
@@ -161,7 +164,7 @@ namespace MphRead.Mods.Launcher.Gui
             left.Children.Add(PrimeChrome.Columns("*,*", search, filter));
             Grid.SetRow(_servers, 1); left.Children.Add(_servers);
             var inspector = new PrimePanel(PrimeChrome.Stack(new PrimeBadge("SELECTED SESSION"), _detailName, _detailMeta,
-                PrimeChrome.Columns("Auto,Auto,*", copy, _favorite, _join)));
+                PrimeChrome.Columns("Auto,Auto,Auto,*", copy, _favorite, _spectate, _join)));
             Grid.SetRow(inspector, 2); left.Children.Add(inspector);
             _stand.Height = 190;
             _mapPreview.Height = 100;
@@ -267,7 +270,7 @@ namespace MphRead.Mods.Launcher.Gui
                 _backdropRoom = server.RoomKey;
                 LauncherBackdrop.Set(LauncherBackdropScene.Multiplayer, _backdropRoom);
             }
-            _join.IsEnabled = server.CanJoin && !_joining;
+            _join.IsEnabled = _spectate.IsEnabled = server.CanJoin && !_joining;
         }
 
         private void RefreshFavorite()
@@ -304,7 +307,7 @@ namespace MphRead.Mods.Launcher.Gui
             _selectedEndpoint = null; RefreshFavorite();
             _replied = 0;
             _live = 0;
-            _join.IsEnabled = false;
+            _join.IsEnabled = _spectate.IsEnabled = false;
             _mapPreview.Source = null;
 
             if (_sample != null)
@@ -364,7 +367,7 @@ namespace MphRead.Mods.Launcher.Gui
             CancelDiscovery();
             _quick.IsEnabled = false;
             _refresh.IsEnabled = false;
-            _join.IsEnabled = false;
+            _join.IsEnabled = _spectate.IsEnabled = false;
             _summary.Text = "QUICK PLAY  /  SEARCHING";
             _summary.Foreground = HubTheme.AccentBrush;
 
@@ -421,6 +424,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         private void ShowEntry(ServerBrowserEntry entry)
         {
+            _selectedEndpoint = entry.Endpoint; RefreshFavorite();
             _address.Value = entry.Endpoint;
             string room = entry.Status.RoomKey;
             string mapName = Metadata.RoomMetadata.TryGetValue(room, out RoomMetadata? meta)
@@ -442,10 +446,10 @@ namespace MphRead.Mods.Launcher.Gui
                 _backdropRoom = room;
                 LauncherBackdrop.Set(LauncherBackdropScene.Multiplayer, _backdropRoom);
             }
-            _join.IsEnabled = entry.Live && !_joining;
+            _join.IsEnabled = _spectate.IsEnabled = entry.Live && !_joining;
         }
 
-        private async Task JoinAsync()
+        private async Task JoinAsync(bool spectate = false)
         {
             if (CanLaunch?.Invoke() == false) return;
             if (_joining || NetSession.Active)
@@ -470,7 +474,7 @@ namespace MphRead.Mods.Launcher.Gui
             ShowProgress($"Connecting to {host}:{port}…");
             _quick.IsEnabled = false;
             _refresh.IsEnabled = false;
-            _join.IsEnabled = false;
+            _join.IsEnabled = _spectate.IsEnabled = false;
             _summary.Text = $"CONNECTING TO {host}:{port}";
             _summary.Foreground = HubTheme.AccentBrush;
             CancelDiscovery();
@@ -489,10 +493,10 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 _summary.Text = result.Error.ToUpperInvariant();
                 _summary.Foreground = HubTheme.DangerBrush;
-                _join.IsEnabled = true;
+                _join.IsEnabled = _spectate.IsEnabled = true;
                 return;
             }
-            Launched?.Invoke(this, result.Plan);
+            Launched?.Invoke(this, result.Plan with { Spectate = spectate });
         }
 
         public void SessionEnded(string reason)

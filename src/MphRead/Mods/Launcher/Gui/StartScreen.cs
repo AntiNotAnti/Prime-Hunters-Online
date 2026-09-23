@@ -21,6 +21,7 @@ namespace MphRead.Mods.Launcher.Gui
         private LobbyScreen? _lobby;
         private bool _finished, _updatable, _updating, _bypassGuard;
         private bool _returnToMapStudio;
+        private bool _spectateNextMatch;
         public LaunchPlan Plan { get; private set; }
         public event EventHandler<LaunchPlan>? Done;
         public event EventHandler<LaunchPlan>? MatchRequested;
@@ -211,6 +212,7 @@ namespace MphRead.Mods.Launcher.Gui
         {
             if (NetSession.Active && NetSession.PersistentLobby)
             {
+                _spectateNextMatch = plan.Spectate;
                 _lobby = new LobbyScreen(_rooms, plan.Lobby) { Overlays = _prime.Overlays };
                 _session.Screen = _lobby;
                 _lobby.HubRequested += (_, _) => _prime.Router.Navigate(PrimeRoute.News);
@@ -220,7 +222,7 @@ namespace MphRead.Mods.Launcher.Gui
                     // any configuration draft, close sheets and show the countdown.
                     _prime.Overlays.Clear(); _bypassGuard = true;
                     _prime.Router.Navigate(PrimeRoute.Lobby); _bypassGuard = false;
-                    MatchRequested?.Invoke(this, match);
+                    MatchRequested?.Invoke(this, match with { Spectate = _spectateNextMatch });
                 };
                 _lobby.Closed += (_, reason) => LobbyClosed(reason);
                 _prime.Workspaces.Set(PrimeRoute.Lobby, _lobby);

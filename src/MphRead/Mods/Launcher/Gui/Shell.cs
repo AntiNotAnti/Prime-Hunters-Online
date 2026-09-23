@@ -770,7 +770,8 @@ namespace MphRead.Mods.Launcher.Gui
             w =>
             {
                 Shot(w, "shell-play");
-                ClickIfReady(c => c is ServerRow row && row.IsLive);
+                // Directory availability is external to the layout smoke test.
+                UiSurface.Current?.ClickOn(c => c is ServerRow row && row.IsLive);
                 Wait(25);
             },
             w => { Shot(w, "shell-server-side"); ClickIfReady(c => FrontAction(c, "OFFLINE")); Wait(15); },
@@ -795,6 +796,7 @@ namespace MphRead.Mods.Launcher.Gui
                 // room here is the regression.
                 Shot(w, "shell-play-selected");
                 ClickIfReady(c => c is UiListRow);
+                if (GameFiles.Ready) Key(Keys.Enter);
                 ClickIfReady(c => c.GetValue(ControllerNav.NavIdProperty) == "offline.start");
                 Wait(40);
             },
@@ -856,7 +858,8 @@ namespace MphRead.Mods.Launcher.Gui
             w =>
             {
                 Shot(w, "shell-endgame");
-                Click(c => c is DeckButton tab && tab.Text == "Change hunter");
+                if (Mods.EndScreen.CharacterChangeEnabled)
+                    Click(c => c is DeckButton tab && tab.Text == "Change hunter");
                 Wait(30);
             },
             w => { Shot(w, "shell-endgame-hunter"); ReleaseResults(); Wait(20); },

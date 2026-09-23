@@ -23,7 +23,7 @@ namespace MphRead.Mods.Launcher.Gui
     /// Playback/editor state remains in DemoPlayback/ReplayStudio. This view
     /// only owns library presentation and file-management actions.
     /// </summary>
-    internal sealed class TheatreWorkspace : UserControl
+    internal sealed class TheatreWorkspace : UserControl, IDisposable
     {
         private readonly UiList _list = new() { AutoSelectFirst = true };
         private readonly TextBlock _title;
@@ -51,7 +51,6 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly Dictionary<string, ReplayVirtualClipDocument> _virtual =
             new(StringComparer.OrdinalIgnoreCase);
         private readonly List<ReplayLibraryEntry> _entries = new();
-        private readonly DispatcherTimer _previewTimer;
 
         private Bitmap? _bitmap;
         private string[] _previewPaths = Array.Empty<string>();
@@ -144,17 +143,6 @@ namespace MphRead.Mods.Launcher.Gui
             _filter.Changed += (_, _) => Populate(_selected);
             _sort.Changed += (_, _) => Populate(_selected);
 
-            _previewTimer = new DispatcherTimer
-            {
-                Interval = TimeSpan.FromMilliseconds(1100)
-            };
-            _previewTimer.Tick += (_, _) =>
-            {
-                if (_previewPaths.Length <= 1)
-                    return;
-                _previewIndex = (_previewIndex + 1) % _previewPaths.Length;
-                ShowPreview();
-            };
 
             _list.SelectionChanged += (_, row) =>
             {
@@ -368,16 +356,9 @@ namespace MphRead.Mods.Launcher.Gui
             Reload();
         }
 
-        protected override void OnDetachedFromVisualTree(
-            VisualTreeAttachmentEventArgs e)
+        public void Dispose()
         {
-            _previewTimer.Stop();
-            // A retained launcher view can be measured again on return from
-            // playback. Detach the image before releasing its native bitmap.
-            _preview.Source = null;
-            _bitmap?.Dispose();
-            _bitmap = null;
-            base.OnDetachedFromVisualTree(e);
+            _preview.Source = null; _bitmap?.Dispose(); _bitmap = null;
         }
 
         protected override void OnKeyDown(KeyEventArgs e)

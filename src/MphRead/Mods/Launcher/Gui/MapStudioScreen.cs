@@ -66,6 +66,9 @@ namespace MphRead.Mods.Launcher.Gui
         {
             _overlays = overlays;
             Background=GuiTheme.InkBrush;Focusable=true;
+            _hierarchy.Background = _problems.Background = PrimeTheme.PanelBrush;
+            _hierarchy.Foreground = _problems.Foreground = PrimeTheme.TextBrush;
+            _hierarchy.BorderBrush = _problems.BorderBrush = PrimeTheme.BorderBrush;
             var toolbar=new WrapPanel { Orientation=Orientation.Horizontal };
             AddButton(toolbar,"Back",Close);AddButton(toolbar,"Library",ShowLibrary);AddButton(toolbar,"New",NewMap);
             AddButton(toolbar,"Open",()=>Browse("Open project",false,p=>Open(p),".json",".ppmap"));

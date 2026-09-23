@@ -571,10 +571,14 @@ namespace MphRead.Mods.Launcher.Gui
         {
             var s = _snapshot.Stats;
             var p = _snapshot.Profile;
-            Control Metric(string label, string value, string detail, IBrush? color = null) => new PrimePanel(PrimeChrome.Stack(
-                PrimeChrome.Text(label, 11, PrimeTheme.TextSecondaryBrush, true),
-                PrimeChrome.Text(value, 26, color ?? PrimeTheme.CyanStrongBrush, true),
-                PrimeChrome.Text(detail, 11, PrimeTheme.TextSecondaryBrush, true))) { Padding = new Thickness(12, 8) };
+            Control Metric(string label, string value, string detail, IBrush? color = null)
+            {
+                var content = PrimeChrome.Stack(PrimeChrome.Text(label, 11, PrimeTheme.TextSecondaryBrush, true),
+                    PrimeChrome.Text(value, 26, color ?? PrimeTheme.CyanStrongBrush, true),
+                    PrimeChrome.Text(detail, 11, PrimeTheme.TextSecondaryBrush, true));
+                content.Spacing = 3;
+                return new PrimePanel(content) { Padding = new Thickness(12, 8) };
+            }
             var metrics = new Grid { ColumnDefinitions = new("*,*"), RowDefinitions = new("*,*"), ColumnSpacing = 10, RowSpacing = 10 };
             Control[] cards = {
                 Metric("WIN RATE", Percent(s.Wins, s.GamesPlayed), $"{s.Wins:N0} W / {s.Losses:N0} L", PrimeTheme.GreenBrush),

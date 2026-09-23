@@ -33,6 +33,7 @@ namespace MphRead.Mods.Launcher.Gui
             Content = _canvas;
             Router.Changed += route => { Workspaces.Show(route); Header.SetRoute(route); Refresh(); };
             AddHandler(KeyDownEvent, HandleKey, RoutingStrategies.Tunnel);
+            AddHandler(KeyDownEvent, HandleDirection, RoutingStrategies.Bubble);
             var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
             timer.Tick += (_, _) => Refresh();
             AttachedToVisualTree += (_, _) => { timer.Start(); Refresh(); };
@@ -53,9 +54,23 @@ namespace MphRead.Mods.Launcher.Gui
             if (e.Key == Key.Escape) { Back(); e.Handled = true; return; }
             // Text entry and binding capture own letter keys.
             if (e.Source is TextBox || Mods.Input.GamepadContexts.Capturing || e.Source is KeyRow { Listening: true }) return;
+#if MPHREAD_SHELL
+            // Q/E move the editor camera while its viewport owns keyboard input.
+            if (e.Source is MapViewport) return;
+#endif
             if (Overlays.IsOpen || e.KeyModifiers != KeyModifiers.None) return;
             if (e.Key == Key.Q) { Router.PreviousRoute(); e.Handled = true; }
             if (e.Key == Key.E) { Router.NextRoute(); e.Handled = true; }
+        }
+        private void HandleDirection(object? sender, KeyEventArgs e)
+        {
+            if (e.Handled || e.Source is TextBox || Mods.Input.GamepadContexts.Capturing) return;
+            Mods.Input.UiAction? direction = e.Key switch
+            {
+                Key.Up => Mods.Input.UiAction.Up, Key.Down => Mods.Input.UiAction.Down,
+                Key.Left => Mods.Input.UiAction.Left, Key.Right => Mods.Input.UiAction.Right, _ => null
+            };
+            if (direction is { } action) { FocusNavigator.Move(this, action); e.Handled = true; }
         }
         public void SwitchTab(bool next)
         {
