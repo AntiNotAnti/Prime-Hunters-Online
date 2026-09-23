@@ -59,7 +59,6 @@ internal static class WeaponPolicyTests
             validate.Invoke(beam, null);
             NetArchitectureTests.Check(beam.Target == null, "homing cannot inherit a reused slot");
             NetSession.Stop();
-            Console.WriteLine(ServerSim.Available(out string reason) ? "Asset-backed simulation available" : $"Asset-backed simulation unavailable: {reason}");
             Console.WriteLine($"PASS: {profiles} weapon timing profiles, all MP variants, bounded catch-up equivalence");
             return 0;
         }

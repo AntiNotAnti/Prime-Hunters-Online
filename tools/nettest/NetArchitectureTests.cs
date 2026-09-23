@@ -40,6 +40,8 @@ internal static class NetArchitectureTests
     {
         try
         {
+            System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(
+                typeof(NetSession).Assembly.GetType("MphRead.Mods.Replay.ReplayWorldCheckpoint", throwOnError: true)!.TypeHandle);
             var counters = new NetPeerTelemetry();
             counters.Intent(10, NetIntentRejection.None, 100);
             counters.Intent(12, NetIntentRejection.None, 200);

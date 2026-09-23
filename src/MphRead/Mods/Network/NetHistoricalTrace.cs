@@ -59,7 +59,7 @@ public static class NetHistoricalTrace
         {
             if (player == shooter || player.Health == 0 || player.Flags2.TestFlag(PlayerFlags2.Spectating)) continue;
             // Avoid inventing past alt-form volumes and detached turret poses.
-            if (player.IsAltForm || player.Hunter == Hunter.Weavel || count == 8
+            if (player.IsAltForm || player.Flags2.TestFlag(PlayerFlags2.Halfturret) || count == 8
                 || !NetUnlagged.TryHistoricalBiped(player, NetSession.NetFrame - hard, out Vector3 oldPosition)
                 || !NetUnlagged.TryHistoricalBiped(player, NetSession.NetFrame - allowed, out Vector3 newPosition))
                 return ShadowOutcome.HistoricalDataUnavailable;

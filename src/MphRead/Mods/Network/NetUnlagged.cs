@@ -1024,6 +1024,10 @@ namespace MphRead.Mods.Network
                     text += $" (+{StalePressFrames / (double)StalePresses:F1} frames each)";
                 }
             }
+            var shadow = LagCompensationPolicy.CaptureTotal();
+            text += $"; shadow {LagCompensationPolicy.Plausibility}: {shadow.WouldClamp}/{shadow.TimedShots} timed shots would clamp, "
+                + $"{shadow.ShadowRefusedFrames:F1} frames refused, geometry unavailable {shadow.OutcomeCount}/{shadow.Shots}; "
+                + $"catch-up maximum {MaximumCatchUpSteps}, truncations {CatchUpTruncations}";
             return text;
         }
 

@@ -759,7 +759,6 @@ internal static class ReplayWorldSchemas
             "_aimHeld",
             "_appliedLifeId",
             "_lifeApplied",
-            "_divergedFrames",
             "_lastReportPosition",
             "_lastReportFrame",
             "_reportSeen",

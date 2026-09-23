@@ -41,6 +41,12 @@ namespace MphRead.NetTest
             if (args.Length > 0 && args[0] == "--lagcomp-shadow") return LagCompensationTests.Run();
             if (args.Length > 0 && args[0] == "--weapon-policy") return WeaponPolicyTests.Run();
             if (args.Length > 0 && args[0] == "--transport-stress") return TransportStressTests.Run();
+            if (args.Length > 1 && args[0] == "--combat-scene")
+            {
+                System.IO.Directory.SetCurrentDirectory(System.IO.Path.GetFullPath(args[1]));
+                Paths.UpdatePaths(); Paths.ChooseMphPath();
+                return NetCombatCheck.Run(args.Length > 2 ? args[2] : "MP1 SANCTORUS");
+            }
             string host = args.Length > 0 ? args[0] : "127.0.0.1";
             int port = args.Length > 1 && Int32.TryParse(args[1], out int p)
                 ? p : NetConfig.DefaultPort;

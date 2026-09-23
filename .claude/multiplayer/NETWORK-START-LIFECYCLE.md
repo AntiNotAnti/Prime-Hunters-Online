@@ -15,6 +15,10 @@ loads cannot release a barrier. Starting gameplay remains frozen. InMatch is the
 only authoritative reveal boundary; estimated countdown timing never unfreezes
 simulation on its own.
 
+A late-join scene that finishes before SessionState retains its MatchId/epoch
+until the matching start generation arrives. Teardown or a different match drops
+that pending readiness; a delayed packet cannot ready an unrelated scene.
+
 Timeout removes missing peers through the normal authoritative removal path.
 Explicit load failure removes that participant. Existing team-validity rules may
 cancel a start if removals leave an invalid match. Owner removal transfers lobby

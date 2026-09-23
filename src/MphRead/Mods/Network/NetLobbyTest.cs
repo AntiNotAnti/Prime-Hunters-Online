@@ -682,7 +682,12 @@ namespace MphRead.Mods.Network
             PumpUntil(() => !NetSession.LobbyCommandPending && NetSession.SlotLobbyReady[slot], "second ready received");
             Check(NetSession.SendLobbyCommand(LobbyCommandType.StartMatch), "second real-client start");
             PumpUntil(() => NetSession.IsStarting, "second real-client load barrier");
-            NetSession.MarkMatchLoaded(); PumpUntil(() => NetSession.IsPlaying, "second real-client round");
+            var delayedSession = NetSession.ServerSession!.Value;
+            typeof(NetSession).GetProperty(nameof(NetSession.ServerSession))!.SetValue(null, null);
+            NetSession.MarkMatchLoaded();
+            Check(NetSession.ServerSession == null, "scene can load before session generation arrives");
+            NetSession.ApplySessionState(delayedSession);
+            PumpUntil(() => NetSession.IsPlaying, "deferred scene readiness starts second real-client round");
             Check(NetSession.ConnectionPort == port && NetSession.LocalSlot == slot, "same client UDP session in second match");
             NetSession.Stop();
             NetLag.Configure("0");

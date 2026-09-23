@@ -43,7 +43,7 @@ namespace MphRead.Mods.Network
                 shooter.Health = victim.Health = 99;
                 uint frame = 200;
                 foreach (BeamType weapon in new[] { BeamType.PowerBeam, BeamType.Missile, BeamType.Imperialist,
-                    BeamType.Magmaul, BeamType.ShockCoil, BeamType.Judicator, BeamType.Battlehammer, BeamType.VoltDriver })
+                    BeamType.Magmaul, BeamType.ShockCoil, BeamType.Judicator, BeamType.Battlehammer, BeamType.VoltDriver, BeamType.OmegaCannon })
                 {
                     shooter.ModArmWeapon(weapon);
                     int before = NetDamage.Fired[0];

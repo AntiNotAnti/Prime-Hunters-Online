@@ -197,6 +197,7 @@ namespace MphRead.Mods
             // dedicated server alike -- so a fault that only shows up at 200
             // ms can be reproduced against the real server rather than only
             // behind a proxy in front of a local one. See Mods/Network/NetLag.
+            Network.NetDiagnostics.Enabled = HasFlag(args, "netdebug");
             string? netLag = ValueAfter(args, "netlag");
             if (netLag != null && !Network.NetLag.Configure(netLag))
             {
