@@ -355,6 +355,10 @@ namespace MphRead.Droid
             private ISurfaceHolder? _holder;
             private Vector2i _wanted;
             private bool _paused;
+            // Set by the UI thread on resume and consumed only by the GL
+            // thread. Background time must not become one giant render/sim
+            // interval when the app returns.
+            private bool _resetPacingOnResume;
             private bool _stopping;
             private bool _holdingSurface;
             private bool _ended;
@@ -425,7 +429,15 @@ namespace MphRead.Droid
             {
                 lock (_lock)
                 {
+                    if (_paused == paused)
+                    {
+                        return;
+                    }
                     _paused = paused;
+                    if (!paused)
+                    {
+                        _resetPacingOnResume = true;
+                    }
                     Monitor.PulseAll(_lock);
                 }
             }
@@ -506,14 +518,19 @@ namespace MphRead.Droid
                 {
                     ISurfaceHolder holder;
                     Vector2i wanted;
+                    bool resetPacing;
                     lock (_lock)
                     {
                         while (!_stopping && (_holder == null || _paused))
                         {
-                            // Nothing to draw into, or nobody looking. Let go
-                            // of the surface first if it is the former, so
-                            // SurfaceGone is not left waiting on us.
-                            if (_holder == null && _holdingSurface)
+                            // A system pause is an ownership boundary even when
+                            // SurfaceView has not emitted SurfaceDestroyed yet.
+                            // Keeping an EGL window surface current while Android
+                            // backgrounds or replaces that window is device-
+                            // dependent and is the source of resume crashes on
+                            // stricter drivers. Release only the EGLSurface on
+                            // this GL thread; keep the context and loaded scene.
+                            if (_holdingSurface && (_holder == null || _paused))
                             {
                                 Monitor.Exit(_lock);
                                 try
@@ -535,6 +552,18 @@ namespace MphRead.Droid
                         }
                         holder = _holder!;
                         wanted = _wanted;
+                        resetPacing = _resetPacingOnResume;
+                        _resetPacingOnResume = false;
+                    }
+                    if (resetPacing)
+                    {
+                        // Do not feed time spent in the background into either
+                        // the render deadline or the 60 Hz accumulator.
+                        double now = _clock.Elapsed.TotalSeconds;
+                        _nextFrame = now;
+                        _lastFrameStart = now;
+                        FrameTiming.Reset();
+                        Scene?.ModSetLateAim(0, 0);
                     }
                     if (!BindSurface(holder, wanted))
                     {
