@@ -128,9 +128,15 @@ even while a 144 Hz display receives intermediate poses.
 There are two local camera behaviors, and treating them as one was the high-refresh
 regression.
 
-**Fixed-crosshair / modern aiming** keeps the current 60 Hz camera pose and may
-late-latch pointer/touch input that arrived after the last simulation step. The
-important invariant is now enforced explicitly: `TransformCamera` prepares one
+**Fixed-crosshair / modern aiming** keeps the current 60 Hz camera orientation and
+may late-latch pointer/touch input that arrived after the last simulation step.
+Translation is presentation-only above 60 Hz: three completed camera samples project
+at most the fractional remainder of one observed motion step, fading the projection
+while slowing and cancelling it on reversal. That removes the 60 Hz positional
+stair-step during walking, strafing, jumping and knockback without adding a full
+simulation tick of interpolation latency. Teleports and respawns rebase the history.
+
+The important invariant is enforced explicitly: `TransformCamera` prepares one
 `FirstPersonRenderPose` per picture, and the arm cannon consumes that exact pose
 later in `PlayerDraw`. The render-time input delta is calculated once. Camera and
 viewmodel therefore cannot represent different input timestamps.
