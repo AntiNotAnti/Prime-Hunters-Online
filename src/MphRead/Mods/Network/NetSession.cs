@@ -38,6 +38,7 @@ namespace MphRead.Mods.Network
         public int SlotIndex = -1;
         public IntentPacket LatestIntent;
         public uint LastIntentFrame;
+        public bool HasIntentFrame;
         public double LastSeenTime;
         /// <summary>Who this peer says it is, across address changes. See
         /// <see cref="NetSession.ClientId"/>. Zero from an older client.</summary>
@@ -1182,6 +1183,9 @@ namespace MphRead.Mods.Network
                 NetPlayerLifecycle.SetOccupant(peer.SlotIndex, 0);
                 peer = null;
             }
+            if (peer == null && clientId != 0)
+                foreach (var connected in _peers)
+                    if (connected.ClientId == clientId) return; // a different endpoint cannot claim a live admission
             if (peer == null)
             {
                 int slot = NextFreeSlot();
@@ -1227,11 +1231,11 @@ namespace MphRead.Mods.Network
             // UDP reorders; an older frame must not overwrite a newer one --
             // unless it is so much older that the peer restarted its counter.
             // See HandleSlotIntent.
-            if (peer.LastIntentFrame != 0 && !NetLifecycleTracker.Newer(intent.Frame, peer.LastIntentFrame))
+            if (peer.HasIntentFrame && !NetLifecycleTracker.Newer(intent.Frame, peer.LastIntentFrame))
             {
                 return;
             }
-            peer.LastIntentFrame = intent.Frame;
+            peer.LastIntentFrame = intent.Frame; peer.HasIntentFrame = true;
             peer.LatestIntent = intent;
             peer.LastSeenTime = time;
             RemoteIntents[peer.SlotIndex] = intent;
@@ -1287,7 +1291,7 @@ namespace MphRead.Mods.Network
             // the frame baseline; a late packet can never reset it.
             if (!NetPlayerLifecycle.AcceptIntent(slot, intent))
             { NetTelemetry.Intent(slot, intent.Frame, reason == NetIntentRejection.None ? NetIntentRejection.Invalid : reason); return; }
-            if (_lastSlotIntentFrame[slot] != 0 && !NetLifecycleTracker.Newer(intent.Frame, _lastSlotIntentFrame[slot]))
+            if (RemoteIntentValid[slot] && !NetLifecycleTracker.Newer(intent.Frame, _lastSlotIntentFrame[slot]))
             {
                 IntentsOutOfOrder++;
                 NetTelemetry.Intent(slot, intent.Frame, intent.Frame == _lastSlotIntentFrame[slot]
@@ -1341,7 +1345,7 @@ namespace MphRead.Mods.Network
             {
                 if (_peers[i].SlotIndex == slot)
                 {
-                    _peers[i].LastIntentFrame = 0;
+                    _peers[i].LastIntentFrame = 0; _peers[i].HasIntentFrame = false;
                 }
             }
         }

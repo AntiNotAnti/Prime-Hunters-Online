@@ -34,6 +34,7 @@ namespace MphRead.NetTest
                 OldLifeShootPressIsRejected();
                 RecoveredShootPressCannotCrossLife();
                 DuplicateIntentDoesNotDuplicateShot();
+                FrameWrapDoesNotDuplicateShot();
                 ReorderedIntentDoesNotDuplicateShot();
                 DeadHeldFireDoesNotSpawnGhostShot();
                 GhostShotFaultMatrix();
@@ -198,6 +199,21 @@ namespace MphRead.NetTest
             Snapshot(2, State(8)); NetPlayerBridge.ForgetSlot(1); NetPlayerBridge.ApplyIntent(shooter, old);
             NetPlayerBridge.ApplyIntent(shooter, Intent(16, life: 8));
             Check(!shooter.Controls.Shoot.IsPressed, nameof(RecoveredShootPressCannotCrossLife));
+        }
+        private static void FrameWrapDoesNotDuplicateShot()
+        {
+            Session(); var shooter = Player(1);
+            var baseline = Intent(uint.MaxValue - 2);
+            NetSession.AcceptSlotIntent(1, baseline); NetPlayerBridge.ApplyIntent(shooter, baseline);
+            var shot = Intent(0); shot.Presses[1] = (uint)IntentButtons.Shoot;
+            NetSession.AcceptSlotIntent(1, shot); NetPlayerBridge.ApplyIntent(shooter, NetSession.RemoteIntents[1]);
+            Check(shooter.Controls.Shoot.IsPressed, "recovered press crosses uint wrap");
+            long accepted = NetSession.IntentsReceived;
+            NetSession.AcceptSlotIntent(1, shot);
+            NetPlayerBridge.ApplyIntent(shooter, NetSession.RemoteIntents[1]);
+            Check(NetSession.IntentsReceived == accepted && !shooter.Controls.Shoot.IsPressed, "frame zero duplicate cannot repeat action");
+            NetSession.AcceptSlotIntent(1, Intent(uint.MaxValue, shooting: true));
+            Check(NetSession.IntentsReceived == accepted, "pre-wrap reorder refused");
         }
         private static void DuplicateIntentDoesNotDuplicateShot() => Ordering(false);
         private static void ReorderedIntentDoesNotDuplicateShot() => Ordering(true);

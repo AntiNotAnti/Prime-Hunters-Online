@@ -630,12 +630,8 @@ namespace MphRead.Mods.Network
             IntentButtons missed = IntentButtons.None;
             for (int i = intent.Presses.Length - 1; i >= 0; i--)
             {
-                if (intent.Frame < (uint)i)
-                {
-                    continue;
-                }
-                uint frame = intent.Frame - (uint)i;
-                if (frame <= _lastPressFrame[slot])
+                uint frame = unchecked(intent.Frame - (uint)i);
+                if (!NetLifecycleTracker.Newer(frame, _lastPressFrame[slot]))
                 {
                     continue;
                 }
@@ -653,7 +649,7 @@ namespace MphRead.Mods.Network
             // Every frame up to this packet is now accounted for, whether or
             // not it carried a press. Leaving gaps here let the same frame be
             // consumed again by a later packet.
-            _lastPressFrame[slot] = Math.Max(_lastPressFrame[slot], intent.Frame);
+            if (NetLifecycleTracker.Newer(intent.Frame, _lastPressFrame[slot])) _lastPressFrame[slot] = intent.Frame;
             return missed;
         }
 

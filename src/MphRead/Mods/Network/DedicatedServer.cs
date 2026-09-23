@@ -44,6 +44,7 @@ namespace MphRead.Mods.Network
             public int SlotIndex = -1;
             public double LastSeen;
             public uint LastIntentFrame;
+            public bool HasIntentFrame;
             public string Name = "";
             public byte Hunter;
             /// <summary>The suit this player asked for, 0-3. See PlayerColors.</summary>
@@ -1814,6 +1815,9 @@ namespace MphRead.Mods.Network
                 Remove(peer, "replaced connection");
                 peer = null;
             }
+            if (peer == null && clientId != 0)
+                foreach (var connected in _peers)
+                    if (connected.ClientId == clientId) return; // a different endpoint cannot claim a live admission
             if (peer == null)
             {
                 // Honour the slot the client asks for when it is free. A
@@ -2222,14 +2226,14 @@ namespace MphRead.Mods.Network
                 // noticed it had gone -- would otherwise have every packet of
                 // its new session refused until the counter climbed back past
                 // the old one. Same ten seconds NetSession allows.
-                if (peer.LastIntentFrame != 0 && !NetLifecycleTracker.Newer(intent.Frame, peer.LastIntentFrame))
+                if (peer.HasIntentFrame && !NetLifecycleTracker.Newer(intent.Frame, peer.LastIntentFrame))
                 {
                     peer.Telemetry.Intent(intent.Frame, peer.LastIntentFrame == intent.Frame
                         ? NetIntentRejection.Duplicate : NetIntentRejection.Reordered);
                     return;
                 }
                 peer.Telemetry.Intent(intent.Frame, NetIntentRejection.None);
-                peer.LastIntentFrame = intent.Frame;
+                peer.LastIntentFrame = intent.Frame; peer.HasIntentFrame = true;
                 // Only meaningful between the end of one match and the start
                 // of the next; read unconditionally because it costs nothing
                 // and a client that sets it early is simply ready early.

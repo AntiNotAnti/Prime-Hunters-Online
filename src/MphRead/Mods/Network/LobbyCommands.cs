@@ -265,7 +265,7 @@ namespace MphRead.Mods.Network
             _snapshotSeen = false;
             Array.Clear(_slotLives);
             foreach (Peer connected in _peers)
-                connected.LastIntentFrame = 0;
+            { connected.LastIntentFrame = 0; connected.HasIntentFrame = false; }
             _matchEndedAt = -1;
             byte participants = 0;
             foreach (Peer participant in _peers)
