@@ -843,9 +843,16 @@ namespace MphRead.Droid
         }
 
         /// <summary>
-        /// The aim movement since this was last called, in density-independent
-        /// pixels, and cleared by the call -- so a frame that reads it twice
-        /// does not turn twice.
+        /// The aim movement since this was last called, in game-window pixels,
+        /// and cleared by the call -- so a frame that reads it twice does not
+        /// turn twice.
+        ///
+        /// MotionEvent coordinates are already the SurfaceView's pixel
+        /// coordinates, which is exactly the unit the desktop mouse path feeds
+        /// into PlayerInput. Dividing them by Android density here used to
+        /// shrink aiming by 3-4x on modern phones before mouse sensitivity was
+        /// applied. Density still belongs to button sizing, tap slop and gesture
+        /// thresholds; it does not belong in relative camera motion.
         /// </summary>
         public (float X, float Y) TakeAimDelta()
         {
@@ -856,20 +863,21 @@ namespace MphRead.Droid
                 _aimDeltaX = 0;
                 _aimDeltaY = 0;
                 Mods.Input.AimInputSourceTracker.Pointer(x, y, true, System.Environment.TickCount64);
-                return (x / Density, y / Density);
+                return (x, y);
             }
         }
 
         /// <summary>
         /// Non-destructive copy of aim movement waiting for the next 60 Hz
-        /// input step. The Android renderer uses it to late-latch the picture
-        /// on display frames where no simulation step was due.
+        /// input step. Uses the same window-pixel units as <see cref="TakeAimDelta"/>
+        /// so render-time late aim and simulation aim can never disagree by the
+        /// device density factor.
         /// </summary>
         public (float X, float Y) PeekAimDelta()
         {
             lock (_lock)
             {
-                return (_aimDeltaX / Density, _aimDeltaY / Density);
+                return (_aimDeltaX, _aimDeltaY);
             }
         }
 
