@@ -263,7 +263,9 @@ namespace MphRead.Mods.MapGen
 
         private static FileStream AcquireGenerationLease(MapDefinition def)
         {
-            string path = OutputsFor(def).Manifest + ".runtime.lock";
+            // Share the editor/runtime publication lease as well as the
+            // runtime callers' lease; both write the same five destination files.
+            string path = OutputsFor(def).Manifest + ".lock";
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             var timeout = Stopwatch.StartNew();
             while (true)
