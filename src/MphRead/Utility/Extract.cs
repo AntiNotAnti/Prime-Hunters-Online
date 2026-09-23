@@ -439,7 +439,7 @@ namespace MphRead
 
         private static string FileStamp(string path)
         {
-            var info = new FileInfo(path);
+            var info = new System.IO.FileInfo(path);
             return $"{Path.GetFullPath(path)}:{info.Length}:{info.LastWriteTimeUtc.Ticks}";
         }
 
