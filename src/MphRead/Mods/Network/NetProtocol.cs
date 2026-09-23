@@ -1131,6 +1131,32 @@ namespace MphRead.Mods.Network
         }
     }
 
+    /// <summary>Eight inline rising edges. Copies own their history; no shared mutable array.</summary>
+    public struct PressHistoryBuffer
+    {
+        private uint _0, _1, _2, _3, _4, _5, _6, _7;
+        public readonly int Length => 8;
+        public uint this[int index]
+        {
+            readonly get => index switch
+            {
+                0 => _0, 1 => _1, 2 => _2, 3 => _3, 4 => _4, 5 => _5, 6 => _6, 7 => _7,
+                _ => throw new ArgumentOutOfRangeException(nameof(index))
+            };
+            set
+            {
+                switch (index)
+                {
+                    case 0: _0 = value; break; case 1: _1 = value; break;
+                    case 2: _2 = value; break; case 3: _3 = value; break;
+                    case 4: _4 = value; break; case 5: _5 = value; break;
+                    case 6: _6 = value; break; case 7: _7 = value; break;
+                    default: throw new ArgumentOutOfRangeException(nameof(index));
+                }
+            }
+        }
+    }
+
     public struct IntentPacket
     {
         public ushort MatchId;
@@ -1231,7 +1257,7 @@ namespace MphRead.Mods.Network
         public uint Frame;          // client's frame counter, for ordering
         public IntentButtons Buttons;
         /// <summary>Rising edges for Frame, Frame-1, ... Frame-(PressHistory-1).</summary>
-        public uint[] Presses;
+        public PressHistoryBuffer Presses;
         /// <summary>
         /// Where the sender's gun points, as a direction rather than as this
         /// frame's mouse movement.
@@ -1329,7 +1355,7 @@ namespace MphRead.Mods.Network
             for (int i = 0; i < PressHistory; i++)
             {
                 BinaryPrimitives.WriteUInt32LittleEndian(dest[(21 + i * 4)..],
-                    Presses != null && i < Presses.Length ? Presses[i] : 0);
+                    Presses[i]);
             }
             int at = 21 + PressHistory * 4;
             BinaryPrimitives.WriteSingleLittleEndian(dest[at..], Position.X);
@@ -1350,7 +1376,7 @@ namespace MphRead.Mods.Network
 
         public static IntentPacket Read(ReadOnlySpan<byte> src)
         {
-            var presses = new uint[PressHistory];
+            var presses = new PressHistoryBuffer();
             for (int i = 0; i < PressHistory; i++)
             {
                 presses[i] = BinaryPrimitives.ReadUInt32LittleEndian(src[(21 + i * 4)..]);

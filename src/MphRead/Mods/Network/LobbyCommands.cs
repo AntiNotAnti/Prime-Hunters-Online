@@ -247,7 +247,7 @@ namespace MphRead.Mods.Network
             ServerReplayRecorder.Stop(matchEnded);
             _sim?.Stop();
             _sim = null;
-            _lastSnapshot = null;
+            _lastSnapshotLength = 0;
             NetHitClaims.VerdictSink = null;
         }
 

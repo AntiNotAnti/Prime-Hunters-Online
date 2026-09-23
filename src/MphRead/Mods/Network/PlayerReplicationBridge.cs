@@ -167,7 +167,7 @@ namespace MphRead.Mods.Network
         /// Rising edges from the last few frames, newest first, so a
         /// one-frame press survives a lost packet. See IntentPacket.Presses.
         /// </summary>
-        private readonly uint[] _pressHistory = new uint[IntentPacket.PressHistory];
+        private PressHistoryBuffer _pressHistory;
 
         /// <summary>
         /// Record this frame's rising edges, whether or not a packet goes out
@@ -184,7 +184,7 @@ namespace MphRead.Mods.Network
         {
             if (!player.ModIsInPlay)
             {
-                Array.Clear(_pressHistory);
+                _pressHistory = default;
                 _hasLatch = false;
                 return;
             }
@@ -314,7 +314,7 @@ namespace MphRead.Mods.Network
                 // down and eventually refuses to spawn a beam at all.
                 AmmoUa = (ushort)Math.Clamp(player.ModAmmo.Ua, 0, UInt16.MaxValue),
                 AmmoMissiles = (ushort)Math.Clamp(player.ModAmmo.Missiles, 0, UInt16.MaxValue),
-                Presses = (uint[])_pressHistory.Clone(),
+                Presses = _pressHistory,
                 // What this player's next shot is worth, from the machine that
                 // knows. Everything here was re-derived on the authority from
                 // the buttons above until now, and re-deriving a shooter is a
@@ -625,7 +625,7 @@ namespace MphRead.Mods.Network
             out int shootAge)
         {
             shootAge = 0;
-            if (slot < 0 || slot >= _lastPressFrame.Length || intent.Presses == null)
+            if (slot < 0 || slot >= _lastPressFrame.Length)
             {
                 return IntentButtons.None;
             }
@@ -923,7 +923,7 @@ namespace MphRead.Mods.Network
             Array.Clear(_aimHeld);
             Array.Clear(SpawnFrame);
             Array.Clear(ShootPressAge);
-            Array.Clear(_pressHistory);
+            _pressHistory = default;
             _hasLatch = false;
             Array.Clear(_divergedFrames);
             Array.Clear(_lastReportPosition);
@@ -972,7 +972,7 @@ namespace MphRead.Mods.Network
             _respawnRequested[slot] = false;
             if (slot == _host.LocalSlot)
             {
-                Array.Clear(_pressHistory);
+                _pressHistory = default;
                 _hasLatch = false;
                 _latchedCharge = _latchedBoostDamage = 0;
             }

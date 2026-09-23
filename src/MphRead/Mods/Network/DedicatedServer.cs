@@ -186,7 +186,9 @@ namespace MphRead.Mods.Network
         /// RunsTheMatch=false compatibility/test path.
         /// </summary>
         private ServerSim? _sim;
-        private byte[]? _lastSnapshot;
+        // Owned by the server loop; Send consumes synchronously, recorder takes its own copy.
+        private readonly byte[] _lastSnapshot = new byte[NetConfig.MaxPacketSize];
+        private int _lastSnapshotLength;
         private volatile bool _running;
         private double _matchStarted;
         /// <summary>
@@ -836,7 +838,8 @@ namespace MphRead.Mods.Network
         /// </summary>
         private void SendSnapshot(ReadOnlySpan<byte> payload)
         {
-            _lastSnapshot = payload.ToArray();
+            payload.CopyTo(_lastSnapshot);
+            _lastSnapshotLength = payload.Length;
             EnsureCanonicalReplay(payload);
             for (int i = 0; i < _peers.Count; i++)
             {
@@ -1890,7 +1893,7 @@ namespace MphRead.Mods.Network
                     CloseBallot();
                     _matchId = NetLifecycleTracker.Next(_matchId);
                     _snapshotSeen = false;
-                    _lastSnapshot = null;
+                    _lastSnapshotLength = 0;
                     Array.Clear(_slotLives);
                 }
                 if (_phase == SessionPhase.InMatch && !AllowJoinInProgress)
@@ -1925,13 +1928,13 @@ namespace MphRead.Mods.Network
                 else
                 {
                     Log($"{packet.Sender} joined as slot {slot}");
-                    if (Simulating && _lastSnapshot != null)
+                    if (Simulating && _lastSnapshotLength != 0)
                     {
                         // A world to stand in before the next one is composed.
                         // Without it a joiner sees an empty room for a frame,
                         // which is the same gap NotifyAuthority closes for the
                         // client it promotes.
-                        _transport?.Send(peer.EndPoint, PacketType.Snapshot, _lastSnapshot);
+                        _transport?.Send(peer.EndPoint, PacketType.Snapshot, _lastSnapshot.AsSpan(0, _lastSnapshotLength));
                     }
                 }
             }
@@ -2089,14 +2092,15 @@ namespace MphRead.Mods.Network
             RosterPacket roster = BuildRoster();
             roster.Write(_scratch);
             _transport?.Send(peer.EndPoint, PacketType.Roster, _scratch.AsSpan(0, RosterPacket.Size));
-            if (_lastSnapshot != null)
+            if (_lastSnapshotLength != 0)
             {
                 SnapshotHeader header = SnapshotHeader.Read(_lastSnapshot);
                 if (header.MatchId == _matchId)
                 {
                     // Seed the successor from the last world, in its new stream.
                     // Frame zero cannot block its own local simulation clock.
-                    byte[] seed = (byte[])_lastSnapshot.Clone();
+                    Span<byte> seed = stackalloc byte[_lastSnapshotLength];
+                    _lastSnapshot.AsSpan(0, _lastSnapshotLength).CopyTo(seed);
                     header.AuthorityEpoch = _authorityEpoch;
                     header.Frame = 0;
                     header.Write(seed);
@@ -2326,7 +2330,8 @@ namespace MphRead.Mods.Network
             }
             _snapshotSeen = true;
             _snapshotFrame = header.Frame;
-            _lastSnapshot = packet.Payload.ToArray();
+            packet.Payload.CopyTo(_lastSnapshot);
+            _lastSnapshotLength = packet.Payload.Length;
             for (int i = 0; i < _peers.Count; i++)
             {
                 if (_peers[i] != peer)

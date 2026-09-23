@@ -31,3 +31,12 @@ modernization must remove this separately before meeting the requested invariant
 Asset-backed LAN/WAN, mixed-quality eight-player runs and human gameplay-feel
 checks must be recorded separately from virtual-time codecs and headless tests.
 A passing synthetic workload is not evidence that those checks were run.
+
+## P0-B
+
+Warmed 10,000-operation loops measured IntentPacket.Read at 56 B/op before
+and 0 B/op after inline press history. Intent.Write, PlayerState.Read/Write,
+snapshot compose/decode each measure 0 B/op. CaptureIntent copies inline values.
+DedicatedServer keeps an owner-local snapshot buffer; replay still owns copies.
+The byte fixture, full lifecycle/health suite and 16 benchmark cases pass.
+`network-v16-optimized.json` records the post-change workload.
