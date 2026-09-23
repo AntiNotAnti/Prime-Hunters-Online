@@ -2432,7 +2432,7 @@ namespace MphRead.Entities
         private static bool _isScrollingUp = false;
         private static bool _isScrollingDown = false;
 
-        public static void ProcessInput(KeyboardState keyboardState, MouseState mouseState, bool noPlayerInput)
+        public static void ProcessInput(ScenePlayerRegistry players, KeyboardState keyboardState, MouseState mouseState, bool noPlayerInput)
         {
             KeyboardState keyboardSnap = keyboardState.GetSnapshot();
             MouseState mouseSnap = mouseState.GetSnapshot();
@@ -2450,9 +2450,9 @@ namespace MphRead.Entities
                     || (Mods.Input.GamepadContexts.Current == Mods.Input.GamepadContext.Gameplay
                         && Mods.Input.GamepadInput.State.Down(Mods.Input.GamepadButtons.Back)));
             }
-            for (int i = 0; i < Players.Count; i++)
+            for (int i = 0; i < players.Items.Count; i++)
             {
-                PlayerEntity player = Players[i];
+                PlayerEntity player = players.Items[i];
                 if (player.IsBot)
                 {
                     if (player.LoadFlags.TestFlag(LoadFlags.Active))
