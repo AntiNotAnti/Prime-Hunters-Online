@@ -66,7 +66,13 @@ namespace MphRead.Entities
                 // top to bottom, which is one place to look instead of three
                 // corners.
                 _scene.DrawHudFlatBox(2 * aspect, 170, 46 * aspect, 190, ProHudPanel);
-                ProNumber(6 * aspect, 172, Align.Left, ModHudHealth.ToString(), ProInk(health), 1.5f);
+                Span<char> healthBuffer = stackalloc char[12];
+                ReadOnlySpan<char> healthText = "?";
+                if (ModHudHealth.TryFormat(healthBuffer, out int healthLength))
+                {
+                    healthText = healthBuffer[..healthLength];
+                }
+                ProNumber(6 * aspect, 172, Align.Left, healthText, ProInk(health), 1.5f);
                 ProBar(4 * aspect, 186, 40, 3, ProHealthFraction(), health);
             }
             DrawProAmmo();
@@ -96,11 +102,28 @@ namespace MphRead.Entities
 
         private void DrawProAmmo()
         {
-            string? ammo = ProAmmoText();
-            if (ammo == null)
+            if (IsAltForm || IsMorphing || IsUnmorphing)
             {
                 return;
             }
+            WeaponInfo info = EquipInfo.Weapon;
+            if (info.AmmoCost == 0)
+            {
+                return;
+            }
+
+            int amount = _ammo[info.AmmoType];
+            Span<char> ammoBuffer = stackalloc char[12];
+            ReadOnlySpan<char> ammo = "--";
+            if (amount >= 0)
+            {
+                int shots = amount / info.AmmoCost;
+                if (shots.TryFormat(ammoBuffer, out int ammoLength))
+                {
+                    ammo = ammoBuffer[..ammoLength];
+                }
+            }
+
             float aspect = HudAspectFix;
             Vector4 color = ProAmmoColor();
             float right = 256 - 2 * aspect;
@@ -205,28 +228,6 @@ namespace MphRead.Entities
         private static ColorRgba ProInk(Vector4 color)
         {
             return new ColorRgba((byte)(color.X * 255), (byte)(color.Y * 255), (byte)(color.Z * 255), 255);
-        }
-
-        /// <summary>
-        /// The equipped weapon's shots left, or null where there is no such
-        /// number -- the Power Beam, which costs nothing, and alt form, which
-        /// has no gun. Shots, not the ammo pool they are bought from: one
-        /// missile costs ten, so the raw figure is wrong by each weapon's own
-        /// factor. -1 is the unlimited-ammo marker single-player bots carry.
-        /// </summary>
-        private string? ProAmmoText()
-        {
-            if (IsAltForm || IsMorphing || IsUnmorphing)
-            {
-                return null;
-            }
-            WeaponInfo info = EquipInfo.Weapon;
-            if (info.AmmoCost == 0)
-            {
-                return null;
-            }
-            int amount = _ammo[info.AmmoType];
-            return amount < 0 ? "--" : (amount / info.AmmoCost).ToString();
         }
 
         /// <summary>
