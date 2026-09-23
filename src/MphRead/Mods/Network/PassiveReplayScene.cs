@@ -48,8 +48,7 @@ namespace MphRead.Mods.Network
         {
             if (clip.RestorePoint.Kind != ReplayRestoreKind.ReplicaCheckpoint)
                 throw new InvalidDataException("A network baseline cannot restore a historical world.");
-            var record = clip.RestorePoint.Records.SingleOrDefault(r => r.Kind == ReplayFactKind.World)
-                ?? throw new InvalidDataException("The clip has no historical world checkpoint.");
+            var record = clip.RestorePoint.Records.Single(r => r.Kind == ReplayFactKind.World);
             var checkpoint = Replay.ReplayWorldCheckpoint.FromBytes(record.Payload);
             if (checkpoint.Frame != clip.RestorePoint.RecordingFrame) throw new InvalidDataException("Checkpoint frame differs from the clip index.");
             return checkpoint;

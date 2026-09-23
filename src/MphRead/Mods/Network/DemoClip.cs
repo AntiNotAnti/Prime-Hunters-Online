@@ -111,6 +111,6 @@ internal static class DemoClip
     }
     private static void Clear()
     {
-        _preparing?.Dispose(); _preparing = null; _clip = null; _pendingPath = null; _writing = null;
+        _preparing?.Dispose(); _preparing = null; _clip?.Dispose(); _clip = null; _pendingPath = null; _writing = null;
     }
 }

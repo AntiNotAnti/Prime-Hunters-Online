@@ -23,7 +23,7 @@ internal sealed class KillcamController : IDisposable
     private PassiveReplayPlayer? _player;
     private ReplayMarker? _candidate, _pending, _playing;
     private uint _candidateFrame, _pendingFrame, _start, _end;
-    private ReplayTimelineClip? _finalClip;
+    private ReplayTimelineClip? _finalClip, _personalClip;
     private int _hold;
     private bool _skipArmed;
     private ulong _audio;
@@ -53,7 +53,7 @@ internal sealed class KillcamController : IDisposable
         if (marker.Kill is not { } kill || !Matches(kill, context) || kill.KillerGeneration == 0
             || kill.VictimGeneration == 0 || kill.VictimLifeId == 0 || kill.KillerSlot >= 8
             || kill.VictimSlot >= 8 || kill.KillerSlot == kill.VictimSlot) return;
-        if (enemy) { _candidate = marker; _candidateFrame = frame; _finalClip = null; }
+        if (enemy) { _candidate = marker; _candidateFrame = frame; _finalClip?.Dispose(); _finalClip = null; }
         if (context.PersonalEnabled && context.LocalSlot == kill.VictimSlot
             && context.LocalGeneration == kill.VictimGeneration && context.LocalLife == kill.VictimLifeId)
         { _pending = marker; _pendingFrame = frame; }
@@ -131,6 +131,7 @@ internal sealed class KillcamController : IDisposable
         Stop(KillcamEndReason.None);
         _startup.Restart(); StartupMilliseconds = 0;
         ClipBytes = clip.RestorePoint.PayloadBytes + clip.Records.Sum(r => r.PayloadBytes);
+        if (kind == KillCamKind.Personal) _personalClip = clip;
         _player = _open(clip, live.Size); _playing = marker; Kind = kind; _live = live;
         _player.Current.Scene.ReplayPresentationHud = DrawHud;
         _start = clip.StartRecordingFrame; _end = clip.EndRecordingFrame; _hold = 0; _skipArmed = false;
@@ -194,12 +195,12 @@ internal sealed class KillcamController : IDisposable
     {
         ReplayAudioOwner.Release(_audio); _audio = 0;
         _startup.Stop();
-        _hud = null; _player?.Dispose(); _player = null; _playing = null; State = KillcamState.None; Kind = KillCamKind.None;
+        _hud = null; _player?.Dispose(); _player = null; _personalClip?.Dispose(); _personalClip = null; _playing = null; State = KillcamState.None; Kind = KillCamKind.None;
         EndReason = reason;
         if (_live != null && _live.Players.Items.Count > 0)
         { _live.Players.Main.Controls.ClearAll(); _live.Players.Main.ModForgetInputDeltas(); }
     }
     internal void Reset(KillcamEndReason reason)
-    { Stop(reason); _pending = _candidate = null; _finalClip = null; }
+    { Stop(reason); _pending = _candidate = null; _finalClip?.Dispose(); _finalClip = null; }
     public void Dispose() => Reset(KillcamEndReason.SceneClosed);
 }

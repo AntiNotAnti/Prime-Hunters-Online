@@ -57,7 +57,6 @@ public sealed class RollingReplayTimeline : IReplayTimeline
 
     public bool Append(ReplayTimelineRecord record)
     {
-        ArgumentNullException.ThrowIfNull(record);
         if (_frontier is uint previous && record.RecordingFrame < previous)
         { RejectedRecords++; return false; }
         _frontier = record.RecordingFrame;
@@ -69,6 +68,7 @@ public sealed class RollingReplayTimeline : IReplayTimeline
             RejectedRecords++; return false;
         }
         var tail = _segments.Last.Value;
+        record.Retain();
         tail.Records.Add(record); tail.Bytes += record.PayloadBytes;
         PayloadBytes += record.PayloadBytes; RecordCount++;
         Observe(record.RecordingFrame, record.ServerTick); TrimAge();
@@ -80,7 +80,7 @@ public sealed class RollingReplayTimeline : IReplayTimeline
         ArgumentNullException.ThrowIfNull(restore);
         if ((_frontier is uint previous && restore.RecordingFrame < previous)
             || (_segments.Last is { } last && restore.RecordingFrame <= last.Value.Restore.RecordingFrame)
-            || restore.PayloadBytes > _maximumBytes) return false;
+            || restore.PayloadBytes > _maximumBytes) { restore.Dispose(); return false; }
         while (_segments.Count != 0 && PayloadBytes + restore.PayloadBytes > _maximumBytes) Evict();
         _segments.AddLast(new Segment(restore));
         PayloadBytes += restore.PayloadBytes; RecordCount += restore.Records.Count;
@@ -123,7 +123,7 @@ public sealed class RollingReplayTimeline : IReplayTimeline
                 bool inBaseline = false;
                 if (ReferenceEquals(segment.Restore, restore))
                     foreach (var baselineRecord in restore.Records)
-                        inBaseline |= ReferenceEquals(baselineRecord, record);
+                        inBaseline |= baselineRecord.SameFact(record);
                 if (!inBaseline) records.Add(record);
             }
         }
@@ -153,7 +153,8 @@ public sealed class RollingReplayTimeline : IReplayTimeline
 
     public void Reset()
     {
-        _segments.Clear(); _frontier = null;
+        while (_segments.Count != 0) Evict();
+        _frontier = null;
         PayloadBytes = 0; RecordCount = 0; LastRecordingFrame = LastServerTick = null;
         EvictedSegmentCount = FreezeFailures = RejectedRecords = 0;
     }
@@ -173,6 +174,8 @@ public sealed class RollingReplayTimeline : IReplayTimeline
     {
         var first = _segments.First!.Value;
         PayloadBytes -= first.Bytes; RecordCount -= first.Restore.Records.Count + first.Records.Count;
+        foreach (var record in first.Records) record.Release();
+        first.Restore.Dispose();
         _segments.RemoveFirst(); EvictedSegmentCount++;
         if (_segments.Count == 0) LastRecordingFrame = LastServerTick = null;
     }

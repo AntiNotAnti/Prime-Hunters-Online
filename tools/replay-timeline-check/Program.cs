@@ -70,3 +70,17 @@ Check(quiet.RecordCount == 1 && quiet.LastRecordingFrame == 9999 && quiet.LastSe
 Check(!quiet.AdvanceFrame(9998, 9998), "frontier rejects backwards time");
 Check(quiet.TryFreeze(9700, 9999, out _), "quiet range freezes");
 Console.WriteLine($"PASS: {checks} timeline checks including allocation regression");
+var owned = new RollingReplayTimeline();
+var ownedFact = Fact(0);
+owned.AppendRestorePoint(new(0, 0, ReplayRestoreKind.NetworkBaseline, new[] { ownedFact }));
+ownedFact.Release();
+var ownedPacket = new ReplayTimelineRecord(1, 1, ReplayFactKind.Snapshot, new byte[] { 73 });
+owned.Append(ownedPacket); ownedPacket.Release();
+Check(owned.TryFreeze(0, 1, out var lease), "freeze retains pooled payloads");
+owned.Reset();
+Check(lease!.Records[0].Payload[0] == 73, "lease survives deterministic return on reset");
+lease.Dispose(); lease.Dispose();
+bool released = false;
+try { _ = ownedPacket.Payload[0]; } catch (ObjectDisposedException) { released = true; }
+Check(released, "last release returns pooled payload");
+Console.WriteLine($"PASS: {checks} checks including pooled lifetime");
