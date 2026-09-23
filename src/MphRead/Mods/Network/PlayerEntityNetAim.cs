@@ -328,11 +328,21 @@ namespace MphRead.Entities
             // both orientation and position use the same timestamp.
             position = Vector3.Lerp(
                 _fpPreviousGunLocalPosition, _fpCurrentGunLocalPosition, t);
-            float orientationT = interpolateOrientation ? t : 1f;
-            facing = Vector3.Lerp(
-                _fpPreviousGunLocalFacing, _fpCurrentGunLocalFacing, orientationT);
-            up = Vector3.Lerp(
-                _fpPreviousGunLocalUp, _fpCurrentGunLocalUp, orientationT);
+            if (interpolateOrientation)
+            {
+                if (!CameraInfo.ModInterpolateDirection(
+                        _fpPreviousGunLocalFacing, _fpCurrentGunLocalFacing, t, out facing)
+                    || !CameraInfo.ModInterpolateDirection(
+                        _fpPreviousGunLocalUp, _fpCurrentGunLocalUp, t, out up))
+                {
+                    return ModCurrentFirstPersonLocalPose(out position, out facing, out up);
+                }
+            }
+            else
+            {
+                facing = _fpCurrentGunLocalFacing;
+                up = _fpCurrentGunLocalUp;
+            }
             if (!ModFinite(position) || !ModFinite(facing) || !ModFinite(up)
                 || facing.LengthSquared < 0.000001f || up.LengthSquared < 0.000001f)
             {
@@ -343,8 +353,39 @@ namespace MphRead.Entities
             return true;
         }
 
-        private void ModRenderAimDelta(float pointerX, float pointerY,
-            float controllerX, float controllerY, out float x, out float y)
+        private const float ImmediateLateAimDegrees = 8f;
+
+        /// <summary>
+        /// Keep ordinary pointer/touch aim fully late-latched, but do not let a
+        /// very large event rotate a draw-only camera tens of degrees in one
+        /// picture while gameplay is still on the previous 60 Hz sample. The
+        /// first eight degrees remain immediate; only the excess is revealed
+        /// over the fractional remainder of the simulation step. At alpha 1
+        /// the full delta is shown, so the following simulation pose meets it
+        /// without a snap.
+        /// </summary>
+        internal static Vector2 ModBoundLateAim(Vector2 aim, double presentationAlpha)
+        {
+            if (!Mods.Render.FrameTiming.HighRefreshPresentation
+                || !Single.IsFinite(aim.X) || !Single.IsFinite(aim.Y))
+            {
+                return aim;
+            }
+            float magnitude = aim.Length;
+            if (!Single.IsFinite(magnitude) || magnitude <= ImmediateLateAimDegrees)
+            {
+                return aim;
+            }
+
+            float t = (float)Math.Clamp(presentationAlpha, 0.0, 1.0);
+            float presented = ImmediateLateAimDegrees
+                + (magnitude - ImmediateLateAimDegrees) * t;
+            return aim * (presented / magnitude);
+        }
+
+        private void ModRenderAimDelta(double presentationAlpha,
+            float pointerX, float pointerY, float controllerX, float controllerY,
+            out float x, out float y)
         {
             float mouseX = -pointerX / 4f * Mods.InputSettings.MouseSensitivity
                 * (Mods.InputSettings.InvertMouseX ? -1 : 1);
@@ -356,15 +397,20 @@ namespace MphRead.Entities
                 controllerY *= Mods.Input.GamepadOptions.ScopedY;
             }
 
-            x = mouseX + controllerX;
-            y = mouseY + controllerY;
             float normalFov = Fixed.ToFloat(Values.NormalFov) * 2;
             if (EquipInfo.Zoomed && normalFov != 0)
             {
                 float zoomScale = CameraInfo.Fov / normalFov;
-                x *= zoomScale;
-                y *= zoomScale;
+                mouseX *= zoomScale;
+                mouseY *= zoomScale;
+                controllerX *= zoomScale;
+                controllerY *= zoomScale;
             }
+
+            Vector2 pointerAim = ModBoundLateAim(
+                new Vector2(mouseX, mouseY), presentationAlpha);
+            x = pointerAim.X + controllerX;
+            y = pointerAim.Y + controllerY;
         }
 
         private Vector3 ModLateLatchedFacing(float x, float y)
@@ -465,13 +511,15 @@ namespace MphRead.Entities
                 // on a high-refresh display.
                 if (Features.FixedCrosshair)
                 {
-                    cameraPosition = CameraInfo.ModGetResponsiveDrawPosition(presentationAlpha);
+                    cameraPosition = CameraInfo.ModGetResponsiveDrawPosition(
+                        presentationAlpha, PrevPosition, Position);
                 }
 
                 // Fixed-crosshair / modern first-person aiming is intentionally
                 // low latency. Apply only unsimulated input on top of the current
                 // simulation pose and attach the gun to the exact same basis.
-                ModRenderAimDelta(pointerX, pointerY, controllerX, controllerY,
+                ModRenderAimDelta(presentationAlpha,
+                    pointerX, pointerY, controllerX, controllerY,
                     out float x, out float y);
                 renderFacing = ModLateLatchedFacing(x, y);
                 upHint = ModCameraUpHint();
