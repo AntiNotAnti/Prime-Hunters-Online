@@ -553,7 +553,12 @@ namespace MphRead.Droid
                         holder = _holder!;
                         wanted = _wanted;
                         resetPacing = _resetPacingOnResume;
-                        _resetPacingOnResume = false;
+                    }
+                    if (!BindSurface(holder, wanted))
+                    {
+                        // Keep the resume reset pending until Android gives us
+                        // a surface that can actually be made current.
+                        continue;
                     }
                     if (resetPacing)
                     {
@@ -564,10 +569,10 @@ namespace MphRead.Droid
                         _lastFrameStart = now;
                         FrameTiming.Reset();
                         Scene?.ModSetLateAim(0, 0);
-                    }
-                    if (!BindSurface(holder, wanted))
-                    {
-                        continue;
+                        lock (_lock)
+                        {
+                            _resetPacingOnResume = false;
+                        }
                     }
                     if (Scene == null)
                     {
