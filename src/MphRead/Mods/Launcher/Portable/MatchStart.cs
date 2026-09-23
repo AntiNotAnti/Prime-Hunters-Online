@@ -103,10 +103,12 @@ namespace MphRead.Mods.Launcher
             double loadStarted = NetSession.Clock;
             NetSession.ReportMatchLoadProgress(MatchLoadStage.Preflight);
 
-            // Only the selected custom room belongs on the critical path.
-            // Scanning every installed custom map before every stock match made
-            // "Start Match" pay filesystem/manifest work for maps nobody chose.
-            MapGen.CustomRooms.GenerateMissing(roomKey);
+            // Join lobby prewarm before falling back to synchronous generation.
+            // This prevents Start Match from compiling/reading the selected room
+            // a second time while the background prewarm is already doing it.
+            bool joinedPrewarm = Mods.RoomPrewarm.JoinForLoad(roomKey);
+            if (!joinedPrewarm)
+                MapGen.CustomRooms.GenerateMissing(roomKey);
             // A custom map that failed to build is still a room in the table --
             // the launcher lists it and the picker shows a frame for it -- and
             // loading one reaches for binaries that are not there. On Windows
@@ -160,9 +162,11 @@ namespace MphRead.Mods.Launcher
             NetSession.ReportMatchLoadProgress(MatchLoadStage.PresentationLoad);
             window.LoadScene();
             NetSession.ReportMatchLoadProgress(MatchLoadStage.SceneReady);
-            Mods.RoomPrewarm.Release(roomKey);
+            // Keep the bounded one-room cache through the match so same-map
+            // rematches reuse raw entity/node/collision bytes.
             double loadSeconds = NetSession.Clock - loadStarted;
-            Console.WriteLine($"[launcher] loaded {roomKey} in {loadSeconds:0.00}s");
+            Console.WriteLine($"[launcher] loaded {roomKey} in {loadSeconds:0.00}s"
+                + (joinedPrewarm ? " (joined prewarm)" : ""));
             NetSession.MarkMatchLoaded();
             return true;
         }
