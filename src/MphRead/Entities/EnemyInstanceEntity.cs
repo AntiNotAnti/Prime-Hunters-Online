@@ -53,7 +53,7 @@ namespace MphRead.Entities
         public EntityBase? Owner => _owner;
         public int HealthbarMessageId { get; protected set; } = 0;
 
-        protected static BeamProjectileEntity[] _beams = null!;
+        protected BeamProjectileEntity[] _beams { get => _scene.EnemyBeams; set => _scene.EnemyBeams = value; }
 
         public EnemyInstanceEntity(EnemyInstanceEntityData data, NodeRef nodeRef, Scene scene)
             : base(EntityType.EnemyInstance, nodeRef, scene)
@@ -65,9 +65,9 @@ namespace MphRead.Entities
             }
         }
 
-        public static void DestroyBeams()
+        public static void DestroyBeams(Scene scene)
         {
-            _beams = null!;
+            scene.EnemyBeams = null!;
         }
 
         public override void Initialize()
@@ -178,7 +178,7 @@ namespace MphRead.Entities
                     return between.LengthSquared < distSqr && between.Y > -15 && between.Y < 15;
                 }
 
-                if (GameState.Multiplayer)
+                if (_scene.GameState.Multiplayer)
                 {
                     foreach (PlayerEntity player in _scene.GetPlayerEntities())
                     {
@@ -191,7 +191,7 @@ namespace MphRead.Entities
                 }
                 else
                 {
-                    inRange = CheckInRange(PlayerEntity.Main.Position);
+                    inRange = CheckInRange(_scene.Players.Main.Position);
                 }
             }
             if (inRange)
@@ -259,16 +259,16 @@ namespace MphRead.Entities
 
         protected bool ContactDamagePlayer(uint damage, bool knockback)
         {
-            if (!HitPlayers[PlayerEntity.Main.SlotIndex])
+            if (!HitPlayers[_scene.Players.Main.SlotIndex])
             {
                 return false;
             }
-            PlayerEntity.Main.TakeDamage(damage, DamageFlags.None, _speed, this);
+            _scene.Players.Main.TakeDamage(damage, DamageFlags.None, _speed, this);
             if (knockback)
             {
-                Vector3 between = PlayerEntity.Main.Volume.SpherePosition - Position;
+                Vector3 between = _scene.Players.Main.Volume.SpherePosition - Position;
                 float factor = between.Length * 5;
-                PlayerEntity.Main.Speed = PlayerEntity.Main.Speed.AddX(between.X / factor).AddZ(between.Z / factor);
+                _scene.Players.Main.Speed = _scene.Players.Main.Speed.AddX(between.X / factor).AddZ(between.Z / factor);
             }
             return true;
         }
@@ -445,9 +445,9 @@ namespace MphRead.Entities
                 if (dead)
                 {
                     if (_data.Type != EnemyType.CarnivorousPlant && _data.Type != EnemyType.CretaphidEye
-                        && GameState.StorySave.Stats.EnemyKills != UInt32.MaxValue)
+                        && _scene.GameState.StorySave.Stats.EnemyKills != UInt32.MaxValue)
                     {
-                        GameState.StorySave.Stats.EnemyKills++;
+                        _scene.GameState.StorySave.Stats.EnemyKills++;
                     }
                     if (_data.Type == EnemyType.Temroid) // condition is not strictly necessary
                     {

@@ -12,6 +12,8 @@ namespace MphRead.Sound
 {
     public class SoundSource
     {
+        internal Scene? Owner { get; set; }
+        private SfxInstanceBase Backend => Owner?.Audio ?? Sfx.Instance;
         public Vector3 Position { get; set; }
         public float ReferenceDistance { get; set; } = 1;
         public float MaxDistance { get; set; } = Single.MaxValue;
@@ -23,7 +25,7 @@ namespace MphRead.Sound
         {
             if (rangeIndex == -1)
             {
-                Position = Sfx.Instance.GetListenerPosition();
+                Position = Backend.GetListenerPosition();
                 ReferenceDistance = Single.MaxValue;
                 MaxDistance = Single.MaxValue;
                 Self = true;
@@ -31,7 +33,7 @@ namespace MphRead.Sound
             else
             {
                 Position = position;
-                IReadOnlyList<Sound3dEntry> rangeData = Sfx.Instance.RangeData;
+                IReadOnlyList<Sound3dEntry> rangeData = Backend.RangeData;
                 if (rangeIndex >= 0 && rangeIndex < rangeData.Count)
                 {
                     Sound3dEntry data = rangeData[rangeIndex];
@@ -51,7 +53,7 @@ namespace MphRead.Sound
 
         public int PlayFreeSfx(SfxId id)
         {
-            return Sfx.Instance.PlayFreeSfx(id);
+            return Backend.PlayFreeSfx(id);
         }
 
         public void PlaySfx(int id, bool loop = false, bool noUpdate = false,
@@ -62,37 +64,37 @@ namespace MphRead.Sound
             {
                 if ((id & 0x8000) != 0)
                 {
-                    Sfx.Instance.PlayDgn(id, this, loop, noUpdate, recency, cancellable, amountA, amountB);
+                    Backend.PlayDgn(id, this, loop, noUpdate, recency, cancellable, amountA, amountB);
                 }
                 else if ((id & 0x4000) != 0)
                 {
-                    Sfx.Instance.PlayScript(id, this, noUpdate, recency, sourceOnly, cancellable);
+                    Backend.PlayScript(id, this, noUpdate, recency, sourceOnly, cancellable);
                 }
                 else
                 {
-                    Sfx.Instance.PlaySample(id, this, loop, noUpdate, recency, sourceOnly, cancellable);
+                    Backend.PlaySample(id, this, loop, noUpdate, recency, sourceOnly, cancellable);
                 }
             }
         }
 
         public int PlayFreeSfx(int id)
         {
-            return Sfx.Instance.PlayFreeSfx(id);
+            return Backend.PlayFreeSfx(id);
         }
 
         public void PlayEnvironmentSfx(int id)
         {
-            Sfx.Instance.PlayEnvironmentSfx(id, this);
+            Backend.PlayEnvironmentSfx(id, this);
         }
 
         public bool CheckEnvironmentSfx(int id)
         {
-            return Sfx.Instance.CheckEnvironmentSfx(id);
+            return Backend.CheckEnvironmentSfx(id);
         }
 
         public void StopAllSfx(bool force = false)
         {
-            Sfx.Instance.StopSoundFromSource(this, force);
+            Backend.StopSoundFromSource(this, force);
         }
 
         public void StopSfx(SfxId id)
@@ -102,7 +104,7 @@ namespace MphRead.Sound
 
         public void StopSfx(int id)
         {
-            Sfx.Instance.StopSoundFromSource(this, id);
+            Backend.StopSoundFromSource(this, id);
         }
 
         public void StopFreeSfx(SfxId id)
@@ -112,52 +114,52 @@ namespace MphRead.Sound
 
         public void StopFreeSfx(int id)
         {
-            Sfx.Instance.StopSoundById(id);
+            Backend.StopSoundById(id);
         }
 
         public void StopSfxByHandle(int handle)
         {
-            Sfx.Instance.StopSoundByHandle(handle);
+            Backend.StopSoundByHandle(handle);
         }
 
         public void StopFreeSfxScripts()
         {
-            Sfx.Instance.StopFreeSfxScripts();
+            Backend.StopFreeSfxScripts();
         }
 
         public void SetPausedFreeSfxScripts(bool paused)
         {
-            Sfx.Instance.SetPausedFreeSfxScripts(paused);
+            Backend.SetPausedFreeSfxScripts(paused);
         }
 
         public bool IsHandlePlaying(int handle)
         {
-            return Sfx.Instance.IsHandlePlaying(handle);
+            return Backend.IsHandlePlaying(handle);
         }
 
         public int CountPlayingSfx(SfxId id)
         {
-            return Sfx.Instance.CountPlayingSfx((int)id);
+            return Backend.CountPlayingSfx((int)id);
         }
 
         public int CountPlayingSfx(int id)
         {
-            return Sfx.Instance.CountPlayingSfx(id);
+            return Backend.CountPlayingSfx(id);
         }
 
         public int CountSourcePlayingSfx(SfxId id)
         {
-            return Sfx.Instance.CountSourcePlayingSfx((int)id, this);
+            return Backend.CountSourcePlayingSfx((int)id, this);
         }
 
         public int CountSourcePlayingSfx(int id)
         {
-            return Sfx.Instance.CountSourcePlayingSfx(id, this);
+            return Backend.CountSourcePlayingSfx(id, this);
         }
 
         public void QueueStream(VoiceId id, float delay = 0, float expiration = 0)
         {
-            Sfx.QueueStream(id, delay, expiration);
+            Backend.QueueStream((int)id, delay, expiration);
         }
     }
 
@@ -339,6 +341,7 @@ namespace MphRead.Sound
 
         public static void Load(Scene scene)
         {
+            Mods.Replay.ReplayAudioOwner.Reset();
             if (Mods.ThumbnailMode.Active || Mods.Headless.Active)
             {
                 // Reading and decoding every sample in the game, plus the
@@ -588,6 +591,7 @@ namespace MphRead.Sound
         public override IReadOnlyList<Sound3dEntry> RangeData => _rangeData;
 
         private Scene? _scene = null;
+        public override void SetListenerScene(Scene? scene) => _scene = scene;
 
         public override Vector3 GetListenerPosition()
         {
@@ -597,7 +601,7 @@ namespace MphRead.Sound
             }
             if (_scene.CameraMode == CameraMode.Player)
             {
-                return PlayerEntity.Main.CameraInfo.Position;
+                return _scene.Players.Main.CameraInfo.Position;
             }
             return _scene.CameraPosition;
         }
@@ -610,7 +614,7 @@ namespace MphRead.Sound
             }
             if (_scene.CameraMode == CameraMode.Player)
             {
-                return PlayerEntity.Main.CameraInfo.TrueUp;
+                return _scene.Players.Main.CameraInfo.TrueUp;
             }
             return _scene.ViewMatrix.Row1.Xyz.Normalized();
         }
@@ -623,7 +627,7 @@ namespace MphRead.Sound
             }
             if (_scene.CameraMode == CameraMode.Player)
             {
-                return PlayerEntity.Main.CameraInfo.Facing;
+                return _scene.Players.Main.CameraInfo.Facing;
             }
             return _scene.ViewMatrix.Row2.Xyz.Normalized();
         }
@@ -1664,6 +1668,7 @@ namespace MphRead.Sound
 
     public class SfxInstanceBase
     {
+        public virtual void SetListenerScene(Scene? scene) { }
         internal virtual Task ShutdownCompletion => Task.CompletedTask;
         public virtual IReadOnlyList<Sound3dEntry> RangeData { get; } = new List<Sound3dEntry>();
 

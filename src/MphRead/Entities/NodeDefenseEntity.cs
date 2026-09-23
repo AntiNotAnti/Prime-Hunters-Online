@@ -8,7 +8,7 @@ using OpenTK.Mathematics;
 
 namespace MphRead.Entities
 {
-    public class NodeDefenseEntity : EntityBase
+    public partial class NodeDefenseEntity : EntityBase
     {
         private readonly NodeDefenseEntityData _data;
         private readonly Matrix4 _circleScale;
@@ -50,7 +50,7 @@ namespace MphRead.Entities
             Id = data.Header.EntityId;
             SetTransform(data.Header.FacingVector, data.Header.UpVector, data.Header.Position);
             _volume = CollisionVolume.Move(_data.Volume, Position);
-            GameMode mode = GameState.Mode;
+            GameMode mode = _scene.GameState.Mode;
             if (mode == GameMode.Defender || mode == GameMode.DefenderTeams
                 || mode == GameMode.Nodes || mode == GameMode.NodesTeams)
             {
@@ -88,7 +88,7 @@ namespace MphRead.Entities
             foreach (PlayerEntity player in _scene.GetPlayerEntities())
             {
                 if (player.LoadFlags.TestFlag(LoadFlags.Active) && player.Health > 0
-                    && (uint)player.TeamIndex < (uint)(GameState.Teams ? GameState.TeamCount : PlayerEntity.SlotCapacity)
+                    && (uint)player.TeamIndex < (uint)(_scene.GameState.Teams ? _scene.GameState.TeamCount : PlayerEntity.SlotCapacity)
                     && _volume.TestPoint(player.Volume.SpherePosition))
                 {
                     if (team == NoTeam)
@@ -114,7 +114,7 @@ namespace MphRead.Entities
             else
             {
                 (speed, rotation) = ConstantAcceleration(0.25f, _spinSpeed, maxVelocity: 8 * 30f);
-                GameState.TeamTime[team] += _scene.FrameTime;
+                _scene.GameState.TeamTime[team] += _scene.FrameTime;
             }
             _spinSpeed = speed;
             _curRotation += rotation;
@@ -142,7 +142,7 @@ namespace MphRead.Entities
             foreach (PlayerEntity player in _scene.GetPlayerEntities())
             {
                 if (player.LoadFlags.TestFlag(LoadFlags.Active) && player.Health > 0
-                    && (uint)player.TeamIndex < (uint)(GameState.Teams ? GameState.TeamCount : PlayerEntity.SlotCapacity)
+                    && (uint)player.TeamIndex < (uint)(_scene.GameState.Teams ? _scene.GameState.TeamCount : PlayerEntity.SlotCapacity)
                     && _volume.TestPoint(player.Volume.SpherePosition))
                 {
                     if (_occupyingTeam == player.TeamIndex)
@@ -171,18 +171,18 @@ namespace MphRead.Entities
             {
                 if (_contested)
                 {
-                    if (_occupiedBy[PlayerEntity.Main.SlotIndex])
+                    if (_occupiedBy[_scene.Players.Main.SlotIndex])
                     {
                         _soundSource.SetPausedFreeSfxScripts(true);
                     }
                 }
                 else if (_currentTeam != _occupyingTeam)
                 {
-                    if (_occupiedBy[PlayerEntity.Main.SlotIndex])
+                    if (_occupiedBy[_scene.Players.Main.SlotIndex])
                     {
                         if (!_inProgress && _progress >= 10 / 30f)
                         {
-                            Music.PlayRoomMusic(_scene.RoomId, track: 2);
+                            if (_scene.Services.AllowsPresentationSideEffects) Music.PlayRoomMusic(_scene.RoomId, track: 2);
                             value1 = 1;
                             _inProgress = true;
                         }
@@ -201,9 +201,9 @@ namespace MphRead.Entities
             }
             else
             {
-                if (prevOccupiedBy[PlayerEntity.Main.SlotIndex])
+                if (prevOccupiedBy[_scene.Players.Main.SlotIndex])
                 {
-                    Music.PlayRoomMusic(_scene.RoomId, track: 0);
+                    if (_scene.Services.AllowsPresentationSideEffects) Music.PlayRoomMusic(_scene.RoomId, track: 0);
                     if (value1 != 2)
                     {
                         value1 = 3;
@@ -241,7 +241,7 @@ namespace MphRead.Entities
                 if (_scoreTimer >= scoreThreshold)
                 {
                     Debug.Assert(_capturedPlayer != null);
-                    GameState.Points[_capturedPlayer.SlotIndex]++;
+                    _scene.GameState.Points[_capturedPlayer.SlotIndex]++;
                     _scoreTimer = 0;
                 }
                 // these SFX are empty
@@ -308,20 +308,20 @@ namespace MphRead.Entities
 
         private void Complete(ref int dest1, ref int dest2)
         {
-            if (_currentTeam == PlayerEntity.Main.TeamIndex)
+            if (_currentTeam == _scene.Players.Main.TeamIndex)
             {
                 dest1 = 4;
                 string msg = Text.Strings.GetHudMessage(211); // node stolen
-                PlayerEntity.Main.QueueHudMessage(128, 133, Align.Center, 256, 8, new ColorRgba(31), 1, 90 / 30f, 17, msg);
+                _scene.Players.Main.QueueHudMessage(128, 133, Align.Center, 256, 8, new ColorRgba(31), 1, 90 / 30f, 17, msg);
             }
             for (int i = 0; i < PlayerEntity.SlotCapacity; i++)
             {
-                PlayerEntity player = PlayerEntity.Players[i];
+                PlayerEntity player = _scene.Players.Items[i];
                 if (_occupiedBy[i])
                 {
-                    GameState.NodesCaptured[i]++;
-                    Mods.Network.ReplayCapture.Event(Mods.Network.ReplayEventType.Objective, i,
-                        value: GameState.NodesCaptured[i]);
+                    _scene.GameState.NodesCaptured[i]++;
+                    if (!_scene.Services.IsReplica) Mods.Network.ReplayCapture.Event(Mods.Network.ReplayEventType.Objective, i,
+                        value: _scene.GameState.NodesCaptured[i]);
                     if (player.LoadFlags.TestFlag(LoadFlags.Active))
                     {
                         _capturedPlayer = player;
@@ -329,22 +329,22 @@ namespace MphRead.Entities
                 }
                 else if (_currentTeam == player.TeamIndex)
                 {
-                    GameState.NodesLost[i]++;
+                    _scene.GameState.NodesLost[i]++;
                 }
                 _occupiedBy[i] = false;
             }
-            if (_capturedPlayer == PlayerEntity.Main)
+            if (_capturedPlayer == _scene.Players.Main)
             {
-                PlayerEntity.Main.QueueHudMessage(128, 133, 90 / 30f, 1, 206); // complete
+                _scene.Players.Main.QueueHudMessage(128, 133, 90 / 30f, 1, 206); // complete
             }
             _currentTeam = _occupyingTeam;
             _progress = 0;
             _inProgress = false;
             _occupyingTeam = NoTeam;
             _scoreTimer = 150 / 30f;
-            if (_currentTeam == PlayerEntity.Main.TeamIndex)
+            if (_currentTeam == _scene.Players.Main.TeamIndex)
             {
-                Music.PlayRoomMusic(_scene.RoomId, track: 0);
+                    if (_scene.Services.AllowsPresentationSideEffects) Music.PlayRoomMusic(_scene.RoomId, track: 0);
                 dest1 = 2;
             }
             else
@@ -367,11 +367,11 @@ namespace MphRead.Entities
             {
                 if (blinking)
                 {
-                    if (GameState.Teams)
+                    if (_scene.GameState.Teams)
                     {
                         color = Metadata.TeamColors[_occupyingTeam];
                     }
-                    else if (_occupyingTeam == PlayerEntity.Main.TeamIndex)
+                    else if (_occupyingTeam == _scene.Players.Main.TeamIndex)
                     {
                         color = _selfColor;
                     }
@@ -381,7 +381,7 @@ namespace MphRead.Entities
                     }
                 }
             }
-            else if (GameState.Teams)
+            else if (_scene.GameState.Teams)
             {
                 if (blinking)
                 {
@@ -394,9 +394,9 @@ namespace MphRead.Entities
             }
             else
             {
-                if (_currentTeam == PlayerEntity.Main.TeamIndex)
+                if (_currentTeam == _scene.Players.Main.TeamIndex)
                 {
-                    if (!blinking || _occupyingTeam == PlayerEntity.Main.TeamIndex)
+                    if (!blinking || _occupyingTeam == _scene.Players.Main.TeamIndex)
                     {
                         color = _selfColor;
                     }
@@ -405,7 +405,7 @@ namespace MphRead.Entities
                         color = _enemyColor;
                     }
                 }
-                else if (blinking && _occupyingTeam == PlayerEntity.Main.TeamIndex)
+                else if (blinking && _occupyingTeam == _scene.Players.Main.TeamIndex)
                 {
                     color = _selfColor;
                 }

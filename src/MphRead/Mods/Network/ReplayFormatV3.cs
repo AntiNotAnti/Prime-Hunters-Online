@@ -9,6 +9,9 @@ namespace MphRead.Mods.Network
     internal readonly record struct ReplayChunkIndex(uint FirstFrame, uint LastFrame,
         long Offset, int CompressedLength);
 
+    internal readonly record struct ReplayCheckpointIndex(uint Frame, long Offset,
+        int CompressedLength, int RawLength, uint Crc);
+
     internal static class ReplayFormatV3
     {
         internal const uint ChunkMagic = 0x334B4843; // CHK3
@@ -16,11 +19,14 @@ namespace MphRead.Mods.Network
         internal const uint TrailerMagic = 0x33444E45; // END3
         internal const uint HashMagic = 0x33485348; // HSH3, optional footer extension
         internal const int MaxHeader = 128 * 1024;
+        internal const int MaxWorldHeader = MaxHeader + 12 + Replay.ReplayWorldCheckpoint.MaximumBytes;
         internal const int MaxChunk = 2 * 1024 * 1024;
         internal const int MaxFooter = 16 * 1024 * 1024;
         internal const int MaxChunks = 200000;
         internal const int MaxEvents = 200000;
         internal const int MaxHashes = 200000;
+        internal const int MaxCheckpoints = 4096;
+        internal const long MaxCheckpointStorage = 256L * 1024 * 1024;
         internal const uint MaxFrame = 60 * 60 * 24 * 7;
         internal const int ChunkHeaderSize = 28;
         private static readonly UTF8Encoding Utf8 = new(false, true);
@@ -72,6 +78,9 @@ namespace MphRead.Mods.Network
 
         internal static byte[] EncodeMetadata(ReplayMetadata metadata)
         {
+            if (metadata.FormatVersion is not (3 or 4)
+                || metadata.FormatVersion == 3 && (metadata.WorldCheckpoint.Length != 0 || metadata.OriginRecordingFrame != 0 || metadata.LeadInFrames != 0))
+                throw new InvalidDataException("Invalid replay metadata version.");
             using var buffer = new MemoryStream();
             using var writer = new BinaryWriter(buffer, Encoding.UTF8, true);
             writer.Write(metadata.TickRate);
@@ -98,10 +107,19 @@ namespace MphRead.Mods.Network
                 writer.Write((ushort)packet.Length); writer.Write(packet);
             }
             if (buffer.Length > MaxHeader) throw new InvalidDataException("Metadata too large.");
+            if (metadata.FormatVersion == 4)
+            {
+                if (metadata.WorldCheckpoint.Length > Replay.ReplayWorldCheckpoint.MaximumBytes || metadata.LeadInFrames > MaxFrame)
+                    throw new InvalidDataException("Invalid initial replay world length.");
+                writer.Write(metadata.OriginRecordingFrame);
+                writer.Write(metadata.LeadInFrames);
+                writer.Write(metadata.WorldCheckpoint.Length);
+                writer.Write(metadata.WorldCheckpoint);
+            }
             return buffer.ToArray();
         }
 
-        internal static ReplayMetadata DecodeMetadata(byte protocol, byte[] bytes)
+        internal static ReplayMetadata DecodeMetadata(byte protocol, byte[] bytes, byte version = 3)
         {
             using var reader = new BinaryReader(new MemoryStream(bytes), Utf8);
             ushort tickRate = reader.ReadUInt16();
@@ -135,12 +153,24 @@ namespace MphRead.Mods.Network
                 int length = reader.ReadUInt16();
                 if (length is < 1 or > NetConfig.MaxPacketSize) throw new InvalidDataException("Invalid bootstrap packet length.");
                 byte[] packet = ReadBytes(reader, length);
-                if (!ValidBootstrap(packet, protocol)) throw new InvalidDataException("Invalid bootstrap packet.");
+                if (!ValidBootstrap(packet, protocol, version)) throw new InvalidDataException("Invalid bootstrap packet.");
                 packets.Add(packet);
+            }
+            uint origin = 0, leadIn = 0;
+            byte[] world = Array.Empty<byte>();
+            if (version == 4)
+            {
+                origin = reader.ReadUInt32();
+                leadIn = reader.ReadUInt32();
+                int length = reader.ReadInt32();
+                if (length is < 0 or > Replay.ReplayWorldCheckpoint.MaximumBytes || leadIn > MaxFrame)
+                    throw new InvalidDataException("Invalid initial replay world length.");
+                world = ReadBytes(reader, length);
             }
             if (reader.BaseStream.Position != bytes.Length) throw new InvalidDataException("Unexpected metadata tail.");
             return new ReplayMetadata
             {
+                FormatVersion = version, OriginRecordingFrame = origin, LeadInFrames = leadIn, WorldCheckpoint = world,
                 ProtocolVersion = protocol, TickRate = tickRate, RecordedAtUtc = new DateTime(ticks, DateTimeKind.Utc),
                 Type = (ReplayType)type, Recovered = recovered != 0, MapHash = mapHash, Mode = (GameMode)mode,
                 BuildVersion = build, BuildId = buildId, RoomKey = room, Players = players,
@@ -148,10 +178,15 @@ namespace MphRead.Mods.Network
             };
         }
 
-        private static bool ValidBootstrap(byte[] packet, byte protocol)
+        private static bool ValidBootstrap(byte[] packet, byte protocol, byte version)
         {
             // Unknown protocols are inspectable as metadata, never handed to current wire parsers.
             if (protocol != NetConfig.ProtocolVersion) return true;
+            if (version == 4 && packet[0] == 253)
+            {
+                new ReplayReplicaState().RestoreCheckpoint(ReplayTimelineArchive.ReadConstruction(packet));
+                return true;
+            }
             ReadOnlySpan<byte> payload = packet.AsSpan(1);
             return (PacketType)packet[0] switch
             {
@@ -198,6 +233,10 @@ namespace MphRead.Mods.Network
         private readonly BinaryWriter _records;
         private readonly List<ReplayChunkIndex> _index = new();
         private readonly List<ReplayEvent> _events = new();
+        private readonly List<ReplayCheckpointIndex> _checkpoints = new();
+        private FileStream? _checkpointSpool;
+        private readonly byte _version;
+        private readonly uint _origin;
         private readonly List<ReplayExpectedHash> _hashes = new();
         private ushort _hashSchema;
         private string _hashBuildId = "";
@@ -207,6 +246,7 @@ namespace MphRead.Mods.Network
 
         public ReplayWriterV3(string path, ReplayMetadata metadata)
         {
+            _version = metadata.FormatVersion; _origin = metadata.OriginRecordingFrame;
             _path = Path.GetFullPath(path);
             Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
             // Never truncate an existing recording, including an orphan from a previous crash.
@@ -214,13 +254,13 @@ namespace MphRead.Mods.Network
             byte[] header = ReplayFormatV3.EncodeMetadata(metadata);
             // The writer can also receive bootstrap packets extracted from an external v2
             // replay. Validate those before creating a file we would subsequently refuse.
-            _ = ReplayFormatV3.DecodeMetadata(metadata.ProtocolVersion, header);
+            _ = ReplayFormatV3.DecodeMetadata(metadata.ProtocolVersion, header, metadata.FormatVersion);
             _stream = new FileStream(PartialPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
             _writer = new BinaryWriter(_stream, Encoding.UTF8, true);
             _records = new BinaryWriter(_chunk, Encoding.UTF8, true);
             try
             {
-                _writer.Write(DemoFile.Magic); _writer.Write((byte)3); _writer.Write(metadata.ProtocolVersion);
+                _writer.Write(DemoFile.Magic); _writer.Write(metadata.FormatVersion); _writer.Write(metadata.ProtocolVersion);
                 _writer.Write(header.Length); _writer.Write(ReplayFormatV3.Crc(header)); _writer.Write(header);
                 _stream.Flush(true);
             }
@@ -241,6 +281,24 @@ namespace MphRead.Mods.Network
                 _count++;
             }
             catch { _faulted = true; throw; }
+        }
+
+        internal void WriteCheckpoint(uint frame, ReadOnlySpan<byte> bytes)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_version != 4 || bytes.Length is < 1 or > Replay.ReplayWorldCheckpoint.MaximumBytes
+                || frame > ReplayFormatV3.MaxFrame
+                || Replay.ReplayWorldCheckpoint.FromBytes(bytes).Frame != (ulong)frame + _origin)
+                throw new InvalidDataException("Invalid durable replay checkpoint.");
+            if (_checkpoints.Count > 0 && frame <= _checkpoints[^1].Frame) return;
+            if (_checkpoints.Count >= ReplayFormatV3.MaxCheckpoints) return;
+            using var compressed = new MemoryStream();
+            using (var deflate = new DeflateStream(compressed, CompressionLevel.Fastest, true)) deflate.Write(bytes);
+            if ((_checkpointSpool?.Length ?? 0) + compressed.Length > ReplayFormatV3.MaxCheckpointStorage) return;
+            _checkpointSpool ??= new FileStream(Path.Combine(Path.GetTempPath(), "prime-replay-checkpoints-" + Guid.NewGuid().ToString("N")),
+                FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 65536, FileOptions.DeleteOnClose);
+            _checkpoints.Add(new(frame, _checkpointSpool.Position, (int)compressed.Length, bytes.Length, ReplayFormatV3.Crc(bytes)));
+            compressed.Position = 0; compressed.CopyTo(_checkpointSpool);
         }
 
         public void WriteEvent(ReplayEvent value)
@@ -285,7 +343,7 @@ namespace MphRead.Mods.Network
             _faulted = true;
             if (_disposed) return;
             _disposed = true;
-            _records.Dispose(); _chunk.Dispose(); _writer.Dispose(); _stream.Dispose();
+            _records.Dispose(); _chunk.Dispose(); _writer.Dispose(); _stream.Dispose(); _checkpointSpool?.Dispose();
         }
 
         public void Dispose()
@@ -295,6 +353,8 @@ namespace MphRead.Mods.Network
             {
                 if (_faulted) return;
                 FlushChunk();
+                long checkpointStart = _stream.Position;
+                if (_checkpointSpool != null) { _checkpointSpool.Position = 0; _checkpointSpool.CopyTo(_stream); }
                 using var footer = new MemoryStream();
                 using (var output = new BinaryWriter(footer, Encoding.UTF8, true))
                 {
@@ -312,8 +372,13 @@ namespace MphRead.Mods.Network
                         output.Write(e.Frame); output.Write((byte)e.Type); output.Write(e.ActorSlot);
                         output.Write(e.TargetSlot); output.Write(e.Value);
                     }
-                    // No checkpoints are advertised until engine restore equivalence is proven.
-                    output.Write(0);
+                    output.Write(_checkpoints.Count);
+                    foreach (var checkpoint in _checkpoints)
+                    {
+                        if (checkpoint.Frame > _last) throw new InvalidDataException("Checkpoint beyond replay duration.");
+                        output.Write(checkpoint.Frame); output.Write(checkpointStart + checkpoint.Offset);
+                        output.Write(checkpoint.CompressedLength); output.Write(checkpoint.RawLength); output.Write(checkpoint.Crc);
+                    }
                     if (_hashes.Count > 0)
                     {
                         if (_hashes[^1].Frame > _last) throw new InvalidDataException("Hash beyond replay duration.");
@@ -340,7 +405,7 @@ namespace MphRead.Mods.Network
             finally
             {
                 _disposed = true;
-                _records.Dispose(); _chunk.Dispose(); _writer.Dispose(); _stream.Dispose();
+                _records.Dispose(); _chunk.Dispose(); _writer.Dispose(); _stream.Dispose(); _checkpointSpool?.Dispose();
             }
             if (!_faulted) File.Move(PartialPath, _path);
         }
@@ -351,6 +416,8 @@ namespace MphRead.Mods.Network
         private readonly FileStream _stream;
         private readonly BinaryReader _reader;
         private readonly List<ReplayChunkIndex> _index = new();
+        private readonly List<ReplayCheckpointIndex> _checkpoints = new();
+        internal IReadOnlyList<ReplayCheckpointIndex> Checkpoints => _checkpoints;
         private BinaryReader? _chunk;
         private uint _remaining, _first, _last, _previous;
         private int _chunkNumber;
@@ -363,17 +430,18 @@ namespace MphRead.Mods.Network
         public uint DurationFrames => Metadata.DurationFrames;
 
         // stream is positioned immediately after the six-byte dispatch header.
-        public ReplayReaderV3(FileStream stream, byte protocol, bool metadataOnly = false)
+        public ReplayReaderV3(FileStream stream, byte protocol, bool metadataOnly = false, byte version = 3)
         {
             _stream = stream;
             _metadataOnly = metadataOnly;
             _reader = new BinaryReader(stream, Encoding.UTF8, true);
             int size = _reader.ReadInt32();
             uint crc = _reader.ReadUInt32();
-            if (size is < 1 or > ReplayFormatV3.MaxHeader) throw new InvalidDataException("Invalid metadata length.");
+            if (size < 1 || size > (version == 4 ? ReplayFormatV3.MaxWorldHeader : ReplayFormatV3.MaxHeader))
+                throw new InvalidDataException("Invalid metadata length.");
             byte[] header = ReplayFormatV3.ReadBytes(_reader, size);
             if (ReplayFormatV3.Crc(header) != crc) throw new InvalidDataException("Metadata checksum failed.");
-            Metadata = ReplayFormatV3.DecodeMetadata(protocol, header);
+            Metadata = ReplayFormatV3.DecodeMetadata(protocol, header, version);
             _dataStart = stream.Position;
             _dataEnd = stream.Length;
             ReadFooter();
@@ -414,7 +482,8 @@ namespace MphRead.Mods.Network
                 previous = entry.LastFrame;
                 if (!_metadataOnly) _index.Add(entry);
             }
-            if (nextOffset != offset || (count != 0 && previous != duration) || (count == 0 && duration != 0))
+            long packetEnd = nextOffset;
+            if ((count != 0 && previous != duration) || (count == 0 && duration != 0))
                 throw new InvalidDataException("Invalid replay duration or data extent.");
             int events = footer.ReadInt32();
             if (events < 0 || events > ReplayFormatV3.MaxEvents || (long)events * 11 > bytes.Length - footer.BaseStream.Position - 4)
@@ -425,15 +494,32 @@ namespace MphRead.Mods.Network
             {
                 var e = new ReplayEvent(footer.ReadUInt32(), (ReplayEventType)footer.ReadByte(),
                     footer.ReadByte(), footer.ReadByte(), footer.ReadInt32());
-                if (e.Frame < lastEvent || e.Frame > duration || e.Type > ReplayEventType.WeaponFired
+                if (e.Frame < lastEvent || e.Frame > duration || e.Type > ReplayEventType.Overtime
                     || (e.ActorSlot != byte.MaxValue && e.ActorSlot >= RosterPacket.MaxSlots)
                     || (e.TargetSlot != byte.MaxValue && e.TargetSlot >= RosterPacket.MaxSlots))
                     throw new InvalidDataException("Invalid replay event.");
-                if (!_metadataOnly) annotations.Add(e);
+                if (!_metadataOnly && e.Frame >= Metadata.LeadInFrames)
+                    annotations.Add(e with { Frame = e.Frame - Metadata.LeadInFrames });
                 lastEvent = e.Frame;
             }
-            if (footer.ReadInt32() != 0)
-                throw new InvalidDataException("Unsupported checkpoint index.");
+            int checkpoints = footer.ReadInt32();
+            if (checkpoints < 0 || checkpoints > ReplayFormatV3.MaxCheckpoints || Metadata.FormatVersion != 4 && checkpoints != 0
+                || (long)checkpoints * 24 > bytes.Length - footer.BaseStream.Position)
+                throw new InvalidDataException("Invalid checkpoint index.");
+            uint priorCheckpoint = 0;
+            for (int i = 0; i < checkpoints; i++)
+            {
+                var entry = new ReplayCheckpointIndex(footer.ReadUInt32(), footer.ReadInt64(), footer.ReadInt32(), footer.ReadInt32(), footer.ReadUInt32());
+                if (entry.Frame > duration || i > 0 && entry.Frame <= priorCheckpoint || entry.Offset != nextOffset
+                    || entry.RawLength is < 1 or > Replay.ReplayWorldCheckpoint.MaximumBytes
+                    || entry.CompressedLength is < 1 or > Replay.ReplayWorldCheckpoint.MaximumBytes + 65536)
+                    throw new InvalidDataException("Invalid replay checkpoint extent.");
+                nextOffset += entry.CompressedLength; priorCheckpoint = entry.Frame;
+                if (nextOffset > offset || nextOffset - packetEnd > ReplayFormatV3.MaxCheckpointStorage)
+                    throw new InvalidDataException("Replay checkpoint overlaps footer or exceeds storage budget.");
+                if (!_metadataOnly) _checkpoints.Add(entry);
+            }
+            if (nextOffset != offset) throw new InvalidDataException("Invalid replay data extent.");
             // Early v3 recordings ended after the checkpoint count. Later optional hash
             // sections are fully length/CRC protected by the same footer envelope.
             if (footer.BaseStream.Position < bytes.Length)
@@ -453,18 +539,42 @@ namespace MphRead.Mods.Network
                     uint frame = footer.ReadUInt32();
                     if (frame > duration || (i > 0 && frame <= priorHash)) throw new InvalidDataException("Invalid replay hash frame.");
                     if (_metadataOnly) footer.BaseStream.Position += 32;
-                    else hashes.Add(new(frame, Convert.ToHexString(ReplayFormatV3.ReadBytes(footer, 32))));
+                    else
+                    {
+                        string value = Convert.ToHexString(ReplayFormatV3.ReadBytes(footer, 32));
+                        if (frame >= Metadata.LeadInFrames) hashes.Add(new(frame - Metadata.LeadInFrames, value));
+                    }
                     priorHash = frame;
                 }
                 Metadata.ExpectedHashes = hashes;
             }
             if (footer.BaseStream.Position != bytes.Length) throw new InvalidDataException("Unexpected replay footer tail.");
             Metadata.Events = annotations;
-            Metadata.DurationFrames = duration;
+            if (duration < Metadata.LeadInFrames || (ulong)duration + Metadata.OriginRecordingFrame > uint.MaxValue)
+                throw new InvalidDataException("Replay has an invalid visible/recording range.");
+            Metadata.DurationFrames = duration - Metadata.LeadInFrames;
             // Header/footer validity does not prove chunk health. Only a full validation does.
             Metadata.Integrity = Metadata.Recovered ? ReplayIntegrity.Recovered : ReplayIntegrity.Unknown;
-            _dataEnd = offset;
+            _dataEnd = packetEnd;
             _hasFooter = true;
+        }
+
+        internal byte[] ReadCheckpoint(ReplayCheckpointIndex entry)
+        {
+            if (_metadataOnly || !_checkpoints.Contains(entry)) throw new InvalidDataException("Unknown replay checkpoint.");
+            long position = _stream.Position;
+            try
+            {
+                _stream.Position = entry.Offset;
+                byte[] compressed = ReplayFormatV3.ReadBytes(_reader, entry.CompressedLength);
+                byte[] raw = new byte[entry.RawLength];
+                using var deflate = new DeflateStream(new MemoryStream(compressed), CompressionMode.Decompress);
+                deflate.ReadExactly(raw);
+                if (deflate.ReadByte() != -1 || ReplayFormatV3.Crc(raw) != entry.Crc)
+                    throw new InvalidDataException("Replay checkpoint checksum/length failed.");
+                return raw;
+            }
+            finally { _stream.Position = position; }
         }
 
         public DemoRecord? SeekAfter(uint frame)
@@ -513,7 +623,7 @@ namespace MphRead.Mods.Network
                 _remaining--; _previous = frame;
                 if (_remaining == 0 && (frame != _last || _chunk.BaseStream.Position != _chunk.BaseStream.Length))
                     throw new InvalidDataException("Invalid chunk record count or frame range.");
-                if (!_hasFooter) Metadata.DurationFrames = frame;
+                if (!_hasFooter) Metadata.DurationFrames = frame >= Metadata.LeadInFrames ? frame - Metadata.LeadInFrames : 0;
                 return new DemoRecord(frame, data);
             }
             catch (Exception ex) when (ex is IOException || ex is InvalidDataException || ex is OverflowException)
@@ -569,6 +679,13 @@ namespace MphRead.Mods.Network
                     if (frame < prior || frame > _last || (i == 0 && frame != _first)
                         || size is < 1 or > NetConfig.MaxPacketSize || size > raw.Length - check.BaseStream.Position)
                         throw new InvalidDataException("Invalid chunk packet bounds.");
+                    if (Metadata.FormatVersion == 4 && raw[check.BaseStream.Position] == 254)
+                    {
+                        if (size is not (16 or 40)) throw new InvalidDataException("Invalid replay semantic fact length.");
+                        _ = ReplayTimelineArchive.DecodeMarker(frame, raw.AsSpan((int)check.BaseStream.Position, size).ToArray());
+                    }
+                    if ((ulong)frame + Metadata.OriginRecordingFrame > uint.MaxValue)
+                        throw new InvalidDataException("Replay recording clock overflow.");
                     check.BaseStream.Position += size; prior = frame;
                 }
                 if (prior != _last || check.BaseStream.Position != raw.Length) throw new InvalidDataException("Invalid chunk records.");

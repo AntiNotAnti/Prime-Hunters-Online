@@ -61,11 +61,11 @@ namespace MphRead.Entities.Enemies
                 _scene.SpawnEffect(4, Vector3.UnitX, Vector3.UnitY, Position); // blastCapBlow
                 if (!_initialCloudHit)
                 {
-                    float radii = PlayerEntity.Main.Volume.SphereRadius + _cloudRadius;
-                    if ((Position - PlayerEntity.Main.Volume.SpherePosition).LengthSquared < radii * radii)
+                    float radii = _scene.Players.Main.Volume.SphereRadius + _cloudRadius;
+                    if ((Position - _scene.Players.Main.Volume.SpherePosition).LengthSquared < radii * radii)
                     {
                         _initialCloudHit = true;
-                        PlayerEntity.Main.TakeDamage(2, DamageFlags.NoDmgInvuln, null, this);
+                        _scene.Players.Main.TakeDamage(2, DamageFlags.NoDmgInvuln, null, this);
                     }
                 }
             }
@@ -99,11 +99,11 @@ namespace MphRead.Entities.Enemies
             {
                 return false;
             }
-            float radii = PlayerEntity.Main.Volume.SphereRadius + _cloudRadius;
-            if ((Position - PlayerEntity.Main.Volume.SpherePosition).LengthSquared < radii * radii)
+            float radii = _scene.Players.Main.Volume.SphereRadius + _cloudRadius;
+            if ((Position - _scene.Players.Main.Volume.SpherePosition).LengthSquared < radii * radii)
             {
                 _initialCloudHit = true;
-                PlayerEntity.Main.TakeDamage(2, DamageFlags.None, null, this);
+                _scene.Players.Main.TakeDamage(2, DamageFlags.None, null, this);
                 return true;
             }
             return false;
@@ -124,8 +124,8 @@ namespace MphRead.Entities.Enemies
 
         private bool Behavior02()
         {
-            float radii = PlayerEntity.Main.Volume.SphereRadius + _nearRadius;
-            if ((Position - PlayerEntity.Main.Volume.SpherePosition).LengthSquared < radii * radii)
+            float radii = _scene.Players.Main.Volume.SphereRadius + _nearRadius;
+            if ((Position - _scene.Players.Main.Volume.SpherePosition).LengthSquared < radii * radii)
             {
                 return false;
             }
@@ -135,12 +135,12 @@ namespace MphRead.Entities.Enemies
 
         private bool Behavior03()
         {
-            if (!HitPlayers[PlayerEntity.Main.SlotIndex])
+            if (!HitPlayers[_scene.Players.Main.SlotIndex])
             {
                 return false;
             }
             _initialCloudHit = true;
-            PlayerEntity.Main.TakeDamage(2, DamageFlags.None, null, this);
+            _scene.Players.Main.TakeDamage(2, DamageFlags.None, null, this);
             TakeDamage(100, source: null);
             return true;
         }
@@ -157,8 +157,8 @@ namespace MphRead.Entities.Enemies
 
         private bool Behavior05()
         {
-            float radii = PlayerEntity.Main.Volume.SphereRadius + _nearRadius;
-            if ((Position - PlayerEntity.Main.Volume.SpherePosition).LengthSquared < radii * radii)
+            float radii = _scene.Players.Main.Volume.SphereRadius + _nearRadius;
+            if ((Position - _scene.Players.Main.Volume.SpherePosition).LengthSquared < radii * radii)
             {
                 _models[0].SetAnimation(1);
                 return true;

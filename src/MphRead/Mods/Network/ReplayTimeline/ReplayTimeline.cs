@@ -14,14 +14,14 @@ public interface IReplayTimeline
     bool TryMapKillToRecordingFrame(ReplayKillIdentity kill, out uint frame);
 }
 
-public enum ReplayFactKind { Match, Roster, Snapshot, Intent, World, Event, Presentation }
+public enum ReplayFactKind { Match, Roster, Snapshot, Intent, World, Event, Presentation, AuthorityWorld }
 // A network baseline is deliberately NOT advertised as a complete scene checkpoint.
 // It cannot restore in-flight projectiles or animation, and must not enable passive killcams.
 public enum ReplayRestoreKind { NetworkBaseline, ReplicaCheckpoint }
 public enum ReplayMarkerKind
 {
     Kill, Death, Spawn, Damage, Headshot, Score, Objective, FlagCapture,
-    NodeCapture, PrimeChange, MatchPoint, Overtime, MatchEnd, Join, Leave
+    NodeCapture, PrimeChange, MatchPoint, Overtime, MatchEnd, Join, Leave, MatchStart, WeaponFired
 }
 
 public readonly record struct ReplayKillIdentity(ushort MatchId, ulong AuthorityEpoch,

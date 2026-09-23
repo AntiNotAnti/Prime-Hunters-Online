@@ -32,9 +32,9 @@ namespace MphRead.Entities
             Id = data.Header.EntityId;
             Position = data.Header.Position.ToFloatVector(); // vecs from header are not used
             AlwaysActive = data.AlwaysActive != 0;
-            if (GameState.Mode == GameMode.SinglePlayer)
+            if (_scene.GameState.Mode == GameMode.SinglePlayer)
             {
-                int state = GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: data.Enabled != 0);
+                int state = _scene.GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: data.Enabled != 0);
                 if (AlwaysActive)
                 {
                     Active = data.Enabled != 0;
@@ -48,7 +48,7 @@ namespace MphRead.Entities
             {
                 Active = data.Enabled != 0;
             }
-            if (Mods.Network.NetSession.ActiveMatchDefinition?.DisablePowerups == true
+            if (scene.Services.DisablePowerups
                 && Mods.Multiplayer.MapResourceRules.IsPowerup(data.ItemType))
             {
                 Active = false;
@@ -67,7 +67,7 @@ namespace MphRead.Entities
         public override void Initialize()
         {
             base.Initialize();
-            Mods.Network.NetHealthSync.Register(this);
+            if (!_scene.Services.IsReplica) Mods.Network.NetHealthSync.Register(this);
             _scene.TryGetEntity(_data.NotifyEntityId, out _pickupNotifyEntity);
         }
 
@@ -92,20 +92,21 @@ namespace MphRead.Entities
             {
                 Position = Matrix.Vec3MultMtx4(_invPos, _parent.CollisionTransform);
             }
-            if (Mods.Network.NetHealthSync.IsReplica && Mods.Multiplayer.MapResourceRules.IsHealth(_data.ItemType))
+            if (_scene.Services.ReplicatesHealthSpawns && (Mods.Multiplayer.MapResourceRules.IsHealth(_data.ItemType)
+                || _scene.Services is Mods.Network.ReplaySceneServices { HasAuthorityWorld: true }))
             {
-                if (Mods.Network.NetHealthSync.TryGet((short)Id, out var state))
+                if (_scene.Services.TryGetHealthSpawn((short)Id, out var state))
                 {
                     Active = state.Active;
                     _spawnCooldown = state.Cooldown;
                     _spawnCount = state.SpawnCount;
                     if (!state.Available && Item != null)
                     {
-                        int localSlot = Mods.Network.NetSession.LocalSlot;
+                        int localSlot = _scene.Services.PlayerReplication.LocalSlot;
                         if (Item.DespawnTimer != 0 && state.PickerSlot == localSlot
-                            && localSlot >= 0 && localSlot < PlayerEntity.Players.Count)
+                            && localSlot >= 0 && localSlot < _scene.Players.Items.Count)
                         {
-                            PlayerEntity.Players[localSlot].PlayHealthPickupSfx(Item.ItemType);
+                            _scene.Players.Items[localSlot].PlayHealthPickupSfx(Item.ItemType);
                         }
                         Item.DespawnTimer = 0;
                     }
@@ -172,17 +173,17 @@ namespace MphRead.Entities
             {
                 Active = true;
                 _playKeySfx = true;
-                if (GameState.Mode == GameMode.SinglePlayer)
+                if (_scene.GameState.Mode == GameMode.SinglePlayer)
                 {
-                    GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
+                    _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
                 }
             }
             else if (info.Message == Message.SetActive && (int)info.Param1 == 0)
             {
                 Active = false;
-                if (GameState.Mode == GameMode.SinglePlayer)
+                if (_scene.GameState.Mode == GameMode.SinglePlayer)
                 {
-                    GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
+                    _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
                 }
                 if (Item != null)
                 {
@@ -239,13 +240,13 @@ namespace MphRead.Entities
         private static ItemInstanceEntity? SpawnItem(ItemType type, Vector3 position, NodeRef nodeRef,
             Scene scene, uint? chance = null, int despawnTime = 0)
         {
-            if (Mods.Network.NetSession.ActiveMatchDefinition?.DisablePowerups == true
+            if (scene.Services.DisablePowerups
                 && Mods.Multiplayer.MapResourceRules.IsPowerup(type))
             {
                 return null;
             }
             ItemInstanceEntity? item = null;
-            if (type != ItemType.None && (!chance.HasValue || Rng.GetRandomInt2(100) < chance.Value))
+            if (type != ItemType.None && (!chance.HasValue || scene.Random.GetRandomInt2(100) < chance.Value))
             {
                 item = new ItemInstanceEntity(new ItemInstanceEntityData(position, type, despawnTime), nodeRef, scene);
                 scene.AddEntity(item);

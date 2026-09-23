@@ -13,10 +13,13 @@ namespace MphRead.Mods.MapGen
     {
         public static Guid LegacyId(string name)=>new(SHA256.HashData(Encoding.UTF8.GetBytes("Fruity Prime legacy map:"+name.ToUpperInvariant())).AsSpan(0,16));
         public static string Build(MapDefinition source, string outputPath)
+            => MapBuildScheduler.Shared.PackageAsync(MapBuildSnapshot.Capture(source), outputPath).GetAwaiter().GetResult();
+
+        // Called only by a scheduler worker after compilation/validation. Keeping
+        // this separate avoids recursively scheduling from inside a bounded worker.
+        internal static string WriteValidated(MapDefinition source, string outputPath)
         {
             MapDefinition definition = MapProjectSerializer.Clone(source);
-            MapCompilation compilation = MapCompiler.Compile(definition);
-            MapCompiler.ThrowIfInvalid(compilation.Validation);
             var entries = new SortedDictionary<string, byte[]>(StringComparer.Ordinal);
             if (definition.FormatVersion == 1)
             {
@@ -46,9 +49,9 @@ namespace MphRead.Mods.MapGen
                 collision.Source = "collision/mesh.obj";
                 entries.Add(collision.Source, bytes);
             }
-            foreach(var asset in definition.Assets)
+            foreach(string asset in MapDependencyAnalyzer.PackageAssets(source))
             {
-                if(!entries.TryAdd(asset.Path,MapAssets.Read(source,asset.Path)))throw new InvalidDataException("Asset conflicts with a generated package entry.");
+                if(!entries.TryAdd(asset,MapAssets.Read(source,asset)))throw new InvalidDataException("Asset conflicts with a generated package entry.");
             }
             entries.Add("project.json", Encoding.UTF8.GetBytes(definition.Serialize()));
             var manifest = new MapPackageManifest

@@ -88,6 +88,9 @@ namespace MphRead.Mods.Network
         private readonly RemoteView[] _remotes = new RemoteView[PlayerEntity.MaxPlayers];
         private int _frame;
         private int _shots;
+        private int _killcamFrames, _killcamStarts;
+        private bool _killcamWasVisible;
+        private int _clipTests;
         private int _duelShots;
         private int _lastDuelShotFrame = -1000;
         private bool _opponentInView;
@@ -108,29 +111,16 @@ namespace MphRead.Mods.Network
 
         private static GameWindowSettings GameSettings() => new() { UpdateFrequency = 60 };
 
-        private static NativeWindowSettings WindowSettings(int width, int height) => new()
+        private static NativeWindowSettings WindowSettings(int width, int height)
         {
-            ClientSize = new Vector2i(width, height),
-            Title = "MphRead net check",
-            Profile = ContextProfile.Compatability,
-            // Explicitly, exactly as the game's own window does. Left
-            // unset, OpenTK's default gave this window a *forward-compatible*
-            // context, which removes every deprecated entry point -- and this
-            // engine draws in immediate mode, so that is all of them. The
-            // profile mask still answers "compatibility", so nothing looked
-            // wrong; the driver only admitted it in a shader warning that
-            // mentioned "OGL 3.0 forward-compatible context". Every frame came
-            // out black with GL_INVALID_OPERATION on an Intel Iris Xe, while
-            // the game rendered perfectly on the same machine, because the
-            // game sets this and these windows did not.
-            Flags = ContextFlags.Default,
-            APIVersion = new Version(3, 2),
-            // Visible only for -hudshots, which reads the window's own buffer
-            // rather than the scene's offscreen target: the HUD is composited
-            // into the frame and a hidden window has no usable back buffer
-            // under Mesa. MapAudit's arrangement, for its reason.
-            StartVisible = ShowWindow
-        };
+            // Use the same platform contract as the game window. macOS only
+            // supplies legacy immediate-mode GL through a 2.1 context.
+            var settings = Render.DesktopGlContext.Settings(background: !ShowWindow);
+            settings.ClientSize = new Vector2i(width, height);
+            settings.Title = "Project Prime network check";
+            settings.StartVisible = ShowWindow;
+            return settings;
+        }
 
         public Scene Scene { get; }
 
@@ -175,6 +165,20 @@ namespace MphRead.Mods.Network
                 return;
             }
             _frame++;
+            bool killcamVisible = Mods.KillCam.Presentation(Scene) != null;
+            if (killcamVisible)
+            {
+                _killcamFrames++;
+                if (!_killcamWasVisible)
+                {
+                    _killcamStarts++;
+                    Console.WriteLine($"[netcheck] replay killcam start {_killcamStarts} at live frame {NetSession.NetFrame}; {Mods.KillCam.Diagnostics}");
+                    if (_shotDirectory != null) Capture(Path.Combine(_shotDirectory, $"{_name}-killcam-{_killcamStarts:00}.png"));
+                }
+            }
+            else if (_killcamWasVisible)
+                Console.WriteLine($"[netcheck] replay killcam ended: {Mods.KillCam.EndReason}");
+            _killcamWasVisible = killcamVisible;
             UpdateSpectating();
             DriveVoteTest();
             DriveRebindTest();
@@ -219,6 +223,11 @@ namespace MphRead.Mods.Network
             SwapBuffers();
             Scene.AfterRenderFrame();
             base.OnRenderFrame(args);
+            if (Environment.GetEnvironmentVariable("MPHREAD_CLIP_TEST") != null && _clipTests < 2
+                && _frame >= (_seconds - 12 + _clipTests * 6) * 60 && !DemoClip.IsSaving && DemoClip.Held > 0)
+            {
+                Console.WriteLine($"[netcheck] {_name} shared clip {++_clipTests}: {DemoClip.Save()}");
+            }
             if (_frame >= _seconds * 60)
             {
                 Close();
@@ -654,6 +663,7 @@ namespace MphRead.Mods.Network
 
         private void Report()
         {
+            Console.WriteLine($"[netcheck] replay killcams: {_killcamStarts} starts, {_killcamFrames} visible frames; capture error={ReplayCapture.WorldCapture.LastError ?? "none"}, playback error={Mods.KillCam.LastError ?? "none"}");
             Console.WriteLine($"  ran {_frame} frame(s) in "
                 + $"{_wallClock.Elapsed.TotalSeconds:0.0} s -- {FramesPerSecond:0.0} fps");
             int local = Math.Max(NetSession.LocalSlot, 0);
@@ -925,12 +935,8 @@ namespace MphRead.Mods.Network
                 // has no check at all.
                 if (Environment.GetEnvironmentVariable("MPHREAD_CLIP_TEST") != null)
                 {
-                    // Twice, deliberately: two presses must make two files
-                    // rather than one overwriting the other.
-                    Console.WriteLine($"[netcheck] {name} clip held {DemoClip.Held:0.0} s, "
-                        + (DemoClip.Save() ?? "nothing saved"));
-                    Console.WriteLine($"[netcheck] {name} clip again -> "
-                        + (DemoClip.Save() ?? "nothing saved"));
+                    DemoClip.CompletePending(window?.Scene.Size ?? new Vector2i(256, 192));
+                    Console.WriteLine($"[netcheck] {name} shared clip result: {DemoClip.LastSavedPath}; error={DemoClip.LastError ?? "none"}");
                 }
                 window?.Dispose();
                 SpectatorMode.Reset();

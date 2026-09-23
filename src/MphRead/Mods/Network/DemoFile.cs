@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 
@@ -187,7 +188,7 @@ namespace MphRead.Mods.Network
         private ReplayOpenResult _result;
 
         public byte ProtocolVersion { get; }
-        public byte FormatVersion => _v3 != null ? (byte)3 : (byte)2;
+        public byte FormatVersion => _v3?.Metadata.FormatVersion ?? (byte)2;
         public ReplayMetadata? Metadata => _v3?.Metadata;
         public uint DurationFrames => _v3?.DurationFrames ?? _frame;
         public ReplayOpenResult LastResult => _v3?.LastResult ?? _result;
@@ -216,7 +217,7 @@ namespace MphRead.Mods.Network
                     result = ReplayOpenResult.InvalidMagic;
                     return null;
                 }
-                if (header[4] is not (2 or 3))
+                if (header[4] is not (2 or 3 or 4))
                 {
                     stream.Dispose();
                     result = ReplayOpenResult.UnsupportedFormat;
@@ -237,7 +238,7 @@ namespace MphRead.Mods.Network
         {
             _stream = stream;
             ProtocolVersion = protocolVersion;
-            if (version == 3) _v3 = new ReplayReaderV3(stream, protocolVersion, metadataOnly);
+            if (version >= 3) _v3 = new ReplayReaderV3(stream, protocolVersion, metadataOnly, version);
             else _deflate = new DeflateStream(stream, CompressionMode.Decompress, leaveOpen: true);
         }
 
@@ -245,6 +246,10 @@ namespace MphRead.Mods.Network
         /// Position a freshly opened reader at the first packet after <paramref name="frame"/>.
         /// V3 uses its footer chunk index; legacy v2 remains sequential.
         /// </summary>
+        internal IReadOnlyList<ReplayCheckpointIndex> Checkpoints => _v3?.Checkpoints ?? Array.Empty<ReplayCheckpointIndex>();
+        internal byte[] ReadCheckpoint(ReplayCheckpointIndex entry) => _v3?.ReadCheckpoint(entry)
+            ?? throw new InvalidDataException("Legacy replay has no durable checkpoints.");
+
         public DemoRecord? SeekAfter(uint frame)
         {
             if (_v3 != null) return _v3.SeekAfter(frame);

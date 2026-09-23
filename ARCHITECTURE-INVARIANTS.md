@@ -48,7 +48,7 @@ This file is the short, machine-oriented source of truth for architectural assum
 
 ## Replay and clips
 
-- Replay format v3 is protocol-bound and validated before playback.
+- Replay formats v3/v4 are protocol-bound and validated before playback.
 - Authoritative dedicated servers record canonical replays when enabled.
 - Client replay recording, rolling clip capture, Replay Studio, checkpoints, highlight derivation and deterministic frame export all exist. Do not describe replay/clip recording as a future feature.
 - Replay playback must not open a live gameplay socket or mutate the recorded session through reconnect/authority control packets.
@@ -74,3 +74,47 @@ This file is the short, machine-oriented source of truth for architectural assum
 - Current-behavior sections must describe the current code, not the build in which a feature was introduced.
 - Dated measurements and old protocol comparisons are valuable, but must be labeled **historical** when the architecture they measured is no longer current.
 - `KNOWN-GAPS.md` contains only unresolved/unverified items. Move fixed items out instead of leaving them as warnings.
+
+## Replay ownership
+
+- Rolling timeline records own immutable payload copies and evict whole restore segments.
+- A dropped fact invalidates its dependent continuation; clips must not cross gaps.
+- Protocol network baselines are explicitly not complete replica-scene checkpoints.
+- Decoder and animation checkpoint components own detached payloads. Decoder restore validates before mutation; animation restore resolves groups against the destination asset. A component alone must never be advertised as a complete world checkpoint.
+- `ReplayWorldCheckpoint` combines those components with an explicit entity/effect/clock/link field contract. Its payload contains values, asset keys and construction anchors, never live references or native handles. Restore is restricted to an unpublished replica with matching room content and construction baseline. Unknown contracts/anchors fail closed. Resource binding does not call gameplay initialization.
+- `PassiveReplayPlayer` owns a 64 MiB/128-entry checkpoint cache. File and frozen-world-clip seeks share its fixed stepping, with at most 120 steps per host update. The presented scene is replaced only after reconstruction succeeds; a frozen clip remains valid after its timeline is reset.
+- Replay readers and transport scheduling belong to session instances. Passive hosts own their decoded lifecycle state and never access live NetSession. Normal Studio uses the private player too. A private legacy host exists only inside the format diagnostic; production has no alternate replay path.
+- Each scene owns its player registry, match state, random streams, camera sequences and enemy/platform beam pools. Legacy static facades refer only to the foreground scene. Replica construction and cleanup never rebind those facades. Replica scenes use an explicit fixed-step entry, instance replication/lifecycle histories, silent sound routing and private HUD queues. They cannot author outgoing input or resolve combat. Replica mutable model/material/node/mesh state and room portal/collision activation are private. Immutable definitions may be shared; GL resources have explicit owner lifetimes.
+- Exact kill markers fence match, authority, event, server tick, occupant generations and victim life. Ambiguous cumulative deaths are not exact kill candidates.
+- Timeline intent baselines must match the recorded occupant generation and life. Submitted local input is presentation evidence, never accepted hit/damage authority. Versioned gameplay hashes include world/projectile state; animation/effect projections are checked separately.
+- Effect checkpoint assets use effect ID plus element ordinal; element names are not unique. Match rules apply before room construction; timed objective targets and the recorded clock retain their mode-specific meaning.
+- Live checkpoint production consumes immutable accepted facts in a canonical private replica. Pending facts are bounded; gaps/failure invalidate history rather than yielding incomplete clips. Capture and private scene resource lifetime run on the scene owner; network callbacks never allocate or dispose GL resources. History cannot claim knowledge of projectiles predating capture.
+- Production replay and killcams share the private player. Do not reintroduce a pose ring, live historical draw substitution, duplicate clip history or live-network replay smoother. Acceptance evidence is in `docs/architecture/replay-map-upgrade-status.md`.
+
+## Map Studio ownership
+
+- Dirty state is a document state-ID comparison, not project serialization or history depth.
+- Common transforms and edits use bounded delta history; undo-to-save and branching preserve state identity.
+- Selection, entity edits and camera movement do not rebuild unrelated geometry.
+- The editor submits stable CPU meshes to the existing scene renderer. GPU resources belong to the viewport lifetime; selection, camera and overlay changes reuse them. The shared logical/pixel camera contract drives projection, world-ray picking and captures. UI overlays composite above geometry; normal frames require no GPU readback.
+- Build workers receive detached snapshots; cancelling one waiter must not cancel shared work.
+- Runtime cache publication validates content fingerprints and output integrity. Cache files contain locally generated content and are never release inputs.
+
+- Runtime builds, validation, navigation and packaging share a bounded queue and private compiled geometry cache. Editor consumers receive immutable geometry or detached navigation; cached compiler graphs never escape to mutable UI state. Synchronous runtime/server preparation must not hold catalog locks while waiting on a worker.
+- One dependency analyzer defines content identities and portable assets for fingerprints, packages, package reference checks and Save As. Cartridge dependencies affect builds but are never packaged.
+
+- Replay killcams own a frozen timeline clip, passive player, scene, HUD and versioned audio lease. They never replace live players or send replay input. UI/Android skip callbacks queue requests; GL disposal stays on the scene owner. Respawn and match/epoch/occupant/life changes invalidate the presentation.
+
+- Full client/server recordings and instant clips consume the shared accepted-fact recorder. V4 initial worlds, frame origins and hidden lead-in preserve exact clip starts; v2/v3 are supported by explicit adapters. Clip disk writes consume frozen values on a worker; GL world creation/disposal stays on the owner.
+- Camera/player selection must not affect replay simulation RNG. Replica stepping fixes its simulation perspective and restores viewing state afterwards. Replay Lab is an explicit offline detach and cannot take over while a live connection exists.
+
+- Replay pose lookahead is bounded and presentation-only; it never advances simulation/RNG or uses live receive jitter. Do not blend across occupant/life, spawn/death, form or teleport boundaries.
+- Export stays at 60 Hz gameplay. A 120 FPS movie renders deterministic half-frame samples, never duplicate-frame conversion or 120 Hz physics. Camera paths and export collision anchors use recorded time. Native-size world/HUD targets belong to the scene and release on its GL owner.
+
+- Optional protocol-16 packet 42 is a replay-only authoritative world extension;
+  it never changes live gameplay. Its explicit bounded value schema and atomic
+  fragment assembly must validate before recording. Replays apply it only inside
+  private scenes; actor links fence occupant generation and life. New-server final
+  killcams use the confirmed ending cause and exact kill identity.
+
+- World capsules are explicitly versioned (current v2, v1 readable). V4 files may index bounded durable checkpoints; invalid optional entries fall back to valid reconstruction. New capture spools at most 4,096 checkpoints / 256 MiB compressed and never stores live references or native handles.

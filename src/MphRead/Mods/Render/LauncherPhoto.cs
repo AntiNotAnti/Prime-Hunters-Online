@@ -65,14 +65,6 @@ namespace MphRead.Mods.Render
         /// </summary>
         public static bool Enabled { get; set; }
 
-        /// <summary>
-        /// The texture name, chosen rather than asked for, and one above
-        /// <see cref="UiOverlay"/>'s. See the long note there: the engine
-        /// counts its own texture names up from one, so a name from
-        /// GenTextures is a name the next match will draw a hunter into.
-        /// </summary>
-        private const int Name = 1_000_001;
-
         private static int _texture;
         private static int _width;
         private static int _height;
@@ -325,6 +317,7 @@ namespace MphRead.Mods.Render
 
             _loadedKey = key;
             _lastAttemptAt = now;
+            if (_texture != 0) GL.DeleteTexture(_texture);
             _texture = 0;
             _width = _height = 0;
 
@@ -356,7 +349,7 @@ namespace MphRead.Mods.Render
                 }
 
                 GL.ActiveTexture(TextureUnit.Texture0);
-                _texture = Name;
+                _texture = GL.GenTexture();
                 GL.BindTexture(TextureTarget.Texture2D, _texture);
                 GL.PixelStore(PixelStoreParameter.UnpackAlignment, 4);
                 GL.PixelStore(PixelStoreParameter.UnpackRowLength, 0);
@@ -402,6 +395,7 @@ namespace MphRead.Mods.Render
             }
             catch (Exception ex)
             {
+                if (_texture != 0) GL.DeleteTexture(_texture);
                 _texture = 0;
                 Mods.DebugLog.Line("ui",
                     $"cinematic backdrop could not load {room}: {ex.Message}");

@@ -172,6 +172,7 @@ namespace MphRead.Mods.Network
         public static uint AppliedSnapshotFrame { get; private set; }
 
         private static SnapshotSink? _snapshotSink;
+        internal static SnapshotSink? ReplayWorldSink { get; set; }
 
         /// <summary>
         /// What "the match this process is simulating is over" does when the
@@ -343,34 +344,6 @@ namespace MphRead.Mods.Network
             NetFrame = netFrame;
         }
 
-        /// <summary>
-        /// Leave the playback-only transport attached to no server while preserving the
-        /// reconstructed scene. Replay Lab uses this instead of Stop(), whose job is to
-        /// erase the entire network/match session.
-        /// </summary>
-        internal static void DetachPlaybackForLab(int localSlot)
-        {
-            if (Role != NetRole.Client || _hostEndPoint != null)
-                throw new InvalidOperationException("Only a socket-free replay session can be detached.");
-
-            _transport?.Dispose();
-            _transport = null;
-            _hostEndPoint = null;
-            _peers.Clear();
-            IsAuthority = false;
-            _snapshotSink = null;
-            _serverMatchEnded = null;
-            Role = NetRole.Offline;
-            LocalSlot = Math.Clamp(localSlot, 0, PlayerEntity.SlotCapacity - 1);
-            ConnectionLost = false;
-            Refused = false;
-            _authorityNeedsStateApply = false;
-            NetUnlagged.Reset();
-            NetHitPrediction.Reset();
-            NetHitClaims.Reset();
-            NetSmoothing.Reset();
-        }
-
         public static void RewindPlayback()
         {
             ContinuousPhase.Reset();
@@ -444,7 +417,7 @@ namespace MphRead.Mods.Network
             NetPlayerBridge.Reset();
             Chat.ChatBox.Clear();
             IsAuthority = false;
-            _snapshotSink = null;
+            _snapshotSink = null; ReplayWorldSink = null;
             _serverMatchEnded = null;
             if (_transport != null)
             {
@@ -655,8 +628,7 @@ namespace MphRead.Mods.Network
         /// </summary>
         public static void Update(double time)
         {
-            DemoClip.Tick();
-            if (Role == NetRole.Client && !DemoPlayback.IsActive) time = Clock;
+            if (Role == NetRole.Client && !_playback) time = Clock;
             if (Role == NetRole.Server)
             {
                 // No socket here: DedicatedServer owns it, drains it on its
@@ -678,7 +650,6 @@ namespace MphRead.Mods.Network
             }
             foreach (ReceivedPacket packet in _transport.Drain())
             {
-                DemoRecorder.Record(packet);
                 Handle(packet, time);
             }
             PumpLobby(time);
@@ -800,16 +771,11 @@ namespace MphRead.Mods.Network
         {
             // Connection-control packets belong to the recorded client's original
             // session, not to the spectator replaying it.
-            if (DemoPlayback.IsActive && packet.Type is PacketType.Welcome or PacketType.Authority
+            if (_playback && packet.Type is PacketType.Welcome or PacketType.Authority
                 or PacketType.Bye or PacketType.Refused)
             {
                 return;
             }
-            // Reconnects/authority handovers belong to the recording client's connection,
-            // never to the spectator watching it. In particular Welcome must not assign a
-            // local player, and Bye must not destroy the final replay scene.
-            if (DemoPlayback.IsActive && packet.Type is PacketType.Welcome or PacketType.Authority
-                or PacketType.Bye or PacketType.Refused) return;
             if (Role == NetRole.Client && !_playback
                 && (_hostEndPoint == null || !packet.Sender.Equals(_hostEndPoint))) return;
             if(packet.Type is PacketType.MapOffer or PacketType.MapChunk
@@ -911,6 +877,9 @@ namespace MphRead.Mods.Network
                     break;
                 case PacketType.SlotIntent when Role == NetRole.Client:
                     HandleSlotIntent(packet);
+                    break;
+                case PacketType.ReplayWorld when Role == NetRole.Client && !IsAuthority && !_playback:
+                    ReplayCapture.AcceptWorldPacket(packet.Payload);
                     break;
                 case PacketType.Snapshot when Role == NetRole.Client:
                     HandleSnapshot(packet);
@@ -1337,6 +1306,7 @@ namespace MphRead.Mods.Network
             RemoteIntentValid[slot] = true;
             RemoteIntentArrived[slot] = Math.Max(NetFrame, 1);
             IntentsReceived++;
+            ReplayCapture.AcceptedIntent(slot, intent);
             if (NetLog.Enabled && intent.Buttons.HasFlag(IntentButtons.Shoot))
                 NetShotDiagnostics.Trace("intent", ShotKey.For(slot, intent.AckFrame), (BeamType)intent.WeaponSelect,
                     $"intentFrame={intent.Frame} intentLife={intent.LifeId} inPlay={intent.Buttons.HasFlag(IntentButtons.InPlayState)} shoot=true");
@@ -1808,7 +1778,7 @@ namespace MphRead.Mods.Network
             // and never this player's own, because nothing ever told it to.
             if (LocalSlot >= 0)
             {
-                DemoRecorder.RecordOwnIntent(LocalSlot, _scratch.AsSpan(0, IntentPacket.FullSize));
+                ReplayCapture.AcceptedIntent(LocalSlot, intent);
             }
             // And whatever this machine has resolved for itself that the
             // authority has not answered yet. Its own datagram rather than a
@@ -1850,6 +1820,16 @@ namespace MphRead.Mods.Network
             BinaryPrimitives.WriteUInt16LittleEndian(_scratch, CurrentMatchId);
             BinaryPrimitives.WriteUInt64LittleEndian(_scratch.AsSpan(2), AuthorityEpoch);
             _transport.Send(_hostEndPoint, PacketType.MatchEnd, _scratch.AsSpan(0, 10));
+        }
+
+        internal static void SendReplayWorld(ReplayAuthorityWorld world)
+        {
+            foreach (byte[] packet in ReplayAuthorityWire.Packets(world))
+            {
+                if (Role == NetRole.Server) ReplayWorldSink?.Invoke(packet.AsSpan(1));
+                else if (Role == NetRole.Host)
+                    foreach (var peer in _peers) _transport?.Send(peer.EndPoint, PacketType.ReplayWorld, packet.AsSpan(1));
+            }
         }
 
         /// <summary>Host -> clients: authoritative state for every active player.</summary>

@@ -87,10 +87,10 @@ namespace MphRead.Entities.Enemies
                 _volume = CollisionVolume.Move(new CollisionVolume(
                     owner.Spawner.Data.Fields.S11.Sphere2Position.ToFloatVector(),
                     owner.Spawner.Data.Fields.S11.Sphere2Radius.FloatValue), Position);
-                _damageTimer = (int)(Rng.GetRandomInt2(13) + 7) * 2; // todo: FPS stuff
+                _damageTimer = (int)(_scene.Random.GetRandomInt2(13) + 7) * 2; // todo: FPS stuff
                 _swingTimer = 30 * 2; // sktodo: FPS stuff
                 _phasesLeft = 3;
-                if (Rng.GetRandomInt2(255) % 2 != 0)
+                if (_scene.Random.GetRandomInt2(255) % 2 != 0)
                 {
                     _goreaFlags |= Gorea1BFlags.Bit3;
                 }
@@ -166,14 +166,14 @@ namespace MphRead.Entities.Enemies
 
         private void CheckPlayerCollision()
         {
-            if (!HitPlayers[PlayerEntity.Main.SlotIndex])
+            if (!HitPlayers[_scene.Players.Main.SlotIndex])
             {
                 return;
             }
             // todo: is it a bug that this doesn't normalize the vector like 1A and legs do?
-            Vector3 between = (PlayerEntity.Main.Position - Position).WithY(0);
-            PlayerEntity.Main.Speed += between / 4;
-            PlayerEntity.Main.TakeDamage(15, DamageFlags.None, null, this);
+            Vector3 between = (_scene.Players.Main.Position - Position).WithY(0);
+            _scene.Players.Main.Speed += between / 4;
+            _scene.Players.Main.TakeDamage(15, DamageFlags.None, null, this);
         }
 
         private void State00()
@@ -211,7 +211,7 @@ namespace MphRead.Entities.Enemies
         {
             if (!_goreaFlags.TestFlag(Gorea1BFlags.Bit2))
             {
-                _targetFacing = (PlayerEntity.Main.Position - Position).WithY(0);
+                _targetFacing = (_scene.Players.Main.Position - Position).WithY(0);
                 if (_targetFacing.LengthSquared > 1 / 128f)
                 {
                     _goreaFlags |= Gorea1BFlags.Bit2;
@@ -247,7 +247,7 @@ namespace MphRead.Entities.Enemies
         // sktodo: member name
         private void Func2139F54()
         {
-            _targetFacing = (PlayerEntity.Main.Position - Position).WithY(0);
+            _targetFacing = (_scene.Players.Main.Position - Position).WithY(0);
             if (_targetFacing.LengthSquared > 1 / 128f)
             {
                 _targetFacing = _targetFacing.Normalized();
@@ -318,7 +318,7 @@ namespace MphRead.Entities.Enemies
         {
             _grappling = true;
             _field21E = 120 * 2; // todo: FPS stuff
-            Vector3 target = PlayerEntity.Main.Position.AddY(0.05f);
+            Vector3 target = _scene.Players.Main.Position.AddY(0.05f);
             Func213C8C4(target);
             _field38 = 0;
         }
@@ -383,7 +383,7 @@ namespace MphRead.Entities.Enemies
         private void Func213B90C()
         {
             Vector3 pos = Func213BF7C(); // sktodo: variable name
-            Vector3 between = PlayerEntity.Main.Position.AddY(0.05f) - pos;
+            Vector3 between = _scene.Players.Main.Position.AddY(0.05f) - pos;
             if (between.LengthSquared >= 0.25f * 0.25f)
             {
                 between = between.Normalized();
@@ -409,7 +409,7 @@ namespace MphRead.Entities.Enemies
                 _field38 = _grappleVecs.Length - 1;
                 Func213C8C4(pos);
                 _goreaFlags |= Gorea1BFlags.Bit1;
-                PlayerEntity.Main.SetBipedStuck(true);
+                _scene.Players.Main.SetBipedStuck(true);
                 Func213BC3C();
                 if (_grappleEffect != null)
                 {
@@ -417,14 +417,14 @@ namespace MphRead.Entities.Enemies
                     _grappleEffect = null;
                 }
                 _grappleEffect = SpawnEffectGetEntry(148, _grappleVecs[^1], extensionFlag: true); // grappleEnd
-                PlayerEntity.Main.CameraInfo.SetShake(1 / 6f); // 682
-                if (PlayerEntity.Main.Flags1.TestFlag(PlayerFlags1.AltForm) || PlayerEntity.Main.Flags1.TestFlag(PlayerFlags1.Morphing))
+                _scene.Players.Main.CameraInfo.SetShake(1 / 6f); // 682
+                if (_scene.Players.Main.Flags1.TestFlag(PlayerFlags1.AltForm) || _scene.Players.Main.Flags1.TestFlag(PlayerFlags1.Morphing))
                 {
-                    PlayerEntity.Main.ExitAltForm();
+                    _scene.Players.Main.ExitAltForm();
                 }
                 _field224 = 0;
                 // sktodo: variable names
-                float v9 = (10 - (PlayerEntity.Main.Position.Y - Position.Y)) / 24;
+                float v9 = (10 - (_scene.Players.Main.Position.Y - Position.Y)) / 24;
                 float v10 = v9 * 30 * 30;
                 if (v10 != 0)
                 {
@@ -486,7 +486,7 @@ namespace MphRead.Entities.Enemies
         // sktodo: member name
         private void Func213B678()
         {
-            if (PlayerEntity.Main.Position.Y <= Position.Y)
+            if (_scene.Players.Main.Position.Y <= Position.Y)
             {
                 return;
             }
@@ -495,10 +495,10 @@ namespace MphRead.Entities.Enemies
             if (dist > 1 / 128f)
             {
                 // sktodo: variable names
-                float v6 = (10 - (PlayerEntity.Main.Position.Y - Position.Y)) * 30;
+                float v6 = (10 - (_scene.Players.Main.Position.Y - Position.Y)) * 30;
                 // todo?: consider fx32 math in some places? discrepancies accumulate over time,
                 // but this particular line is a single place with a pretty big difference from the game
-                //float v6 = FxDiv(Fixed.ToInt(10 - (PlayerEntity.Main.Position.Y - Position.Y)), 136) / 4096f;
+                //float v6 = FxDiv(Fixed.ToInt(10 - (_scene.Players.Main.Position.Y - Position.Y)), 136) / 4096f;
                 if (v6 > 0)
                 {
                     float v7 = Func213B784();
@@ -508,7 +508,7 @@ namespace MphRead.Entities.Enemies
                     Func213C624(v12);
                 }
             }
-            PlayerEntity.Main.Position = _grappleVecs[^1].AddY(-0.05f); // 204
+            _scene.Players.Main.Position = _grappleVecs[^1].AddY(-0.05f); // 204
         }
 
         // sktodo: member name
@@ -553,8 +553,8 @@ namespace MphRead.Entities.Enemies
                 between = between.Normalized();
                 playerPos += between * -0.5f;
             }
-            PlayerEntity.Main.Position = playerPos;
-            PlayerEntity.Main.CameraInfo.SetShake(0);
+            _scene.Players.Main.Position = playerPos;
+            _scene.Players.Main.CameraInfo.SetShake(0);
         }
 
         // sktodo: member name
@@ -600,9 +600,9 @@ namespace MphRead.Entities.Enemies
             }
             if (_damageTimer == 0)
             {
-                _damageTimer = (int)(Rng.GetRandomInt2(13) + 7) * 2; // todo: FPS stuff
-                PlayerEntity.Main.TakeDamage(2, DamageFlags.NoDmgInvuln, null, this);
-                SpawnEffect(179, PlayerEntity.Main.Position); // goreaGrappleDamage
+                _damageTimer = (int)(_scene.Random.GetRandomInt2(13) + 7) * 2; // todo: FPS stuff
+                _scene.Players.Main.TakeDamage(2, DamageFlags.NoDmgInvuln, null, this);
+                SpawnEffect(179, _scene.Players.Main.Position); // goreaGrappleDamage
             }
         }
 
@@ -683,8 +683,8 @@ namespace MphRead.Entities.Enemies
                 }
                 _field10 = vec * (-1 / 1.5f); // -2730
             }
-            PlayerEntity.Main.Position = _grappleVecs[^1].AddY(-0.05f); // 204
-            PlayerEntity.Main.CameraInfo.SetShake(1 / 128f); // 32
+            _scene.Players.Main.Position = _grappleVecs[^1].AddY(-0.05f); // 204
+            _scene.Players.Main.CameraInfo.SetShake(1 / 128f); // 32
             CallSubroutine(Metadata.Enemy28Subroutines, this);
         }
 
@@ -704,7 +704,7 @@ namespace MphRead.Entities.Enemies
                 _scene.UnlinkEffectEntry(_grappleEffect);
                 _grappleEffect = null;
             }
-            PlayerEntity.Main.SetBipedStuck(false);
+            _scene.Players.Main.SetBipedStuck(false);
             if (_grappling)
             {
                 _grappling = false;
@@ -857,15 +857,15 @@ namespace MphRead.Entities.Enemies
                         {
                             trocra.Field184--;
                             trocra.Position = new Vector3(
-                                trocra.Field174.X + Fixed.ToFloat(Rng.GetRandomInt2(4096) - 2048),
-                                trocra.Field174.Y + Fixed.ToFloat(Rng.GetRandomInt2(4096) - 2048),
-                                trocra.Field174.Z + Fixed.ToFloat(Rng.GetRandomInt2(4096) - 2048)
+                                trocra.Field174.X + Fixed.ToFloat(_scene.Random.GetRandomInt2(4096) - 2048),
+                                trocra.Field174.Y + Fixed.ToFloat(_scene.Random.GetRandomInt2(4096) - 2048),
+                                trocra.Field174.Z + Fixed.ToFloat(_scene.Random.GetRandomInt2(4096) - 2048)
                             );
                         }
                         // sktodo (document): throwing after timer
                         if (trocra.Field184 == 0)
                         {
-                            Vector3 speed = PlayerEntity.Main.Position - trocra.Position;
+                            Vector3 speed = _scene.Players.Main.Position - trocra.Position;
                             if (speed.LengthSquared >= 1 / 128f)
                             {
                                 speed = speed.Normalized() * 0.7f; // 2867
@@ -928,7 +928,7 @@ namespace MphRead.Entities.Enemies
             else if (anim == 8 && _model.AnimInfo.Frame[0] == 46
                 && _scene.FrameCount != 0 && _scene.FrameCount % 2 == 0) // todo: FPS stuff
             {
-                PlayerEntity.Main.CameraInfo.SetShake(0.75f); // 3072
+                _scene.Players.Main.CameraInfo.SetShake(0.75f); // 3072
             }
         }
 
@@ -958,7 +958,7 @@ namespace MphRead.Entities.Enemies
             if (!_goreaFlags.TestFlag(Gorea1BFlags.Bit5))
             {
                 _goreaFlags |= Gorea1BFlags.Bit5;
-                PlayerEntity.Main.SetBipedStuck(false);
+                _scene.Players.Main.SetBipedStuck(false);
                 _scanId = 0;
                 Flags &= ~EnemyFlags.CollidePlayer;
                 Flags &= ~EnemyFlags.CollideBeam;
@@ -998,7 +998,7 @@ namespace MphRead.Entities.Enemies
 
         public bool Behavior00()
         {
-            _holdTimer = (int)(Rng.GetRandomInt2(150) + 150) * 2; // sktodo: FPS stuff
+            _holdTimer = (int)(_scene.Random.GetRandomInt2(150) + 150) * 2; // sktodo: FPS stuff
             return true;
         }
 
@@ -1016,11 +1016,11 @@ namespace MphRead.Entities.Enemies
                 StopGrappling();
                 DeactivateAllTrocraSpawns();
                 DestroyAllTrocras();
-                GameState.StorySave.CheckpointRoomId = -1;
-                GameState.StorySave.CheckpointEntityId = -1;
-                if ((GameState.StorySave.TriggerState[1] & 0x10) != 0 || Cheats.AlwaysFightGorea2)
+                _scene.GameState.StorySave.CheckpointRoomId = -1;
+                _scene.GameState.StorySave.CheckpointEntityId = -1;
+                if ((_scene.GameState.StorySave.TriggerState[1] & 0x10) != 0 || Cheats.AlwaysFightGorea2)
                 {
-                    GameState.TransitionRoomId = 92; // Gorea_b2
+                    _scene.GameState.TransitionRoomId = 92; // Gorea_b2
                     _scene.StartMovie(Movie.Gorea2Intro, FadeType.FadeOutInWhite, 45 / 30f, FadeType.FadeOutInWhite, 45 / 30f);
                 }
                 else
@@ -1120,7 +1120,7 @@ namespace MphRead.Entities.Enemies
             if (_field21E <= 0)
             {
                 StopGrappling();
-                _holdTimer = (int)(Rng.GetRandomInt2(150) + 150) * 2; // sktodo: FPS stuff
+                _holdTimer = (int)(_scene.Random.GetRandomInt2(150) + 150) * 2; // sktodo: FPS stuff
                 return true;
             }
             return false;
@@ -1143,7 +1143,7 @@ namespace MphRead.Entities.Enemies
 
         public bool Behavior09()
         {
-            if (PlayerEntity.Main.Position.Y - Position.Y < 10)
+            if (_scene.Players.Main.Position.Y - Position.Y < 10)
             {
                 return false;
             }
@@ -1151,7 +1151,7 @@ namespace MphRead.Entities.Enemies
             _swingTimer = 150 * 2; // sktodo: FPS stuff
             _holdTimer = 30 * 2; // sktodo: FPS stuff
             _goreaFlags ^= Gorea1BFlags.Bit3;
-            Vector3 toCenter = (PlayerEntity.Main.Position - _volume.SpherePosition).WithY(0);
+            Vector3 toCenter = (_scene.Players.Main.Position - _volume.SpherePosition).WithY(0);
             if (toCenter.LengthSquared > 1 / 128f)
             {
                 _speed = toCenter.Normalized() * Fixed.ToFloat(68) / 2; // sktodo: FPS stuff
@@ -1181,7 +1181,7 @@ namespace MphRead.Entities.Enemies
 
         public bool Behavior11()
         {
-            if (PlayerEntity.Main.Position.Y - Position.Y < 22.5f)
+            if (_scene.Players.Main.Position.Y - Position.Y < 22.5f)
             {
                 return false;
             }
@@ -1194,17 +1194,17 @@ namespace MphRead.Entities.Enemies
         {
             bool collided = false;
             CollisionResult result = default;
-            if (CollisionDetection.CheckBetweenPoints(PlayerEntity.Main.PrevPosition, PlayerEntity.Main.Position,
+            if (CollisionDetection.CheckBetweenPoints(_scene.Players.Main.PrevPosition, _scene.Players.Main.Position,
                 TestFlags.None, _scene, ref result))
             {
-                PlayerEntity.Main.Position = result.Position;
-                PlayerEntity.Main.HandleCollision(result);
+                _scene.Players.Main.Position = result.Position;
+                _scene.Players.Main.HandleCollision(result);
                 collided = true;
             }
             else
             {
                 float spawnerY = _gorea1A.Spawner.Data.Header.Position.ToFloatVector().Y;
-                float yDiff = PlayerEntity.Main.Position.Y - spawnerY;
+                float yDiff = _scene.Players.Main.Position.Y - spawnerY;
                 if (yDiff < 0)
                 {
                     // player is clipping below the spawner (ground) height, process collision at the ground
@@ -1212,8 +1212,8 @@ namespace MphRead.Entities.Enemies
                     result.Field0 = 0;
                     result.Plane = new Vector4(0, 1, 0, spawnerY);
                     result.Field14 = -yDiff;
-                    result.Position = PlayerEntity.Main.Position.WithY(spawnerY);
-                    PlayerEntity.Main.HandleCollision(result);
+                    result.Position = _scene.Players.Main.Position.WithY(spawnerY);
+                    _scene.Players.Main.HandleCollision(result);
                     collided = true;
                 }
             }
@@ -1221,17 +1221,17 @@ namespace MphRead.Entities.Enemies
             {
                 StopGrappling();
                 _soundSource.PlaySfx(SfxId.GOREA_ATTACK2C_SCR);
-                PlayerEntity.Main.TakeDamage(30, DamageFlags.NoDmgInvuln, null, this);
-                PlayerEntity.Main.CameraInfo.SetShake(0.75f); // 3072
-                _holdTimer = (int)(Rng.GetRandomInt2(150) + 150) * 2; // sktodo: FPS stuff
+                _scene.Players.Main.TakeDamage(30, DamageFlags.NoDmgInvuln, null, this);
+                _scene.Players.Main.CameraInfo.SetShake(0.75f); // 3072
+                _holdTimer = (int)(_scene.Random.GetRandomInt2(150) + 150) * 2; // sktodo: FPS stuff
             }
             return collided;
         }
 
         public bool Behavior13()
         {
-            if (PlayerEntity.Main.Health != 0 && !_goreaFlags.TestFlag(Gorea1BFlags.Bit2)
-                && CheckFacingAngle(-1, PlayerEntity.Main.Position))
+            if (_scene.Players.Main.Health != 0 && !_goreaFlags.TestFlag(Gorea1BFlags.Bit2)
+                && CheckFacingAngle(-1, _scene.Players.Main.Position))
             {
                 return true;
             }
@@ -1240,8 +1240,8 @@ namespace MphRead.Entities.Enemies
 
         public bool Behavior14()
         {
-            if (Vector3.Distance(_sealSphere.Position, PlayerEntity.Main.Position) < 20
-                && CheckFacingAngle(-1, PlayerEntity.Main.Position))
+            if (Vector3.Distance(_sealSphere.Position, _scene.Players.Main.Position) < 20
+                && CheckFacingAngle(-1, _scene.Players.Main.Position))
             {
                 _field21E = 120 * 2; // todo: FPS stuff
                 return true;

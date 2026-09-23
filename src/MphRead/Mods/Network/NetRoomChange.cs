@@ -75,7 +75,7 @@ namespace MphRead.Mods.Network
         /// </summary>
         public static void Sync(Scene scene)
         {
-            if (!NetSession.Active || scene.Room == null || GameState.InRoomTransition)
+            if (!NetSession.Active || scene.Room == null || scene.GameState.InRoomTransition)
             {
                 return;
             }
@@ -123,7 +123,7 @@ namespace MphRead.Mods.Network
                 ? $"[net] server started a new match on {wanted}; loading it"
                 : $"[net] server rotated to {wanted}; loading it");
             NetLog.Event($"loading {wanted} for match {match}");
-            GameState.TransitionRoomId = meta.Id;
+            scene.GameState.TransitionRoomId = meta.Id;
             scene.SetFade(FadeType.FadeOutBlack, length: 10 / 30f, overwrite: true, AfterFade.LoadRoom);
         }
 
@@ -144,7 +144,7 @@ namespace MphRead.Mods.Network
             _loadedMatch = _requestedMatch;
             _loadPending = false;
             int localSlot = Math.Max(NetSession.LocalSlot, 0);
-            for (int slot = 0; slot < PlayerEntity.MaxPlayers; slot++)
+            for (int slot = 0; slot < scene.Players.MaxPlayers; slot++)
             {
                 Hunter slotHunter = slot == localSlot ? hunter : NetSession.SlotHunter[slot];
                 PlayerEntity? created = PlayerEntity.Create(slotHunter, slot == localSlot ? recolor : 0);
@@ -183,8 +183,8 @@ namespace MphRead.Mods.Network
                     created.LoadFlags &= ~LoadFlags.Active;
                 }
             }
-            PlayerEntity.PlayerCount = 1;
-            PlayerEntity.MainPlayerIndex = localSlot;
+            scene.Players.PlayerCount = 1;
+            scene.Players.MainPlayerIndex = localSlot;
             // Everything keyed to the old room has to go: which slots are
             // switched on, the per-match damage tallies, and the scores,
             // which start again with the map exactly as they do on a Quake
@@ -203,7 +203,7 @@ namespace MphRead.Mods.Network
             NetHitClaims.ForgetPending();
             ResetScores();
             Console.WriteLine($"[net] player slots rebuilt for the new room, main player = slot {localSlot}");
-            return PlayerEntity.Players[localSlot];
+            return scene.Players.Items[localSlot];
         }
 
         /// <summary>
@@ -225,10 +225,10 @@ namespace MphRead.Mods.Network
             // cheat list is on, in case a long session had one restored.
             NetLaunch.DisableCheatsForMatch();
             ReloadIntroCamSeq(scene);
-            for (int slot = 0; slot < PlayerEntity.Players.Count; slot++)
+            for (int slot = 0; slot < scene.Players.Items.Count; slot++)
             {
-                PlayerEntity player = PlayerEntity.Players[slot];
-                if (slot == PlayerEntity.MainPlayerIndex)
+                PlayerEntity player = scene.Players.Items[slot];
+                if (slot == scene.Players.MainPlayerIndex)
                 {
                     continue;
                 }
@@ -281,7 +281,7 @@ namespace MphRead.Mods.Network
         {
             CameraSequence.Current = null;
             CameraSequence.Intro = null;
-            if (!GameState.Multiplayer || PlayerEntity.PlayerCount == 0)
+            if (!scene.GameState.Multiplayer || scene.Players.PlayerCount == 0)
             {
                 return;
             }

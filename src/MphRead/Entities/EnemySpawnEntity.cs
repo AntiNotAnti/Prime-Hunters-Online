@@ -48,9 +48,9 @@ namespace MphRead.Entities
             Id = data.Header.EntityId;
             _rangeNodeRef = scene.GetNodeRefByName(data.NodeName.MarshalString());
             _cooldownTimer = _data.InitialCooldown * 2; // todo: FPS stuff
-            Debug.Assert(GameState.Mode == GameMode.SinglePlayer);
+            Debug.Assert(_scene.GameState.Mode == GameMode.SinglePlayer);
             bool active = false;
-            int state = GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: data.Active != 0);
+            int state = _scene.GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: data.Active != 0);
             if (data.AlwaysActive != 0)
             {
                 active = data.Active != 0;
@@ -216,7 +216,7 @@ namespace MphRead.Entities
             PlayerEntity? player = null;
             for (int i = 0; i < 4; i++)
             {
-                player = PlayerEntity.Players[i];
+                player = _scene.Players.Items[i];
                 if (player.Health == 0 && player.EnemySpawner == this)
                 {
                     player.Spawn(Position, FacingVector, UpVector, NodeRef, respawn: true);
@@ -231,31 +231,31 @@ namespace MphRead.Entities
         {
             bool updateSave = false;
             Flags &= ~SpawnerFlags.Active;
-            GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
+            _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
             if ((_data.EnemyType != EnemyType.Hunter || _data.Fields.S09.EncounterType == 1) && _scene.AreaId < 8)
             {
                 // this has an effect on music update messages
                 int type = (int)_data.EnemyType;
                 if (type >= 0 && (type >> 3) < 8)
                 {
-                    GameState.StorySave.EnemyEncounters[_scene.AreaId][type >> 3] |= (byte)(1 << (type & 7));
+                    _scene.GameState.StorySave.EnemyEncounters[_scene.AreaId][type >> 3] |= (byte)(1 << (type & 7));
                 }
             }
             if (_data.EnemyType == EnemyType.Cretaphid)
             {
-                GameState.StorySave.Areas |= 3; // Alinos 1 & 2
-                GameState.UpdateBossFlags(_scene.AreaId);
+                _scene.GameState.StorySave.Areas |= 3; // Alinos 1 & 2
+                _scene.GameState.UpdateBossFlags(_scene.AreaId);
                 updateSave = true;
             }
             else if (_data.EnemyType == EnemyType.Slench)
             {
-                GameState.StorySave.Areas |= 0xF0; // VDO 1 & 2, Arcterra 1 & 2
-                GameState.UpdateBossFlags(_scene.AreaId);
+                _scene.GameState.StorySave.Areas |= 0xF0; // VDO 1 & 2, Arcterra 1 & 2
+                _scene.GameState.UpdateBossFlags(_scene.AreaId);
                 updateSave = true;
             }
             else if (_data.EnemyType == EnemyType.Gorea1A)
             {
-                GameState.UpdateBossFlags(_scene.AreaId);
+                _scene.GameState.UpdateBossFlags(_scene.AreaId);
                 updateSave = true;
             }
             if (_entity1 != null)
@@ -272,7 +272,7 @@ namespace MphRead.Entities
             }
             if (updateSave)
             {
-                GameState.UpdateCleanSave(force: false);
+                _scene.GameState.UpdateCleanSave(force: false);
             }
         }
 
@@ -293,7 +293,7 @@ namespace MphRead.Entities
                         && ((EnemyInstanceEntity)info.Sender).EnemyType == EnemyType.Spawner)
                     {
                         Flags &= ~SpawnerFlags.Active;
-                        GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
+                        _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
                     }
                     else
                     {
@@ -309,19 +309,19 @@ namespace MphRead.Entities
             else if (info.Message == Message.Activate)
             {
                 Flags |= SpawnerFlags.Active;
-                GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
+                _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
             }
             else if (info.Message == Message.SetActive)
             {
                 if ((int)info.Param1 != 0)
                 {
                     Flags |= SpawnerFlags.Active;
-                    GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
+                    _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
                 }
                 else
                 {
                     Flags &= ~SpawnerFlags.Active;
-                    GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
+                    _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
                 }
             }
             else if (info.Message == Message.Gorea2Trigger)

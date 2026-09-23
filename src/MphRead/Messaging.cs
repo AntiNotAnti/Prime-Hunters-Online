@@ -70,12 +70,12 @@ namespace MphRead
             if (info.Message == Message.SetTriggerState)
             {
                 int index = (int)info.Param1;
-                GameState.StorySave.TriggerState[index / 8] |= (byte)(1 << (index % 8));
+                this.GameState.StorySave.TriggerState[index / 8] |= (byte)(1 << (index % 8));
             }
             else if (info.Message == Message.ClearTriggerState)
             {
                 int index = (int)info.Param1;
-                GameState.StorySave.TriggerState[index / 8] &= (byte)~(1 << (index % 8));
+                this.GameState.StorySave.TriggerState[index / 8] &= (byte)~(1 << (index % 8));
             }
             else if (info.Target != null)
             {

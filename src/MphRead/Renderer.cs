@@ -105,7 +105,7 @@ namespace MphRead
         /// screen.
         /// </summary>
         public bool ShowCursor => Mods.Input.WeaponWheel.Absolute
-            && PlayerEntity.Main?.Flags1.TestFlag(PlayerFlags1.WeaponMenuOpen) == true;
+            && this.Players.Main?.Flags1.TestFlag(PlayerFlags1.WeaponMenuOpen) == true;
         private float _pivotAngleY = 0.0f;
         private float _pivotAngleX = 0.0f;
         private float _pivotDistance = 5.0f;
@@ -196,7 +196,9 @@ namespace MphRead
         // map each model's texture ID/palette ID combinations to the bound OpenGL texture ID and "onlyOpaque" boolean
         // Texture names handed out by BindTexture/BindGetTexture, not a live-object count.
         // Never decrement: a freed name can precede another target that is still alive.
-        private int _textureCount = 0;
+        private int _lastTextureId = 0;
+        private readonly HashSet<int> _ownedTextures = new();
+        private readonly HashSet<Model> _modelLeases = new();
         private readonly Dictionary<int, TextureMap> _texPalMap = new Dictionary<int, TextureMap>();
         private readonly HashSet<int> _mipmappedTextures = new();
         private int _maxTextureAnisotropy = -1;
@@ -277,7 +279,7 @@ namespace MphRead
         public VolumeDisplay ShowVolumes => _showVolumes;
         public bool ShowForceFields => _showVolumes != VolumeDisplay.Portal;
         public float KillHeight => _killHeight;
-        public bool ScanVisor => _cameraMode == CameraMode.Player ? PlayerEntity.Main.ScanVisor : _scanVisor;
+        public bool ScanVisor => _cameraMode == CameraMode.Player ? this.Players.Main.ScanVisor : _scanVisor;
         public Vector3 Light1Vector => _light1Vector;
         public Vector3 Light1Color => _light1Color;
         public Vector3 Light2Vector => _light2Vector;
@@ -290,24 +292,44 @@ namespace MphRead
         public const int DisplaySphereStacks = 16;
         public const int DisplaySphereSectors = 24;
 
-        private readonly KeyboardState _keyboardState;
-        private readonly MouseState _mouseState;
-        private readonly Action<string> _setTitle;
-        private readonly Action _close;
+        private KeyboardState _keyboardState;
+        private MouseState _mouseState;
+        private Action<string> _setTitle;
+        private Action _close;
 
         public Scene(Vector2i size, KeyboardState keyboardState, MouseState mouseState,
-            Action<string> setTitle, Action close)
+            Action<string> setTitle, Action close, ISceneServices? services = null, bool initializeRuntime = true)
         {
+            Services = services ?? LiveSceneServices.Instance;
+            PlayerReplication = new Mods.Network.PlayerReplicationBridge(Services.PlayerReplication);
+            Players = new ScenePlayerRegistry
+            {
+                MaxPlayers = Services.IsReplica ? PlayerEntity.SlotCapacity : PlayerEntity.LegacyRegistry.MaxPlayers
+            };
+            GameState = Services.IsReplica ? new SceneGameState(Players) : global::MphRead.GameState.Current.ForScene(Players);
+            GameState.Owner = this;
+            Random = new MatchRandom();
+            if (!Services.IsReplica)
+            {
+                Random.SetRng1(Rng.Rng1);
+                Random.SetRng2(Rng.Rng2);
+                PlayerEntity.LegacyRegistry = Players;
+                global::MphRead.GameState.Current = GameState;
+                Rng.Current = Random;
+            }
             Size = size;
             _keyboardState = keyboardState;
             _mouseState = mouseState;
             _setTitle = setTitle;
             _close = close;
-            Read.ClearCache();
-            Text.Strings.ClearCache();
-            GameState.Reset();
-            PlayerEntity.Construct(this);
-            Music.Init();
+            if (!Services.IsReplica)
+            {
+                Read.ClearCache();
+                Text.Strings.ClearCache();
+            }
+            if (!Services.IsReplica && initializeRuntime) GameState.Reset();
+            Players.Construct(this);
+            if (Services.AllowsPresentationSideEffects && initializeRuntime) Music.Init();
         }
 
         // called before load
@@ -319,7 +341,7 @@ namespace MphRead
                 throw new ProgramException("Cannot load more than one room in a scene.");
             }
             _roomLoaded = true;
-            GameState.Mode = mode;
+            this.GameState.Mode = mode;
             // The report this is here for is "it crashes when the map loads",
             // from a machine with no console window: a log that says which
             // room, and which of the load's steps it reached, is the whole
@@ -331,11 +353,11 @@ namespace MphRead
                 = SceneSetup.LoadGame(name, this, playerCount, bossFlags, nodeLayerMask, entityLayerId);
             Mods.DebugLog.Line("room", $"\"{name}\" read: {entities.Count} entit(ies), "
                 + $"id={RoomId}, area={AreaId}");
-            GameState.StorySave.SetVisitedRoom(RoomId);
-            GameState.StorySave.Areas |= (ushort)(1 << AreaId);
-            if (GameState.Mode == GameMode.None)
+            this.GameState.StorySave.SetVisitedRoom(RoomId);
+            this.GameState.StorySave.Areas |= (ushort)(1 << AreaId);
+            if (this.GameState.Mode == GameMode.None)
             {
-                GameState.Mode = meta.Multiplayer ? GameMode.Battle : GameMode.SinglePlayer;
+                this.GameState.Mode = meta.Multiplayer ? GameMode.Battle : GameMode.SinglePlayer;
             }
             _entities.AddFirst(room);
             InitEntity(room);
@@ -356,9 +378,9 @@ namespace MphRead
             SceneSetup.LoadObjectResources(this);
             SceneSetup.LoadPlatformResources(this);
             SceneSetup.LoadEnemyResources(this);
-            GameState.Setup(this);
-            PlayerEntity.PlayerAiData.InitializeGlobals();
-            if (GameState.Multiplayer)
+            this.GameState.Setup(this);
+            if (!Services.IsReplica) PlayerEntity.PlayerAiData.InitializeGlobals();
+            if (!Services.IsReplica && this.GameState.Multiplayer)
             {
                 Menu.ApplyMultiplayerSettings();
                 // The same job for the launcher's path, which never runs the
@@ -366,17 +388,17 @@ namespace MphRead
                 Mods.GameSettings.ApplyMatchRules();
             }
             SetRoomValues(meta);
-            for (int i = 0; i < PlayerEntity.Players.Count; i++)
+            for (int i = 0; i < this.Players.Items.Count; i++)
             {
-                PlayerEntity player = PlayerEntity.Players[i];
+                PlayerEntity player = this.Players.Items[i];
                 if (player.LoadFlags.TestFlag(LoadFlags.SlotActive))
                 {
                     InsertEntityByType(player);
                 }
             }
-            for (int i = 0; i < PlayerEntity.Players.Count; i++)
+            for (int i = 0; i < this.Players.Items.Count; i++)
             {
-                PlayerEntity player = PlayerEntity.Players[i];
+                PlayerEntity player = this.Players.Items[i];
                 if (player.IsBot)
                 {
                     player.AiData.InitializeAtLoad();
@@ -393,10 +415,10 @@ namespace MphRead
             // UpdateNodeRefVolume. Roam makes IsMainPlayer false everywhere,
             // so the server treats all eight slots identically -- which is
             // exactly what a machine playing none of them should do.
-            _cameraMode = Mods.Headless.Active ? CameraMode.Roam
-                : PlayerEntity.Main.LoadFlags.TestFlag(LoadFlags.Active) ? CameraMode.Player : CameraMode.Roam;
+            _cameraMode = Services.IsReplica || Mods.Headless.Active ? CameraMode.Roam
+                : this.Players.Main.LoadFlags.TestFlag(LoadFlags.Active) ? CameraMode.Player : CameraMode.Roam;
             _inputMode = _cameraMode == CameraMode.Player ? InputMode.All : InputMode.CameraOnly;
-            if (GameState.SinglePlayer && !meta.FirstHunt && PlayerEntity.PlayerCount > 0 && !Cheats.SkipPlanetIntros)
+            if (this.GameState.SinglePlayer && !meta.FirstHunt && this.Players.PlayerCount > 0 && !Cheats.SkipPlanetIntros)
             {
                 Movie movieId = _room.RoomId switch
                 {
@@ -464,7 +486,7 @@ namespace MphRead
         // called before load
         public EntityBase AddModel(string name, int recolor = 0, bool firstHunt = false, MetaDir dir = MetaDir.Models, Vector3? pos = null)
         {
-            ModelInstance model = Read.GetModelInstance(name, firstHunt, dir);
+            ModelInstance model = GetModelInstance(name, firstHunt, dir);
             var entity = new ModelEntity(model, this, recolor);
             InsertEntityByType(entity);
             if (entity.Id != -1)
@@ -483,7 +505,7 @@ namespace MphRead
         {
             if (!_roomLoaded)
             {
-                var player = PlayerEntity.Create(hunter, recolor);
+                var player = Players.Create(hunter, recolor);
                 if (player != null)
                 {
                     player.ForcedSpawnPos = position;
@@ -496,8 +518,8 @@ namespace MphRead
                         Debug.Assert((uint)team < 4);
                         player.TeamIndex = team;
                     }
-                    player.IsBot = PlayerEntity.PlayerCount >= 1;
-                    PlayerEntity.PlayerCount++;
+                    player.IsBot = this.Players.PlayerCount >= 1;
+                    this.Players.PlayerCount++;
                 }
             }
         }
@@ -607,7 +629,7 @@ namespace MphRead
             // sound loaded under it and took the thread down.
             if (!SideScene)
             {
-                foreach (PlayerEntity player in PlayerEntity.Players)
+                foreach (PlayerEntity player in this.Players.Items)
                 {
                     if (player.LoadFlags.TestFlag(LoadFlags.SlotActive))
                     {
@@ -617,7 +639,7 @@ namespace MphRead
                     }
                 }
             }
-            if (!Mods.Headless.Active && !SideScene && !Mods.ThumbnailMode.Active
+            if (Services.AllowsPresentationSideEffects && !Mods.Headless.Active && !SideScene && !Mods.ThumbnailMode.Active
                 && !Console.IsOutputRedirected && !Console.IsInputRedirected && ConsoleOutputEnabled)
             {
                 // The console prompt, which is a question put to a person.
@@ -637,7 +659,7 @@ namespace MphRead
                 // exception, from the same line, with nobody to prompt again.
                 OutputStart();
             }
-            GC.Collect(generation: 2, GCCollectionMode.Forced, blocking: true, compacting: true);
+            if (!Services.IsReplica) GC.Collect(generation: 2, GCCollectionMode.Forced, blocking: true, compacting: true);
             // Android's runtime throws PlatformNotSupported for this, which took
             // every match on that head down before a room had finished loading.
             // It is a hint to the collector, so going without it costs nothing.
@@ -672,7 +694,7 @@ namespace MphRead
         {
             get
             {
-                var requested = new Vector2i(
+                var requested = ExportingReplay ? Size : new Vector2i(
                     Mods.RenderOptions.Scaled(Size.X), Mods.RenderOptions.Scaled(Size.Y));
                 int limit = MaxRenderTargetSize();
                 if (requested.X <= limit && requested.Y <= limit)
@@ -888,7 +910,7 @@ namespace MphRead
             _frameBuffer = GL.GenFramebuffer();
             GL.BindFramebuffer(FramebufferTarget.Framebuffer, _frameBuffer);
             _screenTexture = GL.GenTexture();
-            _textureCount = Math.Max(_textureCount, _screenTexture);
+
             Vector2i renderTarget = RenderSize;
             GL.ActiveTexture(TextureUnit.Texture0);
             GL.BindTexture(TextureTarget.Texture2D, _screenTexture);
@@ -909,7 +931,7 @@ namespace MphRead
             // The ink pass's copy of the scene. Same size and same filtering;
             // it is only ever sampled texel for texel.
             _celTexture = GL.GenTexture();
-            _textureCount = Math.Max(_textureCount, _celTexture);
+
             GL.BindTexture(TextureTarget.Texture2D, _celTexture);
             GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgb, renderTarget.X, renderTarget.Y, 0,
                 PixelFormat.Rgb, PixelType.UnsignedByte, IntPtr.Zero);
@@ -1333,7 +1355,7 @@ namespace MphRead
 
         public void LoadModel(string name, bool firstHunt = false)
         {
-            LoadModel(Read.GetModelInstance(name, firstHunt).Model);
+            LoadModel(GetModelInstance(name, firstHunt).Model);
         }
 
         public void LoadModel(Model model, bool isRoom = false)
@@ -1361,6 +1383,7 @@ namespace MphRead
             {
                 return;
             }
+            if (_modelLeases.Add(model)) Mods.Render.SharedModelResources.Retain(model);
             if (_texPalMap.ContainsKey(model.Id))
             {
                 return;
@@ -1405,7 +1428,7 @@ namespace MphRead
                 foreach ((int textureId, int paletteId, int recolorId) in combos)
                 {
                     bool onlyOpaque = BindTexture(model, textureId, paletteId, recolorId);
-                    map.Add(textureId, paletteId, recolorId, _textureCount, onlyOpaque);
+                    map.Add(textureId, paletteId, recolorId, _lastTextureId, onlyOpaque);
                 }
                 _texPalMap.Add(model.Id, map);
             }
@@ -1424,12 +1447,26 @@ namespace MphRead
                 return value.Get(textureId, paletteId, recolorId).BindingId;
             }
             BindTexture(model, textureId, paletteId, recolorId);
-            return _textureCount;
+            return _lastTextureId;
+        }
+
+        // GL owns the name namespace across foreground, replica and UI scenes.
+        // Every scene deletes only the resources it allocated.
+        private int AllocateTexture()
+        {
+            int texture = GL.GenTexture();
+            _ownedTextures.Add(texture);
+            return texture;
+        }
+
+        private void ReleaseTexture(int texture)
+        {
+            if (_ownedTextures.Remove(texture)) GL.DeleteTexture(texture);
         }
 
         private bool BindTexture(Model model, int textureId, int paletteId, int recolorId)
         {
-            _textureCount++;
+            _lastTextureId = AllocateTexture();
             bool onlyOpaque = true;
             var pixels = new List<uint>();
             var average = new FlatColor();
@@ -1440,15 +1477,15 @@ namespace MphRead
                 average.Add(pixel);
             }
             Texture texture = model.Recolors[recolorId].Textures[textureId];
-            GL.BindTexture(TextureTarget.Texture2D, _textureCount);
+            GL.BindTexture(TextureTarget.Texture2D, _lastTextureId);
             GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba, texture.Width, texture.Height, 0,
                 PixelFormat.Rgba, PixelType.UnsignedByte, pixels.ToArray());
             // Mipmaps are generated lazily if/when the player enables them.
             // The default DS/competitive path therefore pays no extra upload
             // time or GPU memory simply because the option exists.
-            _mipmappedTextures.Remove(_textureCount);
+            _mipmappedTextures.Remove(_lastTextureId);
             GL.BindTexture(TextureTarget.Texture2D, 0);
-            _flatColors[_textureCount] = average.Result;
+            _flatColors[_lastTextureId] = average.Result;
             return onlyOpaque;
         }
 
@@ -1516,14 +1553,14 @@ namespace MphRead
 
         public int BindGetTexture(IReadOnlyList<ColorRgba> data, int width, int height)
         {
-            _textureCount++;
-            GL.BindTexture(TextureTarget.Texture2D, _textureCount);
+            _lastTextureId = AllocateTexture();
+            GL.BindTexture(TextureTarget.Texture2D, _lastTextureId);
             GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba, width, height, 0,
                 PixelFormat.Rgba, PixelType.UnsignedByte, data.ToArray());
-            _mipmappedTextures.Remove(_textureCount);
+            _mipmappedTextures.Remove(_lastTextureId);
             GL.BindTexture(TextureTarget.Texture2D, 0);
-            _flatColors[_textureCount] = AverageOf(data);
-            return _textureCount;
+            _flatColors[_lastTextureId] = AverageOf(data);
+            return _lastTextureId;
         }
 
         public void BindTexture(IReadOnlyList<ColorRgba> data, int width, int height, int bindingId)
@@ -1617,6 +1654,12 @@ namespace MphRead
         /// </summary>
         public void OnSimulationFrame()
         {
+            if (Mods.Network.DemoPlayback.Presentation(this) is { IsReplayLab: true } lab)
+            { lab.OnSimulationFrame(); return; }
+            if (Mods.Network.DemoPlayback.IsActive && (!Services.IsReplica || Mods.Network.DemoPlayback.Owns(this)))
+            { Mods.Network.DemoPlayback.Update(this); return; }
+            if (Services.IsReplica)
+                throw new InvalidOperationException("Replica scenes must be stepped by their replay session, not the foreground host.");
             // A lobby/start barrier must remain authoritative even during playback.
             // Do not advance replay presentation time while the network session is
             // deliberately holding the simulation at a transition boundary.
@@ -1631,6 +1674,60 @@ namespace MphRead
                 return;
             }
 
+            PollReplayControls();
+
+            int frames = Mods.Network.ReplayController.FramesDue();
+            float volume = Sound.Sfx.Volume;
+            float musicVolume = Music.UserVolume;
+            bool mute = Mods.Network.ReplayController.IsSeeking && !Mods.Headless.Active;
+            if (mute)
+            {
+                Sound.Sfx.Volume = 0;
+                Music.SetUserVolume(0);
+            }
+            try
+            {
+                for (int i = 0; i < frames && !Mods.Network.DemoPlayback.AtEnd; i++)
+                {
+                    bool seeking = Mods.Network.ReplayController.IsSeeking;
+                    RunSimulationFrame();
+                    // A transition barrier may become active while replay packets are
+                    // being consumed. Do not count that blocked step as replay progress.
+                    if (Mods.Network.NetSession.FreezeGameplay)
+                    {
+                        break;
+                    }
+                    Mods.Network.ReplayVerification.AfterFrame(this);
+                    Mods.Network.ReplayController.AfterFrame();
+                    if (seeking && !Mods.Network.ReplayController.IsSeeking)
+                    {
+                        break;
+                    }
+                }
+            }
+            finally
+            {
+                if (mute)
+                {
+                    Sound.Sfx.Instance.StopAllSound();
+                    Sound.Sfx.Volume = volume;
+                    Music.SetUserVolume(musicVolume);
+                }
+            }
+        }
+
+        internal void UseReplayInput(Scene shell)
+        { _keyboardState = shell._keyboardState; _mouseState = shell._mouseState; _setTitle = shell._setTitle; _close = shell._close; }
+        internal void CopyReplayView(Scene previous)
+        {
+            _cameraMode = previous._cameraMode; _freeCam = previous._freeCam;
+            _cameraPosition = previous._cameraPosition; _cameraFacing = previous._cameraFacing;
+            _cameraUp = previous._cameraUp; _cameraRight = previous._cameraRight;
+            _replayOrbit = previous._replayOrbit;
+            Players.MainPlayerIndex = previous.Players.MainPlayerIndex;
+        }
+        internal void PollReplayControls()
+        {
             // Replay controls are presentation-time input. They remain responsive
             // while the recorded simulation is paused or seeking, but are sampled
             // only once per rendered frame rather than once per replay simulation step.
@@ -1675,44 +1772,6 @@ namespace MphRead
                 }
             }
 
-            int frames = Mods.Network.ReplayController.FramesDue();
-            float volume = Sound.Sfx.Volume;
-            float musicVolume = Music.UserVolume;
-            bool mute = Mods.Network.ReplayController.IsSeeking && !Mods.Headless.Active;
-            if (mute)
-            {
-                Sound.Sfx.Volume = 0;
-                Music.SetUserVolume(0);
-            }
-            try
-            {
-                for (int i = 0; i < frames && !Mods.Network.DemoPlayback.AtEnd; i++)
-                {
-                    bool seeking = Mods.Network.ReplayController.IsSeeking;
-                    RunSimulationFrame();
-                    // A transition barrier may become active while replay packets are
-                    // being consumed. Do not count that blocked step as replay progress.
-                    if (Mods.Network.NetSession.FreezeGameplay)
-                    {
-                        break;
-                    }
-                    Mods.Network.ReplayVerification.AfterFrame(this);
-                    Mods.Network.ReplayController.AfterFrame();
-                    if (seeking && !Mods.Network.ReplayController.IsSeeking)
-                    {
-                        break;
-                    }
-                }
-            }
-            finally
-            {
-                if (mute)
-                {
-                    Sound.Sfx.Instance.StopAllSound();
-                    Sound.Sfx.Volume = volume;
-                    Music.SetUserVolume(musicVolume);
-                }
-            }
         }
 
         private void RunSimulationFrame()
@@ -1739,7 +1798,7 @@ namespace MphRead
             if (ProcessFrame)
             {
                 _globalElapsedTime += _frameTime;
-                if (GameState.MatchState == MatchState.InProgress && !GameState.DialogPause && !GameState.MenuPause)
+                if (this.GameState.MatchState == MatchState.InProgress && !this.GameState.DialogPause && !this.GameState.MenuPause)
                 {
                     _elapsedTime += _frameTime;
                 }
@@ -1750,11 +1809,11 @@ namespace MphRead
                     // the binding until something clears it, and a player who
                     // opened chat mid-stride would otherwise walk into the
                     // nearest wall for as long as they were typing.
-                    PlayerEntity.Main.Controls.ClearAll();
+                    this.Players.Main.Controls.ClearAll();
                 }
                 else if (Mods.Chat.ChatBox.ConsumeJustClosed())
                 {
-                    PlayerEntity.Main.ModForgetInputDeltas();
+                    this.Players.Main.ModForgetInputDeltas();
                 }
                 Mods.Network.DemoPlayback.PumpFrame();
                 Mods.Network.NetSession.Update(_globalElapsedTime);
@@ -1823,7 +1882,7 @@ namespace MphRead
                 PlayerEntity.ProcessInput(_keyboardState, _mouseState, noPlayerInput);
                 if (!noPlayerInput && !Mods.SpectatorMode.IsSpectating)
                 {
-                    Mods.Input.GamepadInput.Apply(PlayerEntity.Main);
+                    Mods.Input.GamepadInput.Apply(this.Players.Main);
                 }
                 // Everything accumulated before this step has now entered the
                 // real player aim. Any movement arriving after this point is
@@ -1838,12 +1897,12 @@ namespace MphRead
             }
             if (ProcessFrame && _room != null)
             {
-                GameState.ProcessFrame(this);
+                this.GameState.ProcessFrame(this);
                 // Turned once a step, never in a draw: a picture with no step
                 // behind it must not advance anything, or the hunter spins at
                 // the frame rate rather than at 45 degrees a second.
                 ModStepPreview();
-                if (GameState.MatchState == MatchState.InProgress && !GameState.MenuPause)
+                if (this.GameState.MatchState == MatchState.InProgress && !this.GameState.MenuPause)
                 {
                     UpdateScene();
                 }
@@ -1855,6 +1914,7 @@ namespace MphRead
                 // here is counted in frames. Mods.Network.NetHitClaims.
                 Mods.Network.NetHitClaims.Tick();
                 Mods.Network.NetHooks.AfterSimulation();
+                Mods.Network.ReplayCapture.AfterSimulation(this);
                 Mods.KillCam.AfterSimulation(this);
 
                 // Capture completed simulation transforms once, after network
@@ -1868,9 +1928,9 @@ namespace MphRead
                         entity.ModCaptureDrawState();
                     }
                 }
-                for (int i = 0; i < PlayerEntity.Players.Count; i++)
+                for (int i = 0; i < this.Players.Items.Count; i++)
                 {
-                    PlayerEntity player = PlayerEntity.Players[i];
+                    PlayerEntity player = this.Players.Items[i];
                     player.CameraInfo.ModCaptureDrawState();
                     player.ModCaptureFirstPersonDrawState();
                 }
@@ -1882,7 +1942,7 @@ namespace MphRead
                 Mods.Network.NetHitPrediction.Tick();
                 if (!Mods.Headless.Active)
                 {
-                    if (!GameState.MenuPause)
+                    if (!this.GameState.MenuPause)
                     {
                         Sound.Sfx.Update(_frameTime);
                     }
@@ -1896,22 +1956,22 @@ namespace MphRead
             // from their own snapshot. Running it here would be the server
             // maintaining one arbitrary player's visor for no reader.
             if (ProcessFrame && !Mods.Headless.Active
-                && PlayerEntity.Main.LoadFlags.TestFlag(LoadFlags.Active))
+                && this.Players.Main.LoadFlags.TestFlag(LoadFlags.Active))
             {
-                PlayerEntity.Main.UpdateHud();
+                this.Players.Main.UpdateHud();
             }
             if (ProcessFrame)
             {
-                if (GameState.MatchState == MatchState.InProgress && !GameState.DialogPause && !GameState.MenuPause)
+                if (this.GameState.MatchState == MatchState.InProgress && !this.GameState.DialogPause && !this.GameState.MenuPause)
                 {
                     ProcessMessageQueue();
                     _liveFrames++;
                 }
-                if (!GameState.DialogPause && !GameState.MenuPause)
+                if (!this.GameState.DialogPause && !this.GameState.MenuPause)
                 {
                     _frameCount++;
                 }
-                GameState.UpdateTime(this);
+                this.GameState.UpdateTime(this);
                 if (_movieFrameIndex != -1)
                 {
                     UpdateMovie();
@@ -1925,7 +1985,7 @@ namespace MphRead
                 Mods.Render.FrameTiming.MaxCatchUpSteps);
             _pendingFadeSteps = Math.Min(_pendingFadeSteps + 1,
                 Mods.Render.FrameTiming.MaxCatchUpSteps);
-            if (Mods.Headless.Active || Mods.Network.DemoPlayback.IsActive)
+            if (Mods.Headless.Active || Mods.Network.DemoPlayback.IsActive || Mods.KillCam.Active)
             {
                 ModStepDrawPassTimers();
             }
@@ -1963,8 +2023,8 @@ namespace MphRead
         /// </summary>
         private void ModStepDrawPassTimers()
         {
-            if (ProcessFrame && GameState.MatchState == MatchState.InProgress
-                && !GameState.DialogPause)
+            if (ProcessFrame && this.GameState.MatchState == MatchState.InProgress
+                && !this.GameState.DialogPause)
             {
                 for (int i = 0; i < _pendingEffectSteps; i++)
                 {
@@ -1989,6 +2049,14 @@ namespace MphRead
         /// </summary>
         public void OnDrawFrame()
         {
+            if (Mods.Network.DemoPlayback.PreparePresentation(this) is { } theatre)
+            { theatre.OnDrawFrame(); return; }
+            if (Mods.KillCam.Presentation(this) is { } historical)
+            {
+                try { historical.OnDrawFrame(); return; }
+                catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+                { Mods.KillCam.FailPresentation(ex); }
+            }
             if (Size.X <= 0 || Size.Y <= 0)
             {
                 return;
@@ -1997,9 +2065,9 @@ namespace MphRead
             // A first-person pose belongs to exactly one picture. If this draw
             // skips TransformCamera for any reason, the viewmodel must fall
             // back to simulation state rather than reusing yesterday's pose.
-            if (PlayerEntity.Players.Count > 0)
+            if (this.Players.Items.Count > 0)
             {
-                PlayerEntity.Main.ModInvalidateFirstPersonRenderPose();
+                this.Players.Main.ModInvalidateFirstPersonRenderPose();
             }
             // EffectEntry.OwnTransform is simulation state. Any camera-attached
             // visual override is presentation-only and must be renewed by this
@@ -2016,7 +2084,7 @@ namespace MphRead
             // Network puppets use the playout clock itself for high-refresh
             // presentation. Remember the exact sub-frame point drawn here so
             // the next local input and AckPoint use the same world.
-            Mods.Network.NetSmoothing.PreparePresentation(
+            if (!Services.IsReplica) Mods.Network.NetSmoothing.PreparePresentation(
                 Mods.Render.FrameTiming.PresentationAlpha);
 
             // The results screen coming up and going away, which the map
@@ -2026,8 +2094,8 @@ namespace MphRead
             // RenderWindow, so bookkeeping put there runs for a player and for
             // nobody else -- which is how the previews came out blank under
             // -netcheck while the ballot beside them was correct.
-            Mods.EndScreen.Tick(_room?.Meta.Name ?? "", _globalElapsedTime);
-            Mods.Render.MapThumbnail.BeginFrame();
+            if (!Services.IsReplica) Mods.EndScreen.Tick(_room?.Meta.Name ?? "", _globalElapsedTime);
+            if (!Services.IsReplica) Mods.Render.MapThumbnail.BeginFrame();
             GL.ActiveTexture(TextureUnit.Texture0);
             GL.BindFramebuffer(FramebufferTarget.Framebuffer, _frameBuffer);
             // The scene's own target, which the resolution scale may have made
@@ -2066,7 +2134,7 @@ namespace MphRead
             // positions they had then, until the 200-entry table filled up and
             // started dropping the new ones.
             _singleParticleCount = 0;
-            if (ProcessFrame || CameraMode != CameraMode.Player)
+            if ((!Services.IsReplica || Mods.Network.DemoPlayback.Owns(this)) && (ProcessFrame || CameraMode != CameraMode.Player || Services.IsReplica))
             {
                 ModReplayCamera();
                 // Controller hardware is polled by the simulation input step only.
@@ -2075,6 +2143,8 @@ namespace MphRead
                 TransformCamera();
                 UpdateCameraPosition();
             }
+            if (Services.IsReplica)
+                GL.UniformMatrix4(_shaderLocations.ViewMatrix, transpose: false, ref _viewMatrix);
             UpdateProjection();
             GetDrawItems();
         }
@@ -2092,8 +2162,8 @@ namespace MphRead
             _viewModelPerspectiveMatrix = GetPerspectiveMatrix(_viewModelFov);
             GL.UniformMatrix4(_shaderLocations.ProjectionMatrix, transpose: false, ref _perspectiveMatrix);
             // update frustum info
-            Vector3 camPos = _cameraMode == CameraMode.Player
-                ? _cameraPosition : PlayerEntity.Main.CameraInfo.Position;
+            Vector3 camPos = Services.IsReplica || _cameraMode == CameraMode.Player
+                ? _cameraPosition : this.Players.Main.CameraInfo.Position;
             var camRight = new Vector3(_viewMatrix.Row0.X, _viewMatrix.Row0.Y, -_viewMatrix.Row0.Z);
             var camUp = new Vector3(_viewMatrix.Row1.X, _viewMatrix.Row1.Y, -_viewMatrix.Row1.Z);
             var camFacing = new Vector3(_viewMatrix.Row2.X, _viewMatrix.Row2.Y, -_viewMatrix.Row2.Z);
@@ -2232,8 +2302,9 @@ namespace MphRead
                 return null;
             }
             byte[] buffer = new byte[width * height * 3];
-            GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, 0);
-            GL.ReadBuffer(ReadBufferMode.Back);
+            int source = ExportingReplay ? ReplayOutputFramebuffer() : 0;
+            GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, source);
+            GL.ReadBuffer(source == 0 ? ReadBufferMode.Back : ReadBufferMode.ColorAttachment0);
             GL.PixelStore(PixelStoreParameter.PackAlignment, 1);
             GL.ReadPixels(0, 0, width, height, PixelFormat.Rgb, PixelType.UnsignedByte, buffer);
             return buffer;
@@ -2305,7 +2376,7 @@ namespace MphRead
                 return;
             }
             _depthTexture = GL.GenTexture();
-            _textureCount = Math.Max(_textureCount, _depthTexture);
+
             GL.BindTexture(TextureTarget.Texture2D, _depthTexture);
             GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Depth24Stencil8,
                 target.X, target.Y, 0, PixelFormat.DepthStencil, PixelType.UnsignedInt248, IntPtr.Zero);
@@ -2711,6 +2782,14 @@ namespace MphRead
 
         public bool OnRenderFrame()
         {
+            if (Mods.Network.DemoPlayback.PreparePresentation(this) is { } theatre)
+                return theatre.OnRenderFrame();
+            if (Mods.KillCam.Presentation(this) is { } historical)
+            {
+                try { return historical.OnRenderFrame(); }
+                catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+                { Mods.KillCam.FailPresentation(ex); OnDrawFrame(); }
+            }
             if (Size.X <= 0 || Size.Y <= 0)
             {
                 return !_exiting;
@@ -2821,11 +2900,11 @@ namespace MphRead
             // After the world and before the window: the preview is a corner
             // of the scene target with its own camera in it, so the HUD's own
             // panel is drawn over it afterwards with a hole where this lands.
-            ModDrawPreview();
-            if (PlayerEntity.Main.LoadFlags.TestFlag(LoadFlags.Active) && CameraMode == CameraMode.Player)
+            if (!Services.IsReplica) ModDrawPreview();
+            if (this.Players.Main.LoadFlags.TestFlag(LoadFlags.Active) && CameraMode == CameraMode.Player)
             {
                 SetHudLayerUniforms();
-                PlayerEntity.Main.DrawHudModels();
+                this.Players.Main.DrawHudModels();
                 UnsetHudLayerUniforms();
             }
             else if (ScoreboardOverFreeCamera)
@@ -2833,7 +2912,7 @@ namespace MphRead
                 // Only the filter that dims the scene behind the scoreboard;
                 // PlayerHud draws nothing else on the free camera.
                 SetHudLayerUniforms();
-                PlayerEntity.Main.DrawHudModels();
+                this.Players.Main.DrawHudModels();
                 UnsetHudLayerUniforms();
             }
 
@@ -2867,11 +2946,16 @@ namespace MphRead
 
             BeginHudPass();
             GL.Uniform4(_shaderLocations.FadeColor, _fadeColor, _fadeColor, _fadeColor, 0);
-            if (PlayerEntity.Main.LoadFlags.TestFlag(LoadFlags.Active) && CameraMode == CameraMode.Player)
+            if (Services.IsReplica && ReplayPresentationHud != null)
             {
-                if (GameState.MenuPause)
+                ReplayPresentationHud(this);
+                return true;
+            }
+            if (this.Players.Main.LoadFlags.TestFlag(LoadFlags.Active) && CameraMode == CameraMode.Player)
+            {
+                if (this.GameState.MenuPause)
                 {
-                    PlayerEntity.Main.DrawPauseMenuBackground();
+                    this.Players.Main.DrawPauseMenuBackground();
                 }
                 DrawHudLayer(Layer4Info); // ice layer
                 DrawHudLayer(Layer3Info); // helmet back
@@ -2881,15 +2965,15 @@ namespace MphRead
                 BeginHudMask(Layer1Info.MaskId);
                 try
                 {
-                    PlayerEntity.Main.DrawHudObjects();
+                    this.Players.Main.DrawHudObjects();
                 }
                 finally
                 {
                     EndHudMask();
                 }
-                if (GameState.MenuPause)
+                if (this.GameState.MenuPause)
                 {
-                    PlayerEntity.Main.DrawPauseMenuForeground();
+                    this.Players.Main.DrawPauseMenuForeground();
                 }
             }
             else if (ScoreboardOverFreeCamera)
@@ -2899,18 +2983,21 @@ namespace MphRead
                 // anybody's eyes. PlayerHud decides that; this only lets it
                 // be asked, since the HUD is otherwise not drawn at all while
                 // the camera is not a player's.
-                PlayerEntity.Main.DrawHudObjects();
+                this.Players.Main.DrawHudObjects();
             }
             // Replay controls and timeline belong to the presentation, not to
             // a particular hunter's visor. Keep them visible in chase, orbit
             // and free-camera modes as well as first-person playback.
-            Mods.Replay.ReplayHud.Draw(this);
-            Mods.Input.AimAssist.AimAssistDebug.Draw(this);
+            if (!Services.IsReplica || Mods.Network.DemoPlayback.Owns(this))
+            {
+                Mods.Replay.ReplayHud.Draw(this);
+                Mods.Input.AimAssist.AimAssistDebug.Draw(this);
+            }
             if (_movieFrameIndex != -1)
             {
                 DrawMovieFrame();
             }
-            if (PlayerEntity.Main.LoadFlags.TestFlag(LoadFlags.Active) && CameraMode == CameraMode.Player && _fadeType != FadeType.None)
+            if (this.Players.Main.LoadFlags.TestFlag(LoadFlags.Active) && CameraMode == CameraMode.Player && _fadeType != FadeType.None)
             {
                 float percent = _fadePercent;
                 if (_fadeIn)
@@ -3003,17 +3090,14 @@ namespace MphRead
                 {
                     foreach (KeyValuePair<int, (int BindingId, bool OnlyOpaque)> kvp in map)
                     {
-                        GL.DeleteTexture(kvp.Value.BindingId);
+                        ReleaseTexture(kvp.Value.BindingId);
                         _mipmappedTextures.Remove(kvp.Value.BindingId);
                     }
                     _texPalMap.Remove(model.Id);
                 }
-                foreach (Mesh mesh in model.Meshes)
-                {
-                    GL.DeleteLists(mesh.ListId, 1);
-                }
+                if (_modelLeases.Remove(model)) Mods.Render.SharedModelResources.Release(model);
             }
-            Read.RemoveModel(model.Name, model.FirstHunt);
+            if (!Services.IsReplica) Read.RemoveModel(model.Name, model.FirstHunt);
         }
 
         private void TransformCamera()
@@ -3034,78 +3118,60 @@ namespace MphRead
             {
                 if (_cameraMode == CameraMode.Player)
                 {
-                    if (Mods.KillCam.TryGetHistoricalCamera(out Mods.KillCamCameraPose killCamera))
-                    {
-                        Vector3 target = killCamera.Target;
-                        if ((target - killCamera.Position).LengthSquared < 0.000001f)
-                            target = killCamera.Position + Vector3.UnitZ;
-                        Vector3 up = killCamera.Up.LengthSquared < 0.000001f
-                            ? Vector3.UnitY : killCamera.Up;
-                        _viewMatrix = Matrix4.LookAt(killCamera.Position, target, up);
-                        float fov = killCamera.Fov > 0
-                            ? killCamera.Fov : Mods.RenderOptions.DefaultFov;
-                        _viewModelFov = MathHelper.DegreesToRadians(
-                            Math.Clamp(fov, 1f, 175f));
-                        _cameraFov = MathHelper.DegreesToRadians(
-                            Mods.RenderOptions.ScaleCameraFov(fov));
-                    }
-                    else
-                    {
-                        PlayerEntity main = PlayerEntity.Main;
-                        CameraInfo camera = main.CameraInfo;
-                        main.ModInvalidateFirstPersonRenderPose();
-                        double presentationAlpha = Mods.Render.FrameTiming.PresentationAlpha;
-                        bool replayCamera = main.ModReplayPresentationCamera(
-                            presentationAlpha, out Matrix4 replayView,
-                            out _, out float replayFov);
-                        bool interpolatedCamera = Mods.Render.FrameTiming.Active
-                            && (Mods.SpectatorMode.IsSpectating || Mods.Network.DemoPlayback.IsActive);
+                    PlayerEntity main = this.Players.Main;
+                    CameraInfo camera = main.CameraInfo;
+                    main.ModInvalidateFirstPersonRenderPose();
+                    double presentationAlpha = Services.IsReplica ? ReplayRenderAlpha : Mods.Render.FrameTiming.PresentationAlpha;
+                    bool replayCamera = main.ModReplayPresentationCamera(
+                        presentationAlpha, out Matrix4 replayView,
+                        out _, out float replayFov);
+                    bool interpolatedCamera = Services.IsReplica || Mods.Render.FrameTiming.Active
+                        && (Mods.SpectatorMode.IsSpectating || Mods.Network.DemoPlayback.IsActive);
 
-                        _viewMatrix = replayCamera
-                            ? replayView
-                            : interpolatedCamera
-                                ? camera.ModGetDrawView(presentationAlpha)
-                                : camera.ViewMatrix;
+                    _viewMatrix = replayCamera
+                        ? replayView
+                        : interpolatedCamera
+                            ? camera.ModGetDrawView(presentationAlpha)
+                            : camera.ViewMatrix;
 
-                        bool firstPersonPose = false;
-                        float firstPersonFov = camera.Fov;
-                        if (!replayCamera && !interpolatedCamera
-                            && !Mods.PauseMenu.Open && !GameState.MenuPause
-                            && !GameState.DialogPause && !Mods.EndScreen.Available)
+                    bool firstPersonPose = false;
+                    float firstPersonFov = camera.Fov;
+                    if (!replayCamera && !interpolatedCamera
+                        && !Mods.PauseMenu.Open && !this.GameState.MenuPause
+                        && !this.GameState.DialogPause && !Mods.EndScreen.Available)
+                    {
+                        // One preparation call owns the render-time pointer/stick
+                        // delta for both the camera and the camera-attached arm
+                        // cannon. The gun draw later consumes the pose cached here;
+                        // it does not poll input or calculate another delta.
+                        (float padX, float padY) = Mods.Input.GamepadInput.RenderAim(
+                            Mods.Render.FrameTiming.Alpha);
+                        if (main.ModPrepareFirstPersonRenderPose(
+                                presentationAlpha, _lateAimX, _lateAimY, padX, padY,
+                                out Matrix4 firstPersonView, out _, out float renderFov))
                         {
-                            // One preparation call owns the render-time pointer/stick
-                            // delta for both the camera and the camera-attached arm
-                            // cannon. The gun draw later consumes the pose cached here;
-                            // it does not poll input or calculate another delta.
-                            (float padX, float padY) = Mods.Input.GamepadInput.RenderAim(
-                                Mods.Render.FrameTiming.Alpha);
-                            if (main.ModPrepareFirstPersonRenderPose(
-                                    presentationAlpha, _lateAimX, _lateAimY, padX, padY,
-                                    out Matrix4 firstPersonView, out _, out float renderFov))
-                            {
-                                _viewMatrix = firstPersonView;
-                                firstPersonFov = renderFov;
-                                firstPersonPose = true;
-                            }
+                            _viewMatrix = firstPersonView;
+                            firstPersonFov = renderFov;
+                            firstPersonPose = true;
                         }
-
-                        float authoredFov = replayCamera
-                            ? replayFov
-                            : interpolatedCamera
-                                ? camera.ModGetDrawFov(presentationAlpha)
-                                : firstPersonPose ? firstPersonFov : camera.Fov;
-                        float fov = authoredFov > 0
-                            ? authoredFov
-                            : Mods.RenderOptions.DefaultFov;
-                        // Keep the camera-authored projection for first-person
-                        // geometry. The player's FOV widens the world, not the arm
-                        // cannon attached to the camera.
-                        _viewModelFov = MathHelper.DegreesToRadians(Math.Clamp(fov, 1f, 175f));
-                        // Preserve zoom/scope magnification in projection space,
-                        // where tan(FOV / 2) is the quantity that scales linearly.
-                        fov = Mods.RenderOptions.ScaleCameraFov(fov);
-                        _cameraFov = MathHelper.DegreesToRadians(fov);
                     }
+
+                    float authoredFov = replayCamera
+                        ? replayFov
+                        : interpolatedCamera
+                            ? camera.ModGetDrawFov(presentationAlpha)
+                            : firstPersonPose ? firstPersonFov : camera.Fov;
+                    float fov = authoredFov > 0
+                        ? authoredFov
+                        : Mods.RenderOptions.DefaultFov;
+                    // Keep the camera-authored projection for first-person
+                    // geometry. The player's FOV widens the world, not the arm
+                    // cannon attached to the camera.
+                    _viewModelFov = MathHelper.DegreesToRadians(Math.Clamp(fov, 1f, 175f));
+                    // Preserve zoom/scope magnification in projection space,
+                    // where tan(FOV / 2) is the quantity that scales linearly.
+                    fov = Mods.RenderOptions.ScaleCameraFov(fov);
+                    _cameraFov = MathHelper.DegreesToRadians(fov);
                 }
                 else
                 {
@@ -3144,36 +3210,29 @@ namespace MphRead
             }
             else if (_cameraMode == CameraMode.Player)
             {
-                if (Mods.KillCam.TryGetHistoricalCamera(out Mods.KillCamCameraPose killCamera))
+                PlayerEntity main = this.Players.Main;
+                CameraInfo camera = main.CameraInfo;
+                if (main.ModReplayPresentationCamera(
+                    Services.IsReplica ? ReplayRenderAlpha : Mods.Render.FrameTiming.PresentationAlpha,
+                    out _, out Vector3 replayPosition, out _))
                 {
-                    _cameraPosition = killCamera.Position;
+                    _cameraPosition = replayPosition;
+                }
+                else if (main.ModGetFirstPersonRenderCameraPosition(
+                    out Vector3 firstPersonPosition))
+                {
+                    // TransformCamera prepared this exact position together
+                    // with the view matrix. Frustum/culling must not silently
+                    // fall back to a different simulation timestamp.
+                    _cameraPosition = firstPersonPosition;
                 }
                 else
                 {
-                    PlayerEntity main = PlayerEntity.Main;
-                    CameraInfo camera = main.CameraInfo;
-                    if (main.ModReplayPresentationCamera(
-                        Mods.Render.FrameTiming.PresentationAlpha,
-                        out _, out Vector3 replayPosition, out _))
-                    {
-                        _cameraPosition = replayPosition;
-                    }
-                    else if (main.ModGetFirstPersonRenderCameraPosition(
-                        out Vector3 firstPersonPosition))
-                    {
-                        // TransformCamera prepared this exact position together
-                        // with the view matrix. Frustum/culling must not silently
-                        // fall back to a different simulation timestamp.
-                        _cameraPosition = firstPersonPosition;
-                    }
-                    else
-                    {
-                        bool interpolate = Mods.Render.FrameTiming.Active
-                            && (Mods.SpectatorMode.IsSpectating || Mods.Network.DemoPlayback.IsActive);
-                        _cameraPosition = interpolate
-                            ? camera.ModGetDrawPosition(Mods.Render.FrameTiming.PresentationAlpha)
-                            : camera.Position;
-                    }
+                    bool interpolate = Services.IsReplica || Mods.Render.FrameTiming.Active
+                        && (Mods.SpectatorMode.IsSpectating || Mods.Network.DemoPlayback.IsActive);
+                    _cameraPosition = interpolate
+                        ? camera.ModGetDrawPosition(Services.IsReplica ? ReplayRenderAlpha : Mods.Render.FrameTiming.PresentationAlpha)
+                        : camera.Position;
                 }
             }
         }
@@ -3271,11 +3330,11 @@ namespace MphRead
             }
             for (int i = 0; i < _effectElementMax; i++)
             {
-                _inactiveElements.Enqueue(new EffectElementEntry());
+                _inactiveElements.Enqueue(new EffectElementEntry { Random = Random });
             }
             for (int i = 0; i < _effectParticleMax; i++)
             {
-                _inactiveParticles.Enqueue(new EffectParticle());
+                _inactiveParticles.Enqueue(new EffectParticle { Random = Random });
             }
             for (int i = 0; i < _singleParticleMax; i++)
             {
@@ -3334,9 +3393,9 @@ namespace MphRead
                 entry.Color = color;
                 entry.Alpha = alpha;
                 entry.Scale = scale;
-                if (!_texPalMap.ContainsKey(entry.ParticleDefinition.Model.Id))
+                if (!_texPalMap.ContainsKey(OwnModel(entry.ParticleDefinition.Model).Id))
                 {
-                    InitTextures(entry.ParticleDefinition.Model);
+                    InitTextures(OwnModel(entry.ParticleDefinition.Model));
                 }
             }
         }
@@ -3398,6 +3457,9 @@ namespace MphRead
             entry.EffectId = effect.Id;
             entry.EffectName = effect.Name;
             entry.ElementName = element.Name;
+            entry.DefinitionIndex = -1;
+            for (int i = 0; i < effect.Elements.Count; i++)
+                if (ReferenceEquals(effect.Elements[i], element)) { entry.DefinitionIndex = i; break; }
             entry.BufferTime = element.BufferTime;
             // todo: FPS stuff
             entry.CreationTime = _elapsedTime + (child ? (1 / 60f) : 0);
@@ -3483,7 +3545,7 @@ namespace MphRead
             foreach (EffectElement element in effect.Elements)
             {
                 // the model may already be loaded; meshes with a ListId will be skipped
-                Model model = Read.GetModelInstance(element.ModelName).Model;
+                Model model = GetModelInstance(element.ModelName).Model;
                 InitTextures(model);
                 GenerateLists(model, isRoom: false);
             }
@@ -3549,16 +3611,17 @@ namespace MphRead
                 for (int j = 0; j < elementDef.Particles.Count; j++)
                 {
                     Particle particleDef = elementDef.Particles[j];
+                    Model particleModel = OwnModel(particleDef.Model);
                     if (j == 0)
                     {
-                        if (!_texPalMap.ContainsKey(particleDef.Model.Id))
+                        if (!_texPalMap.ContainsKey(particleModel.Id))
                         {
-                            InitTextures(particleDef.Model);
+                            InitTextures(particleModel);
                         }
-                        element.Model = particleDef.Model;
+                        element.Model = particleModel;
                     }
-                    element.Nodes.Add(particleDef.Node);
-                    Material material = particleDef.Model.Materials[particleDef.MaterialId];
+                    element.Nodes.Add(OwnParticleNode(particleDef));
+                    Material material = particleModel.Materials[particleDef.MaterialId];
                     // Zero when there is no GL to have bound one. The effect
                     // itself is still spawned and still advanced: an effect is
                     // visual, but *whether* one is running is simulation state
@@ -3567,7 +3630,7 @@ namespace MphRead
                     // clients -- which is the one thing running the real
                     // engine on the server exists to avoid.
                     material.TextureBindingId = Mods.Headless.Active ? 0
-                        : _texPalMap[particleDef.Model.Id].Get(material.TextureId, material.PaletteId, 0).BindingId;
+                        : _texPalMap[particleModel.Id].Get(material.TextureId, material.PaletteId, 0).BindingId;
                     element.TextureBindingIds.Add(material.TextureBindingId);
                 }
             }
@@ -4312,13 +4375,13 @@ namespace MphRead
             {
                 return;
             }
-            bool playerActive = PlayerEntity.Main.LoadFlags.TestFlag(LoadFlags.Active);
-            if (!GameState.DialogPause)
+            bool playerActive = this.Players.Main.LoadFlags.TestFlag(LoadFlags.Active);
+            if (!this.GameState.DialogPause)
             {
                 if (playerActive)
                 {
-                    PlayerEntity.Main.UpdateTimedSounds();
-                    PlayerEntity.Main.ProcessHudMessageQueue();
+                    this.Players.Main.UpdateTimedSounds();
+                    this.Players.Main.ProcessHudMessageQueue();
                 }
                 foreach (EntityBase entity in Entities)
                 {
@@ -4330,14 +4393,14 @@ namespace MphRead
                         RemoveEntity(entity);
                     }
                 }
-                PlayerEntity.PlayerAiData.UpdateVisibilityAndGlobals(this);
-                for (int i = 0; i < PlayerEntity.Players.Count; i++)
+                if (!Services.IsReplica) PlayerEntity.PlayerAiData.UpdateVisibilityAndGlobals(this);
+                for (int i = 0; i < this.Players.Items.Count; i++)
                 {
-                    PlayerEntity.Players[i].ClosestNode = null;
+                    this.Players.Items[i].ClosestNode = null;
                 }
-                for (int i = 0; i < PlayerEntity.Players.Count; i++)
+                for (int i = 0; i < this.Players.Items.Count; i++)
                 {
-                    PlayerEntity player = PlayerEntity.Players[i];
+                    PlayerEntity player = this.Players.Items[i];
                     if (player.IsBot && player.Health != 0)
                     {
                         player.AiData.Process();
@@ -4345,24 +4408,24 @@ namespace MphRead
                 }
                 if (playerActive)
                 {
-                    PlayerEntity.Main.ProcessModeHud();
+                    this.Players.Main.ProcessModeHud();
                 }
-                GameState.UpdateFrame(this);
-                GameState.UpdateState();
+                this.GameState.UpdateFrame(this);
+                this.GameState.UpdateState();
             }
-            else if (GameState.SinglePlayer)
+            else if (this.GameState.SinglePlayer)
             {
                 if (playerActive)
                 {
-                    PlayerEntity.Main.UpdateDialogs();
+                    this.Players.Main.UpdateDialogs();
                 }
-                GameState.UpdateFrame(this);
+                this.GameState.UpdateFrame(this);
             }
         }
 
         private void GetDrawItems()
         {
-            if (GameState.MenuPause)
+            if (this.GameState.MenuPause)
             {
                 // The pause map's own animations -- the spinning octoliths,
                 // the dialog button -- advance from Scene.FrameTime inside the
@@ -4377,7 +4440,7 @@ namespace MphRead
                 float simFrameTime = _frameTime;
                 _frameTime = 1 / 60f * _pendingEffectSteps;
                 _pendingEffectSteps = 0;
-                PlayerEntity.Main.GetPauseMapRenderItems();
+                this.Players.Main.GetPauseMapRenderItems();
                 _frameTime = simFrameTime;
                 return;
             }
@@ -4415,7 +4478,7 @@ namespace MphRead
                 }
             }
 
-            if (ProcessFrame && GameState.MatchState == MatchState.InProgress && !GameState.DialogPause)
+            if (ProcessFrame && this.GameState.MatchState == MatchState.InProgress && !this.GameState.DialogPause)
             {
                 for (int i = 0; i < _pendingEffectSteps; i++)
                 {
@@ -4465,7 +4528,7 @@ namespace MphRead
             }
             // Last, and on its own: nothing else may add an item while the
             // preview is being collected.
-            ModCollectPreview();
+            if (!Services.IsReplica) ModCollectPreview();
         }
 
         private void UpdateUniforms()
@@ -4607,14 +4670,14 @@ namespace MphRead
         {
             _fadeType = FadeType.None;
             DoCleanup();
-            if (GameState.SinglePlayer)
+            if (this.GameState.SinglePlayer)
             {
                 Menu.NeededSave = enteringShip ? Menu.SaveFromShip : Menu.SaveFromExit;
                 if (enteringShip)
                 {
-                    GameState.StorySave.Health = GameState.StorySave.HealthMax;
-                    GameState.StorySave.Ammo[0] = GameState.StorySave.AmmoMax[0];
-                    GameState.StorySave.Ammo[1] = GameState.StorySave.AmmoMax[1];
+                    this.GameState.StorySave.Health = this.GameState.StorySave.HealthMax;
+                    this.GameState.StorySave.Ammo[0] = this.GameState.StorySave.AmmoMax[0];
+                    this.GameState.StorySave.Ammo[1] = this.GameState.StorySave.AmmoMax[1];
                 }
             }
             _close.Invoke();
@@ -4626,9 +4689,15 @@ namespace MphRead
             {
                 _exiting = true;
                 _room?.CancelTransition();
-                PlatformEntity.DestroyBeams();
-                EnemyInstanceEntity.DestroyBeams();
-                Sound.Sfx.ShutDown();
+                Mods.Network.DemoPlayback.Release(this);
+                if (!Services.IsReplica && !SideScene && ReferenceEquals(MphRead.GameState.Current, this.GameState))
+                {
+                    Mods.KillCam.Reset();
+                    Mods.Network.ReplayCapture.ReleaseWorld();
+                }
+                PlatformEntity.DestroyBeams(this);
+                EnemyInstanceEntity.DestroyBeams(this);
+                if (Services.AllowsPresentationSideEffects) Sound.Sfx.ShutDown();
                 OutputStop();
                 _decoderCts?.Cancel();
                 Selection.Clear();
@@ -4656,31 +4725,27 @@ namespace MphRead
         /// </summary>
         public void UnloadGl()
         {
+            ReleaseReplayOutput();
             if (Mods.Headless.Active)
             {
                 return;
             }
-            foreach (TextureMap map in _texPalMap.Values)
+#if MPHREAD_SHELL
+            DisposeEditorMeshes();
+#endif
+            if (_ownedTextures != null)
             {
-                foreach (KeyValuePair<int, (int BindingId, bool OnlyOpaque)> kvp in map)
-                {
-                    GL.DeleteTexture(kvp.Value.BindingId);
-                }
+                foreach (int texture in _ownedTextures) GL.DeleteTexture(texture);
+                _ownedTextures.Clear();
             }
             _texPalMap.Clear();
-            _mipmappedTextures.Clear();
-            foreach (Model model in Read.CachedModels)
+            _mipmappedTextures?.Clear();
+            if (_modelLeases != null)
             {
-                foreach (Mesh mesh in model.Meshes)
-                {
-                    if (mesh.ListId != 0)
-                    {
-                        GL.DeleteLists(mesh.ListId, 1);
-                        mesh.ListId = 0;
-                    }
-                }
+                foreach (Model model in _modelLeases) Mods.Render.SharedModelResources.Release(model);
+                _modelLeases.Clear();
             }
-            Read.ClearCache();
+            if (Services?.IsReplica != true) Read.ClearCache();
             DisposePlayerOutlines();
             // The cel target also owns a reference to _screenTexture. Release
             // it before deleting that texture in the shell's persistent context.
@@ -4744,9 +4809,9 @@ namespace MphRead
                 if (_movieSettings.AfterPosition.HasValue)
                 {
                     Vector3 position = _movieSettings.AfterPosition.Value;
-                    Vector3 facing = _movieSettings.AfterFacing ?? PlayerEntity.Main.FacingVector;
+                    Vector3 facing = _movieSettings.AfterFacing ?? this.Players.Main.FacingVector;
                     NodeRef newNodeRef = GetNodeRefByName("rmMain");
-                    PlayerEntity.Main.Reposition(position, facing, newNodeRef);
+                    this.Players.Main.Reposition(position, facing, newNodeRef);
                 }
                 StopMovie();
             }
@@ -5149,9 +5214,9 @@ namespace MphRead
 
         private void SetPauseMenuUniforms()
         {
-            if (GameState.MenuPause && _cameraMode == CameraMode.Player)
+            if (this.GameState.MenuPause && _cameraMode == CameraMode.Player)
             {
-                (Matrix4 viewMtx, Matrix4 orthoMtx) = PlayerEntity.Main.GetPauseMapMatrices();
+                (Matrix4 viewMtx, Matrix4 orthoMtx) = this.Players.Main.GetPauseMapMatrices();
                 GL.UniformMatrix4(_shaderLocations.ViewMatrix, transpose: false, ref viewMtx);
                 GL.UniformMatrix4(_shaderLocations.ProjectionMatrix, transpose: false, ref orthoMtx);
             }
@@ -6071,9 +6136,9 @@ namespace MphRead
         /// somebody watching from the map is exactly who wants to read one,
         /// so this is the one thing that reaches past that.
         /// </summary>
-        private static bool ScoreboardOverFreeCamera => Mods.SpectatorMode.FreeCamera
+        private bool ScoreboardOverFreeCamera => !Services.IsReplica && Mods.SpectatorMode.FreeCamera
             && Mods.SpectatorMode.ShowScoreboard
-            && PlayerEntity.Main.LoadFlags.TestFlag(LoadFlags.Active);
+            && Players.Main.LoadFlags.TestFlag(LoadFlags.Active);
 
 
         /// <summary>
@@ -6106,8 +6171,8 @@ namespace MphRead
             }
             // Starts where the view already was, so turning it on is a change
             // of control and not a cut to somewhere else in the room.
-            _cameraPosition = PlayerEntity.Main.CameraInfo.Position;
-            _cameraFacing = PlayerEntity.Main.CameraInfo.Facing;
+            _cameraPosition = this.Players.Main.CameraInfo.Position;
+            _cameraFacing = this.Players.Main.CameraInfo.Facing;
             if (_cameraFacing.LengthSquared < 0.0001f)
             {
                 _cameraFacing = -Vector3.UnitZ;
@@ -6949,7 +7014,7 @@ namespace MphRead
 
         private void OutputGetBotAi()
         {
-            PlayerEntity player = PlayerEntity.Players[_showBotAiSlot];
+            PlayerEntity player = this.Players.Items[_showBotAiSlot];
             _sb.AppendLine();
             _sb.AppendLine($"Bot AI slot: {_showBotAiSlot} (J: Next slot, Shift+J: Previous slot)");
             if (!player.LoadFlags.TestFlag(LoadFlags.SlotActive) && !player.LoadFlags.TestFlag(LoadFlags.Active))
@@ -7332,7 +7397,7 @@ namespace MphRead
         /// property: making it one would put a question mark on two hundred
         /// call sites to describe a state only the launcher can be in.
         /// </summary>
-        public Scene Scene => _scene!;
+        public Scene Scene => _scene == null ? null! : Mods.Network.DemoPlayback.Presentation(_scene) ?? _scene;
 
         /// <summary>Whether a match is loaded. False while the launcher is up.</summary>
         public bool HasScene => _scene != null;
@@ -7870,36 +7935,6 @@ namespace MphRead
                 return;
             }
 #endif
-            if (Mods.Network.DemoPlayback.IsActive
-                && Mods.Network.ReplayController.TakeRebuild(out uint target, out bool resume))
-            {
-                if (Mods.Replay.ReplayCheckpointManager.TryRestore(
-                    Scene, target, resume, out uint checkpointFrame))
-                {
-                    Console.WriteLine($"[replay] restored checkpoint {checkpointFrame} for seek to {target}");
-                    Mods.Network.ReplayController.ContinueSeek(target, resume);
-                    Mods.Render.FrameTiming.Reset();
-                }
-                else
-                {
-                    string path = Mods.Network.DemoPlayback.CurrentPath!;
-                    EndScene();
-                    Mods.Network.DemoPlayback.Stop();
-                    Mods.SpectatorMode.Reset();
-                    var plan = new Mods.Launcher.LaunchPlan
-                    {
-                        Kind = Mods.Launcher.LaunchKind.Demo,
-                        DemoPath = path
-                    };
-                    if (!Mods.Launcher.MatchStart.Begin(this, new MenuSettings(), plan))
-                    {
-                        EndOrClose();
-                        return;
-                    }
-                    Mods.Network.ReplayController.ContinueSeek(target, resume);
-                    Mods.Render.FrameTiming.Reset();
-                }
-            }
             // The pause menu wants the pointer back, and so does the results
             // screen: its hunter picker is something you click, and a grabbed
             // cursor has no position on screen to click with.

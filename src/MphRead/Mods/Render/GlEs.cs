@@ -965,6 +965,15 @@ namespace MphRead.Mods.Render
         /// are the driver's own here -- unlike textures, which GlEs hands out
         /// itself -- so both pass straight through.
         /// </summary>
+        public static void BlitFramebuffer(int sourceX0, int sourceY0, int sourceX1, int sourceY1,
+            int destinationX0, int destinationY0, int destinationX1, int destinationY1,
+            ClearBufferMask mask, BlitFramebufferFilter filter)
+        {
+            ES.GL.BlitFramebuffer(sourceX0, sourceY0, sourceX1, sourceY1,
+                destinationX0, destinationY0, destinationX1, destinationY1,
+                (ES.ClearBufferMask)(int)mask, (ES.BlitFramebufferFilter)(int)filter);
+        }
+
         public static void DeleteFramebuffer(int framebuffer)
         {
             ES.GL.DeleteFramebuffer(framebuffer);

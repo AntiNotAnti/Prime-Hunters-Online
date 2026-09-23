@@ -33,7 +33,7 @@ namespace MphRead.Entities
             _navTextTimer = 0;
             _prevScrollingChars = 0;
             _drawPauseState = 1;
-            if (GameState.InRoomTransition)
+            if (_scene.GameState.InRoomTransition)
             {
                 _navLoading = true;
             }
@@ -52,8 +52,8 @@ namespace MphRead.Entities
             _pausedPrevBindingId5 = _scene.Layer5Info.BindingId;
             for (int i = 0; i < 8; i++)
             {
-                int start = (int)Rng.GetRandomInt1(20);
-                int afterAnim = (int)Rng.GetRandomInt1(6);
+                int start = (int)_scene.Random.GetRandomInt1(20);
+                int afterAnim = (int)_scene.Random.GetRandomInt1(6);
                 _mapOctolithInsts[i].SetAnimation(start, 35, 36, afterAnim, HudObjectLoopType.Offset);
             }
             _mapLostOctolithInst.SetAnimation(0, 19, 20, loop: true);
@@ -184,7 +184,7 @@ namespace MphRead.Entities
             _scene.Layer3Info.BindingId = _pausedPrevBindingId3;
             _scene.Layer4Info.BindingId = _pausedPrevBindingId4;
             _scene.Layer5Info.BindingId = _pausedPrevBindingId5;
-            if (GameState.DialogPause)
+            if (_scene.GameState.DialogPause)
             {
                 UpdateDialogs();
             }
@@ -232,7 +232,7 @@ namespace MphRead.Entities
                     for (int k = 0; k < navMapRoomSymbols.Length; k++)
                     {
                         NavMapRoomSymbols roomSymbols = navMapRoomSymbols[k];
-                        if (!GameState.StorySave.CheckVisitedRoom(roomSymbols.Id)
+                        if (!_scene.GameState.StorySave.CheckVisitedRoom(roomSymbols.Id)
                             || !String.Equals(roomSymbols.Name, roomNode.Name, StringComparison.OrdinalIgnoreCase))
                         {
                             continue;
@@ -298,10 +298,10 @@ namespace MphRead.Entities
                 for (int i = 0; i < 8; i++)
                 {
                     (short posX, short posY) = _mapIconPositions[i];
-                    if ((GameState.StorySave.Areas & (1 << (i / 2 * 2))) != 0)
+                    if ((_scene.GameState.StorySave.Areas & (1 << (i / 2 * 2))) != 0)
                     {
-                        bool hasOctolith = (GameState.StorySave.CurrentOctoliths & (1 << i)) != 0;
-                        uint lostHunter = (GameState.StorySave.LostOctoliths >> (i * 4)) & 15;
+                        bool hasOctolith = (_scene.GameState.StorySave.CurrentOctoliths & (1 << i)) != 0;
+                        uint lostHunter = (_scene.GameState.StorySave.LostOctoliths >> (i * 4)) & 15;
                         if (hasOctolith || lostHunter < 8)
                         {
                             HudObjectInstance octoInst = _mapOctolithInsts[i];
@@ -323,13 +323,13 @@ namespace MphRead.Entities
                         {
                             _mapTeleporterInst.PositionX = (posX - _mapTeleporterInst.Width / 2) / 256f;
                             _mapTeleporterInst.PositionY = (posY - _mapTeleporterInst.Height / 2) / 192f;
-                            int teleporterIndex = (GameState.StorySave.Artifacts & (7 << artifactIndex)) >> artifactIndex == 7 ? 1 : 0;
+                            int teleporterIndex = (_scene.GameState.StorySave.Artifacts & (7 << artifactIndex)) >> artifactIndex == 7 ? 1 : 0;
                             _mapTeleporterInst.SetIndex(teleporterIndex, _scene);
                             _scene.DrawHudObject(_mapTeleporterInst);
                             HudObjectInstance dotInst = _mapArtifactDotInsts[i];
                             for (int j = 0; j < 3; j++)
                             {
-                                if ((GameState.StorySave.Artifacts & (1 << (artifactIndex + j))) != 0)
+                                if ((_scene.GameState.StorySave.Artifacts & (1 << (artifactIndex + j))) != 0)
                                 {
                                     (short offsetX, short offsetY) = _mapDotOffsets[j];
                                     dotInst.PositionX = (posX + offsetX - dotInst.Width / 2) / 256f;
@@ -498,7 +498,7 @@ namespace MphRead.Entities
                 {
                     _navTextTimer += _scene.FrameTime;
                 }
-                if (_navTextTimer >= 60 / 30f && !GameState.InRoomTransition)
+                if (_navTextTimer >= 60 / 30f && !_scene.GameState.InRoomTransition)
                 {
                     SetUpMenuPauseMapNav();
                     _navTextTimer = 0;
@@ -530,7 +530,7 @@ namespace MphRead.Entities
 
         private void ProcessPauseMenuInput()
         {
-            if (GameState.PausePrevented)
+            if (_scene.GameState.PausePrevented)
             {
                 return;
             }
@@ -545,12 +545,12 @@ namespace MphRead.Entities
             {
                 if (CheckButtonPressed(DialogButton.Yes))
                 {
-                    GameState.PausePrevented = true;
+                    _scene.GameState.PausePrevented = true;
                     _soundSource.PlayFreeSfx(SfxId.QUIT_GAME);
                     _soundSource.PlayFreeSfx(SfxId.RETURN_TO_SHIP_YES);
                     _drawPauseState = 0;
                     ResetPauseQuitDisplay();
-                    Music.Stop(20 / 30f);
+                    if (_scene.Services.AllowsPresentationSideEffects) Music.Stop(20 / 30f);
                     _scene.SetFade(FadeType.FadeOutBlack, 20 / 30f, overwrite: true, AfterFade.Exit);
                     return;
                 }
@@ -751,14 +751,14 @@ namespace MphRead.Entities
         {
             if (node.Name.StartsWith("Con") && node.Name.Length >= 5 && Int32.TryParse(node.Name.AsSpan(3, 2), out int id) && id >= 1)
             {
-                return GameState.StorySave.CheckVisitedConnector(id - 1, _scene.AreaId);
+                return _scene.GameState.StorySave.CheckVisitedConnector(id - 1, _scene.AreaId);
             }
             for (int i = 27; i <= 92; i++)
             {
                 RoomMetadata meta = Metadata.GetRoomById(i)!;
                 if (String.Compare(node.Name, meta.Name, StringComparison.OrdinalIgnoreCase) == 0)
                 {
-                    return GameState.StorySave.CheckVisitedRoom(i);
+                    return _scene.GameState.StorySave.CheckVisitedRoom(i);
                 }
             }
             return false;
@@ -841,7 +841,7 @@ namespace MphRead.Entities
                         bool locked = entitySymbol.Locked;
                         if (entitySymbol.Id != -1)
                         {
-                            locked = GameState.StorySave.GetRoomState(roomSymbols.Id, entitySymbol.Id) != 0;
+                            locked = _scene.GameState.StorySave.GetRoomState(roomSymbols.Id, entitySymbol.Id) != 0;
                         }
                         int palette = 0;
                         if (locked)

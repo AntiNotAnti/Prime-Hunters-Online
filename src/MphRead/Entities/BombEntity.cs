@@ -30,6 +30,13 @@ namespace MphRead.Entities
         public EffectEntry? Effect { get; private set; }
         private ModelInstance? _trailModel = null;
         private int _bindingId = 0;
+        internal void ReplayBindResources()
+        {
+            if (_trailModel == null) { _bindingId = 0; return; }
+            _scene.LoadModel(_trailModel.Model);
+            Material material = _trailModel.Model.Materials[0];
+            _bindingId = _scene.BindGetTexture(_trailModel.Model, material.TextureId, material.PaletteId, Math.Max(0, Recolor - 1));
+        }
         private ulong _lockjawVisualTick;
 
         // Map-audit hooks stay inert outside -maptest -drawrate checks. The
@@ -56,11 +63,11 @@ namespace MphRead.Entities
             {
                 if (Recolor == 0)
                 {
-                    _trailModel = Read.GetModelInstance("arcWelder");
+                    _trailModel = _scene.GetModelInstance("arcWelder");
                 }
                 else
                 {
-                    _trailModel = Read.GetModelInstance("arcWelder1");
+                    _trailModel = _scene.GetModelInstance("arcWelder1");
                 }
                 Countdown = 900 * 2;
                 // bombStartSylux, bombStartSyluxR, bombStartSyluxP, bombStartSyluxW, bombStartSyluxO, or bombStartSyluxG
@@ -81,7 +88,7 @@ namespace MphRead.Entities
             else if (BombType == BombType.MorphBall)
             {
                 Countdown = 43 * 2;
-                effectId = GameState.Multiplayer && PlayerEntity.PlayerCount > 2 ? 119 : 9; // bombStartMP or bombStart
+                effectId = _scene.GameState.Multiplayer && _scene.Players.PlayerCount > 2 ? 119 : 9; // bombStartMP or bombStart
             }
             if (effectId != 0)
             {
@@ -135,23 +142,23 @@ namespace MphRead.Entities
                         // outside, from one nobody walked into.
                         if (player != Owner && player.Health > 0)
                         {
-                            Mods.Network.NetDamage.BombTeamSkips++;
+                            if (!_scene.Services.IsReplica) Mods.Network.NetDamage.BombTeamSkips++;
                         }
                         continue;
                     }
-                    Mods.Network.NetDamage.BombPlayerChecks++;
+                    if (!_scene.Services.IsReplica) Mods.Network.NetDamage.BombPlayerChecks++;
                     float gap = (player.Volume.SpherePosition - Position).Length;
-                    if (gap < Mods.Network.NetDamage.BombNearest)
+                    if (!_scene.Services.IsReplica && gap < Mods.Network.NetDamage.BombNearest)
                     {
                         Mods.Network.NetDamage.BombNearest = gap;
                     }
-                    if (Radius > Mods.Network.NetDamage.BombRadiusSeen)
+                    if (!_scene.Services.IsReplica && Radius > Mods.Network.NetDamage.BombRadiusSeen)
                     {
                         Mods.Network.NetDamage.BombRadiusSeen = Radius;
                     }
                     if (player.CheckHitByBomb(this, halfturret: false))
                     {
-                        Mods.Network.NetDamage.BombHits++;
+                        if (!_scene.Services.IsReplica) Mods.Network.NetDamage.BombHits++;
                         hitEntity = player;
                         Flags |= BombFlags.Exploding;
                     }
@@ -420,9 +427,9 @@ namespace MphRead.Entities
                         Debug.Assert(bomb != null);
                         bomb.Damage = 60;
                         bomb.EnemyDamage = 60;
-                        if (Owner.IsBot && GameState.SinglePlayer)
+                        if (Owner.IsBot && _scene.GameState.SinglePlayer)
                         {
-                            int encounter = GameState.EncounterState[Owner.SlotIndex];
+                            int encounter = _scene.GameState.EncounterState[Owner.SlotIndex];
                             if (encounter == 1 || encounter == 3 || encounter == 4
                                 || encounter == 0 && Owner.BotLevel == 0)
                             {
@@ -458,9 +465,9 @@ namespace MphRead.Entities
                 Debug.Assert(!lineHitHalfturret);
                 hitEntity = player;
                 uint damage = 20;
-                if (Owner.IsBot && GameState.SinglePlayer)
+                if (Owner.IsBot && _scene.GameState.SinglePlayer)
                 {
-                    int encounter = GameState.EncounterState[Owner.SlotIndex];
+                    int encounter = _scene.GameState.EncounterState[Owner.SlotIndex];
                     if (encounter == 1 || encounter == 3 || encounter == 4
                         || encounter == 0 && Owner.BotLevel == 0)
                     {
@@ -573,7 +580,7 @@ namespace MphRead.Entities
         public override void GetDrawInfo()
         {
             uint rngBefore = ModAuditLockjawDrawRng && BombType == BombType.Lockjaw
-                ? Rng.Rng1 : 0;
+                ? _scene.Random.Rng1 : 0;
             if (BombType == BombType.Lockjaw)
             {
                 if (BombIndex == 1)
@@ -591,7 +598,7 @@ namespace MphRead.Entities
             }
             base.GetDrawInfo();
             if (ModAuditLockjawDrawRng && BombType == BombType.Lockjaw
-                && Rng.Rng1 != rngBefore)
+                && _scene.Random.Rng1 != rngBefore)
             {
                 ModLockjawDrawRngChanges++;
             }

@@ -55,8 +55,8 @@ namespace MphRead.Entities.Enemies
             _field1B0 = Fixed.ToFloat(_spawner.Data.Fields.S04.Field88);
             _field184 = facing;
             _field190 = facing;
-            _bobOffset = Fixed.ToFloat(Rng.GetRandomInt2(0x1AAB) + 1365) / 2; // [0.1667, 1)
-            _bobSpeed = Fixed.ToFloat(Rng.GetRandomInt2(0x3000)) + 1; // [1, 4)
+            _bobOffset = Fixed.ToFloat(_scene.Random.GetRandomInt2(0x1AAB) + 1365) / 2; // [0.1667, 1)
+            _bobSpeed = Fixed.ToFloat(_scene.Random.GetRandomInt2(0x3000)) + 1; // [1, 4)
             _targetY = Position.Y;
             _field170 = 20 * 2; // todo: FPS stuff
             UpdateState();
@@ -78,9 +78,9 @@ namespace MphRead.Entities.Enemies
                 Flags &= ~EnemyFlags.NoHomingNc;
                 Flags &= ~EnemyFlags.Invincible;
                 _field184 = new Vector3(
-                    Fixed.ToFloat(Rng.GetRandomInt2(4096) - 2048), // [-0.5, 0.5)
-                    Fixed.ToFloat(Rng.GetRandomInt2(4096) - 2048),
-                    Fixed.ToFloat(Rng.GetRandomInt2(4096) - 2048)
+                    Fixed.ToFloat(_scene.Random.GetRandomInt2(4096) - 2048), // [-0.5, 0.5)
+                    Fixed.ToFloat(_scene.Random.GetRandomInt2(4096) - 2048),
+                    Fixed.ToFloat(_scene.Random.GetRandomInt2(4096) - 2048)
                 );
                 if (_field184.X == 0 && _field184.Z == 0)
                 {
@@ -137,24 +137,24 @@ namespace MphRead.Entities.Enemies
                         else
                         {
                             _field184.X *= -1;
-                            _field184.Y = Fixed.ToFloat(Rng.GetRandomInt2(0x1000)) - 0.5f - (toTarget.Y - _field1B0 / 2) / _field1B0;
+                            _field184.Y = Fixed.ToFloat(_scene.Random.GetRandomInt2(0x1000)) - 0.5f - (toTarget.Y - _field1B0 / 2) / _field1B0;
                             _field184.Z *= -1;
                             _field1A0 = 5 * 2; // todo: FPS stuff
                         }
                     }
                     else
                     {
-                        _field184.X = Fixed.ToFloat(Rng.GetRandomInt2(0x1000)) - 0.5f - toTarget.X / _weaveOffset;
-                        _field184.Y = -Fixed.ToFloat(Rng.GetRandomInt2(0x800)) - 0.5f;
-                        _field184.Z = Fixed.ToFloat(Rng.GetRandomInt2(0x1000)) - 0.5f - toTarget.Z / _weaveOffset;
+                        _field184.X = Fixed.ToFloat(_scene.Random.GetRandomInt2(0x1000)) - 0.5f - toTarget.X / _weaveOffset;
+                        _field184.Y = -Fixed.ToFloat(_scene.Random.GetRandomInt2(0x800)) - 0.5f;
+                        _field184.Z = Fixed.ToFloat(_scene.Random.GetRandomInt2(0x1000)) - 0.5f - toTarget.Z / _weaveOffset;
                         _field1A0 = 5 * 2; // todo: FPS stuff
                     }
                 }
                 else
                 {
-                    _field184.X = Fixed.ToFloat(Rng.GetRandomInt2(0x1000)) - 0.5f - toTarget.X / _weaveOffset;
-                    _field184.Y = Fixed.ToFloat(Rng.GetRandomInt2(0x800)) + 0.5f;
-                    _field184.Z = Fixed.ToFloat(Rng.GetRandomInt2(0x1000)) - 0.5f - toTarget.Z / _weaveOffset;
+                    _field184.X = Fixed.ToFloat(_scene.Random.GetRandomInt2(0x1000)) - 0.5f - toTarget.X / _weaveOffset;
+                    _field184.Y = Fixed.ToFloat(_scene.Random.GetRandomInt2(0x800)) + 0.5f;
+                    _field184.Z = Fixed.ToFloat(_scene.Random.GetRandomInt2(0x1000)) - 0.5f - toTarget.Z / _weaveOffset;
                     _field1A0 = 5 * 2; // todo: FPS stuff
                 }
             }
@@ -167,7 +167,7 @@ namespace MphRead.Entities.Enemies
             {
                 _field184 = _field184.Normalized();
             }
-            Vector3 between = PlayerEntity.Main.Position - Position;
+            Vector3 between = _scene.Players.Main.Position - Position;
             if (between.LengthSquared >= 2 * 2)
             {
                 _field190 = _field184.WithY(0).Normalized();
@@ -221,9 +221,9 @@ namespace MphRead.Entities.Enemies
         private void State1()
         {
             UpdateMovement();
-            if (HitPlayers[PlayerEntity.Main.SlotIndex])
+            if (HitPlayers[_scene.Players.Main.SlotIndex])
             {
-                PlayerEntity.Main.TakeDamage(12, DamageFlags.None, FacingVector, this);
+                _scene.Players.Main.TakeDamage(12, DamageFlags.None, FacingVector, this);
             }
             AnimationInfo animInfo = _models[0].AnimInfo;
             if (animInfo.Index[0] != 0 && animInfo.Flags[0].TestFlag(AnimFlags.Ended))

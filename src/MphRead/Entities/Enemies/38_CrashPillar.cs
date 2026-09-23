@@ -58,7 +58,7 @@ namespace MphRead.Entities.Enemies
         {
             if (_state1 == 3 || _state1 == 4)
             {
-                Vector3 facing = (PlayerEntity.Main.Position - Position).WithY(0).Normalized();
+                Vector3 facing = (_scene.Players.Main.Position - Position).WithY(0).Normalized();
                 SetTransform(facing, Vector3.UnitY, Position);
             }
             if (_state1 == 7 || _state1 == 8)
@@ -99,9 +99,9 @@ namespace MphRead.Entities.Enemies
 
         private void SetCameraShake(float shakeMax)
         {
-            Vector3 between = PlayerEntity.Main.Position - Position;
+            Vector3 between = _scene.Players.Main.Position - Position;
             float shake = Math.Min(1 / between.LengthSquared * 3, shakeMax);
-            PlayerEntity.Main.CameraInfo.SetShake(shake);
+            _scene.Players.Main.CameraInfo.SetShake(shake);
         }
 
         // sktodo: function name
@@ -187,7 +187,7 @@ namespace MphRead.Entities.Enemies
 
         private void State12()
         {
-            Vector3 playerPos = PlayerEntity.Main.Position;
+            Vector3 playerPos = _scene.Players.Main.Position;
             if (!_volume2.TestPoint(playerPos) || !_volume1.TestPoint(playerPos))
             {
                 FaceInitialPosition();
@@ -236,7 +236,7 @@ namespace MphRead.Entities.Enemies
             {
                 return false;
             }
-            _targetVec = (PlayerEntity.Main.Position - Position).WithY(0).Normalized();
+            _targetVec = (_scene.Players.Main.Position - Position).WithY(0).Normalized();
             float angle = MathHelper.RadiansToDegrees(MathF.Acos(Vector3.Dot(FacingVector, _targetVec)));
             _aimSteps = 10 * 2; // todo: FPS stuff
             _aimAngleStep = angle / _aimSteps;
@@ -272,7 +272,7 @@ namespace MphRead.Entities.Enemies
 
         private bool Behavior05()
         {
-            if (!_volume1.TestPoint(PlayerEntity.Main.Position))
+            if (!_volume1.TestPoint(_scene.Players.Main.Position))
             {
                 return false;
             }
@@ -336,7 +336,7 @@ namespace MphRead.Entities.Enemies
                 _delayTimer--;
                 return false;
             }
-            Vector3 between = PlayerEntity.Main.Position - Position;
+            Vector3 between = _scene.Players.Main.Position - Position;
             float factor = MathF.Sqrt(Fixed.ToFloat(80) / Fixed.ToFloat(22937));
             _speed = new Vector3(
                 between.X * factor,
@@ -380,7 +380,7 @@ namespace MphRead.Entities.Enemies
 
         private bool Behavior14()
         {
-            if (_volume2.TestPoint(PlayerEntity.Main.Position))
+            if (_volume2.TestPoint(_scene.Players.Main.Position))
             {
                 return false;
             }
@@ -395,7 +395,7 @@ namespace MphRead.Entities.Enemies
 
         private bool Behavior15()
         {
-            Vector3 between = Position - PlayerEntity.Main.Position;
+            Vector3 between = Position - _scene.Players.Main.Position;
             if (between.LengthSquared >= 5 * 5)
             {
                 return false;
@@ -434,12 +434,12 @@ namespace MphRead.Entities.Enemies
 
         private bool Behavior18()
         {
-            Vector3 playerPos = PlayerEntity.Main.Position;
+            Vector3 playerPos = _scene.Players.Main.Position;
             if (!_volume2.TestPoint(playerPos) || !_volume1.TestPoint(playerPos))
             {
                 return false;
             }
-            _targetVec = (PlayerEntity.Main.Position - Position).WithY(0).Normalized();
+            _targetVec = (_scene.Players.Main.Position - Position).WithY(0).Normalized();
             float angle = MathHelper.RadiansToDegrees(MathF.Acos(Vector3.Dot(FacingVector, _targetVec)));
             _aimSteps = 10 * 2; // todo: FPS stuff
             _aimAngleStep = angle / _aimSteps;

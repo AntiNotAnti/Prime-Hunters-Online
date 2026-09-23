@@ -145,9 +145,9 @@ namespace MphRead.Entities
             (_pauseBindingId, _) = HudInfo.CharMapToTexture(_hudObjects.ScanVisor, startX: 0, startY: 64,
                 tilesX: 0, tilesY: 32, _scene, visorPal);
             // todo: only load what needs to be loaded for the mode
-            _filterModel = Read.GetModelInstance("filter");
+            _filterModel = _scene.GetModelInstance("filter");
             _scene.LoadModel(_filterModel.Model);
-            _damageIndicator = Read.GetModelInstance("damage", dir: MetaDir.Hud);
+            _damageIndicator = _scene.GetModelInstance("damage", dir: MetaDir.Hud);
             _scene.LoadModel(_damageIndicator.Model);
             _damageIndicator.Active = false;
             for (int i = 0; i < 8; i++)
@@ -162,13 +162,13 @@ namespace MphRead.Entities
             _damageIndicatorNodes[5] = _damageIndicator.Model.GetNodeByName("sw")!;
             _damageIndicatorNodes[6] = _damageIndicator.Model.GetNodeByName("west")!;
             _damageIndicatorNodes[7] = _damageIndicator.Model.GetNodeByName("nw")!;
-            _playerLocator = Read.GetModelInstance("hud_icon_player", dir: MetaDir.Hud);
+            _playerLocator = _scene.GetModelInstance("hud_icon_player", dir: MetaDir.Hud);
             _scene.LoadModel(_playerLocator.Model);
-            _arrowLocator = Read.GetModelInstance("hud_icon_arrow", dir: MetaDir.Hud);
+            _arrowLocator = _scene.GetModelInstance("hud_icon_arrow", dir: MetaDir.Hud);
             _scene.LoadModel(_arrowLocator.Model);
-            _nodeLocator = Read.GetModelInstance("hud_icon_nodes", dir: MetaDir.Hud);
+            _nodeLocator = _scene.GetModelInstance("hud_icon_nodes", dir: MetaDir.Hud);
             _scene.LoadModel(_nodeLocator.Model);
-            _octolithLocator = Read.GetModelInstance("hud_icon_octolith", dir: MetaDir.Hud);
+            _octolithLocator = _scene.GetModelInstance("hud_icon_octolith", dir: MetaDir.Hud);
             _scene.LoadModel(_octolithLocator.Model);
             _targetCircleObj = HudInfo.GetHudObject(_hudObjects.Reticle);
             _sniperCircleObj = HudInfo.GetHudObject(_hudObjects.SniperReticle);
@@ -249,7 +249,7 @@ namespace MphRead.Entities
             {
                 samusSubBar = HudInfo.GetHudObject(HudElements.HunterObjects[(int)Hunter.Samus].HealthBarB);
             }
-            if (GameState.Multiplayer)
+            if (_scene.GameState.Multiplayer)
             {
                 HudObject damageBar = HudInfo.GetHudObject(_hudObjects.DamageBar);
                 _enemyHealthMeter = new HudMeter() { Horizontal = true, };
@@ -321,14 +321,14 @@ namespace MphRead.Entities
                 _mapQuitInst.SetCharacterData(quit.CharacterData, _scene);
                 _mapQuitInst.SetPaletteData(quit.PaletteData, _scene);
                 _mapQuitInst.Enabled = true;
-                _navPlayerPosModel = Read.GetModelInstance("PlayerPos_NAV", dir: MetaDir.Hud);
+                _navPlayerPosModel = _scene.GetModelInstance("PlayerPos_NAV", dir: MetaDir.Hud);
                 _scene.LoadModel(_navPlayerPosModel.Model);
                 _navPlayerPosModel.SetAnimation(0, AnimFlags.None);
-                _navDoorModel = Read.GetModelInstance("Door_NAV", dir: MetaDir.Hud);
+                _navDoorModel = _scene.GetModelInstance("Door_NAV", dir: MetaDir.Hud);
                 _scene.LoadModel(_navDoorModel.Model);
                 for (int i = 0; i < 7; i++)
                 {
-                    ModelInstance mapModel = Read.GetModelInstance(Metadata.NavMapModelNames[i], dir: MetaDir.Hud, noCache: true);
+                    ModelInstance mapModel = _scene.GetModelInstance(Metadata.NavMapModelNames[i], dir: MetaDir.Hud, noCache: true);
                     for (int j = 0; j < mapModel.Model.Materials.Count; j++)
                     {
                         Material material = mapModel.Model.Materials[j];
@@ -356,7 +356,7 @@ namespace MphRead.Entities
                     _navMapModels[i] = mapModel;
                 }
             }
-            if (GameState.SinglePlayer && _hudObjects.EnergyTanks != null)
+            if (_scene.GameState.SinglePlayer && _hudObjects.EnergyTanks != null)
             {
                 HudObject healthbarTank = HudInfo.GetHudObject(_hudObjects.EnergyTanks);
                 _healthbarMainMeter.TankInst = new HudObjectInstance(healthbarTank.Width, healthbarTank.Height);
@@ -482,7 +482,7 @@ namespace MphRead.Entities
             _primeHunterInst.SetCharacterData(primeHunter.CharacterData, _scene);
             _primeHunterInst.SetPaletteData(primeHunter.PaletteData, _scene);
             _primeHunterInst.Enabled = true;
-            HudObject nodes = HudInfo.GetHudObject(GameState.Teams ? HudElements.NodesOG : HudElements.NodesRB);
+            HudObject nodes = HudInfo.GetHudObject(_scene.GameState.Teams ? HudElements.NodesOG : HudElements.NodesRB);
             _nodesInst = new HudObjectInstance(nodes.Width, nodes.Height);
             _nodesInst.SetCharacterData(nodes.CharacterData, _scene);
             _nodesInst.SetPaletteData(nodes.PaletteData, _scene);
@@ -501,7 +501,7 @@ namespace MphRead.Entities
             {
                 _hudMessageQueue[i].Lifetime = 0;
             }
-            if (GameState.Multiplayer)
+            if (_scene.GameState.Multiplayer)
             {
                 LoadModeRules();
             }
@@ -621,7 +621,7 @@ namespace MphRead.Entities
                 _rulesLines[i] = null;
                 _rulesLengths[i] = (0, 0);
             }
-            GameMode mode = GameState.Mode;
+            GameMode mode = _scene.GameState.Mode;
             if (mode == GameMode.Battle || mode == GameMode.BattleTeams)
             {
                 _rulesInfo = HudElements.RulesInfo[0];
@@ -703,7 +703,7 @@ namespace MphRead.Entities
 
         public void UpdateHud()
         {
-            if (GameState.MenuPause)
+            if (_scene.GameState.MenuPause)
             {
                 InitHudState();
                 // although we don't set HUD shift back to what it was before pausing, if the camera was moving, then it may have some
@@ -722,12 +722,12 @@ namespace MphRead.Entities
                 _scene.Layer2Info.ShiftY = 0;
                 return;
             }
-            if (GameState.DialogPause)
+            if (_scene.GameState.DialogPause)
             {
                 return;
             }
             UpdateScanState();
-            if (GameState.SinglePlayer)
+            if (_scene.GameState.SinglePlayer)
             {
                 UpdateDialogs();
             }
@@ -778,7 +778,7 @@ namespace MphRead.Entities
             _scene.Layer4Info.ShiftY = 0;
             _scene.Layer5Info.ShiftX = 0;
             _scene.Layer5Info.ShiftY = 0;
-            if (CameraSequence.Current?.Flags.TestFlag(CamSeqFlags.BlockInput) == true)
+            if (_scene.CameraSequences.Current?.Flags.TestFlag(CamSeqFlags.BlockInput) == true)
             {
                 return;
             }
@@ -787,7 +787,7 @@ namespace MphRead.Entities
                 if (!IsAltForm && !IsMorphing && !IsUnmorphing)
                 {
                     if (!Flags1.TestFlag(PlayerFlags1.WeaponMenuOpen) && !ShowScoreboard
-                        && GameState.MatchState == MatchState.InProgress)
+                        && _scene.GameState.MatchState == MatchState.InProgress)
                     {
                         if (_drawIceLayer)
                         {
@@ -1285,7 +1285,7 @@ namespace MphRead.Entities
 
         private void HudOnDisrupted()
         {
-            if (CameraSequence.Current == null)
+            if (_scene.CameraSequences.Current == null)
             {
                 HudDisruptedState = 1;
                 _hudDisruptedTimer = _disruptedTimer;
@@ -1492,15 +1492,6 @@ namespace MphRead.Entities
             // comment below gives about that one: a vote is asked during a
             // running match and answered from wherever the player is looking.
             ModDrawVote();
-            ModDrawKillCam();
-            if (Mods.KillCam.Active)
-            {
-                // A kill cam is a replay presentation, not the player's live
-                // visor or the post-match results UI. Keep chat and the
-                // kill-cam banner only so both personal and final replays are
-                // visually unmistakable.
-                return;
-            }
             // With the chat and before every early return below it, for the
             // same reason: the results screen is drawn during MatchState
             // GameOver *and* Ending, and the block further down handles those
@@ -1519,32 +1510,32 @@ namespace MphRead.Entities
                 // and not a player's: it is what somebody watching from the
                 // map is most likely to want, and holding the button for it
                 // still answers here.
-                if (ShowScoreboard && !GameState.MenuPause)
+                if (ShowScoreboard && !_scene.GameState.MenuPause)
                 {
                     DrawMatchTime();
                     DrawScoreboard();
                 }
                 return;
             }
-            if (GameState.MenuPause)
+            if (_scene.GameState.MenuPause)
             {
                 return;
             }
-            if (GameState.MatchState == MatchState.GameOver)
+            if (_scene.GameState.MatchState == MatchState.GameOver)
             {
                 string text = Strings.GetHudMessage(219); // GAME OVER
                 DrawText2D(128, 40, Align.Center, 0, text, new ColorRgba(0x3FEF), fontSpacing: 8);
             }
-            else if (GameState.MatchState == MatchState.Ending)
+            else if (_scene.GameState.MatchState == MatchState.Ending)
             {
                 DrawScoreboard();
             }
-            else if (CameraSequence.Current?.Flags.TestFlag(CamSeqFlags.BlockInput) == true)
+            else if (_scene.CameraSequences.Current?.Flags.TestFlag(CamSeqFlags.BlockInput) == true)
             {
                 DrawDialogs();
                 return;
             }
-            else if (CameraSequence.Current?.IsIntro == true)
+            else if (_scene.CameraSequences.Current?.IsIntro == true)
             {
                 DrawModeRules();
                 DrawQueuedHudMessages();
@@ -1576,13 +1567,13 @@ namespace MphRead.Entities
                 {
                     // hiding during dialog pause due to overlap with "bottom screen" elements
                     // (which causes one frame of flicker when the escape starts)
-                    if (GameState.SinglePlayer && !GameState.DialogPause)
+                    if (_scene.GameState.SinglePlayer && !_scene.GameState.DialogPause)
                     {
                         DrawEscapeTime();
                     }
                     if (Health > 0)
                     {
-                        if (!GameState.DialogPause)
+                        if (!_scene.GameState.DialogPause)
                         {
                             if (IsAltForm || IsMorphing || IsUnmorphing)
                             {
@@ -1655,7 +1646,7 @@ namespace MphRead.Entities
                                 DrawProHud();
                             }
                         }
-                        else if (!GameState.DialogPause || DialogType != DialogType.Event
+                        else if (!_scene.GameState.DialogPause || DialogType != DialogType.Event
                             && (Hunter == Hunter.Samus || Hunter == Hunter.Guardian))
                         {
                             DrawHealthbars();
@@ -1675,7 +1666,7 @@ namespace MphRead.Entities
 
         public void DrawHudModels()
         {
-            if (Mods.ThumbnailMode.Active || Mods.KillCam.Active)
+            if (Mods.ThumbnailMode.Active)
             {
                 return;
             }
@@ -1690,15 +1681,15 @@ namespace MphRead.Entities
                 }
                 return;
             }
-            if (CameraSequence.Current?.IsIntro == true)
+            if (_scene.CameraSequences.Current?.IsIntro == true)
             {
                 _scene.DrawHudFilterModel(_filterModel, alpha: 15 / 31f);
             }
-            else if (GameState.MatchState == MatchState.GameOver)
+            else if (_scene.GameState.MatchState == MatchState.GameOver)
             {
                 _scene.DrawHudFilterModel(_filterModel, alpha: 12 / 31f);
             }
-            else if (Flags1.TestFlag(PlayerFlags1.WeaponMenuOpen) || ShowScoreboard || GameState.MatchState == MatchState.Ending)
+            else if (Flags1.TestFlag(PlayerFlags1.WeaponMenuOpen) || ShowScoreboard || _scene.GameState.MatchState == MatchState.Ending)
             {
                 _scene.DrawHudFilterModel(_filterModel);
             }
@@ -1844,11 +1835,11 @@ namespace MphRead.Entities
 
         private void DrawEscapeTime()
         {
-            if (GameState.EscapeTimer < 0)
+            if (_scene.GameState.EscapeTimer < 0)
             {
                 return;
             }
-            var time = TimeSpan.FromSeconds(GameState.EscapeTimer);
+            var time = TimeSpan.FromSeconds(_scene.GameState.EscapeTimer);
             int palette = time.TotalSeconds < 10 ? 2 : 0;
             string text = $"{time.Hours * 60 + time.Minutes}:{time.Seconds:00}:{time.Milliseconds / 10:00}";
             DrawText2D(128 + _objShiftX, 180 + _objShiftY, Align.Center, palette, text);
@@ -1861,11 +1852,11 @@ namespace MphRead.Entities
 
         private void DrawMatchTime()
         {
-            if (GameState.MatchTime < 0)
+            if (_scene.GameState.MatchTime < 0)
             {
                 return;
             }
-            var time = TimeSpan.FromSeconds(GameState.MatchTime);
+            var time = TimeSpan.FromSeconds(_scene.GameState.MatchTime);
             int palette = time.TotalSeconds < 10 ? 2 : 0;
             float posY = 10;
             string text = Strings.GetHudMessage(5); // TIME
@@ -1892,19 +1883,19 @@ namespace MphRead.Entities
         /// </summary>
         private float GetScoreboardRowSpace()
         {
-            int rows = GameState.ActivePlayers;
+            int rows = _scene.GameState.ActivePlayers;
             if (rows <= 4)
             {
                 return _scorePlayerSpace;
             }
             float available = 168 - _scoreStartSpace;
-            if (GameState.MatchState == MatchState.Ending)
+            if (_scene.GameState.MatchState == MatchState.Ending)
             {
                 available -= _scoreStartSpace;
             }
-            if (GameState.Teams)
+            if (_scene.GameState.Teams)
             {
-                available -= GameState.TeamCount * _scoreTeamLineSpace;
+                available -= _scene.GameState.TeamCount * _scoreTeamLineSpace;
             }
             return Math.Clamp(available / rows, _scoreMinPlayerSpace, _scorePlayerSpace);
         }
@@ -1913,19 +1904,19 @@ namespace MphRead.Entities
         {
             float rowSpace = GetScoreboardRowSpace();
             float height = _scoreStartSpace;
-            if (GameState.MatchState == MatchState.Ending)
+            if (_scene.GameState.MatchState == MatchState.Ending)
             {
                 height *= 2;
             }
             int curTeam = 4;
-            for (int i = 0; i < GameState.ActivePlayers; i++)
+            for (int i = 0; i < _scene.GameState.ActivePlayers; i++)
             {
-                PlayerEntity player = Players[GameState.ResultSlots[i]];
+                PlayerEntity player = _scene.Players.Items[_scene.GameState.ResultSlots[i]];
                 if (!player.LoadFlags.TestFlag(LoadFlags.Active))
                 {
                     continue;
                 }
-                if (GameState.Teams && player.TeamIndex != curTeam)
+                if (_scene.GameState.Teams && player.TeamIndex != curTeam)
                 {
                     if (curTeam != 4)
                     {
@@ -1946,15 +1937,15 @@ namespace MphRead.Entities
 
         private void DrawScoreboard()
         {
-            if (GameState.Teams)
+            if (_scene.GameState.Teams)
             {
                 ModDrawTeamScoreboard();
                 return;
             }
-            GameMode mode = GameState.Mode;
+            GameMode mode = _scene.GameState.Mode;
             float rowSpace = GetScoreboardRowSpace();
             float posY = 104 - GetScoreboardHeight() / 2;
-            if (GameState.MatchState == MatchState.Ending)
+            if (_scene.GameState.MatchState == MatchState.Ending)
             {
                 string text = Strings.GetHudMessage(219); // GAME OVER
                 DrawText2D(128, posY, Align.Center, 0, text, new ColorRgba(0x53F4), fontSpacing: 8);
@@ -2015,23 +2006,23 @@ namespace MphRead.Entities
 
             string teamText = Strings.GetHudMessage(222); // team
             int curTeam = 4;
-            for (int i = 0; i < GameState.ActivePlayers; i++)
+            for (int i = 0; i < _scene.GameState.ActivePlayers; i++)
             {
-                int slot = GameState.ResultSlots[i];
-                PlayerEntity player = Players[slot];
+                int slot = _scene.GameState.ResultSlots[i];
+                PlayerEntity player = _scene.Players.Items[slot];
                 if (!player.LoadFlags.TestFlag(LoadFlags.Active))
                 {
                     continue;
                 }
-                if (GameState.Teams && player.TeamIndex != curTeam)
+                if (_scene.GameState.Teams && player.TeamIndex != curTeam)
                 {
                     if (curTeam != 4)
                     {
                         posY -= _scoreTeamHeaderSpace;
                     }
                     curTeam = player.TeamIndex;
-                    string teamValue1 = ChooseValue1(GameState.TeamTime[curTeam], GameState.TeamPoints[curTeam]);
-                    string teamValue2 = ChooseValue2(GameState.TeamDeaths[curTeam], GameState.TeamKills[curTeam]);
+                    string teamValue1 = ChooseValue1(_scene.GameState.TeamTime[curTeam], _scene.GameState.TeamPoints[curTeam]);
+                    string teamValue2 = ChooseValue2(_scene.GameState.TeamDeaths[curTeam], _scene.GameState.TeamKills[curTeam]);
                     ColorRgba teamColor = TeamVisuals.Get(curTeam).Color;
                     string teamName = TeamVisuals.Get(curTeam).Label;
                     DrawText2D(ModScoreNameColumn - 18, posY, Align.Center, 0, teamName,
@@ -2040,8 +2031,8 @@ namespace MphRead.Entities
                     DrawText2D(ModScoreColumn2, posY, Align.Center, 0, teamValue2, teamColor, fontSpacing: 8);
                     posY += _scoreTeamLineSpace;
                 }
-                string value1 = ChooseValue1(GameState.Time[slot], GameState.Points[slot]);
-                string value2 = ChooseValue2(GameState.Deaths[slot], GameState.Kills[slot]);
+                string value1 = ChooseValue1(_scene.GameState.Time[slot], _scene.GameState.Points[slot]);
+                string value2 = ChooseValue2(_scene.GameState.Deaths[slot], _scene.GameState.Kills[slot]);
                 var color = new ColorRgba(0x7DEF);
                 if (player.IsMainPlayer)
                 {
@@ -2071,7 +2062,7 @@ namespace MphRead.Entities
             hunter.PositionX = (posX - 40) / 256f;
             hunter.PositionY = (posY - 13) / 192f;
             _scene.DrawHudObject(hunter, mode: 2);
-            int stars = GameState.Stars[slot];
+            int stars = _scene.GameState.Stars[slot];
             _starsInst.PositionX = posX / 256f;
             _starsInst.PositionY = posY / 192f;
             _starsInst.SetIndex(stars * 2, _scene);
@@ -2079,7 +2070,7 @@ namespace MphRead.Entities
             _starsInst.PositionX = (posX + 32) / 256f;
             _starsInst.SetIndex(stars * 2 + 1, _scene);
             _scene.DrawHudObject(_starsInst, mode: 2);
-            string nickname = GameState.Nicknames[slot];
+            string nickname = _scene.GameState.Nicknames[slot];
             DrawText2D(posX + 32, posY - 9, Align.Center, 0, nickname, color, fontSpacing: 8);
         }
 
@@ -2091,8 +2082,8 @@ namespace MphRead.Entities
             _healthbarMainMeter.TankCount = _healthMax / Values.EnergyTank;
             DrawMeter(_hudObjects.HealthMainPosX + _objShiftX, _hudObjects.HealthMainPosY + _healthbarYOffset + _objShiftY,
                 Values.EnergyTank - 1, displayHealth, _healthbarPalette, _healthbarMainMeter,
-                drawText: true, drawTanks: GameState.SinglePlayer, Features.HudOpacity);
-            if (GameState.Multiplayer)
+                drawText: true, drawTanks: _scene.GameState.SinglePlayer, Features.HudOpacity);
+            if (_scene.GameState.Multiplayer)
             {
                 int amount = 0;
                 if (displayHealth >= Values.EnergyTank)
@@ -2271,7 +2262,7 @@ namespace MphRead.Entities
                     continue;
                 }
                 bool equipped = beam == CurrentWeapon;
-                WeaponInfo info = Weapons.Current[i];
+                WeaponInfo info = _scene.WeaponRules[i];
                 // The colour this weapon is known by. See _weaponListColors:
                 // deliberately not the game's own beam colour, which is the
                 // colour of the *shot* and is nothing like it for several.
@@ -2418,7 +2409,7 @@ namespace MphRead.Entities
                 }
             }
             int barAmount;
-            if (GameState.SinglePlayer)
+            if (_scene.GameState.SinglePlayer)
             {
                 barAmount = curAmount - filledTanks * meter.TankAmount;
             }
@@ -2434,7 +2425,7 @@ namespace MphRead.Entities
             }
             if (drawText)
             {
-                int amount = GameState.Multiplayer ? curAmount : barAmount;
+                int amount = _scene.GameState.Multiplayer ? curAmount : barAmount;
                 DrawText2D(x + meter.BarOffsetX, y + meter.BarOffsetY, meter.Align, _healthbarPalette, $"{amount:00}", alpha: alpha);
                 if (meter.MessageId > 0)
                 {
@@ -2505,27 +2496,27 @@ namespace MphRead.Entities
         {
             _locatorInfo.Clear();
             ProcessOpponent();
-            if (GameState.Mode == GameMode.Survival || GameState.Mode == GameMode.SurvivalTeams)
+            if (_scene.GameState.Mode == GameMode.Survival || _scene.GameState.Mode == GameMode.SurvivalTeams)
             {
                 ProcessHudSurvival();
             }
-            else if (GameState.Mode == GameMode.Bounty || GameState.Mode == GameMode.BountyTeams)
+            else if (_scene.GameState.Mode == GameMode.Bounty || _scene.GameState.Mode == GameMode.BountyTeams)
             {
                 ProcessHudBounty();
             }
-            else if (GameState.Mode == GameMode.Capture)
+            else if (_scene.GameState.Mode == GameMode.Capture)
             {
                 ProcessHudCapture();
             }
-            else if (GameState.Mode == GameMode.Defender || GameState.Mode == GameMode.DefenderTeams)
+            else if (_scene.GameState.Mode == GameMode.Defender || _scene.GameState.Mode == GameMode.DefenderTeams)
             {
                 ProcessHudDefender();
             }
-            else if (GameState.Mode == GameMode.Nodes || GameState.Mode == GameMode.NodesTeams)
+            else if (_scene.GameState.Mode == GameMode.Nodes || _scene.GameState.Mode == GameMode.NodesTeams)
             {
                 ProcessHudNodes();
             }
-            else if (GameState.Mode == GameMode.PrimeHunter)
+            else if (_scene.GameState.Mode == GameMode.PrimeHunter)
             {
                 ProcessHudPrimeHunter();
             }
@@ -2541,7 +2532,7 @@ namespace MphRead.Entities
                     continue;
                 }
                 float alpha = 1;
-                if (GameState.RadarPlayers)
+                if (_scene.GameState.RadarPlayers)
                 {
                     float past = _scene.ElapsedTime % (120 / 30f);
                     if (past > 32 / 30f)
@@ -2581,7 +2572,7 @@ namespace MphRead.Entities
                 {
                     pos.Y += 0.75f;
                 }
-                AddLocatorInfo(pos, _playerLocator, GameState.Teams
+                AddLocatorInfo(pos, _playerLocator, _scene.GameState.Teams
                     ? TeamVisuals.Get(player.TeamIndex).RadarColor : new ColorRgb(31, 31, 31), alpha);
             }
             if (reveal == 1)
@@ -2608,7 +2599,7 @@ namespace MphRead.Entities
                     var color = new ColorRgb(31, 31, 31);
                     if (flag.Carrier != null && (_scene.FrameCount & (4 * 2)) != 0) // todo: FPS stuff
                     {
-                        color = GameState.Teams ? TeamVisuals.Get(flag.Carrier.TeamIndex).ObjectiveColor
+                        color = _scene.GameState.Teams ? TeamVisuals.Get(flag.Carrier.TeamIndex).ObjectiveColor
                             : flag.Carrier == this ? goodColor : new ColorRgb(31, 0, 0);
                     }
                     AddLocatorInfo(flag.Position, _octolithLocator, color);
@@ -2626,7 +2617,7 @@ namespace MphRead.Entities
                     ColorRgb color = Metadata.TeamColors[flag.Data.TeamId];
                     if (flag.Carrier != null && (_scene.FrameCount & (4 * 2)) != 0) // todo: FPS stuff
                     {
-                        color = GameState.Teams ? TeamVisuals.Get(flag.Carrier.TeamIndex).ObjectiveColor
+                        color = _scene.GameState.Teams ? TeamVisuals.Get(flag.Carrier.TeamIndex).ObjectiveColor
                             : flag.Carrier == this ? goodColor : new ColorRgb(31, 0, 0);
                     }
                     AddLocatorInfo(flag.Position, _octolithLocator, color);
@@ -2647,9 +2638,9 @@ namespace MphRead.Entities
                 {
                     color = new ColorRgb(31, 31, 31);
                 }
-                else if (GameState.Teams)
+                else if (_scene.GameState.Teams)
                 {
-                    Debug.Assert((uint)defense.CurrentTeam < (uint)GameState.TeamCount);
+                    Debug.Assert((uint)defense.CurrentTeam < (uint)_scene.GameState.TeamCount);
                     color = Metadata.TeamColors[defense.CurrentTeam];
                 }
                 else if (defense.CurrentTeam == TeamIndex)
@@ -2686,9 +2677,9 @@ namespace MphRead.Entities
                 {
                     if (defense.Blinking)
                     {
-                        if (GameState.Teams)
+                        if (_scene.GameState.Teams)
                         {
-                            Debug.Assert((uint)defense.OccupyingTeam < (uint)GameState.TeamCount);
+                            Debug.Assert((uint)defense.OccupyingTeam < (uint)_scene.GameState.TeamCount);
                             color = Metadata.TeamColors[defense.OccupyingTeam];
                         }
                         else if (defense.OccupyingTeam == TeamIndex)
@@ -2705,7 +2696,7 @@ namespace MphRead.Entities
                         color = new ColorRgb(31, 31, 31);
                     }
                 }
-                else if (GameState.Teams)
+                else if (_scene.GameState.Teams)
                 {
                     color = Metadata.TeamColors[defense.Blinking ? defense.OccupyingTeam : defense.CurrentTeam];
                 }
@@ -2775,7 +2766,7 @@ namespace MphRead.Entities
 
         private void ProcessHudPrimeHunter()
         {
-            if (GameState.PrimeHunter == SlotIndex)
+            if (_scene.GameState.PrimeHunter == SlotIndex)
             {
                 if (!_hudIsPrimeHunter)
                 {
@@ -2794,9 +2785,9 @@ namespace MphRead.Entities
                 {
                     _hudIsPrimeHunter = false;
                 }
-                if (GameState.PrimeHunter != -1)
+                if (_scene.GameState.PrimeHunter != -1)
                 {
-                    PlayerEntity primeHunter = Players[GameState.PrimeHunter];
+                    PlayerEntity primeHunter = _scene.Players.Items[_scene.GameState.PrimeHunter];
                     Vector3 pos = primeHunter.Position;
                     if (!primeHunter.IsAltForm)
                     {
@@ -2810,7 +2801,7 @@ namespace MphRead.Entities
 
         private void DrawModeHud()
         {
-            GameMode mode = GameState.Mode;
+            GameMode mode = _scene.GameState.Mode;
             if (mode == GameMode.SinglePlayer)
             {
                 DrawHudAdventure();
@@ -2858,7 +2849,7 @@ namespace MphRead.Entities
                     DrawScanProgress();
                 }
                 DrawScanObjects();
-                if (!GameState.DialogPause)
+                if (!_scene.GameState.DialogPause)
                 {
                     DrawVisorMessage();
                 }
@@ -2891,25 +2882,25 @@ namespace MphRead.Entities
 
         private string FormatModeScore(int slot)
         {
-            GameMode mode = GameState.Mode;
+            GameMode mode = _scene.GameState.Mode;
             if (mode == GameMode.Battle || mode == GameMode.BattleTeams || mode == GameMode.Capture || mode == GameMode.Nodes
                 || mode == GameMode.NodesTeams || mode == GameMode.Bounty || mode == GameMode.BountyTeams)
             {
-                if (GameState.Teams)
+                if (_scene.GameState.Teams)
                 {
-                    return $"{GameState.TeamPoints[Players[slot].TeamIndex]} / {GameState.PointGoal}";
+                    return $"{_scene.GameState.TeamPoints[_scene.Players.Items[slot].TeamIndex]} / {_scene.GameState.PointGoal}";
                 }
-                return $"{GameState.Points[slot]} / {GameState.PointGoal}";
+                return $"{_scene.GameState.Points[slot]} / {_scene.GameState.PointGoal}";
             }
             if (mode == GameMode.Survival || mode == GameMode.SurvivalTeams)
             {
-                int lives = Math.Max(GameState.PointGoal - GameState.TeamDeaths[Players[slot].TeamIndex], 0);
+                int lives = Math.Max(_scene.GameState.PointGoal - _scene.GameState.TeamDeaths[_scene.Players.Items[slot].TeamIndex], 0);
                 return lives.ToString();
             }
             if (mode == GameMode.Defender || mode == GameMode.DefenderTeams || mode == GameMode.PrimeHunter)
             {
-                return $"{FormatTime(TimeSpan.FromSeconds(GameState.Time[slot]))}/" +
-                    $"{FormatTime(TimeSpan.FromSeconds(GameState.TimeGoal))}";
+                return $"{FormatTime(TimeSpan.FromSeconds(_scene.GameState.Time[slot]))}/" +
+                    $"{FormatTime(TimeSpan.FromSeconds(_scene.GameState.TimeGoal))}";
             }
             return " ";
         }
@@ -2936,12 +2927,12 @@ namespace MphRead.Entities
 
         private void DrawHudBattle()
         {
-            DrawModeScore(212, FormatModeScore(MainPlayerIndex)); // points
+            DrawModeScore(212, FormatModeScore(_scene.Players.MainPlayerIndex)); // points
         }
 
         private void DrawHudSurvival()
         {
-            DrawModeScore(213, FormatModeScore(MainPlayerIndex)); // lives left
+            DrawModeScore(213, FormatModeScore(_scene.Players.MainPlayerIndex)); // lives left
         }
 
         private void DrawOctolithInst(int frame)
@@ -2952,7 +2943,7 @@ namespace MphRead.Entities
                 drawIcon = (_scene.FrameCount & (16 * 2)) != 0; // todo: FPS stuff
                 _octolithInst.Alpha = 1;
             }
-            else if (GameState.Teams)
+            else if (_scene.GameState.Teams)
             {
                 foreach (OctolithFlagEntity flag in _scene.GetOctolithFlagEntities())
                 {
@@ -2975,24 +2966,24 @@ namespace MphRead.Entities
 
         private void DrawHudBounty()
         {
-            DrawModeScore(215, FormatModeScore(MainPlayerIndex)); // octoliths
+            DrawModeScore(215, FormatModeScore(_scene.Players.MainPlayerIndex)); // octoliths
             DrawOctolithInst(frame: 0);
         }
 
         private void DrawHudCapture()
         {
-            DrawModeScore(216, FormatModeScore(MainPlayerIndex)); // octoliths
+            DrawModeScore(216, FormatModeScore(_scene.Players.MainPlayerIndex)); // octoliths
             DrawOctolithInst(frame: TeamIndex == 0 ? 4 : 3);
         }
 
         private void DrawHudDefender()
         {
-            DrawModeScore(217, FormatModeScore(MainPlayerIndex)); // ring time
+            DrawModeScore(217, FormatModeScore(_scene.Players.MainPlayerIndex)); // ring time
         }
 
         private void DrawHudNodes()
         {
-            DrawModeScore(218, FormatModeScore(MainPlayerIndex)); // points
+            DrawModeScore(218, FormatModeScore(_scene.Players.MainPlayerIndex)); // points
             DrawNodesBonuses();
             DrawNodesIcons();
             if (_nodesHudState == 1 && !IsHudMessageQueued(mask: 16))
@@ -3008,10 +2999,10 @@ namespace MphRead.Entities
 
         private void DrawNodesBonuses()
         {
-            if (GameState.Teams)
+            if (_scene.GameState.Teams)
             {
                 float y = _hudObjects.NodeBonusPosY + _objShiftY;
-                for (int team = 0; team < GameState.TeamCount; team++)
+                for (int team = 0; team < _scene.GameState.TeamCount; team++)
                 {
                     if (_teamNodeCounts[team] < 2) continue;
                     TeamPresentation visual = TeamVisuals.Get(team);
@@ -3026,7 +3017,7 @@ namespace MphRead.Entities
             {
                 _nodesInst.PositionX = (_hudObjects.NodeBonusPosX + _objShiftX) / 256f;
                 _nodesInst.PositionY = (_hudObjects.NodeBonusPosY + _objShiftY) / 192f;
-                _nodesInst.SetIndex(GameState.Teams && TeamIndex == 0 ? 2 : 4, _scene);
+                _nodesInst.SetIndex(_scene.GameState.Teams && TeamIndex == 0 ? 2 : 4, _scene);
                 _scene.DrawHudObject(_nodesInst);
                 string text = $"x {_teamNodeCounts[TeamIndex]}";
                 DrawText2D(_hudObjects.NodeBonusPosX + 12 + _objShiftX, _hudObjects.NodeBonusPosY + 2 + _objShiftY,
@@ -3039,7 +3030,7 @@ namespace MphRead.Entities
             {
                 _nodesInst.PositionX = (_hudObjects.EnemyBonusPosX + _objShiftX) / 256f;
                 _nodesInst.PositionY = (_hudObjects.EnemyBonusPosY + _objShiftY) / 192f;
-                _nodesInst.SetIndex(GameState.Teams && _nodeBonusOpponent == 1 ? 4 : 2, _scene);
+                _nodesInst.SetIndex(_scene.GameState.Teams && _nodeBonusOpponent == 1 ? 4 : 2, _scene);
                 _scene.DrawHudObject(_nodesInst);
                 string text = $"x {_teamNodeCounts[_nodeBonusOpponent]}";
                 DrawText2D(_hudObjects.EnemyBonusPosX + 12 + _objShiftX, _hudObjects.EnemyBonusPosY + 2 + _objShiftY,
@@ -3067,7 +3058,7 @@ namespace MphRead.Entities
             float posX = 0;
             foreach (NodeDefenseEntity defense in _scene.GetNodeDefenseEntities())
             {
-                if (GameState.Teams)
+                if (_scene.GameState.Teams)
                 {
                     int owner = defense.Blinking ? defense.OccupyingTeam : defense.CurrentTeam;
                     TeamPresentation visual = TeamVisuals.Get(owner);
@@ -3086,7 +3077,7 @@ namespace MphRead.Entities
                 {
                     if (defense.Blinking)
                     {
-                        if (GameState.Teams)
+                        if (_scene.GameState.Teams)
                         {
                             frame = defense.OccupyingTeam == 0 ? 2 : 4;
                         }
@@ -3100,7 +3091,7 @@ namespace MphRead.Entities
                         frame = 0;
                     }
                 }
-                else if (GameState.Teams)
+                else if (_scene.GameState.Teams)
                 {
                     if (defense.Blinking)
                     {
@@ -3163,7 +3154,7 @@ namespace MphRead.Entities
                     _textSpacingY = 0;
                 }
             }
-            DrawModeScore(214, FormatModeScore(MainPlayerIndex)); // prime time
+            DrawModeScore(214, FormatModeScore(_scene.Players.MainPlayerIndex)); // prime time
         }
 
         private int _doubleDamageSpeed = 0;
@@ -3353,7 +3344,7 @@ namespace MphRead.Entities
             if (showHealth) DrawMeter(_hudObjects.EnemyHealthPosX + _objShiftX, _hudObjects.EnemyHealthPosY + _objShiftY, max, current,
                 palette, _enemyHealthMeter, drawText: false, drawTanks: false);
             int scanId = target.GetScanId();
-            if (scanId != 0 && GameState.SinglePlayer && !GameState.StorySave.CheckLogbook(scanId))
+            if (scanId != 0 && _scene.GameState.SinglePlayer && !_scene.GameState.StorySave.CheckLogbook(scanId))
             {
                 text = Strings.GetMessage('E', 6, StringTables.HudMessagesSP); // enemy
             }
@@ -3370,7 +3361,7 @@ namespace MphRead.Entities
 
         private void UpdateOpponent(int slot)
         {
-            if (GameState.Multiplayer && slot != SlotIndex)
+            if (_scene.GameState.Multiplayer && slot != SlotIndex)
             {
                 _opponentHealthbarTimer = 60 / 30f;
                 _opponentIndex = slot;
@@ -3396,7 +3387,7 @@ namespace MphRead.Entities
             {
                 return;
             }
-            PlayerEntity opponent = Players[_opponentIndex];
+            PlayerEntity opponent = _scene.Players.Items[_opponentIndex];
             float posX = 93;
             float posY = 182;
             if (Features.TargetInfoSway)
@@ -3404,10 +3395,10 @@ namespace MphRead.Entities
                 posX += _objShiftX;
                 posY += _objShiftY;
             }
-            string nickname = GameState.Nicknames[_opponentIndex];
-            if (GameState.Teams) nickname = $"{TeamVisuals.Get(opponent.TeamIndex).Label}: {nickname}";
+            string nickname = _scene.GameState.Nicknames[_opponentIndex];
+            if (_scene.GameState.Teams) nickname = $"{TeamVisuals.Get(opponent.TeamIndex).Label}: {nickname}";
             DrawText2D(posX, posY, Align.Center, 0, nickname,
-                GameState.Teams ? TeamVisuals.Get(opponent.TeamIndex).Color : null);
+                _scene.GameState.Teams ? TeamVisuals.Get(opponent.TeamIndex).Color : null);
             HudObjectInstance portrait = _hunterInsts[(int)opponent.Hunter];
             // Mode 1, and the offset corrected across, so the portrait is 32
             // units square on any window.
@@ -3599,7 +3590,7 @@ namespace MphRead.Entities
         /// </summary>
         private void DrawRadar()
         {
-            if (!Mods.Render.Radar.Enabled || GameState.Teams && ShowScoreboard)
+            if (!Mods.Render.Radar.Enabled || _scene.GameState.Teams && ShowScoreboard)
             {
                 return;
             }
@@ -3608,7 +3599,7 @@ namespace MphRead.Entities
             // eyes, so a reading centred on "this player" means nothing.
             // Spectating is different: SpectatorMode.FreeCamera still has a
             // real followed player underneath it, so that one stays on.
-            if (CameraSequence.Current?.IsIntro == true)
+            if (_scene.CameraSequences.Current?.IsIntro == true)
             {
                 return;
             }
@@ -3617,7 +3608,7 @@ namespace MphRead.Entities
             // winner -- and the top right corner it lives in is the corner the
             // results screen's pickers are drawn in, so it was a dial sitting
             // on top of the hunter portrait.
-            if (GameState.Multiplayer && GameState.MatchState != MatchState.InProgress)
+            if (_scene.GameState.Multiplayer && _scene.GameState.MatchState != MatchState.InProgress)
             {
                 return;
             }
@@ -3719,7 +3710,7 @@ namespace MphRead.Entities
                     // perspective camera live; called from here, in the flat
                     // 2D HUD pass, it picks up the wrong projection and blows
                     // up to fill the screen. Left as a ring.
-                    _scene.DrawFlatRing(posX, posY, local, 0.59f * blipGrow * u, 0.2f * blipGrow * u, GameState.Teams
+                    _scene.DrawFlatRing(posX, posY, local, 0.59f * blipGrow * u, 0.2f * blipGrow * u, _scene.GameState.Teams
                         ? TeamVisuals.Get(teamIndex).RadarColor.AsVector4() * new Vector4(255f / 31, 255f / 31, 255f / 31, 1) : pal.Hunter);
                 }
                 else if (isWeapon)
@@ -3737,9 +3728,9 @@ namespace MphRead.Entities
                 }
             }
 
-            for (int i = 0; i < Players.Count; i++)
+            for (int i = 0; i < _scene.Players.Items.Count; i++)
             {
-                PlayerEntity other = Players[i];
+                PlayerEntity other = _scene.Players.Items[i];
                 if (other == this || other.Health <= 0
                     || !other.LoadFlags.TestFlag(LoadFlags.Spawned))
                 {
@@ -4229,14 +4220,14 @@ namespace MphRead.Entities
 
         private void DrawQueuedHudMessages()
         {
-            if (!GameState.MenuPause)
+            if (!_scene.GameState.MenuPause)
             {
                 for (int i = 0; i < _hudMessageQueue.Count; i++)
                 {
                     HudMessage message = _hudMessageQueue[i];
                     if (message.Lifetime > 0
                         && ((message.Category & 1) == 0 || (_scene.FrameCount & (7 * 2)) <= 3 * 2) // todo: FPS stuff
-                        && (!GameState.DialogPause || !message.DialogHide))
+                        && (!_scene.GameState.DialogPause || !message.DialogHide))
                     {
                         // todo: support font size
                         DrawText2D(message.Position.X, message.Position.Y, message.Align, palette: 0,
@@ -4246,7 +4237,7 @@ namespace MphRead.Entities
             }
         }
 
-        private class HudMessage
+        internal class HudMessage
         {
             public Vector2 Position { get; set; }
             public float FontSize { get; set; }
@@ -4260,7 +4251,9 @@ namespace MphRead.Entities
             public bool DialogHide { get; set; }
         }
 
-        private static readonly IReadOnlyList<HudMessage> _hudMessageQueue = new HudMessage[20]
+        private IReadOnlyList<HudMessage> _hudMessageQueue => _scene.HudMessages;
+
+        internal static IReadOnlyList<HudMessage> CreateHudMessages() => new HudMessage[20]
         {
             new HudMessage(),
             new HudMessage(),

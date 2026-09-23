@@ -13,6 +13,28 @@ namespace MphRead
 {
     public partial class Scene
     {
+        private readonly Sound.SfxInstanceBase _silentAudio = new();
+        internal Sound.SfxInstanceBase Audio => Mods.Replay.ReplayAudioOwner.MayPlay(this)
+            ? Sound.Sfx.Instance ?? _silentAudio : _silentAudio;
+        internal Mods.Network.ContinuousWeaponPhase ContinuousPhase { get; } = new(PlayerEntity.SlotCapacity);
+        internal Mods.Network.ContinuousWeaponPhase WeaponPhase => Services.IsReplica ? ContinuousPhase : Mods.Network.NetSession.ContinuousPhase;
+        public IReadOnlyList<WeaponInfo> WeaponRules => GameState.Multiplayer ? Weapons.WeaponsMP : Weapons.Weapons1P;
+        internal IReadOnlyList<PlayerEntity.HudMessage> HudMessages { get; } = PlayerEntity.CreateHudMessages();
+        public ISceneServices Services { get; private set; }
+        internal bool IsReplayLab { get; private set; }
+        internal float ReplayRenderAlpha { get; set; } = 1;
+        internal Mods.Network.ReplayPoseStream? ReplayPoses { get; set; }
+        internal Action<Scene>? ReplayPresentationHud { get; set; }
+        internal Action<int, int>? ReplayShotPresented { get; set; }
+        public SceneGameState GameState { get; }
+        public ScenePlayerRegistry Players { get; }
+        public MatchRandom Random { get; }
+        public Mods.Network.PlayerReplicationBridge PlayerReplication { get; private set; }
+        internal ushort NextItemRotation { get; set; }
+        public SceneCameraSequences CameraSequences => GameState.CameraSequences;
+        internal BeamProjectileEntity[] EnemyBeams { get; set; } = null!;
+        internal BeamProjectileEntity[] PlatformBeams { get; set; } = null!;
+
         private readonly LinkedList<EntityBase> _entities = new LinkedList<EntityBase>();
         public LinkedListIterator<EntityBase> Entities => new LinkedListIterator<EntityBase>(_entities);
 
@@ -122,7 +144,7 @@ namespace MphRead
             {
                 return;
             }
-            BossFlags bossFlags = GameState.StorySave.BossFlags;
+            BossFlags bossFlags = this.GameState.StorySave.BossFlags;
             int layerId = ((int)bossFlags >> (2 * areaId)) & 3;
             var rooms = new List<NavMapRoomSymbols>();
             for (int i = 1; i <= 35; i++)

@@ -123,6 +123,10 @@ jobs:
           --self-contained true -p:PublishSingleFile=true
           -o publish/${{ matrix.id }}
 
+      - name: map editor history regressions
+        if: matrix.id == 'linux-x64'
+        run: dotnet run --project tools/map-editor-check -c Release
+
       - name: replay timeline bounds and identity regressions
         if: matrix.id == 'linux-x64'
         run: dotnet run --project tools/replay-timeline-check -c Release
@@ -218,6 +222,21 @@ jobs:
         with:
           name: launcher-screens
           path: ${{ runner.temp }}/shellshot
+          if-no-files-found: warn
+
+      - name: map viewport renderer, picking and resource ownership
+        if: matrix.id == 'linux-x64'
+        run: |
+          xvfb-run -a --server-args="-screen 0 3840x2160x24" \
+            publish/${{ matrix.id }}/ProjectPrime -mapviewportcheck "$RUNNER_TEMP/mapviewportcheck" \
+            -mapproject "publish/${{ matrix.id }}/maps/dust2.ppmap"
+
+      - name: map viewport captures
+        if: matrix.id == 'linux-x64' && always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: map-viewport
+          path: ${{ runner.temp }}/mapviewportcheck
           if-no-files-found: warn
 
       # Both x64 Linux builds contain a dedicated server -- one with a launcher

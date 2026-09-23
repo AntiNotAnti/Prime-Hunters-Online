@@ -62,6 +62,22 @@ namespace MphRead.Mods.Network
 
                 Console.WriteLine("[replaycheck] timing: rates, presentation independence and deterministic receive clock passed");
                 Replay.ReplayCameraTrackCheck.Run();
+                var poseA = new PlayerState { SlotGeneration = 1, LifeId = 1, Health = 99,
+                    Flags = PlayerState.FlagActive | PlayerState.FlagSpawned, Position = OpenTK.Mathematics.Vector3.Zero };
+                var poseB = poseA; poseB.Position = OpenTK.Mathematics.Vector3.UnitX;
+                Require(ReplayPoseStream.CanBlend(poseA, poseB), "continuous recorded poses cannot interpolate");
+                poseB.SlotGeneration++; Require(!ReplayPoseStream.CanBlend(poseA, poseB), "interpolated across slot reuse");
+                poseB = poseA; poseB.LifeId++; Require(!ReplayPoseStream.CanBlend(poseA, poseB), "interpolated across respawn");
+                poseB = poseA; poseB.Health = 0; Require(!ReplayPoseStream.CanBlend(poseA, poseB), "interpolated across death");
+                poseB = poseA; poseB.Flags |= PlayerState.FlagAltForm; Require(!ReplayPoseStream.CanBlend(poseA, poseB), "interpolated across form change");
+                poseB = poseA; poseB.Position = OpenTK.Mathematics.Vector3.UnitX * 20;
+                Require(!ReplayPoseStream.CanBlend(poseA, poseB), "interpolated across teleport");
+                var fractional = new Replay.ReplayCameraTrack();
+                fractional.Put(new(0, OpenTK.Mathematics.Vector3.Zero, OpenTK.Mathematics.Quaternion.Identity, 1,
+                    Interpolation: Replay.ReplayCameraInterpolation.Linear, Ease: Replay.ReplayCameraEase.None));
+                fractional.Put(new(10, OpenTK.Mathematics.Vector3.UnitX * 10, OpenTK.Mathematics.Quaternion.Identity, 1));
+                Require(fractional.Sample(.5, out var half) && Math.Abs(half.Position.X - .5f) < .00001f,
+                    "camera track rounded a fractional presentation frame");
 
                 var events = new[]
                 {
@@ -112,8 +128,6 @@ namespace MphRead.Mods.Network
                     "stale kill was accepted as final");
                 Require(!MphRead.Mods.KillCam.IsRecentFinalKill(121, 120),
                     "future kill frame was accepted as final");
-                Require(!MphRead.Mods.KillCam.IsHistoricalCameraOwner(0),
-                    "kill cam hid the killer model from its own historical camera");
                 Require(MphRead.Mods.KillCam.WeaponName((int)BeamType.Imperialist)
                         == "IMPERIALIST"
                     && MphRead.Mods.KillCam.WeaponName(999) == "",

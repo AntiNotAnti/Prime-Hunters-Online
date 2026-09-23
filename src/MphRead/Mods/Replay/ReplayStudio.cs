@@ -146,7 +146,12 @@ namespace MphRead.Mods.Replay
                     };
                     AddMerged(result, Make(e.Frame, length, kind, e.ActorSlot, e.TargetSlot, score, label));
                 }
-                else if (e.Type == ReplayEventType.Objective)
+                else if (e.Type is ReplayEventType.Headshot or ReplayEventType.MatchPoint)
+                {
+                    AddMerged(result, Make(e.Frame, length, ReplayHighlightKind.Kill,
+                        e.ActorSlot, e.TargetSlot, 75, e.Type == ReplayEventType.Headshot ? "Headshot" : "Match point"));
+                }
+                else if (e.Type is ReplayEventType.Objective or ReplayEventType.FlagCapture or ReplayEventType.NodeCapture or ReplayEventType.PrimeChanged)
                 {
                     AddMerged(result, Make(e.Frame, length, ReplayHighlightKind.Objective,
                         e.ActorSlot, e.TargetSlot, 82, "Objective play"));
@@ -242,6 +247,9 @@ namespace MphRead.Mods.Replay
                         case ReplayEventType.ScoreChanged:
                             actor.ScoreEvents++;
                             break;
+                        case ReplayEventType.FlagCapture:
+                        case ReplayEventType.NodeCapture:
+                        case ReplayEventType.PrimeChanged:
                         case ReplayEventType.Objective:
                             actor.Objectives++;
                             objectives++;
@@ -696,12 +704,12 @@ namespace MphRead.Mods.Replay
             Directory.CreateDirectory(root);
             string frames = Path.Combine(root, "frame_%08d.png");
             string output = Path.Combine(root, "replay.mp4");
-            int sourceFps = fps <= 30 ? 30 : 60;
+            int sourceFps = fps;
             string filters = $"scale={width}:{height}:flags=lanczos,fps={fps}";
             string ffmpeg = $"-y -framerate {sourceFps} -i \"{frames}\" "
                 + $"-vf \"{filters}\" -c:v libx264 -preset slow -crf 18 "
                 + $"-pix_fmt yuv420p -movflags +faststart \"{output}\"";
-            var manifest = new ReplayVideoExportManifest(1, Path.GetFullPath(replay), startFrame, endFrame,
+            var manifest = new ReplayVideoExportManifest(2, Path.GetFullPath(replay), startFrame, endFrame,
                 width, height, fps, cleanHud, director, cameraTrack, frames, output, ffmpeg);
             File.WriteAllText(Path.Combine(root, "render.json"),
                 JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }));

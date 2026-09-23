@@ -18,13 +18,8 @@ namespace MphRead.Mods.Render
     /// cartridge calls them.
     ///
     /// <para>
-    /// Loaded into a texture the scene binds, and thrown away between matches.
-    /// The engine names its own textures by counting
-    /// (<c>Scene._textureCount</c>), and the counter restarts with every room,
-    /// so a binding kept across a map change is a name the next room will
-    /// count its way onto and overwrite -- the trap written up in
-    /// <c>UiOverlay</c>. Rebuilding costs four PNG decodes per results
-    /// screen and removes the whole class of bug.
+    /// Loaded into a texture owned by the scene. Entries are invalidated
+    /// between matches and GL resources are released with their owning scene.
     /// </para>
     ///
     /// <para>
@@ -56,22 +51,6 @@ namespace MphRead.Mods.Render
             new Dictionary<string, Entry>(StringComparer.OrdinalIgnoreCase);
 
         private static bool _decodedThisFrame;
-
-        /// <summary>
-        /// Where this cache's texture names start: above anything
-        /// <c>Scene._textureCount</c> reaches, and above
-        /// <c>UiOverlay</c>'s own reserved name.
-        /// </summary>
-        private const int ReservedName = 1_100_000;
-
-        /// <summary>
-        /// How many names it cycles through. More than the cartridge has
-        /// multiplayer rooms, so one results screen cannot scroll far enough
-        /// to hand the same name to two maps that are both on screen.
-        /// </summary>
-        private const int NameRing = 64;
-
-        private static int _nextName;
 
         /// <summary>
         /// Forget every binding. Called when a results screen comes up, which
@@ -120,23 +99,7 @@ namespace MphRead.Mods.Render
             }
             try
             {
-                // A name of our own, never one the scene counted out.
-                //
-                // BindGetTexture hands back the next value of
-                // Scene._textureCount, which is also what the *next model
-                // loaded* will take -- and the next model loaded is the
-                // hunter the results screen puts in its own preview window,
-                // built on the very frame this cache is filled. So the
-                // thumbnails were quietly overwritten with pieces of Samus's
-                // armour a frame after they were bound: a checkerboard of
-                // somebody else's texture in every row. This is UiOverlay's
-                // trap and UiOverlay's answer -- a name far above anything the
-                // counter reaches in a session, reused in a ring rather than
-                // given back, since the counter restarts at one with every
-                // room and would collide again.
-                made.BindingId = ReservedName + _nextName % NameRing;
-                _nextName++;
-                scene.BindTexture(pixels, Width, Height, made.BindingId);
+                made.BindingId = scene.BindGetTexture(pixels, Width, Height);
             }
             catch (Exception ex)
             {

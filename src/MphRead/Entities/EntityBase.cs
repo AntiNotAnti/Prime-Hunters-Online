@@ -22,6 +22,11 @@ namespace MphRead.Entities
         public float Alpha { get; set; } = 1.0f;
 
         protected Scene _scene;
+        internal Scene OwningScene => _scene;
+        protected SceneGameState GameState => _scene.GameState;
+        protected MatchRandom Random => _scene.Random;
+        public ISceneServices SceneServices => _scene.Services;
+
         protected readonly string? _nodeName;
         public NodeRef NodeRef { get; set; } = NodeRef.None;
         protected int _scanId = 0;
@@ -135,6 +140,7 @@ namespace MphRead.Entities
 
         protected bool _anyLighting = false;
         protected readonly List<ModelInstance> _models = new List<ModelInstance>();
+        internal IReadOnlyList<ModelInstance> ReplayModels => _models;
 
         protected virtual bool UseNodeTransform => true;
         protected virtual Vector4? OverrideColor { get; } = null;
@@ -144,12 +150,14 @@ namespace MphRead.Entities
         {
             Type = type;
             _scene = scene;
+            _soundSource.Owner = scene;
         }
 
         protected EntityBase(EntityType type, string nodeName, Scene scene)
         {
             Type = type;
             _scene = scene;
+            _soundSource.Owner = scene;
             _nodeName = nodeName;
         }
 
@@ -157,6 +165,7 @@ namespace MphRead.Entities
         {
             Type = type;
             _scene = scene;
+            _soundSource.Owner = scene;
             NodeRef = nodeRef;
         }
 
@@ -171,7 +180,7 @@ namespace MphRead.Entities
 
         protected ModelInstance SetUpModel(string name, int animIndex = 0, AnimFlags animFlags = AnimFlags.None, bool firstHunt = false)
         {
-            ModelInstance inst = Read.GetModelInstance(name, firstHunt);
+            ModelInstance inst = _scene.GetModelInstance(name, firstHunt);
             inst.SetAnimation(animIndex, animFlags);
             _models.Add(inst);
             return inst;
@@ -304,13 +313,24 @@ namespace MphRead.Entities
         /// translation are blended independently so the matrix stays
         /// orthogonal instead of linearly blending sixteen unrelated values.
         /// </summary>
+        internal Matrix4 ReplayDrawTransform => ModDrawTransform();
+        internal Vector3 SimulationDrawPosition => !_drawStateValid ? Position
+            : Vector3.Lerp(_drawPrevious.Row3.Xyz, _drawCurrent.Row3.Xyz, _scene.ReplayRenderAlpha);
         protected Matrix4 ModDrawTransform()
         {
-            if (!InterpolateDrawTransform || !Mods.Render.FrameTiming.Active || !_drawStateValid)
+            Matrix4 transform = SimulationDrawTransform();
+            if (this is PlayerEntity player && _scene.ReplayPoses?.Sample(player.SlotIndex,
+                _scene.ReplayRenderAlpha, out Vector3 position, out _) == true)
+                transform.Row3.Xyz = position;
+            return transform;
+        }
+        private Matrix4 SimulationDrawTransform()
+        {
+            if (!InterpolateDrawTransform || !_scene.Services.IsReplica && !Mods.Render.FrameTiming.Active || !_drawStateValid)
             {
                 return _transform;
             }
-            float t = (float)Mods.Render.FrameTiming.PresentationAlpha;
+            float t = _scene.Services.IsReplica ? _scene.ReplayRenderAlpha : (float)Mods.Render.FrameTiming.PresentationAlpha;
             if (t <= 0) return _drawPrevious;
             if (t >= 1) return _drawCurrent;
 
@@ -327,20 +347,8 @@ namespace MphRead.Entities
             {
                 return _drawCurrent;
             }
-            Vector3 facing = Vector3.Lerp(previousFacing.Normalized(), currentFacing.Normalized(), t).Normalized();
-            Vector3 up = Vector3.Lerp(previousUp.Normalized(), currentUp.Normalized(), t).Normalized();
-            Vector3 right = Vector3.Cross(up, facing);
-            if (right.LengthSquared < 0.000001f)
-            {
-                return _drawCurrent;
-            }
-            right = right.Normalized();
-            up = Vector3.Cross(facing, right).Normalized();
-
-            Matrix4 result = Matrix4.Identity;
-            result.Row0.Xyz = right * scale.X;
-            result.Row1.Xyz = up * scale.Y;
-            result.Row2.Xyz = facing * scale.Z;
+            Quaternion rotation = Quaternion.Slerp(_drawPrevious.ExtractRotation(), _drawCurrent.ExtractRotation(), t).Normalized();
+            Matrix4 result = Matrix4.CreateScale(scale) * Matrix4.CreateFromQuaternion(rotation);
             result.Row3.Xyz = Vector3.Lerp(_drawPrevious.Row3.Xyz, _drawCurrent.Row3.Xyz, t);
             return result;
         }
@@ -412,7 +420,7 @@ namespace MphRead.Entities
 
         protected void AddPlaceholderModel()
         {
-            ModelInstance inst = Read.GetModelInstance("pick_wpn_missile");
+            ModelInstance inst = _scene.GetModelInstance("pick_wpn_missile");
             inst.IsPlaceholder = true;
             _models.Add(inst);
         }
@@ -538,20 +546,10 @@ namespace MphRead.Entities
         {
             if (nodeRef == NodeRef.None
                 || _scene.CameraMode != CameraMode.Player || _scene.ShowInvisibleEntities // skdebug
-                || DemoPlayback.IsActive || Mods.KillCam.Active)
+                || _scene.Services.IsReplica)
             {
-                // The node-ref culling this gates is an optimisation for a
-                // camera that is really walking the map and crossing its
-                // portals every frame -- exactly what demo playback's
-                // spectate-follow camera doesn't do (it's a puppet driven by
-                // replayed snapshots, same as everyone else being watched).
-                // IsNodeRefVisible's own "PartIndex == -1 -> not visible"
-                // fallback is documented as a workaround for precisely this
-                // kind of unintended camera mode; skip the whole check here
-                // rather than find every way a puppet's node can end up
-                // stale relative to another puppet's. A demo has far fewer
-                // entities than a full match, so always drawing costs
-                // nothing worth trading correctness for.
+                // Replay cameras can move independently of actor portal crossings.
+                // Their owning scene bypasses that culling without changing live views.
                 return true;
             }
             return _scene.IsNodeRefVisible(nodeRef);

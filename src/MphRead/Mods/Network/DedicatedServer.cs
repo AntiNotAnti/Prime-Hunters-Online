@@ -758,8 +758,6 @@ namespace MphRead.Mods.Network
                 NetSession.ApplyMatchState(state, rotated: false);
             }
             state.Write(_scratch);
-            ServerReplayRecorder.Record(PacketType.MatchState,
-                _scratch.AsSpan(0, MatchStatePacket.Size));
             if (_peers.Count == 0)
             {
                 return;
@@ -816,6 +814,10 @@ namespace MphRead.Mods.Network
                 throw new ProgramException($"the server could not load \"{entry.RoomKey}\"");
             }
             _sim = sim;
+            NetSession.ReplayWorldSink = payload =>
+            {
+                foreach (var peer in _peers) _transport?.Send(peer.EndPoint, PacketType.ReplayWorld, payload);
+            };
             Mods.RoomPrewarm.Release(entry.RoomKey);
             // This server arbitrates its clients' hit claims for as long as it
             // is running the match, so it needs a way to answer them.
@@ -836,7 +838,6 @@ namespace MphRead.Mods.Network
         {
             _lastSnapshot = payload.ToArray();
             EnsureCanonicalReplay(payload);
-            ServerReplayRecorder.Record(PacketType.Snapshot, payload);
             for (int i = 0; i < _peers.Count; i++)
             {
                 _transport?.Send(_peers[i].EndPoint, PacketType.Snapshot, payload);
@@ -2188,8 +2189,6 @@ namespace MphRead.Mods.Network
                 NetSession.ApplyRoster(roster);
             }
             roster.Write(_scratch);
-            ServerReplayRecorder.Record(PacketType.Roster,
-                _scratch.AsSpan(0, RosterPacket.Size));
             if (_peers.Count == 0)
             {
                 return;
@@ -2253,7 +2252,6 @@ namespace MphRead.Mods.Network
                     return;
                 }
                 peer.LastIntentFrame = intent.Frame;
-                ServerReplayRecorder.RecordSlotIntent(peer.SlotIndex, packet.Payload);
                 // Only meaningful between the end of one match and the start
                 // of the next; read unconditionally because it costs nothing
                 // and a client that sets it early is simply ready early.

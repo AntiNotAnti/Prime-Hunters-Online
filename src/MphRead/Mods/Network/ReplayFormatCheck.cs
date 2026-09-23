@@ -10,6 +10,24 @@ namespace MphRead.Mods.Network
 {
     internal static class ReplayFormatCheck
     {
+        // Only this compatibility diagnostic enters the socket-free legacy packet
+        // pipeline. Production file playback and killcams always own a replica.
+        private sealed class LegacyReplayDiagnosticHost : IReplaySessionHost
+        {
+            public bool IsPassive => false;
+            public MatchStatePacket? Match => NetSession.ServerMatch;
+            public void Prepare(string path, bool pathChanged) { }
+            public void Start() => NetSession.StartPlayback();
+            public void Stop() => NetSession.Stop();
+            public void Rewind() => NetSession.RewindPlayback();
+            public void Inject(byte[] packet, uint frame) => NetSession.InjectPlaybackPacket(
+                packet, packet.Length, ReplayPlaybackSession.PlaybackArrivalTicks(frame));
+            public void Advance(double seconds) => NetSession.Update(seconds);
+            public void RestoreClock(uint frame) => NetSession.PreparePlaybackCheckpoint(frame);
+            public void ResetDiagnostics() { }
+            public void SeekTo(uint frame) { }
+        }
+
         public static int Run()
         {
             string directory = Path.Combine(Path.GetTempPath(), "fruity-replay-check-" + Guid.NewGuid().ToString("N"));
@@ -22,6 +40,8 @@ namespace MphRead.Mods.Network
             }
             try
             {
+                ReplayReplicaProjectionChecks.Run(Require);
+                ReplayAuthorityChecks.Run(Require);
                 var match = new MatchStatePacket { RoomKey = "MP1 SANCTORUS", NextRoomKey = "",
                     Mode = (byte)GameMode.Battle, TimeRemaining = 300, Flags = MatchStatePacket.FlagInProgress,
                     MatchId = 1, AuthorityEpoch = 1 };
@@ -81,6 +101,16 @@ namespace MphRead.Mods.Network
                 timelineRecorder.AcceptRoster(timelineRoster, 2);
                 timelineRecorder.AcceptSnapshot(snapshotBytes, 3, 3);
                 Require(timelineRecorder.Timeline.NeedsRestorePoint, "old roster cannot bootstrap new match");
+                timelineRoster.MatchId = nextMatch.MatchId;
+                timelineRecorder.AcceptRoster(timelineRoster, 4);
+                timelineRecorder.AcceptSnapshot(snapshotBytes, 5, bootstrapFrame);
+                Require(timelineRecorder.Timeline.NeedsRestorePoint, "old snapshot cannot bootstrap new match");
+                timelineRecorder.Reset(); timelineRecorder.AcceptMatch(match, 0);
+                timelineRoster.MatchId = match.MatchId; timelineRecorder.AcceptRoster(timelineRoster, 0);
+                timelineRecorder.AcceptSnapshot(snapshotBytes, 1, bootstrapFrame);
+                var roomTransition = match; roomTransition.RoomKey = "MP2 HIGHGROUND";
+                timelineRecorder.AcceptMatch(roomTransition, 2);
+                Require(timelineRecorder.Timeline.NeedsRestorePoint, "room transition clears historical state");
                 var currentSnapshotMetadata = new ReplayMetadata { RoomKey = match.RoomKey, Mode = GameMode.Battle,
                     Bootstrap = new ReplayBootstrap { Packets = new[] { sessionBytes, matchBytes, snapshotBytes } } };
                 string currentSnapshot = Path.Combine(directory, "current-snapshot.ppdemo");
@@ -120,6 +150,112 @@ namespace MphRead.Mods.Network
                     Require(reader.Metadata.Integrity == ReplayIntegrity.Healthy, "validated integrity");
                 }
                 Require(ReplayArchive.Validate(clean) == ReplayOpenResult.Success, "validator");
+                // Two passive readers can coexist with a foreground network session.
+                // Neither joining, seeking, stopping nor recorded control traffic may
+                // change foreground identity, transport, RNG or Replay Studio controls.
+                NetSession.StartPlayback();
+                NetSession.ApplyMatchState(match, false);
+                Rng.SetRng1(12345);
+                Rng.SetRng2(67890);
+                ReplayController.Begin();
+                ReplayController.SetPlaybackRate(2);
+                var passiveA = new PassiveReplaySessionHost();
+                var passiveB = new PassiveReplaySessionHost();
+                // The optional charge/boost extension is part of protocol 16.
+                // Decode both legal forms even when their occupant is not current.
+                passiveA.Inject(matchBytes, 0);
+                foreach (int size in new[] { IntentPacket.Size, IntentPacket.FullSize })
+                {
+                    byte[] intent = new byte[2 + size];
+                    intent[0] = (byte)PacketType.SlotIntent;
+                    passiveA.Inject(intent, 0);
+                }
+                Require(passiveA.State.IgnoredPackets == 2, "base and extended replica intents decode");
+                bool truncatedIntentRejected = false;
+                byte[] truncatedIntent = new byte[1 + IntentPacket.FullSize];
+                truncatedIntent[0] = (byte)PacketType.SlotIntent;
+                try { passiveA.Inject(truncatedIntent, 0); }
+                catch (InvalidDataException) { truncatedIntentRejected = true; }
+                Require(truncatedIntentRejected, "truncated extended replica intent rejected");
+                using (var first = new ReplayPlaybackSession(passiveA))
+                using (var second = new ReplayPlaybackSession(passiveB))
+                {
+                    Require(first.Join(clean) && second.Join(clean), "independent passive readers open");
+                    second.Transport.ContinueSeek(0, resume: false);
+                    Require(second.Transport.IsSeeking && second.Transport.FramesDue() == 1,
+                        "initial frame-zero seek must apply frame-zero facts");
+                    second.PumpFrame();
+                    second.Transport.AfterFrame();
+                    Require(second.Transport.IsPaused && second.CurrentFrame == 0,
+                        "frame-zero seek completes after exactly one step");
+                    first.Transport.SetPlaybackRate(.25f);
+                    second.Transport.Pause();
+                    for (int i = 0; i < 12; i++) first.PumpFrame();
+                    Require(first.CurrentFrame == 11 && second.CurrentFrame == 0,
+                        "session reader clocks are independent");
+                    Require(second.Transport.IsPaused && first.Transport.PlaybackRate == .25f,
+                        "session controls are independent");
+                    first.Transport.Seek(399);
+                    Require(first.Transport.FramesDue() == 120, "seek batch is bounded to 120 steps");
+                    first.Transport.Seek(20);
+                    Require(first.Transport.FramesDue() == 9, "seek batch stops exactly at target");
+                    first.Transport.Seek(1);
+                    first.Stop();
+                    Require(!first.Transport.TakeRebuild(out _, out _), "stop clears pending rebuild");
+                    Require(second.IsActive, "stopping one reader preserves the other");
+                    foreach (PacketType control in new[] { PacketType.Bye, PacketType.Welcome, PacketType.Authority })
+                        passiveB.Inject(new[] { (byte)control }, 13);
+                    Require(passiveB.Match?.MatchId == match.MatchId, "control packets cannot mutate replica match");
+                    Require(NetSession.Active && NetSession.LocalSlot == -1 && !NetSession.IsAuthority
+                        && NetSession.CurrentMatchId == match.MatchId, "passive readers preserve live connection identity");
+                    Require(Rng.Rng1 == 12345 && Rng.Rng2 == 67890, "passive readers preserve live RNG");
+                    Require(ReplayController.PlaybackRate == 2 && ReplayController.State == ReplayState.Playing,
+                        "passive readers preserve Studio transport");
+                    var sceneA = new Scene(new OpenTK.Mathematics.Vector2i(256, 192),
+                        Input.SyntheticInput.CreateKeyboard(), Input.SyntheticInput.CreateMouse(), _ => { }, () => { },
+                        new ReplaySceneServices(first, passiveA.State));
+                    var sceneB = new Scene(new OpenTK.Mathematics.Vector2i(256, 192),
+                        Input.SyntheticInput.CreateKeyboard(), Input.SyntheticInput.CreateMouse(), _ => { }, () => { },
+                        new ReplaySceneServices(second, passiveB.State));
+                    sceneA.GameState.Points[0] = 99;
+                    sceneA.GameState.Mode = GameMode.Capture;
+                    sceneA.Random.SetRng1(123);
+                    sceneA.Random.GetRandomInt1(100);
+                    Require(sceneB.GameState.Points[0] == 0 && GameState.Points[0] != 99,
+                        "replica match arrays are scene owned");
+                    Require(sceneB.GameState.Mode != GameMode.Capture && GameState.Mode != GameMode.Capture,
+                        "replica match rules are scene owned");
+                    Require(sceneB.Random.Rng1 == Rng.Rng1StartValue && Rng.Rng1 == 12345,
+                        "replica random streams are scene owned");
+                    Require(!ReferenceEquals(sceneA.Players.Items[0], sceneB.Players.Items[0])
+                        && !ReferenceEquals(sceneA.Players.Items[0], Entities.PlayerEntity.Players[0]),
+                        "replica player registry does not reuse foreground entities");
+                    sceneA.Players.MainPlayerIndex = 3;
+                    Require(sceneB.Players.MainPlayerIndex == 0 && Entities.PlayerEntity.MainPlayerIndex != 3,
+                        "replica perspective does not change foreground ownership");
+                    NetPlayerBridge.ShootPressAge[0] = 17;
+                    NetPlayerBridge.SpawnFrame[0] = 83;
+                    sceneA.PlayerReplication.ShootPressAge[0] = 6;
+                    sceneA.PlayerReplication.NoteSpawn(0);
+                    Require(sceneB.PlayerReplication.AimTrusted(0) && !sceneA.PlayerReplication.AimTrusted(0)
+                        && NetPlayerBridge.SpawnFrame[0] == 83 && NetPlayerBridge.ShootPressAge[0] == 17,
+                        "replica life barriers and shot history do not touch the foreground bridge");
+                    sceneA.PlayerReplication.Reset();
+                    Require(NetPlayerBridge.ShootPressAge[0] == 17,
+                        "replica bridge reset cannot clear live input history");
+                    bool outgoingRejected = false;
+                    try { sceneA.PlayerReplication.CaptureIntent(sceneA.Players.Items[0]); }
+                    catch (InvalidOperationException) { outgoingRejected = true; }
+                    Require(outgoingRejected, "replicas cannot author gameplay intent");
+                    Require(!sceneA.Services.PlayerReplication.CanSpawn,
+                        "replica respawn requires an accepted life transition");
+                    sceneA.DoCleanup();
+                    Require(sceneB.Players.Items[0] != null && NetSession.Active && Rng.Rng1 == 12345,
+                        "replica cleanup preserves other worlds and foreground state");
+                    sceneB.DoCleanup();
+                }
+                NetSession.Stop();
+                ReplayController.Stop();
                 using (var indexed = DemoReader.Open(clean, out var indexedResult))
                 {
                     Require(indexedResult == ReplayOpenResult.Success && indexed != null,
@@ -167,7 +303,8 @@ namespace MphRead.Mods.Network
                     int delivered = 0; foreach (var unused in transport.Drain()) delivered++;
                     Require(delivered == 4096 && transport.PacketsDropped == 0, "recorded packet burst is not dropped");
                 }
-                Require(DemoPlayback.Join(clean), "matching protocol bootstrap joins");
+                using var legacySession = new ReplayPlaybackSession(new LegacyReplayDiagnosticHost());
+                Require(legacySession.Join(clean), "matching protocol bootstrap joins");
                 Require(NetSession.ActiveMatchDefinition?.DisablePowerups == true,
                     "session rules survive replay bootstrap");
                 foreach (byte[] control in new[] { new byte[] { (byte)PacketType.Welcome, 0 },
@@ -176,7 +313,7 @@ namespace MphRead.Mods.Network
                 NetSession.Update(0);
                 Require(NetSession.Active && NetSession.LocalSlot == -1 && !NetSession.IsAuthority,
                     "reconnect/control packets cannot create a local player or end playback");
-                DemoPlayback.Stop(); NetSession.Stop();
+                legacySession.Stop(); NetSession.Stop();
                 string extracted = Path.Combine(directory, "extracted.ppdemo");
                 Require(ReplayArchive.Extract(clean, 60, 180, extracted) == ReplayOpenResult.Success, "extract clip");
                 using (var reader = DemoReader.Open(extracted))
@@ -301,32 +438,39 @@ namespace MphRead.Mods.Network
                     _ = ReplayArchive.Validate(corrupt);
                     checks++;
                 }
-                NetSession.StartPlayback();
-                // DemoClip only records inside a valid network stream. Match
-                // identity zero is deliberately rejected by ApplyMatchState,
-                // so give this stalled-client fixture the same non-zero
-                // lifecycle identity a real replay session has.
-                NetSession.ApplyMatchState(new MatchStatePacket
+                // V4 carries a bounded opaque initial world and a hidden, indexed
+                // lead-in. Asset-free checks verify the envelope; world fidelity
+                // is covered by the real-scene clip check.
+                string v4 = Path.Combine(directory, "world-range.ppdemo");
+                var v4Metadata = new ReplayMetadata { FormatVersion = 4, OriginRecordingFrame = 900,
+                    LeadInFrames = 60, RoomKey = match.RoomKey, Mode = GameMode.Battle,
+                    WorldCheckpoint = new byte[300000] };
+                using (var writer = new ReplayWriterV3(v4, v4Metadata))
                 {
-                    MatchId = 1,
-                    AuthorityEpoch = 1,
-                    RoomKey = "",
-                    NextRoomKey = "",
-                    Mode = (byte)GameMode.Battle
-                }, false);
-                int priorSeconds = DemoClip.Seconds;
-                try
-                {
-                    DemoClip.Seconds = 120;
-                    // No simulation frames advance: a packet flood during a stalled client
-                    // must remain bounded by memory as well as by the time window.
-                    for (int i = 0; i < 1000000; i++) DemoClip.Add(packet.AsSpan(0, 1));
-                    Require(DemoClip.BufferedBytes <= 24 * 1024 * 1024 && DemoClip.BufferedPages > 1, "stalled packet flood is bounded");
-                    DemoClip.Purge();
-                    Require(DemoClip.BufferedBytes == 0 && DemoClip.BufferedPages == 0, "pooled clip pages released");
+                    for (uint frame = 0; frame <= 180; frame++) ReplayTimelineArchive.EndFrame(writer, frame);
+                    writer.WriteEvent(new(70, ReplayEventType.Kill, 1, 2));
                 }
-                finally { DemoClip.Seconds = priorSeconds; NetSession.Stop(); }
-                Console.WriteLine($"[replayformat] PASS {checks} checks (v2/v3, order, metadata, CRC, recovery, extraction, malformed files)");
+                using (var read = DemoReader.Open(v4, out var opened))
+                {
+                    Require(opened == ReplayOpenResult.Success && read?.FormatVersion == 4, "world format opens");
+                    Require(read?.Metadata?.WorldCheckpoint.Length == 300000 && read.Metadata.OriginRecordingFrame == 900,
+                        "world bootstrap roundtrip exceeds old packet/header limit");
+                    Require(read?.DurationFrames == 120 && read.Metadata!.Events.Single().Frame == 10,
+                        "lead-in normalizes duration and events");
+                }
+                string v4Range = Path.Combine(directory, "world-subrange.ppdemo");
+                Require(ReplayArchive.Extract(v4, 5, 40, v4Range) == ReplayOpenResult.Success, "world range extraction");
+                using (var read = DemoReader.Open(v4Range, out _))
+                    Require(read?.DurationFrames == 35 && read.Metadata!.LeadInFrames == 65
+                        && read.Metadata.Events.Single().Frame == 5 && read.Metadata.WorldCheckpoint.Length == 300000,
+                        "nested range retains world/warmup and normalizes visible events");
+                Require(ReplayArchive.Validate(v4Range) == ReplayOpenResult.Success, "world range CRC validation");
+                var exactKill = new ReplayMarker(ReplayMarkerKind.Kill, 2, 3, Kill:
+                    new ReplayKillIdentity(4, 5, 987, 22, 2, 10, 3, 11, 12), Weapon: 6, DamageFlags: 7);
+                var semantic = ReplayTimelineArchive.DecodeMarker(123, ReplayTimelineArchive.EncodeMarker(987, exactKill));
+                Require(semantic.RecordingFrame == 123 && semantic.ServerTick == 987 && semantic.Marker == exactKill,
+                    "durable semantic kill retains epoch, server tick, generations, life, weapon and classification");
+                Console.WriteLine($"[replayformat] PASS {checks} checks (v2/v3/v4, order, metadata, CRC, recovery, extraction, malformed files)");
                 return 0;
             }
             catch (Exception ex) { Console.WriteLine($"[replayformat] FAIL: {ex}"); return 1; }

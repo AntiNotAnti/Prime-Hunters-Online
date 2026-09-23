@@ -19,6 +19,56 @@
        defaults, so a release APK would list rooms with no name, no geometry
        and no spawns while the debug build was perfect. -->
   <assembly fullname="ProjectPrime">
+    <!-- Detached replay worlds bind explicit private fields by name. Keep the
+         construction/field contract in the trimmed release APK as well. -->
+    <type fullname="MphRead.Entities.EntityBase" preserve="all" />
+    <type fullname="MphRead.Entities.DynamicLightEntityBase" preserve="all" />
+    <type fullname="MphRead.Entities.PlayerEntity" preserve="all" />
+    <type fullname="MphRead.Entities.BeamProjectileEntity" preserve="all" />
+    <type fullname="MphRead.Entities.BombEntity" preserve="all" />
+    <type fullname="MphRead.Entities.BeamEffectEntity" preserve="all" />
+    <type fullname="MphRead.Entities.SpinningEntityBase" preserve="all" />
+    <type fullname="MphRead.Entities.ItemInstanceEntity" preserve="all" />
+    <type fullname="MphRead.Entities.ItemSpawnEntity" preserve="all" />
+    <type fullname="MphRead.Entities.OctolithFlagEntity" preserve="all" />
+    <type fullname="MphRead.Entities.NodeDefenseEntity" preserve="all" />
+    <type fullname="MphRead.Entities.FlagBaseEntity" preserve="all" />
+    <type fullname="MphRead.Entities.DoorEntity" preserve="all" />
+    <type fullname="MphRead.Entities.PlatformEntity" preserve="all" />
+    <type fullname="MphRead.Entities.TeleporterEntity" preserve="all" />
+    <type fullname="MphRead.Entities.JumpPadEntity" preserve="all" />
+    <type fullname="MphRead.Entities.ObjectEntity" preserve="all" />
+    <type fullname="MphRead.Entities.HalfturretEntity" preserve="all" />
+    <type fullname="MphRead.Entities.PlayerSpawnEntity" preserve="all" />
+    <type fullname="MphRead.Entities.TriggerVolumeEntity" preserve="all" />
+    <type fullname="MphRead.Entities.AreaVolumeEntity" preserve="all" />
+    <type fullname="MphRead.Entities.PointModuleEntity" preserve="all" />
+    <type fullname="MphRead.Entities.MorphCameraEntity" preserve="all" />
+    <type fullname="MphRead.Entities.LightSourceEntity" preserve="all" />
+    <type fullname="MphRead.Entities.ForceFieldEntity" preserve="all" />
+    <type fullname="MphRead.SceneGameState" preserve="all" />
+    <type fullname="MphRead.ScenePlayerRegistry" preserve="all" />
+    <type fullname="MphRead.Mods.Network.PlayerReplicationBridge" preserve="all" />
+    <type fullname="MphRead.EquipInfo" preserve="all" />
+    <type fullname="MphRead.Entities.CameraInfo" preserve="all" />
+    <type fullname="MphRead.Entities.PlayerControls" preserve="all" />
+    <type fullname="MphRead.Entities.PlayerEntity/PlayerInput" preserve="all" />
+    <type fullname="MphRead.Entities.Keybind" preserve="all" />
+    <type fullname="MphRead.Entities.AvailableArray" preserve="all" />
+    <type fullname="MphRead.Effects.EffectEntry" preserve="all" />
+    <type fullname="MphRead.Effects.EffectElementEntry" preserve="all" />
+    <type fullname="MphRead.Effects.EffectParticle" preserve="all" />
+    <type fullname="MphRead.Effects.SingleParticle" preserve="all" />
+    <type fullname="MphRead.Formats.Collision.EntityCollision" preserve="all" />
+    <type fullname="MphRead.Mods.Network.ContinuousWeaponPhase" preserve="all" />
+    <type fullname="MphRead.Mods.Network.ReplaySceneServices" preserve="all" />
+    <type fullname="MphRead.Entities.RoomEntity" preserve="all" />
+    <type fullname="MphRead.Scene" preserve="all" />
+    <type fullname="MphRead.ModelInstance" preserve="all" />
+    <type fullname="MphRead.Node" preserve="all" />
+    <type fullname="MphRead.Mesh" preserve="all" />
+    <type fullname="MphRead.Material" preserve="all" />
+
     <type fullname="MphRead.Mods.MapGen.MapDefinition" preserve="all" />
     <type fullname="MphRead.Mods.MapGen.MapPreview" preserve="all" />
     <type fullname="MphRead.Mods.MapGen.MapImport" preserve="all" />

@@ -12,9 +12,9 @@ using Vector = System.Numerics.Vector3;
 
 namespace MphRead.Mods.Launcher.Gui
 {
-    // A lightweight authoring renderer, hosted by the existing single-window
-    // Avalonia surface. It never packs collision or regenerates navigation.
-    internal sealed class MapViewport : Control, IMapViewport
+    // Game-rendered geometry with Avalonia authoring overlays and a CPU fallback.
+    // It never packs collision or regenerates navigation while drawing.
+    internal sealed partial class MapViewport : Control, IMapViewport
     {
         public MapDocument Document { get; }
         public Vector CameraPosition { get; private set; } = new(28,24,32);
@@ -30,8 +30,8 @@ namespace MphRead.Mods.Launcher.Gui
         public bool KillPlane { get; set; }
         public MapNodePacker.NavigationGraph? Navigation { get; set; }
         public event Action? SelectionChanged;
-        private MapViewportScene _scene = new();
-        private readonly List<MapViewportFace> _imported = new();
+        internal MapViewportCache Cache { get; } = new();
+        private IEnumerable<MapViewportFace> Faces => Cache.NativeFaces.Concat(Collision ? Cache.ImportedCollisionFaces : Cache.ImportedFaces);
         private readonly List<(Guid Id, Point[] Points, double Depth)> _pick = new();
         private Point _last, _start;
         private bool _orbit, _pan, _drag;
@@ -42,22 +42,27 @@ namespace MphRead.Mods.Launcher.Gui
         public MapViewport(MapDocument document)
         {
             Document=document; Focusable=true; ClipToBounds=true;
-            Document.Changed += Rebuild;
-            AttachedToVisualTree+=(_,_)=>{Document.Changed-=Rebuild;Document.Changed+=Rebuild;Rebuild();};
-            DetachedFromVisualTree += (_,_) => Document.Changed -= Rebuild;
-            Rebuild();
+            Document.Invalidated += InvalidateDocument;
+            InvalidateDocument(new(MapChangeDomain.All));
         }
-        private void Rebuild() { _scene=MapViewportScene.Create(Document.Project.Definition); _scene.Faces.AddRange(_imported); Navigation=null; InvalidateVisual(); }
+        private void InvalidateDocument(MapDocumentChange change)
+        {
+            Cache.Invalidate(Document.Project.Definition, change);
+            if ((change.Domains & (MapChangeDomain.Navigation | MapChangeDomain.Import)) != 0) Navigation = null;
+            InvalidateVisual();
+        }
         public void SetImported(BuiltMap map)
         {
-            _imported.Clear();
-            foreach(var face in map.Faces)
-                _imported.Add(new(Guid.Empty,face.Points.Select(p=>new Vector(p.X,p.Y,p.Z)).ToArray(),face.Shade,face.Material,true));
-            Rebuild();
+            Cache.SetImported(map); InvalidateVisual();
+        }
+
+        public void SetImported(MapAnalysisResult analysis)
+        {
+            Cache.SetImported(analysis); InvalidateVisual();
         }
         public void FrameAll()
         {
-            var points=_scene.Faces.SelectMany(f=>f.Points).ToArray();
+            var points=Faces.SelectMany(f=>f.Points).ToArray();
             if(points.Length==0) return;
             Vector min=points.Aggregate(new Vector(float.MaxValue),Vector.Min), max=points.Aggregate(new Vector(float.MinValue),Vector.Max);
             CameraTarget=(min+max)/2; CameraPosition=CameraTarget+Vector.Normalize(new Vector(1,.8f,1))*Math.Max(8,(max-min).Length()); InvalidateVisual();
@@ -69,18 +74,36 @@ namespace MphRead.Mods.Launcher.Gui
             Vector target=selected.Select(o=>MapViewportScene.Vector(o.Position)).Aggregate(Vector.Zero,(a,b)=>a+b)/selected.Length;
             CameraPosition+=target-CameraTarget; CameraTarget=target; InvalidateVisual();
         }
-        private (Vector Right,Vector Up,Vector Forward) Basis()
+        private MapViewportCamera Camera => new(CameraPosition, CameraTarget, View == "Perspective");
+        private MapViewportLayout Layout => new(Bounds.Width, Bounds.Height, TopLevel.GetTopLevel(this)?.RenderScaling ?? 1);
+        private (Vector Right,Vector Up,Vector Forward) Basis() => Camera.Basis();
+        private (Point Point,double Depth)? Project(Vector point)
         {
-            Vector forward=Vector.Normalize(CameraTarget-CameraPosition), up=Math.Abs(forward.Y)>.99f?Vector.UnitZ:Vector.UnitY;
-            Vector right=Vector.Normalize(Vector.Cross(forward,up)); return(right,Vector.Cross(right,forward),forward);
+            var projected = Camera.Project(Layout, point);
+            return projected is { } p ? (new Point(p.X, p.Y), p.Depth) : null;
         }
-        private (Point Point,double Depth)? Project(Vector p)
+        internal MapRenderFrame BuildRenderFrame(MapViewportLayout layout)
         {
-            var (right,up,forward)=Basis(); Vector offset=p-CameraPosition; float z=Vector.Dot(offset,forward);
-            if(z<.05f) return null;
-            double scale=View=="Perspective"?Math.Min(Bounds.Width,Bounds.Height)*.9/z:Math.Min(Bounds.Width,Bounds.Height)/Math.Max(2,Vector.Distance(CameraPosition,CameraTarget)) * 1.5;
-            return(new Point(Bounds.Width/2+Vector.Dot(offset,right)*scale,Bounds.Height/2-Vector.Dot(offset,up)*scale),z);
+            var transforms = new Dictionary<Guid, Matrix4x4>();
+            if (_drag)
+                foreach (var geometry in Document.Project.Definition.Geometry)
+                {
+                    if (!Document.Selection.Contains(geometry.Id) || geometry.Locked) continue;
+                    var center = MapViewportScene.Vector(geometry.Transform.Position);
+                    var rotation = new Quaternion(geometry.Transform.Rotation[0], geometry.Transform.Rotation[1],
+                        geometry.Transform.Rotation[2], geometry.Transform.Rotation[3]);
+                    var delta = LocalAxes ? Vector.Transform(_preview, rotation) : _preview;
+                    var local = Tool == "Rotate" ? Matrix4x4.CreateFromAxisAngle(
+                        LocalAxes ? Vector.Transform(Vector.UnitY, rotation) : Vector.UnitY, _rotation * MathF.PI / 180)
+                        : Tool == "Scale" ? Matrix4x4.CreateScale(_scale) : Matrix4x4.Identity;
+                    transforms[geometry.Id] = Matrix4x4.CreateTranslation(-center) * local
+                        * Matrix4x4.CreateTranslation(center + delta);
+                }
+            return new(layout, Camera, Cache.Meshes, Document.Selection.ToHashSet(), transforms, Wireframe, Collision);
         }
+#if !MPHREAD_SHELL
+        private bool GpuActive => false;
+#endif
         private void Line(DrawingContext context,Vector a,Vector b,IBrush color,double width=1)
         { var x=Project(a);var y=Project(b);if(x!=null&&y!=null)context.DrawLine(new Pen(color,width),x.Value.Point,y.Value.Point); }
         private static StreamGeometry Polygon(Point[] points)
@@ -90,14 +113,22 @@ namespace MphRead.Mods.Launcher.Gui
         }
         public override void Render(DrawingContext context)
         {
-            base.Render(context); context.FillRectangle(new SolidColorBrush(Color.Parse("#141c25")),new Rect(Bounds.Size));
+            base.Render(context);
+#if MPHREAD_SHELL
+            if (GpuActive) context.Custom(new ViewportHole(new Rect(Bounds.Size)));
+            else
+#endif
+                context.FillRectangle(new SolidColorBrush(Color.Parse("#141c25")),new Rect(Bounds.Size));
             var grid=new SolidColorBrush(Color.Parse("#293641"));
-            for(int n=-64;n<=64;n+=4){Line(context,new(n,0,-64),new(n,0,64),grid);Line(context,new(-64,0,n),new(64,0,n),grid);}
+            if (!GpuActive)
+                for(int n=-64;n<=64;n+=4){Line(context,new(n,0,-64),new(n,0,64),grid);Line(context,new(-64,0,n),new(64,0,n),grid);}
             _pick.Clear();
+            if (!GpuActive)
+            {
             var projected=new List<(MapViewportFace Face,Point[] Points,double Depth)>();
             var centers=Document.Project.Definition.Geometry.Where(g=>Document.Selection.Contains(g.Id)&&!g.Locked).ToDictionary(g=>g.Id,g=>MapViewportScene.Vector(g.Transform.Position));
             var rotations=Document.Project.Definition.Geometry.Where(g=>centers.ContainsKey(g.Id)).ToDictionary(g=>g.Id,g=>new Quaternion(g.Transform.Rotation[0],g.Transform.Rotation[1],g.Transform.Rotation[2],g.Transform.Rotation[3]));
-            foreach(var face in _scene.Faces)
+            foreach(var face in Faces)
             {
                 if(Collision&&!face.Solid)continue;
                 Vector delta=Document.Selection.Contains(face.ObjectId)?_preview:Vector.Zero;
@@ -122,7 +153,8 @@ namespace MphRead.Mods.Launcher.Gui
                 context.DrawGeometry(Wireframe?null:new SolidColorBrush(color),new Pen(selected?Brushes.Gold:grid,selected?2:1),Polygon(item.Points));
                 if(item.Face.ObjectId!=Guid.Empty)_pick.Add((item.Face.ObjectId,item.Points,item.Depth));
             }
-            foreach(var o in MapObjects.All(Document.Project.Definition).Where(o=>o.Value is not MapGeometry && o.Value is not MapBrush))
+            }
+            foreach(var o in Cache.Entities)
             {
                 Vector position=MapViewportScene.Vector(o.Position)+(Document.Selection.Contains(o.Id)?_preview:Vector.Zero);
                 var p=Project(position);if(p==null)continue;
@@ -187,10 +219,15 @@ namespace MphRead.Mods.Launcher.Gui
                         var p=Project(MapViewportScene.Vector(selected.Position)+v*3);
                         if(p!=null&&Math.Pow(p.Value.Point.X-_last.X,2)+Math.Pow(p.Value.Point.Y-_last.Y,2)<144){_axis=i;id=selected.Id;break;}
                     }
-                if(id==Guid.Empty) id=_pick.Where(p=>Contains(p.Points,_last)).OrderBy(p=>p.Depth).Select(p=>p.Id).FirstOrDefault();
+                if(id==Guid.Empty)
+                {
+                    // Entity handles sit above geometry; brush hits use world distance.
+                    id=_pick.Where(p=>p.Depth==0&&Contains(p.Points,_last)).Select(p=>p.Id).FirstOrDefault();
+                    if(id==Guid.Empty)id=MapViewportPicking.Pick(BuildRenderFrame(Layout),_last.X,_last.Y);
+                }
                 if(!e.KeyModifiers.HasFlag(KeyModifiers.Shift)&&!Document.Selection.Contains(id))Document.Selection.Clear();
                 if(id!=Guid.Empty)Document.Selection.Add(id);
-                _drag=id!=Guid.Empty;SelectionChanged?.Invoke();InvalidateVisual();
+                _drag=id!=Guid.Empty;Document.SelectionChanged();SelectionChanged?.Invoke();InvalidateVisual();
             }
             e.Pointer.Capture(this);e.Handled=true;
         }
@@ -224,39 +261,21 @@ namespace MphRead.Mods.Launcher.Gui
             if(_drag)
             {
                 var ids=Document.Selection.ToHashSet();Vector move=_preview;float angle=_rotation,scale=_scale;
-                Document.Edit(Tool+" selection",d=>
-                {
-                    foreach(var o in MapObjects.All(d).Where(o=>ids.Contains(o.Id)))
-                    {
-                        if(o.Value is MapGeometry {Locked:true})continue;
-                        if(Tool=="Move")
-                        {
-                            Vector translated=move;
-                            if(LocalAxes&&o.Value is MapGeometry local){var r=local.Transform.Rotation;translated=Vector.Transform(move,new Quaternion(r[0],r[1],r[2],r[3]));}
-                            o.Move(new[]{translated.X,translated.Y,translated.Z});
-                        }
-                        else if(o.Value is MapGeometry g)
-                        {
-                            if(Tool=="Scale")for(int i=0;i<3;i++)g.Transform.Scale[i]*=scale;
-                            else
-                            {
-                                var r=g.Transform.Rotation;var turn=Quaternion.CreateFromAxisAngle(Vector.UnitY,angle*MathF.PI/180);var current=new Quaternion(r[0],r[1],r[2],r[3]);var q=Quaternion.Normalize(LocalAxes?current*turn:turn*current);
-                                g.Transform.Rotation=new[]{q.X,q.Y,q.Z,q.W};
-                            }
-                        }
-                        else if(o.Value is MapSpawn s&&Tool=="Rotate")s.Yaw+=angle;
-                    }
-                });
+                Document.TransformSelection(ids, Tool, move, angle, scale, LocalAxes);
             }
             _drag=_orbit=_pan=false;_preview=Vector.Zero;_rotation=0;_scale=1;e.Pointer.Capture(null);InvalidateVisual();e.Handled=true;
         }
         protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
-        {CameraPosition=CameraTarget+(CameraPosition-CameraTarget)*(float)Math.Pow(.88,e.Delta.Y);InvalidateVisual();e.Handled=true;}
+        {
+            float distance = Math.Clamp(Vector.Distance(CameraPosition, CameraTarget) * (float)Math.Pow(.88, e.Delta.Y), .25f, 5000);
+            CameraPosition = CameraTarget - Camera.Basis().Forward * distance;
+            InvalidateVisual(); e.Handled = true;
+        }
         protected override void OnKeyDown(KeyEventArgs e)
         {
             if(e.Key==Key.F)FrameSelection();
-            else if(e.Key==Key.Delete){var ids=Document.Selection.ToHashSet();Document.Edit("Delete selection",d=>MapObjects.Delete(d,ids));}
-            else if(e.KeyModifiers.HasFlag(KeyModifiers.Control)&&e.Key==Key.D){var ids=Document.Selection.ToHashSet();Document.Edit("Duplicate selection",d=>MapObjects.Duplicate(d,ids));}
+            else if(e.Key==Key.Delete){var ids=Document.Selection.ToHashSet();Document.EditObjects("Delete selection",ids,d=>MapObjects.Delete(d,ids));}
+            else if(e.KeyModifiers.HasFlag(KeyModifiers.Control)&&e.Key==Key.D){var ids=Document.Selection.ToHashSet();Document.EditObjects("Duplicate selection",ids,d=>MapObjects.Duplicate(d,ids));}
             else if(e.KeyModifiers.HasFlag(KeyModifiers.Control)&&e.Key==Key.Z)Document.History.Undo();
             else if(e.KeyModifiers.HasFlag(KeyModifiers.Control)&&e.Key==Key.Y)Document.History.Redo();
             else

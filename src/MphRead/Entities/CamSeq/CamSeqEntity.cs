@@ -19,9 +19,9 @@ namespace MphRead.Entities
         private byte _delayTimer = 0;
         private EntityBase? _endMessageTarget = null;
 
-        public static CamSeqEntity? Current { get; set; }
+        public static CamSeqEntity? Current { get => global::MphRead.GameState.Current.CameraSequences.Entity; set => global::MphRead.GameState.Current.CameraSequences.Entity = value; }
         // todo: clear when changing rooms
-        private static readonly CameraSequence?[] _sequenceData = new CameraSequence[199];
+        private CameraSequence?[] _sequenceData => _scene.CameraSequences.Sequences;
 
         public CamSeqEntity(CameraSequenceEntityData data, Scene scene) : base(EntityType.CameraSequence, scene)
         {
@@ -39,12 +39,9 @@ namespace MphRead.Entities
             Sequence = sequence;
         }
 
-        public static void ClearData()
+        public static void ClearData(Scene? scene = null)
         {
-            for (int i = 0; i < _sequenceData.Length; i++)
-            {
-                _sequenceData[i] = null;
-            }
+            System.Array.Clear((scene?.CameraSequences ?? global::MphRead.GameState.Current.CameraSequences).Sequences);
         }
 
         public override void Initialize()
@@ -110,30 +107,30 @@ namespace MphRead.Entities
                         {
                             if (Sfx.ForceFieldSfxMute > 0)
                             {
-                                Sfx.ForceFieldSfxMute--;
+                                if (_scene.Services.AllowsPresentationSideEffects) Sfx.ForceFieldSfxMute--;
                             }
                         }
                         if ((sfxData & 0x8000) != 0)
                         {
-                            PlayerEntity.Main.RestartLongSfx();
+                            _scene.Players.Main.RestartLongSfx();
                         }
                         else
                         {
-                            PlayerEntity.Main.RestartTimedSfx();
+                            _scene.Players.Main.RestartTimedSfx();
                         }
                         int musicValue = CameraSequence.MusicData[Data.SequenceId];
                         if (musicValue != 0
-                            && ((musicValue & 0x2000) == 0 || (((int)GameState.StorySave.BossFlags >> (2 * _scene.AreaId)) & 3) == 0)
-                            && ((musicValue & 0x400) == 0 || GameState.EscapeTimer == -1 || GameState.EscapeState != EscapeState.Escape)
+                            && ((musicValue & 0x2000) == 0 || (((int)_scene.GameState.StorySave.BossFlags >> (2 * _scene.AreaId)) & 3) == 0)
+                            && ((musicValue & 0x400) == 0 || _scene.GameState.EscapeTimer == -1 || _scene.GameState.EscapeState != EscapeState.Escape)
                             && (musicValue & 0x4000) == 0
                             && (musicValue & 0x8000) == 0)
                         {
-                            Music.PlayPausedMusic();
+                            if (_scene.Services.AllowsPresentationSideEffects) Music.PlayPausedMusic();
                         }
                         _active = false;
                         Sequence.End();
-                        Current = null;
-                        PlayerEntity.Main.RefreshExternalCamera();
+                        _scene.CameraSequences.Entity = null;
+                        _scene.Players.Main.RefreshExternalCamera();
                         SendEndMessage();
                     }
                 }
@@ -143,15 +140,15 @@ namespace MphRead.Entities
 
         private void TryStart()
         {
-            PlayerEntity player = PlayerEntity.Main;
-            if (player.Health == 0 && player.DeathCountdown > 0 && Data.BlockInput != 0 || GameState.DialogPause)
+            PlayerEntity player = _scene.Players.Main;
+            if (player.Health == 0 && player.DeathCountdown > 0 && Data.BlockInput != 0 || _scene.GameState.DialogPause)
             {
                 return;
             }
             int musicValue = CameraSequence.MusicData[Data.SequenceId];
             bool hasMusic = musicValue != 0
-                && ((musicValue & 0x2000) == 0 || (((int)GameState.StorySave.BossFlags >> (2 * _scene.AreaId)) & 3) == 0)
-                && ((musicValue & 0x400) == 0 || GameState.EscapeTimer == -1 || GameState.EscapeState != EscapeState.Escape);
+                && ((musicValue & 0x2000) == 0 || (((int)_scene.GameState.StorySave.BossFlags >> (2 * _scene.AreaId)) & 3) == 0)
+                && ((musicValue & 0x400) == 0 || _scene.GameState.EscapeTimer == -1 || _scene.GameState.EscapeState != EscapeState.Escape);
             int sfxData = CameraSequence.SfxData[Data.SequenceId];
             if (_delayTimer == 0)
             {
@@ -159,24 +156,24 @@ namespace MphRead.Entities
                 {
                     if ((sfxData & 0x2000) != 0)
                     {
-                        Sfx.Instance.StopSoundById((int)SfxId.CHIME1);
+                        if (_scene.Services.AllowsPresentationSideEffects) Sfx.Instance.StopSoundById((int)SfxId.CHIME1);
                     }
                     if ((sfxData & 0x4000) != 0)
                     {
-                        Sfx.ForceFieldSfxMute++;
+                        if (_scene.Services.AllowsPresentationSideEffects) Sfx.ForceFieldSfxMute++;
                     }
                     if ((sfxData & 0x8000) != 0)
                     {
-                        PlayerEntity.Main.StopLongSfx();
+                        _scene.Players.Main.StopLongSfx();
                     }
                     else
                     {
-                        PlayerEntity.Main.StopTimedSfx();
+                        _scene.Players.Main.StopTimedSfx();
                     }
                 }
                 if (hasMusic && (musicValue & 0x4000) == 0)
                 {
-                    Music.Pause();
+                    if (_scene.Services.AllowsPresentationSideEffects) Music.Pause();
                 }
             }
             _delayTimer++;
@@ -187,27 +184,27 @@ namespace MphRead.Entities
                     int musicOrSeqId = musicValue & 0x3FF;
                     if ((musicValue & 0x800) != 0)
                     {
-                        Music.MusicToResume = (MusicId)musicOrSeqId;
+                        if (_scene.Services.AllowsPresentationSideEffects) Music.MusicToResume = (MusicId)musicOrSeqId;
                     }
-                    else if ((musicValue & 0x1000) != 0 && GameState.EscapeTimer != -1 && GameState.EscapeState == EscapeState.Escape)
+                    else if ((musicValue & 0x1000) != 0 && _scene.GameState.EscapeTimer != -1 && _scene.GameState.EscapeState == EscapeState.Escape)
                     {
-                        Music.PlayMusic(MusicId.SEQ_OREGANO_M55);
-                        Music.UpdateEscapeMusic();
+                        if (_scene.Services.AllowsPresentationSideEffects) Music.PlayMusic(MusicId.SEQ_OREGANO_M55);
+                        if (_scene.Services.AllowsPresentationSideEffects) Music.UpdateEscapeMusic();
                     }
                     else if ((musicValue & 0x4000) != 0)
                     {
-                        Music.PlayMusic((MusicId)musicOrSeqId);
+                        if (_scene.Services.AllowsPresentationSideEffects) Music.PlayMusic((MusicId)musicOrSeqId);
                     }
                     else
                     {
-                        Music.PlaySeq((SeqId)musicOrSeqId);
+                        if (_scene.Services.AllowsPresentationSideEffects) Music.PlaySeq((SeqId)musicOrSeqId);
                     }
                 }
                 int scriptId = sfxData & 0x1FFF;
                 if (scriptId != 0)
                 {
-                    Sfx.Instance.StopFreeSfxScripts();
-                    Sfx.Instance.PlayScript(scriptId | 0x4000, source: null,
+                    if (_scene.Services.AllowsPresentationSideEffects) Sfx.Instance.StopFreeSfxScripts();
+                    if (_scene.Services.AllowsPresentationSideEffects) Sfx.Instance.PlayScript(scriptId | 0x4000, source: null,
                         noUpdate: false, recency: -1, sourceOnly: false, cancellable: false);
                 }
                 Start();
@@ -233,15 +230,15 @@ namespace MphRead.Entities
                 Sequence.Flags |= CamSeqFlags.ForceBiped;
             }
             ushort transitionTime = (ushort)(_handoff ? 60 * 2 : 0); // todo: FPS stuff
-            Sequence.SetUp(PlayerEntity.Main.CameraInfo, transitionTime);
-            PlayerEntity.Main.RefreshExternalCamera();
+            Sequence.SetUp(_scene.Players.Main.CameraInfo, transitionTime);
+            _scene.Players.Main.RefreshExternalCamera();
         }
 
         private void Cancel()
         {
-            PlayerEntity player = PlayerEntity.Main;
+            PlayerEntity player = _scene.Players.Main;
             player.RestartLongSfx();
-            bool currentSeq = CameraSequence.Current == Sequence;
+            bool currentSeq = _scene.CameraSequences.Current == Sequence;
             bool playerCam = Sequence.CamInfoRef == player.CameraInfo;
             SendEndMessage();
             Sequence.End();
@@ -254,9 +251,9 @@ namespace MphRead.Entities
                     player.ResumeOwnCamera();
                 }
             }
-            if (Current == this)
+            if (_scene.CameraSequences.Entity == this)
             {
-                Current = null;
+                _scene.CameraSequences.Entity = null;
             }
         }
 
@@ -272,29 +269,29 @@ namespace MphRead.Entities
         {
             if (info.Message == Message.Activate || (info.Message == Message.SetActive && (int)info.Param1 != 0))
             {
-                PlayerEntity player = PlayerEntity.Main;
+                PlayerEntity player = _scene.Players.Main;
                 if (player.Health == 0 && player.DeathCountdown > 0 && Data.BlockInput != 0)
                 {
                     return;
                 }
                 bool activate = true;
                 bool handoff = false;
-                if (Current != null)
+                if (_scene.CameraSequences.Entity != null)
                 {
-                    if (Current.Data.BlockInput != 0)
+                    if (_scene.CameraSequences.Entity.Data.BlockInput != 0)
                     {
                         activate = false;
                     }
-                    if (Current.Data.Handoff != 0 && Data.Handoff != 0)
+                    if (_scene.CameraSequences.Entity.Data.Handoff != 0 && Data.Handoff != 0)
                     {
                         handoff = true;
-                        if (Current._handoffTimer == 0)
+                        if (_scene.CameraSequences.Entity._handoffTimer == 0)
                         {
                             activate = false;
                         }
                     }
                 }
-                if (CameraSequence.Current != null && CameraSequence.Current.Flags.TestFlag(CamSeqFlags.BlockInput))
+                if (_scene.CameraSequences.Current != null && _scene.CameraSequences.Current.Flags.TestFlag(CamSeqFlags.BlockInput))
                 {
                     activate = false;
                 }
@@ -305,17 +302,17 @@ namespace MphRead.Entities
                     {
                         return;
                     }
-                    if (Current != null && Current != this)
+                    if (_scene.CameraSequences.Entity != null && _scene.CameraSequences.Entity != this)
                     {
                         if (handoff)
                         {
-                            Current.Sequence.CamInfoRef = null;
+                            _scene.CameraSequences.Entity.Sequence.CamInfoRef = null;
                         }
-                        Current.Cancel();
+                        _scene.CameraSequences.Entity.Cancel();
                     }
-                    if (CameraSequence.Current != null && CameraSequence.Current != Sequence)
+                    if (_scene.CameraSequences.Current != null && _scene.CameraSequences.Current != Sequence)
                     {
-                        CameraSequence.Current.End();
+                        _scene.CameraSequences.Current.End();
                     }
                     if (!_active)
                     {
@@ -325,7 +322,7 @@ namespace MphRead.Entities
                         _delayTimer = (byte)(quickStart ? 7 : 0);
                         _handoffTimer = 0;
                         _handoff = handoff;
-                        Current = this;
+                        _scene.CameraSequences.Entity = this;
                         if (Data.DelayFrames == 0 || quickStart)
                         {
                             TryStart();
@@ -356,9 +353,9 @@ namespace MphRead.Entities
             }
         }
 
-        public static void CancelCurrent()
+        public static void CancelCurrent(Scene? scene = null)
         {
-            Current?.Cancel();
+            (scene?.CameraSequences ?? global::MphRead.GameState.Current.CameraSequences).Entity?.Cancel();
         }
     }
 }

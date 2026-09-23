@@ -12,6 +12,9 @@ namespace MphRead.NetTest
     internal static class HealthShotTests
     {
         private static int _checks;
+        private static readonly Scene _scene = new(new Vector2i(256, 192),
+            Mods.Input.SyntheticInput.CreateKeyboard(), Mods.Input.SyntheticInput.CreateMouse(),
+            _ => { }, () => { }, initializeRuntime: false);
         internal static void Check(bool ok, string message)
         {
             _checks++;
@@ -60,12 +63,9 @@ namespace MphRead.NetTest
             roster.Slots[0] = 0; roster.Generations[0] = 9;
             roster.Slots[1] = 1; roster.Generations[1] = 10;
             NetSession.ApplyRoster(roster);
-            byte[] welcome = new byte[18]; welcome[0] = (byte)PacketType.Welcome;
-            BinaryPrimitives.WriteUInt32LittleEndian(welcome.AsSpan(2), NetSession.ClientId);
-            BinaryPrimitives.WriteUInt16LittleEndian(welcome.AsSpan(6), 51);
-            BinaryPrimitives.WriteUInt64LittleEndian(welcome.AsSpan(8), 4);
-            BinaryPrimitives.WriteUInt16LittleEndian(welcome.AsSpan(16), 9);
-            Deliver(welcome);
+            // This packet-only prediction fixture supplies its local actor directly.
+            // Playback must reject Welcome; real UDP admission has its own test.
+            typeof(NetSession).GetProperty(nameof(NetSession.LocalSlot))!.SetValue(null, 0);
             var own = State(2); own.SlotIndex = 0; own.SlotGeneration = 9;
             NetPlayerLifecycle.AcceptState(own, 1);
             Snapshot(1, State());
@@ -90,6 +90,7 @@ namespace MphRead.NetTest
         internal static PlayerEntity Player(int slot, int health = 99)
         {
             var player = (PlayerEntity)RuntimeHelpers.GetUninitializedObject(typeof(PlayerEntity));
+            typeof(EntityBase).GetField("_scene", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(player, _scene);
             typeof(PlayerEntity).GetProperty(nameof(PlayerEntity.SlotIndex))!.SetValue(player, slot);
             player.Health = health;
             Field(player, "<Controls>k__BackingField", PlayerControls.GetDefault());

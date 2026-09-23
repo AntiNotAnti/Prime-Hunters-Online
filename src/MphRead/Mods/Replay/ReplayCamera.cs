@@ -73,8 +73,6 @@ namespace MphRead.Mods.Replay
             key = Track.Keys[_bookmarkIndex++ % Track.Keys.Count];
             return true;
         }
-        private static int _eventCursor;
-        private static uint _lastFrame;
         internal static bool Changed;
         internal static bool BookmarkRequested;
         internal static bool RestoreRequested;
@@ -98,8 +96,6 @@ namespace MphRead.Mods.Replay
         {
             Mode = ReplayCameraMode.FirstPerson;
             Changed = true;
-            _eventCursor = 0;
-            _lastFrame = 0;
             BookmarkRequested = false;
             RestoreRequested = false;
             ReplayDirector.Reset();
@@ -126,6 +122,8 @@ namespace MphRead
         private float _replayOrbit;
         private Vector3? _replayFollowPosition;
 
+        private double ReplayPresentationTime => Math.Max(0, Mods.Network.ReplayController.CurrentFrame - 1d + ReplayRenderAlpha);
+
         private void ModReplayCamera()
         {
             if (!Mods.Network.DemoPlayback.IsActive) return;
@@ -146,12 +144,12 @@ namespace MphRead
                 Mods.Replay.ReplayCamera.BookmarkRequested = false;
                 // In first-person the scene's auxiliary facing may be stale; capture
                 // the camera actually shown, without writing back into the hunter.
-                Mods.Replay.ReplayCamera.SaveKeyframe(_freeCam ? _cameraPosition : PlayerEntity.Main.CameraInfo.Position,
-                    _freeCam ? _cameraFacing : PlayerEntity.Main.CameraInfo.Facing,
+                Mods.Replay.ReplayCamera.SaveKeyframe(_freeCam ? _cameraPosition : this.Players.Main.CameraInfo.Position,
+                    _freeCam ? _cameraFacing : this.Players.Main.CameraInfo.Facing,
                     _freeCam ? _cameraFov : MathHelper.DegreesToRadians(
                         Mods.RenderOptions.ScaleCameraFov(
-                            PlayerEntity.Main.CameraInfo.Fov > 0
-                                ? PlayerEntity.Main.CameraInfo.Fov
+                            this.Players.Main.CameraInfo.Fov > 0
+                                ? this.Players.Main.CameraInfo.Fov
                                 : Mods.RenderOptions.DefaultFov)));
             }
             if (Mods.Replay.ReplayCamera.RestoreRequested)
@@ -168,7 +166,7 @@ namespace MphRead
             if (Mods.Replay.ReplayCamera.Profile == Mods.Replay.ReplayPresentationProfile.Presentation
                 && Mods.Replay.ReplayCamera.PlayTrack
                 && Mods.Replay.ReplayCamera.Track.Sample(
-                    Mods.Network.ReplayController.CurrentFrame,
+                    ReplayPresentationTime,
                     out var trackFrame,
                     Mods.Replay.ReplayCamera.TrackConstantSpeed))
             {
@@ -182,19 +180,14 @@ namespace MphRead
                     Mods.Replay.ReplayCamera.FieldOfView, 20, 140));
             }
             if (mode is not (Mods.Replay.ReplayCameraMode.Chase or Mods.Replay.ReplayCameraMode.Orbit)) return;
-            var player = PlayerEntity.Main;
+            var player = this.Players.Main;
             if (!player.LoadFlags.TestFlag(LoadFlags.Spawned)) return;
             SetFreeCamera(true);
 
-            Vector3 playerPosition = player.Position;
+            Vector3 playerPosition = Services.IsReplica ? player.ReplayDrawTransform.Row3.Xyz : player.Position;
             Vector3 facing = player.CameraInfo.Facing;
-            if (Mods.Network.NetSmoothing.SampleReplayPresentation(player.SlotIndex,
-                out Vector3 replayPosition, out Vector3 replayFacing, out bool replayAlt))
-            {
-                playerPosition = Mods.Network.NetPlayerBridge.InFormFor(
-                    player, replayPosition, replayAlt);
-                facing = replayFacing;
-            }
+            if (ReplayPoses?.Sample(player.SlotIndex, ReplayRenderAlpha, out _, out var replicaFacing) == true)
+                facing = replicaFacing;
 
             Vector3 target = playerPosition
                 + Vector3.UnitY * Math.Clamp(Mods.Replay.ReplayCamera.Height, 0.5f, 8);
@@ -203,11 +196,11 @@ namespace MphRead
             facing.Normalize();
             if (mode == Mods.Replay.ReplayCameraMode.Orbit)
             {
-                _replayOrbit += delta * 0.4f;
+                _replayOrbit = (float)(ReplayPresentationTime / 60 * 0.4);
                 facing = new Vector3(MathF.Sin(_replayOrbit), 0, MathF.Cos(_replayOrbit));
             }
             Vector3 desired = target - facing * Math.Clamp(Mods.Replay.ReplayCamera.Distance, 1, 20);
-            Vector3 candidate = Mods.Replay.ReplayCamera.Profile == Mods.Replay.ReplayPresentationProfile.Presentation && _replayFollowPosition.HasValue ? Vector3.Lerp(_replayFollowPosition.Value, desired, 1 - MathF.Exp(-delta * 10)) : desired;
+            Vector3 candidate = !Mods.Replay.ReplayVideoExporter.Active && Mods.Replay.ReplayCamera.Profile == Mods.Replay.ReplayPresentationProfile.Presentation && _replayFollowPosition.HasValue ? Vector3.Lerp(_replayFollowPosition.Value, desired, 1 - MathF.Exp(-delta * 10)) : desired;
             CollisionResult collision = default;
             if (CollisionDetection.CheckBetweenPoints(target, candidate, TestFlags.Players, this, ref collision))
                 candidate = target + (candidate - target) * Math.Max(0, collision.Distance - 0.05f);
@@ -228,6 +221,13 @@ namespace MphRead
             {
                 CollisionResult pathCollision = default;
                 Vector3 from = _cameraPosition;
+                // A track's collision anchor is recorded, so the same target
+                // frame cannot depend on the previously displayed/seeked frame.
+                foreach (var anchor in Mods.Replay.ReplayCamera.Track.Keys)
+                {
+                    if (anchor.Frame > ReplayPresentationTime) break;
+                    from = anchor.Position;
+                }
                 if ((desired - from).LengthSquared < 10000
                     && CollisionDetection.CheckBetweenPoints(from, desired, TestFlags.Players, this, ref pathCollision))
                 {
@@ -240,12 +240,12 @@ namespace MphRead
             if (Math.Abs(key.Roll) > 0.00001f)
                 _cameraUp = Vector3.Transform(_cameraUp,
                     Quaternion.FromAxisAngle(_cameraFacing, key.Roll)).Normalized();
-            if (key.LookAtSlot >= 0 && key.LookAtSlot < PlayerEntity.Players.Count)
+            if (key.LookAtSlot >= 0 && key.LookAtSlot < this.Players.Items.Count)
             {
-                var target = PlayerEntity.Players[key.LookAtSlot];
+                var target = this.Players.Items[key.LookAtSlot];
                 if (target.LoadFlags.TestFlag(LoadFlags.Active) && target.LoadFlags.TestFlag(LoadFlags.Spawned))
                 {
-                    Vector3 direction = target.Position + Vector3.UnitY - _cameraPosition;
+                    Vector3 direction = (Services.IsReplica ? target.ReplayDrawTransform.Row3.Xyz : target.Position) + Vector3.UnitY - _cameraPosition;
                     if (direction.LengthSquared > 0.0001f) _cameraFacing = direction.Normalized();
                 }
             }

@@ -14,13 +14,25 @@ namespace MphRead.Mods.Network
     internal static class ServerReplayRecorder
     {
         private static ReplayWriterV3? _writer;
-        private static uint _startFrame;
+        private static uint _origin;
+        private static bool _pending;
+        static ServerReplayRecorder()
+        {
+            ReplayCapture.Recorder.Accepted += Accept;
+            ReplayCapture.Recorder.CheckpointCaptured += checkpoint =>
+            {
+                if (_writer == null || checkpoint.RecordingFrame <= _origin) return;
+                try { _writer.WriteCheckpoint(checkpoint.RecordingFrame - _origin, checkpoint.Payload); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException) { Fail(ex); }
+            };
+            ReplayCapture.Recorder.Resetting += () => Stop();
+        }
         private static ServerReplayPolicy _policy = ServerReplayPolicy.Default;
 
         public static string ReplayDirectory => Paths.Combine(
             Paths.Export, "_demos", "server");
         public static bool Enabled => _policy.Enabled;
-        public static bool IsRecording => _writer != null;
+        public static bool IsRecording => _pending || _writer != null;
         public static string? CurrentPath { get; private set; }
         public static string? LastError { get; private set; }
 
@@ -54,9 +66,7 @@ namespace MphRead.Mods.Network
                 Directory.CreateDirectory(ReplayDirectory);
                 CurrentPath = Path.Combine(ReplayDirectory,
                     $"{room}_{DateTime.Now:yyyy-MM-dd_HH-mm-ss-fff}_{Guid.NewGuid():N}{DemoFile.Extension}");
-                _writer = new ReplayWriterV3(CurrentPath, metadata);
-                _startFrame = NetSession.NetFrame;
-                _writer.WriteEvent(new ReplayEvent(0, ReplayEventType.MatchStarted));
+                _pending = true;
                 Console.WriteLine($"[replay] canonical server recording: {CurrentPath}");
                 return true;
             }
@@ -71,36 +81,39 @@ namespace MphRead.Mods.Network
             }
         }
 
-        public static void Record(PacketType type, ReadOnlySpan<byte> payload)
+        internal static void Tick()
+        {
+            try
+            {
+                if (_pending && ReplayCapture.WorldCapture.World is { } world)
+                {
+                    _origin = world.Session.RecordingFrame;
+                    _writer = new ReplayWriterV3(CurrentPath!, ReplayTimelineArchive.Metadata(world, ReplayType.FullMatch));
+                    _pending = false;
+                    _writer.WriteEvent(new(0, ReplayEventType.MatchStarted));
+                }
+                if (_writer != null) ReplayTimelineArchive.EndFrame(_writer, Frame());
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException)
+            { Fail(ex); }
+        }
+        private static void Accept(ReplayTimelineRecord record)
         {
             if (_writer == null) return;
-            byte[] packet = new byte[1 + payload.Length];
-            packet[0] = (byte)type;
-            payload.CopyTo(packet.AsSpan(1));
-            Write(packet);
+            try { ReplayTimelineArchive.Write(_writer, record, _origin); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+            { Fail(ex); }
         }
-
-        public static void RecordSlotIntent(int slot, ReadOnlySpan<byte> payload)
+        private static void Fail(Exception ex)
         {
-            if (_writer == null || slot is < 0 or >= RosterPacket.MaxSlots) return;
-            byte[] packet = new byte[2 + payload.Length];
-            packet[0] = (byte)PacketType.SlotIntent;
-            packet[1] = (byte)slot;
-            payload.CopyTo(packet.AsSpan(2));
-            Write(packet);
-        }
-
-        public static void RecordEvent(ReplayEvent value)
-        {
-            if (_writer == null) return;
-            uint frame = Frame();
-            _writer.WriteEvent(value with { Frame = frame });
+            LastError = ex.Message; _writer?.Abort(); _writer = null; _pending = false; CurrentPath = null;
+            Console.WriteLine($"[replay] canonical recording interrupted; recover its .part file: {ex.Message}");
         }
 
         public static void Stop(bool matchEnded = false)
         {
             ReplayWriterV3? writer = _writer;
-            _writer = null;
+            _writer = null; _pending = false;
             if (writer == null)
             {
                 CurrentPath = null;
@@ -126,30 +139,7 @@ namespace MphRead.Mods.Network
             }
         }
 
-        private static void Write(ReadOnlySpan<byte> packet)
-        {
-            ReplayWriterV3? writer = _writer;
-            if (writer == null) return;
-            try
-            {
-                writer.WriteRecord(Frame(), packet);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
-                or InvalidDataException)
-            {
-                LastError = ex.Message;
-                writer.Abort();
-                _writer = null;
-                CurrentPath = null;
-                Console.WriteLine($"[replay] canonical recording interrupted; recover its .part file: {ex.Message}");
-            }
-        }
-
-        private static uint Frame()
-        {
-            uint now = NetSession.NetFrame;
-            return now >= _startFrame ? now - _startFrame : 0;
-        }
+        private static uint Frame() => NetSession.NetFrame >= _origin ? NetSession.NetFrame - _origin : 0;
 
         private static void ApplyRetention(string reason)
         {

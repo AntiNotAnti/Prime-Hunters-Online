@@ -11,44 +11,24 @@ namespace MphRead.Entities
     {
         public void Draw()
         {
-            bool historical = Mods.KillCam.TryGetHistoricalPose(
-                SlotIndex, out Mods.KillCamPlayerPose historicalPose);
-
             Vector3 presentedPosition = default;
-            Vector3 presentedFacing = _facingVector;
             bool presentedAlt = false;
-            bool networkPresented = false;
-            if (!historical && Mods.Network.NetSession.Active
-                && SlotIndex != Mods.Network.NetHooks.LocalSlot)
-            {
-                if (Mods.Network.DemoPlayback.IsActive)
-                {
-                    networkPresented = Mods.Network.NetSmoothing.SampleReplayPresentation(
-                        SlotIndex, out presentedPosition, out presentedFacing, out presentedAlt);
-                }
-                else
-                {
-                    networkPresented = Mods.Network.NetSmoothing.SamplePresentation(
-                        SlotIndex, out presentedPosition, out presentedAlt);
-                }
-            }
+            bool networkPresented = !_scene.Services.IsReplica && Mods.Network.NetSession.Active
+                && SlotIndex != Mods.Network.NetHooks.LocalSlot
+                && Mods.Network.NetSmoothing.SamplePresentation(
+                    SlotIndex, out presentedPosition, out presentedAlt);
+            Vector3 drawPosition = networkPresented
+                ? Mods.Network.NetPlayerBridge.InFormFor(this, presentedPosition, presentedAlt)
+                : _scene.Services.IsReplica ? ReplayDrawTransform.Row3.Xyz : Position;
+            bool drawAltForm = IsAltForm;
+            bool drawAlive = _health > 0;
+            Vector3 drawFacing = _scene.Services.IsReplica
+                ? ReplayDrawTransform.Row2.Xyz.Normalized() : _facingVector;
 
-            Vector3 drawPosition = historical
-                ? historicalPose.Position
-                : networkPresented
-                    ? Mods.Network.NetPlayerBridge.InFormFor(
-                        this, presentedPosition, presentedAlt)
-                    : Position;
-            bool drawAltForm = historical ? historicalPose.AltForm : IsAltForm;
-            bool drawAlive = historical ? historicalPose.Health > 0 : _health > 0;
+            if (_scene.ReplayPoses?.Sample(SlotIndex, _scene.ReplayRenderAlpha, out _, out Vector3 replicaFacing) == true)
+                drawFacing = replicaFacing;
 
-            Vector3 drawFacing = historical
-                ? historicalPose.Facing
-                : Mods.Network.DemoPlayback.IsActive && networkPresented
-                    ? presentedFacing
-                    : _facingVector;
-
-            if (!historical && Flags2.TestFlag(PlayerFlags2.Spectating))
+            if (Flags2.TestFlag(PlayerFlags2.Spectating))
             {
                 // Before the shadow, not after it. A spectator is out of the
                 // match on every machine, and the shadow is drawn from the
@@ -57,13 +37,12 @@ namespace MphRead.Entities
                 // nobody, which is exactly how it was reported.
                 return;
             }
-            if (!historical)
-                DrawShadow(drawPosition);
-            if (!historical && IsMainPlayer && ScanVisor)
+            DrawShadow(drawPosition);
+            if (IsMainPlayer && ScanVisor)
             {
                 DrawScanModels();
             }
-            if (!historical && Flags2.TestFlag(PlayerFlags2.HideModel))
+            if (Flags2.TestFlag(PlayerFlags2.HideModel))
             {
                 return;
             }
@@ -75,8 +54,8 @@ namespace MphRead.Entities
             Vector4? outlineColor = BrightSkins.GetOutlineColor(this);
             int lod = 0;
             Flags2 &= ~PlayerFlags2.Lod1;
-            if (!historical && !IsMainPlayer && !Features.MaxPlayerDetail
-                && (Position - Main.CameraInfo.Position).LengthSquared >= 3 * 3)
+            if (!IsMainPlayer && !Features.MaxPlayerDetail
+                && (Position - _scene.Players.Main.CameraInfo.Position).LengthSquared >= 3 * 3)
             {
                 lod = 1;
                 Flags2 |= PlayerFlags2.Lod1;
@@ -89,31 +68,19 @@ namespace MphRead.Entities
             // example issue - Kanden visible for one frame before Data Shrine 03 cam seq starts
             // should be culled because the cam seq frustum info has already been loaded, and is facing away from him,
             // even though the player's view is still what's on the screen (at least that seems to be what's happening)
-            if (historical || IsMainPlayer || IsVisible(NodeRef) || ModNodeUnresolved)
+            if (IsMainPlayer || IsVisible(NodeRef) || ModNodeUnresolved)
             {
-                drawBiped = historical
-                    ? !Mods.KillCam.IsHistoricalCameraOwner(SlotIndex)
-                    : !IsMainPlayer || CameraType != CameraType.First
-                        || CameraSequence.Current != null
-                        || _camSwitchTimer < Values.CamSwitchTime * 2; // todo: FPS stuff
+                drawBiped = !IsMainPlayer || CameraType != CameraType.First
+                    || _scene.CameraSequences.Current != null
+                    || _camSwitchTimer < Values.CamSwitchTime * 2; // todo: FPS stuff
                 if (drawAltForm)
                 {
-                    Matrix4 historicalAltTransform = historical
-                        ? historicalPose.Transform : _modelTransform;
-                    historicalAltTransform.Row3.Xyz = drawPosition;
-                    if (!historical)
-                        _modelTransform.Row3.Xyz = drawPosition;
+                    _modelTransform.Row3.Xyz = drawPosition;
                     if (_timeSinceDamage < Values.DamageFlashTime * 2) // todo: FPS stuff
                     {
                         PaletteOverride = Metadata.RedPalette;
                     }
-                    if (historical)
-                    {
-                        UpdateTransforms(_altModel, historicalAltTransform, Recolor);
-                        GetDrawItems(_altModel, _altModel.Model.Nodes[0], _curAlpha,
-                            overrideColor: brightSkin, outlineColor: outlineColor);
-                    }
-                    else if (Hunter == Hunter.Kanden)
+                    if (Hunter == Hunter.Kanden)
                     {
                         DrawKandenAlt(brightSkin, outlineColor);
                     }
@@ -127,7 +94,7 @@ namespace MphRead.Entities
                         GetDrawItems(_altModel, _altModel.Model.Nodes[0], _curAlpha, overrideColor: brightSkin, outlineColor: outlineColor);
                     }
                     PaletteOverride = null;
-                    if (!historical && _frozenGfxTimer > 0)
+                    if (_frozenGfxTimer > 0)
                     {
                         float radius = _volume.SphereRadius + 0.2f;
                         Matrix4 transform = Matrix4.CreateScale(radius) * _modelTransform;
@@ -135,13 +102,12 @@ namespace MphRead.Entities
                         UpdateTransforms(_altIceModel, transform, recolor: 0);
                         GetDrawItems(_altIceModel, _altIceModel.Model.Nodes[0], alpha: 1, recolor: 0);
                     }
-                    if (!historical && Hunter == Hunter.Samus
+                    if (Hunter == Hunter.Samus
                         && !Flags2.TestFlag(PlayerFlags2.Cloaking))
                     {
                         DrawMorphBallTrail();
                     }
-                    if (!historical)
-                        _modelTransform.Row3.Xyz = Vector3.Zero;
+                    _modelTransform.Row3.Xyz = Vector3.Zero;
                     Flags2 |= PlayerFlags2.DrawnThirdPerson;
                 }
                 else if (drawBiped)
@@ -168,30 +134,12 @@ namespace MphRead.Entities
                     spineNode.AfterTransform = null;
                     float scale = Metadata.HunterScales[Hunter];
                     float bottom = Fixed.ToFloat(Values.MinPickupHeight);
-                    Matrix4 transform;
-                    if (historical)
-                    {
-                        transform = historicalPose.Transform;
-                        Vector3 right = transform.Row0.Xyz;
-                        Vector3 up = transform.Row1.Xyz;
-                        Vector3 forward = transform.Row2.Xyz;
-                        if (right.LengthSquared > 0.000001f) right = right.Normalized();
-                        if (up.LengthSquared > 0.000001f) up = up.Normalized();
-                        if (forward.LengthSquared > 0.000001f) forward = forward.Normalized();
-                        transform.Row0.Xyz = right;
-                        transform.Row1.Xyz = up;
-                        transform.Row2.Xyz = forward;
-                        transform.Row3.Xyz = drawPosition;
-                    }
-                    else
-                    {
-                        var lateral = new Vector3(_field70, 0, _field74);
-                        transform = Matrix4.Identity;
-                        transform.Row0.Xyz = -_gunVec2;
-                        transform.Row1.Xyz = Vector3.Cross(lateral, _gunVec2);
-                        transform.Row2.Xyz = -lateral;
-                        transform.Row3.Xyz = drawPosition;
-                    }
+                    var lateral = new Vector3(_field70, 0, _field74);
+                    Matrix4 transform = Matrix4.Identity;
+                    transform.Row0.Xyz = -_gunVec2;
+                    transform.Row1.Xyz = Vector3.Cross(lateral, _gunVec2);
+                    transform.Row2.Xyz = -lateral;
+                    transform.Row3.Xyz = drawPosition;
                     transform.Row3.Y += bottom + bottom * (1 - scale);
                     transform.Row0.Xyz *= scale;
                     transform.Row1.Xyz *= scale;
@@ -209,7 +157,7 @@ namespace MphRead.Entities
                             PaletteOverride = Metadata.RedPalette;
                         }
                         float alpha = _curAlpha;
-                        if (IsMainPlayer && CameraSequence.Current == null
+                        if (IsMainPlayer && _scene.CameraSequences.Current == null
                             && _bipedModel1.AnimInfo.Index[0] == (int)PlayerAnimation.Unmorph)
                         {
                             alpha -= alpha * _bipedModel1.AnimInfo.Frame[0] / _bipedModel1.AnimInfo.FrameCount[0];
@@ -218,7 +166,7 @@ namespace MphRead.Entities
                         UpdateMaterials(_bipedModel2, Recolor);
                         GetDrawItems(_bipedModel2, _bipedModel2.Model.Nodes[0], alpha, overrideColor: brightSkin, outlineColor: outlineColor);
                         PaletteOverride = null;
-                        if (!historical && (_chargeEffect != null || _muzzleEffect != null))
+                        if (_chargeEffect != null || _muzzleEffect != null)
                         {
                             Vector3 muzzlePos = Metadata.MuzzleOffests[(int)Hunter];
                             muzzlePos = Matrix.Vec3MultMtx4(muzzlePos, _shootNodes[lod]!.Animation);
@@ -233,7 +181,7 @@ namespace MphRead.Entities
                                 _muzzleEffect.Transform(_gunVec2, _gunVec1, muzzlePos);
                             }
                         }
-                        if (!historical && _frozenGfxTimer > 0)
+                        if (_frozenGfxTimer > 0)
                         {
                             for (int i = 0; i < _bipedIceModel.Model.Nodes.Count; i++)
                             {
@@ -245,9 +193,8 @@ namespace MphRead.Entities
                             GetDrawItems(_bipedIceModel, _bipedIceModel.Model.Nodes[0], alpha: 1, recolor: 0);
                         }
                     }
-                    if (!historical)
-                        _modelTransform = transform;
-                    if (!historical && _health == 0)
+                    _modelTransform = transform;
+                    if (_health == 0)
                     {
                         DrawDeathParticles();
                     }
@@ -313,8 +260,8 @@ namespace MphRead.Entities
                     _muzzleEffect.SetDrawEnabled(false);
                 }
             }
-            if (GameState.SinglePlayer && IsMainPlayer && _deathCountdown > 0 && _deathCountdown <= 119 / 30f
-                && System.Numerics.BitOperations.PopCount(GameState.StorySave.CurrentOctoliths) > 0)
+            if (_scene.GameState.SinglePlayer && IsMainPlayer && _deathCountdown > 0 && _deathCountdown <= 119 / 30f
+                && System.Numerics.BitOperations.PopCount(_scene.GameState.StorySave.CurrentOctoliths) > 0)
             {
                 Matrix4 transform = Matrix4.Identity;
                 transform.Row3.Xyz = _lostOctolithDrawPos;

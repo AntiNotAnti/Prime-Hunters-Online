@@ -14,7 +14,7 @@ using OpenTK.Mathematics;
 
 namespace MphRead.Entities
 {
-    public class RoomEntity : EntityBase
+    public partial class RoomEntity : EntityBase
     {
         private readonly List<CollisionInstance> _roomCollision = new List<CollisionInstance>();
         public IReadOnlyList<CollisionInstance> RoomCollision => _roomCollision;
@@ -90,7 +90,7 @@ namespace MphRead.Entities
             _partBoundsBuiltFor = -1;
             _nextRoomPartId = 0;
             _doorPortalCount = 0;
-            ModelInstance inst = Read.GetRoomModelInstance(name);
+            ModelInstance inst = _scene.GetRoomModelInstance(name);
             if (_models.Count == 0)
             {
                 _models.Add(inst);
@@ -130,7 +130,7 @@ namespace MphRead.Entities
             _meta = meta;
             Model model = inst.Model;
             // portals are already filtered by layer mask
-            _portals.AddRange(collision.Info.Portals);
+            _portals.AddRange(collision.Info.Portals.Select(p => p.CreateSceneCopy()));
             if (_portals.Count > 0)
             {
                 IEnumerable<string> parts = _portals.Select(p => p.NodeName1).Concat(_portals.Select(p => p.NodeName2)).Distinct();
@@ -225,7 +225,7 @@ namespace MphRead.Entities
             if (nodeData != null && _models.Count < 2)
             {
                 // using cached instance messes with placeholders since the room entity doesn't update its instances normally
-                _models.Add(Read.GetModelInstance("pick_wpn_missile", noCache: true));
+                _models.Add(_scene.GetModelInstance("pick_wpn_missile", noCache: true));
             }
         }
 
@@ -245,7 +245,7 @@ namespace MphRead.Entities
         private NodeRef AddDoorPortal(DoorEntity door)
         {
             // workaround for unintended modes
-            if (!GameState.SinglePlayer)
+            if (!_scene.GameState.SinglePlayer)
             {
                 return NodeRef.None;
             }
@@ -270,7 +270,7 @@ namespace MphRead.Entities
             }
             RoomMetadata? meta = Metadata.GetRoomById((int)door.Data.ConnectorId);
             Debug.Assert(meta != null);
-            ModelInstance conInst = Read.GetRoomModelInstance(meta.Name); // cached
+            ModelInstance conInst = _scene.GetRoomModelInstance(meta.Name); // cached
             IReadOnlyList<Node> conNodes = conInst.Model.Nodes;
             string connectorName = door.Data.RoomName.MarshalString();
             for (int i = 0; i < conNodes.Count; i++)
@@ -341,7 +341,7 @@ namespace MphRead.Entities
             }
             RoomMetadata? meta = Metadata.GetRoomById(connectorId);
             Debug.Assert(meta != null);
-            ModelInstance conInst = Read.GetRoomModelInstance(meta.Name);
+            ModelInstance conInst = _scene.GetRoomModelInstance(meta.Name);
             _scene.LoadModel(conInst.Model);
             _connectorModels.Add(conInst);
             CollisionInstance collision = Collision.GetCollision(meta, roomLayerMask: -1);
@@ -350,7 +350,7 @@ namespace MphRead.Entities
             _roomCollision.Add(collision);
             conInst.Active = false;
             collision.Active = false;
-            if (!GameState.InRoomTransition)
+            if (!_scene.GameState.InRoomTransition)
             {
                 // hack -- keep track of which connectors belong to the current room
                 conInst.NodeAnimIgnoreRoot = true;
@@ -380,7 +380,7 @@ namespace MphRead.Entities
             newDoor.ConnectorInactive = true;
             door.LoaderDoor = newDoor;
             newDoor.ConnectorDoor = door;
-            if (!GameState.InRoomTransition)
+            if (!_scene.GameState.InRoomTransition)
             {
                 newDoor.NodeRef = AddDoorPortal(door);
             }
@@ -412,15 +412,15 @@ namespace MphRead.Entities
 
         public void UpdateTransition()
         {
-            if (GameState.TransitionState == TransitionState.Start)
+            if (_scene.GameState.TransitionState == TransitionState.Start)
             {
                 StartTransition(fromDoor: true);
             }
-            else if (GameState.TransitionState == TransitionState.Process)
+            else if (_scene.GameState.TransitionState == TransitionState.Process)
             {
                 _scene.InitLoadedEntity(count: 1); // todo: revisit this count?
             }
-            else if (GameState.TransitionState == TransitionState.End)
+            else if (_scene.GameState.TransitionState == TransitionState.End)
             {
                 EndTransition();
             }
@@ -437,16 +437,16 @@ namespace MphRead.Entities
 
         public void LoadRoom(bool resume)
         {
-            PlayerEntity? player = PlayerEntity.Main;
+            PlayerEntity? player = _scene.Players.Main;
             player.StopAllSfx();
             Hunter hunter = player.Hunter;
             int recolor = player.Recolor;
-            if (GameState.TransitionRoomId == -1)
+            if (_scene.GameState.TransitionRoomId == -1)
             {
-                GameState.TransitionRoomId = _scene.RoomId;
+                _scene.GameState.TransitionRoomId = _scene.RoomId;
             }
             _scene.ResetFrameCount();
-            Rng.SetRng2(0);
+            _scene.Random.SetRng2(0);
             StartTransition(fromDoor: false, resume);
             _scene.ClearEffects();
             if (!resume)
@@ -469,13 +469,13 @@ namespace MphRead.Entities
                     player.LoadFlags |= LoadFlags.SlotActive;
                     player.LoadFlags |= LoadFlags.Active;
                     player.LoadFlags |= LoadFlags.Initial;
-                    PlayerEntity.PlayerCount++;
+                    _scene.Players.PlayerCount++;
                 }
             }
             ProcessTransition(CancellationToken.None);
             EndTransition();
-            GameState.PausePrevented = false;
-            Music.TryPlayRoomMusic(_scene.RoomId, GameState.SinglePlayer && (((int)GameState.StorySave.BossFlags >> (2 * _scene.AreaId)) & 3) != 0 ? 1 : 0);
+            _scene.GameState.PausePrevented = false;
+            if (_scene.Services.AllowsPresentationSideEffects) Music.TryPlayRoomMusic(_scene.RoomId, _scene.GameState.SinglePlayer && (((int)_scene.GameState.StorySave.BossFlags >> (2 * _scene.AreaId)) & 3) != 0 ? 1 : 0);
             if (!resume)
             {
                 _scene.InsertEntity(player);
@@ -495,9 +495,9 @@ namespace MphRead.Entities
 
         private void StartTransition(bool fromDoor, bool resume = false)
         {
-            Debug.Assert(GameState.TransitionRoomId != -1);
-            GameState.TransitionState = TransitionState.Process;
-            Music.UpdateEncounterMusic(-1);
+            Debug.Assert(_scene.GameState.TransitionRoomId != -1);
+            _scene.GameState.TransitionState = TransitionState.Process;
+            if (_scene.Services.AllowsPresentationSideEffects) Music.UpdateEncounterMusic(-1);
             foreach (EntityBase entity in _scene.Entities)
             {
                 if (entity.Type == EntityType.Room || entity.Type == EntityType.Model
@@ -521,8 +521,8 @@ namespace MphRead.Entities
                 else if (LoaderDoor != null && _keepEntities[(int)entity.Type])
                 {
                     // todo: MP1P
-                    if (entity.Type == EntityType.Player && entity != PlayerEntity.Main
-                        || entity.Type == EntityType.Halfturret && entity != PlayerEntity.Main.Halfturret)
+                    if (entity.Type == EntityType.Player && entity != _scene.Players.Main
+                        || entity.Type == EntityType.Halfturret && entity != _scene.Players.Main.Halfturret)
                     {
                         _scene.RemoveEntity(entity);
                         entity.Destroy();
@@ -530,7 +530,7 @@ namespace MphRead.Entities
                     else if (entity.Type == EntityType.BeamProjectile)
                     {
                         var beam = (BeamProjectileEntity)entity;
-                        if (beam.Owner != PlayerEntity.Main)
+                        if (beam.Owner != _scene.Players.Main)
                         {
                             _scene.RemoveEntity(beam);
                             beam.Destroy();
@@ -544,29 +544,24 @@ namespace MphRead.Entities
                 }
             }
             _scene.ClearNonPersistentEffects();
-            // A cam sequence that was still running gets cut off here without
-            // reaching the CanEnd branch that would have paired off whatever
-            // mute counter it bumped -- leaving sound classes silenced for the
-            // rest of the match. Sfx.Load resets these once at initial connect;
-            // a mid-session room transition needs the same reset.
-            Sfx.SfxMute = false;
-            Sfx.ForceFieldSfxMute = 0;
-            Sfx.TimedSfxMute = 0;
-            Sfx.LongSfxMute = 0;
-            CamSeqEntity.Current = null;
-            CameraSequence.Current = null;
+            if (_scene.Services.AllowsPresentationSideEffects) Sfx.SfxMute = false;
+            if (_scene.Services.AllowsPresentationSideEffects) Sfx.ForceFieldSfxMute = 0;
+            if (_scene.Services.AllowsPresentationSideEffects) Sfx.TimedSfxMute = 0;
+            if (_scene.Services.AllowsPresentationSideEffects) Sfx.LongSfxMute = 0;
+            _scene.CameraSequences.Entity = null;
+            _scene.CameraSequences.Current = null;
             _scene.ClearMessageQueue();
             // todo?: unload more stuff
-            if (GameState.EscapeTimer != -1 && GameState.EscapeState != EscapeState.Escape)
+            if (_scene.GameState.EscapeTimer != -1 && _scene.GameState.EscapeState != EscapeState.Escape)
             {
-                GameState.ResetEscapeState(updateSounds: false);
+                _scene.GameState.ResetEscapeState(updateSounds: false);
             }
-            for (int i = 0; i < PlayerEntity.Players.Count; i++)
+            for (int i = 0; i < _scene.Players.Items.Count; i++)
             {
-                PlayerEntity player = PlayerEntity.Players[i];
+                PlayerEntity player = _scene.Players.Items[i];
                 player.ResetReferences();
             }
-            _scene.AreaId = Metadata.GetAreaInfo(GameState.TransitionRoomId);
+            _scene.AreaId = Metadata.GetAreaInfo(_scene.GameState.TransitionRoomId);
             if (fromDoor)
             {
                 Task.Run(() => ProcessTransition(_cts.Token), _cts.Token);
@@ -582,8 +577,8 @@ namespace MphRead.Entities
 
         private void ProcessTransition(CancellationToken token)
         {
-            Debug.Assert(GameState.TransitionRoomId != -1);
-            RoomMetadata? roomMeta = Metadata.GetRoomById(GameState.TransitionRoomId);
+            Debug.Assert(_scene.GameState.TransitionRoomId != -1);
+            RoomMetadata? roomMeta = Metadata.GetRoomById(_scene.GameState.TransitionRoomId);
             Debug.Assert(roomMeta != null);
             int entityLayer = -1;
             if (LoaderDoor != null)
@@ -595,16 +590,16 @@ namespace MphRead.Entities
             }
             else
             {
-                Rng.SetRng2(Rng.Rng2StartValue);
+                _scene.Random.SetRng2(Rng.Rng2StartValue);
             }
-            (_, IReadOnlyList<EntityBase> entities) = SceneSetup.SetUpRoom(GameState.Mode,
+            (_, IReadOnlyList<EntityBase> entities) = SceneSetup.SetUpRoom(_scene.GameState.Mode,
                 Mods.Network.NetRoomChange.RoomPlayerCount,
                 BossFlags.Unspecified, nodeLayerMask: 0, entityLayer, roomMeta, room: this, _scene, isRoomTransition: true);
             if (token.IsCancellationRequested)
             {
                 return;
             }
-            if (GameState.SinglePlayer)
+            if (_scene.GameState.SinglePlayer)
             {
                 // Guarded the way the same call is at first load (SceneSetup.LoadGame).
                 // It is adventure mode's hunter-encounter setup: it clears Active
@@ -617,12 +612,12 @@ namespace MphRead.Entities
             {
                 return;
             }
-            AiPersonality.LoadAll(GameState.Mode);
+            AiPersonality.LoadAll(_scene.GameState.Mode);
             if (token.IsCancellationRequested)
             {
                 return;
             }
-            SetNodeData(SceneSetup.LoadNodeData(roomMeta.NodePath, roomMeta.Id, GameState.Mode, entities, roomMeta.FirstHunt));
+            SetNodeData(SceneSetup.LoadNodeData(roomMeta.NodePath, roomMeta.Id, _scene.GameState.Mode, entities, roomMeta.FirstHunt));
             PlayerEntity.PlayerAiData.InitializeGlobals();
             if (token.IsCancellationRequested)
             {
@@ -667,14 +662,14 @@ namespace MphRead.Entities
                     return;
                 }
             }
-            GameState.TransitionState = TransitionState.End;
+            _scene.GameState.TransitionState = TransitionState.End;
         }
 
         private Model? _unloadModel = null;
 
         private void EndTransition()
         {
-            RoomMetadata? roomMeta = Metadata.GetRoomById(GameState.TransitionRoomId);
+            RoomMetadata? roomMeta = Metadata.GetRoomById(_scene.GameState.TransitionRoomId);
             Debug.Assert(roomMeta != null);
             ModelInstance inst = _models[0];
             _scene.LoadModel(inst.Model, isRoom: true);
@@ -764,9 +759,9 @@ namespace MphRead.Entities
                     }
                 }
             }
-            for (int i = 0; i < PlayerEntity.Players.Count; i++)
+            for (int i = 0; i < _scene.Players.Items.Count; i++)
             {
-                PlayerEntity player = PlayerEntity.Players[i];
+                PlayerEntity player = _scene.Players.Items[i];
                 if (player.IsBot)
                 {
                     player.AiData.InitializeAtLoad();
@@ -781,7 +776,7 @@ namespace MphRead.Entities
                     {
                         continue;
                     }
-                    if (GameState.StorySave.GetRoomState(_scene.RoomId, spawner.Id) != 0)
+                    if (_scene.GameState.StorySave.GetRoomState(_scene.RoomId, spawner.Id) != 0)
                     {
                         Movie movieId;
                         if (spawner.Data.EnemyType == EnemyType.Cretaphid)
@@ -805,15 +800,14 @@ namespace MphRead.Entities
                             };
                         }
                         Vector3 newPosition = (targetDoor.Position + targetDoor.FacingVector * 0.75f)
-                            .AddY(Fixed.ToFloat(-PlayerEntity.Main.Values.MinPickupHeight));
-                        // todo?: faster loading makes this transition kind of abrupt
-                        GameState.PausePrevented = true;
+                            .AddY(Fixed.ToFloat(-_scene.Players.Main.Values.MinPickupHeight));
+                        _scene.GameState.PausePrevented = true;
                         _scene.StartMovie(movieId, FadeType.FadeOutInBlack, 0, FadeType.FadeOutInBlack, 5 / 30f, newPosition, targetDoor.FacingVector);
                     }
                     break;
                 }
             }
-            if (GameState.GetAreaState(_scene.AreaId) == AreaState.Clear && PlayerEntity.PlayerCount > 1)
+            if (_scene.GameState.GetAreaState(_scene.AreaId) == AreaState.Clear && _scene.Players.PlayerCount > 1)
             {
                 foreach (DoorEntity entity in _scene.GetDoorEntities())
                 {
@@ -833,7 +827,7 @@ namespace MphRead.Entities
                     }
                 }
             }
-            GameState.StorySave.SetVisitedRoom(RoomId);
+            _scene.GameState.StorySave.SetVisitedRoom(RoomId);
             if (_unloadModel != null)
             {
                 _scene.UnloadModel(_unloadModel);
@@ -841,8 +835,8 @@ namespace MphRead.Entities
             _unloadModel = null;
             LoaderDoor = null;
             GC.Collect(generation: 2, GCCollectionMode.Forced, blocking: false, compacting: true);
-            GameState.TransitionState = TransitionState.None;
-            GameState.TransitionRoomId = -1;
+            _scene.GameState.TransitionState = TransitionState.None;
+            _scene.GameState.TransitionRoomId = -1;
         }
 
         protected override void GetCollisionDrawInfo()
@@ -914,7 +908,7 @@ namespace MphRead.Entities
         /// arrays, and nothing about it says which room. That was survivable
         /// while a session played one map: it stopped being survivable when
         /// the server grew a rotation, because <c>PlayerEntity.Create</c>
-        /// hands back pooled objects and <c>CameraSequence.Intro</c> is a
+        /// hands back pooled objects and <c>_scene.CameraSequences.Intro</c> is a
         /// static, so a reference resolved against the map the session started
         /// on outlives that map and is handed to this one. Out of range it is
         /// an <see cref="ArgumentOutOfRangeException"/> in
@@ -1022,7 +1016,7 @@ namespace MphRead.Entities
 
         private void UpdateRoomParts()
         {
-            NodeRef curNodeRef = PlayerEntity.Main.CameraInfo.NodeRef;
+            NodeRef curNodeRef = _scene.Players.Main.CameraInfo.NodeRef;
             if (_scene.CameraMode != CameraMode.Player || curNodeRef.PartIndex == -1)
             {
                 return;
@@ -1051,7 +1045,7 @@ namespace MphRead.Entities
             // and merely uncalled. It costs nothing worth having: the match is
             // over, nobody is playing, and the ten seconds this covers are the
             // ten seconds in a session where frame rate matters least.
-            if (GameState.Multiplayer && GameState.MatchState != MatchState.InProgress)
+            if (_scene.GameState.Multiplayer && _scene.GameState.MatchState != MatchState.InProgress)
             {
                 return;
             }
@@ -1647,7 +1641,7 @@ namespace MphRead.Entities
                         continue;
                     }
                     _scene.UpdateMaterials(conInst.Model, recolorId: 0);
-                    if (GameState.InRoomTransition || _partVisInfoHead == null || _scene.ShowAllNodes)
+                    if (_scene.GameState.InRoomTransition || _partVisInfoHead == null || _scene.ShowAllNodes)
                     {
                         var transform = Matrix4.CreateScale(conInst.Model.Scale);
                         transform.Row3.Xyz = _roomCollision[i + 1].Translation;
@@ -1659,7 +1653,7 @@ namespace MphRead.Entities
                         DrawAllNodes(conInst, connector: true);
                     }
                 }
-                if (!GameState.InRoomTransition)
+                if (!_scene.GameState.InRoomTransition)
                 {
                     ModelInstance inst = _models[0];
                     UpdateTransforms(inst, 0);
@@ -1769,7 +1763,7 @@ namespace MphRead.Entities
         private void DrawRoomParts(ModelInstance roomInst)
         {
             _excludedNodes.Clear();
-            if (PlayerEntity.Main.MorphCamera != null)
+            if (_scene.Players.Main.MorphCamera != null)
             {
                 for (int i = 0; i < _morphCameraExcludeNodes.Count; i++)
                 {

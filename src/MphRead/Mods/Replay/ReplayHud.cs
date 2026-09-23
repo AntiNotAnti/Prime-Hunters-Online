@@ -42,7 +42,7 @@ namespace MphRead.Mods.Replay
 
         public static void Draw(Scene scene)
         {
-            if (!DemoPlayback.IsActive) return;
+            if (!DemoPlayback.IsActive || ReplayVideoExporter.Active) return;
             if (_scene != scene)
             {
                 _scene = scene;
@@ -57,7 +57,8 @@ namespace MphRead.Mods.Replay
                 {
                     if (marker.Type is not (ReplayEventType.Kill
                         or ReplayEventType.PlayerDeath
-                        or ReplayEventType.Objective
+                        or ReplayEventType.Objective or ReplayEventType.FlagCapture or ReplayEventType.NodeCapture
+                        or ReplayEventType.PrimeChanged or ReplayEventType.Headshot or ReplayEventType.MatchPoint
                         or ReplayEventType.MatchEnded))
                         continue;
                     int at = ReplayController.DurationFrames == 0 ? 0
@@ -82,13 +83,13 @@ namespace MphRead.Mods.Replay
                 _status = $"{state}   {Time(ReplayController.CurrentFrame)} / "
                     + $"{Time(ReplayController.DurationFrames)}   "
                     + $"{ReplayController.PlaybackRate:0.##}x";
-                int slot = PlayerEntity.MainPlayerIndex;
+                int slot = scene.Players.MainPlayerIndex;
                 _watching = ReplayCamera.Mode is ReplayCameraMode.Chase or ReplayCameraMode.Orbit
-                    ? $"{ReplayCamera.Mode}: {GameState.Nicknames[
-                        Math.Clamp(slot, 0, GameState.Nicknames.Length - 1)]}"
+                    ? $"{ReplayCamera.Mode}: {scene.GameState.Nicknames[
+                        Math.Clamp(slot, 0, scene.GameState.Nicknames.Length - 1)]}"
                     : SpectatorMode.FreeCamera ? "Free camera"
-                    : $"Watching: {(slot >= 0 && slot < GameState.Nicknames.Length
-                        ? GameState.Nicknames[slot] : "")}";
+                    : $"Watching: {(slot >= 0 && slot < scene.GameState.Nicknames.Length
+                        ? scene.GameState.Nicknames[slot] : "")}";
             }
 
             Text(scene, 49, 163, _status, alpha, 207);
@@ -219,9 +220,9 @@ namespace MphRead.Mods.Replay
                 .Take(4)
                 .Select(p =>
                 {
-                    string name = p.Slot < GameState.Nicknames.Length
-                        && !String.IsNullOrWhiteSpace(GameState.Nicknames[p.Slot])
-                            ? GameState.Nicknames[p.Slot] : $"P{p.Slot + 1}";
+                    string[] names = DemoPlayback.ReplicaScene?.GameState.Nicknames ?? GameState.Nicknames;
+                    string name = p.Slot < names.Length && !String.IsNullOrWhiteSpace(names[p.Slot])
+                            ? names[p.Slot] : $"P{p.Slot + 1}";
                     return $"{name}: {p.Kills}K/{p.Deaths}D  {p.Damage} dmg  {p.ObjectiveEvents} obj";
                 }).ToList();
             lines.Insert(0, $"ANALYTICS  {analytics.TotalKills} kills  "
@@ -236,8 +237,12 @@ namespace MphRead.Mods.Replay
                     + $"max burst {net.MaxPacketsInFrame}",
                 $"max snapshot gap {net.MaxSnapshotGapFrames}f  "
                     + $"last snapshot {net.LastSnapshotFrame}f",
-                $"checkpoints {ReplayCheckpointManager.Count}  "
-                    + $"director {ReplayDirector.Reason}"
+                $"checkpoints {DemoPlayback.CheckpointCount}  "
+                    + $"director {ReplayDirector.Reason}",
+                $"session {DemoPlayback.Session.Host.GetType().Name}  frame {DemoPlayback.CurrentFrame}",
+                $"alpha {DemoPlayback.ReplicaScene?.ReplayRenderAlpha:0.000}  {DemoPlayback.SeekDiagnostics}",
+                $"capture {ReplayCapture.Recorder.Timeline.PayloadBytes / 1024d:0} KiB / {ReplayCapture.Recorder.Timeline.RecordCount} facts / {ReplayCapture.Recorder.Timeline.RestorePointCount} worlds",
+                $"history {(ReplayCapture.Recorder.Timeline.LastRecordingFrame.GetValueOrDefault() - ReplayCapture.Recorder.Timeline.FirstRecordingFrame.GetValueOrDefault()) / 60d:0.0}s  killcam {KillCam.Diagnostics}"
             };
         }
 

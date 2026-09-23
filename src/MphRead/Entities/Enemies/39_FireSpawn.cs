@@ -55,7 +55,7 @@ namespace MphRead.Entities.Enemies
             Flags |= EnemyFlags.OnRadar;
             Flags &= ~EnemyFlags.CollidePlayer;
             Vector3 position = _data.Spawner.Position;
-            Matrix4 transform = GetTransformMatrix((PlayerEntity.Main.Position - position).Normalized(), Vector3.UnitY);
+            Matrix4 transform = GetTransformMatrix((_scene.Players.Main.Position - position).Normalized(), Vector3.UnitY);
             transform.Row3.Xyz = position;
             Transform = transform;
             _boundingRadius = 1;
@@ -80,7 +80,7 @@ namespace MphRead.Entities.Enemies
             _equipInfo[1].UnchargedDamage = Values.BeamDamage;
             _equipInfo[1].SplashDamage = Values.SplashDamage;
             _attackDelay = Values.AttackDelay * 2; // todo: FPS stuff
-            _attackCount = Values.AttackCountMin + Rng.GetRandomInt2((uint)(Values.AttackCountMax + 1 - Values.AttackCountMin));
+            _attackCount = Values.AttackCountMin + _scene.Random.GetRandomInt2((uint)(Values.AttackCountMax + 1 - Values.AttackCountMin));
             HealthbarMessageId = 4; // fire spawn
             if (_spawner.Data.Fields.S06.EnemySubtype == 1)
             {
@@ -142,7 +142,7 @@ namespace MphRead.Entities.Enemies
         private void State0()
         {
             // the Y component should really be set to zero before normalization -- this causes transform squashing
-            Vector3 facing = (PlayerEntity.Main.Position - Position).Normalized().WithY(0);
+            Vector3 facing = (_scene.Players.Main.Position - Position).Normalized().WithY(0);
             Matrix4 transform = GetTransformMatrix(facing, Vector3.UnitY);
             transform.Row3.Xyz = Position;
             Transform = transform;
@@ -210,7 +210,7 @@ namespace MphRead.Entities.Enemies
                 {
                     _attackCount--;
                     _attackDelay = Values.AttackDelay * 2; // todo: FPS stuff
-                    Vector3 dir = PlayerEntity.Main.Position.AddY(0.5f) - _wristPos[_wristId];
+                    Vector3 dir = _scene.Players.Main.Position.AddY(0.5f) - _wristPos[_wristId];
                     dir = dir.Normalized();
                     EquipInfo equipInfo = _equipInfo[_wristId];
                     equipInfo.UnchargedDamage = Values.BeamDamage;
@@ -267,12 +267,12 @@ namespace MphRead.Entities.Enemies
 
         private bool Behavior0()
         {
-            if (!_activeVolume.TestPoint(PlayerEntity.Main.Position))
+            if (!_activeVolume.TestPoint(_scene.Players.Main.Position))
             {
                 return false;
             }
             ChooseSurfaceLocation();
-            _diveTimer = Values.DiveTimerMin + Rng.GetRandomInt2((uint)(Values.DiveTimerMax + 1 - Values.DiveTimerMin));
+            _diveTimer = Values.DiveTimerMin + _scene.Random.GetRandomInt2((uint)(Values.DiveTimerMax + 1 - Values.DiveTimerMin));
             _diveTimer *= 2; // todo: FPS stuff
             return true;
         }
@@ -283,16 +283,16 @@ namespace MphRead.Entities.Enemies
             if (_locationVolume.Type == VolumeType.Cylinder)
             {
                 uint radius = (uint)MathF.Round(_locationVolume.CylinderRadius * 4096);
-                distance = Rng.GetRandomInt2(radius) / 4096f;
+                distance = _scene.Random.GetRandomInt2(radius) / 4096f;
             }
             else if (_locationVolume.Type == VolumeType.Sphere)
             {
                 uint radius = (uint)MathF.Round(_locationVolume.SphereRadius * 4096);
-                distance = Rng.GetRandomInt2(radius) / 4096f;
+                distance = _scene.Random.GetRandomInt2(radius) / 4096f;
             }
             var vec = new Vector3(distance, 0, 0);
             _surfaceDirection *= -1;
-            float angle = Rng.GetRandomInt2(0xB4000) / 4096f; // [0-180)
+            float angle = _scene.Random.GetRandomInt2(0xB4000) / 4096f; // [0-180)
             vec = Matrix.Vec3MultMtx3(vec, Matrix4.CreateRotationY(MathHelper.DegreesToRadians(angle * _surfaceDirection)));
             Vector3 position = Vector3.Zero;
             if (_locationVolume.Type == VolumeType.Cylinder)
@@ -382,7 +382,7 @@ namespace MphRead.Entities.Enemies
 
         private bool Behavior6()
         {
-            if (_activeVolume.TestPoint(PlayerEntity.Main.Position))
+            if (_activeVolume.TestPoint(_scene.Players.Main.Position))
             {
                 return false;
             }
@@ -398,7 +398,7 @@ namespace MphRead.Entities.Enemies
             _animFrameCount = _models[0].AnimInfo.FrameCount[0];
             _soundSource.PlaySfx(SfxId.LAVA_DEMON_DISAPPEAR_SCR);
             _models[0].SetAnimation(2, AnimFlags.NoLoop);
-            _attackCount = Values.AttackCountMin + Rng.GetRandomInt2((uint)(Values.AttackCountMax + 1 - Values.AttackCountMin));
+            _attackCount = Values.AttackCountMin + _scene.Random.GetRandomInt2((uint)(Values.AttackCountMax + 1 - Values.AttackCountMin));
             _wristId = 1;
             _tangibilityTimer = 0;
             Flags |= EnemyFlags.Invincible;

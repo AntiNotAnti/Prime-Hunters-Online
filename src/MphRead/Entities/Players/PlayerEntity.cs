@@ -202,8 +202,8 @@ namespace MphRead.Entities
         public BombEntity?[] SyluxBombs { get; } = new BombEntity?[3];
 
         // todo: these settings can change
-        public static int MainPlayerIndex { get; set; } = 0;
-        public static int PlayerCount { get; set; } = 0;
+        public static int MainPlayerIndex { get => LegacyRegistry.MainPlayerIndex; set => LegacyRegistry.MainPlayerIndex = value; }
+        public static int PlayerCount { get => LegacyRegistry.PlayerCount; set => LegacyRegistry.PlayerCount = value; }
         /// <summary>
         /// How many slots exist at all. Every per-slot array in the game is
         /// this long, so raising it is what makes a match of more than four
@@ -225,12 +225,13 @@ namespace MphRead.Entities
         /// </summary>
         public const int SlotCapacity = 8;
 
-        public static int MaxPlayers { get; set; } = 4;
-        public static int PlayersCreated { get; set; } = 0;
+        public static int MaxPlayers { get => LegacyRegistry.MaxPlayers; set => LegacyRegistry.MaxPlayers = value; }
+        public static int PlayersCreated { get => LegacyRegistry.PlayersCreated; set => LegacyRegistry.PlayersCreated = value; }
         public static PlayerEntity Main => Players[MainPlayerIndex];
-        public static readonly PlayerEntity[] _players = new PlayerEntity[SlotCapacity];
+        internal static ScenePlayerRegistry LegacyRegistry { get; set; } = new();
+        public static PlayerEntity[] _players => LegacyRegistry.Values;
         public static IReadOnlyList<PlayerEntity> Players => _players;
-        public bool IsMainPlayer => this == Main && _scene.CameraMode == CameraMode.Player;
+        public bool IsMainPlayer => this == _scene.Players.Main && _scene.CameraMode == CameraMode.Player;
         private int _altScanId = 0;
 
         private const int UA = 0;
@@ -312,14 +313,14 @@ namespace MphRead.Entities
         public int SlotIndex { get; private set; }
         public bool IsBot { get; set; }
         public LoadFlags LoadFlags { get; set; }
-        public Hunter Hunter { get; private set; }
+        public Hunter Hunter { get; internal set; }
         public PlayerValues Values { get; private set; }
-        public bool IsPrimeHunter => SlotIndex == GameState.PrimeHunter;
+        public bool IsPrimeHunter => SlotIndex == _scene.GameState.PrimeHunter;
 
         private const int _mbTrailSegments = 9 * 2;
-        private static readonly Matrix4[,] _mbTrailMatrices = new Matrix4[SlotCapacity, _mbTrailSegments];
-        private static readonly float[,] _mbTrailAlphas = new float[SlotCapacity, _mbTrailSegments];
-        private static readonly int[] _mbTrailIndices = new int[SlotCapacity];
+        private readonly Matrix4[,] _mbTrailMatrices = new Matrix4[SlotCapacity, _mbTrailSegments];
+        private readonly float[,] _mbTrailAlphas = new float[SlotCapacity, _mbTrailSegments];
+        private readonly int[] _mbTrailIndices = new int[SlotCapacity];
         private Matrix4 _modelTransform = Matrix4.Identity;
 
         // todo: visualize
@@ -495,58 +496,18 @@ namespace MphRead.Entities
         public bool IgnoreItemPickups { get; set; }
         public Vector3? ForcedSpawnPos { get; set; }
 
-        private PlayerEntity(int slotIndex, Scene scene) : base(EntityType.Player, scene)
+        internal PlayerEntity(int slotIndex, Scene scene) : base(EntityType.Player, scene)
         {
             SlotIndex = slotIndex;
+            CameraInfo.Random = scene.Random;
+            _timedSfxSource.Owner = scene;
             _beams = SceneSetup.CreateBeamList(16, scene); // in-game: 5
             AiData = new PlayerAiData(this);
         }
 
-        public static void Construct(Scene scene)
-        {
-            for (int i = 0; i < _players.Length; i++)
-            {
-                if (_players[i] == null)
-                {
-                    _players[i] = new PlayerEntity(i, scene);
-                }
-            }
-        }
-
-        public static void Reset()
-        {
-            for (int i = 0; i < _players.Length; i++)
-            {
-                _players[i] = null!;
-            }
-            PlayerCount = 0;
-            PlayersCreated = 0;
-            // Only the networked paths ever move this, and nothing moved it
-            // back: a client that joined a server on slot 1 kept pointing at
-            // slot 1 for the rest of the process, so the next offline match
-            // made Main a bot -- the player watched the AI play and their
-            // input went to its controls.
-            MainPlayerIndex = 0;
-        }
-
-        public static PlayerEntity? Create(Hunter hunter, int recolor)
-        {
-            if (PlayersCreated >= MaxPlayers)
-            {
-                return null;
-            }
-            PlayerEntity player = Players[PlayersCreated++];
-            player.Hunter = hunter;
-            player.Recolor = recolor;
-            if (player.IsBot)
-            {
-                // todo: update controls
-            }
-            player.LoadFlags |= LoadFlags.SlotActive;
-            player.LoadFlags &= ~LoadFlags.Spawned;
-            player.CreateHalfturret();
-            return player;
-        }
+        public static void Construct(Scene scene) => scene.Players.Construct(scene);
+        public static void Reset() => LegacyRegistry.Reset();
+        public static PlayerEntity? Create(Hunter hunter, int recolor) => LegacyRegistry.Create(hunter, recolor);
 
         public void CreateHalfturret()
         {
@@ -569,17 +530,17 @@ namespace MphRead.Entities
             NodeRef prevNodeRef = NodeRef;
             int prevHealth = _health;
             _models.Clear();
-            _bipedModelLods[0] = Read.GetModelInstance(Metadata.HunterModels[Hunter][0]);
-            _bipedModelLods[1] = Read.GetModelInstance(Metadata.HunterModels[Hunter][1]);
-            _bipedModel1 = Read.GetModelInstance(Metadata.HunterModels[Hunter][0]);
-            _bipedModel2 = Read.GetModelInstance(Metadata.HunterModels[Hunter][0]);
-            _altModel = Read.GetModelInstance(Metadata.HunterModels[Hunter][2]);
-            _gunModel = Read.GetModelInstance(Metadata.HunterModels[Hunter][3]);
-            _gunSmokeModel = Read.GetModelInstance("gunSmoke");
-            _bipedIceModel = Read.GetModelInstance(Hunter == Hunter.Noxus || Hunter == Hunter.Trace ? "nox_ice" : "samus_ice");
-            _altIceModel = Read.GetModelInstance("alt_ice");
-            _doubleDmgModel = Read.GetModelInstance("doubleDamage_img");
-            _octolithSimpleModel = Read.GetModelInstance("octolith_simple");
+            _bipedModelLods[0] = _scene.GetModelInstance(Metadata.HunterModels[Hunter][0]);
+            _bipedModelLods[1] = _scene.GetModelInstance(Metadata.HunterModels[Hunter][1]);
+            _bipedModel1 = _scene.GetModelInstance(Metadata.HunterModels[Hunter][0]);
+            _bipedModel2 = _scene.GetModelInstance(Metadata.HunterModels[Hunter][0]);
+            _altModel = _scene.GetModelInstance(Metadata.HunterModels[Hunter][2]);
+            _gunModel = _scene.GetModelInstance(Metadata.HunterModels[Hunter][3]);
+            _gunSmokeModel = _scene.GetModelInstance("gunSmoke");
+            _bipedIceModel = _scene.GetModelInstance(Hunter == Hunter.Noxus || Hunter == Hunter.Trace ? "nox_ice" : "samus_ice");
+            _altIceModel = _scene.GetModelInstance("alt_ice");
+            _doubleDmgModel = _scene.GetModelInstance("doubleDamage_img");
+            _octolithSimpleModel = _scene.GetModelInstance("octolith_simple");
             _models.Add(_bipedModel1);
             _models.Add(_bipedModel2);
             _models.Add(_altModel);
@@ -589,7 +550,7 @@ namespace MphRead.Entities
             _models.Add(_altIceModel);
             _models.Add(_doubleDmgModel);
             _models.Add(_octolithSimpleModel);
-            _trailModel = Read.GetModelInstance("trail");
+            _trailModel = _scene.GetModelInstance("trail");
             Material material = _trailModel.Model.Materials[0];
             _trailBindingId1 = _scene.BindGetTexture(_trailModel.Model, material.TextureId, material.PaletteId, 0);
             material = _trailModel.Model.Materials[1];
@@ -603,14 +564,14 @@ namespace MphRead.Entities
             {
                 SetUpHud();
             }
-            if (GameState.Multiplayer)
+            if (_scene.GameState.Multiplayer)
             {
                 _healthMax = 2 * Values.EnergyTank - 1;
                 _ammoMax[UA] = _ammoMax[Missiles] = Values.MpAmmoCap;
             }
             else
             {
-                StorySave save = GameState.StorySave;
+                StorySave save = _scene.GameState.StorySave;
                 _healthMax = save.HealthMax;
                 _ammoMax[UA] = save.AmmoMax[UA];
                 _ammoMax[Missiles] = save.AmmoMax[Missiles];
@@ -717,8 +678,8 @@ namespace MphRead.Entities
             }
             else if (_scene.Room == null || _scene.Room.LoadEntityId == -1)
             {
-                int checkpointId = GameState.StorySave.CheckpointEntityId;
-                if (IsMainPlayer && GameState.Mode == GameMode.SinglePlayer
+                int checkpointId = _scene.GameState.StorySave.CheckpointEntityId;
+                if (IsMainPlayer && _scene.GameState.Mode == GameMode.SinglePlayer
                     && checkpointId != -1 && _scene.TryGetEntity(checkpointId, out EntityBase? checkpoint))
                 {
                     checkpoint.GetVectors(out Vector3 position, out Vector3 up, out Vector3 facing);
@@ -729,10 +690,9 @@ namespace MphRead.Entities
 
         public void Spawn(Vector3 pos, Vector3 facing, Vector3 up, NodeRef nodeRef, bool respawn)
         {
-            if (!Mods.Network.NetPlayerLifecycle.CanSpawn) return;
-            Mods.Network.NetPlayerLifecycle.OnSpawn(this);
-            Mods.Network.NetSession.ContinuousPhase.ResetSlot(SlotIndex);
-            Mods.Network.NetPlayerBridge.NoteSpawn(SlotIndex);
+            if (!_scene.Services.PlayerReplication.CanSpawn) return;
+            _scene.Services.PlayerReplication.OnSpawn(this);
+            _scene.PlayerReplication.NoteSpawn(SlotIndex);
             if (IsMainPlayer)
             {
                 _scene.NoteRenderLifecycle("spawn begin");
@@ -806,14 +766,14 @@ namespace MphRead.Entities
             {
                 _abilities |= AbilityFlags.WeavelAltAttack;
             }
-            if (GameState.Multiplayer)
+            if (_scene.GameState.Multiplayer)
             {
                 _health = Values.EnergyTank - 1;
             }
             else if (IsMainPlayer) // todo: MP1P
             {
-                _healthMax = GameState.StorySave.HealthMax;
-                _health = GameState.StorySave.Health;
+                _healthMax = _scene.GameState.StorySave.HealthMax;
+                _health = _scene.GameState.StorySave.Health;
             }
             else
             {
@@ -904,7 +864,7 @@ namespace MphRead.Entities
             NodeRef = nodeRef;
             _gunViewBob = 0;
             _walkViewBob = 0;
-            if (GameState.SinglePlayer && CameraSequence.Current != null)
+            if (_scene.GameState.SinglePlayer && _scene.CameraSequences.Current != null)
             {
                 _camSwitchTimer = (ushort)(Values.CamSwitchTime * 2); // todo: FPS stuff
                 _viewTiltAngleH = 0;
@@ -912,9 +872,9 @@ namespace MphRead.Entities
             }
             else
             {
-                if (IsMainPlayer && GameState.Multiplayer && CameraSequence.Current?.IsIntro == true)
+                if (IsMainPlayer && _scene.GameState.Multiplayer && _scene.CameraSequences.Current?.IsIntro == true)
                 {
-                    CameraSequence.Current.End();
+                    _scene.CameraSequences.Current.End();
                 }
                 CameraInfo.Reset();
                 CameraInfo.Position = Position;
@@ -958,7 +918,7 @@ namespace MphRead.Entities
             _bombRefillTimer = 0;
             _bombAmmo = 3;
             _damageInvulnTimer = 0;
-            if (IsBot && GameState.SinglePlayer)
+            if (IsBot && _scene.GameState.SinglePlayer)
             {
                 _spawnInvulnTimer = 0;
             }
@@ -988,7 +948,7 @@ namespace MphRead.Entities
             else
             {
                 int rangeIndex = 1;
-                if (GameState.SinglePlayer && Hunter == Hunter.Guardian) // todo: MP1P
+                if (_scene.GameState.SinglePlayer && Hunter == Hunter.Guardian) // todo: MP1P
                 {
                     rangeIndex = 21;
                 }
@@ -1037,10 +997,10 @@ namespace MphRead.Entities
             // the player clears the enemy spawner reference here, using a global array to track them
             _lastTarget = null;
             UpdateScanIds();
-            if (respawn && (IsMainPlayer || GameState.Multiplayer))
+            if (respawn && (IsMainPlayer || _scene.GameState.Multiplayer))
             {
                 // spawnEffectMP or spawnEffect
-                int effectId = GameState.Multiplayer && PlayerCount > 2 && !Features.MaxPlayerDetail ? 33 : 31;
+                int effectId = _scene.GameState.Multiplayer && _scene.Players.PlayerCount > 2 && !Features.MaxPlayerDetail ? 33 : 31;
                 _scene.SpawnEffect(effectId, Vector3.UnitX, Vector3.UnitY, Position);
             }
             if (IsMainPlayer)
@@ -1068,14 +1028,14 @@ namespace MphRead.Entities
         public void InitEnemyHunter()
         {
             Debug.Assert(EnemySpawner != null);
-            Debug.Assert(GameState.Mode == GameMode.SinglePlayer);
+            Debug.Assert(_scene.GameState.Mode == GameMode.SinglePlayer);
             EnemySpawnFields09 data = EnemySpawner.Data.Fields.S09;
             _healthMax = data.HunterHealthMax;
             _health = data.HunterHealth;
             AiData.HealthThreshold = data.HunterHealthThreshold;
             if (Hunter == Hunter.Guardian)
             {
-                Music.PlayEncounterMusic(Hunter.Guardian);
+                if (_scene.Services.AllowsPresentationSideEffects) Music.PlayEncounterMusic(Hunter.Guardian);
             }
             // todo: update story save for multiplayer unlock
             if (data.HunterWeapon != 255)
@@ -1088,7 +1048,7 @@ namespace MphRead.Entities
                 _weaponSlots[2] = weapon;
                 _ammo[0] = 0;
                 _ammo[1] = 0;
-                WeaponInfo weaponInfo = Weapons.Current[(int)weapon];
+                WeaponInfo weaponInfo = _scene.WeaponRules[(int)weapon];
                 _ammo[weaponInfo.AmmoType] = Int32.MaxValue;
                 EquipInfo.InfiniteAmmo = true;
                 EquipInfo.ChargeLevel = 0;
@@ -1122,7 +1082,7 @@ namespace MphRead.Entities
             {
                 return;
             }
-            StorySave save = GameState.StorySave;
+            StorySave save = _scene.GameState.StorySave;
             for (int i = 0; i < _weaponSlots.Length; i++)
             {
                 save.WeaponSlots[i] = (int)_weaponSlots[i];
@@ -1378,11 +1338,11 @@ namespace MphRead.Entities
         {
             _availableWeapons.ClearAll();
             _availableCharges.ClearAll();
-            if (GameState.SinglePlayer && IsMainPlayer) // todo: MP1P
+            if (_scene.GameState.SinglePlayer && IsMainPlayer) // todo: MP1P
             {
-                _availableWeapons.Set(GameState.StorySave.Weapons);
+                _availableWeapons.Set(_scene.GameState.StorySave.Weapons);
                 _availableCharges.CopyFrom(_availableWeapons);
-                StorySave save = GameState.StorySave;
+                StorySave save = _scene.GameState.StorySave;
                 for (int i = 0; i < _weaponSlots.Length; i++)
                 {
                     _weaponSlots[i] = (BeamType)save.WeaponSlots[i];
@@ -1392,10 +1352,10 @@ namespace MphRead.Entities
                     _ammo[i] = save.Ammo[i];
                 }
             }
-            else if (GameState.SinglePlayer && IsBot)
+            else if (_scene.GameState.SinglePlayer && IsBot)
             {
                 BeamType affinityBeam = Weapons.GetAffinityBeam(Hunter);
-                WeaponInfo affinityInfo = Weapons.Current[(int)affinityBeam];
+                WeaponInfo affinityInfo = _scene.WeaponRules[(int)affinityBeam];
                 _availableWeapons[affinityBeam] = true;
                 _availableCharges[affinityBeam] = true;
                 _weaponSlots[0] = _weaponSlots[1] = BeamType.None;
@@ -1407,7 +1367,7 @@ namespace MphRead.Entities
             }
             else
             {
-                WeaponInfo missileInfo = Weapons.Current[(int)BeamType.Missile];
+                WeaponInfo missileInfo = _scene.WeaponRules[(int)BeamType.Missile];
                 _availableWeapons[BeamType.PowerBeam] = true;
                 _availableWeapons[BeamType.Missile] = true;
                 _availableCharges[BeamType.PowerBeam] = true;
@@ -1431,7 +1391,7 @@ namespace MphRead.Entities
             {
                 return false;
             }
-            WeaponInfo info = Weapons.Current[(int)beam];
+            WeaponInfo info = _scene.WeaponRules[(int)beam];
             byte ammoType = info.AmmoType;
             if (debug && Cheats.FreeWeaponSelect)
             {
@@ -1444,7 +1404,7 @@ namespace MphRead.Entities
             {
                 if (IsMainPlayer)
                 {
-                    if (!GameState.MenuPause)
+                    if (!_scene.GameState.MenuPause)
                     {
                         _soundSource.PlayFreeSfx(SfxId.BEAM_SWITCH_FAIL);
                     }
@@ -1460,14 +1420,14 @@ namespace MphRead.Entities
             PreviousWeapon = CurrentWeapon;
             CurrentWeapon = WeaponSelection = beam;
             if (beam == Weapons.GetAffinityBeam(Hunter)
-                || GameState.SinglePlayer && (Hunter == Hunter.Samus && (beam == BeamType.PowerBeam || beam == BeamType.OmegaCannon)
+                || _scene.GameState.SinglePlayer && (Hunter == Hunter.Samus && (beam == BeamType.PowerBeam || beam == BeamType.OmegaCannon)
                 || Hunter == Hunter.Guardian && beam == BeamType.VoltDriver))
             {
-                EquipInfo.Weapon = Weapons.Current[(int)beam + 9];
+                EquipInfo.Weapon = _scene.WeaponRules[(int)beam + 9];
             }
             else
             {
-                EquipInfo.Weapon = Weapons.Current[(int)beam];
+                EquipInfo.Weapon = _scene.WeaponRules[(int)beam];
             }
             EquipInfo.ChargeLevel = 0;
             EquipInfo.SmokeLevel = 0;
@@ -1476,7 +1436,7 @@ namespace MphRead.Entities
             _timeSinceInput = 0;
             if (!silent)
             {
-                if (IsMainPlayer && !IsAltForm && beam != BeamType.Missile && !GameState.MenuPause)
+                if (IsMainPlayer && !IsAltForm && beam != BeamType.Missile && !_scene.GameState.MenuPause)
                 {
                     int sfx = Metadata.HunterSfx[(int)Hunter, (int)HunterSfx.BeamSwitch];
                     if (sfx != -1)
@@ -1544,7 +1504,7 @@ namespace MphRead.Entities
 
         private void UnequipOmegaCannon()
         {
-            if (CurrentWeapon == BeamType.OmegaCannon && GameState.Multiplayer)
+            if (CurrentWeapon == BeamType.OmegaCannon && _scene.GameState.Multiplayer)
             {
                 _availableCharges[BeamType.OmegaCannon] = false;
                 _availableWeapons[BeamType.OmegaCannon] = false;
@@ -1555,7 +1515,7 @@ namespace MphRead.Entities
                 {
                     if (i != 2 && _availableWeapons[i])
                     {
-                        WeaponInfo info = Weapons.Current[i];
+                        WeaponInfo info = _scene.WeaponRules[i];
                         if (info.Priority > priority && _ammo[info.AmmoType] >= info.AmmoCost)
                         {
                             priority = info.Priority;
@@ -1750,6 +1710,7 @@ namespace MphRead.Entities
 
         public void TakeDamage(uint damage, DamageFlags flags, Vector3? direction, EntityBase? source)
         {
+            if (_scene.Services.SuppressDamage) return;
             using var predictedScores = new Mods.Network.NetDamage.PredictionScoreScope(Mods.Network.NetHitPrediction.Predicting);
             if (Mods.Network.NetDamage.Suppress(this, source, flags))
             {
@@ -1759,13 +1720,13 @@ namespace MphRead.Entities
             {
                 return;
             }
-            if (IsMainPlayer && CameraSequence.Current?.BlockInput == true)
+            if (IsMainPlayer && _scene.CameraSequences.Current?.BlockInput == true)
             {
                 if (!flags.TestFlag(DamageFlags.Death))
                 {
                     return;
                 }
-                CamSeqEntity.CancelCurrent();
+                CamSeqEntity.CancelCurrent(_scene);
             }
             if (_spawnInvulnTimer > 0 && !flags.TestFlag(DamageFlags.Death) && !flags.TestFlag(DamageFlags.IgnoreInvuln))
             {
@@ -1837,36 +1798,34 @@ namespace MphRead.Entities
                 }
             }
             bool ignoreDamage = false;
-            if (GameState.SinglePlayer && IsBot && attacker == this || GameState.Teams && !GameState.FriendlyFire
+            if (_scene.GameState.SinglePlayer && IsBot && attacker == this || _scene.GameState.Teams && !_scene.GameState.FriendlyFire
                 && attacker != null && attacker != this && TeamRules.AreAllies(attacker.TeamIndex, TeamIndex))
             {
                 ignoreDamage = true;
                 damage = 0;
             }
-            if (!ignoreDamage && flags.TestFlag(DamageFlags.Headshot) && attacker == Main
+            if (!ignoreDamage && flags.TestFlag(DamageFlags.Headshot) && attacker == _scene.Players.Main
                 && !Mods.Network.NetHitPrediction.Predicting)
             {
                 // On a network client the local collision is a prediction.
                 // Do not announce HEADSHOT until the authority confirms the
                 // classification; NetDamage.ReplayEvent supplies the message
                 // for confirmed predicted hits that otherwise skip replay.
-                int messageId = GameState.Multiplayer ? 228 : 121; // HEADSHOT!
+                int messageId = _scene.GameState.Multiplayer ? 228 : 121; // HEADSHOT!
                 QueueHudMessage(128, 40, 20 / 30f, 0, messageId);
             }
             if (attacker != null && attacker != this && beam != null)
             {
-                // bugfix?: since double damage was already applied above,
-                // it's possible to increase efficiency with double damage hits
-                GameState.BeamDamageDealt[attacker.SlotIndex] = Math.Min(
-                    GameState.BeamDamageDealt[attacker.SlotIndex] + (int)damage,
-                    GameState.BeamDamageMax[attacker.SlotIndex]
+                _scene.GameState.BeamDamageDealt[attacker.SlotIndex] = Math.Min(
+                    _scene.GameState.BeamDamageDealt[attacker.SlotIndex] + (int)damage,
+                    _scene.GameState.BeamDamageMax[attacker.SlotIndex]
                 );
             }
             // Likewise: the damage level is in the number a claim carries
             // already. Mods.Network.NetDamage.ApplyingClaim.
             if (damage > 0 && !Mods.Network.NetDamage.ApplyingClaim)
             {
-                damage = (uint)(damage * Metadata.DamageLevels[GameState.DamageLevel]);
+                damage = (uint)(damage * Metadata.DamageLevels[_scene.GameState.DamageLevel]);
                 if (damage == 0)
                 {
                     damage = 1;
@@ -1896,7 +1855,7 @@ namespace MphRead.Entities
                     _halfturret.Health -= (int)turretDamage;
                 }
                 damage -= turretDamage;
-                if (IsBot && GameState.SinglePlayer && AiData.Flags1)
+                if (IsBot && _scene.GameState.SinglePlayer && AiData.Flags1)
                 {
                     if (_health > AiData.HealthThreshold && (_health - damage) <= AiData.HealthThreshold)
                     {
@@ -1937,7 +1896,7 @@ namespace MphRead.Entities
             if (attacker != this)
                 Mods.Input.AimAssist.AimAssistTelemetry.Hit(attacker, beam?.Beam ?? BeamType.None, damage);
             bool dead = false;
-            if (IsBot && GameState.SinglePlayer && AiData.Flags1 && _health <= AiData.HealthThreshold)
+            if (IsBot && _scene.GameState.SinglePlayer && AiData.Flags1 && _health <= AiData.HealthThreshold)
             {
                 dead = true;
             }
@@ -1950,13 +1909,13 @@ namespace MphRead.Entities
             // todo?: something for wifi
             if (attacker != null)
             {
-                if (attacker == Main)
+                if (attacker == _scene.Players.Main)
                 {
-                    Main.UpdateOpponent(SlotIndex);
+                    _scene.Players.Main.UpdateOpponent(SlotIndex);
                 }
                 if (attacker != this)
                 {
-                    GameState.DamageCount[attacker.SlotIndex]++;
+                    _scene.GameState.DamageCount[attacker.SlotIndex]++;
                     attacker._hidingTimer = 0;
                     _hidingTimer = 0;
                 }
@@ -2008,7 +1967,7 @@ namespace MphRead.Entities
                 _deathaltTimer = 0;
                 _cloakTimer = 0;
                 Flags2 &= ~PlayerFlags2.Cloaking;
-                GameState.KillStreak[SlotIndex] = 0;
+                _scene.GameState.KillStreak[SlotIndex] = 0;
                 if (IsMainPlayer)
                 {
                     // todo: license info
@@ -2073,7 +2032,7 @@ namespace MphRead.Entities
                         UpdateDoubleDamageSfx(index: 0, play: false);
                         UpdateCloakSfx(index: 0, play: false);
                         _soundSource.StopFreeSfxScripts();
-                        if (GameState.Multiplayer)
+                        if (_scene.GameState.Multiplayer)
                         {
                             PlayHunterSfx(HunterSfx.Death);
                         }
@@ -2086,7 +2045,7 @@ namespace MphRead.Entities
                     }
                     else
                     {
-                        Music.UpdateEncounterMusic((int)Hunter);
+                        if (_scene.Services.AllowsPresentationSideEffects) Music.UpdateEncounterMusic((int)Hunter);
                         PlayHunterSfx(HunterSfx.Death);
                     }
                     StopBeamChargeSfx(CurrentWeapon);
@@ -2103,22 +2062,22 @@ namespace MphRead.Entities
                 UpdateZoom(false);
                 // the game stops the boost charge SFX here, but that SFX is empty
                 _boostCharge = 0;
-                GameState.Deaths[SlotIndex]++;
-                if (this == Main && beamType == BeamType.OmegaCannon)
+                _scene.GameState.Deaths[SlotIndex]++;
+                if (this == _scene.Players.Main && beamType == BeamType.OmegaCannon)
                 {
                     _scene.SetFade(FadeType.FadeInWhite, 90 / 30f, overwrite: true);
                 }
                 Speed = Vector3.Zero;
                 _respawnTimer = RespawnTime;
                 _timeSinceDead = 0;
-                if (GameState.SinglePlayer)
+                if (_scene.GameState.SinglePlayer)
                 {
                     if (IsAltForm)
                     {
                         int effectId = IsMainPlayer ? 10 : 216; // ballDeath or deathAlt
                         _scene.SpawnEffect(effectId, Vector3.UnitX, Vector3.UnitY, Position);
                     }
-                    if (IsBot && GameState.GetAreaState(_scene.AreaId) == AreaState.Clear)
+                    if (IsBot && _scene.GameState.GetAreaState(_scene.AreaId) == AreaState.Clear)
                     {
                         bool unlockDoors = true;
                         foreach (EnemySpawnEntity spawner in _scene.GetEnemySpawnEntities())
@@ -2131,9 +2090,9 @@ namespace MphRead.Entities
                                 && (spawner.Data.SpawnTotal == 0 || spawner.SpawnedCount < spawner.Data.SpawnTotal
                                 || spawner.ActiveCount != 0))
                             {
-                                for (int i = 1; i < MaxPlayers; i++)
+                                for (int i = 1; i < _scene.Players.MaxPlayers; i++)
                                 {
-                                    if (Players[i].EnemySpawner == spawner)
+                                    if (_scene.Players.Items[i].EnemySpawner == spawner)
                                     {
                                         unlockDoors = false;
                                         break;
@@ -2147,7 +2106,7 @@ namespace MphRead.Entities
                         }
                         if (unlockDoors)
                         {
-                            GameState.CompleteRandomEncounter(_scene.RoomId);
+                            _scene.GameState.CompleteRandomEncounter(_scene.RoomId);
                             foreach (DoorEntity door in _scene.GetDoorEntities())
                             {
                                 if (door.Data.ConnectorId == 255 && door.Id != -1)
@@ -2158,7 +2117,7 @@ namespace MphRead.Entities
                                 {
                                     door.Flags &= ~DoorFlags.ShowLock;
                                 }
-                                if (door.Id == -1 || GameState.StorySave.GetRoomState(_scene.RoomId, door.Id) == 0)
+                                if (door.Id == -1 || _scene.GameState.StorySave.GetRoomState(_scene.RoomId, door.Id) == 0)
                                 {
                                     door.Unlock(updateState: false, noLockAnimSfx: false);
                                 }
@@ -2169,16 +2128,16 @@ namespace MphRead.Entities
                     {
                         // todo: update stats
                         // note: the game doesn't cap either of these
-                        if (GameState.StorySave.Stats.Deaths != UInt32.MaxValue)
+                        if (_scene.GameState.StorySave.Stats.Deaths != UInt32.MaxValue)
                         {
-                            GameState.StorySave.Stats.Deaths++;
+                            _scene.GameState.StorySave.Stats.Deaths++;
                         }
                         if (attacker != null && !attacker.IsMainPlayer && attacker.Hunter != Hunter.Guardian
-                            && GameState.StorySave.Stats.EnemyHunterDeaths != UInt32.MaxValue)
+                            && _scene.GameState.StorySave.Stats.EnemyHunterDeaths != UInt32.MaxValue)
                         {
-                            GameState.StorySave.Stats.EnemyHunterDeaths++;
+                            _scene.GameState.StorySave.Stats.EnemyHunterDeaths++;
                         }
-                        GameState.PausePrevented = true;
+                        _scene.GameState.PausePrevented = true;
                         _deathCountdown = 150 / 30f;
                         _deathProcessed = false;
                         _deathLostOctolithSfxPlayed = false;
@@ -2186,13 +2145,13 @@ namespace MphRead.Entities
                         _respawnTimer = UInt16.MaxValue;
                         CameraInfo.SetShake(0.25f);
                         _lostOctolithEnemyIndex = -1;
-                        if (GameState.StorySave.CurrentOctoliths != 0 && PlayerCount > 1
-                            && (GameState.EscapeTimer != 0 || GameState.EscapeState != EscapeState.Escape))
+                        if (_scene.GameState.StorySave.CurrentOctoliths != 0 && _scene.Players.PlayerCount > 1
+                            && (_scene.GameState.EscapeTimer != 0 || _scene.GameState.EscapeState != EscapeState.Escape))
                         {
                             float minDistance = 0;
-                            for (int i = 1; i < PlayerCount; i++)
+                            for (int i = 1; i < _scene.Players.PlayerCount; i++)
                             {
-                                PlayerEntity enemyHunter = _players[i];
+                                PlayerEntity enemyHunter = _scene.Players.Items[i];
                                 if (enemyHunter.Health == 0 || enemyHunter.Hunter == Hunter.Guardian)
                                 {
                                     continue;
@@ -2210,32 +2169,32 @@ namespace MphRead.Entities
                                 _lostOctolithSpeed = 0.2f * 30; // frame-independent drag
                             }
                         }
-                        Music.UpdateEncounterMusic(-2);
-                        Music.Stop(fadeTime: 150 / 30f);
+                        if (_scene.Services.AllowsPresentationSideEffects) Music.UpdateEncounterMusic(-2);
+                        if (_scene.Services.AllowsPresentationSideEffects) Music.Stop(fadeTime: 150 / 30f);
                     }
                     else if (attacker?.IsMainPlayer == true)
                     {
-                        GameState.StorySave.DefeatedHunters |= (byte)(1 << (int)Hunter);
-                        GameState.StorySave.AreaHunters[_scene.AreaId / 2] &= (byte)~(1 << (int)Hunter);
+                        _scene.GameState.StorySave.DefeatedHunters |= (byte)(1 << (int)Hunter);
+                        _scene.GameState.StorySave.AreaHunters[_scene.AreaId / 2] &= (byte)~(1 << (int)Hunter);
                         // todo: unlock hunter for multiplayer
                         // note: the game doesn't cap hunter kills
-                        if (GameState.StorySave.Stats.HunterKills != UInt32.MaxValue)
+                        if (_scene.GameState.StorySave.Stats.HunterKills != UInt32.MaxValue)
                         {
-                            GameState.StorySave.Stats.HunterKills++;
+                            _scene.GameState.StorySave.Stats.HunterKills++;
                         }
-                        if (Hunter == Hunter.Guardian && GameState.StorySave.Stats.EnemyKills != UInt32.MaxValue)
+                        if (Hunter == Hunter.Guardian && _scene.GameState.StorySave.Stats.EnemyKills != UInt32.MaxValue)
                         {
-                            GameState.StorySave.Stats.EnemyKills++;
-                        }
-
-                        static void RestoreOctolith(int dropId)
-                        {
-                            GameState.StorySave.LostOctoliths
-                                = GameState.StorySave.LostOctoliths & (uint)(~(15 << (4 * dropId)) | (8 << (4 * dropId)));
-                            GameState.StorySave.CurrentOctoliths |= (ushort)(1 << dropId);
+                            _scene.GameState.StorySave.Stats.EnemyKills++;
                         }
 
-                        int dropId = GameState.StorySave.GetEnemyOctolithDrop((int)Hunter);
+                        void RestoreOctolith(int dropId)
+                        {
+                            _scene.GameState.StorySave.LostOctoliths
+                                = _scene.GameState.StorySave.LostOctoliths & (uint)(~(15 << (4 * dropId)) | (8 << (4 * dropId)));
+                            _scene.GameState.StorySave.CurrentOctoliths |= (ushort)(1 << dropId);
+                        }
+
+                        int dropId = _scene.GameState.StorySave.GetEnemyOctolithDrop((int)Hunter);
                         if (dropId < 8)
                         {
                             RestoreOctolith(dropId);
@@ -2257,7 +2216,7 @@ namespace MphRead.Entities
                         // recover any additional Octoliths
                         while (true)
                         {
-                            dropId = GameState.StorySave.GetEnemyOctolithDrop((int)Hunter);
+                            dropId = _scene.GameState.StorySave.GetEnemyOctolithDrop((int)Hunter);
                             if (dropId >= 8)
                             {
                                 break;
@@ -2280,7 +2239,7 @@ namespace MphRead.Entities
                             else
                             {
                                 // todo: update license
-                                string nickname = GameState.Nicknames[attacker.SlotIndex];
+                                string nickname = _scene.GameState.Nicknames[attacker.SlotIndex];
                                 // %s's HEADSHOT KILLED YOU! / %s KILLED YOU!
                                 string message = Strings.GetHudMessage(flags.TestFlag(DamageFlags.Headshot) ? 236 : 237);
                                 QueueHudMessage(128, 70, 140, 90 / 30f, 2, message.Replace("%s", nickname));
@@ -2335,57 +2294,57 @@ namespace MphRead.Entities
                         }
                         if (attacker == this)
                         {
-                            GameState.Suicides[SlotIndex]++;
-                            if (GameState.Mode == GameMode.Battle || GameState.Mode == GameMode.BattleTeams)
+                            _scene.GameState.Suicides[SlotIndex]++;
+                            if (_scene.GameState.Mode == GameMode.Battle || _scene.GameState.Mode == GameMode.BattleTeams)
                             {
-                                GameState.Points[SlotIndex]--;
+                                _scene.GameState.Points[SlotIndex]--;
                             }
                         }
                         else
                         {
                             if (TeamRules.AreAllies(attacker.TeamIndex, TeamIndex))
                             {
-                                GameState.FriendlyKills[attacker.SlotIndex]++;
-                                GameState.KillStreak[attacker.SlotIndex] = 0;
+                                _scene.GameState.FriendlyKills[attacker.SlotIndex]++;
+                                _scene.GameState.KillStreak[attacker.SlotIndex] = 0;
                                 // todo: update license info
-                                if (attacker == Main)
+                                if (attacker == _scene.Players.Main)
                                 {
-                                    string nickname = GameState.Nicknames[SlotIndex];
+                                    string nickname = _scene.GameState.Nicknames[SlotIndex];
                                     string message = Strings.GetHudMessage(240); // YOU KILLED A TEAMMATE, (%s)!
                                     QueueHudMessage(128, 70, 140, 60 / 30f, 2, message.Replace("%s", nickname));
                                 }
                             }
                             else
                             {
-                                if (attacker == Main)
+                                if (attacker == _scene.Players.Main)
                                 {
                                     // todo: update license info
-                                    string nickname = GameState.Nicknames[SlotIndex];
+                                    string nickname = _scene.GameState.Nicknames[SlotIndex];
                                     // YOUR HEADSHOT KILLED %s! / YOU KILLED %s!
                                     string message = Strings.GetHudMessage(flags.TestFlag(DamageFlags.Headshot) ? 239 : 238);
                                     QueueHudMessage(128, 70, 140, 60 / 30f, 2, message.Replace("%s", nickname));
                                 }
                                 if (flags.TestFlag(DamageFlags.Headshot))
                                 {
-                                    GameState.HeadshotKills[attacker.SlotIndex]++;
+                                    _scene.GameState.HeadshotKills[attacker.SlotIndex]++;
                                 }
-                                GameState.Kills[attacker.SlotIndex]++;
+                                _scene.GameState.Kills[attacker.SlotIndex]++;
                                 // todo?: the game also updates another kills stat(?) here
                                 if (attacker.IsPrimeHunter)
                                 {
-                                    GameState.KillsAsPrime[attacker.SlotIndex]++;
+                                    _scene.GameState.KillsAsPrime[attacker.SlotIndex]++;
                                 }
                                 if (beamType <= BeamType.OmegaCannon)
                                 {
-                                    GameState.BeamKills[attacker.SlotIndex, (int)beamType]++;
+                                    _scene.GameState.BeamKills[attacker.SlotIndex, (int)beamType]++;
                                     // todo: update license info
                                 }
-                                if (GameState.KillStreak[attacker.SlotIndex] < 255)
+                                if (_scene.GameState.KillStreak[attacker.SlotIndex] < 255)
                                 {
-                                    GameState.KillStreak[attacker.SlotIndex]++;
+                                    _scene.GameState.KillStreak[attacker.SlotIndex]++;
                                 }
                                 Mods.Network.CareerMatchStats.NoteKill(attacker);
-                                if (GameState.KillStreak[attacker.SlotIndex] == 5)
+                                if (_scene.GameState.KillStreak[attacker.SlotIndex] == 5)
                                 {
                                     _soundSource.QueueStream(VoiceId.VOICE_CONSECUTIVE_KILLS, delay: 1);
                                     string message;
@@ -2395,56 +2354,56 @@ namespace MphRead.Entities
                                     }
                                     else
                                     {
-                                        string nickname = GameState.Nicknames[attacker.SlotIndex];
+                                        string nickname = _scene.GameState.Nicknames[attacker.SlotIndex];
                                         message = Strings.GetHudMessage(255); // %s KILLED 5 IN A ROW!
                                         message = message.Replace("%s", nickname);
                                     }
                                     QueueHudMessage(128, 70, 140, 90 / 30f, 2, message);
                                 }
-                                if (GameState.Mode == GameMode.PrimeHunter)
+                                if (_scene.GameState.Mode == GameMode.PrimeHunter)
                                 {
                                     if (attacker.IsPrimeHunter)
                                     {
                                         attacker.GainHealth(70);
                                     }
-                                    else if (attacker.Health > 0 && (GameState.PrimeHunter == -1 || IsPrimeHunter))
+                                    else if (attacker.Health > 0 && (_scene.GameState.PrimeHunter == -1 || IsPrimeHunter))
                                     {
-                                        GameState.PrimeHunter = attacker.SlotIndex;
-                                        GameState.PrimesKilled[attacker.SlotIndex]++;
-                                        if (Main.IsPrimeHunter)
+                                        _scene.GameState.PrimeHunter = attacker.SlotIndex;
+                                        _scene.GameState.PrimesKilled[attacker.SlotIndex]++;
+                                        if (_scene.Players.Main.IsPrimeHunter)
                                         {
                                             _soundSource.QueueStream(VoiceId.VOICE_PRIME, delay: 1);
                                         }
-                                        string nickname = GameState.Nicknames[attacker.SlotIndex];
+                                        string nickname = _scene.GameState.Nicknames[attacker.SlotIndex];
                                         string message = Strings.GetHudMessage(241); // %s is the new prime hunter!
                                         QueueHudMessage(128, 70, 140, 90 / 30f, 2, message.Replace("%s", nickname));
                                     }
                                 }
-                                else if (GameState.Mode == GameMode.Battle || GameState.Mode == GameMode.BattleTeams)
+                                else if (_scene.GameState.Mode == GameMode.Battle || _scene.GameState.Mode == GameMode.BattleTeams)
                                 {
-                                    if (GameState.Points[attacker.SlotIndex] < 99999)
+                                    if (_scene.GameState.Points[attacker.SlotIndex] < 99999)
                                     {
-                                        GameState.Points[attacker.SlotIndex]++;
+                                        _scene.GameState.Points[attacker.SlotIndex]++;
                                     }
                                 }
-                                else if (GameState.IsOctolithMode && OctolithFlag != null)
+                                else if (_scene.GameState.IsOctolithMode && OctolithFlag != null)
                                 {
-                                    GameState.OctolithStops[attacker.SlotIndex]++;
+                                    _scene.GameState.OctolithStops[attacker.SlotIndex]++;
                                 }
                                 // bugfix?: this flag is also set for suicides/environmental damage/etc.
                                 if (flags.TestFlag(DamageFlags.FromAlt))
                                 {
-                                    GameState.AltDamageCount[attacker.SlotIndex]++;
+                                    _scene.GameState.AltDamageCount[attacker.SlotIndex]++;
                                 }
                             }
                         }
                     }
                     else // no attacker
                     {
-                        GameState.Suicides[SlotIndex]++;
-                        if (GameState.Mode == GameMode.Battle || GameState.Mode == GameMode.BattleTeams)
+                        _scene.GameState.Suicides[SlotIndex]++;
+                        if (_scene.GameState.Mode == GameMode.Battle || _scene.GameState.Mode == GameMode.BattleTeams)
                         {
-                            GameState.Points[SlotIndex]--;
+                            _scene.GameState.Points[SlotIndex]--;
                         }
                     }
                     if (IsAltForm || IsMorphing)
@@ -2462,11 +2421,11 @@ namespace MphRead.Entities
                     }
                     if (IsPrimeHunter)
                     {
-                        GameState.PrimeHunter = -1;
+                        _scene.GameState.PrimeHunter = -1;
                         QueueHudMessage(128, 70, 140, 90 / 30f, 2, 242); // the prime hunter is dead!
                     }
                 }
-                if (GameState.Multiplayer && attacker != null && attacker != this)
+                if (_scene.GameState.Multiplayer && attacker != null && attacker != this)
                 {
                     ItemType itemType = ItemType.UASmall;
                     if (attacker.EquipInfo.Weapon.AmmoType == 1)
@@ -2508,7 +2467,7 @@ namespace MphRead.Entities
                             {
                                 if (_timeSinceFrozen > 60 * 2) // todo: FPS stuff
                                 {
-                                    int time = (GameState.Multiplayer || attacker != null ? 75 : 30) * 2; // todo: FPS stuff
+                                    int time = (_scene.GameState.Multiplayer || attacker != null ? 75 : 30) * 2; // todo: FPS stuff
                                     _frozenTimer = (ushort)time;
                                 }
                                 else if (_frozenTimer < 15 * 2) // todo: FPS stuff
@@ -2541,8 +2500,8 @@ namespace MphRead.Entities
                             ushort time = 150 * 2; // todo: FPS stuff
                             if (attacker != null)
                             {
-                                int encounter = GameState.EncounterState[attacker.SlotIndex];
-                                if (attacker.IsBot && GameState.SinglePlayer
+                                int encounter = _scene.GameState.EncounterState[attacker.SlotIndex];
+                                if (attacker.IsBot && _scene.GameState.SinglePlayer
                                     && (encounter == 1 || encounter == 3 || encounter == 4))
                                 {
                                     time = 75 * 2; // todo: FPS stuff

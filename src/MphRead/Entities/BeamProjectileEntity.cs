@@ -80,10 +80,17 @@ namespace MphRead.Entities
         public float RicochetLossV { get; set; }
         public float CylinderRadius { get; set; }
 
-        private static readonly EquipInfo _ricochetEquip = new EquipInfo();
+        private readonly EquipInfo _ricochetEquip = new EquipInfo();
 
         private ModelInstance? _trailModel;
         private int _bindingId = 0;
+        internal void ReplayBindResources()
+        {
+            if (_trailModel == null) { _bindingId = 0; return; }
+            _scene.LoadModel(_trailModel.Model);
+            Material material = _trailModel.Model.Materials[0];
+            _bindingId = _scene.BindGetTexture(_trailModel.Model, material.TextureId, material.PaletteId, 0);
+        }
 
         public BeamProjectileEntity(Scene scene) : base(EntityType.BeamProjectile, scene)
         {
@@ -95,15 +102,15 @@ namespace MphRead.Entities
             // model will be loaded and bound by scene setup
             if (DrawFuncId == 0 || DrawFuncId == 3 || DrawFuncId == 6 || DrawFuncId == 7 || DrawFuncId == 10 || DrawFuncId == 12)
             {
-                _trailModel = Read.GetModelInstance("trail");
+                _trailModel = _scene.GetModelInstance("trail");
             }
             else if (DrawFuncId == 1 || DrawFuncId == 2)
             {
-                _trailModel = Read.GetModelInstance("electroTrail");
+                _trailModel = _scene.GetModelInstance("electroTrail");
             }
             else if (DrawFuncId == 9)
             {
-                _trailModel = Read.GetModelInstance("arcWelder");
+                _trailModel = _scene.GetModelInstance("arcWelder");
             }
             if (_trailModel != null)
             {
@@ -412,7 +419,7 @@ namespace MphRead.Entities
                 }
                 if (NetLog.Enabled)
                 {
-                    NetDamage.PlayerChecks[player.SlotIndex]++;
+                    if (!_scene.Services.IsReplica) NetDamage.PlayerChecks[player.SlotIndex]++;
                 }
                 bool hasHalfturret = player.Hunter == Hunter.Weavel && player.Flags2.TestFlag(PlayerFlags2.Halfturret);
                 if ((Owner == player || hasHalfturret && Owner == player.Halfturret)
@@ -465,11 +472,11 @@ namespace MphRead.Entities
                 }
                 if (hitPlayer && playerRes.Distance < minDist)
                 {
-                    NetDamage.NotePlayerOverlap(Owner, player);
+                    if (!_scene.Services.IsReplica) NetDamage.NotePlayerOverlap(Owner, player);
                     if (NetLog.Enabled)
                     {
-                        NetDamage.PlayerOverlaps[player.SlotIndex]++;
-                        NetDamage.PlayerAccepted[player.SlotIndex]++;
+                        if (!_scene.Services.IsReplica) NetDamage.PlayerOverlaps[player.SlotIndex]++;
+                        if (!_scene.Services.IsReplica) NetDamage.PlayerAccepted[player.SlotIndex]++;
                     }
                     minDist = playerRes.Distance;
                     anyRes = playerRes;
@@ -479,7 +486,7 @@ namespace MphRead.Entities
                 }
                 else if (hitPlayer && NetLog.Enabled)
                 {
-                    NetDamage.PlayerOverlaps[player.SlotIndex]++;
+                    if (!_scene.Services.IsReplica) NetDamage.PlayerOverlaps[player.SlotIndex]++;
                 }
                 // todo?: else wifi check
                 if (hasHalfturret && Owner != player.Halfturret)
@@ -497,7 +504,7 @@ namespace MphRead.Entities
                     }
                 }
             }
-            if (GameState.SinglePlayer)
+            if (_scene.GameState.SinglePlayer)
             {
                 foreach (BeamProjectileEntity other in _scene.GetBeamProjectileEntities())
                 {
@@ -548,7 +555,7 @@ namespace MphRead.Entities
                         DamageFlags damageFlags = DamageFlags.NoDmgInvuln;
                         if (player.BeamEffectiveness[(int)Beam] == Effectiveness.Zero)
                         {
-                            if (GameState.SinglePlayer && Owner == PlayerEntity.Main)
+                            if (_scene.GameState.SinglePlayer && Owner == _scene.Players.Main)
                             {
                                 Matrix4 transform = GetTransformMatrix(Vector3.UnitX, Vector3.UnitY, player.Position);
                                 EffectEntry? effect = _scene.SpawnEffectGetEntry(115, transform); // ineffectivePsycho
@@ -632,7 +639,7 @@ namespace MphRead.Entities
                                     // granted would float the bar above what
                                     // the authority is about to report. See
                                     // Mods.Network.NetHitPrediction.NoteDrain.
-                                    Mods.Network.NetHitPrediction.NoteDrain(ownerPlayer,
+                                    if (!_scene.Services.IsReplica) Mods.Network.NetHitPrediction.NoteDrain(ownerPlayer,
                                         ownerPlayer.Health - before);
                                 }
                             }
@@ -699,13 +706,13 @@ namespace MphRead.Entities
                                     {
                                         door.Unlock(updateState: true, noLockAnimSfx: true);
                                     }
-                                    else if (GameState.SinglePlayer)
+                                    else if (_scene.GameState.SinglePlayer)
                                     {
                                         // todo: handle messages like this
                                         _scene.SendMessage(Message.ShowWarning, this, null, 40, 90 * 2, 5 * 2); // todo: FPS stuff
                                     }
                                 }
-                                if (!GameState.InRoomTransition)
+                                if (!_scene.GameState.InRoomTransition)
                                 {
                                     door.Flags |= DoorFlags.ShotOpen;
                                 }
@@ -742,7 +749,7 @@ namespace MphRead.Entities
                         {
                             _soundSource.PlaySfx(SfxId.BIGEYE_ATTACK1C, noUpdate: true);
                             ItemType item = ItemType.None;
-                            uint rand = Rng.GetRandomInt2(100);
+                            uint rand = _scene.Random.GetRandomInt2(100);
                             if (_scene.AreaId == 0) // Slench 1 (Alinos 1)
                             {
                                 // 5% small missile, 5% medium health, 90% nothing
@@ -882,7 +889,7 @@ namespace MphRead.Entities
                 float amountA;
                 if (Beam == BeamType.Judicator)
                 {
-                    amountA = Rng.GetRandomInt1(0xFFFF);
+                    amountA = _scene.Random.GetRandomInt1(0xFFFF);
                 }
                 else
                 {
@@ -937,9 +944,9 @@ namespace MphRead.Entities
                     if (Owner.Type == EntityType.Player)
                     {
                         var player = (PlayerEntity)Owner;
-                        if (player.IsBot && GameState.SinglePlayer && player.Hunter == Hunter.Spire)
+                        if (player.IsBot && _scene.GameState.SinglePlayer && player.Hunter == Hunter.Spire)
                         {
-                            int encounter = GameState.EncounterState[player.SlotIndex];
+                            int encounter = _scene.GameState.EncounterState[player.SlotIndex];
                             ushort damage = 3;
                             if (encounter == 2 || encounter == 0 && player.BotLevel > 0)
                             {
@@ -992,7 +999,7 @@ namespace MphRead.Entities
 
                 void OmegaCannonFlash()
                 {
-                    if (Beam == BeamType.OmegaCannon && player == PlayerEntity.Main)
+                    if (Beam == BeamType.OmegaCannon && player == _scene.Players.Main)
                     {
                         _scene.SetFade(FadeType.FadeInWhite, 15 / 30f, overwrite: false);
                     }
@@ -1079,13 +1086,6 @@ namespace MphRead.Entities
 
         public override void GetDrawInfo()
         {
-            // KillCam is presenting a historical combat frame. A live
-            // projectile from the current simulation would be chronologically
-            // wrong on top of that rewind, so do not composite it into the
-            // historical view.
-            if (Mods.KillCam.Active)
-                return;
-
             if (DrawFuncId == 0)
             {
                 Draw00();
@@ -1185,7 +1185,7 @@ namespace MphRead.Entities
                 {
                     DrawTrail4(height: 0.15f, range: 0.5f, segments: 10);
                 }
-                else if (Owner == PlayerEntity.Main)
+                else if (Owner == _scene.Players.Main)
                 {
                     DrawTrail4(height: 0.025f, range: 0.35f, segments: 5);
                 }
@@ -1419,7 +1419,7 @@ namespace MphRead.Entities
         public static BeamResultFlags Spawn(EntityBase owner, EquipInfo equip, Vector3 position, Vector3 direction,
             BeamSpawnFlags spawnFlags, NodeRef nodeRef, Scene scene, BeamProjectileEntity? parent = null)
         {
-            if (NetSession.Active && parent != null && !NetPlayerLifecycle.CurrentProjectile(parent))
+            if (!scene.Services.IsReplica && NetSession.Active && parent != null && !NetPlayerLifecycle.CurrentProjectile(parent))
                 return BeamResultFlags.NoSpawn;
             BeamResultFlags result = BeamResultFlags.Spawned;
             WeaponInfo weapon = equip.Weapon;
@@ -1448,7 +1448,7 @@ namespace MphRead.Entities
                 return chargePct <= 0 ? unchargedAmt : minChargeAmt + ((fullChargeAmt - minChargeAmt) * chargePct);
             }
             byte syncedHomingTarget = 0;
-            if (NetSession.Active && charged && weapon.Beam == BeamType.VoltDriver
+            if (scene.Services.PlayerReplication.Active && charged && weapon.Beam == BeamType.VoltDriver
                 && weapon.Afflictions[1].TestFlag(Affliction.Disrupt) && owner is PlayerEntity homingOwner)
             {
                 // Consume at the attempt, not after the beam is allocated: a
@@ -1461,18 +1461,12 @@ namespace MphRead.Entities
             if (weapon.Flags.TestFlag(WeaponFlags.Continuous) && owner is PlayerEntity firingPlayer)
             {
                 int slot = firingPlayer.SlotIndex;
-                bool remoteSlot = slot >= 0 && slot < NetSession.RemoteIntents.Length;
-                // NetFrame advances before input and Spawn. The owner's intent is
-                // captured on that same step; a remote intent supplies its own
-                // frame plus the number of local steps since it arrived.
-                phase = NetSession.ContinuousPhase.Resolve(slot, scene.FrameCount,
-                    NetSession.Active && !firingPlayer.IsBot,
-                    NetSession.LocalSlot >= 0 && slot == NetSession.LocalSlot,
-                    NetSession.NetFrame,
-                    remoteSlot && NetSession.RemoteIntentValid[slot],
-                    remoteSlot ? NetSession.RemoteIntents[slot].Frame : 0,
-                    remoteSlot ? NetSession.RemoteIntentAge(slot) : uint.MaxValue,
-                    out sharedPhase);
+                var replication = scene.Services.PlayerReplication;
+                bool hasIntent = replication.TryGetIntent(slot, out var intent);
+                phase = scene.WeaponPhase.Resolve(slot, scene.FrameCount,
+                    replication.Active && !firingPlayer.IsBot,
+                    replication.LocalSlot >= 0 && slot == replication.LocalSlot,
+                    replication.Frame, hasIntent, intent.Frame, replication.IntentAge(slot), out sharedPhase);
             }
             if (weapon.Flags.TestFlag(WeaponFlags.Continuous))
             {
@@ -1681,10 +1675,10 @@ namespace MphRead.Entities
                 beam.Owner = owner;
                 beam.ModContinuousPhase = phase;
                 beam.ModHasSharedContinuousPhase = sharedPhase;
-                NetPlayerLifecycle.StampProjectile(beam, parent);
+                if (!scene.Services.IsReplica) NetPlayerLifecycle.StampProjectile(beam, parent);
                 beam.Beam = weapon.Beam;
                 beam.BeamKind = weapon.BeamKind;
-                if (NetLog.Enabled) NetShotDiagnostics.Trace("spawn", beam.ModLaunchKey, beam.Beam);
+                if (!scene.Services.IsReplica && NetLog.Enabled) NetShotDiagnostics.Trace("spawn", beam.ModLaunchKey, beam.Beam);
                 beam.Flags = flags;
                 beam.NodeRef = nodeRef;
                 beam.Age = 0;
@@ -1724,7 +1718,7 @@ namespace MphRead.Entities
                 if (owner.Type == EntityType.Player)
                 {
                     var ownerPlayer = (PlayerEntity)owner;
-                    GameState.BeamDamageMax[ownerPlayer.SlotIndex] += damage;
+                    scene.GameState.BeamDamageMax[ownerPlayer.SlotIndex] += damage;
                 }
                 if (instantAoe)
                 {
@@ -1738,8 +1732,8 @@ namespace MphRead.Entities
                 }
                 if (maxSpread > 0)
                 {
-                    float angle1 = MathHelper.DegreesToRadians(Rng.GetRandomInt2((uint)maxSpread) / 4096f);
-                    float angle2 = MathHelper.DegreesToRadians(Rng.GetRandomInt2(0x168000) / 4096f);
+                    float angle1 = MathHelper.DegreesToRadians(scene.Random.GetRandomInt2((uint)maxSpread) / 4096f);
+                    float angle2 = MathHelper.DegreesToRadians(scene.Random.GetRandomInt2(0x168000) / 4096f);
                     float sin1 = MathF.Sin(angle1);
                     float cos1 = MathF.Cos(angle1);
                     float sin2 = MathF.Sin(angle2);
@@ -1768,12 +1762,12 @@ namespace MphRead.Entities
                 if (beam.DrawFuncId == 3)
                 {
                     beam.Flags |= BeamFlags.HasModel;
-                    beam._models.Add(Read.GetModelInstance("iceShard"));
+                    beam._models.Add(scene.GetModelInstance("iceShard"));
                 }
                 else if (beam.DrawFuncId == 17)
                 {
                     beam.Flags |= BeamFlags.HasModel;
-                    ModelInstance model = Read.GetModelInstance("energyBeam");
+                    ModelInstance model = scene.GetModelInstance("energyBeam");
                     model.SetAnimation(0);
                     beam._models.Add(model);
                     Matrix4 transform = GetTransformMatrix(beam.Direction, beam.Up);
@@ -1808,10 +1802,10 @@ namespace MphRead.Entities
                     {
                         result |= BeamResultFlags.Homing;
                     }
-                    if (beam.Beam == BeamType.ShockCoil && owner.Type == EntityType.Player)
+                    if (!scene.Services.IsReplica && beam.Beam == BeamType.ShockCoil && owner.Type == EntityType.Player)
                     {
                         var ownerPlayer = (PlayerEntity)owner;
-                        if ((GameState.Multiplayer || !ownerPlayer.IsBot) && ownerPlayer.ShockCoilTarget == beam.Target
+                        if ((scene.GameState.Multiplayer || !ownerPlayer.IsBot) && ownerPlayer.ShockCoilTarget == beam.Target
                             && phase % 2 == 0) // todo: FPS stuff
                         {
                             // todo: FPS stuff
@@ -1835,7 +1829,7 @@ namespace MphRead.Entities
                 // and says nothing about it: no hit, no miss, no entry in any
                 // count this file already keeps. Recorded here, at the one
                 // moment the answer is known.
-                if (beam.Beam == BeamType.ShockCoil && owner.Type == EntityType.Player)
+                if (!scene.Services.IsReplica && beam.Beam == BeamType.ShockCoil && owner.Type == EntityType.Player)
                 {
                     NetDamage.ShockCoilSpawned++;
                     if (beam.Target != null)
@@ -1843,7 +1837,7 @@ namespace MphRead.Entities
                         NetDamage.ShockCoilAcquired++;
                     }
                 }
-                if (NetSession.Active && weapon.Flags.TestFlag(WeaponFlags.Continuous))
+                if (!scene.Services.IsReplica && NetSession.Active && weapon.Flags.TestFlag(WeaponFlags.Continuous))
                     NetShotDiagnostics.Continuous(beam, cost);
                 beam._soundSource.Update(beam.Position, rangeIndex: 0);
                 scene.AddEntity(beam);
@@ -2168,10 +2162,10 @@ namespace MphRead.Entities
             // the angle would still leave the wave reaching twice its range at
             // the edge of the cone, since what it was measuring is the
             // distance with the height taken out of it.
-            float reach = GameState.ShadowFreeze ? mag : full.Length;
+            float reach = _scene.GameState.ShadowFreeze ? mag : full.Length;
             if (reach < MaxDistance && reach > 0)
             {
-                Vector3 toward = GameState.ShadowFreeze ? between / mag : full / reach;
+                Vector3 toward = _scene.GameState.ShadowFreeze ? between / mag : full / reach;
                 if (Vector3.Dot(toward, Direction) > angleCos)
                 {
                     Vector3 dir = GetDamageDirection(Position, player.Position);
@@ -2239,7 +2233,7 @@ namespace MphRead.Entities
         {
             if (CollisionEffect != 255)
             {
-                if (PlayerEntity.PlayerCount > 2 && CollisionEffect == 4)
+                if (_scene.Players.PlayerCount > 2 && CollisionEffect == 4)
                 {
                     // powerBeam (4 - 3 = 1)
                     noSplat = true;
@@ -2259,7 +2253,7 @@ namespace MphRead.Entities
                 Matrix4 transform = GetTransformMatrix(facing, up);
                 transform.Row3.Xyz = spawnPos;
                 // the game uses BeamKind against "511" bits which accomplish the same thing as this terrain type check
-                if (!GameState.SinglePlayer || colRes.Terrain <= Terrain.Lava)
+                if (!_scene.GameState.SinglePlayer || colRes.Terrain <= Terrain.Lava)
                 {
                     var ent = BeamEffectEntity.Create(
                         new BeamEffectEntityData(CollisionEffect, noSplat, transform, colRes.EntityCollision), _scene);
@@ -2274,7 +2268,7 @@ namespace MphRead.Entities
                 }
                 // there are actually effect IDs to cover platform/enemy beams in these arrays (although most are 255)
                 byte splatEffect = _terSplat1P[(int)BeamKind][(int)colRes.Terrain];
-                if (GameState.SinglePlayer && splatEffect != 255)
+                if (_scene.GameState.SinglePlayer && splatEffect != 255)
                 {
                     splatEffect += 3;
                     var ent = BeamEffectEntity.Create(
@@ -2309,7 +2303,7 @@ namespace MphRead.Entities
                 // 28 - sniperCol (unintended)
                 effectId = (int)Beam + 20;
             }
-            else if (GameState.SinglePlayer)
+            else if (_scene.GameState.SinglePlayer)
             {
                 // 12 - effectiveHitPB
                 // 13 - effectiveHitElectric

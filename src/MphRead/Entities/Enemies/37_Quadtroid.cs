@@ -53,8 +53,8 @@ namespace MphRead.Entities.Enemies
             _hurtVolumeInit = new CollisionVolume(_spawner.Data.Fields.S00.Volume0);
             _volume1 = CollisionVolume.Move(_spawner.Data.Fields.S00.Volume1, Position);
             _rightVector = Vector3.Cross(facing, up).Normalized();
-            _field238 = ((int)Rng.GetRandomInt2(60) + 45) * 2; // todo: FPS stuff
-            _field23C = ((int)Rng.GetRandomInt2(60) + 90) * 2; // todo: FPS stuff
+            _field238 = ((int)_scene.Random.GetRandomInt2(60) + 45) * 2; // todo: FPS stuff
+            _field23C = ((int)_scene.Random.GetRandomInt2(60) + 90) * 2; // todo: FPS stuff
             ModelInstance inst = SetUpModel(Metadata.EnemyModelNames[37]);
             inst.SetAnimation(4, slot: 0, SetFlags.Texture | SetFlags.Material | SetFlags.Node);
             inst.SetAnimation(6, slot: 1, SetFlags.Texcoord);
@@ -81,10 +81,10 @@ namespace MphRead.Entities.Enemies
                 {
                     Func214E668(Fixed.ToFloat(218));
                     Func214DC90();
-                    if (Func214D6E0(PlayerEntity.Main) && PlayerEntity.Main.AttachedEnemy == null
-                        && Func214D690(PlayerEntity.Main) && Func214D828(PlayerEntity.Main))
+                    if (Func214D6E0(_scene.Players.Main) && _scene.Players.Main.AttachedEnemy == null
+                        && Func214D690(_scene.Players.Main) && Func214D828(_scene.Players.Main))
                     {
-                        _target = PlayerEntity.Main;
+                        _target = _scene.Players.Main;
                         Func214E1C0(_target);
                         Func214EC08();
                     }
@@ -346,7 +346,7 @@ namespace MphRead.Entities.Enemies
 
         private void Func214DCB8()
         {
-            PlayerEntity player = PlayerEntity.Main;
+            PlayerEntity player = _scene.Players.Main;
             if (HitPlayers[player.SlotIndex])
             {
                 Vector3 between = player.Position - Position;
@@ -453,7 +453,7 @@ namespace MphRead.Entities.Enemies
             _field238--;
             if (_field238 == 0)
             {
-                _field238 = ((int)Rng.GetRandomInt2(60) + 45) * 2; // todo: FPS stuff
+                _field238 = ((int)_scene.Random.GetRandomInt2(60) + 45) * 2; // todo: FPS stuff
                 _field1E8 = RotateVectorRandom(FacingVector, UpVector);
                 Func214E444(_field1E8, state: 4, animId: 10, AnimFlags.NoLoop);
                 return true;
@@ -469,7 +469,7 @@ namespace MphRead.Entities.Enemies
             }
             if (_field23C == 0)
             {
-                _field23C = ((int)Rng.GetRandomInt2(60) + 90) * 2; // todo: FPS stuff
+                _field23C = ((int)_scene.Random.GetRandomInt2(60) + 90) * 2; // todo: FPS stuff
                 Func214ECB8();
                 return true;
             }
@@ -566,7 +566,7 @@ namespace MphRead.Entities.Enemies
             _flags &= ~QuadtroidFlags.Bit2;
             _models[0].SetAnimation(9, slot: 0, SetFlags.Texture | SetFlags.Material | SetFlags.Node);
             _state1 = _state2 = 8;
-            _field238 = ((int)Rng.GetRandomInt2(15) + 30) * 2; // todo: FPS stuff
+            _field238 = ((int)_scene.Random.GetRandomInt2(15) + 30) * 2; // todo: FPS stuff
         }
 
         private void Func214E4D8(PlayerEntity? player)
@@ -927,7 +927,7 @@ namespace MphRead.Entities.Enemies
                 else if (source.Type == EntityType.Bomb || source.Type == EntityType.Player)
                 {
                     _hitByBomb = true;
-                    Func214E1C0(PlayerEntity.Main);
+                    Func214E1C0(_scene.Players.Main);
                     if (source.Type == EntityType.Player || ((BombEntity)source).Owner.Hunter != Hunter.Samus)
                     {
                         hitByNonSamusBomb = true;
@@ -970,7 +970,7 @@ namespace MphRead.Entities.Enemies
 
         private Vector3 RotateVectorRandom(Vector3 vec, Vector3 axis)
         {
-            float angle = Fixed.ToFloat(Rng.GetRandomInt2(359));
+            float angle = Fixed.ToFloat(_scene.Random.GetRandomInt2(359));
             vec = RotateVector(vec, axis, angle);
             return Func204D518(vec, axis).Normalized();
         }

@@ -39,11 +39,11 @@ namespace MphRead.Entities
             {
                 SetUpModel("ArtifactBase");
             }
-            Debug.Assert(GameState.Mode == GameMode.SinglePlayer);
-            Active = GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: _data.Active != 0, activeState: 2) != 0;
+            Debug.Assert(_scene.GameState.Mode == GameMode.SinglePlayer);
+            Active = _scene.GameState.StorySave.InitRoomState(_scene.RoomId, Id, active: _data.Active != 0, activeState: 2) != 0;
             if (data.ModelId < 8)
             {
-                if (GameState.StorySave.CheckFoundArtifact(data.ArtifactId, data.ModelId))
+                if (_scene.GameState.StorySave.CheckFoundArtifact(data.ArtifactId, data.ModelId))
                 {
                     Active = false;
                 }
@@ -51,7 +51,7 @@ namespace MphRead.Entities
             else if (Id != -1)
             {
                 // the game does this by checking both current and lost octoliths, but this is simpler
-                if (GameState.StorySave.CheckFoundOctolith(data.ArtifactId))
+                if (_scene.GameState.StorySave.CheckFoundOctolith(data.ArtifactId))
                 {
                     Active = false;
                 }
@@ -118,11 +118,11 @@ namespace MphRead.Entities
                 {
                     _scanId = _scanIds[_data.ModelId * 3 + 8 + _data.ArtifactId];
                 }
-                if (CameraSequence.Current?.BlockInput == true)
+                if (_scene.CameraSequences.Current?.BlockInput == true)
                 {
                     return base.Process();
                 }
-                PlayerEntity player = PlayerEntity.Main;
+                PlayerEntity player = _scene.Players.Main;
                 if (_data.ModelId >= 8 && Id == -1)
                 {
                     Vector3 direction = (player.Position - Position).AddY(0.5f);
@@ -179,25 +179,25 @@ namespace MphRead.Entities
                 }
                 if (_data.ModelId >= 8)
                 {
-                    GameState.StorySave.UpdateFoundOctolith(_data.ArtifactId);
+                    _scene.GameState.StorySave.UpdateFoundOctolith(_data.ArtifactId);
                     if (Id == -1)
                     {
                         // OCTOLITH RECLAIMED you recovered a stolen OCTOLITH!
-                        PlayerEntity.Main.ShowDialog(DialogType.Event, messageId: 54, param1: (int)EventType.Octolith);
+                        _scene.Players.Main.ShowDialog(DialogType.Event, messageId: 54, param1: (int)EventType.Octolith);
                     }
                     else
                     {
-                        GameState.UpdateCleanSave(force: false);
-                        GameState.PausePrevented = true;
+                        _scene.GameState.UpdateCleanSave(force: false);
+                        _scene.GameState.PausePrevented = true;
                         _scene.StartMovie(Movie.OctolithPickUp, FadeType.FadeOutInWhite, 5 / 30f, FadeType.FadeOutInWhite, 5 / 30f);
-                        GameState.UpdateBossFlags(_scene.AreaId);
-                        int collected = GameState.StorySave.CountFoundOctoliths();
-                        GameState.QueuedOctolithMessageId = _octolithMessageIds[collected - 1];
+                        _scene.GameState.UpdateBossFlags(_scene.AreaId);
+                        int collected = _scene.GameState.StorySave.CountFoundOctoliths();
+                        _scene.GameState.QueuedOctolithMessageId = _octolithMessageIds[collected - 1];
                     }
                 }
                 else
                 {
-                    int collected = GameState.StorySave.CountFoundArtifacts(_data.ModelId);
+                    int collected = _scene.GameState.StorySave.CountFoundArtifacts(_data.ModelId);
                     if (collected >= 2)
                     {
                         _soundSource.PlayFreeSfx(SfxId.ARTIFACT3);
@@ -210,9 +210,9 @@ namespace MphRead.Entities
                     {
                         _soundSource.PlayFreeSfx(SfxId.ARTIFACT1);
                     }
-                    GameState.StorySave.UpdateFoundArtifact(_data.ArtifactId, _data.ModelId);
+                    _scene.GameState.StorySave.UpdateFoundArtifact(_data.ArtifactId, _data.ModelId);
                     // ARTIFACT DISCOVERED you retrieved an ALIMBIC ARTIFACT!
-                    PlayerEntity.Main.ShowDialog(DialogType.Event, messageId: 6, param1: (int)EventType.Artifact);
+                    _scene.Players.Main.ShowDialog(DialogType.Event, messageId: 6, param1: (int)EventType.Artifact);
                     if (collected >= 2)
                     {
                         // PORTAL ACTIVATED long-range thermomagnetic-resonance scanners indicate remote
@@ -221,7 +221,7 @@ namespace MphRead.Entities
                     }
                 }
                 Active = false;
-                GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
+                _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
                 _soundSource.StopAllSfx(force: true);
             }
             else
@@ -244,19 +244,19 @@ namespace MphRead.Entities
             if (info.Message == Message.Activate)
             {
                 Active = true;
-                GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
+                _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
             }
             else if (info.Message == Message.SetActive)
             {
                 if ((int)info.Param1 != 0)
                 {
                     Active = true;
-                    GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
+                    _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 3);
                 }
                 else
                 {
                     Active = false;
-                    GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
+                    _scene.GameState.StorySave.SetRoomState(_scene.RoomId, Id, state: 1);
                 }
             }
             else if (info.Message == Message.MoveItemSpawner && info.Sender != null)
@@ -292,7 +292,7 @@ namespace MphRead.Entities
             if (_data.ModelId >= 8)
             {
                 Vector3 player = _scene.CameraMode == CameraMode.Player
-                    ? PlayerEntity.Main.CameraInfo.Position
+                    ? _scene.Players.Main.CameraInfo.Position
                     : _scene.CameraPosition; // skdebug
                 var vector1 = new Vector3(0, 1, 0);
                 Vector3 vector2 = new Vector3(player.X - Position.X, 0, player.Z - Position.Z).Normalized();

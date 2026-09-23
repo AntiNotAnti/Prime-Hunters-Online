@@ -346,7 +346,9 @@ namespace MphRead.Mods.Network
                     }
                     record.LastWeapon = player.CurrentWeapon;
                 }
-                if (record.LastHealth > 0 && player.Health > 0 && player.Health < record.LastHealth)
+                // A lethal hit is still damage. Excluding zero health made an
+                // otherwise valid one-shot duel fail the damage-coverage check.
+                if (record.LastHealth > 0 && player.Health < record.LastHealth)
                 {
                     record.DamageEvents++;
                     if (player.IsAltForm)
@@ -435,7 +437,10 @@ namespace MphRead.Mods.Network
                     record.HavePrevious = true;
                 }
 
-                if (slot == _localSlot || !NetSession.RemoteStateValid[slot])
+                // During a room transition the received state already belongs to
+                // the next match while the fading scene still shows the old room.
+                // NetHooks deliberately waits for the load barrier before applying it.
+                if (slot == _localSlot || !NetSession.RemoteStateValid[slot] || !NetRoomChange.GameplayReady)
                 {
                     continue;
                 }
@@ -493,6 +498,10 @@ namespace MphRead.Mods.Network
                 if ((state.Flags & PlayerState.FlagSpawned) != 0)
                 {
                     double gap = (state.Position - player.Position).Length;
+                    if (gap > 8 && gap > record.WorstPositionGap + 0.1)
+                        Console.WriteLine($"[netcheck] position gap {gap:F2} slot={slot} frame={NetSession.NetFrame} phase={phase} "
+                            + $"localFlags={player.LoadFlags} hp={player.Health} local={player.Position} recorded={state.Position} "
+                            + $"gen/life={state.SlotGeneration}/{state.LifeId} current={NetPlayerLifecycle.Generation(slot)}/{NetPlayerLifecycle.Get(slot)}");
                     record.WorstPositionGap = Math.Max(record.WorstPositionGap, gap);
                 }
             }

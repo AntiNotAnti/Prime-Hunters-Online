@@ -369,6 +369,8 @@ namespace MphRead
         public AnimationGroups AnimationGroups { get; }
 
         public IReadOnlyList<RawNode> RawNodes { get; }
+        private readonly IReadOnlyList<RawMesh> _rawMeshes;
+        private readonly IReadOnlyList<RawMaterial> _rawMaterials;
         public IReadOnlyList<Vector3Fx> NodePos { get; }
         public IReadOnlyList<Vector3Fx> NodeInitPos { get; }
         public IReadOnlyList<int> NodePosCounts { get; }
@@ -385,14 +387,16 @@ namespace MphRead
             Name = name;
             FirstHunt = firstHunt;
             Header = header;
-            Nodes = nodes.Select(n => new Node(n)).ToList();
             RawNodes = nodes.ToList();
+            Nodes = RawNodes.Select(n => new Node(n)).ToList();
             NodePos = nodePos;
             NodeInitPos = nodeInitPos;
             NodePosCounts = posCounts;
             NodePosScales = posScales;
-            Meshes = meshes.Select(m => new Mesh(m)).ToList();
-            Materials = materials.Select(m => new Material(m)).ToList();
+            _rawMeshes = meshes.ToArray();
+            _rawMaterials = materials.ToArray();
+            Meshes = _rawMeshes.Select(m => new Mesh(m)).ToList();
+            Materials = _rawMaterials.Select(m => new Material(m)).ToList();
             DisplayLists = dlists;
             RenderInstructionLists = renderInstructions;
             TextureMatrices = textureMatrices;
@@ -415,6 +419,25 @@ namespace MphRead
             AnimationGroups = new AnimationGroups(animations);
             float scale = Header.ScaleBase.FloatValue * (1 << (int)Header.ScaleFactor);
             Scale = new Vector3(scale, scale, scale);
+        }
+
+        // Geometry and animation definitions are assets; node/material/mesh
+        // state and driver handles belong to one scene. Always start from the
+        // asset defaults, never the last state drawn by a live player.
+        internal Model CreateSceneCopy() => new Model(this);
+        private Model(Model asset)
+        {
+            Name = asset.Name; FirstHunt = asset.FirstHunt; Header = asset.Header;
+            RawNodes = asset.RawNodes; _rawMeshes = asset._rawMeshes; _rawMaterials = asset._rawMaterials;
+            Nodes = RawNodes.Select(n => new Node(n)).ToArray();
+            Meshes = _rawMeshes.Select(m => new Mesh(m)).ToArray();
+            Materials = _rawMaterials.Select(m => new Material(m)).ToArray();
+            DisplayLists = asset.DisplayLists; RenderInstructionLists = asset.RenderInstructionLists;
+            TextureMatrices = asset.TextureMatrices; Recolors = asset.Recolors; NodeMatrixIds = asset.NodeMatrixIds;
+            AnimationGroups = asset.AnimationGroups; NodePos = asset.NodePos; NodeInitPos = asset.NodeInitPos;
+            NodePosCounts = asset.NodePosCounts; NodePosScales = asset.NodePosScales; Scale = asset.Scale;
+            _matrixStackValues = new float[asset._matrixStackValues.Length];
+            for (int i = 0; i < _matrixStackValues.Length / 16; i++) SetMatrixStackValues(i, Matrix4.Identity);
         }
 
         public void FilterNodes(int layerMask)
@@ -776,7 +799,7 @@ namespace MphRead
             }
         }
 
-        private void SetMatrixStackValues(int index, Matrix4 matrix)
+        internal void SetMatrixStackValues(int index, Matrix4 matrix)
         {
             _matrixStackValues[16 * index] = matrix.M11;
             _matrixStackValues[16 * index + 1] = matrix.M12;

@@ -430,6 +430,7 @@ The repository includes extensive technical documentation covering the major Pro
 Useful starting points include:
 
 * [`CLAUDE.md`](CLAUDE.md) — repository architecture, commands, diagnostics, and testing
+* [Replay and Map Studio architecture](docs/architecture/replay-map-upgrade-status.md) — implementation, validation, and platform coverage
 * [`SERVER.md`](SERVER.md) — dedicated server setup
 * [`.claude/multiplayer/`](.claude/multiplayer/) — multiplayer architecture and networking
 * [`.claude/mapgen/`](.claude/mapgen/) — custom map pipeline and Map Studio

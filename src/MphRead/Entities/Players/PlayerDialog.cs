@@ -79,7 +79,7 @@ namespace MphRead.Entities
         {
             // the game doesn't have this check; we need it to prevent crashing on uninitialized members
             // like _messageBoxInst when e.g. an automatic trigger entity tries to display a message
-            if (!LoadFlags.TestFlag(LoadFlags.Initial) || GameState.Mode != GameMode.SinglePlayer || !IsMainPlayer)
+            if (!LoadFlags.TestFlag(LoadFlags.Initial) || _scene.GameState.Mode != GameMode.SinglePlayer || !IsMainPlayer)
             {
                 return;
             }
@@ -246,7 +246,7 @@ namespace MphRead.Entities
             _dialogValue2 = null;
             if (unpause)
             {
-                GameState.UnpauseDialog();
+                _scene.GameState.UnpauseDialog();
             }
             Array.Fill(_overlayBuffer1, '\0');
             int lineCount = WrapText(_overlayMessage1, 142, _overlayBuffer1);
@@ -289,7 +289,7 @@ namespace MphRead.Entities
                 _soundSource.StopFreeSfxScripts();
                 _soundSource.PlayFreeSfx(SfxId.TELEPATHIC_MESSAGE);
             }
-            GameState.PauseDialog();
+            _scene.GameState.PauseDialog();
             _overlayMessage1 = entry.Value1;
             _overlayMessage2 = entry.Value2;
             Array.Fill(_overlayBuffer1, '\0');
@@ -308,7 +308,7 @@ namespace MphRead.Entities
         {
             StopLongSfx();
             EndWeaponMenu();
-            GameState.PauseDialog();
+            _scene.GameState.PauseDialog();
             _dialogCharTimer = 0;
             _dialogPalette = 0;
             _messageBoxInst.SetPalette(_dialogPalette, _scene);
@@ -326,8 +326,8 @@ namespace MphRead.Entities
             }
             StopLongSfx();
             EndWeaponMenu();
-            GameState.PausePrevented = true;
-            GameState.PauseDialog();
+            _scene.GameState.PausePrevented = true;
+            _scene.GameState.PauseDialog();
             _eventType = eventType;
             _overlayMessage1 = entry.Value1;
             _overlayMessage2 = entry.Value2;
@@ -354,7 +354,7 @@ namespace MphRead.Entities
             _messageBoxInst.SetAnimation(start: 0, target: 65, frames: 66, afterAnim: 65);
             if (_eventType == EventType.EnergyTank || _eventType == EventType.MissileTank || _eventType == EventType.UATank)
             {
-                Music.FadeVolume(50 / 127f, 5 / 30f);
+                if (_scene.Services.AllowsPresentationSideEffects) Music.FadeVolume(50 / 127f, 5 / 30f);
                 _soundSource.PlayFreeSfx(SfxId.GET_ITEM);
                 _dialogConfirmTimer = 60 / 30f;
                 // todo?: it's lame that UA tank is the only pickup without a frame/icon
@@ -365,15 +365,15 @@ namespace MphRead.Entities
             }
             else if (_eventType >= EventType.VoltDriver && _eventType <= EventType.ShockCoil)
             {
-                Music.Pause();
-                Music.PlaySeq(SeqId.GET_WEAPON);
+                if (_scene.Services.AllowsPresentationSideEffects) Music.Pause();
+                if (_scene.Services.AllowsPresentationSideEffects) Music.PlaySeq(SeqId.GET_WEAPON);
                 _soundSource.PlayFreeSfx(SfxId.WEAPON_POWER_UP);
                 _dialogConfirmTimer = 150 / 30f;
                 _dialogPickupInst.SetIndex((int)_eventType, _scene);
             }
             else if (_eventType == EventType.OmegaCannon || _eventType == EventType.Artifact)
             {
-                Music.FadeVolume(50 / 127f, 5 / 30f);
+                if (_scene.Services.AllowsPresentationSideEffects) Music.FadeVolume(50 / 127f, 5 / 30f);
                 _soundSource.PlayFreeSfx(SfxId.GET_ITEM2);
                 _dialogConfirmTimer = 60 / 30f;
                 if (_eventType == EventType.OmegaCannon)
@@ -384,8 +384,8 @@ namespace MphRead.Entities
             }
             else if (_eventType == EventType.Octolith)
             {
-                Music.Pause();
-                Music.PlaySeq(SeqId.GET_OCTOLITH);
+                if (_scene.Services.AllowsPresentationSideEffects) Music.Pause();
+                if (_scene.Services.AllowsPresentationSideEffects) Music.PlaySeq(SeqId.GET_OCTOLITH);
                 _dialogCrystalInst.SetAnimation(start: 0, target: 35, frames: 36, loop: true);
                 _dialogConfirmTimer = 150 / 30f;
             }
@@ -395,7 +395,7 @@ namespace MphRead.Entities
         {
             // the game doesn't have this check; we need it to prevent crashing on uninitialized members
             // like _messageBoxInst when e.g. this is called on spawn
-            if (!LoadFlags.TestFlag(LoadFlags.Initial) || GameState.Mode != GameMode.SinglePlayer || !IsMainPlayer)
+            if (!LoadFlags.TestFlag(LoadFlags.Initial) || _scene.GameState.Mode != GameMode.SinglePlayer || !IsMainPlayer)
             {
                 return;
             }
@@ -454,7 +454,7 @@ namespace MphRead.Entities
                     _messageSpacerInst.SetIndex(spacerIndex, _scene);
                 }
             }
-            if (GameState.DialogPause && (DialogType == DialogType.Scan
+            if (_scene.GameState.DialogPause && (DialogType == DialogType.Scan
                 || _messageBoxInst.Time - _messageBoxInst.Timer >= 16 / 30f))
             {
                 bool closed = false;
@@ -488,16 +488,16 @@ namespace MphRead.Entities
                         {
                             if (Music.IsPaused)
                             {
-                                Music.PlayPausedMusic();
+                                if (_scene.Services.AllowsPresentationSideEffects) Music.PlayPausedMusic();
                             }
                             else
                             {
-                                Music.FadeVolume(1, 5 / 30f);
+                                if (_scene.Services.AllowsPresentationSideEffects) Music.FadeVolume(1, 5 / 30f);
                             }
                             RestartLongSfx();
-                            GameState.PausePrevented = false;
+                            _scene.GameState.PausePrevented = false;
                         }
-                        else if (GameState.DialogPause)
+                        else if (_scene.GameState.DialogPause)
                         {
                             RestartLongSfx();
                         }
@@ -505,7 +505,7 @@ namespace MphRead.Entities
                         _soundSource.PlayFreeSfx(SfxId.SCAN_OK);
                         CloseDialogs();
                         DialogConfirmState = ConfirmState.Okay;
-                        GameState.UnpauseDialog();
+                        _scene.GameState.UnpauseDialog();
                         if (scan)
                         {
                             AfterScan();

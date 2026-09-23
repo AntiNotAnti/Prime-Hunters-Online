@@ -8,10 +8,10 @@ namespace MphRead.Mods.MapGen
         public static void Save(MapDefinition definition,string path)
         {
             string destination=Path.GetDirectoryName(Path.GetFullPath(path))!;
-            foreach(var asset in definition.Assets)
+            foreach(string asset in MapDependencyAnalyzer.PackageAssets(definition))
             {
-                byte[] bytes=MapAssets.Read(definition,asset.Path);
-                AtomicFile.Write(Path.Combine(destination,asset.Path),bytes);
+                byte[] bytes=MapAssets.Read(definition,asset);
+                AtomicFile.Write(Path.Combine(destination,asset),bytes);
             }
             if(definition.Import is {} import)
             {

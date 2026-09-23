@@ -30,7 +30,7 @@ namespace MphRead.Entities
 
         public void SetCombatVisor()
         {
-            if (GameState.SinglePlayer && ScanVisor)
+            if (_scene.GameState.SinglePlayer && ScanVisor)
             {
                 SwitchVisors(reset: false);
             }
@@ -38,7 +38,7 @@ namespace MphRead.Entities
 
         public void ResetCombatVisor()
         {
-            if (GameState.SinglePlayer && ScanVisor)
+            if (_scene.GameState.SinglePlayer && ScanVisor)
             {
                 SwitchVisors(reset: true);
             }
@@ -142,7 +142,7 @@ namespace MphRead.Entities
                 target.Position = targetPos;
                 target.ScreenX = screenPos.X;
                 target.ScreenY = screenPos.Y;
-                target.Dim = GameState.StorySave.CheckLogbook(scanId);
+                target.Dim = _scene.GameState.StorySave.CheckLogbook(scanId);
                 target.Distance = dist;
                 if (pixelX > 58 && pixelX < 198 && pixelY > 64 && pixelY < 128)
                 {
@@ -278,7 +278,7 @@ namespace MphRead.Entities
 
         private void UpdateScanState()
         {
-            if (GameState.DialogPause)
+            if (_scene.GameState.DialogPause)
             {
                 return;
             }
@@ -301,7 +301,7 @@ namespace MphRead.Entities
             if (_scanning && _scanningTimer < _scanningTime)
             {
                 Debug.Assert(_curScanTarget.Entity != null);
-                if (GameState.StorySave.CheckLogbook(_curScanTarget.Entity.GetScanId()))
+                if (_scene.GameState.StorySave.CheckLogbook(_curScanTarget.Entity.GetScanId()))
                 {
                     UpdateScanSfx(index: 1, enable: false);
                     _scanningTimer = _scanningTime;
@@ -347,10 +347,10 @@ namespace MphRead.Entities
             _scanningEntity.OnScanned();
             int scanId = _scanningEntity.GetScanId();
             int altScanId = _scanningEntity.GetScanId(alternate: true);
-            GameState.StorySave.UpdateLogbook(scanId);
+            _scene.GameState.StorySave.UpdateLogbook(scanId);
             if (altScanId != scanId)
             {
-                GameState.StorySave.UpdateLogbook(altScanId);
+                _scene.GameState.StorySave.UpdateLogbook(altScanId);
             }
             RestartLongSfx();
             ResetScanValues();

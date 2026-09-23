@@ -69,7 +69,7 @@ namespace MphRead.Entities.Enemies
         public void UpdateVisibility()
         {
             CollisionResult discard = default;
-            _visible = !CollisionDetection.CheckBetweenPoints(Position, PlayerEntity.Main.CameraInfo.Position, TestFlags.None, _scene, ref discard);
+            _visible = !CollisionDetection.CheckBetweenPoints(Position, _scene.Players.Main.CameraInfo.Position, TestFlags.None, _scene, ref discard);
         }
 
         protected override bool EnemyTakeDamage(EntityBase? source)

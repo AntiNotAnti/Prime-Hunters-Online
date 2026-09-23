@@ -126,7 +126,7 @@ namespace MphRead
 
         private void BeginCompositePass()
         {
-            GL.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
+            GL.BindFramebuffer(FramebufferTarget.Framebuffer, ReplayOutputFramebuffer());
             GL.Viewport(0, 0, Size.X, Size.Y);
             SetScreenPassState();
             GL.Enable(EnableCap.Blend);
@@ -134,7 +134,7 @@ namespace MphRead
             GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
             ClearRenderTextures();
             UseHudShader();
-            PlayerEntity player = PlayerEntity.Main;
+            PlayerEntity player = this.Players.Main;
             // Reset even when inactive: switching effects must not revive the
             // previous life's shift/whiteout values.
             GL.UseProgram(_shiftShaderProgramId);
@@ -160,7 +160,7 @@ namespace MphRead
 
         private void BeginHudPass()
         {
-            GL.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
+            GL.BindFramebuffer(FramebufferTarget.Framebuffer, ReplayOutputFramebuffer());
             GL.Viewport(0, 0, Size.X, Size.Y);
             SetScreenPassState();
             GL.Enable(EnableCap.Blend);
@@ -204,6 +204,7 @@ namespace MphRead
             GL.Disable(EnableCap.ScissorTest);
             GL.Disable(EnableCap.StencilTest);
             GL.Disable(EnableCap.AlphaTest);
+            PreviewReplayOutput();
             CheckGlError("EndHudPass");
         }
 
@@ -244,7 +245,7 @@ namespace MphRead
                 _ => 0
             };
             _pendingRenderEvents |= bit;
-            PlayerEntity player = PlayerEntity.Main;
+            PlayerEntity player = this.Players.Main;
             Mods.DebugLog.Line("render", $"frame={_frameCount} {stage}: health={player.Health} "
                 + $"respawn={player.RespawnTimer} load={player.LoadFlags} flags={player.Flags1} "
                 + $"disruption={player.HudDisruptedState}/{player.HudDisruptionFactor} "
@@ -291,7 +292,7 @@ namespace MphRead
             GL.ActiveTexture((TextureUnit)active);
             GL.GetInteger(GetPName.Viewport, _renderViewport);
             GL.GetUniform(_rttShaderProgramId, _shaderLocations.UseMask, out int mask);
-            PlayerEntity player = PlayerEntity.Main;
+            PlayerEntity player = this.Players.Main;
             Mods.DebugLog.Line("render", $"frame={_frameCount} draw={_renderSequence} {stage}: "
                 + $"fbo={GL.GetInteger(GetPName.FramebufferBinding)} read={GL.GetInteger(GetPName.ReadFramebufferBinding)} "
                 + $"draw={GL.GetInteger(GetPName.DrawFramebufferBinding)} program={GL.GetInteger(GetPName.CurrentProgram)} "

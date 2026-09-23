@@ -124,8 +124,8 @@ namespace MphRead.Mods.Network
             sb.Append($"[{DateTime.Now:HH:mm:ss.fff}] STATE  ");
             sb.Append($"role={NetSession.Role} slot={NetSession.LocalSlot} ");
             sb.Append($"authority={NetSession.IsAuthority} ");
-            sb.Append($"main={PlayerEntity.MainPlayerIndex} ");
-            sb.Append($"mode={GameState.Mode} matchTime={GameState.MatchTime:0.0} ");
+            sb.Append($"main={(scene?.Players ?? PlayerEntity.LegacyRegistry).MainPlayerIndex} ");
+            sb.Append($"mode={(scene?.GameState ?? GameState.Current).Mode} matchTime={(scene?.GameState ?? GameState.Current).MatchTime:0.0} ");
             // The two numbers that decide whether this client is still
             // playing. A client that ended its match early looks, in every
             // other field here, exactly like one whose player has stopped
@@ -133,7 +133,7 @@ namespace MphRead.Mods.Network
             // goal is logged with the state because the interesting failure
             // is a client whose scoreboard reached it and whose authority's
             // did not.
-            sb.Append($"matchState={GameState.MatchState} goal={GameState.PointGoal} ");
+            sb.Append($"matchState={(scene?.GameState ?? GameState.Current).MatchState} goal={(scene?.GameState ?? GameState.Current).PointGoal} ");
             MatchStatePacket? match = NetSession.ServerMatch;
             if (match != null)
             {
@@ -144,9 +144,9 @@ namespace MphRead.Mods.Network
             Line(sb.ToString());
             HitReg();
 
-            for (int slot = 0; slot < PlayerEntity.MaxPlayers; slot++)
+            for (int slot = 0; slot < (scene?.Players ?? PlayerEntity.LegacyRegistry).MaxPlayers; slot++)
             {
-                PlayerEntity? p = PlayerEntity.Players[slot];
+                PlayerEntity? p = (scene?.Players ?? PlayerEntity.LegacyRegistry).Items[slot];
                 if (p == null)
                 {
                     Line($"           slot {slot}: (no entity)");
@@ -161,14 +161,14 @@ namespace MphRead.Mods.Network
                 }
                 var line = new StringBuilder();
                 line.Append($"           slot {slot}: ");
-                line.Append($"name={GameState.Nicknames[slot],-10} ");
+                line.Append($"name={(scene?.GameState ?? GameState.Current).Nicknames[slot],-10} ");
                 line.Append($"occupied={(occupied ? "y" : "n")} ");
                 line.Append($"active={(active ? "y" : "n")} ");
                 line.Append($"spawned={(p.LoadFlags.TestFlag(LoadFlags.Spawned) ? "y" : "n")} ");
                 line.Append($"bot={(p.IsBot ? "y" : "n")} ");
                 line.Append($"hp={p.Health,-3} ");
-                line.Append($"score={GameState.Points[slot]}/{GameState.TeamPoints[slot]}p ");
-                line.Append($"{GameState.Kills[slot]}k{GameState.Deaths[slot]}d ");
+                line.Append($"score={(scene?.GameState ?? GameState.Current).Points[slot]}/{(scene?.GameState ?? GameState.Current).TeamPoints[slot]}p ");
+                line.Append($"{(scene?.GameState ?? GameState.Current).Kills[slot]}k{(scene?.GameState ?? GameState.Current).Deaths[slot]}d ");
                 // The respawn path is guarded by `_health == 0 &&
                 // _respawnTimer == 0 && EnemySpawner == null`. A player stuck
                 // at the origin with hp=0 is waiting on one of these, so log

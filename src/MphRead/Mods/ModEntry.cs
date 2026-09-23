@@ -554,6 +554,13 @@ namespace MphRead.Mods
             // window. The one part of this program that could not be looked at
             // from a headless box.
             string? uiShot = ValueAfter(args, "uishot");
+#if MPHREAD_SHELL
+            if (ValueAfter(args, "mapviewportcheck") is string mapViewportCheck)
+            {
+                Environment.ExitCode = Launcher.Gui.MapViewportCheck.Run(mapViewportCheck, ValueAfter(args, "mapproject"));
+                return true;
+            }
+#endif
             if (uiShot != null)
             {
                 Environment.ExitCode = RunUiCapture(uiShot);
@@ -1789,6 +1796,54 @@ namespace MphRead.Mods
                 return true;
             }
 #endif
+            if (ValueAfter(args, "replaykillcamcheck") is string killcamSource)
+            {
+                Environment.ExitCode = Network.ReplayKillcamCheck.Run(killcamSource, ValueAfter(args, "shots"));
+                return true;
+            }
+            if (ValueAfter(args, "replayexportcheck") is string exportSource)
+            {
+                Environment.ExitCode = Network.ReplayExportCheck.Run(exportSource, ValueAfter(args, "output") ?? System.IO.Path.Combine(System.IO.Path.GetTempPath(), "prime-replay-export-check"));
+                return true;
+            }
+            if (ValueAfter(args, "replaytheatrecheck") is string theatreSource)
+            {
+                Environment.ExitCode = Network.ReplayTheatreCheck.Run(theatreSource, ValueAfter(args, "shots"));
+                return true;
+            }
+            if (ValueAfter(args, "replaylivecheck") is string liveSource)
+            {
+                Environment.ExitCode = Network.ReplayLiveCaptureCheck.Run(liveSource);
+                return true;
+            }
+            if (ValueAfter(args, "replaydurablecheck") is string durableSource)
+            {
+                Environment.ExitCode = Network.ReplayDurableCheck.Run(durableSource, ValueAfter(args, "output")
+                    ?? System.IO.Path.Combine(System.IO.Path.GetTempPath(), "prime-durable-check"));
+                return true;
+            }
+            if (ValueAfter(args, "replaybenchmark") is string benchmarkSource)
+            {
+                Environment.ExitCode = Network.ReplayBenchmark.Run(benchmarkSource,
+                    ValueAfter(args, "output") ?? System.IO.Path.Combine(System.IO.Path.GetTempPath(), "prime-replay-benchmark-" + Guid.NewGuid().ToString("N")));
+                return true;
+            }
+            if (ValueAfter(args, "replayauthoritycheck") is string authoritySources)
+            {
+                Environment.ExitCode = Network.ReplayAuthoritySceneCheck.Run(authoritySources, ValueAfter(args, "output")
+                    ?? System.IO.Path.Combine(System.IO.Path.GetTempPath(), "prime-authority-check"));
+                return true;
+            }
+            if (ValueAfter(args, "replayworldcheck") is string worldSource)
+            {
+                Environment.ExitCode = Network.ReplayWorldCoverageCheck.Run(worldSource, ValueAfter(args, "output"));
+                return true;
+            }
+            if (ValueAfter(args, "replayreplicacheck") is string replicaPath)
+            {
+                Environment.ExitCode = Network.ReplayReplicaCheck.Run(replicaPath, ValueAfter(args, "shots"));
+                return true;
+            }
             if (ValueAfter(args, "replaydeterminism") is string replayPath)
             {
                 Environment.ExitCode = Network.ReplayDeterminism.Run(replayPath, ValueAfter(args, "replayhashout"));

@@ -141,7 +141,7 @@ namespace MphRead.Entities.Enemies
             }
             if (target == Vector3.Zero)
             {
-                Vector3 between = (PlayerEntity.Main.Position - Position).WithY(0);
+                Vector3 between = (_scene.Players.Main.Position - Position).WithY(0);
                 if (between.LengthSquared > 1 / 128f)
                 {
                     between = between.Normalized();
@@ -301,7 +301,7 @@ namespace MphRead.Entities.Enemies
             UpdateSpeed();
             _field23C = 210 * 2; // todo: FPS stuff
             _field23E = 510 * 2; // todo: FPS stuff
-            _field240 = (int)(Rng.GetRandomInt2(90) + 150) * 2; // todo: FPS stuff
+            _field240 = (int)(_scene.Random.GetRandomInt2(90) + 150) * 2; // todo: FPS stuff
             _goreaFlags |= Gorea1AFlags.Bit0;
             _goreaFlags |= Gorea1AFlags.Bit2;
             ResetMaterialColors();
@@ -400,9 +400,9 @@ namespace MphRead.Entities.Enemies
                 _weaponIndex = 0;
             }
             _colors = Metadata.Enemy24Colors[_weaponIndex];
-            if (PlayerEntity.Main.Health > 0)
+            if (_scene.Players.Main.Health > 0)
             {
-                Music.PlayMusic(_musicTracks[_weaponIndex]);
+                if (_scene.Services.AllowsPresentationSideEffects) Music.PlayMusic(_musicTracks[_weaponIndex]);
             }
             WeaponInfo weapon = Weapons.GoreaWeapons[_weaponIndex];
             int effectiveness = Metadata.GoreaEffectiveness[_weaponIndex];
@@ -510,16 +510,16 @@ namespace MphRead.Entities.Enemies
         // sktodo: this is the same as the leg with the values baked in -- share code?
         private void CheckPlayerCollision()
         {
-            if (!HitPlayers[PlayerEntity.Main.SlotIndex])
+            if (!HitPlayers[_scene.Players.Main.SlotIndex])
             {
                 return;
             }
-            Vector3 between = (PlayerEntity.Main.Position - Position).WithY(0);
+            Vector3 between = (_scene.Players.Main.Position - Position).WithY(0);
             between = between.LengthSquared > 1 / 128f
                 ? between.Normalized()
                 : FacingVector;
-            PlayerEntity.Main.Speed += between / 4;
-            PlayerEntity.Main.TakeDamage(10, DamageFlags.None, null, this);
+            _scene.Players.Main.Speed += between / 4;
+            _scene.Players.Main.TakeDamage(10, DamageFlags.None, null, this);
         }
 
         private void State00()
@@ -558,7 +558,7 @@ namespace MphRead.Entities.Enemies
                 {
                     _arms[i].Flags &= ~EnemyFlags.Invincible;
                 }
-                _field240 = (int)(Rng.GetRandomInt2(90) + 150) * 2; // todo: FPS stuff
+                _field240 = (int)(_scene.Random.GetRandomInt2(90) + 150) * 2; // todo: FPS stuff
             }
         }
 
@@ -607,7 +607,7 @@ namespace MphRead.Entities.Enemies
 
         private bool UpdateTargetFacing()
         {
-            Vector3 between = (PlayerEntity.Main.Position - Position).WithY(0);
+            Vector3 between = (_scene.Players.Main.Position - Position).WithY(0);
             if (between.LengthSquared > 1 / 128f)
             {
                 _targetFacing = between.Normalized();
@@ -751,7 +751,7 @@ namespace MphRead.Entities.Enemies
             _lastNodeTransformUpdate = prevUpdate;
             //direction = direction.Normalized();
             position += direction * Fixed.ToFloat(8343);
-            Vector3 playerPosition = PlayerEntity.Main.Position.AddY(0.5f);
+            Vector3 playerPosition = _scene.Players.Main.Position.AddY(0.5f);
             if (!HalfturretEntity.UpdateAim(position, playerPosition, arm.EquipInfo, out direction))
             {
                 _goreaFlags |= Gorea1AFlags.Bit4;
@@ -845,8 +845,8 @@ namespace MphRead.Entities.Enemies
                         between = between.Normalized();
                     }
                     between = (between * 1.5f).AddY(Fixed.ToFloat(682)); // 6144
-                    PlayerEntity.Main.TakeDamage(40, DamageFlags.None, between, this);
-                    PlayerEntity.Main.CameraInfo.SetShake(0.75f); // 3072
+                    _scene.Players.Main.TakeDamage(40, DamageFlags.None, between, this);
+                    _scene.Players.Main.CameraInfo.SetShake(0.75f); // 3072
                 }
                 SpawnEffect(71, Position); // goreaSlam
             }
@@ -857,9 +857,9 @@ namespace MphRead.Entities.Enemies
         {
             between = Vector3.Zero;
             distance = 0;
-            if (PlayerEntity.Main.Health > 0)
+            if (_scene.Players.Main.Health > 0)
             {
-                between = PlayerEntity.Main.Position - Position;
+                between = _scene.Players.Main.Position - Position;
                 distance = between.WithY(0).LengthSquared;
                 if (distance < maxDistance)
                 {
@@ -897,8 +897,8 @@ namespace MphRead.Entities.Enemies
                         between = between.Normalized();
                     }
                     between = (between * 1.5f).AddY(Fixed.ToFloat(682)); // 6144
-                    PlayerEntity.Main.TakeDamage(25, DamageFlags.None, between, this);
-                    PlayerEntity.Main.CameraInfo.SetShake(0.75f); // 3072
+                    _scene.Players.Main.TakeDamage(25, DamageFlags.None, between, this);
+                    _scene.Players.Main.CameraInfo.SetShake(0.75f); // 3072
                 }
             }
             CallSubroutine(Metadata.Enemy24Subroutines, this);
@@ -918,7 +918,7 @@ namespace MphRead.Entities.Enemies
                 Flags &= ~EnemyFlags.OnRadar;
                 _field23C = 210 * 2; // todo: FPS stuff
                 _field23E = 510 * 2; // todo: FPS stuff
-                _field240 = (int)(Rng.GetRandomInt2(90) + 150) * 2; // todo: FPS stuff
+                _field240 = (int)(_scene.Random.GetRandomInt2(90) + 150) * 2; // todo: FPS stuff
                 _head.Flags &= ~EnemyFlags.Visible;
                 _head.Flags &= ~EnemyFlags.CollidePlayer;
                 _head.Flags &= ~EnemyFlags.CollideBeam;
@@ -1009,7 +1009,7 @@ namespace MphRead.Entities.Enemies
             StopShots(index, detach: false);
             if (_armBits != 0)
             {
-                uint rand = Rng.GetRandomInt2(100);
+                uint rand = _scene.Random.GetRandomInt2(100);
                 ItemType itemType = rand >= 80 ? ItemType.UABig : ItemType.HealthBig;
                 int despawnTime = 300 * 2; // todo: FPS stuff
                 var item = new ItemInstanceEntity(new ItemInstanceEntityData(spawnPos, itemType, despawnTime), NodeRef, _scene);
@@ -1053,9 +1053,9 @@ namespace MphRead.Entities.Enemies
                 model.SetAnimation(anim, 0, setFlags, AnimFlags.NoLoop);
                 UpdateAnimFrames(model);
                 model.AnimInfo.Frame[0] = 5;
-                if (PlayerEntity.Main.Health > 0)
+                if (_scene.Players.Main.Health > 0)
                 {
-                    Music.PlayMusic(MusicId.SEQ_GOREA_1_M21);
+                    if (_scene.Services.AllowsPresentationSideEffects) Music.PlayMusic(MusicId.SEQ_GOREA_1_M21);
                 }
                 _soundSource.PlaySfx(SfxId.GOREA_TRANSFORM1_SCR);
                 return true;
@@ -1074,7 +1074,7 @@ namespace MphRead.Entities.Enemies
                     if (_nextState == 5)
                     {
                         StartShots();
-                        _field23C = (int)(Rng.GetRandomInt2(60) + 90) * 2; // todo: FPS stuff
+                        _field23C = (int)(_scene.Random.GetRandomInt2(60) + 90) * 2; // todo: FPS stuff
                         update = false;
                     }
                     else if (_nextState == 3)
@@ -1118,7 +1118,7 @@ namespace MphRead.Entities.Enemies
 
         private void StartShots()
         {
-            bool charge = Rng.GetRandomInt2(100) < _chargeChances[WeaponIndex];
+            bool charge = _scene.Random.GetRandomInt2(100) < _chargeChances[WeaponIndex];
             Enemy26Entity armL = _arms[0];
             Enemy26Entity armR = _arms[1];
             if (charge)
@@ -1131,7 +1131,7 @@ namespace MphRead.Entities.Enemies
                 // todo: is it a bug that ShotCooldown is used for the right arm instead of AutofireCooldown?
                 armL.Cooldown = weapon.ShotCooldown * 2; // todo: FPS stuff
                 armR.Cooldown = weapon.ShotCooldown * 2; // todo: FPS stuff
-                _field242 = (int)(Rng.GetRandomInt2(30) + 60) * 2; // todo: FPS stuff
+                _field242 = (int)(_scene.Random.GetRandomInt2(30) + 60) * 2; // todo: FPS stuff
                 _model.SetAnimation(15, 0, _animSetNoMat);
                 if (!armL.ArmFlags.TestFlag(GoreaArmFlags.Bit0))
                 {
@@ -1183,7 +1183,7 @@ namespace MphRead.Entities.Enemies
             }
             else
             {
-                uint rand = Rng.GetRandomInt2(3);
+                uint rand = _scene.Random.GetRandomInt2(3);
                 if (rand == 0)
                 {
                     armL.ArmFlags |= GoreaArmFlags.Bit1;
@@ -1218,7 +1218,7 @@ namespace MphRead.Entities.Enemies
                 if (_nextState == 5)
                 {
                     StartShots();
-                    _field23C = (int)(Rng.GetRandomInt2(60) + 90) * 2; // todo: FPS stuff
+                    _field23C = (int)(_scene.Random.GetRandomInt2(60) + 90) * 2; // todo: FPS stuff
                 }
                 else
                 {
@@ -1236,7 +1236,7 @@ namespace MphRead.Entities.Enemies
 
         private bool Behavior09()
         {
-            if (PlayerEntity.Main.Flags1.TestFlag(PlayerFlags1.AltForm)
+            if (_scene.Players.Main.Flags1.TestFlag(PlayerFlags1.AltForm)
                 && GetHorizontalToPlayer(25, out _, out _)) // 102400
             {
                 _speed = Vector3.Zero;
@@ -1251,7 +1251,7 @@ namespace MphRead.Entities.Enemies
 
         private bool Behavior10()
         {
-            if (!PlayerEntity.Main.Flags1.TestFlag(PlayerFlags1.AltForm)
+            if (!_scene.Players.Main.Flags1.TestFlag(PlayerFlags1.AltForm)
                 && GetHorizontalToPlayer(37.5f, out Vector3 between, out float distance)) // 153600
             {
                 _speed = Vector3.Zero;
@@ -1282,7 +1282,7 @@ namespace MphRead.Entities.Enemies
                     facing = facing.Normalized();
                     float dot = Vector3.Dot(facing, between);
                     if (dot <= Fixed.ToFloat(-214)
-                        || dot < Fixed.ToFloat(214) && Rng.GetRandomInt2(255) % 2 != 0)
+                        || dot < Fixed.ToFloat(214) && _scene.Random.GetRandomInt2(255) % 2 != 0)
                     {
                         animId = 6;
                     }
@@ -1293,7 +1293,7 @@ namespace MphRead.Entities.Enemies
 
         private bool Behavior11()
         {
-            Vector3 between = PlayerEntity.Main.Position - Position;
+            Vector3 between = _scene.Players.Main.Position - Position;
             if (between.LengthSquared > 19 * 19) // 1478656
             {
                 if (_field244 > 0)
@@ -1334,7 +1334,7 @@ namespace MphRead.Entities.Enemies
             if (_field23C <= 0)
             {
                 StartShots();
-                _field23C = (int)(Rng.GetRandomInt2(60) + 90) * 2; // todo: FPS stuff
+                _field23C = (int)(_scene.Random.GetRandomInt2(60) + 90) * 2; // todo: FPS stuff
                 return true;
             }
             return false;
@@ -1401,7 +1401,7 @@ namespace MphRead.Entities.Enemies
 
         private bool Behavior18()
         {
-            if (_targetFacing != Vector3.Zero || !CheckFacingAngle(-1, PlayerEntity.Main.Position))
+            if (_targetFacing != Vector3.Zero || !CheckFacingAngle(-1, _scene.Players.Main.Position))
             {
                 return false;
             }
@@ -1471,7 +1471,7 @@ namespace MphRead.Entities.Enemies
         {
             if (_field240 < 0)
             {
-                _field240 = (int)(Rng.GetRandomInt2(90) + 150) * 2; // todo: FPS stuff
+                _field240 = (int)(_scene.Random.GetRandomInt2(90) + 150) * 2; // todo: FPS stuff
                 return true;
             }
             return false;

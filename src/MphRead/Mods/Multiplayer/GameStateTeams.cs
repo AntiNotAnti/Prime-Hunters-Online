@@ -4,9 +4,9 @@ using MphRead.Formats;
 
 namespace MphRead
 {
-    public static partial class GameState
+    public partial class SceneGameState
     {
-        public static bool IsResultTie
+        public bool IsResultTie
         {
             get
             {
@@ -16,7 +16,7 @@ namespace MphRead
                 {
                     int slot = ResultSlots[i];
                     if (Standings[slot] == 0 && (!Teams
-                        || PlayerEntity.Players[slot].TeamIndex != PlayerEntity.Players[leader].TeamIndex))
+                        || _players.Items[slot].TeamIndex != _players.Items[leader].TeamIndex))
                     {
                         return true;
                     }
@@ -26,14 +26,14 @@ namespace MphRead
         }
 
         // ResultSlots groups tied teams deterministically; Standings preserves the tie.
-        internal static void UpdateStandings()
+        internal void UpdateStandings()
         {
             ActivePlayers = 0;
             Span<bool> represented = stackalloc bool[4];
             for (int slot = 0; slot < PlayerEntity.SlotCapacity; slot++)
             {
                 Standings[slot] = TeamStandings[slot] = PlayerEntity.SlotCapacity - 1;
-                PlayerEntity player = PlayerEntity.Players[slot];
+                PlayerEntity player = _players.Items[slot];
                 if (!player.LoadFlags.TestFlag(LoadFlags.Active)
                     || (uint)player.TeamIndex >= (uint)(Teams ? TeamCount : PlayerEntity.SlotCapacity)) continue;
                 ResultSlots[ActivePlayers++] = slot;
@@ -45,8 +45,8 @@ namespace MphRead
                 {
                     int first = ResultSlots[i];
                     int second = ResultSlots[j];
-                    int firstTeam = PlayerEntity.Players[first].TeamIndex;
-                    int secondTeam = PlayerEntity.Players[second].TeamIndex;
+                    int firstTeam = _players.Items[first].TeamIndex;
+                    int secondTeam = _players.Items[second].TeamIndex;
                     int compare;
                     if (Teams && firstTeam != secondTeam)
                     {
@@ -64,7 +64,7 @@ namespace MphRead
             for (int i = 0; i < ActivePlayers; i++)
             {
                 int slot = ResultSlots[i];
-                int team = PlayerEntity.Players[slot].TeamIndex;
+                int team = _players.Items[slot].TeamIndex;
                 int rank = 0;
                 int memberRank = 0;
                 if (Teams)
@@ -79,7 +79,7 @@ namespace MphRead
                     int other = ResultSlots[j];
                     if (ComparePlayers(other, slot) <= 0) continue;
                     if (!Teams) rank++;
-                    else if (PlayerEntity.Players[other].TeamIndex == team) memberRank++;
+                    else if (_players.Items[other].TeamIndex == team) memberRank++;
                 }
                 Standings[slot] = rank;
                 TeamStandings[slot] = memberRank;

@@ -33,6 +33,7 @@ namespace MphRead.Mods.Network
         /// </remarks>
         public static int LocalSlot => DemoPlayback.IsActive
             || NetSession.Role == NetRole.Server ? -1
+            : GameState.Current.Owner is { IsReplayLab: true } lab ? lab.Players.MainPlayerIndex
             : NetSession.Active && NetSession.LocalSlot >= 0
             ? NetSession.LocalSlot
             : 0;
@@ -65,12 +66,14 @@ namespace MphRead.Mods.Network
         /// </summary>
         public static bool IsPuppet(PlayerEntity player)
         {
+            if (player.SceneServices.IsReplica) return true;
             return (NetSession.Active || DemoPlayback.IsActive)
                 && player.SlotIndex != LocalSlot;
         }
 
         public static bool KeepSlotAlive(PlayerEntity player)
         {
+            if (player.SceneServices.IsReplica) return true;
             return NetSession.Active;
         }
 
@@ -185,6 +188,12 @@ namespace MphRead.Mods.Network
 
         public static void AfterRemoteMovement(PlayerEntity player)
         {
+            if (player.SceneServices.IsReplica)
+            {
+                if (player.SceneServices.PlayerReplication.TryGetState(player.SlotIndex, out var recorded))
+                    player.OwningScene.PlayerReplication.RestoreSnapshotPosition(player, recorded);
+                return;
+            }
             if (!NetSession.Active || !NetRoomChange.GameplayReady
                 || player.SlotIndex == NetSession.LocalSlot)
             {
@@ -229,6 +238,7 @@ namespace MphRead.Mods.Network
 
         public static Vector3 RemoteShotOrigin(PlayerEntity player, Vector3 current)
         {
+            if (player.SceneServices.IsReplica) return current;
             if (!NetSession.IsAuthority || player.SlotIndex == NetSession.LocalSlot
                 || player.SlotIndex < 0 || player.SlotIndex >= NetSession.RemoteIntents.Length)
             {
@@ -239,6 +249,13 @@ namespace MphRead.Mods.Network
 
         public static Vector3 RemoteShotDirection(PlayerEntity player, Vector3 current)
         {
+            if (player.SceneServices.IsReplica)
+            {
+                if (player.SceneServices.PlayerReplication.TryGetIntent(player.SlotIndex, out var recorded)
+                    && player.OwningScene.PlayerReplication.AimTrusted(player.SlotIndex)
+                    && recorded.Aim.LengthSquared > 0.0001f) return recorded.Aim.Normalized();
+                return current;
+            }
             if (NetSession.IsAuthority && player.SlotIndex != NetSession.LocalSlot
                 && player.SlotIndex >= 0 && player.SlotIndex < NetSession.RemoteIntents.Length
                 // The one that decides where the shot actually goes. A relayed
@@ -272,6 +289,13 @@ namespace MphRead.Mods.Network
 
         public static bool TryApplyRemoteInput(PlayerEntity player, int slot)
         {
+            if (player.SceneServices.IsReplica)
+            {
+                if (player.SceneServices.PlayerReplication.TryGetIntent(slot, out var recorded))
+                    player.OwningScene.PlayerReplication.ApplyIntent(player, recorded);
+                else player.Controls.ClearAll();
+                return true;
+            }
             if (!NetSession.Active || slot == LocalSlot)
             {
                 return false;
@@ -357,6 +381,7 @@ namespace MphRead.Mods.Network
         /// </summary>
         public static bool ForceSpawn(PlayerEntity player)
         {
+            if (player.SceneServices.IsReplica) return false;
             if (MapAudit.ForceEveryone)
             {
                 return true;
@@ -430,8 +455,8 @@ namespace MphRead.Mods.Network
                 return;
             }
             int local = NetSession.LocalSlot;
-            PlayerEntity? player = local < PlayerEntity.Players.Count
-                ? PlayerEntity.Players[local]
+            PlayerEntity? player = local < scene.Players.Items.Count
+                ? scene.Players.Items[local]
                 : null;
             if (player != null && player.LoadFlags.TestFlag(LoadFlags.Active))
             {
@@ -467,6 +492,7 @@ namespace MphRead.Mods.Network
                 // the server relays N*(N-1) updates per frame, and at six
                 // players that was losing enough of them to leave visible
                 // gaps in everyone's position stream.
+                Mods.KillCam.FilterInput(scene);
                 NetPlayerBridge.RecordPresses(player);
                 if (NetSession.NetFrame % NetConfig.IntentSendInterval == 0)
                 {

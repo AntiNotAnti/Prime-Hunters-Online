@@ -72,7 +72,7 @@ namespace MphRead.Entities.Enemies
             _equipInfo.SetAmmo = (newAmmo) => _ammo = newAmmo;
             _equipInfo.UnchargedDamage = _values.BeamDamage;
             _equipInfo.SplashDamage = _values.SplashDamage;
-            _shotCount = (ushort)(_values.MinShots + Rng.GetRandomInt2(_values.MaxShots + 1 - _values.MinShots));
+            _shotCount = (ushort)(_values.MinShots + _scene.Random.GetRandomInt2(_values.MaxShots + 1 - _values.MinShots));
             _shotTimer = 30 * 2; // todo: FPS stuff
             SetUpModel(Metadata.EnemyModelNames[10], animIndex: 1);
             _stepDistance = Fixed.ToFloat(_values.StepDistance1);
@@ -181,7 +181,7 @@ namespace MphRead.Entities.Enemies
         // todo: identical to Warp Wasp
         private void State1()
         {
-            Vector3 playerPos = PlayerEntity.Main.Position;
+            Vector3 playerPos = _scene.Players.Main.Position;
             if (Position != playerPos)
             {
                 SetTransform((playerPos - Position).Normalized(), Vector3.UnitY, Position);
@@ -243,7 +243,7 @@ namespace MphRead.Entities.Enemies
         {
             if (_models[0].AnimInfo.Flags[0].TestFlag(AnimFlags.Ended))
             {
-                _aimVector = (PlayerEntity.Main.Position.AddY(0.5f) - Position).Normalized();
+                _aimVector = (_scene.Players.Main.Position.AddY(0.5f) - Position).Normalized();
                 _models[0].SetAnimation(2, AnimFlags.NoLoop);
                 return true;
             }
@@ -310,7 +310,7 @@ namespace MphRead.Entities.Enemies
         // todo: same as War Wasp Behavior03 except for the step distance
         private bool Behavior03()
         {
-            if (_movementType == 3 || !_homeVolume.TestPoint(PlayerEntity.Main.Position))
+            if (_movementType == 3 || !_homeVolume.TestPoint(_scene.Players.Main.Position))
             {
                 return false;
             }
@@ -326,7 +326,7 @@ namespace MphRead.Entities.Enemies
             {
                 return false;
             }
-            _shotCount = (ushort)(_values.MinShots + Rng.GetRandomInt2(_values.MaxShots + 1 - _values.MinShots));
+            _shotCount = (ushort)(_values.MinShots + _scene.Random.GetRandomInt2(_values.MaxShots + 1 - _values.MinShots));
             _shotTimer = 30 * 2; // todo: FPS stuff
             if (_movementType == 0)
             {
@@ -359,7 +359,7 @@ namespace MphRead.Entities.Enemies
                 return false;
             }
             _speed = Vector3.Zero;
-            Vector3 playerPos = PlayerEntity.Main.Position;
+            Vector3 playerPos = _scene.Players.Main.Position;
             Vector3 facing = playerPos - Position;
             if (Position != playerPos)
             {
@@ -384,7 +384,7 @@ namespace MphRead.Entities.Enemies
         // todo: same as War Wasp Behavior08
         private bool Behavior08()
         {
-            if (_homeVolume.TestPoint(PlayerEntity.Main.Position))
+            if (_homeVolume.TestPoint(_scene.Players.Main.Position))
             {
                 return false;
             }
@@ -396,7 +396,7 @@ namespace MphRead.Entities.Enemies
         private bool Behavior09()
         {
             CollisionResult res = default;
-            if (!CollisionDetection.CheckBetweenPoints(Position, PlayerEntity.Main.Position, TestFlags.None, _scene, ref res))
+            if (!CollisionDetection.CheckBetweenPoints(Position, _scene.Players.Main.Position, TestFlags.None, _scene, ref res))
             {
                 return false;
             }

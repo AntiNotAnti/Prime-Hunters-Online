@@ -45,7 +45,7 @@ namespace MphRead.Entities
                 && (_scene.CameraMode == CameraMode.Player || _scene.IsFreeCam)
                 && !_scene.FrameAdvance && !Mods.Network.DemoPlayback.IsActive
                 && !Mods.PauseMenu.Open && !Mods.EndScreen.Available
-                && !GameState.DialogPause && !GameState.MenuPause;
+                && !_scene.GameState.DialogPause && !_scene.GameState.MenuPause;
 
             if (StylusZone.Enabled || StylusZone.Placing)
             {
