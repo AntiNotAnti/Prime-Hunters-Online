@@ -209,8 +209,12 @@ namespace MphRead.Mods.Launcher.Gui
             root.Children.Add(footer);
             Content = root;
             AttachedToVisualTree += (_, _) =>
+            {
                 LauncherBackdrop.Set(LauncherBackdropScene.Offline,
                     _selectedRoom.Length > 0 ? _selectedRoom : null);
+                if (_bitmap == null && _selectedRoom.Length > 0)
+                    LoadPreview(_selectedRoom);
+            };
 
             // Subscribe only after the preview/detail controls exist. UiList may
             // select a row while it is being populated, and doing this earlier
@@ -228,6 +232,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
         {
+            _preview.Source = null;
             _bitmap?.Dispose();
             _bitmap = null;
             base.OnDetachedFromVisualTree(e);
@@ -281,6 +286,11 @@ namespace MphRead.Mods.Launcher.Gui
                 _mapName.Text = room.ToUpperInvariant();
             }
             _mapCode.Text = room;
+            LoadPreview(room);
+        }
+
+        private void LoadPreview(string room)
+        {
             _preview.Source = null;
             _bitmap?.Dispose();
             _bitmap = null;
