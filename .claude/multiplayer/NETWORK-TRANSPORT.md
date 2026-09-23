@@ -22,3 +22,25 @@ Each connection keeps a bounded 512-attempt sent ring. ACK samples yield smoothe
 RTT, variance and minimum observed RTT. Overwritten unacknowledged attempts count
 as *estimated* losses, not proof of wire loss. Reporting uses value snapshots and
 never drives gameplay authority. Transport state is protected by one instance lock.
+
+## Queue and scheduling budgets
+
+Live traffic has FIFO critical/realtime/background queues with a hard 2048-packet
+budget: 2039 queued entries plus nine latest-state cells. Normal traffic stops
+128 entries before the queue ceiling. Critical events are never evicted to make
+room for state. New reliable events are not ACKed if retention is unavailable.
+The default pump handles at most 128 critical, 256 realtime and 32 background
+packets. Dedicated servers drain background after owed simulation work. Playback
+keeps its independent lossless ordered path.
+
+Per-connection token buckets limit intents to 180/s (64 burst), downstream state
+to 2000/s (512 burst), control to 60/s (128 burst), and background to 100/s (32
+burst). Preconnection discovery uses a bounded shared 300/s bucket. Drops have
+transport counters and never emit per-packet strings. These are conservative
+initial bounds, not a substitute for asset-backed load measurement.
+
+Fault injection now delays original envelopes before ACK/dedup processing.
+Duplicated fault entries hold immutable bytes and obtain separate pooled decode
+buffers. Promotion is bounded to 256 arrivals per pump. Reliable servicing sends
+at most four due attempts per connection/pass and also runs every 50 ms on the
+receive worker, so a synchronous room load cannot stop control retransmission.

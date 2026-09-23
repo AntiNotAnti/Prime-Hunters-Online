@@ -17,15 +17,17 @@ namespace MphRead.Mods.Network
         public readonly int Length;
         public readonly long ArrivedAt;
         internal readonly bool Pooled;
+        public readonly ulong ConnectionId;
+        public readonly uint Sequence;
 
         public ReceivedPacket(IPEndPoint sender, byte[] data, int length, long arrivedAt = 0,
-            bool pooled = false)
+            bool pooled = false, ulong connectionId = 0, uint sequence = 0)
         {
             Sender = sender;
             Data = data;
             Length = length;
             ArrivedAt = arrivedAt == 0 ? Stopwatch.GetTimestamp() : arrivedAt;
-            Pooled = pooled;
+            Pooled = pooled; ConnectionId = connectionId; Sequence = sequence;
         }
 
         public PacketType Type => Length > 0 ? (PacketType)Data[0] : default;
@@ -72,7 +74,12 @@ namespace MphRead.Mods.Network
             or PacketType.HostRequest or PacketType.HostReply;
         private readonly UdpClient? _socket;
         private readonly Thread? _worker;
+        // Playback remains lossless and ordered. Live queue reserves 128 control
+        // slots plus nine bounded coalescing cells within the 2048 packet ceiling.
         private readonly ConcurrentQueue<ReceivedPacket> _inbox = new();
+        private readonly NetPacketQueue _liveInbox = new(2048 - 9, 128);
+        private readonly ConcurrentQueue<ReceivedPacket> _connectionFailures = new();
+        private NetTokenBucket _discoveryBudget;
         private readonly CancellationTokenSource _cancel = new();
         private volatile bool _running;
         private int _inboxCount;
@@ -101,7 +108,7 @@ namespace MphRead.Mods.Network
         /// frame takes exactly that long. At that point the queue overflows,
         /// and what was dropped was a player's aim.
         /// </summary>
-        private const int MaxQueuedPackets = 2048;
+        public const int MaxQueuedPackets = 2048;
 
         /// <summary>
         /// Bytes the OS may hold before the worker thread gets to them. The
@@ -139,6 +146,9 @@ namespace MphRead.Mods.Network
 
         public void EnableRealtimeStateCoalescing() => _coalesceRealtimeState = true;
 
+        private static bool OlderThan(in ReceivedPacket next, in ReceivedPacket previous) => next.ConnectionId != 0
+            && next.ConnectionId == previous.ConnectionId && !SequenceMath.Newer(next.Sequence, previous.Sequence);
+
         private bool TryCoalesceRealtimeState(ReceivedPacket packet)
         {
             if (!_coalesceRealtimeState || _lagWorker != null)
@@ -151,6 +161,7 @@ namespace MphRead.Mods.Network
                 {
                     if (_latestSnapshot.HasValue)
                     {
+                        if (OlderThan(packet, _latestSnapshot.Value)) { packet.Release(); Telemetry.Coalesce(); return true; }
                         _latestSnapshot.Value.Release();
                         Interlocked.Increment(ref _statePacketsCoalesced);
                         Telemetry.Coalesce();
@@ -165,6 +176,7 @@ namespace MphRead.Mods.Network
                     {
                         if (_latestSlotIntent[slot].HasValue)
                         {
+                            if (OlderThan(packet, _latestSlotIntent[slot]!.Value)) { packet.Release(); Telemetry.Coalesce(); return true; }
                             _latestSlotIntent[slot]!.Value.Release();
                             Interlocked.Increment(ref _statePacketsCoalesced);
                         Telemetry.Coalesce();
@@ -222,7 +234,7 @@ namespace MphRead.Mods.Network
             }
             // Only so the worker notices _running going false; nothing waits
             // on this in normal operation.
-            _socket.Client.ReceiveTimeout = 500;
+            _socket.Client.ReceiveTimeout = 50;
             _socket.Client.Bind(new IPEndPoint(IPAddress.Any, port));
             LocalPort = ((IPEndPoint)_socket.Client.LocalEndPoint!).Port;
             _running = true;
@@ -278,10 +290,13 @@ namespace MphRead.Mods.Network
         private void ReceiveLoop()
         {
             var any = new IPEndPoint(IPAddress.Any, 0);
+            double lastMaintenance = 0;
             while (_running)
             {
                 try
                 {
+                    double now = NowMilliseconds;
+                    if (now - lastMaintenance >= 50) { lastMaintenance = now; ServiceConnections(); }
                     // Blocking, with a timeout only so shutdown is prompt.
                     //
                     // This used to poll Available and Thread.Sleep(1) between
@@ -318,61 +333,17 @@ namespace MphRead.Mods.Network
                             Telemetry.Invalid(length > NetConfig.MaxPacketSize);
                             continue;
                         }
-                        if (!Unwrap(sender, data, ref length)) continue;
-
-                        if (_autoPong && (PacketType)data[0] == PacketType.Ping)
-                        {
-                            Send(sender, PacketType.Pong, data.AsSpan(1, length - 1),
-                                _lagWorker != null
-                                    ? (long)(NetLag.RoundTripMs / 2.0 * Stopwatch.Frequency / 1000)
-                                    : 0);
-                            continue;
-                        }
-
-                        var received = new ReceivedPacket(sender, data, length,
-                            Stopwatch.GetTimestamp(), pooled: true);
-
-                        // The worker rather than NetLag.Active, so the two
-                        // halves cannot disagree: fault-injected traffic keeps
-                        // every datagram and therefore deliberately bypasses
-                        // latest-state coalescing.
                         if (_lagWorker != null)
                         {
-                            // NetFaultQueue may deliberately drop or duplicate
-                            // this value. A pooled buffer cannot safely have
-                            // two owners (or no owner), so fault-injected
-                            // traffic keeps an ordinary exact-size array.
+                            // Faults act on original datagrams BEFORE sequence/ACK
+                            // processing. Duplicate entries share only immutable bytes.
                             byte[] heldCopy = data.AsSpan(0, length).ToArray();
-                            lock (_heldLock)
-                            {
-                                _heldIn.Enqueue(Stopwatch.GetTimestamp() * 1000.0 / Stopwatch.Frequency,
-                                    new ReceivedPacket(sender, heldCopy, heldCopy.Length,
-                                        received.ArrivedAt));
-                            }
+                            lock (_heldLock) _heldIn.Enqueue(NowMilliseconds,
+                                new ReceivedPacket(sender, heldCopy, heldCopy.Length));
                             continue;
                         }
+                        handedOff = AcceptDatagram(sender, data, length);
 
-                        if (TryCoalesceRealtimeState(received))
-                        {
-                            handedOff = true;
-                            continue;
-                        }
-
-                        if (Volatile.Read(ref _inboxCount) >= MaxQueuedPackets)
-                        {
-                            if (_inbox.TryDequeue(out ReceivedPacket dropped))
-                            {
-                                Interlocked.Decrement(ref _inboxCount);
-                                dropped.Release();
-                            }
-                            Telemetry.Drop();
-                            PacketsDropped++;
-                            Interlocked.Increment(ref TotalPacketsDropped);
-                        }
-                        Interlocked.Increment(ref _inboxCount);
-                        _inbox.Enqueue(received);
-                        Telemetry.Queue(Volatile.Read(ref _inboxCount));
-                        handedOff = true;
                     }
                     finally
                     {
@@ -395,32 +366,52 @@ namespace MphRead.Mods.Network
             }
         }
 
-        /// <summary>Drain everything received since the last call. Called once per frame.</summary>
-        public IEnumerable<ReceivedPacket> Drain()
+        private bool AcceptDatagram(IPEndPoint sender, byte[] data, int length)
+        {
+            NetHeader.TryRead(data.AsSpan(0, length), out var header);
+            if (!Unwrap(sender, data, ref length)) return false;
+            if (_autoPong && (PacketType)data[0] == PacketType.Ping)
+            { Send(sender, PacketType.Pong, data.AsSpan(1, length - 1)); return false; }
+            var packet = new ReceivedPacket(sender, data, length, pooled: true,
+                connectionId: header.ConnectionId, sequence: header.Sequence);
+            if (TryCoalesceRealtimeState(packet)) return true;
+            if (!_liveInbox.TryEnqueue(packet))
+            { Telemetry.Drop(); PacketsDropped++; Interlocked.Increment(ref TotalPacketsDropped); return false; }
+            Telemetry.Queue(_liveInbox.Count);
+            return true;
+        }
+
+        /// <summary>Bounded live pump; playback retains its lossless ordered drain.</summary>
+        public IEnumerable<ReceivedPacket> Drain(NetPumpBudget? budget = null)
         {
             ServiceConnections();
-            if (_lagWorker != null)
+            if (_lagWorker != null) PromoteHeldArrivals();
+            NetPumpBudget limits = budget ?? NetPumpBudget.Default;
+            int failureBudget = limits.Critical;
+            while (failureBudget-- > 0 && _connectionFailures.TryDequeue(out var failure)) yield return failure;
+            if (_socket == null)
             {
-                PromoteHeldArrivals();
-            }
-            while (_inbox.TryDequeue(out ReceivedPacket packet))
-            {
-                Interlocked.Decrement(ref _inboxCount);
-                Telemetry.Queue(Volatile.Read(ref _inboxCount));
-                long processingStart = Stopwatch.GetTimestamp();
-                if (_socket == null) _playbackBytes -= packet.Length;
-                try
+                while (_inbox.TryDequeue(out var playback))
                 {
-                    yield return packet;
+                    Interlocked.Decrement(ref _inboxCount); _playbackBytes -= playback.Length;
+                    try { yield return playback; } finally { playback.Release(); }
                 }
-                finally
+                yield break;
+            }
+            for (int category = 0; category < 3; category++)
+            {
+                int remaining = category == 0 ? Math.Max(0, failureBudget + 1)
+                    : category == 1 ? Math.Max(0, limits.Realtime - 9) : limits.Background;
+                while (remaining-- > 0 && _liveInbox.TryDequeue((NetPacketPriority)category, out var packet))
                 {
-                    Telemetry.Processed(Stopwatch.GetTimestamp() - processingStart);
-                    packet.Release();
+                    Telemetry.Queue(_liveInbox.Count);
+                    long started = Stopwatch.GetTimestamp();
+                    try { yield return packet; }
+                    finally { Telemetry.Processed(Stopwatch.GetTimestamp() - started); packet.Release(); }
                 }
             }
 
-            if (_coalesceRealtimeState)
+            if (_coalesceRealtimeState && limits.Realtime >= 9)
             {
                 for (int slot = 0; slot < _latestSlotIntent.Length; slot++)
                 {
@@ -455,20 +446,19 @@ namespace MphRead.Mods.Network
 
         private void PromoteHeldArrivals()
         {
-            double now = Stopwatch.GetTimestamp() * 1000.0 / Stopwatch.Frequency;
-            while (true)
+            double now = NowMilliseconds;
+            for (int work = 0; work < 256; work++)
             {
                 ReceivedPacket packet;
-                lock (_heldLock)
+                lock (_heldLock) if (!_heldIn.TryDequeue(now, out packet)) return;
+                byte[] copy = ArrayPool<byte>.Shared.Rent(NetConfig.MaxPacketSize + 1);
+                bool owned = false;
+                try
                 {
-                    if (!_heldIn.TryDequeue(now, out packet))
-                    {
-                        return;
-                    }
+                    packet.Data.AsSpan(0, packet.Length).CopyTo(copy);
+                    owned = AcceptDatagram(packet.Sender, copy, packet.Length);
                 }
-                Interlocked.Increment(ref _inboxCount);
-                _inbox.Enqueue(new ReceivedPacket(packet.Sender, packet.Data, packet.Length,
-                    pooled: packet.Pooled));
+                finally { if (!owned) ArrayPool<byte>.Shared.Return(copy); }
             }
         }
 
@@ -572,7 +562,11 @@ namespace MphRead.Mods.Network
                 {
                     var type = (PacketType)data[0];
                     if (Unsequenced(type) || type == PacketType.Refused && !_connections.ContainsKey(sender)
-                        || type is PacketType.Ping or PacketType.Pong && !_connections.ContainsKey(sender)) return true;
+                        || type is PacketType.Ping or PacketType.Pong && !_connections.ContainsKey(sender))
+                    {
+                        if (_discoveryBudget.Take(NowMilliseconds, 300, 128)) return true;
+                        Telemetry.Drop(); return false;
+                    }
                     Telemetry.Invalid(); return false;
                 }
                 if (!NetHeader.TryRead(data.AsSpan(0, length), out var header)) { Telemetry.Invalid(); return false; }
@@ -587,8 +581,11 @@ namespace MphRead.Mods.Network
                     _connections.Add(sender, connection); _pendingConnections.Remove(sender);
                 }
                 if (!connection.Accepts(sender, header)) { Telemetry.Invalid(); return false; }
+                if ((header.Flags & NetHeaderFlags.AckOnly) == 0 && !connection.Allow(header.Type, NowMilliseconds))
+                { Telemetry.Drop(); return false; }
                 bool reliable = (header.Flags & NetHeaderFlags.Reliable) != 0;
                 uint eventId = 0;
+                if (!reliable && NetReliableChannel.IsReliable(header.Type)) { Telemetry.Invalid(); return false; }
                 if (reliable)
                 {
                     if (!NetReliableChannel.IsReliable(header.Type) || length < NetHeader.Size + 4
@@ -596,7 +593,7 @@ namespace MphRead.Mods.Network
                     eventId = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(NetHeader.Size));
                     // Do not ACK delivery unless a first application can enter
                     // the bounded inbox. A new attempt will retry with a new sequence.
-                    if (!connection.Reliable.AlreadyReceived(eventId) && Volatile.Read(ref _inboxCount) >= MaxQueuedPackets)
+                    if (!connection.Reliable.AlreadyReceived(eventId) && !_liveInbox.CanAcceptCritical)
                     { Telemetry.Drop(); return false; }
                 }
                 var result = connection.Receive(header, NowMilliseconds);
@@ -615,7 +612,7 @@ namespace MphRead.Mods.Network
         private void FlushReliable(NetConnection connection, double now)
         {
             Span<byte> bytes = stackalloc byte[NetConfig.MaxPacketSize];
-            for (int i = 0; i < NetReliableChannel.Capacity && connection.Reliable.TrySend(now, out var eventPacket); i++)
+            for (int i = 0; i < 4 && connection.Reliable.TrySend(now, out var eventPacket); i++)
             {
                 connection.Send(eventPacket.Type, now, NetHeaderFlags.Reliable, eventPacket.EventId).Write(bytes);
                 BinaryPrimitives.WriteUInt32LittleEndian(bytes[NetHeader.Size..], eventPacket.EventId);
@@ -643,8 +640,7 @@ namespace MphRead.Mods.Network
                         Console.Error.WriteLine($"[net] reliable control failed for {connection.Endpoint}; disconnecting");
                         // A local failure is an authoritative disconnect decision,
                         // delivered on the normal simulation thread, never a socket callback.
-                        Interlocked.Increment(ref _inboxCount);
-                        _inbox.Enqueue(new ReceivedPacket(connection.Endpoint, new byte[] { (byte)PacketType.Bye }, 1));
+                        _connectionFailures.Enqueue(new ReceivedPacket(connection.Endpoint, new byte[] { (byte)PacketType.Bye }, 1));
                     }
                     if (connection.AckPending)
                     {
@@ -691,6 +687,8 @@ namespace MphRead.Mods.Network
             {
                 packet.Release();
             }
+            for (int priority = 0; priority < 3; priority++)
+                while (_liveInbox.TryDequeue((NetPacketPriority)priority, out var queued)) queued.Release();
             lock (_stateLock)
             {
                 if (_latestSnapshot.HasValue) _latestSnapshot.Value.Release();
@@ -701,6 +699,7 @@ namespace MphRead.Mods.Network
                     _latestSlotIntent[i] = null;
                 }
             }
+            _lagWorker?.Join(TimeSpan.FromSeconds(1));
             _cancel.Dispose();
         }
     }

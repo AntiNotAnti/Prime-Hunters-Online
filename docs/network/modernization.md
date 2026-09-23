@@ -67,3 +67,11 @@ slots, bounded exponential retries, 256-ID receive history and sender span guard
 The impaired delivery test applies all 40 events exactly once; realtime intent
 traffic continues. Idle ACKs complete control delivery. Application revisions
 remain authoritative. Exhaustion/expiry disconnects instead of hiding divergence.
+
+## P1-C
+
+Priority queues reserve lifecycle capacity, pump work is bounded, dedicated
+background work follows simulation, and peer token buckets isolate intent floods.
+`--queue-budget` covers a 10,000-packet burst and one abusive plus seven healthy
+senders. Fault injection operates before transport ACK/dedup, with bounded
+promotion. No unbounded receive drain remains in live transports.

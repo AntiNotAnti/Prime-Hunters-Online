@@ -425,7 +425,7 @@ namespace MphRead.Mods.Network
                 {
                     double now = clock.Elapsed.TotalSeconds;
                     _now = now;
-                    foreach (ReceivedPacket packet in _transport.Drain())
+                    foreach (ReceivedPacket packet in _transport.Drain(NetPumpBudget.BeforeSimulation))
                     {
                         Handle(packet, now);
                     }
@@ -437,6 +437,7 @@ namespace MphRead.Mods.Network
                     CheckLoadBarrier(now);
                     if (_phase is SessionPhase.InMatch or SessionPhase.PostMatch) _sim?.Advance(now);
                     EnsureCareerMatchStarted(now);
+                    foreach (ReceivedPacket packet in _transport.Drain(NetPumpBudget.AfterSimulation)) Handle(packet, now);
 
                     // The server owns the match clock, not the authority client:
                     // that is what lets a joiner adopt a running match's timer

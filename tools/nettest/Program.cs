@@ -36,6 +36,7 @@ namespace MphRead.NetTest
             if (args.Length > 0 && args[0] == "--allocations") return NetworkAllocationTests.Run(Array.IndexOf(args, "--report-only") >= 0);
             if (args.Length > 0 && args[0] == "--protocol17") return Protocol17Tests.Run();
             if (args.Length > 0 && args[0] == "--reliable") return ReliableTests.Run();
+            if (args.Length > 0 && args[0] == "--queue-budget") return QueueBudgetTests.Run();
             string host = args.Length > 0 ? args[0] : "127.0.0.1";
             int port = args.Length > 1 && Int32.TryParse(args[1], out int p)
                 ? p : NetConfig.DefaultPort;

@@ -82,6 +82,12 @@ public sealed class NetConnection
     private uint _nextSequence;
     private long _sent, _acked, _lost, _duplicates, _reordered, _old;
     private double? _rtt, _variance, _minimum;
+    private NetTokenBucket _intentBudget, _stateBudget, _controlBudget, _backgroundBudget;
+    public bool Allow(PacketType type, double nowMs) => type == PacketType.Intent
+        ? _intentBudget.Take(nowMs, 180, 64)
+        : NetPacketQueue.Priority(type) == NetPacketPriority.Realtime ? _stateBudget.Take(nowMs, 2000, 512)
+        : NetPacketQueue.Priority(type) == NetPacketPriority.Critical ? _controlBudget.Take(nowMs, 60, 128)
+        : _backgroundBudget.Take(nowMs, 100, 32);
     public NetReliableChannel Reliable { get; } = new();
     public bool AckPending { get; set; }
     public bool FailureReported { get; set; }
