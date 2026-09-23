@@ -106,10 +106,20 @@ when it is next between frames.
 
 Two things come free from owning the context:
 
-- **It survives the surface going away and coming back**, so a match is not
-  lost to the home button. `GLSurfaceView` only kept it as a favour, through
-  `PreserveEGLContextOnPause`; here nothing destroys it until the match ends.
-- **Pausing is a flag**, not a handshake, so `OnPause` cannot block either.
+- **The EGL context survives the surface going away and coming back**, so a
+  match is not lost to the home button. `GLSurfaceView` only kept it as a
+  favour, through `PreserveEGLContextOnPause`; here the context and loaded
+  scene live until the match ends.
+- **System pause explicitly releases the EGL window surface on the GL thread.**
+  Android may keep the `SurfaceView` object alive while reclaiming/replacing its
+  native window. Keeping that old EGLSurface current across `OnPause` is
+  driver-dependent and caused resume crashes on physical devices. The context is
+  retained, the replacement window surface is created on resume, frame pacing is
+  re-based only after that surface binds, and the display-rate request is applied
+  again to the new surface.
+- **Pausing is still a flag, not a handshake**, so `OnPause` cannot block the UI
+  thread. Touch/gamepad ownership is cleared at the boundary so interrupted
+  gestures cannot resume as stuck input.
 - **The in-game pause menu does not destroy the game surface.** The `SurfaceView`
   stays attached and is translated just beyond the right edge while the
   launcher/menu view is brought to the front; Resume moves it back and brings
@@ -254,10 +264,13 @@ in GL -- it is a dozen circles that change when touched):
 | CLIP | saves the rolling instant-replay buffer while it is active |
 | Anywhere else on the right | aim |
 
-Drag is converted to density-independent pixels before it becomes pointer
-movement, so a swipe turns the same amount on any phone; `GameView.AimScale` is
-the one number to change if it feels wrong, and the player's own mouse
-sensitivity scales it after that.
+Aim drag stays in **game-window pixels**, the same unit the synthetic mouse
+and desktop mouse path consume. `MotionEvent` already reports SurfaceView pixel
+coordinates; dividing relative aim by Android display density here used to cut
+camera movement to one third or one quarter on high-density phones before the
+player's sensitivity was even applied. Density is still used where it belongs:
+button geometry, tap slop and gesture thresholds. `GameView.AimScale` and the
+player's normal mouse sensitivity then scale the unmolested relative aim.
 
 ### The controls step aside for a pad, and come back at a touch
 
