@@ -36,6 +36,8 @@ namespace MphRead.Mods.Input
         // contact quarantined until a real release instead of turning the UI
         // click into a gameplay press on the first frame back.
         private static bool _blockedContactUntilRelease;
+        private static bool _blockedReleasePending;
+        private static bool _blockedReleaseObservedBySimulation;
 
         public static void Update(PointerSample sample, int width, int height,
             bool independentPrimaryDown = false, bool acceptsInput = true)
@@ -55,22 +57,39 @@ namespace MphRead.Mods.Input
                 _stylusReleasePending = false;
                 _stylusReleaseObservedBySimulation = false;
                 _blockedContactUntilRelease = false;
+                _blockedReleasePending = false;
+                _blockedReleaseObservedBySimulation = false;
             }
             else if (!acceptsInput)
             {
                 _stylusReleasePending = false;
                 _stylusReleaseObservedBySimulation = false;
-                _blockedContactUntilRelease = sample.InContact;
                 effectiveContact = false;
+                if (sample.InContact)
+                {
+                    _blockedContactUntilRelease = true;
+                    _blockedReleasePending = false;
+                    _blockedReleaseObservedBySimulation = false;
+                }
+                else if (_blockedContactUntilRelease)
+                {
+                    AdvanceBlockedRelease();
+                }
             }
             else if (_blockedContactUntilRelease)
             {
                 // A button/tip that was already down while a menu, settings page,
                 // focus transition or dialog owned input must never become a new
-                // gameplay press. Only a real neutral sample re-arms it.
-                if (!sample.InContact)
+                // gameplay press. Its release is debounced on the simulation clock
+                // too, so a one-picture driver handoff cannot escape quarantine.
+                if (sample.InContact)
                 {
-                    _blockedContactUntilRelease = false;
+                    _blockedReleasePending = false;
+                    _blockedReleaseObservedBySimulation = false;
+                }
+                else
+                {
+                    AdvanceBlockedRelease();
                 }
                 _stylusReleasePending = false;
                 _stylusReleaseObservedBySimulation = false;
@@ -160,6 +179,25 @@ namespace MphRead.Mods.Input
             {
                 _stylusReleaseObservedBySimulation = true;
             }
+            if (_blockedReleasePending)
+            {
+                _blockedReleaseObservedBySimulation = true;
+            }
+        }
+
+        private static void AdvanceBlockedRelease()
+        {
+            if (!_blockedReleasePending)
+            {
+                _blockedReleasePending = true;
+                _blockedReleaseObservedBySimulation = false;
+            }
+            else if (_blockedReleaseObservedBySimulation)
+            {
+                _blockedContactUntilRelease = false;
+                _blockedReleasePending = false;
+                _blockedReleaseObservedBySimulation = false;
+            }
         }
 
         /// <summary>Consume once per simulation step, including when multiple steps share a picture.</summary>
@@ -180,6 +218,8 @@ namespace MphRead.Mods.Input
             _stylusReleasePending = false;
             _stylusReleaseObservedBySimulation = false;
             _blockedContactUntilRelease = false;
+            _blockedReleasePending = false;
+            _blockedReleaseObservedBySimulation = false;
             StylusZone.Reset();
         }
     }

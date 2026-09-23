@@ -141,6 +141,7 @@ namespace MphRead.Mods.Input
             Frame(1530, 615, true, independentDown: true);
             Require(PointerDevice.PrimaryDown, "native independent mouse is not captured");
             Frame(1540, 620, false);
+            PointerDevice.AdvanceSimulationStep();
             Frame(100, 600, false);
             Frame(1500, 600, true);
             Frame(1505, 602, true); // touchdown picture had no simulation step
@@ -148,10 +149,21 @@ namespace MphRead.Mods.Input
             Frame(1510, 604, true, acceptsInput: false);
             Frame(1800, 650, true, acceptsInput: false);
             Frame(1810, 650, true);
-            Require(PointerDevice.TakeDelta() == (0f, 0f), "pause/focus return cannot replay accumulated aim");
+            Require(!StylusZone.Aiming && PointerDevice.TakeDelta() == (0f, 0f),
+                "pause/focus return quarantines held stylus input");
             Frame(1820, 650, true, id: 2);
-            Require(StylusZone.Aiming && PointerDevice.TakeDelta() == (0f, 0f),
-                "pointer id churn keeps the held stylus gesture without injecting aim");
+            Require(!StylusZone.Aiming && !StylusZone.CapturingPointer
+                && PointerDevice.TakeDelta() == (0f, 0f),
+                "pointer id churn cannot escape the held-input quarantine");
+            Frame(1820, 650, false, id: 2);
+            PointerDevice.AdvanceSimulationStep();
+            Frame(1820, 650, false, id: 2);
+            Frame(1830, 650, true, id: 3);
+            Require(StylusZone.Held == StylusRegion.Aim && !StylusZone.Aiming,
+                "stable release rearms stylus aim without a touchdown jump");
+            Frame(1840, 655, true, id: 3);
+            Require(StylusZone.Aiming && PointerDevice.TakeDelta() == (10f, 5f),
+                "rearmed stylus aim resumes after the first drag sample");
 
             // A real tablet can rotate native pointer IDs while the tip is still
             // physically touching the same WPN/affinity icon. That must remain
@@ -217,8 +229,15 @@ namespace MphRead.Mods.Input
                 "held UI contact cannot click through into gameplay");
             Frame(weaponX, weaponY, false, acceptsInput: true, id: 20);
             Frame(weaponX, weaponY, true, acceptsInput: true, id: 21);
+            Require(!StylusZone.CapturingPointer
+                && StylusZone.TakePressed() == StylusRegion.None,
+                "transient UI-contact release cannot escape quarantine");
+            Frame(weaponX, weaponY, false, acceptsInput: true, id: 21);
+            PointerDevice.AdvanceSimulationStep();
+            Frame(weaponX, weaponY, false, acceptsInput: true, id: 21);
+            Frame(weaponX, weaponY, true, acceptsInput: true, id: 22);
             Require(StylusZone.TakePressed() == StylusRegion.Weapons,
-                "UI-owned contact rearms only after a real release");
+                "UI-owned contact rearms only after a stable release");
 
             foreach (StylusZone.Button button in StylusZone.Buttons)
             {
@@ -356,11 +375,11 @@ namespace MphRead.Mods.Input
             GamepadInput.BeginFrame();
             foreach (StylusZone.Button button in StylusZone.Buttons)
             {
-                // PointerDevice deliberately requires a pen-up to survive a
-                // complete additional sample before re-arming one-shot DS
-                // buttons. Two neutral samples model a genuine lift; one is
-                // reserved for the tablet handoff glitch covered above.
+                // This fixture calls ProcessInput directly, so model the fixed-step
+                // boundary that RenderWindow normally supplies between pen-up
+                // samples. Render count alone must never re-arm a one-shot action.
                 Frame(0, 0, false);
+                PointerDevice.AdvanceSimulationStep();
                 Frame(0, 0, false);
                 Frame(button.X / StylusZone.DsWidth * 1920, button.Y / StylusZone.DsHeight * StylusZone.Height * 1080, true);
                 PlayerEntity.ProcessInput(keyboard, mouse, false);
@@ -390,6 +409,7 @@ namespace MphRead.Mods.Input
             typeof(PlayerEntity).GetField("<WeaponSelection>k__BackingField",
                 BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(player, BeamType.None);
             Frame(0, 0, false);
+            PointerDevice.AdvanceSimulationStep();
             Frame(0, 0, false);
             var select = Array.Find(StylusZone.Buttons,
                 button => button.Region == StylusRegion.WeaponSelect);
@@ -401,6 +421,7 @@ namespace MphRead.Mods.Input
                 "stylus SEL opens weapon menu");
             Frame(select.X / StylusZone.DsWidth * 1920,
                 select.Y / StylusZone.DsHeight * StylusZone.Height * 1080, false);
+            PointerDevice.AdvanceSimulationStep();
             Frame(select.X / StylusZone.DsWidth * 1920,
                 select.Y / StylusZone.DsHeight * StylusZone.Height * 1080, false);
             PlayerEntity.ProcessInput(keyboard, mouse, false);
