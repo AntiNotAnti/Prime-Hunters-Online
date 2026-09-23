@@ -107,7 +107,7 @@ namespace MphRead.Mods.Launcher.Gui
                 Padding = new Thickness(10, 8)
             };
             var identityCopy = new StackPanel { Spacing = 2 };
-            _player.FontFamily = HubTheme.Ui;
+            _player.FontFamily = PrimeTypography.Display;
             _player.FontWeight = FontWeight.Bold;
             _player.FontSize = 16;
             _player.Foreground = HubTheme.TextBrush;
@@ -867,7 +867,7 @@ namespace MphRead.Mods.Launcher.Gui
                     new TextBlock
                     {
                         Text = title,
-                        FontFamily = HubTheme.Ui,
+                        FontFamily = PrimeTypography.Display,
                         FontWeight = FontWeight.Bold,
                         FontSize = 16,
                         Foreground = HubTheme.TextBrush

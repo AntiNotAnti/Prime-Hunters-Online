@@ -685,7 +685,7 @@ namespace MphRead.Mods.Launcher.Gui
                 context.FillRectangle(PrimeTheme.BackgroundBrush, new Rect(8, 8, Math.Min(w - 16, codeText.Width + 12), 20));
                 context.DrawText(codeText, new Point(14, 11));
                 string label = _chosen ? "SELECTED // " + Blurb : Blurb;
-                var name = DeckText.Run(label.ToUpperInvariant(), new Typeface(PrimeTypography.Ui), 13, PrimeTheme.TextBrush);
+                var name = DeckText.Run(label.ToUpperInvariant(), new Typeface(PrimeTypography.Label, weight: FontWeight.SemiBold), 16, PrimeTheme.TextBrush);
                 name.MaxTextWidth = Math.Max(1, w - 24); name.MaxLineCount = 2;
                 name.Trimming = TextTrimming.CharacterEllipsis;
                 context.DrawText(name, new Point(12, Math.Max(34, h - name.Height - 12)));

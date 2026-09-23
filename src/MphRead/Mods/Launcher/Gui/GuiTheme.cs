@@ -73,7 +73,7 @@ namespace MphRead.Mods.Launcher.Gui
         /// </summary>
         public static readonly FontFamily Interface = new("fonts:Inter#Inter");
 
-        public static FontFamily Display => Interface;
+        public static FontFamily Display => PrimeTypography.Display;
 
         /// <summary>
         /// Roboto Bold remains for a handful of legacy prose/credit call sites.

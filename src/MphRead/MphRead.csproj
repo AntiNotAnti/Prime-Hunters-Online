@@ -160,6 +160,10 @@
          smear. -->
     <AvaloniaResource Include="Assets\Fonts\JetBrainsMono-Regular.ttf" />
     <AvaloniaResource Include="Assets\Fonts\JetBrainsMono-Bold.ttf" />
+    <!-- Squared tactical headings/controls; unmodified static faces, SIL OFL 1.1. -->
+    <AvaloniaResource Include="Assets\Fonts\Rajdhani-SemiBold.ttf" />
+    <AvaloniaResource Include="Assets\Fonts\Rajdhani-Bold.ttf" />
+    <AvaloniaResource Include="Assets\Fonts\Rajdhani-OFL.txt" />
     <!-- IP-to-country ranges, so the browser can put a flag beside a server
          without asking a third party where every server you are looking at
          is. Built from DB-IP Lite (CC BY 4.0) by tools/build-ipcountry.py;

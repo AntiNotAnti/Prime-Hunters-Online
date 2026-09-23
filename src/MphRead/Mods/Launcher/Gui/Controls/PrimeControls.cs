@@ -65,7 +65,7 @@ namespace MphRead.Mods.Launcher.Gui
         public static TextBlock Title(string text) => new()
         {
             Text = text, FontSize = PrimeTypography.HeadingLarge, FontWeight = FontWeight.Bold,
-            Foreground = PrimeTheme.TextBrush, FontFamily = PrimeTypography.Ui,
+            Foreground = PrimeTheme.TextBrush, FontFamily = PrimeTypography.Display,
             TextWrapping = TextWrapping.Wrap
         };
         public static StackPanel Stack(params Control[] children)

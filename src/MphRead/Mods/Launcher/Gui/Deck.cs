@@ -118,7 +118,7 @@ namespace MphRead.Mods.Launcher.Gui
         /// a list wants.
         /// </summary>
         public static Typeface Label(bool strong = true) =>
-            new(GuiTheme.Interface, FontStyle.Normal,
+            new(strong ? PrimeTypography.Label : GuiTheme.Interface, FontStyle.Normal,
                 strong ? FontWeight.SemiBold : FontWeight.Normal);
 
         // -------------------------------------------------------- the frame

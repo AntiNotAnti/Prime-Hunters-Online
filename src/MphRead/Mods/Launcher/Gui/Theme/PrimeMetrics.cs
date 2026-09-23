@@ -17,9 +17,11 @@ namespace MphRead.Mods.Launcher.Gui
     internal static class PrimeTypography
     {
         public static readonly FontFamily Ui = new("fonts:Inter#Inter");
+        public static readonly FontFamily Display = new("avares://ProjectPrime/Assets/Fonts/Rajdhani-Bold.ttf#Rajdhani");
+        public static readonly FontFamily Label = new("avares://ProjectPrime/Assets/Fonts/Rajdhani-SemiBold.ttf#Rajdhani");
         public static readonly FontFamily Data = Deck.Mono;
-        public const double DisplayLarge = 30, DisplayMedium = 26;
-        public const double HeadingLarge = 22, HeadingMedium = 18, HeadingSmall = 15;
+        public const double DisplayLarge = 34, DisplayMedium = 30;
+        public const double HeadingLarge = 26, HeadingMedium = 20, HeadingSmall = 17;
         public const double Body = 14, BodySmall = 12, DataSize = 12, DataSmall = 11, Micro = 10;
     }
     internal static class PrimeMotion

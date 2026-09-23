@@ -204,7 +204,7 @@ namespace MphRead.Mods.Launcher.Gui
             _title = new TextBlock
             {
                 Text = "NO REPLAY SELECTED",
-                FontFamily = HubTheme.Ui,
+                FontFamily = PrimeTypography.Display,
                 FontWeight = FontWeight.Bold,
                 FontSize = 19,
                 Foreground = HubTheme.TextBrush,

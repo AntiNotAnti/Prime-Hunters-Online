@@ -30,7 +30,9 @@ namespace MphRead.Mods.Launcher.Gui
         protected void UseTacticalStyle(bool tab = false)
         {
             _tactical = true; _tab = tab; _rail.IsVisible = false;
-            _label.FontFamily = PrimeTypography.Data;
+            _label.FontFamily = PrimeTypography.Label;
+            _label.FontWeight = FontWeight.SemiBold;
+            _label.FontSize = 16;
             _label.HorizontalAlignment = HorizontalAlignment.Center;
             _label.VerticalAlignment = VerticalAlignment.Center;
             _label.TextWrapping = TextWrapping.Wrap;

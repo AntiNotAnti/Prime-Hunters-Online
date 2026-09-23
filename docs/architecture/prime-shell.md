@@ -26,6 +26,15 @@ behavior and share the Prime palette through compatibility theme aliases. There
 is no second settings serializer or new network/profile service. Superseded home,
 play-type, offline/adventure and settings-category landing screens are removed.
 
+## Typography
+
+Rajdhani Bold supplies headings and Rajdhani SemiBold supplies tactical buttons,
+map names and server titles. Inter remains the reading face for descriptions and
+settings; JetBrains Mono remains the telemetry face. The two unmodified Rajdhani
+TTFs and SIL OFL 1.1 license are bundled for desktop and Android; no installed
+system font or network download is needed at runtime. Source:
+https://github.com/google/fonts/tree/main/ofl/rajdhani.
+
 ## Ownership and behavior
 
 - `PrimeWorkspaceHost` lazily creates and retains controls. Route changes detach

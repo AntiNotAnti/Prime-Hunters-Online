@@ -65,6 +65,12 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 Dispatcher.UIThread.Invoke(() =>
                 {
+                    foreach (string font in new[] { "Rajdhani-SemiBold.ttf", "Rajdhani-Bold.ttf", "Rajdhani-OFL.txt" })
+                        Check(Avalonia.Platform.AssetLoader.Exists(new Uri("avares://ProjectPrime/Assets/Fonts/" + font)), "bundled tactical font asset " + font);
+                    Check(new Avalonia.Media.Typeface(PrimeTypography.Display, weight: Avalonia.Media.FontWeight.Bold)
+                        .GlyphTypeface.FamilyName.Contains("Rajdhani", StringComparison.OrdinalIgnoreCase), "display resolves to bundled Rajdhani");
+                    Check(new Avalonia.Media.Typeface(PrimeTypography.Label, weight: Avalonia.Media.FontWeight.SemiBold)
+                        .GlyphTypeface.FamilyName.Contains("Rajdhani", StringComparison.OrdinalIgnoreCase), "controls resolve to bundled Rajdhani");
                     var shell = Create();
                     var window = new Window { Width = 1280, Height = 720, Content = shell, ShowInTaskbar = false,
                         Position = new PixelPoint(-4000,-4000), WindowStartupLocation = WindowStartupLocation.Manual };

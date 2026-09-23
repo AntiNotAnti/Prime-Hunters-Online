@@ -28,7 +28,7 @@ namespace MphRead.Mods.Launcher.Gui
             copy.Children.Add(new TextBlock
             {
                 Text = title,
-                FontFamily = HubTheme.Ui,
+                FontFamily = PrimeTypography.Display,
                 FontWeight = FontWeight.Bold,
                 FontSize = PrimeTypography.DisplayMedium,
                 Foreground = HubTheme.TextBrush

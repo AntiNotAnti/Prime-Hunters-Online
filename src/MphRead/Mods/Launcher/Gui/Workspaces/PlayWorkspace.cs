@@ -92,7 +92,7 @@ namespace MphRead.Mods.Launcher.Gui
             _detailName = new TextBlock
             {
                 Text = "SELECT A SERVER",
-                FontFamily = HubTheme.Ui,
+                FontFamily = PrimeTypography.Display,
                 FontWeight = FontWeight.Bold,
                 FontSize = 18,
                 Foreground = HubTheme.TextBrush,

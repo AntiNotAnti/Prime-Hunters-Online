@@ -163,6 +163,8 @@
                       Link="Assets\%(Filename)%(Extension)" />
     <AvaloniaResource Include="..\MphRead\Assets\Fonts\*.ttf"
                       Link="Assets\Fonts\%(Filename)%(Extension)" />
+    <AvaloniaResource Include="..\MphRead\Assets\Fonts\Rajdhani-OFL.txt"
+                      Link="Assets\Fonts\Rajdhani-OFL.txt" />
     <AvaloniaResource Include="..\MphRead\Assets\Backgrounds\*.jpg"
                       Link="Assets\Backgrounds\%(Filename)%(Extension)" />
     <!-- The IP-to-country ranges the server browser puts a flag with. Not a

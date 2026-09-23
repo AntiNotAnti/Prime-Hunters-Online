@@ -373,8 +373,7 @@ namespace MphRead.Mods.Launcher.Gui
                     PrimeChrome.Text("HARDWARE DIAGNOSTICS", 12, PrimeTheme.CyanBrush, true),
                     PrimeChrome.Text($"PLATFORM // {System.Runtime.InteropServices.RuntimeInformation.OSDescription}\n"
                         + $"PROCESS // {System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture}\n"
-                        + $"LOGICAL CORES // {Environment.ProcessorCount}\nSIMULATION // 60 HZ", 11, data: true),
-                    PrimeChrome.Text("Rendering and input options are applied using the game's existing configuration system.", 12, PrimeTheme.TextSecondaryBrush));
+                        + $"LOGICAL CORES // {Environment.ProcessorCount}\nSIMULATION // 60 HZ", 11, data: true));
                 footer.Children.Clear();
                 var command = PrimeChrome.Stack(save, back, _saveError);
                 var right = new Grid { RowDefinitions = new("*,Auto"), RowSpacing = 12 };
