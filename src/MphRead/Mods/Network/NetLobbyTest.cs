@@ -215,6 +215,7 @@ namespace MphRead.Mods.Network
                 OwnerSlot = 255, Match = new MatchDefinition { RoomKey = Rooms()[0], Mode = GameMode.Battle } };
             NetSession.ApplySessionState(state);
             state.Revision = 0; state.Phase = SessionPhase.Starting; state.MatchId++;
+            state.StartStage = StartStage.Countdown; state.StartGeneration = 1;
             state.StartCountdownMilliseconds = 3000;
             NetSession.ApplySessionState(state);
             Check(NetSession.IsStarting && NetSession.ServerSession?.MatchId == 5,
