@@ -116,17 +116,62 @@ completed 5,400 ticks and two successful saves per client. All 16 clip files
 validated, and no >20 ms frame report occurred in their save windows (ticks
 3,500–4,500). These logs are rate-limited diagnostics, not exhaustive GPU traces.
 
-Remaining validation: rendered eight-player acceptance, v0.1.11 executable A/B,
-physical 60/120/144/240/360/540 Hz pacing and Android device/AOT behavior. Hidden
-and visible native-window attempts both crashed inside `_glfwGetVideoModeCocoa`
-(address 0x100) before gameplay on this macOS host. No rendered result is inferred
-from headless timing. The local SDK has no Android workload; the PR's cross-platform
-workflow is the build gate. Checkpoint capture, initial scene creation/restore and
-recording-start metadata capture remain owner-thread operations. Instant clips
-now serialize frozen baseline/facts directly with v4 hidden lead-in, eliminating
-save-time Scene creation/restore/capture. The optional 1 ms player budget limits
-reconstruction steps when a world is opened, not indivisible creation/restore. Startup/JIT spikes remain
-visible in diagnostics and must not be described as eliminated.
+### Rendered and Android follow-up
+
+The native GL blocker cleared on a later run. Real rendered tests now pass:
+1,643 killcam checks, Replay Studio's 620 isolated frames/four seeks, and repeated
+30/60/120 FPS exports with identical images, real intermediate pictures and
+unchanged gameplay hashes. `-replaycadencecheck FILE` renders 600 simulation
+frames at each virtual 60/120/144/240/360/540 Hz cadence and verifies identical
+hashes after every simulation step and before/after every draw. All pass without
+dropped steps. This does not measure physical display pacing.
+
+Eight rendered clients each completed 37,800 ticks with recording, 100 ms RTT
+and 2% packet loss. All passed, reported no capture/playback error and saved two
+valid clips each. The host simultaneously ran an emulator, builds and diagnostics:
+clients achieved only 48.2–49.5 callbacks per wall-clock second. This is functional
+soak coverage, **not** a stable high-refresh performance pass. The JSON records
+per-client simulation summaries and every rate-limited spike report.
+
+A three-version comparison ran eight rendered clients for 5,400 ticks each,
+with the first 600 excluded from measurements. Settings were TEST ARENA, 400×300,
+100 ms RTT, 2% loss, client/server recording and a requested 120 FPS cap. The
+network harness itself schedules at 60 Hz. Identical instrumentation brackets
+its render callback, including simulation, drawing and SwapBuffers but excluding
+the pacing wait. Values below are means of the eight client summaries; p99 is
+not a pooled percentile and these are not display-interval FPS measurements.
+
+| Callback measurement | v0.1.11 | Main 55e78f4 | Branch 1b8b286 |
+| --- | ---: | ---: | ---: |
+| Mean work (ms) | 17.45 | 20.37 | 20.17 |
+| Mean client p99 (ms) | 63.37 | 71.01 | 75.17 |
+| Mean client p99.9 (ms) | 70.09 | 82.40 | 84.72 |
+| Bytes/callback | 68,677 | 163,555 | 72,501 |
+| Gen0 collections/client | 40.5 | 89.4 | 34.5 |
+
+These are instrumented archived source builds, not untouched release binaries.
+The v0.1.11 harness needed a test-only GL context change from 3.2 compatibility
+to macOS-compatible 2.1 to start. Its eight clients completed the run but failed
+historical combat coverage assertions; main and updated passed. Runs were
+sequential on a shared host with other work active. Allocation falls about 56%
+versus main, but aggregate tail timing does **not** improve. This comparison
+cannot establish restored v0.1.11 frame consistency; that acceptance remains open.
+
+The Android CI APK from run 35830812016 was installed on an API-35 arm64 emulator.
+Live network killcam/HUD, background/resume, full recording, instant clip saving,
+and playback of the resulting clip to EOF work. Both Android-generated files
+validate on desktop. SwiftShader shows visual banding/noise, so this is not GPU
+quality or physical-device performance evidence. Testing exposed a retained
+Replay Studio preview referencing a disposed bitmap after detachment. The fix
+clears its Image source before disposal and reloads on reattachment, with a
+regression in the headless UI suite. A fresh APK lifecycle retest is still required.
+
+Remaining acceptance: controlled frametime/FPS-distribution comparisons, the full
+scenario matrix on physical high-refresh displays and physical Android devices.
+Checkpoint capture and initial scene creation/restore remain owner-thread work;
+startup/JIT spikes remain visible. The optional 1 ms player budget limits
+reconstruction steps, not indivisible creation/restore. No result here proves
+all stutters eliminated.
 
 ## Editor
 

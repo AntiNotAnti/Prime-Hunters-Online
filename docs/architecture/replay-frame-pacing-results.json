@@ -182,5 +182,630 @@
         "loggedSpikesDuringSaveWindow": []
       }
     ]
+  },
+  "renderedFollowup": {
+    "date": "2026-09-23",
+    "implementationCommit": "1b8b286",
+    "clients": {
+      "GOLF": {
+        "summary": [
+          "[netcheck] replay killcams: 1 starts, 95 visible frames; capture error=none, playback error=none",
+          "  ran 37800 frame(s) in 774.9 s -- 48.8 fps",
+          "  RESULT: PASS"
+        ],
+        "perf": "[replayperf] Capture=0.072ms max=200.210ms alloc=5955B n=37691 Step=0.053ms max=14.035ms alloc=1035B n=37690 Checkpoint=1.992ms max=34.289ms alloc=81982B n=127 AuthorityCapture=0.000ms max=0.000ms alloc=0B n=0 AuthorityEncode=0.004ms max=1.591ms alloc=504B n=7688 Timeline=0.000ms max=2.105ms alloc=283B n=347517 Enqueue=0.001ms max=1.076ms alloc=0B n=302205 checkpoint=644445B timeline=21654912B facts=27990 GC=293/115/19 simulationP50=0.247ms P95=0.595ms P99=1.537ms max=302.274ms checkpointFrames=126 mean=6.171ms ordinaryMean=0.314ms",
+        "spikes": [
+          "[frametime] frame=6 cadence=6 total=302.27ms replayStep=5.12ms checkpoint=41.40ms authority=0.00ms",
+          "[frametime] frame=313 cadence=13 total=175.27ms replayStep=0.10ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=29654 cadence=254 total=43.53ms replayStep=0.00ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=35846 cadence=146 total=139.35ms replayStep=0.06ms checkpoint=0.00ms authority=0.00ms"
+        ],
+        "clips": [
+          "[netcheck] GOLF shared clip 1: _demos/TEST ARENA_clip_2026-09-23_08-05-35-912_c544b767434349e7a211f08342a6e352.ppdemo",
+          "[netcheck] GOLF shared clip 2: _demos/TEST ARENA_clip_2026-09-23_08-05-48-250_8fe8d0ce1e9843c3a5cd0a70b44903ab.ppdemo",
+          "[netcheck] GOLF shared clip result: _demos/TEST ARENA_clip_2026-09-23_08-05-48-250_8fe8d0ce1e9843c3a5cd0a70b44903ab.ppdemo; error=none"
+        ]
+      },
+      "DELTA": {
+        "summary": [
+          "[netcheck] replay killcams: 1 starts, 96 visible frames; capture error=none, playback error=none",
+          "  ran 37800 frame(s) in 781.3 s -- 48.4 fps",
+          "  RESULT: PASS"
+        ],
+        "perf": "[replayperf] Capture=0.070ms max=140.782ms alloc=5942B n=37741 Step=0.054ms max=18.323ms alloc=1631B n=37740 Checkpoint=1.907ms max=31.023ms alloc=80813B n=129 AuthorityCapture=0.000ms max=0.000ms alloc=0B n=0 AuthorityEncode=0.004ms max=0.931ms alloc=502B n=7773 Timeline=0.000ms max=2.067ms alloc=282B n=349515 Enqueue=0.001ms max=0.599ms alloc=0B n=303464 checkpoint=645053B timeline=19988736B facts=23248 GC=299/118/18 simulationP50=0.247ms P95=0.570ms P99=1.399ms max=246.394ms checkpointFrames=128 mean=5.363ms ordinaryMean=0.317ms",
+        "spikes": [
+          "[frametime] frame=6 cadence=6 total=246.39ms replayStep=5.04ms checkpoint=34.19ms authority=0.00ms",
+          "[frametime] frame=104 cadence=104 total=38.50ms replayStep=12.27ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=204 cadence=204 total=63.69ms replayStep=18.32ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=284 cadence=284 total=34.91ms replayStep=12.76ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=602 cadence=2 total=107.25ms replayStep=0.07ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=21586 cadence=286 total=25.99ms replayStep=0.15ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=29342 cadence=242 total=24.94ms replayStep=0.00ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=35684 cadence=284 total=161.99ms replayStep=0.09ms checkpoint=0.00ms authority=0.00ms"
+        ],
+        "clips": [
+          "[netcheck] DELTA shared clip 1: _demos/TEST ARENA_clip_2026-09-23_08-05-38-696_193d591c90594bcd8912bb8158afcb18.ppdemo",
+          "[netcheck] DELTA shared clip 2: _demos/TEST ARENA_clip_2026-09-23_08-05-49-874_c2875d75e768416686e3caf913cfd911.ppdemo",
+          "[netcheck] DELTA shared clip result: _demos/TEST ARENA_clip_2026-09-23_08-05-49-874_c2875d75e768416686e3caf913cfd911.ppdemo; error=none"
+        ]
+      },
+      "ALPHA": {
+        "summary": [
+          "[netcheck] replay killcams: 1 starts, 166 visible frames; capture error=none, playback error=none",
+          "  ran 37800 frame(s) in 783.0 s -- 48.3 fps",
+          "  RESULT: PASS"
+        ],
+        "perf": "[replayperf] Capture=0.068ms max=116.705ms alloc=5974B n=37734 Step=0.054ms max=10.492ms alloc=2121B n=37733 Checkpoint=1.832ms max=26.474ms alloc=89529B n=128 AuthorityCapture=0.000ms max=0.000ms alloc=0B n=0 AuthorityEncode=0.004ms max=1.349ms alloc=501B n=7775 Timeline=0.000ms max=2.559ms alloc=282B n=349616 Enqueue=0.001ms max=0.672ms alloc=0B n=304882 checkpoint=643967B timeline=20051200B facts=23862 GC=306/118/17 simulationP50=0.250ms P95=0.570ms P99=1.595ms max=181.500ms checkpointFrames=127 mean=4.600ms ordinaryMean=0.320ms",
+        "spikes": [
+          "[frametime] frame=10 cadence=10 total=181.50ms replayStep=3.92ms checkpoint=29.10ms authority=0.00ms",
+          "[frametime] frame=124 cadence=124 total=35.24ms replayStep=10.30ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=200 cadence=200 total=98.90ms replayStep=0.18ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=360 cadence=60 total=23.33ms replayStep=8.37ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=449 cadence=149 total=24.50ms replayStep=8.41ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=546 cadence=246 total=23.19ms replayStep=8.66ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=627 cadence=27 total=51.43ms replayStep=7.89ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=9660 cadence=60 total=36.11ms replayStep=0.11ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=29698 cadence=298 total=47.27ms replayStep=0.00ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=35869 cadence=169 total=154.49ms replayStep=0.10ms checkpoint=0.00ms authority=0.00ms"
+        ],
+        "clips": [
+          "[netcheck] ALPHA shared clip 1: _demos/TEST ARENA_clip_2026-09-23_08-05-33-966_e4b5ab8616594dd4a2d7293c20668783.ppdemo",
+          "[netcheck] ALPHA shared clip 2: _demos/TEST ARENA_clip_2026-09-23_08-05-46-643_ec682b991099484baa223b6862ac7d5d.ppdemo",
+          "[netcheck] ALPHA shared clip result: _demos/TEST ARENA_clip_2026-09-23_08-05-46-643_ec682b991099484baa223b6862ac7d5d.ppdemo; error=none"
+        ]
+      },
+      "ECHO": {
+        "summary": [
+          "[netcheck] replay killcams: 1 starts, 103 visible frames; capture error=none, playback error=none",
+          "  ran 37800 frame(s) in 779.8 s -- 48.5 fps",
+          "  RESULT: PASS"
+        ],
+        "perf": "[replayperf] Capture=0.069ms max=155.393ms alloc=5960B n=37718 Step=0.054ms max=16.190ms alloc=1406B n=37717 Checkpoint=1.922ms max=31.230ms alloc=90232B n=127 AuthorityCapture=0.000ms max=0.000ms alloc=0B n=0 AuthorityEncode=0.004ms max=1.224ms alloc=503B n=7740 Timeline=0.000ms max=2.252ms alloc=288B n=349029 Enqueue=0.001ms max=0.976ms alloc=0B n=302997 checkpoint=644488B timeline=21185920B facts=26447 GC=294/117/19 simulationP50=0.247ms P95=0.561ms P99=1.708ms max=261.461ms checkpointFrames=126 mean=5.229ms ordinaryMean=0.321ms",
+        "spikes": [
+          "[frametime] frame=7 cadence=7 total=261.46ms replayStep=4.29ms checkpoint=37.70ms authority=0.00ms",
+          "[frametime] frame=107 cadence=107 total=56.15ms replayStep=16.19ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=176 cadence=176 total=158.76ms replayStep=0.05ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=29382 cadence=282 total=28.46ms replayStep=0.00ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=33642 cadence=42 total=25.73ms replayStep=0.04ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=35722 cadence=22 total=154.80ms replayStep=0.05ms checkpoint=0.00ms authority=0.00ms"
+        ],
+        "clips": [
+          "[netcheck] ECHO shared clip 1: _demos/TEST ARENA_clip_2026-09-23_08-05-36-771_14bfa56353da468d823e386c368f6648.ppdemo",
+          "[netcheck] ECHO shared clip 2: _demos/TEST ARENA_clip_2026-09-23_08-05-48-395_78b5dd6827984e31820c4e645cfad259.ppdemo",
+          "[netcheck] ECHO shared clip result: _demos/TEST ARENA_clip_2026-09-23_08-05-48-395_78b5dd6827984e31820c4e645cfad259.ppdemo; error=none"
+        ]
+      },
+      "BRAVO": {
+        "summary": [
+          "[netcheck] replay killcams: 1 starts, 107 visible frames; capture error=none, playback error=none",
+          "  ran 37800 frame(s) in 784.8 s -- 48.2 fps",
+          "  RESULT: PASS"
+        ],
+        "perf": "[replayperf] Capture=0.068ms max=117.834ms alloc=5938B n=37699 Step=0.053ms max=13.415ms alloc=2109B n=37698 Checkpoint=2.044ms max=28.191ms alloc=88905B n=129 AuthorityCapture=0.000ms max=0.000ms alloc=0B n=0 AuthorityEncode=0.004ms max=0.390ms alloc=500B n=7795 Timeline=0.000ms max=2.312ms alloc=281B n=349753 Enqueue=0.001ms max=0.734ms alloc=0B n=304515 checkpoint=643967B timeline=20431872B facts=24653 GC=290/118/17 simulationP50=0.251ms P95=0.586ms P99=1.917ms max=185.004ms checkpointFrames=128 mean=4.849ms ordinaryMean=0.321ms",
+        "spikes": [
+          "[frametime] frame=7 cadence=7 total=185.00ms replayStep=3.49ms checkpoint=30.78ms authority=0.00ms",
+          "[frametime] frame=130 cadence=130 total=38.25ms replayStep=10.05ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=246 cadence=246 total=49.08ms replayStep=13.41ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=340 cadence=40 total=24.51ms replayStep=5.70ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=438 cadence=138 total=31.47ms replayStep=5.90ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=502 cadence=202 total=89.13ms replayStep=0.04ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=8042 cadence=242 total=26.13ms replayStep=0.12ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=10871 cadence=71 total=35.95ms replayStep=0.07ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=29603 cadence=203 total=24.04ms replayStep=0.00ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=35837 cadence=137 total=154.35ms replayStep=0.04ms checkpoint=0.00ms authority=0.00ms"
+        ],
+        "clips": [
+          "[netcheck] BRAVO shared clip 1: _demos/TEST ARENA_clip_2026-09-23_08-05-36-050_d90b5872f5c84fe694589ec4cc1bcb56.ppdemo",
+          "[netcheck] BRAVO shared clip 2: _demos/TEST ARENA_clip_2026-09-23_08-05-48-591_90dac26c83a94667b076cad0417d046a.ppdemo",
+          "[netcheck] BRAVO shared clip result: _demos/TEST ARENA_clip_2026-09-23_08-05-48-591_90dac26c83a94667b076cad0417d046a.ppdemo; error=none"
+        ]
+      },
+      "HOTEL": {
+        "summary": [
+          "[netcheck] replay killcams: 1 starts, 94 visible frames; capture error=none, playback error=none",
+          "  ran 37800 frame(s) in 763.7 s -- 49.5 fps",
+          "  RESULT: PASS"
+        ],
+        "perf": "[replayperf] Capture=0.070ms max=212.508ms alloc=5957B n=37696 Step=0.052ms max=5.150ms alloc=757B n=37695 Checkpoint=2.069ms max=34.781ms alloc=89596B n=128 AuthorityCapture=0.000ms max=0.000ms alloc=0B n=0 AuthorityEncode=0.003ms max=1.620ms alloc=504B n=7569 Timeline=0.000ms max=2.835ms alloc=291B n=345045 Enqueue=0.001ms max=0.558ms alloc=0B n=301851 checkpoint=642723B timeline=21140736B facts=27540 GC=303/120/19 simulationP50=0.254ms P95=0.597ms P99=1.718ms max=354.112ms checkpointFrames=127 mean=6.091ms ordinaryMean=0.314ms",
+        "spikes": [
+          "[frametime] frame=7 cadence=7 total=354.11ms replayStep=5.15ms checkpoint=41.82ms authority=0.00ms",
+          "[frametime] frame=195 cadence=195 total=186.00ms replayStep=0.10ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=10207 cadence=7 total=20.14ms replayStep=0.04ms checkpoint=19.34ms authority=0.00ms",
+          "[frametime] frame=29839 cadence=139 total=28.77ms replayStep=0.00ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=36295 cadence=295 total=154.45ms replayStep=0.04ms checkpoint=0.00ms authority=0.00ms"
+        ],
+        "clips": [
+          "[netcheck] HOTEL shared clip 1: _demos/TEST ARENA_clip_2026-09-23_08-05-25-766_efb0ac1fb94b468d9569b03e6e3fd799.ppdemo",
+          "[netcheck] HOTEL shared clip 2: _demos/TEST ARENA_clip_2026-09-23_08-05-39-416_a377cebb65f5400b9ddb3c0b816d9bea.ppdemo",
+          "[netcheck] HOTEL shared clip result: _demos/TEST ARENA_clip_2026-09-23_08-05-39-416_a377cebb65f5400b9ddb3c0b816d9bea.ppdemo; error=none"
+        ]
+      },
+      "FOXTROT": {
+        "summary": [
+          "[netcheck] replay killcams: 1 starts, 97 visible frames; capture error=none, playback error=none",
+          "  ran 37800 frame(s) in 765.6 s -- 49.4 fps",
+          "  RESULT: PASS"
+        ],
+        "perf": "[replayperf] Capture=0.071ms max=184.030ms alloc=5969B n=37701 Step=0.054ms max=17.556ms alloc=1173B n=37700 Checkpoint=2.029ms max=33.087ms alloc=90225B n=127 AuthorityCapture=0.000ms max=0.000ms alloc=0B n=0 AuthorityEncode=0.004ms max=0.495ms alloc=502B n=7591 Timeline=0.000ms max=2.850ms alloc=288B n=345814 Enqueue=0.001ms max=1.137ms alloc=0B n=303169 checkpoint=643978B timeline=21863552B facts=29657 GC=292/116/19 simulationP50=0.260ms P95=0.605ms P99=2.003ms max=289.779ms checkpointFrames=126 mean=5.483ms ordinaryMean=0.319ms",
+        "spikes": [
+          "[frametime] frame=7 cadence=7 total=289.78ms replayStep=4.93ms checkpoint=40.50ms authority=0.00ms",
+          "[frametime] frame=88 cadence=88 total=57.62ms replayStep=17.56ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=242 cadence=242 total=157.76ms replayStep=0.08ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=29964 cadence=264 total=30.55ms replayStep=0.00ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=36445 cadence=145 total=154.54ms replayStep=0.11ms checkpoint=0.00ms authority=0.00ms"
+        ],
+        "clips": [
+          "[netcheck] FOXTROT shared clip 1: _demos/TEST ARENA_clip_2026-09-23_08-05-24-852_bdfff783ec8548eeb2703fb63fb41a9b.ppdemo",
+          "[netcheck] FOXTROT shared clip 2: _demos/TEST ARENA_clip_2026-09-23_08-05-38-299_7be6919cc3154447832953408491da6c.ppdemo",
+          "[netcheck] FOXTROT shared clip result: _demos/TEST ARENA_clip_2026-09-23_08-05-38-299_7be6919cc3154447832953408491da6c.ppdemo; error=none"
+        ]
+      },
+      "CHARLIE": {
+        "summary": [
+          "[netcheck] replay killcams: 1 starts, 98 visible frames; capture error=none, playback error=none",
+          "  ran 37800 frame(s) in 764.7 s -- 49.4 fps",
+          "  RESULT: PASS"
+        ],
+        "perf": "[replayperf] Capture=0.071ms max=124.844ms alloc=5935B n=37685 Step=0.054ms max=12.883ms alloc=1868B n=37684 Checkpoint=2.329ms max=63.397ms alloc=80786B n=129 AuthorityCapture=0.000ms max=0.000ms alloc=0B n=0 AuthorityEncode=0.004ms max=0.512ms alloc=502B n=7576 Timeline=0.000ms max=3.036ms alloc=287B n=345482 Enqueue=0.001ms max=1.315ms alloc=0B n=304783 checkpoint=643877B timeline=21086976B facts=28109 GC=285/110/17 simulationP50=0.259ms P95=0.617ms P99=2.039ms max=218.602ms checkpointFrames=128 mean=5.328ms ordinaryMean=0.320ms",
+        "spikes": [
+          "[frametime] frame=7 cadence=7 total=218.60ms replayStep=4.36ms checkpoint=33.44ms authority=0.00ms",
+          "[frametime] frame=129 cadence=129 total=43.52ms replayStep=11.44ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=227 cadence=227 total=51.11ms replayStep=12.88ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=323 cadence=23 total=30.70ms replayStep=5.56ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=401 cadence=101 total=34.69ms replayStep=10.52ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=559 cadence=259 total=96.70ms replayStep=0.04ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=9907 cadence=7 total=65.75ms replayStep=0.04ms checkpoint=63.40ms authority=0.00ms",
+          "[frametime] frame=30188 cadence=188 total=28.14ms replayStep=0.00ms checkpoint=0.00ms authority=0.00ms",
+          "[frametime] frame=36672 cadence=72 total=152.30ms replayStep=0.05ms checkpoint=0.00ms authority=0.00ms"
+        ],
+        "clips": [
+          "[netcheck] CHARLIE shared clip 1: _demos/TEST ARENA_clip_2026-09-23_08-05-20-350_3885f12d657c46fbb83657eac6e117e2.ppdemo",
+          "[netcheck] CHARLIE shared clip 2: _demos/TEST ARENA_clip_2026-09-23_08-05-32-957_93fa61806a384ca791d7282d7c52cee2.ppdemo",
+          "[netcheck] CHARLIE shared clip result: _demos/TEST ARENA_clip_2026-09-23_08-05-32-957_93fa61806a384ca791d7282d7c52cee2.ppdemo; error=none"
+        ]
+      }
+    },
+    "validatedClips": 16,
+    "notes": [
+      "All eight clients completed 37800 ticks and passed; real GL, 400x300, 100 ms RTT, 2% loss, client and server recording.",
+      "Host also ran emulator, replay diagnostics and builds. 48.2-49.5 simulation/draw callbacks per wall-clock second; not high-refresh acceptance.",
+      "Logged spikes are rate limited; they are not a complete frametime trace."
+    ]
+  },
+  "renderedCadenceCheck": {
+    "hz": [
+      60,
+      120,
+      144,
+      240,
+      360,
+      540
+    ],
+    "gameplayFramesEach": 600,
+    "passed": true,
+    "physicalDisplayMeasurement": false
+  },
+  "renderedExportCheck": {
+    "fps": [
+      30,
+      60,
+      120
+    ],
+    "resolutions": [
+      "720p",
+      "4K HUD targets"
+    ],
+    "passed": true
+  },
+  "renderedTheatreCheck": {
+    "frames": 620,
+    "seeks": 4,
+    "passed": true
+  },
+  "androidFollowup": {
+    "ciRun": 35830812016,
+    "testedCommit": "1b8b286",
+    "platform": "API 35 arm64 emulator, SwiftShader",
+    "passed": [
+      "live network killcam with killer/weapon/headshot HUD",
+      "background/resume",
+      "full recording validates",
+      "instant clip validates",
+      "saved clip playback to EOF",
+      "Replay Studio controls open"
+    ],
+    "foundIssue": "Retained Replay Studio Image referred to a disposed bitmap after detachment; fixed with clear-before-dispose and preview reload on reattachment.",
+    "limitations": [
+      "Physical Android GPU/frame pacing not measured",
+      "Emulator rendering has banding/noise",
+      "Fixed lifecycle requires fresh APK retest"
+    ]
+  },
+  "threeVersionRenderComparison": {
+    "clientsPerVersion": 8,
+    "simulationFramesPerClient": 5400,
+    "warmupFrames": 600,
+    "map": "TEST ARENA",
+    "size": "400x300",
+    "rttMs": 100,
+    "packetLossPercent": 2,
+    "recording": true,
+    "requestedFpsCap": 120,
+    "harnessRate": 60,
+    "versions": {
+      "v011": [
+        {
+          "name": "GOLF",
+          "featureChecksPassed": false,
+          "samples": 4800,
+          "meanMs": 16.914790979166654,
+          "p50Ms": 12.0922,
+          "p95Ms": 50.6719,
+          "p99Ms": 58.3783,
+          "p999Ms": 61.096,
+          "maxMs": 61.596,
+          "bytesPerFrame": 67135,
+          "gen0": 40,
+          "gen1": 3,
+          "gen2": 0
+        },
+        {
+          "name": "DELTA",
+          "featureChecksPassed": false,
+          "samples": 4800,
+          "meanMs": 16.67894508333334,
+          "p50Ms": 12.3562,
+          "p95Ms": 51.3588,
+          "p99Ms": 61.6488,
+          "p999Ms": 74.1063,
+          "maxMs": 74.9635,
+          "bytesPerFrame": 66693,
+          "gen0": 40,
+          "gen1": 4,
+          "gen2": 0
+        },
+        {
+          "name": "ALPHA",
+          "featureChecksPassed": false,
+          "samples": 4800,
+          "meanMs": 19.908405562500025,
+          "p50Ms": 12.2192,
+          "p95Ms": 62.4567,
+          "p99Ms": 72.4578,
+          "p999Ms": 78.8615,
+          "maxMs": 81.6049,
+          "bytesPerFrame": 75952,
+          "gen0": 44,
+          "gen1": 4,
+          "gen2": 0
+        },
+        {
+          "name": "ECHO",
+          "featureChecksPassed": false,
+          "samples": 4800,
+          "meanMs": 17.347168520833293,
+          "p50Ms": 11.6718,
+          "p95Ms": 50.8081,
+          "p99Ms": 59.9432,
+          "p999Ms": 67.7324,
+          "maxMs": 70.296,
+          "bytesPerFrame": 68807,
+          "gen0": 41,
+          "gen1": 3,
+          "gen2": 0
+        },
+        {
+          "name": "BRAVO",
+          "featureChecksPassed": false,
+          "samples": 4800,
+          "meanMs": 17.94348093750001,
+          "p50Ms": 10.8755,
+          "p95Ms": 54.486,
+          "p99Ms": 74.4764,
+          "p999Ms": 77.2744,
+          "maxMs": 81.0398,
+          "bytesPerFrame": 69048,
+          "gen0": 40,
+          "gen1": 3,
+          "gen2": 0
+        },
+        {
+          "name": "HOTEL",
+          "featureChecksPassed": false,
+          "samples": 4800,
+          "meanMs": 16.687787270833333,
+          "p50Ms": 11.999,
+          "p95Ms": 46.364,
+          "p99Ms": 59.4637,
+          "p999Ms": 66.6029,
+          "maxMs": 73.9088,
+          "bytesPerFrame": 67203,
+          "gen0": 39,
+          "gen1": 3,
+          "gen2": 0
+        },
+        {
+          "name": "FOXTROT",
+          "featureChecksPassed": false,
+          "samples": 4800,
+          "meanMs": 16.72632245833331,
+          "p50Ms": 12.728,
+          "p95Ms": 47.6264,
+          "p99Ms": 55.0876,
+          "p999Ms": 60.287,
+          "maxMs": 61.2792,
+          "bytesPerFrame": 67041,
+          "gen0": 40,
+          "gen1": 3,
+          "gen2": 0
+        },
+        {
+          "name": "CHARLIE",
+          "featureChecksPassed": false,
+          "samples": 4800,
+          "meanMs": 17.423391645833338,
+          "p50Ms": 13.2164,
+          "p95Ms": 55.1825,
+          "p99Ms": 65.4669,
+          "p999Ms": 74.7419,
+          "maxMs": 74.8048,
+          "bytesPerFrame": 67539,
+          "gen0": 40,
+          "gen1": 3,
+          "gen2": 0
+        }
+      ],
+      "main": [
+        {
+          "name": "GOLF",
+          "featureChecksPassed": true,
+          "samples": 4800,
+          "meanMs": 19.168747541666654,
+          "p50Ms": 14.2947,
+          "p95Ms": 54.5483,
+          "p99Ms": 63.0587,
+          "p999Ms": 74.1413,
+          "maxMs": 75.219,
+          "bytesPerFrame": 157612,
+          "gen0": 86,
+          "gen1": 10,
+          "gen2": 1
+        },
+        {
+          "name": "DELTA",
+          "featureChecksPassed": true,
+          "samples": 4800,
+          "meanMs": 20.59077214583334,
+          "p50Ms": 15.0773,
+          "p95Ms": 53.8944,
+          "p99Ms": 62.179,
+          "p999Ms": 66.6459,
+          "maxMs": 91.0442,
+          "bytesPerFrame": 160983,
+          "gen0": 87,
+          "gen1": 11,
+          "gen2": 1
+        },
+        {
+          "name": "ALPHA",
+          "featureChecksPassed": true,
+          "samples": 4800,
+          "meanMs": 24.097746479166616,
+          "p50Ms": 18.6693,
+          "p95Ms": 60.3302,
+          "p99Ms": 91.7299,
+          "p999Ms": 103.3244,
+          "maxMs": 105.2214,
+          "bytesPerFrame": 171217,
+          "gen0": 94,
+          "gen1": 11,
+          "gen2": 1
+        },
+        {
+          "name": "ECHO",
+          "featureChecksPassed": true,
+          "samples": 4800,
+          "meanMs": 17.861621854166703,
+          "p50Ms": 10.9546,
+          "p95Ms": 53.7022,
+          "p99Ms": 67.9822,
+          "p999Ms": 77.9928,
+          "maxMs": 82.5487,
+          "bytesPerFrame": 154221,
+          "gen0": 84,
+          "gen1": 10,
+          "gen2": 1
+        },
+        {
+          "name": "BRAVO",
+          "featureChecksPassed": true,
+          "samples": 4800,
+          "meanMs": 21.073621791666675,
+          "p50Ms": 14.9437,
+          "p95Ms": 58.279,
+          "p99Ms": 77.4133,
+          "p999Ms": 94.1222,
+          "maxMs": 95.4414,
+          "bytesPerFrame": 161340,
+          "gen0": 89,
+          "gen1": 10,
+          "gen2": 1
+        },
+        {
+          "name": "HOTEL",
+          "featureChecksPassed": true,
+          "samples": 4800,
+          "meanMs": 20.53221885416666,
+          "p50Ms": 14.5999,
+          "p95Ms": 58.2249,
+          "p99Ms": 68.428,
+          "p999Ms": 76.3695,
+          "maxMs": 80.5521,
+          "bytesPerFrame": 160480,
+          "gen0": 87,
+          "gen1": 11,
+          "gen2": 1
+        },
+        {
+          "name": "FOXTROT",
+          "featureChecksPassed": true,
+          "samples": 4800,
+          "meanMs": 19.651711145833307,
+          "p50Ms": 14.7536,
+          "p95Ms": 49.87,
+          "p99Ms": 65.3966,
+          "p999Ms": 83.4192,
+          "maxMs": 208.4972,
+          "bytesPerFrame": 182887,
+          "gen0": 100,
+          "gen1": 11,
+          "gen2": 1
+        },
+        {
+          "name": "CHARLIE",
+          "featureChecksPassed": true,
+          "samples": 4800,
+          "meanMs": 19.952406333333336,
+          "p50Ms": 13.1733,
+          "p95Ms": 59.5729,
+          "p99Ms": 71.8509,
+          "p999Ms": 83.1622,
+          "maxMs": 93.5495,
+          "bytesPerFrame": 159702,
+          "gen0": 88,
+          "gen1": 10,
+          "gen2": 1
+        }
+      ],
+      "updated": [
+        {
+          "name": "GOLF",
+          "featureChecksPassed": true,
+          "samples": 4800,
+          "meanMs": 18.737443416666657,
+          "p50Ms": 13.21,
+          "p95Ms": 52.8898,
+          "p99Ms": 72.7058,
+          "p999Ms": 88.8159,
+          "maxMs": 206.174,
+          "bytesPerFrame": 64262,
+          "gen0": 31,
+          "gen1": 14,
+          "gen2": 2
+        },
+        {
+          "name": "DELTA",
+          "featureChecksPassed": true,
+          "samples": 4800,
+          "meanMs": 21.52602572916671,
+          "p50Ms": 15.7906,
+          "p95Ms": 61.8963,
+          "p99Ms": 83.166,
+          "p999Ms": 92.5315,
+          "maxMs": 206.4506,
+          "bytesPerFrame": 72461,
+          "gen0": 35,
+          "gen1": 18,
+          "gen2": 2
+        },
+        {
+          "name": "ALPHA",
+          "featureChecksPassed": true,
+          "samples": 4800,
+          "meanMs": 23.458333562499977,
+          "p50Ms": 16.6319,
+          "p95Ms": 58.4586,
+          "p99Ms": 70.617,
+          "p999Ms": 78.5375,
+          "maxMs": 206.2795,
+          "bytesPerFrame": 75252,
+          "gen0": 34,
+          "gen1": 16,
+          "gen2": 0
+        },
+        {
+          "name": "ECHO",
+          "featureChecksPassed": true,
+          "samples": 4800,
+          "meanMs": 18.162302916666665,
+          "p50Ms": 14.7162,
+          "p95Ms": 55.8733,
+          "p99Ms": 74.8682,
+          "p999Ms": 87.6268,
+          "maxMs": 205.8155,
+          "bytesPerFrame": 60038,
+          "gen0": 28,
+          "gen1": 11,
+          "gen2": 2
+        },
+        {
+          "name": "BRAVO",
+          "featureChecksPassed": true,
+          "samples": 4800,
+          "meanMs": 21.12046641666669,
+          "p50Ms": 13.9741,
+          "p95Ms": 60.8056,
+          "p99Ms": 82.483,
+          "p999Ms": 91.2638,
+          "maxMs": 206.1162,
+          "bytesPerFrame": 89347,
+          "gen0": 43,
+          "gen1": 17,
+          "gen2": 2
+        },
+        {
+          "name": "HOTEL",
+          "featureChecksPassed": true,
+          "samples": 4800,
+          "meanMs": 20.64957116666661,
+          "p50Ms": 14.1499,
+          "p95Ms": 59.8747,
+          "p99Ms": 71.3945,
+          "p999Ms": 78.4673,
+          "maxMs": 206.0344,
+          "bytesPerFrame": 71731,
+          "gen0": 34,
+          "gen1": 16,
+          "gen2": 2
+        },
+        {
+          "name": "FOXTROT",
+          "featureChecksPassed": true,
+          "samples": 4800,
+          "meanMs": 18.005646458333363,
+          "p50Ms": 11.0001,
+          "p95Ms": 59.0087,
+          "p99Ms": 75.1735,
+          "p999Ms": 84.593,
+          "maxMs": 205.108,
+          "bytesPerFrame": 61690,
+          "gen0": 29,
+          "gen1": 14,
+          "gen2": 2
+        },
+        {
+          "name": "CHARLIE",
+          "featureChecksPassed": true,
+          "samples": 4800,
+          "meanMs": 19.72272364583333,
+          "p50Ms": 15.476,
+          "p95Ms": 56.9173,
+          "p99Ms": 70.9563,
+          "p999Ms": 75.901,
+          "maxMs": 206.6062,
+          "bytesPerFrame": 85230,
+          "gen0": 42,
+          "gen1": 16,
+          "gen2": 2
+        }
+      ]
+    },
+    "notes": [
+      "Identical timestamp and allocation instrumentation around NetCheckClient.OnRenderFrame; includes rendering and SwapBuffers, excludes pacing wait. These are callback work times, not display intervals or FPS percentiles.",
+      "Archived source builds: v0.1.11, main 55e78f4, branch 1b8b286. Historical netcheck GL request changed from 3.2 compatibility to macOS-compatible 2.1; unchanged executable could not start this harness.",
+      "Sequential runs on shared host; Android emulator and other work active, not controlled hardware benchmarks.",
+      "Historical v0.1.11 completed all 5400 ticks but its combat feature coverage assertions failed; main and updated passed.",
+      "Allocation improves substantially versus main; aggregate p99 and p999 do not. Stable frametime acceptance remains unproven."
+    ]
   }
 }

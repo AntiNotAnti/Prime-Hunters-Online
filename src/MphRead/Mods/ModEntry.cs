@@ -1803,6 +1803,11 @@ namespace MphRead.Mods
                 Environment.ExitCode = Network.ReplayKillcamCheck.Run(killcamSource, ValueAfter(args, "shots"));
                 return true;
             }
+            if (ValueAfter(args, "replaycadencecheck") is string cadenceSource)
+            {
+                Environment.ExitCode = Network.ReplayCadenceCheck.Run(cadenceSource);
+                return true;
+            }
             if (ValueAfter(args, "replayexportcheck") is string exportSource)
             {
                 Environment.ExitCode = Network.ReplayExportCheck.Run(exportSource, ValueAfter(args, "output") ?? System.IO.Path.Combine(System.IO.Path.GetTempPath(), "prime-replay-export-check"));

@@ -310,6 +310,31 @@ namespace MphRead.Mods.Launcher.Gui
             GamepadChecks.Check(replayStudioClosed == 1,
                 "Replay Studio Back accepts a pointer click");
 
+            // Retained Android launcher views are detached during playback and
+            // measured again on return. Exercise an actual owned thumbnail,
+            // including environments whose replay library is empty.
+            var flags = System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.NonPublic;
+            var preview = (Image)typeof(HubReplayStudioView)
+                .GetField("_preview", flags)!.GetValue(replayStudio)!;
+            var ownedBitmap = typeof(HubReplayStudioView).GetField("_bitmap", flags)!;
+            preview.Source = null;
+            (ownedBitmap.GetValue(replayStudio) as IDisposable)?.Dispose();
+            var testBitmap = new Avalonia.Media.Imaging.WriteableBitmap(
+                new PixelSize(2, 2), new Vector(96, 96),
+                Avalonia.Platform.PixelFormat.Rgba8888, Avalonia.Platform.AlphaFormat.Opaque);
+            ownedBitmap.SetValue(replayStudio, testBitmap);
+            preview.Source = testBitmap;
+            window.Content = null;
+            GamepadChecks.Check(preview.Source == null,
+                "Replay Studio detaches thumbnail before disposing it");
+            window.Content = replayStudio;
+            window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+            if (preview.Source != null)
+                _ = preview.Source.Size;
+            GamepadChecks.Check(true,
+                "Replay Studio can reattach and measure after playback");
+
             var settingsHub = new HubSettingsView();
             window.Content = settingsHub; window.UpdateLayout(); Dispatcher.UIThread.RunJobs();
             var displaySettings = ControllerNav.Find(settingsHub, "settings.display");
