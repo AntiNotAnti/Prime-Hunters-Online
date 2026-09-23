@@ -139,6 +139,7 @@ namespace MphRead.Droid
                 // as long as the panel is drawn.
                 return HandUp(surface, e);
             }
+            bool redraw = false;
             switch (e.ActionMasked)
             {
             case MotionEventActions.Down:
@@ -146,26 +147,95 @@ namespace MphRead.Droid
                 {
                     int index = e.ActionIndex;
                     _controls.PointerDown(e.GetPointerId(index), e.GetX(index), e.GetY(index));
+                    redraw = true;
                 }
                 break;
             case MotionEventActions.Move:
-                for (int i = 0; i < e.PointerCount; i++)
-                {
-                    _controls.PointerMove(e.GetPointerId(i), e.GetX(i), e.GetY(i));
-                }
+                redraw = DispatchMoveSamples(e);
                 break;
             case MotionEventActions.Up:
             case MotionEventActions.PointerUp:
+                // An UP can carry the last bit of movement too. Feed it before
+                // releasing ownership so a short final flick is not lost.
+                redraw = DispatchMoveSamples(e);
                 _controls.PointerUp(e.GetPointerId(e.ActionIndex));
+                redraw = true;
                 break;
             case MotionEventActions.Cancel:
                 _controls.ReleaseEverything();
+                redraw = true;
                 break;
             default:
                 return false;
             }
-            Invalidate();
+            if (redraw)
+            {
+                Invalidate();
+            }
             return true;
+        }
+
+        // A real device commonly batches several high-rate digitizer samples
+        // into one UI-thread MotionEvent. Replaying the whole history keeps the
+        // distance, velocity and gesture timing intact. For presentation, the
+        // batch is spread over at most 20 ms, centred on delivery: half is
+        // immediately eligible and half is allowed to land on the next
+        // high-refresh frame(s). The 60 Hz simulation still consumes the exact
+        // complete delta without this presentation timing.
+        private const long AimReplayWindowMs = 20;
+
+        private bool DispatchMoveSamples(MotionEvent e)
+        {
+            int history = e.HistorySize;
+            long deliveredAt = Environment.TickCount64;
+            long firstEventTime = history > 0
+                ? e.GetHistoricalEventTime(0)
+                : e.EventTime;
+            long eventSpan = Math.Max(0, e.EventTime - firstEventTime);
+            long replayWindow = Math.Min(eventSpan, AimReplayWindowMs);
+            long replayStart = deliveredAt - replayWindow / 2;
+            bool redraw = false;
+
+            for (int h = 0; h < history; h++)
+            {
+                long sourceTime = e.GetHistoricalEventTime(h);
+                long presentAt = PresentationTime(
+                    sourceTime, firstEventTime, eventSpan, replayStart, replayWindow);
+                for (int i = 0; i < e.PointerCount; i++)
+                {
+                    redraw |= _controls.PointerMove(
+                        e.GetPointerId(i),
+                        e.GetHistoricalX(i, h),
+                        e.GetHistoricalY(i, h),
+                        sourceTime,
+                        presentAt);
+                }
+            }
+
+            long currentPresentAt = history > 0
+                ? replayStart + replayWindow
+                : deliveredAt;
+            for (int i = 0; i < e.PointerCount; i++)
+            {
+                redraw |= _controls.PointerMove(
+                    e.GetPointerId(i),
+                    e.GetX(i),
+                    e.GetY(i),
+                    e.EventTime,
+                    currentPresentAt);
+            }
+            return redraw;
+        }
+
+        private static long PresentationTime(long sourceTime, long firstEventTime,
+            long eventSpan, long replayStart, long replayWindow)
+        {
+            if (eventSpan <= 0 || replayWindow <= 0)
+            {
+                return replayStart;
+            }
+            double progress = (sourceTime - firstEventTime) / (double)eventSpan;
+            return replayStart + (long)Math.Round(progress * replayWindow);
         }
 
         /// <summary>
