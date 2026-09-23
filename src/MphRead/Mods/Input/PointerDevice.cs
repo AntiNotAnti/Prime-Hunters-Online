@@ -24,9 +24,18 @@ namespace MphRead.Mods.Input
         private static float _pendingX;
         private static float _pendingY;
         // Some tablet drivers briefly report pen-up while handing an active
-        // contact to a new native pointer id. Do not let that one sample re-arm
-        // one-shot DS buttons; a release must survive one complete update.
+        // contact to a new native pointer id. Render callbacks can run 2-4x
+        // faster than gameplay, so "one more render update" is not a stable
+        // debounce. A release must survive a 60 Hz simulation boundary before
+        // it can re-arm a one-shot DS button.
         private static bool _stylusReleasePending;
+        private static bool _stylusReleaseObservedBySimulation;
+
+        // Input surfaces are allowed to close between simulation steps. If the
+        // pointer is still held while a menu/settings surface owns it, keep that
+        // contact quarantined until a real release instead of turning the UI
+        // click into a gameplay press on the first frame back.
+        private static bool _blockedContactUntilRelease;
 
         public static void Update(PointerSample sample, int width, int height,
             bool independentPrimaryDown = false, bool acceptsInput = true)
@@ -41,28 +50,62 @@ namespace MphRead.Mods.Input
             bool hadPendingRelease = _stylusReleasePending;
             bool rawContact = Active && acceptsInput && sample.InContact;
             bool effectiveContact = rawContact;
-            if (!Active || !acceptsInput)
+            if (!Active)
             {
                 _stylusReleasePending = false;
+                _stylusReleaseObservedBySimulation = false;
+                _blockedContactUntilRelease = false;
+            }
+            else if (!acceptsInput)
+            {
+                _stylusReleasePending = false;
+                _stylusReleaseObservedBySimulation = false;
+                _blockedContactUntilRelease = sample.InContact;
+                effectiveContact = false;
+            }
+            else if (_blockedContactUntilRelease)
+            {
+                // A button/tip that was already down while a menu, settings page,
+                // focus transition or dialog owned input must never become a new
+                // gameplay press. Only a real neutral sample re-arms it.
+                if (!sample.InContact)
+                {
+                    _blockedContactUntilRelease = false;
+                }
+                _stylusReleasePending = false;
+                _stylusReleaseObservedBySimulation = false;
+                effectiveContact = false;
             }
             else if (rawContact)
             {
-                // A new down immediately after a one-frame up is the same physical
-                // gesture. This is the common WM_POINTER handoff shape on tablets.
+                // A new down before the pending release crossed a simulation
+                // boundary is the same physical gesture.
                 _stylusReleasePending = false;
+                _stylusReleaseObservedBySimulation = false;
             }
             else if (wasActive && previous.Device == PointerDeviceType.Pen
                 && previous.InContact && sample.Device == PointerDeviceType.Pen)
             {
                 _stylusReleasePending = true;
+                _stylusReleaseObservedBySimulation = false;
                 effectiveContact = true;
             }
             else if (hadPendingRelease)
             {
-                // The up survived another update, so it is a real release and
-                // may re-arm the next one-shot DS button touch.
-                _stylusReleasePending = false;
-                effectiveContact = false;
+                if (_stylusReleaseObservedBySimulation)
+                {
+                    // The release survived gameplay's own clock. It is now safe
+                    // to end the gesture and let the next contact create one edge.
+                    _stylusReleasePending = false;
+                    _stylusReleaseObservedBySimulation = false;
+                    effectiveContact = false;
+                }
+                else
+                {
+                    // However many pictures happen before the next simulation
+                    // step, this remains the same held gesture.
+                    effectiveContact = true;
+                }
             }
 
             // Some pen/tablet drivers rotate WM_POINTER identities while the tip
@@ -80,7 +123,8 @@ namespace MphRead.Mods.Input
             }
             StylusZone.Update(sample.X / Math.Max(width, 1), sample.Y / Math.Max(height, 1),
                 effectiveContact);
-            PrimaryDown = acceptsInput && ResolvePrimary(sample.PrimaryDown, independentPrimaryDown,
+            bool gameplayPrimary = effectiveContact && sample.PrimaryDown;
+            PrimaryDown = acceptsInput && ResolvePrimary(gameplayPrimary, independentPrimaryDown,
                 StylusZone.CapturingPrimaryButton || StylusZone.Placing);
             if (!Active || !acceptsInput || !wasActive || identityChanged)
             {
@@ -106,6 +150,18 @@ namespace MphRead.Mods.Input
         public static bool ResolvePrimary(bool tipDown, bool independentDown, bool captured)
             => independentDown || (tipDown && !captured);
 
+        /// <summary>
+        /// Advance the pointer debounce on gameplay's fixed 60 Hz clock.
+        /// Render frequency must never decide when a one-shot stylus action rearms.
+        /// </summary>
+        internal static void AdvanceSimulationStep()
+        {
+            if (_stylusReleasePending)
+            {
+                _stylusReleaseObservedBySimulation = true;
+            }
+        }
+
         /// <summary>Consume once per simulation step, including when multiple steps share a picture.</summary>
         public static (float X, float Y) TakeDelta()
         {
@@ -122,6 +178,8 @@ namespace MphRead.Mods.Input
             PrimaryDown = false;
             _pendingX = _pendingY = 0;
             _stylusReleasePending = false;
+            _stylusReleaseObservedBySimulation = false;
+            _blockedContactUntilRelease = false;
             StylusZone.Reset();
         }
     }
@@ -136,6 +194,16 @@ namespace MphRead.Mods.Input
         {
             PreviousDown = Down;
             Down = PointerDevice.ResolvePrimary(rawDown, independentDown, captured);
+        }
+
+        /// <summary>
+        /// Move the primary-button baseline without manufacturing an edge.
+        /// Used while a UI surface owns input so a held UI click cannot leak
+        /// into gameplay when that surface closes.
+        /// </summary>
+        public void Synchronize(bool rawDown, bool captured, bool independentDown = false)
+        {
+            Down = PreviousDown = PointerDevice.ResolvePrimary(rawDown, independentDown, captured);
         }
 
         public bool Resolve(Keybind control)

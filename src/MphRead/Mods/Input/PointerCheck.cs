@@ -185,12 +185,40 @@ namespace MphRead.Mods.Input
                 && StylusZone.TakePressed() == StylusRegion.None,
                 "WPN handoff after transient release does not repeat the action");
 
-            // A release that survives a complete additional update is genuine.
+            // Render frequency must not decide when the action rearms. At 240 Hz
+            // several up samples can arrive before gameplay advances once; all of
+            // them still belong to the same gesture until a 60 Hz step observes it.
             Frame(weaponX, weaponY, false, id: 12);
             Frame(weaponX, weaponY, false, id: 12);
+            Frame(weaponX, weaponY, false, id: 12);
+            Require(StylusZone.Held == StylusRegion.Weapons
+                && StylusZone.TakePressed() == StylusRegion.None,
+                "high-refresh release samples cannot rearm WPN before simulation");
+            PointerDevice.AdvanceSimulationStep();
+            Frame(weaponX, weaponY, false, id: 12);
+            Require(StylusZone.Held == StylusRegion.None,
+                "release ends only after crossing a simulation boundary");
             Frame(weaponX, weaponY, true, id: 13);
             Require(StylusZone.TakePressed() == StylusRegion.Weapons,
                 "stable WPN release rearms the next touch");
+
+            // A settings/menu click may still be physically held when the overlay
+            // closes. That contact is UI-owned and must stay quarantined until a
+            // real release, rather than becoming a fresh gameplay WPN press.
+            PointerDevice.Reset();
+            PointerInput.StylusMode = true;
+            StylusZone.Enabled = true;
+            StylusZone.AspectCorrection = 1920f / 1080;
+            StylusZone.SetRect(0, 0, 1);
+            Frame(weaponX, weaponY, true, acceptsInput: false, id: 20);
+            Frame(weaponX, weaponY, true, acceptsInput: true, id: 20);
+            Require(!StylusZone.CapturingPointer
+                && StylusZone.TakePressed() == StylusRegion.None,
+                "held UI contact cannot click through into gameplay");
+            Frame(weaponX, weaponY, false, acceptsInput: true, id: 20);
+            Frame(weaponX, weaponY, true, acceptsInput: true, id: 21);
+            Require(StylusZone.TakePressed() == StylusRegion.Weapons,
+                "UI-owned contact rearms only after a real release");
 
             foreach (StylusZone.Button button in StylusZone.Buttons)
             {
@@ -253,6 +281,42 @@ namespace MphRead.Mods.Input
             var controls = player.Controls;
             var processTouchInput = typeof(PlayerEntity).GetMethod("ProcessTouchInput",
                 BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+            // Suppressed gameplay must clear the shared Keybind surface and still
+            // advance its raw baselines. Otherwise a one-frame press stays asserted
+            // for every suppressed step, or a key held in Settings becomes a new
+            // gameplay edge when Settings closes.
+            controls.NextWeapon.Type = ButtonType.Key;
+            controls.NextWeapon.Key = Keys.H;
+            setKey(keyboard, Keys.H, true);
+            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            Require(controls.NextWeapon.IsDown && controls.NextWeapon.IsPressed,
+                "keyboard weapon edge begins normally");
+            PlayerEntity.ProcessInput(keyboard, mouse, true);
+            Require(!controls.NextWeapon.IsDown && !controls.NextWeapon.IsPressed
+                && !controls.NextWeapon.IsReleased,
+                "suppressed gameplay clears stale held and pressed keybind state");
+            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            Require(controls.NextWeapon.IsDown && !controls.NextWeapon.IsPressed,
+                "held UI key resumes as state, not a new gameplay edge");
+            setKey(keyboard, Keys.H, false);
+            PlayerEntity.ProcessInput(keyboard, mouse, false);
+
+            // The overlay can open and close entirely between two simulation steps
+            // on a high-refresh display. The context revision must still quarantine
+            // the held key for the first gameplay step after that transition.
+            setKey(keyboard, Keys.H, true);
+            Mods.Input.GamepadContexts.MenuVisible = true;
+            Mods.Input.GamepadContexts.MenuVisible = false;
+            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            Require(!controls.NextWeapon.IsDown && !controls.NextWeapon.IsPressed,
+                "between-step UI transition cannot leak a held key into gameplay");
+            PlayerEntity.ProcessInput(keyboard, mouse, false);
+            Require(controls.NextWeapon.IsDown && !controls.NextWeapon.IsPressed,
+                "post-transition held key remains edge-neutral until release");
+            setKey(keyboard, Keys.H, false);
+            PlayerEntity.ProcessInput(keyboard, mouse, false);
+
             PointerDevice.Reset();
             PointerInput.StylusMode = true;
             StylusZone.Enabled = true;
