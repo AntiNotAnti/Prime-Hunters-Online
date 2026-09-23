@@ -11,6 +11,7 @@ internal static class ReplayLiveCaptureCheck
 {
     internal static int Run(string path)
     {
+        ReplayPerfTelemetry.Enabled = true;
         Headless.Enter();
         var live = new Scene(new Vector2i(256, 192), SyntheticInput.CreateKeyboard(), SyntheticInput.CreateMouse(),
             _ => { }, () => { }, initializeRuntime: false);
@@ -46,6 +47,7 @@ internal static class ReplayLiveCaptureCheck
                 || clip.RestorePoint.Kind != ReplayRestoreKind.ReplicaCheckpoint)
                 throw new InvalidDataException("Live world did not produce a restorable clip.");
             long bytes = recorder.Timeline.PayloadBytes;
+            Console.WriteLine(ReplayPerfTelemetry.Summary(recorder.Timeline));
             recorder.Reset(); // the playing clip must outlive a live match transition
             using var player = new PassiveReplayPlayer(clip, new Vector2i(256, 192));
             int comparisons = 0;

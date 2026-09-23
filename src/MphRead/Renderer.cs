@@ -1637,6 +1637,7 @@ namespace MphRead
         /// </summary>
         public void OnUpdateFrame()
         {
+            using var replayPerfFrame = Mods.Network.ReplayPerfTelemetry.Frame();
             OnSimulationFrame();
             OnDrawFrame();
         }

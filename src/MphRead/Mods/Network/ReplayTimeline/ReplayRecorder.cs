@@ -119,7 +119,8 @@ internal sealed class ReplayRecorder
 
     private void Publish(ReplayTimelineRecord record)
     {
-        if (!Timeline.NeedsRestorePoint) Timeline.Append(record);
+        using (ReplayPerfTelemetry.Measure(ReplayPerfOperation.Timeline))
+            if (!Timeline.NeedsRestorePoint) Timeline.Append(record);
         Accepted?.Invoke(record);
     }
 

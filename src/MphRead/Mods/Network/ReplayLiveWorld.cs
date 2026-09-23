@@ -69,7 +69,8 @@ internal sealed class ReplayLiveWorld : IDisposable
             }
             else if (_world.Session.CurrentFrame == frame) return;
             var timer = Stopwatch.StartNew();
-            _world.StepLive(frame, _pending);
+            using (ReplayPerfTelemetry.Measure(ReplayPerfOperation.Step))
+                _world.StepLive(frame, _pending);
             _pending.Clear(); _pendingBytes = 0;
             LastStepMilliseconds = timer.Elapsed.TotalMilliseconds;
             if (_recorder.Timeline.NeedsRestorePoint || frame - _lastCheckpoint >= 300)

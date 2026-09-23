@@ -76,6 +76,7 @@ internal sealed class ReplayAuthorityWorld
     }
     internal byte[] Encode()
     {
+        using var perf = ReplayPerfTelemetry.Measure(ReplayPerfOperation.AuthorityEncode);
         using var stream = new MemoryStream(); using var w = new BinaryWriter(stream);
         w.Write((byte)2); w.Write(MatchId); w.Write(Epoch); w.Write(Tick);
         Actor(Prime); w.Write((byte)Phase); w.Write(MatchTime); w.Write((byte)EndCause); w.Write(EndingKill.HasValue);

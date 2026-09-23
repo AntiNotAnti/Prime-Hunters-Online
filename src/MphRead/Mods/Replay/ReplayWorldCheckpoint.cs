@@ -137,6 +137,7 @@ internal sealed class ReplayWorldCheckpoint
 
     internal static ReplayWorldCheckpoint Capture(PassiveReplayScene replay, uint? recordingFrame = null)
     {
+        using var perf = ReplayPerfTelemetry.Measure(ReplayPerfOperation.Checkpoint);
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream);
         writer.Write(Magic); writer.Write(Version); writer.Write(Contract);
@@ -153,6 +154,7 @@ internal sealed class ReplayWorldCheckpoint
         WriteBytes(writer, ReplayAssetCheckpoint.Capture(replay.Scene));
         writer.Flush();
         if (stream.Length > MaximumBytes) throw new InvalidDataException("Replay world exceeds its checkpoint budget.");
+        ReplayPerfTelemetry.CheckpointBytes = stream.Length;
         return new(stream.ToArray(), frame);
     }
 

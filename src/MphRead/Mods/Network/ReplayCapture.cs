@@ -37,6 +37,7 @@ namespace MphRead.Mods.Network
         internal static void AfterSimulation(Scene scene)
         {
             if (scene.Services.IsReplica) return;
+            using var perf = ReplayPerfTelemetry.Measure(ReplayPerfOperation.Capture);
             DemoClip.Tick(scene.Size);
             if (DemoPlayback.IsActive || !NetSession.Active || !scene.GameState.Multiplayer) return;
             Recorder.Timeline.SetHistoryFrames((uint)Math.Max(45, DemoClip.Seconds + DemoClip.PostRollSeconds) * 60);
@@ -45,6 +46,7 @@ namespace MphRead.Mods.Network
             {
                 try
                 {
+                    using var authorityPerf = ReplayPerfTelemetry.Measure(ReplayPerfOperation.AuthorityCapture);
                     var world = ReplayAuthorityWorld.Capture(scene, NetSession.CurrentMatchId, NetSession.AuthorityEpoch, NetSession.NetFrame, IdentifyDrop);
                     ClassifyEnd(scene, world);
                     AcceptWorld(world); NetSession.SendReplayWorld(world);
