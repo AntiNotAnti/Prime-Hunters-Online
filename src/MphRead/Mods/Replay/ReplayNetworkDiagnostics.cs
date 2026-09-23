@@ -90,7 +90,7 @@ namespace MphRead.Mods.Replay
             {
                 ReplayNetworkSnapshot value = Snapshot();
                 double kb = value.Bytes / 1024d;
-                return $"{value.Packets} packets · {kb:0.0} KiB · "
+                return Network.ReplayPerfTelemetry.Summary(Network.ReplayCapture.Recorder.Timeline) + " · " + $"{value.Packets} packets · {kb:0.0} KiB · "
                     + $"{value.Snapshots} snapshots · {value.Intents} intents · "
                     + $"max snapshot gap {value.MaxSnapshotGapFrames}f · "
                     + $"max burst {value.MaxPacketsInFrame}";

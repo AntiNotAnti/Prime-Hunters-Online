@@ -2655,7 +2655,7 @@ namespace MphRead.Entities
         public PlayerControls Controls { get; } = PlayerControls.GetDefault();
         private PlayerInput Input { get; } = new PlayerInput();
 
-        private class PlayerInput
+        internal class PlayerInput
         {
             public KeyboardState? PrevKeyboardState { get; set; }
             public KeyboardState? KeyboardState { get; set; }

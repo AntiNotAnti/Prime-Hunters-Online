@@ -238,7 +238,7 @@ namespace MphRead.Mods.Network
         /// Mods.EndScreen) -- a server that rotated early would take the
         /// question away mid-answer.
         /// </summary>
-        private const double EndSequenceSeconds = 3.0 + GameState.MatchEndingSeconds + 1.0;
+        internal const double EndSequenceSeconds = GameState.MatchFinalCameraSeconds + GameState.MatchEndingSeconds + 1.0;
 
         /// <summary>
         /// Post-match is a fixed decision window. Map selection is itself the

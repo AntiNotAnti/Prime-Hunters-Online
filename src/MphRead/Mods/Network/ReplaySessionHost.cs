@@ -1,3 +1,4 @@
+using System;
 
 namespace MphRead.Mods.Network
 {
@@ -10,7 +11,7 @@ namespace MphRead.Mods.Network
         void Start();
         void Stop();
         void Rewind();
-        void Inject(byte[] packet, uint frame);
+        void Inject(ReadOnlySpan<byte> packet, uint frame);
         void Advance(double seconds);
         void RestoreClock(uint frame);
         void ResetDiagnostics();
@@ -27,7 +28,7 @@ namespace MphRead.Mods.Network
         public void Start() => State.Reset();
         public void Stop() => State.Reset();
         public void Rewind() => State.Rewind();
-        public void Inject(byte[] packet, uint frame) => State.Accept(packet, frame);
+        public void Inject(ReadOnlySpan<byte> packet, uint frame) => State.Accept(packet, frame);
         public void Advance(double seconds) { }
         public void RestoreClock(uint frame) => State.Rewind();
         public void ResetDiagnostics() { }

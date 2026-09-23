@@ -26,7 +26,10 @@ namespace MphRead.Mods.Network
             try
             {
                 if (Session.Metadata?.WorldCheckpoint is { Length: > 0 } bytes)
-                    Replay.ReplayWorldCheckpoint.FromBytes(bytes).Restore(this, playbackFrame: 0);
+                {
+                    using var checkpoint = Replay.ReplayWorldCheckpoint.FromBytes(bytes);
+                    checkpoint.Restore(this, playbackFrame: 0);
+                }
                 Scene.ReplayPoses = new(this, path);
             }
             catch { Dispose(); throw; }
@@ -37,7 +40,8 @@ namespace MphRead.Mods.Network
         {
             try
             {
-                Checkpoint(clip).Restore(this);
+                using var checkpoint = Checkpoint(clip);
+                checkpoint.Restore(this);
                 Session.Transport.ContinueSeek(clip.StartRecordingFrame, resume: true);
                 Session.Transport.AfterFrame();
                 Scene.ReplayPoses = new(this, clip);
@@ -48,10 +52,10 @@ namespace MphRead.Mods.Network
         {
             if (clip.RestorePoint.Kind != ReplayRestoreKind.ReplicaCheckpoint)
                 throw new InvalidDataException("A network baseline cannot restore a historical world.");
-            var record = clip.RestorePoint.Records.SingleOrDefault(r => r.Kind == ReplayFactKind.World)
-                ?? throw new InvalidDataException("The clip has no historical world checkpoint.");
+            var record = clip.RestorePoint.Records.Single(r => r.Kind == ReplayFactKind.World);
             var checkpoint = Replay.ReplayWorldCheckpoint.FromBytes(record.Payload);
-            if (checkpoint.Frame != clip.RestorePoint.RecordingFrame) throw new InvalidDataException("Checkpoint frame differs from the clip index.");
+            if (checkpoint.Frame != clip.RestorePoint.RecordingFrame)
+            { checkpoint.Dispose(); throw new InvalidDataException("Checkpoint frame differs from the clip index."); }
             return checkpoint;
         }
         private static ReplayPlaybackSession Open(string path)
@@ -68,7 +72,7 @@ namespace MphRead.Mods.Network
         }
         private static ReplayPlaybackSession Open(ReplayTimelineClip clip)
         {
-            var checkpoint = Checkpoint(clip);
+            using var checkpoint = Checkpoint(clip);
             var session = new ReplayPlaybackSession(new PassiveReplaySessionHost());
             try { session.Join(clip, checkpoint.ConstructionState()); return session; }
             catch { session.Dispose(); throw; }

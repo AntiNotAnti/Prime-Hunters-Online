@@ -86,6 +86,8 @@ internal static class KillCam
         }
         Controller.Update(scene, Context(scene));
     }
+    internal static bool FinalPresentationPending => _finalRequested
+        || IsFinal && Controller.State != KillcamState.AwaitCompletion;
     internal static bool BeginFinal(uint frame)
     {
         _finalRequested = true; _finalRequestedFrame = NetSession.NetFrame; return false;

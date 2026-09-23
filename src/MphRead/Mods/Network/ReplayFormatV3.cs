@@ -287,9 +287,10 @@ namespace MphRead.Mods.Network
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (_version != 4 || bytes.Length is < 1 or > Replay.ReplayWorldCheckpoint.MaximumBytes
-                || frame > ReplayFormatV3.MaxFrame
-                || Replay.ReplayWorldCheckpoint.FromBytes(bytes).Frame != (ulong)frame + _origin)
+                || frame > ReplayFormatV3.MaxFrame)
                 throw new InvalidDataException("Invalid durable replay checkpoint.");
+            using var checkpoint = Replay.ReplayWorldCheckpoint.FromBytes(bytes);
+            if (checkpoint.Frame != (ulong)frame + _origin) throw new InvalidDataException("Invalid durable replay checkpoint clock.");
             if (_checkpoints.Count > 0 && frame <= _checkpoints[^1].Frame) return;
             if (_checkpoints.Count >= ReplayFormatV3.MaxCheckpoints) return;
             using var compressed = new MemoryStream();

@@ -16,7 +16,7 @@ internal sealed class ReplayLiveWorld : IDisposable
     private const int MaximumPendingBytes = 4 * 1024 * 1024;
     private readonly ReplayRecorder _recorder;
     private readonly ReplayReplicaState _bootstrap = new();
-    private readonly List<ReplayTimelineRecord> _pending = new();
+    private readonly List<ReplayTimelineRecord> _pending = new(512);
     private PassiveReplayScene? _world;
     private bool _reset = true, _failed;
     private long _pendingBytes;
@@ -32,29 +32,41 @@ internal sealed class ReplayLiveWorld : IDisposable
         _recorder = recorder; recorder.ProducesWorldCheckpoints = true;
         recorder.Accepted += Accept; recorder.Resetting += Reset;
     }
+    private void ClearPending()
+    {
+        foreach (var record in _pending) record.Release();
+        _pending.Clear(); _pendingBytes = 0;
+    }
     private void Reset()
     {
-        _pending.Clear(); _pendingBytes = 0; _bootstrap.Reset();
+        ClearPending(); _bootstrap.Reset();
         _reset = true; _failed = false; LastError = null; _lastCheckpoint = 0;
+    }
+    private bool _enabled = true;
+    internal void SetEnabled(bool enabled)
+    {
+        if (_enabled == enabled) return;
+        _enabled = enabled; Reset(); _recorder.Timeline.Reset();
+        if (enabled) _recorder.SeedWorld(Accept);
     }
     private void Accept(ReplayTimelineRecord record)
     {
-        if (_failed) return;
+        if (_failed || !_enabled) return;
         if (_pending.Count >= MaximumPendingRecords || _pendingBytes + record.PayloadBytes > MaximumPendingBytes)
         { Fail("Accepted replay facts exceeded the pending budget."); return; }
-        _pending.Add(record); _pendingBytes += record.PayloadBytes;
+        record.Retain(); _pending.Add(record); _pendingBytes += record.PayloadBytes;
     }
     internal void Advance(uint frame, Vector2i size)
     {
         try
         {
             if (_reset || _failed) { _world?.Dispose(); _world = null; _reset = false; }
-            if (_failed) return;
+            if (_failed || !_enabled) return;
             if (_world == null)
             {
                 foreach (var record in _pending)
                     if (!record.Payload.IsEmpty) _bootstrap.Accept(record.Payload, record.RecordingFrame);
-                _pending.Clear(); _pendingBytes = 0;
+                ClearPending();
                 bool any = false;
                 for (int slot = 0; slot < 8; slot++) any |= _bootstrap.TryGetPlayer(slot, out _);
                 if (_bootstrap.Match is not { } match || !any) return;
@@ -68,35 +80,36 @@ internal sealed class ReplayLiveWorld : IDisposable
                     new(ReplayMarkerKind.WeaponFired, (byte)slot, byte.MaxValue, weapon));
             }
             else if (_world.Session.CurrentFrame == frame) return;
-            var timer = Stopwatch.StartNew();
-            _world.StepLive(frame, _pending);
-            _pending.Clear(); _pendingBytes = 0;
-            LastStepMilliseconds = timer.Elapsed.TotalMilliseconds;
+            long started = Stopwatch.GetTimestamp();
+            using (ReplayPerfTelemetry.Measure(ReplayPerfOperation.Step))
+                _world.StepLive(frame, _pending);
+            ClearPending();
+            LastStepMilliseconds = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
             if (_recorder.Timeline.NeedsRestorePoint || frame - _lastCheckpoint >= 300)
             {
-                timer.Restart();
-                var checkpoint = ReplayWorldCheckpoint.Capture(_world);
-                if (!_recorder.AppendWorldCheckpoint(frame, _world.State.ServerTick, checkpoint.Bytes))
+                started = Stopwatch.GetTimestamp();
+                using var checkpoint = ReplayWorldCheckpoint.Capture(_world);
+                if (!_recorder.AppendWorldCheckpoint(frame, _world.State.ServerTick, checkpoint.Payload))
                     throw new InvalidDataException("The timeline rejected its world checkpoint.");
                 _lastCheckpoint = frame; CaptureCount++;
-                LastCaptureMilliseconds = timer.Elapsed.TotalMilliseconds;
+                LastCaptureMilliseconds = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
             }
             // A quiet simulation frame still extends the available clip, even
             // when no network snapshot or input arrived on that frame.
-            _recorder.Timeline.Append(new(frame, _world.State.ServerTick, ReplayFactKind.Presentation, ReadOnlySpan<byte>.Empty));
+            _recorder.Timeline.AdvanceFrame(frame, _world.State.ServerTick);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         { Fail(ex.Message); _world?.Dispose(); _world = null; }
     }
     private void Fail(string error)
     {
-        _failed = true; LastError = error; _pending.Clear(); _pendingBytes = 0;
+        _failed = true; LastError = error; ClearPending();
         _recorder.Timeline.Reset();
         Console.WriteLine("[replay] Live world capture unavailable: " + error);
     }
     public void Dispose()
     {
         _recorder.Accepted -= Accept; _recorder.Resetting -= Reset;
-        _world?.Dispose(); _world = null; _pending.Clear(); _pendingBytes = 0;
+        _world?.Dispose(); _world = null; ClearPending();
     }
 }

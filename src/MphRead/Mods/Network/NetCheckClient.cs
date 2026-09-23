@@ -887,7 +887,7 @@ namespace MphRead.Mods.Network
 
         public static int Run(string host, int port, string name, Hunter hunter, double seconds,
             string? shotDirectory, int width, int height, bool recordDemo = false,
-            double spectateAt = -1, double rejoinAt = -1, int color = -1)
+            double spectateAt = -1, double rejoinAt = -1, int color = -1, bool simulationOnly = false)
         {
             if (!NetLaunch.Join(host, port, name, hunter, color: color))
             {
@@ -904,6 +904,7 @@ namespace MphRead.Mods.Network
             // from the harness is to get a demo out of a client whose role in
             // the match is known -- above all the authority, whose own
             // outgoing snapshots nothing else in the session ever sees.
+            if (simulationOnly) Headless.Enter();
             if (recordDemo && DemoRecorder.Start())
             {
                 Console.WriteLine($"[netcheck] {name} is recording to {DemoRecorder.CurrentPath}");
@@ -911,6 +912,7 @@ namespace MphRead.Mods.Network
             NetCheckClient? window = null;
             try
             {
+                if (simulationOnly) return NetCheckSimulation.Run(room.RoomKey, room.Mode, hunter, seconds);
                 window = new NetCheckClient(name, room.RoomKey, room.Mode, hunter,
                     seconds, shotDirectory, width, height, spectateAt, rejoinAt,
                     NetSession.LocalColor);

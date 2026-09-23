@@ -11,6 +11,7 @@ internal static class ReplayLiveCaptureCheck
 {
     internal static int Run(string path)
     {
+        ReplayPerfTelemetry.Enabled = true;
         Headless.Enter();
         var live = new Scene(new Vector2i(256, 192), SyntheticInput.CreateKeyboard(), SyntheticInput.CreateMouse(),
             _ => { }, () => { }, initializeRuntime: false);
@@ -40,18 +41,37 @@ internal static class ReplayLiveCaptureCheck
                 frame++;
             }
             if (reference.Count < 600) throw new InvalidDataException("Coverage needs at least ten seconds of accepted facts.");
+            using (var bound = Replay.ReplayWorldCheckpoint.Capture(capture.World!))
+            using (var fallback = Replay.ReplayWorldCheckpoint.Capture(capture.World!, boundAccessors: false))
+                if (!bound.Bytes.SequenceEqual(fallback.Bytes)) throw new InvalidDataException("Bound capture changed checkpoint bytes.");
+            ReplayPerformanceChecks.CheckScene(capture.World!.Scene);
+            for (int warm = 0; warm < 5; warm++) { using var checkpoint = Replay.ReplayWorldCheckpoint.Capture(capture.World!); }
+            long captureStart = System.Diagnostics.Stopwatch.GetTimestamp();
+            long captureAllocations = GC.GetAllocatedBytesForCurrentThread();
+            for (int sample = 0; sample < 100; sample++) { using var checkpoint = Replay.ReplayWorldCheckpoint.Capture(capture.World!); }
+            Console.WriteLine($"[replayperf-warm] checkpoint={System.Diagnostics.Stopwatch.GetElapsedTime(captureStart).TotalMilliseconds / 100:F3}ms allocation={(GC.GetAllocatedBytesForCurrentThread() - captureAllocations) / 100}B");
             uint end = frame - 1;
             uint start = end - 250;
             if (!recorder.Timeline.TryFreeze(start, end, out var clip) || clip == null
                 || clip.RestorePoint.Kind != ReplayRestoreKind.ReplicaCheckpoint)
                 throw new InvalidDataException("Live world did not produce a restorable clip.");
             long bytes = recorder.Timeline.PayloadBytes;
+            Console.WriteLine(ReplayPerfTelemetry.Summary(recorder.Timeline));
+            capture.SetEnabled(false); capture.Advance(frame, live.Size);
+            if (capture.World != null || recorder.Timeline.RecordCount != 0)
+                throw new InvalidDataException("Disabled replay reconstruction retained a world/history.");
+            capture.SetEnabled(true); capture.Advance(frame + 1, live.Size);
+            if (capture.World == null || capture.LastError != null || recorder.Timeline.FirstRecordingFrame != frame + 1)
+                throw new InvalidDataException("Re-enabled replay reconstruction did not seed a fresh boundary.");
             recorder.Reset(); // the playing clip must outlive a live match transition
+            using var frozenLease = clip;
             using var player = new PassiveReplayPlayer(clip, new Vector2i(256, 192));
+            if (player.Update(maximumSteps: 24, maximumMilliseconds: 0) > 1)
+                throw new InvalidDataException("Clip warmup ignored its elapsed-time budget.");
             int comparisons = 0;
             while (!player.Current.Session.AtEnd || !player.Ready)
             {
-                if (player.Update() > PassiveReplayPlayer.MaximumStepsPerUpdate) throw new InvalidDataException("Unbounded clip warmup.");
+                if (player.Update(maximumSteps: 24, maximumMilliseconds: 1) > 24) throw new InvalidDataException("Unbounded clip warmup.");
                 if (!player.Ready) continue;
                 var world = player.Current;
                 var expected = reference[world.Session.CurrentFrame];
@@ -71,6 +91,13 @@ internal static class ReplayLiveCaptureCheck
                 string saved = Path.Combine(directory, "clip.ppdemo");
                 ReplayTimelineArchive.Save(clip, player.Current, saved);
                 CompareFile(saved, start, 250);
+                string frozenSaved = Path.Combine(directory, "frozen-clip.ppdemo");
+                ReplayTimelineArchive.SaveFrozen(clip, frozenSaved);
+                CompareFile(frozenSaved, start, 250);
+                string frozenNested = Path.Combine(directory, "frozen-nested.ppdemo");
+                if (ReplayArchive.Extract(frozenSaved, 40, 120, frozenNested) != ReplayOpenResult.Success)
+                    throw new InvalidDataException("Could not extract a frozen lead-in clip.");
+                CompareFile(frozenNested, start + 40, 80);
                 string subrange = Path.Combine(directory, "subrange.ppdemo");
                 if (ReplayArchive.Extract(saved, 40, 120, subrange) != ReplayOpenResult.Success)
                     throw new InvalidDataException("Could not extract a durable world subrange.");

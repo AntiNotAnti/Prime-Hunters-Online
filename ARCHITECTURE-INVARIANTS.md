@@ -97,7 +97,7 @@ This file is the short, machine-oriented source of truth for architectural assum
 
 ## Replay ownership
 
-- Rolling timeline records own immutable payload copies and evict whole restore segments.
+- Rolling timeline records are values retaining immutable pooled payloads and evict whole restore segments. Pending reconstruction, frozen clips and writer commands hold independent leases. Eviction, reset, clip disposal and command completion release them; budgets include pooled capacity. Quiet frames advance the frontier without a fact.
 - A dropped fact invalidates its dependent continuation; clips must not cross gaps.
 - Protocol network baselines are explicitly not complete replica-scene checkpoints.
 - Decoder and animation checkpoint components own detached payloads. Decoder restore validates before mutation; animation restore resolves groups against the destination asset. A component alone must never be advertised as a complete world checkpoint.
@@ -109,6 +109,9 @@ This file is the short, machine-oriented source of truth for architectural assum
 - Timeline intent baselines must match the recorded occupant generation and life. Submitted local input is presentation evidence, never accepted hit/damage authority. Versioned gameplay hashes include world/projectile state; animation/effect projections are checked separately.
 - Effect checkpoint assets use effect ID plus element ordinal; element names are not unique. Match rules apply before room construction; timed objective targets and the recorded clock retain their mode-specific meaning.
 - Live checkpoint production consumes immutable accepted facts in a canonical private replica. Pending facts are bounded; gaps/failure invalidate history rather than yielding incomplete clips. Capture and private scene resource lifetime run on the scene owner; network callbacks never allocate or dispose GL resources. History cannot claim knowledge of projectiles predating capture.
+- Replay checkpoint capture stays on the scene owner: one bounded pooled buffer, reused graph storage and checked-in typed accessors; no mutable Scene enters a worker. Generated accessors must preserve reference-serializer bytes and remain compatible with Android AOT.
+- Client/server recording compression and file I/O run exclusively in `ReplayWritePump`. Gameplay never waits for storage. Count/byte overflow aborts the recording while retaining recoverable chunks. Instant clips save frozen checkpoints/facts on a worker through v4 hidden lead-in without constructing a Scene. Optional player preparation is limited to 24 steps or about 1 ms/update; construction/restore stays on the scene owner.
+- Personal/final killcam footage is up to 300 frames at 1x. Results remain 10 seconds; server intermission derives from the shared 5-second final camera plus results plus 1 second. Preparation cannot consume the final footage window.
 - Production replay and killcams share the private player. Do not reintroduce a pose ring, live historical draw substitution, duplicate clip history or live-network replay smoother. Acceptance evidence is in `docs/architecture/replay-map-upgrade-status.md`.
 
 ## Map Studio ownership

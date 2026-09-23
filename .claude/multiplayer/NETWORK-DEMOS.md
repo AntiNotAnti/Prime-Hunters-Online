@@ -11,7 +11,12 @@ completed migration. Older packet-stream design notes are retained separately in
 roster, lifecycle-filtered snapshots, remote intents, local submitted input and
 semantic events. Local input is presentation evidence, never hit authority.
 `ReplayTimeline` is independent of UI, renderer, sockets and files. Values own
-their payloads; frozen clips remain valid after reset. History retains at least
+immutable pooled payload leases; frozen clips remain valid after reset.
+Records are value types. Timeline append, pending reconstruction, writer commands
+and frozen clips retain references; eviction, reset, command completion and clip
+disposal release them. Restore-point append consumes its argument. Producers release
+their initial record reference after publication. Budgets count pooled capacity.
+History retains at least
 45 seconds, grows to cover configured clips/post-roll, and is capped at 64 MiB.
 Eviction removes whole restore segments. A missing fact invalidates continuation.
 
@@ -19,7 +24,10 @@ Eviction removes whole restore segments. A missing fact invalidates continuation
 steps on the scene owner and captures world checkpoints every 300 frames. Pending
 facts are bounded to 8,192 records/4 MiB. Failure invalidates capture until reset;
 it cannot invent projectiles predating the initial capture boundary. Quiet frames
-advance availability. Network baselines are not complete world checkpoints.
+advance availability through `AdvanceFrame` without allocating a fact. History
+length is updated only when preferences change. When no killcam, clip or recording
+consumer needs a world, reconstruction stops; re-enabling seeds a fresh boundary
+from cached accepted state. Network baselines are not complete world checkpoints.
 
 `PassiveReplayScene` owns its player registry, match state, RNG, camera sequences,
 projectile pools, replication/lifecycle/order histories, HUD messages and silent
@@ -46,6 +54,18 @@ never live references or GPU handles. Restore targets an unpublished replica wit
 matching room content and construction baseline, rebinds its own resources and
 publishes only after validation. Unknown contracts fail closed.
 
+Capture writes directly into one bounded pooled `ReplayCheckpointWriter`,
+backpatching component lengths and transferring the buffer without copying it.
+Graph dictionaries/lists and sorted asset storage are reused. Checked-in typed
+accessors avoid boxed reflection reads; no runtime code generation is used.
+Regenerate with `dotnet run --project tools/replay-schema-generator -c Release -- src/MphRead/Mods/Replay/ReplayCheckpointAccessors.cs`, then rebuild. The generated
+contract is checked against the declared schema; a mismatch uses the reference
+serializer. All-mode checks compare generated/reference bytes.
+
+Authority capture keeps its 10 Hz cadence, using reusable double-buffered values
+and one bounded encoder. The recorder and network consume the same encoding,
+fragmented into stack spans. Borrowed authority values never enter a writer queue.
+
 Optional protocol-16 packet 42 supplies replay-only authoritative world facts:
 flags and carriers, capture nodes/progress/occupants, pickup spawners, stable-ID
 dropped items, doors/collision, team scores, Prime actor, match phase/clock and
@@ -66,7 +86,7 @@ Seek diagnostics show source, restore frame, work, elapsed time and rejected ent
 ## Killcams
 
 `KillCam` reads live lifecycle and routes boundary input/presentation to an
-instance `KillcamController`. Personal replays freeze 120 pre-death frames and
+instance `KillcamController`. Personal replays freeze up to 300 pre-death frames (five seconds at 1x) and
 hold EOF for at most 15 ticks. Authoritative respawn, occupant/life change,
 disconnect, disable, match/epoch change and skip end them immediately. Gameplay
 continues behind the private scene. Held fire must be released before a new press
@@ -75,7 +95,10 @@ Android callbacks enqueue skip requests; only the scene owner disposes GL/audio.
 
 Kill identity includes match, authority epoch, server tick, damage event, killer
 and victim generations, and victim life. Final candidates freeze up to 300 frames,
-play at 2x and fit the existing match-ending window. New authorities identify the
+play at 1x. Both ranges clamp to available history. GameOver allows five seconds
+and waits for pending preparation/playback to finish before ten seconds of results;
+the dedicated server derives its 16-second intermission from these constants plus
+one second of safety. New authorities identify the
 exact ending cause/kill. Older servers use a bounded causal/timed fallback; a stale
 unrelated kill cannot become the final replay. Missing history simply skips replay.
 The replay owns its HUD and versioned audio lease. Every projectile, effect and
@@ -161,14 +184,26 @@ exactly at a record boundary can lack enough evidence to detect truncation.
 Recordings flush complete chunks to `.ppdemo.part`; successful close writes the
 footer and atomically publishes without replacing another file. I/O failure stops
 recording without ending the match. Recovery writes a separate file and preserves
-the source, retaining valid chunks and optional valid checkpoints. Rotation closes
-the previous map before opening another recording.
+the source, retaining valid chunks and optional valid checkpoints. Rotation
+completes the previous recording asynchronously.
+
+`ReplayWritePump` exclusively owns the file writer, compression, checkpoint spool,
+footer and durable flushes. Gameplay only calls nonblocking `TryWrite` commands.
+The queue is bounded to 4,096 commands and 32 MiB, including an in-flight command.
+Overflow aborts that recording and releases queued leases; valid completed chunks
+remain recoverable. At most four workers may finish concurrently across transitions.
+Only explicit process shutdown waits (up to ten seconds); match transitions never
+wait for storage. Client and server sinks share this implementation.
 
 `DemoClip` freezes the shared timeline, with 15/30/60/120-second windows (default
 30) and 0/2/3/5-second post-roll (default 3). A second save finishes the pending
 request and starts a distinct one; disconnect saves available post-roll. Disk
-serialization runs on a worker with frozen values; world construction/disposal
-stays on the scene owner. There is no duplicate pooled packet history. Extraction
+serialization runs entirely on a worker from the retained checkpoint and frozen
+facts. V4 hidden lead-in preserves the exact visible start without constructing,
+restoring or capturing a Scene during a live save. Opening the saved clip performs
+hidden reconstruction through the existing player. Its optional preparation budget
+yields after 24 steps or roughly 1 ms, with at least one step for progress.
+No mutable Scene crosses threads and no duplicate packet history is maintained. Extraction
 and nested clips preserve exact initial worlds and required hidden warmup, including
 v2/v3 compatibility reconstruction; frames/events are rebased without rerecording.
 
@@ -211,7 +246,7 @@ Checks with locally extracted game assets:
 
 - `-replayreplicacheck FILE [-shots DIR]`: interleaved worlds, foreground sentinels,
   mutable asset isolation, immediate restored hashes/images, continuation and seeks.
-- `-replayworldcheck FILE [-output DIR]`: eight actors/all hunters in all 12 modes,
+- `-replayworldcheck FILE|synthetic [-output DIR]`: eight actors/all hunters in all 12 modes,
   afflictions, alt forms, projectiles, death/respawn and detached restores.
 - `-replaylivecheck FILE`: accepted recorder facts through frozen world playback,
   source reset and backward seeks.
@@ -238,3 +273,9 @@ projection covers animation, trails and particles. These compare reconstructed
 replay worlds, not a predicting live client's hidden state. Reference verification
 requires a matching engine/hash schema; old schemas do not prevent packet playback.
 See the acceptance report for runtime coverage and platform limitations.
+
+`-netdebug` reports replay operation duration/allocation, GC deltas, rolling simulation
+p50/p95/p99, maximum and checkpoint-frame correlation. Spikes above 20 ms log at
+most once a second. Normal builds do not format these diagnostics.
+`-netcheck HOST -nographics -recorddemo` runs the scripted client simulation without
+a window for network/storage soaks; it does not validate rendered killcams or FPS.

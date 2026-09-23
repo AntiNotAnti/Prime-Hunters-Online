@@ -11,10 +11,12 @@ namespace MphRead.Mods.Network
         internal static ReplayLiveWorld WorldCapture { get; private set; } = new(Recorder);
         private static readonly byte[] Snapshot = new byte[NetConfig.MaxPacketSize];
         private static int _snapshotLength;
+        private static uint _historyFrames;
         private static string? _room;
         private static ulong _mapHash;
         private static readonly PlayerState[] Previous = new PlayerState[RosterPacket.MaxSlots];
         private static readonly ReplayAuthorityWire AuthorityWire = new();
+        private static readonly ReplayAuthorityCaptureScratch AuthorityScratch = new();
         internal static ReplayAuthorityWorld? LatestAuthorityWorld { get; private set; }
         private static ReplayKillIdentity? _authorityKill;
         private static bool _worldCaptureFailed;
@@ -34,24 +36,36 @@ namespace MphRead.Mods.Network
             };
         }
 
+        internal static bool NeedsWorld => (!Headless.Active && (Mods.Launcher.LauncherPrefs.KillCamEnabled
+            || Mods.Launcher.LauncherPrefs.FinalKillCamEnabled || DemoClip.Active))
+            || DemoClip.IsSaving || DemoRecorder.IsRecording || ServerReplayRecorder.IsRecording;
+
         internal static void AfterSimulation(Scene scene)
         {
             if (scene.Services.IsReplica) return;
+            using var perf = ReplayPerfTelemetry.Measure(ReplayPerfOperation.Capture);
             DemoClip.Tick(scene.Size);
             if (DemoPlayback.IsActive || !NetSession.Active || !scene.GameState.Multiplayer) return;
-            Recorder.Timeline.SetHistoryFrames((uint)Math.Max(45, DemoClip.Seconds + DemoClip.PostRollSeconds) * 60);
+            uint historyFrames = (uint)Math.Max(45, DemoClip.Seconds + DemoClip.PostRollSeconds) * 60;
+            if (historyFrames != _historyFrames)
+            {
+                Recorder.Timeline.SetHistoryFrames(historyFrames);
+                _historyFrames = historyFrames;
+            }
             if (NetSession.IsAuthority && !_worldCaptureFailed
                 && (NetSession.NetFrame % 6 == 0 || LatestAuthorityWorld?.Phase != scene.GameState.MatchState))
             {
                 try
                 {
-                    var world = ReplayAuthorityWorld.Capture(scene, NetSession.CurrentMatchId, NetSession.AuthorityEpoch, NetSession.NetFrame, IdentifyDrop);
+                    using var authorityPerf = ReplayPerfTelemetry.Measure(ReplayPerfOperation.AuthorityCapture);
+                    var world = AuthorityScratch.Capture(scene, NetSession.CurrentMatchId, NetSession.AuthorityEpoch, NetSession.NetFrame, IdentifyDrop);
                     ClassifyEnd(scene, world);
-                    AcceptWorld(world); NetSession.SendReplayWorld(world);
+                    AcceptWorld(world, AuthorityScratch.Encode(world), send: true);
                 }
                 catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
                 { _worldCaptureFailed = true; Console.WriteLine("[replay] Authority world capture unavailable: " + ex.Message); }
             }
+            WorldCapture.SetEnabled(NeedsWorld);
             WorldCapture.Advance(NetSession.NetFrame, scene.Size);
             DemoRecorder.Tick();
             ServerReplayRecorder.Tick();
@@ -156,11 +170,12 @@ namespace MphRead.Mods.Network
         {
             if (AuthorityWire.Accept(payload, NetSession.CurrentMatchId, NetSession.AuthorityEpoch) is { } world) AcceptWorld(world);
         }
-        private static void AcceptWorld(ReplayAuthorityWorld world)
+        private static void AcceptWorld(ReplayAuthorityWorld world) => AcceptWorld(world, world.Encode());
+        private static void AcceptWorld(ReplayAuthorityWorld world, ReadOnlySpan<byte> encoded, bool send = false)
         {
             var old = LatestAuthorityWorld;
             if (old != null && (old.MatchId != world.MatchId || old.Epoch != world.Epoch)) old = null;
-            Recorder.AcceptWorld(world, NetSession.NetFrame);
+            Recorder.AcceptWorld(world, NetSession.NetFrame, encoded, send);
             void Marker(ReplayMarkerKind kind, int actor = 255, int target = 255, int value = 0)
                 => Recorder.Marker(NetSession.NetFrame, world.Tick, new(kind, (byte)actor, (byte)target, value));
             if (old != null)

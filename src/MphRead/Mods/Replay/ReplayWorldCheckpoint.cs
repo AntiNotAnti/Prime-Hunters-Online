@@ -17,29 +17,49 @@ namespace MphRead.Mods.Replay;
 /// <summary>A bounded value capsule. References are graph indices or construction
 /// anchors in an independently loaded scene. Native resources and delegates never
 /// enter the payload. Restore is only used on an unpublished, disposable replica.</summary>
-internal sealed class ReplayWorldCheckpoint
+internal sealed class ReplayWorldCheckpoint : IDisposable
 {
     internal const int MaximumBytes = 8 * 1024 * 1024;
     private const int MaximumObjects = 32768;
     private const uint Magic = 0x43575050; // PPWC
     private const ushort Version = 2;
-    private readonly byte[] _data;
-    internal ReadOnlySpan<byte> Bytes => _data;
+    private readonly ReplayPayload _data;
+    internal ReadOnlySpan<byte> Bytes => _data.Span;
+    internal ReplayPayload Payload => _data;
     internal uint Frame { get; }
-    private ReplayWorldCheckpoint(byte[] data, uint frame) { _data = data; Frame = frame; }
+    private ReplayWorldCheckpoint(ReplayPayload data, uint frame) { _data = data; Frame = frame; }
+    private bool _disposed;
+    public void Dispose() { if (!_disposed) { _disposed = true; _data.Release(); GC.SuppressFinalize(this); } }
+    ~ReplayWorldCheckpoint() => Dispose();
     internal static ReplayWorldCheckpoint FromBytes(ReadOnlySpan<byte> bytes)
     {
         if (bytes.Length > MaximumBytes) throw new InvalidDataException("Replay world exceeds its checkpoint budget.");
-        byte[] data = bytes.ToArray();
-        using var stream = new MemoryStream(data, writable: false); using var reader = new BinaryReader(stream);
-        if (reader.ReadUInt32() != Magic || reader.ReadUInt16() is < 1 or > Version || reader.ReadString() != Contract)
-            throw new InvalidDataException("Replay world checkpoint contract differs.");
-        reader.ReadString(); reader.ReadInt32(); reader.ReadUInt64();
-        return new(data, reader.ReadUInt32());
+        var data = ReplayPayload.Copy(bytes);
+        try
+        {
+            using var stream = data.OpenRead(); using var reader = new BinaryReader(stream);
+            if (reader.ReadUInt32() != Magic || reader.ReadUInt16() is < 1 or > Version || reader.ReadString() != Contract)
+                throw new InvalidDataException("Replay world checkpoint contract differs.");
+            reader.ReadString(); reader.ReadInt32(); reader.ReadUInt64();
+            return new(data, reader.ReadUInt32());
+        }
+        catch { data.Release(); throw; }
+    }
+
+    // Detached metadata only: safe to read on a writer worker, no Scene/resource access.
+    internal ReplayMetadata ClipMetadata(uint leadIn, IReadOnlyList<ReplayPlayerInfo> players)
+    {
+        using var stream = _data.OpenRead(); using var reader = new BinaryReader(stream);
+        reader.ReadUInt32(); reader.ReadUInt16(); reader.ReadString();
+        string room = reader.ReadString(); var mode = (GameMode)reader.ReadInt32(); ulong map = reader.ReadUInt64();
+        uint origin = reader.ReadUInt32();
+        return new ReplayMetadata { FormatVersion = 4, Type = ReplayType.Clip, RoomKey = room, Mode = mode,
+            MapHash = map, OriginRecordingFrame = origin, LeadInFrames = leadIn,
+            WorldCheckpoint = Bytes.ToArray(), Players = players };
     }
     internal ReplayReplicaCheckpoint ConstructionState()
     {
-        using var stream = new MemoryStream(_data, writable: false); using var reader = new BinaryReader(stream);
+        using var stream = _data.OpenRead(); using var reader = new BinaryReader(stream);
         reader.ReadUInt32(); reader.ReadUInt16(); reader.ReadString(); reader.ReadString(); reader.ReadInt32(); reader.ReadUInt64();
         reader.ReadUInt32(); reader.ReadUInt32(); reader.ReadUInt32();
         return new(ReadBytes(reader, ReplayReplicaCheckpoint.MaximumBytes));
@@ -105,6 +125,8 @@ internal sealed class ReplayWorldCheckpoint
     /// Construct this once, immediately after the room is initialized.</summary>
     internal sealed class Bindings
     {
+        internal readonly CaptureGraph Graph = new();
+        internal readonly List<Model> Models = new();
         internal readonly Dictionary<object, ulong> Names = new(ReferenceEqualityComparer.Instance);
         internal readonly Dictionary<ulong, object> Objects = new();
         internal readonly object[] Roots;
@@ -135,32 +157,41 @@ internal sealed class ReplayWorldCheckpoint
         }
     }
 
-    internal static ReplayWorldCheckpoint Capture(PassiveReplayScene replay, uint? recordingFrame = null)
+    internal static ReplayWorldCheckpoint Capture(PassiveReplayScene replay, uint? recordingFrame = null, bool boundAccessors = true)
     {
-        using var stream = new MemoryStream();
+        using var perf = ReplayPerfTelemetry.Measure(ReplayPerfOperation.Checkpoint);
+        using var stream = new ReplayCheckpointWriter();
         using var writer = new BinaryWriter(stream);
         writer.Write(Magic); writer.Write(Version); writer.Write(Contract);
         writer.Write(replay.Scene.Room!.Meta.Name); writer.Write((int)replay.Scene.GameState.Mode); writer.Write(replay.MapHash);
         uint frame = recordingFrame ?? replay.Session.CurrentFrame;
         writer.Write(frame); writer.Write(replay.Scene.Random.Rng1); writer.Write(replay.Scene.Random.Rng2);
         WriteBytes(writer, replay.InitialState.Bytes);
-        WriteBytes(writer, replay.State.CaptureCheckpoint().Bytes);
-        var graph = new CaptureGraph(replay.CheckpointBindings);
-        foreach (object root in replay.CheckpointBindings.Roots) graph.Id(root);
-        var nodes = graph.Finish();
-        writer.Write(nodes.Count);
-        foreach (var node in nodes) { writer.Write(node.Type); writer.Write(node.Anchor); WriteBytes(writer, node.Data); }
-        WriteBytes(writer, ReplayAssetCheckpoint.Capture(replay.Scene));
-        writer.Flush();
-        if (stream.Length > MaximumBytes) throw new InvalidDataException("Replay world exceeds its checkpoint budget.");
-        return new(stream.ToArray(), frame);
+        long decoder = ReplayCheckpointWriter.BeginComponent(writer);
+        replay.State.WriteCheckpoint(writer);
+        ReplayCheckpointWriter.EndComponent(writer, decoder);
+        var graph = replay.CheckpointBindings.Graph;
+        try
+        {
+            foreach (object root in replay.CheckpointBindings.Roots) graph.Id(root);
+            graph.Write(writer, replay.CheckpointBindings, boundAccessors);
+            long assets = ReplayCheckpointWriter.BeginComponent(writer);
+            ReplayAssetCheckpoint.Write(writer, replay.Scene, replay.CheckpointBindings.Models, boundAccessors);
+            ReplayCheckpointWriter.EndComponent(writer, assets);
+            ReplayPerfTelemetry.CheckpointBytes = stream.Length;
+            return new(stream.Detach(), frame);
+        }
+        finally { graph.Clear(); }
     }
 
     private sealed record Node(ushort Type, ulong Anchor, byte[] Data);
-    private sealed class CaptureGraph(Bindings bindings)
+    internal sealed class CaptureGraph
     {
-        private readonly Dictionary<object, int> _indices = new(ReferenceEqualityComparer.Instance);
-        private readonly List<object> _objects = new();
+        private readonly Dictionary<object, int> _indices = new(4096, ReferenceEqualityComparer.Instance);
+        private readonly List<object> _objects = new(4096);
+        private readonly Func<object?, int> _reference;
+        internal CaptureGraph() => _reference = Id;
+        internal void Clear() { _indices.Clear(); _objects.Clear(); }
         internal int Id(object? value)
         {
             if (value == null) return -1;
@@ -168,19 +199,21 @@ internal sealed class ReplayWorldCheckpoint
             if (_objects.Count == MaximumObjects) throw new InvalidDataException("Replay object budget exceeded.");
             id = _objects.Count; _objects.Add(value); _indices.Add(value, id); return id;
         }
-        internal List<Node> Finish()
+        internal void Write(BinaryWriter writer, Bindings bindings, bool boundAccessors)
         {
-            var nodes = new List<Node>();
-            long total = 0;
+            long countAt = writer.BaseStream.Position; writer.Write(0);
             for (int index = 0; index < _objects.Count; index++)
             {
                 object value = _objects[index]; Type type = value.GetType();
-                if (!Types.ContainsKey(type.ToString())) throw new InvalidOperationException($"No replay schema for {type}.");
-                using var stream = new MemoryStream(); using var writer = new BinaryWriter(stream);
+                if (!TypeIds.TryGetValue(type, out ushort typeId)) throw new InvalidOperationException($"No replay schema for {type}.");
+                writer.Write(typeId); writer.Write(bindings.Names.GetValueOrDefault(value));
+                long node = ReplayCheckpointWriter.BeginComponent(writer);
                 if (value is ModelInstance model)
                 {
                     writer.Write(model.Model.Name); writer.Write(model.Model.FirstHunt);
-                    WriteBytes(writer, ReplayModelCheckpoint.Capture(model).Bytes);
+                    long animation = ReplayCheckpointWriter.BeginComponent(writer);
+                    ReplayModelCheckpoint.Write(writer, model);
+                    ReplayCheckpointWriter.EndComponent(writer, animation);
                 }
                 else if (value is WeaponInfo weapon) WriteWeapon(writer, weapon);
                 else
@@ -188,22 +221,22 @@ internal sealed class ReplayWorldCheckpoint
                     if (value is ItemInstanceEntity item) writer.Write((int)item.ItemType);
                     if (value is HalfturretEntity turret) writer.Write(turret.Owner.SlotIndex);
                     if (value is SingleParticle single) writer.Write(SingleIdentity(single.ParticleDefinition));
-                    if (Collection(type))
+                    if (boundAccessors && ReplayCheckpointAccessors.Contract == Contract && ReplayCheckpointAccessors.Write(writer, value, _reference)) { }
+                    else if (Collection(type))
                     {
-                        int[] lengths = value is Array a ? Enumerable.Range(0, a.Rank).Select(a.GetLength).ToArray()
-                            : [((IEnumerable)value).Cast<object?>().Count()];
-                        foreach (int length in lengths) writer.Write(length);
-                        foreach (object? itemValue in (IEnumerable)value) WriteValue(writer, Element(type), itemValue, Id);
+                        if (value is Array array)
+                            for (int dimension = 0; dimension < array.Rank; dimension++) writer.Write(array.GetLength(dimension));
+                        else writer.Write(((ICollection)value).Count);
+                        foreach (object? itemValue in (IEnumerable)value) WriteValue(writer, Element(type), itemValue, _reference);
                     }
                     else if (Fields.TryGetValue(type, out var fields))
-                        foreach (var field in fields) WriteValue(writer, field.FieldType, field.GetValue(value), Id);
+                        foreach (var field in fields) WriteValue(writer, field.FieldType, field.GetValue(value), _reference);
                     else throw new InvalidOperationException($"No replay object schema for {type}.");
                 }
-                writer.Flush(); total += stream.Length;
-                if (total > MaximumBytes) throw new InvalidDataException("Replay world exceeds its checkpoint budget.");
-                nodes.Add(new(TypeIds[type], bindings.Names.GetValueOrDefault(value), stream.ToArray()));
+                ReplayCheckpointWriter.EndComponent(writer, node);
             }
-            return nodes;
+            long end = writer.BaseStream.Position; writer.BaseStream.Position = countAt;
+            writer.Write(_objects.Count); writer.BaseStream.Position = end;
         }
     }
 
@@ -218,10 +251,11 @@ internal sealed class ReplayWorldCheckpoint
                 if (ReferenceEquals(weapon, WeaponsByFamily[family][i])) { writer.Write(family); writer.Write(i); return; }
         throw new InvalidOperationException("Replay weapon is not an identified engine asset.");
     }
+    private static readonly SingleType[] SingleTypes = Enum.GetValues<SingleType>();
     private static int SingleIdentity(Particle? particle)
     {
         if (particle == null) return -1;
-        foreach (SingleType type in Enum.GetValues<SingleType>())
+        foreach (SingleType type in SingleTypes)
             if (ReferenceEquals(Read.GetSingleParticle(type), particle)) return (int)type;
         throw new InvalidOperationException("Replay single particle has no asset identity.");
     }
@@ -229,8 +263,8 @@ internal sealed class ReplayWorldCheckpoint
     internal void Restore(PassiveReplayScene replay, uint? playbackFrame = null)
     {
         if (replay.HasStepped) throw new InvalidOperationException("Restore requires a new unpublished replica.");
-        using var stream = new MemoryStream(_data, writable: false); using var reader = new BinaryReader(stream);
-        if (_data.Length > MaximumBytes || reader.ReadUInt32() != Magic) throw new InvalidDataException("Invalid replay world capsule.");
+        using var stream = _data.OpenRead(); using var reader = new BinaryReader(stream);
+        if (Bytes.Length > MaximumBytes || reader.ReadUInt32() != Magic) throw new InvalidDataException("Invalid replay world capsule.");
         ushort version = reader.ReadUInt16();
         if (version is < 1 or > Version
             || reader.ReadString() != Contract || reader.ReadString() != replay.Scene.Room!.Meta.Name
@@ -379,7 +413,7 @@ internal sealed class ReplayWorldCheckpoint
             ?? throw new InvalidDataException($"Cannot construct replay value {type.Name}.");
     }
 
-    private static void WriteValue(BinaryWriter writer, Type type, object? value, Func<object?, int> reference)
+    internal static void WriteValue(BinaryWriter writer, Type type, object? value, Func<object?, int> reference)
     {
         if (type == typeof(object))
         {

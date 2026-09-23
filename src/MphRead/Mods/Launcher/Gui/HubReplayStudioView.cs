@@ -337,6 +337,8 @@ namespace MphRead.Mods.Launcher.Gui
             Content = root;
             AttachedToVisualTree += (_, _) =>
             {
+                if (_bitmap == null)
+                    ShowPreview();
                 LauncherBackdrop.Set(LauncherBackdropScene.ReplayStudio,
                     _backdropRoom.Length > 0 ? _backdropRoom : null);
                 _previewTimer.Start();
@@ -363,6 +365,9 @@ namespace MphRead.Mods.Launcher.Gui
             VisualTreeAttachmentEventArgs e)
         {
             _previewTimer.Stop();
+            // A retained launcher view can be measured again on return from
+            // playback. Detach the image before releasing its native bitmap.
+            _preview.Source = null;
             _bitmap?.Dispose();
             _bitmap = null;
             base.OnDetachedFromVisualTree(e);

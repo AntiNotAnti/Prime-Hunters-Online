@@ -345,3 +345,29 @@ Measured on MP3 PROVING GROUND, 8 players, the same deterministic tour:
 The 478 are first-advance bursts, and the rate is otherwise identical -- which
 is why nothing else moved. `-maptest` now reports `effect particles` and
 `MAPFAIL`s on zero.
+
+## Replay frame costs
+
+Replay reconstruction stays on the scene owner and uses the same fixed 60 Hz
+simulation. Quiet history advancement and timestamp measurements allocate no
+objects. Full checkpoints still occur every 300 ticks, but serialize into one
+pooled buffer with typed accessors and reusable graph storage. Disk compression
+and durable flushes belong exclusively to bounded replay writer workers. Instant
+clips write the frozen checkpoint/facts directly on a worker using the existing
+v4 hidden lead-in. No save-time Scene is constructed. The player also supports
+a 24-step/about-1-ms preparation budget when reconstruction is needed. No render cap or simulation-rate change is
+part of this optimization.
+
+First-person charge/muzzle effects register presentation transforms with
+`Scene.SetPresentationEffectTransform`. At the next picture (or ClearEffects),
+only those entries are cleared. The capacity-four list is reused; drawing no
+longer scans all active effect elements to reset overrides. Simulation transforms
+remain unchanged. Player collision/camera queries also reuse per-player cleared
+scratch arrays, and collision set equality compares fields without boxing.
+
+`-netdebug` reports replay time, allocation, GC deltas and simulation p50/p95/p99
+over the last 3,600 samples. Maxima/operation means and checkpoint/ordinary-frame
+means are cumulative and include startup. Frames over 20 ms correlate checkpoint,
+replica-step and authority time with the frame modulo 300 (one log/second).
+This measures CPU simulation, not GPU completion or displayed frame pacing. See
+`docs/architecture/replay-map-performance.md` for measurements and validation gaps.

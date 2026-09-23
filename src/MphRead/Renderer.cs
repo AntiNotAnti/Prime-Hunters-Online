@@ -1654,6 +1654,7 @@ namespace MphRead
         /// </summary>
         public void OnSimulationFrame()
         {
+            using var replayPerfFrame = Mods.Network.ReplayPerfTelemetry.Frame();
             if (Mods.Network.DemoPlayback.Presentation(this) is { IsReplayLab: true } lab)
             { lab.OnSimulationFrame(); return; }
             if (Mods.Network.DemoPlayback.IsActive && (!Services.IsReplica || Mods.Network.DemoPlayback.Owns(this)))
@@ -2078,14 +2079,7 @@ namespace MphRead
             // EffectEntry.OwnTransform is simulation state. Any camera-attached
             // visual override is presentation-only and must be renewed by this
             // picture's PlayerDraw pass, never carried into another draw.
-            for (int i = 0; i < _activeElements.Count; i++)
-            {
-                EffectEntry? entry = _activeElements[i].EffectEntry;
-                if (entry != null)
-                {
-                    entry.DrawTransformOverride = null;
-                }
-            }
+            ClearPresentationEffectTransforms();
 
             // Network puppets use the playout clock itself for high-refresh
             // presentation. Remember the exact sub-frame point drawn here so
@@ -3664,8 +3658,22 @@ namespace MphRead
             return count;
         }
 
+        private readonly List<EffectEntry> _presentationOverrideEntries = new(4);
+        internal void SetPresentationEffectTransform(EffectEntry entry, Matrix4 transform)
+        {
+            if (!_presentationOverrideEntries.Contains(entry)) _presentationOverrideEntries.Add(entry);
+            entry.DrawTransformOverride = transform;
+        }
+        internal void ClearPresentationEffectTransforms()
+        {
+            foreach (var entry in _presentationOverrideEntries) entry.DrawTransformOverride = null;
+            _presentationOverrideEntries.Clear();
+        }
+        internal int PresentationEffectOverrideCount => _presentationOverrideEntries.Count;
+
         public void ClearEffects()
         {
+            ClearPresentationEffectTransforms();
             for (int i = 0; i < _activeElements.Count; i++)
             {
                 EffectElementEntry element = _activeElements[i];

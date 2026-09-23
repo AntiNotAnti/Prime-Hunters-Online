@@ -32,20 +32,21 @@ internal enum ReplayEndCause : byte { None, Time, Kill, Objective, Other }
 internal sealed class ReplayAuthorityWorld
 {
     internal const int MaximumBytes = 48 * 1024, MaximumEntities = 512;
-    internal ushort MatchId { get; init; }
-    internal ulong Epoch { get; init; }
-    internal uint Tick { get; init; }
-    internal ReplayActorRef Prime { get; init; } = new(255, 0, 0);
-    internal MatchState Phase { get; init; }
-    internal float MatchTime { get; init; }
-    internal int[] TeamPoints { get; init; } = new int[8];
-    internal int[] FlagScores { get; init; } = new int[8];
-    internal int[] NodesCaptured { get; init; } = new int[8];
-    internal ReplayFlagState[] Flags { get; init; } = [];
-    internal ReplayNodeState[] Nodes { get; init; } = [];
-    internal ReplayPickupState[] Pickups { get; init; } = [];
-    internal ReplayDropState[] Drops { get; init; } = [];
-    internal ReplayDoorState[] Doors { get; init; } = [];
+    internal ushort MatchId { get; set; }
+    internal ulong Epoch { get; set; }
+    internal uint Tick { get; set; }
+    internal ReplayActorRef Prime { get; set; } = new(255, 0, 0);
+    internal MatchState Phase { get; set; }
+    internal float MatchTime { get; set; }
+    internal int[] TeamPoints { get; set; } = new int[8];
+    internal int[] FlagScores { get; set; } = new int[8];
+    internal int[] NodesCaptured { get; set; } = new int[8];
+    internal ReplayFlagState[] Flags { get; set; } = [];
+    internal ReplayNodeState[] Nodes { get; set; } = [];
+    internal ReplayPickupState[] Pickups { get; set; } = [];
+    internal ReplayDropState[] Drops { get; set; } = [];
+    internal ReplayDoorState[] Doors { get; set; } = [];
+    internal int FlagCount = -1, NodeCount = -1, PickupCount = -1, DropCount = -1, DoorCount = -1;
     internal ReplayEndCause EndCause { get; set; }
     internal ReplayKillIdentity? EndingKill { get; set; }
 
@@ -77,6 +78,13 @@ internal sealed class ReplayAuthorityWorld
     internal byte[] Encode()
     {
         using var stream = new MemoryStream(); using var w = new BinaryWriter(stream);
+        Encode(w);
+        return stream.ToArray();
+    }
+    internal void Encode(BinaryWriter w)
+    {
+        using var perf = ReplayPerfTelemetry.Measure(ReplayPerfOperation.AuthorityEncode);
+        long start = w.BaseStream.Position;
         w.Write((byte)2); w.Write(MatchId); w.Write(Epoch); w.Write(Tick);
         Actor(Prime); w.Write((byte)Phase); w.Write(MatchTime); w.Write((byte)EndCause); w.Write(EndingKill.HasValue);
         if (EndingKill is { } kill)
@@ -84,19 +92,18 @@ internal sealed class ReplayAuthorityWorld
             w.Write(kill.MatchId); w.Write(kill.AuthorityEpoch); w.Write(kill.ServerTick); w.Write(kill.EventId);
             w.Write(kill.KillerSlot); w.Write(kill.KillerGeneration); w.Write(kill.VictimSlot); w.Write(kill.VictimGeneration); w.Write(kill.VictimLifeId);
         }
-        foreach (var values in new[] { TeamPoints, FlagScores, NodesCaptured })
-        { if (values.Length != 8) throw Invalid(); foreach (int value in values) w.Write(value); }
-        Count(Flags.Length); foreach (var v in Flags)
+        Scores(TeamPoints); Scores(FlagScores); Scores(NodesCaptured);
+        Count(FlagCount < 0 ? Flags.Length : FlagCount); foreach (var v in Flags.AsSpan(0, FlagCount < 0 ? Flags.Length : FlagCount))
         { w.Write(v.Id); Vector(v.Position); Actor(v.Carrier); Actor(v.LastCarrier); w.Write(v.AtBase); w.Write(v.Grounded); w.Write(v.ResetTimer); w.Write(v.Gravity); }
-        Count(Nodes.Length); foreach (var v in Nodes)
+        Count(NodeCount < 0 ? Nodes.Length : NodeCount); foreach (var v in Nodes.AsSpan(0, NodeCount < 0 ? Nodes.Length : NodeCount))
         { w.Write(v.Id); w.Write(v.Team); w.Write(v.Occupying); w.Write(v.Occupants); Actor(v.Capturer); w.Write(v.Progress); w.Write(v.ScoreTimer); w.Write(v.BlinkTimer); w.Write(v.Rotation); w.Write(v.Spin); w.Write(v.Contested); w.Write(v.InProgress); }
-        Count(Pickups.Length); foreach (var v in Pickups)
+        Count(PickupCount < 0 ? Pickups.Length : PickupCount); foreach (var v in Pickups.AsSpan(0, PickupCount < 0 ? Pickups.Length : PickupCount))
         { w.Write(v.Id); w.Write(v.State.Available); w.Write(v.State.Active); w.Write(v.State.Cooldown); w.Write(v.State.SpawnCount); w.Write(v.State.PickerSlot); }
-        Count(Drops.Length); foreach (var v in Drops) { w.Write(v.Identity); w.Write((byte)v.Type); Vector(v.Position); w.Write(v.DespawnTimer); }
-        Count(Doors.Length); foreach (var v in Doors)
+        Count(DropCount < 0 ? Drops.Length : DropCount); foreach (var v in Drops.AsSpan(0, DropCount < 0 ? Drops.Length : DropCount)) { w.Write(v.Identity); w.Write((byte)v.Type); Vector(v.Position); w.Write(v.DespawnTimer); }
+        Count(DoorCount < 0 ? Doors.Length : DoorCount); foreach (var v in Doors.AsSpan(0, DoorCount < 0 ? Doors.Length : DoorCount))
         { w.Write(v.Id); w.Write((uint)v.Flags); w.Write(v.Portal); w.Write(v.Collision); w.Write(v.ConnectorInactive); }
-        if (stream.Length > MaximumBytes) throw Invalid();
-        return stream.ToArray();
+        if (w.BaseStream.Position - start > MaximumBytes) throw Invalid();
+        void Scores(int[] values) { if (values.Length != 8) throw Invalid(); foreach (int value in values) w.Write(value); }
         void Count(int n) { if (n > MaximumEntities) throw Invalid(); w.Write((ushort)n); }
         void Actor(ReplayActorRef v) { w.Write(v.Slot); w.Write(v.Generation); w.Write(v.Life); }
         void Vector(Vector3 v) { w.Write(v.X); w.Write(v.Y); w.Write(v.Z); }

@@ -53,6 +53,7 @@ namespace MphRead.Mods.Network
                 return;
             }
             _lastReport = time;
+            Console.WriteLine(ReplayPerfTelemetry.Summary(ReplayCapture.Recorder.Timeline));
 
             var stats = NetSession.CaptureTelemetry();
             Console.WriteLine($"[netstats] rx={stats.Transport?.PacketsReceived} tx={stats.Transport?.PacketsSent} queue={stats.Transport?.QueueCurrent}/{stats.Transport?.QueueHighWater} drop={stats.Transport?.QueueDrops} delay={stats.Presentation.Delay:F2}f jitter={stats.Presentation.JitterFrames:F2}f rewind={stats.LagComp.MeanApplied:F2}f p95={stats.LagComp.RequestedP95} shadowWouldClamp={stats.Shadow.WouldClamp} shadowTimed={stats.Shadow.TimedShots}/{stats.Shadow.Shots}");

@@ -1824,14 +1824,11 @@ namespace MphRead.Mods.Network
             _transport.Send(_hostEndPoint, PacketType.MatchEnd, _scratch.AsSpan(0, 10));
         }
 
-        internal static void SendReplayWorld(ReplayAuthorityWorld world)
+        internal static void SendReplayWorldPacket(ReadOnlySpan<byte> payload)
         {
-            foreach (byte[] packet in ReplayAuthorityWire.Packets(world))
-            {
-                if (Role == NetRole.Server) ReplayWorldSink?.Invoke(packet.AsSpan(1));
-                else if (Role == NetRole.Host)
-                    foreach (var peer in _peers) _transport?.Send(peer.EndPoint, PacketType.ReplayWorld, packet.AsSpan(1));
-            }
+            if (Role == NetRole.Server) ReplayWorldSink?.Invoke(payload);
+            else if (Role == NetRole.Host)
+                foreach (var peer in _peers) _transport?.Send(peer.EndPoint, PacketType.ReplayWorld, payload);
         }
 
         /// <summary>Host -> clients: authoritative state for every active player.</summary>

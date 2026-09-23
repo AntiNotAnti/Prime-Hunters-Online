@@ -59,3 +59,28 @@ indexed.AppendRestorePoint(new(0, 0, ReplayRestoreKind.NetworkBaseline, new[] { 
 indexed.Append(baselineFact);
 Check(indexed.TryFreeze(0, 0, out var noDuplicate) && noDuplicate!.Records.Count == 0, "chosen baseline fact is not replayed twice");
 Console.WriteLine($"Replay timeline: {checks} checks passed.");
+
+var quiet = new RollingReplayTimeline();
+quiet.AppendRestorePoint(Restore(0));
+for (uint i = 1; i < 1000; i++) quiet.AdvanceFrame(i, i);
+long allocated = GC.GetAllocatedBytesForCurrentThread();
+for (uint i = 1000; i < 10000; i++) quiet.AdvanceFrame(i, i);
+Check(GC.GetAllocatedBytesForCurrentThread() == allocated, "quiet frontier allocates zero bytes");
+Check(quiet.RecordCount == 1 && quiet.LastRecordingFrame == 9999 && quiet.LastServerTick == 9999, "quiet frontier has no facts");
+Check(!quiet.AdvanceFrame(9998, 9998), "frontier rejects backwards time");
+Check(quiet.TryFreeze(9700, 9999, out _), "quiet range freezes");
+Console.WriteLine($"PASS: {checks} timeline checks including allocation regression");
+var owned = new RollingReplayTimeline();
+var ownedFact = Fact(0);
+owned.AppendRestorePoint(new(0, 0, ReplayRestoreKind.NetworkBaseline, new[] { ownedFact }));
+ownedFact.Release();
+var ownedPacket = new ReplayTimelineRecord(1, 1, ReplayFactKind.Snapshot, new byte[] { 73 });
+owned.Append(ownedPacket); ownedPacket.Release();
+Check(owned.TryFreeze(0, 1, out var lease), "freeze retains pooled payloads");
+owned.Reset();
+Check(lease!.Records[0].Payload[0] == 73, "lease survives deterministic return on reset");
+lease.Dispose(); lease.Dispose();
+bool released = false;
+try { _ = ownedPacket.Payload[0]; } catch (ObjectDisposedException) { released = true; }
+Check(released, "last release returns pooled payload");
+Console.WriteLine($"PASS: {checks} checks including pooled lifetime");

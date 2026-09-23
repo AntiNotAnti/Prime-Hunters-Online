@@ -13,7 +13,7 @@ namespace MphRead.Mods.Network
     /// </summary>
     internal static class ServerReplayRecorder
     {
-        private static ReplayWriterV3? _writer;
+        private static ReplayWritePump? _writer, _lastWriter;
         private static uint _origin;
         private static bool _pending;
         static ServerReplayRecorder()
@@ -22,7 +22,7 @@ namespace MphRead.Mods.Network
             ReplayCapture.Recorder.CheckpointCaptured += checkpoint =>
             {
                 if (_writer == null || checkpoint.RecordingFrame <= _origin) return;
-                try { _writer.WriteCheckpoint(checkpoint.RecordingFrame - _origin, checkpoint.Payload); }
+                try { if (!_writer.Checkpoint(checkpoint)) Fail(_writer.Error!); }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException) { Fail(ex); }
             };
             ReplayCapture.Recorder.Resetting += () => Stop();
@@ -34,7 +34,8 @@ namespace MphRead.Mods.Network
         public static bool Enabled => _policy.Enabled;
         public static bool IsRecording => _pending || _writer != null;
         public static string? CurrentPath { get; private set; }
-        public static string? LastError { get; private set; }
+        private static string? _lastError;
+        public static string? LastError => _lastError ?? _lastWriter?.Error?.Message;
 
         public static void Configure(ServerReplayPolicy policy)
         {
@@ -49,21 +50,20 @@ namespace MphRead.Mods.Network
                 + $"storage {(_policy.StorageLimitGb == 0 ? "unlimited" : _policy.StorageLimitGb + " GB")}, "
                 + $"retention {(_policy.RetentionDays == 0 ? "forever" : _policy.RetentionDays + " days")}, "
                 + $"keep newest {_policy.KeepLast}");
-            ApplyRetention("startup");
+            _ = System.Threading.Tasks.Task.Run(() => ApplyRetention("startup"));
         }
 
         public static bool Start(ReplayMetadata metadata)
         {
             if (!_policy.Enabled) return false;
             Stop();
-            LastError = null;
+            _lastError = null; _lastWriter = null;
             try
             {
                 if (metadata.MapHash == 0)
                     throw new IOException("The server replay map could not be identified.");
 
                 string room = Sanitize(metadata.RoomKey.Length == 0 ? "match" : metadata.RoomKey);
-                Directory.CreateDirectory(ReplayDirectory);
                 CurrentPath = Path.Combine(ReplayDirectory,
                     $"{room}_{DateTime.Now:yyyy-MM-dd_HH-mm-ss-fff}_{Guid.NewGuid():N}{DemoFile.Extension}");
                 _pending = true;
@@ -73,7 +73,7 @@ namespace MphRead.Mods.Network
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
                 or InvalidDataException or ArgumentException)
             {
-                LastError = ex.Message;
+                _lastError = ex.Message;
                 _writer = null;
                 CurrentPath = null;
                 Console.WriteLine($"[replay] canonical recording did not start: {ex.Message}");
@@ -88,11 +88,12 @@ namespace MphRead.Mods.Network
                 if (_pending && ReplayCapture.WorldCapture.World is { } world)
                 {
                     _origin = world.Session.RecordingFrame;
-                    _writer = new ReplayWriterV3(CurrentPath!, ReplayTimelineArchive.Metadata(world, ReplayType.FullMatch));
-                    _pending = false;
-                    _writer.WriteEvent(new(0, ReplayEventType.MatchStarted));
+                    _writer = new ReplayWritePump(CurrentPath!, ReplayTimelineArchive.Metadata(world, ReplayType.FullMatch), _origin,
+                        finalized: () => ApplyRetention("match finalization"));
+                    _pending = false; _lastWriter = _writer;
+                    _writer.Event(new(0, ReplayEventType.MatchStarted));
                 }
-                if (_writer != null) ReplayTimelineArchive.EndFrame(_writer, Frame());
+                if (_writer != null && !_writer.EndFrame(Frame())) Fail(_writer.Error!);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException)
             { Fail(ex); }
@@ -100,19 +101,19 @@ namespace MphRead.Mods.Network
         private static void Accept(ReplayTimelineRecord record)
         {
             if (_writer == null) return;
-            try { ReplayTimelineArchive.Write(_writer, record, _origin); }
+            try { if (!_writer.Record(record)) Fail(_writer.Error!); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
             { Fail(ex); }
         }
         private static void Fail(Exception ex)
         {
-            LastError = ex.Message; _writer?.Abort(); _writer = null; _pending = false; CurrentPath = null;
+            _lastError = ex.Message; _writer?.Abort(); _writer = null; _pending = false; CurrentPath = null;
             Console.WriteLine($"[replay] canonical recording interrupted; recover its .part file: {ex.Message}");
         }
 
         public static void Stop(bool matchEnded = false)
         {
-            ReplayWriterV3? writer = _writer;
+            ReplayWritePump? writer = _writer;
             _writer = null; _pending = false;
             if (writer == null)
             {
@@ -122,20 +123,19 @@ namespace MphRead.Mods.Network
             try
             {
                 if (matchEnded)
-                    writer.WriteEvent(new ReplayEvent(Frame(), ReplayEventType.MatchEnded));
-                writer.Dispose();
+                    writer.Event(new ReplayEvent(Frame(), ReplayEventType.MatchEnded));
+                writer.Complete();
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
                 or InvalidDataException)
             {
-                LastError = ex.Message;
+                _lastError = ex.Message;
                 writer.Abort();
                 Console.WriteLine($"[replay] canonical recording interrupted: {ex.Message}");
             }
             finally
             {
                 CurrentPath = null;
-                if (_policy.Enabled) ApplyRetention("match finalization");
             }
         }
 

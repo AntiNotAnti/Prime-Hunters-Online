@@ -1299,14 +1299,27 @@ Map ownership: O(1) state-ID dirty tracking and bounded delta/coalesced history 
 
 Map build ownership: validation/navigation, builds, packaging, installer and synchronous client/server preparation share `MapBuildScheduler` (two workers, 32 jobs), detached snapshots, a bounded private compiler cache and integrity-checked runtime content cache. Cancelling a waiter leaves shared work running. Do not hold catalog locks while waiting. `MapDependencyAnalyzer` defines fingerprints and portable assets for packaging, reference checks and Save As.
 
-Replay capture: one accepted-fact recorder serves client/server recordings, instant clips and killcams. `ReplayLiveWorld` emits detached worlds every 300 frames. Pending facts are bounded to 8,192/4 MiB; rolling history retains at least 45 seconds, grows for clip preferences and stays within 64 MiB. Missing facts invalidate history. Input is presentation evidence; accepted authority defines damage. Protocol 16's optional packet 42 records bounded replay-only world/objective/end-cause facts without changing live gameplay.
+Replay capture: pooled immutable leases and allocation-free quiet frontiers feed one accepted-fact recorder that serves client/server recordings, instant clips and killcams. `ReplayLiveWorld` emits detached worlds every 300 frames. Pending facts are bounded to 8,192/4 MiB; rolling history retains at least 45 seconds, grows for clip preferences and stays within 64 MiB. Missing facts invalidate history. Input is presentation evidence; accepted authority defines damage. Protocol 16's optional packet 42 records bounded replay-only world/objective/end-cause facts without changing live gameplay.
 
 Replay checkpoints: explicit versioned world contracts contain bounded values, asset keys and construction anchors, never live references or native handles. Restore targets an unpublished replica with matching content/construction state. The player caps its memory cache at 128/64 MiB and seek work at 120 steps/update. V4 initial worlds, origins and hidden lead-in preserve exact nested clips; optional durable indexes accelerate cold seeks. V2/v3 remain readable. Invalid optional checkpoints fall back to valid reconstruction; unsupported required schemas fail clearly.
 
-Replay killcams: `KillCam` routes live boundary input/presentation to `KillcamController`; live simulation continues. Respawn, slot/life/epoch/match changes and disconnect invalidate personal presentation. Exact kill identity and confirmed ending cause select final replays. Private HUD and versioned audio leases keep ownership explicit; Android skip callbacks queue work for the scene owner. All draw state is historical, including projectiles/effects/animations.
+Replay killcams: personal and final footage cover up to 300 frames at 1x, with 10-second results and shared 16-second server intermission. `KillCam` routes live boundary input/presentation to `KillcamController`; live simulation continues. Respawn, slot/life/epoch/match changes and disconnect invalidate personal presentation. Exact kill identity and confirmed ending cause select final replays. Private HUD and versioned audio leases keep ownership explicit; Android skip callbacks queue work for the scene owner. All draw state is historical, including projectiles/effects/animations.
 
 Replay Studio: library/search/sort/favorites, virtual/nested clips, annotations, bookmarks, highlights/analytics, cinematic camera tracks, director, transport/controller/touch controls, thumbnails and exports remain available. Camera selection cannot change simulation RNG. Replay Lab explicitly detaches into offline practice only without a live connection. Disk clip serialization consumes frozen values on a worker; native world lifetime stays on the scene owner.
 
 Replay presentation/export: `ReplayPoseStream` owns bounded accepted-snapshot lookahead independently of simulation and network timing. Interpolation fences occupant/life, spawn/death, form and teleports. Fractional camera tracks and export manifests v2 yield genuine 120 FPS half-frame images from 60 Hz simulation. Native world/HUD targets support 720p through 4K. Export overlays stay out of movies; video-only export behavior is preserved.
 
 Validation: gameplay hash schema 3 includes world/projectile/pickup/RNG state, with separate animation/trail/particle projections. `-replayreplicacheck`, `-replayworldcheck`, `-replaylivecheck`, `-replaykillcamcheck`, `-replaytheatrecheck`, `-replaydurablecheck` and `-replayexportcheck` cover the production private player. All-mode fixtures are deterministic synthetic coverage; real two/four/eight-client and Android emulator runs are separately documented. `-mapviewportcheck` covers GL composition, picking and ownership; `tools/map-editor-check` covers document, cache, build and package contracts. Measurements and their limits are in `docs/architecture/replay-map-performance.md`.
+
+Replay frame pacing: capture uses a single pooled bounded writer, reusable graph
+storage and generated typed accessors (`tools/replay-schema-generator`). Authority
+capture encodes once into reusable storage at 10 Hz. `ReplayWritePump` owns all
+client/server recording I/O and compression, with nonblocking 4,096-command/32 MiB
+queues and recoverable overflow. Clips save their frozen baseline/facts directly
+through v4 hidden lead-in; they never construct a Scene during live saving. Optional
+player preparation yields at 24 steps/about 1 ms; scene lifetime stays on its owner. First-person effect overrides use
+a small tracked list instead of scanning every active effect per picture.
+`-netdebug` exposes allocation/time/GC and checkpoint correlation;
+`-netcheck HOST -nographics -recorddemo` covers simulation/storage without GL.
+See `docs/architecture/replay-map-performance.md` for current measurements and
+remaining rendered/high-refresh validation.

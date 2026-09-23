@@ -56,9 +56,12 @@ internal sealed class PassiveReplayPlayer : IDisposable
 
     /// <summary>One host update. Seeking never exceeds 120 fixed steps, and leaves
     /// the target pending for the next update. No intermediate frame is presented.</summary>
-    public int Update()
+    public int Update(int maximumSteps = MaximumStepsPerUpdate, double maximumMilliseconds = double.PositiveInfinity)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        maximumSteps = Math.Clamp(maximumSteps, 1, MaximumStepsPerUpdate);
+        long updateStart = Stopwatch.GetTimestamp();
+        bool BudgetAvailable() => Stopwatch.GetElapsedTime(updateStart).TotalMilliseconds < maximumMilliseconds;
         uint? target = Transport.SeekTarget;
         bool resume = Transport.ResumeAfterSeek;
         bool rebuild = Transport.TakeRebuild(out uint rebuildTarget, out bool rebuildResume);
@@ -76,7 +79,7 @@ internal sealed class PassiveReplayPlayer : IDisposable
         if (Current.Session.IsWarming)
         {
             int warmup = 0;
-            while (Current.Session.IsWarming && warmup < MaximumStepsPerUpdate)
+            while (Current.Session.IsWarming && warmup < maximumSteps && (warmup == 0 || BudgetAvailable()))
             {
                 if (!Current.Step()) throw new InvalidDataException("Replay ended during its required lead-in.");
                 if (!Current.Session.IsWarming) Stepped?.Invoke(Current.Scene);
@@ -85,16 +88,16 @@ internal sealed class PassiveReplayPlayer : IDisposable
             }
             return warmup;
         }
-        int due = Math.Min(MaximumStepsPerUpdate, Transport.FramesDue());
+        int due = Math.Min(maximumSteps, Transport.FramesDue());
         bool seeking = Transport.IsSeeking;
         int steps = 0;
-        for (; steps < due; steps++)
+        for (; steps < due && (!seeking || steps == 0 || BudgetAvailable()); steps++)
         {
             if (!Current.Step()) break;
             Stepped?.Invoke(Current.Scene);
             uint frame = Current.Session.CurrentFrame;
             if (seeking) SeekSimulationSteps++;
-            if (frame % 300 == 0 && !_checkpoints.ContainsKey(frame))
+            if (double.IsPositiveInfinity(maximumMilliseconds) && frame % 300 == 0 && !_checkpoints.ContainsKey(frame))
             {
                 try { Remember(ReplayWorldCheckpoint.Capture(Current)); }
                 catch (Exception ex) when (ex is InvalidDataException or InvalidOperationException)
@@ -114,11 +117,12 @@ internal sealed class PassiveReplayPlayer : IDisposable
     private void Rebuild(uint target, bool resume, ReplayWorldCheckpoint? checkpoint, ReplayCheckpointIndex? durable = null)
     {
         PassiveReplayScene? replacement = null;
+        ReplayWorldCheckpoint? loaded = null;
         try
         {
             if (durable is { } disk)
             {
-                try { checkpoint = Current.Session.LoadCheckpoint(disk); }
+                try { checkpoint = loaded = Current.Session.LoadCheckpoint(disk); }
                 catch (Exception ex) when (ex is InvalidDataException or IOException or InvalidOperationException or ArgumentException)
                 {
                     RejectedCheckpoints++; LastCheckpointError = ex.Message; _rejectedDurable.Add(disk.Offset);
@@ -134,7 +138,7 @@ internal sealed class PassiveReplayPlayer : IDisposable
                 {
                     RejectedCheckpoints++; LastCheckpointError = ex.Message;
                     if (durable is { } rejected) _rejectedDurable.Add(rejected.Offset);
-                    else { CheckpointBytes -= checkpoint.Bytes.Length + 128; _checkpoints.Remove(checkpoint.Frame); }
+                    else { CheckpointBytes -= checkpoint.Bytes.Length + 128; _checkpoints.Remove(checkpoint.Frame); checkpoint.Dispose(); }
                     replacement.Dispose(); replacement = _open(); CheckpointSource = "initial world";
                 }
             }
@@ -145,21 +149,22 @@ internal sealed class PassiveReplayPlayer : IDisposable
             try { Replaced?.Invoke(previous.Scene, Current); }
             finally { previous.Dispose(); }
         }
-        finally { replacement?.Dispose(); }
+        finally { replacement?.Dispose(); loaded?.Dispose(); }
     }
     private void Remember(ReplayWorldCheckpoint checkpoint)
     {
         long cost = checkpoint.Bytes.Length + 128;
-        if (cost > MaximumCheckpointBytes) return;
+        if (cost > MaximumCheckpointBytes) { checkpoint.Dispose(); return; }
         while (_checkpoints.Count >= MaximumCheckpoints || CheckpointBytes + cost > MaximumCheckpointBytes)
         {
-            var first = _checkpoints.First(); _checkpoints.Remove(first.Key); CheckpointBytes -= first.Value.Bytes.Length + 128;
+            var first = _checkpoints.First(); _checkpoints.Remove(first.Key); CheckpointBytes -= first.Value.Bytes.Length + 128; first.Value.Dispose();
         }
         _checkpoints.Add(checkpoint.Frame, checkpoint); CheckpointBytes += cost;
     }
     public void Dispose()
     {
         if (_disposed) return;
-        _disposed = true; Current.Dispose(); _checkpoints.Clear(); CheckpointBytes = 0;
+        _disposed = true; Current.Dispose(); foreach (var checkpoint in _checkpoints.Values) checkpoint.Dispose();
+        _checkpoints.Clear(); CheckpointBytes = 0;
     }
 }

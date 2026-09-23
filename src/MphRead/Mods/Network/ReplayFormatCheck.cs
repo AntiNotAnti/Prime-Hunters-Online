@@ -20,8 +20,8 @@ namespace MphRead.Mods.Network
             public void Start() => NetSession.StartPlayback();
             public void Stop() => NetSession.Stop();
             public void Rewind() => NetSession.RewindPlayback();
-            public void Inject(byte[] packet, uint frame) => NetSession.InjectPlaybackPacket(
-                packet, packet.Length, ReplayPlaybackSession.PlaybackArrivalTicks(frame));
+            public void Inject(ReadOnlySpan<byte> packet, uint frame) => NetSession.InjectPlaybackPacket(
+                packet.ToArray(), packet.Length, ReplayPlaybackSession.PlaybackArrivalTicks(frame));
             public void Advance(double seconds) => NetSession.Update(seconds);
             public void RestoreClock(uint frame) => NetSession.PreparePlaybackCheckpoint(frame);
             public void ResetDiagnostics() { }
@@ -63,6 +63,8 @@ namespace MphRead.Mods.Network
                 sessionBytes[0] = (byte)PacketType.SessionState; session.Write(sessionBytes.AsSpan(1));
                 var metadata = new ReplayMetadata { RoomKey = match.RoomKey, Mode = GameMode.Battle,
                     Bootstrap = new ReplayBootstrap { Packets = new[] { sessionBytes, matchBytes } } };
+
+                ReplayPerformanceChecks.Run(Require, metadata);
 
                 // Current snapshots append match-time and health-sync state after
                 // the player array. The replay validator must accept the same wire

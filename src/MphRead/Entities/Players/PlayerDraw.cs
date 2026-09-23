@@ -235,11 +235,11 @@ namespace MphRead.Entities
                             // barrel without changing spawning or effect lifetime.
                             if (_chargeEffect != null)
                             {
-                                _chargeEffect.DrawTransformOverride = effectTransform;
+                                _scene.SetPresentationEffectTransform(_chargeEffect, effectTransform);
                             }
                             if (_muzzleEffect != null)
                             {
-                                _muzzleEffect.DrawTransformOverride = effectTransform;
+                                _scene.SetPresentationEffectTransform(_muzzleEffect, effectTransform);
                             }
                         }
                     }

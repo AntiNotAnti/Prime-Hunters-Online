@@ -19,35 +19,44 @@ internal static class ReplayAssetCheckpoint
         "Lighting", "Culling", "Alpha", "CurrentAlpha", "Wireframe", "CurrentTextureId", "CurrentPaletteId",
         "Diffuse", "Ambient", "CurrentDiffuse", "CurrentAmbient", "CurrentSpecular", "PolygonMode", "RenderMode",
         "AnimationFlags", "TexgenMode", "TexcoordAnimationId", "MatrixId");
+    internal static readonly string AccessorContract = string.Join(";", NodeFields.Concat(MeshFields).Concat(MaterialFields)
+        .Select(p => p.DeclaringType + "." + p.Name + ":" + p.PropertyType));
+    private static readonly bool BoundAccessorsCurrent = ReplayAssetAccessors.Contract == AccessorContract;
     private static PropertyInfo[] Properties<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>(params string[] names) => names.Select(name => typeof(T).GetProperty(name)
         ?? throw new InvalidOperationException("Missing replay asset field " + name)).ToArray();
 
     internal static byte[] Capture(Scene scene)
     {
         using var stream = new MemoryStream(); using var writer = new BinaryWriter(stream);
+        Write(writer, scene, new());
+        return stream.ToArray();
+    }
+    internal static void Write(BinaryWriter writer, Scene scene, System.Collections.Generic.List<Model> models, bool boundAccessors = true)
+    {
+        boundAccessors &= BoundAccessorsCurrent;
         writer.Write((ushort)1);
-        var models = scene.ReplicaModels.Values.OrderBy(m => m.Name, StringComparer.Ordinal).ThenBy(m => m.FirstHunt).ToArray();
-        writer.Write(models.Length);
+        models.Clear();
+        foreach (var model in scene.ReplicaModels.Values) models.Add(model);
+        models.Sort(static (a, b) => { int order = StringComparer.Ordinal.Compare(a.Name, b.Name); return order != 0 ? order : a.FirstHunt.CompareTo(b.FirstHunt); });
+        writer.Write(models.Count);
         foreach (Model model in models)
         {
             writer.Write(model.Name); writer.Write(model.FirstHunt);
             writer.Write(model.Nodes.Count);
             foreach (Node node in model.Nodes)
             {
-                WriteFields(writer, node, NodeFields);
+                if (boundAccessors) ReplayAssetAccessors.Write(writer, node); else WriteFields(writer, node, NodeFields);
                 foreach (float value in node.Bounds) writer.Write(value);
             }
             writer.Write(model.Meshes.Count);
-            foreach (Mesh mesh in model.Meshes) WriteFields(writer, mesh, MeshFields);
+            foreach (Mesh mesh in model.Meshes) if (boundAccessors) ReplayAssetAccessors.Write(writer, mesh); else WriteFields(writer, mesh, MeshFields);
             writer.Write(model.Materials.Count);
-            foreach (Material material in model.Materials) WriteFields(writer, material, MaterialFields);
+            foreach (Material material in model.Materials) if (boundAccessors) ReplayAssetAccessors.Write(writer, material); else WriteFields(writer, material, MaterialFields);
             writer.Write(model.MatrixStackValues.Count);
             foreach (float value in model.MatrixStackValues) writer.Write(value);
         }
         scene.Room!.WriteReplayActivation(writer);
-        writer.Flush();
-        if (stream.Length > ReplayWorldCheckpoint.MaximumBytes) throw new InvalidDataException("Replay asset budget exceeded.");
-        return stream.ToArray();
+        models.Clear();
     }
 
     internal static void Restore(Scene scene, byte[] bytes)
