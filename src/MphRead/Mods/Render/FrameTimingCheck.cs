@@ -108,6 +108,8 @@ namespace MphRead.Mods.Render
             failures += RunPresentationAlphaCase() ? 0 : 1;
             failures += RunFirstPersonPresentationCase() ? 0 : 1;
             failures += RunResponsiveCameraTranslationCase() ? 0 : 1;
+            failures += RunAngularCameraPresentationCase() ? 0 : 1;
+            failures += RunFastLateAimCase() ? 0 : 1;
             failures += RunLockjawNoiseCases();
             Console.WriteLine(failures == 0
                 ? "FRAMETIMING all cases pass"
@@ -247,42 +249,150 @@ namespace MphRead.Mods.Render
                 };
                 camera.ModResetDrawState();
 
-                camera.Position = Vector3.UnitX;
+                Vector3 previousBody = Vector3.UnitX;
+                camera.Position = previousBody + new Vector3(0, .10f, 0);
                 camera.ModCaptureDrawState();
-                camera.Position = Vector3.UnitX * 2;
+                Vector3 currentBody = Vector3.UnitX * 2;
+                camera.Position = currentBody + new Vector3(0, .20f, 0);
                 camera.ModCaptureDrawState();
 
-                Vector3 steady = camera.ModGetResponsiveDrawPosition(0.5);
-                bool steadyOk = MathF.Abs(steady.X - 2.5f) < 0.000001f;
+                Vector3 steady = camera.ModGetResponsiveDrawPosition(
+                    0.5, previousBody, currentBody);
+                bool steadyOk = (steady - new Vector3(2.5f, .15f, 0)).LengthSquared
+                    < 0.00000001f;
 
-                camera.Position = new Vector3(2.25f, 0, 0);
+                // Body velocity changes are projected from the latest actual
+                // player step, while the visual offset continues to blend.
+                previousBody = currentBody;
+                currentBody = new Vector3(2.25f, 0, 0);
+                camera.Position = currentBody + new Vector3(0, .10f, 0);
                 camera.ModCaptureDrawState();
-                Vector3 decelerating = camera.ModGetResponsiveDrawPosition(0.5);
-                // Current step is 1/4 of the prior step, so confidence is 1/4.
-                bool decelerationOk = MathF.Abs(decelerating.X - 2.28125f) < 0.000001f;
+                Vector3 decelerating = camera.ModGetResponsiveDrawPosition(
+                    0.5, previousBody, currentBody);
+                bool decelerationOk = (decelerating - new Vector3(2.375f, .15f, 0)).LengthSquared
+                    < 0.00000001f;
 
-                camera.Position = new Vector3(2f, 0, 0);
+                // A body reversal is real locomotion, not a reason to snap the
+                // render camera back to the simulation pose.
+                previousBody = currentBody;
+                currentBody = new Vector3(2f, 0, 0);
+                camera.Position = currentBody + new Vector3(0, .05f, 0);
                 camera.ModCaptureDrawState();
-                Vector3 reversed = camera.ModGetResponsiveDrawPosition(0.5);
-                bool reversalOk = (reversed - camera.Position).LengthSquared < 0.0000000001f;
+                Vector3 reversed = camera.ModGetResponsiveDrawPosition(
+                    0.5, previousBody, currentBody);
+                bool reversalOk = (reversed - new Vector3(1.875f, .075f, 0)).LengthSquared
+                    < 0.00000001f;
 
-                camera.Position = new Vector3(10f, 0, 0);
+                // Teleport-sized body motion is never extrapolated.
+                previousBody = currentBody;
+                currentBody = new Vector3(10f, 0, 0);
+                camera.Position = currentBody;
                 camera.ModCaptureDrawState();
-                Vector3 rebased = camera.ModGetResponsiveDrawPosition(0.5);
+                Vector3 rebased = camera.ModGetResponsiveDrawPosition(
+                    0.5, previousBody, currentBody);
                 bool rebaseOk = (rebased - camera.Position).LengthSquared < 0.0000000001f;
 
                 FrameTiming.FrameRateCap = 60;
-                camera.Position = new Vector3(11f, 0, 0);
-                Vector3 sixty = camera.ModGetResponsiveDrawPosition(0.5);
+                previousBody = currentBody;
+                currentBody = new Vector3(11f, 0, 0);
+                camera.Position = currentBody;
+                Vector3 sixty = camera.ModGetResponsiveDrawPosition(
+                    0.5, previousBody, currentBody);
                 bool sixtyOk = (sixty - camera.Position).LengthSquared < 0.0000000001f;
 
                 bool ok = steadyOk && decelerationOk && reversalOk && rebaseOk && sixtyOk;
                 Console.WriteLine($"FRAMETIMING {(ok ? "ok  " : "FAIL")} responsive camera translation"
-                    + $" | steady {steady.X:0.00000}"
-                    + $" | decel {decelerating.X:0.00000}"
-                    + $" | reverse {reversed.X:0.00000}"
+                    + $" | steady {steady.X:0.00000}/{steady.Y:0.00000}"
+                    + $" | decel {decelerating.X:0.00000}/{decelerating.Y:0.00000}"
+                    + $" | reverse {reversed.X:0.00000}/{reversed.Y:0.00000}"
                     + $" | rebase {rebased.X:0.00000}"
                     + $" | 60 Hz {sixty.X:0.00000}");
+                return ok;
+            }
+            finally
+            {
+                FrameTiming.FrameRateCap = priorCap;
+                FrameTiming.Reset();
+                FrameTiming.ResetDiagnostics();
+            }
+        }
+
+        /// <summary>
+        /// Fast yaw must travel around the unit sphere. Blending two target
+        /// points through world space can collapse the camera direction at the
+        /// midpoint of a near-180 degree spin.
+        /// </summary>
+        private static bool RunAngularCameraPresentationCase()
+        {
+            Vector3 from = -Vector3.UnitZ;
+            Vector3 to = -Vector3.UnitX;
+            bool quarter = CameraInfo.ModInterpolateDirection(
+                from, to, .5f, out Vector3 half);
+            Vector3 expected = new Vector3(-1, 0, -1).Normalized();
+            bool quarterOk = quarter && (half - expected).LengthSquared < 0.000001f;
+
+            bool opposite = CameraInfo.ModInterpolateDirection(
+                -Vector3.UnitZ, Vector3.UnitZ, .5f, out Vector3 oppositeHalf);
+            bool oppositeOk = opposite
+                && Single.IsFinite(oppositeHalf.X) && Single.IsFinite(oppositeHalf.Y)
+                && Single.IsFinite(oppositeHalf.Z)
+                && MathF.Abs(oppositeHalf.Length - 1f) < 0.00001f
+                && MathF.Abs(Vector3.Dot(oppositeHalf, Vector3.UnitZ)) < 0.001f;
+
+            var camera = new CameraInfo
+            {
+                Position = Vector3.Zero,
+                Target = -Vector3.UnitZ,
+                UpVector = Vector3.UnitY,
+                Fov = 78
+            };
+            camera.ModResetDrawState();
+            camera.Target = Vector3.UnitZ;
+            camera.ModCaptureDrawState();
+            bool pose = camera.ModGetDrawPose(.5,
+                out Vector3 pos, out Vector3 target, out Vector3 up, out _);
+            Vector3 poseFacing = target - pos;
+            bool poseOk = pose && poseFacing.LengthSquared > .99f
+                && Single.IsFinite(poseFacing.X) && Single.IsFinite(poseFacing.Y)
+                && Single.IsFinite(poseFacing.Z) && up.LengthSquared > .99f;
+
+            bool ok = quarterOk && oppositeOk && poseOk;
+            Console.WriteLine($"FRAMETIMING {(ok ? "ok  " : "FAIL")} angular camera presentation"
+                + $" | 90deg midpoint {half}"
+                + $" | 180deg midpoint length {oppositeHalf.Length:0.00000}"
+                + $" | pose direction length {poseFacing.Length:0.00000}");
+            return ok;
+        }
+
+        /// <summary>
+        /// Normal aim remains fully late-latched. Only an extreme pointer/touch
+        /// turn is spread across the unsimulated fraction of the current tick,
+        /// and it must converge to the full input at the tick boundary.
+        /// </summary>
+        private static bool RunFastLateAimCase()
+        {
+            int priorCap = FrameTiming.FrameRateCap;
+            try
+            {
+                FrameTiming.FrameRateCap = 144;
+                FrameTiming.Reset();
+                Vector2 normal = PlayerEntity.ModBoundLateAim(new Vector2(4, 0), .25);
+                Vector2 start = PlayerEntity.ModBoundLateAim(new Vector2(20, 0), 0);
+                Vector2 middle = PlayerEntity.ModBoundLateAim(new Vector2(20, 0), .5);
+                Vector2 end = PlayerEntity.ModBoundLateAim(new Vector2(20, 0), 1);
+
+                FrameTiming.FrameRateCap = 60;
+                Vector2 sixty = PlayerEntity.ModBoundLateAim(new Vector2(20, 0), 0);
+
+                bool ok = MathF.Abs(normal.X - 4) < .00001f
+                    && MathF.Abs(start.X - 8) < .00001f
+                    && MathF.Abs(middle.X - 14) < .00001f
+                    && MathF.Abs(end.X - 20) < .00001f
+                    && MathF.Abs(sixty.X - 20) < .00001f;
+                Console.WriteLine($"FRAMETIMING {(ok ? "ok  " : "FAIL")} fast late aim"
+                    + $" | normal {normal.X:0.00}"
+                    + $" | extreme {start.X:0.00}/{middle.X:0.00}/{end.X:0.00}"
+                    + $" | 60 Hz {sixty.X:0.00}");
                 return ok;
             }
             finally
