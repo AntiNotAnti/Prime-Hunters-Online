@@ -926,10 +926,11 @@ namespace MphRead.Entities
 
         /// <summary>
         /// Low-latency translation for the local fixed-crosshair first-person camera.
-        /// The simulation camera still advances only at 60 Hz; extra pictures project
-        /// the stable part of its last motion into the fractional remainder of the
-        /// next step instead of holding one position for several refreshes. Prediction
-        /// is bounded to one observed step, fades while slowing, and stops on reversal.
+        /// The simulation camera still advances only at 60 Hz. Extra pictures project
+        /// the player's latest body translation into the fractional remainder of the
+        /// next step while interpolating camera-local visual offset (walk bob, landing
+        /// response and camera switching) between completed samples. Keeping those two
+        /// motions separate avoids both locomotion stair-steps and bob reversal snaps.
         /// Teleports/respawns already rebase the history through ModResetDrawState.
         /// </summary>
         internal Vector3 ModGetResponsiveDrawPosition(double alpha,
