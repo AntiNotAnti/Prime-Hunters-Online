@@ -6,13 +6,16 @@ namespace MphRead.Mods.Input
 
     public static class GamepadAnalog
     {
+        private const long TriggerReleaseDebounceMs = 6;
+
         public static float Finite(float value, float min = -1, float max = 1)
             => float.IsFinite(value) ? Math.Clamp(value, min, max) : 0;
 
         public static (float X, float Y) ApplyRadialDeadZone(float x, float y,
             float inner, float outer = 0)
         {
-            x = Finite(x); y = Finite(y);
+            x = Finite(x);
+            y = Finite(y);
             inner = Finite(inner, 0, 0.9f);
             outer = Finite(outer, 0, Math.Min(0.5f, 0.99f - inner));
             float length = MathF.Sqrt(x * x + y * y);
@@ -25,20 +28,63 @@ namespace MphRead.Mods.Input
         {
             float exponent = curve switch
             {
-                GamepadCurve.Linear => 1, GamepadCurve.Precision => 2.4f,
-                GamepadCurve.Dynamic => 1.5f, _ => 2
+                GamepadCurve.Linear => 1,
+                GamepadCurve.Precision => 2.4f,
+                GamepadCurve.Dynamic => 1.5f,
+                _ => 2
             };
             return MathF.CopySign(MathF.Pow(MathF.Abs(Finite(value)), exponent), value);
+        }
+
+        public static (float X, float Y) ApplyRadialResponseCurve(float x, float y, GamepadCurve curve)
+        {
+            x = Finite(x);
+            y = Finite(y);
+            float length = MathF.Sqrt(x * x + y * y);
+            if (length <= 0) return (0, 0);
+            float magnitude = Math.Clamp(length, 0, 1);
+            float curved = ApplyResponseCurve(magnitude, curve);
+            float scale = curved / length;
+            return (x * scale, y * scale);
+        }
+
+        private static float TriggerRelease(float press)
+        {
+            press = Finite(press, 0.05f, 0.95f);
+            return Math.Max(0.01f, press - .08f);
         }
 
         public static bool Trigger(float value, bool held, float press = 0.60f)
         {
             press = Finite(press, 0.05f, 0.95f);
-            float release = Math.Max(0.01f, press - 0.15f);
-            return Finite(value, 0, 1) >= (held ? release : press);
+            return Finite(value, 0, 1) >= (held ? TriggerRelease(press) : press);
         }
 
-        // Eight equal angular sectors: diagonals engage at the same magnitude as cardinals.
+        public static bool TriggerStable(float value, bool held, ref long belowSince,
+            long milliseconds, float press = 0.60f)
+        {
+            press = Finite(press, 0.05f, 0.95f);
+            value = Finite(value, 0, 1);
+            if (!held)
+            {
+                belowSince = -1;
+                return value >= press;
+            }
+            if (value >= TriggerRelease(press))
+            {
+                belowSince = -1;
+                return true;
+            }
+            if (belowSince < 0 || milliseconds < belowSince)
+            {
+                belowSince = milliseconds;
+                return true;
+            }
+            if (milliseconds - belowSince < TriggerReleaseDebounceMs) return true;
+            belowSince = -1;
+            return false;
+        }
+
         public static (int X, int Y) QuantizeMovement(float x, float y, float threshold = 0.5f)
         {
             if (x * x + y * y < threshold * threshold || (x == 0 && y == 0)) return (0, 0);
@@ -51,19 +97,30 @@ namespace MphRead.Mods.Input
         }
     }
 
-    // Android keys and motion remain independent, including duplicate key/axis triggers.
     public sealed class GamepadEventState
     {
         public GamepadButtons KeyButtons;
         public GamepadState Motion;
         public GamepadState Snapshot
         {
-            get { var state = Motion; state.Buttons |= KeyButtons; return state; }
+            get
+            {
+                var state = Motion;
+                state.Buttons |= KeyButtons;
+                return state;
+            }
         }
+
         public void Key(GamepadButtons button, bool down)
         {
-            if (down) KeyButtons |= button; else KeyButtons &= ~button;
+            if (down) KeyButtons |= button;
+            else KeyButtons &= ~button;
         }
-        public void Clear() { KeyButtons = 0; Motion = default; }
+
+        public void Clear()
+        {
+            KeyButtons = 0;
+            Motion = default;
+        }
     }
 }

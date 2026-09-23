@@ -48,6 +48,8 @@ namespace MphRead.Mods.Input
                 Check(GamepadAnalog.ApplyRadialDeadZone(float.NaN, 0, .2f) == (0, 0), "invalid axis neutral");
                 Near(GamepadAnalog.ApplyResponseCurve(.5f, GamepadCurve.Classic), .25f, "classic curve");
                 Near(GamepadAnalog.ApplyResponseCurve(-.5f, GamepadCurve.Linear), -.5f, "linear sign");
+                var curved = GamepadAnalog.ApplyRadialResponseCurve(.8f, .4f, GamepadCurve.Classic);
+                Near(curved.X / curved.Y, 2, "radial response curve preserves stick direction");
                 Check(GamepadAnalog.QuantizeMovement(.4f, .4f) == (1, 1), "diagonal movement threshold");
                 Check(GamepadAnalog.QuantizeMovement(.49f, 0) == (0, 0), "neutral movement threshold");
                 for (int i = 0; i < 8; i++)
@@ -58,9 +60,15 @@ namespace MphRead.Mods.Input
                 }
                 Check(!GamepadAnalog.Trigger(0, false), "resting trigger");
                 Check(GamepadAnalog.Trigger(.61f, false), "trigger press");
-                Check(GamepadAnalog.Trigger(.57f, true), "trigger hysteresis hold");
-                Check(!GamepadAnalog.Trigger(.44f, true), "trigger release");
+                Check(GamepadAnalog.Trigger(.55f, true), "trigger hysteresis hold");
+                Check(!GamepadAnalog.Trigger(.51f, true), "higher trigger release point supports rapid taps");
                 Check(!GamepadAnalog.Trigger(0, true, .05f), "low threshold still releases");
+                long triggerLow = -1;
+                Check(GamepadAnalog.TriggerStable(.50f, true, ref triggerLow, 1000), "single low trigger sample cannot release charge");
+                Check(GamepadAnalog.TriggerStable(.55f, true, ref triggerLow, 1005), "trigger recovery cancels pending release");
+                triggerLow = -1;
+                Check(GamepadAnalog.TriggerStable(.50f, true, ref triggerLow, 2000), "release debounce starts held");
+                Check(!GamepadAnalog.TriggerStable(.50f, true, ref triggerLow, 2007), "sustained release rearms rapid fire");
                 var bind = new Entities.Keybind(OpenTK.Windowing.GraphicsLibraryFramework.Keys.Space) { IsReleased = true };
                 GamepadInput.Hold(bind, true, false);
                 Check(bind.IsDown && !bind.IsReleased, "held controller cannot release through idle keyboard");
@@ -102,12 +110,25 @@ namespace MphRead.Mods.Input
                 Check(!GamepadManager.ActiveState.Connected && GamepadManager.ActiveState.Buttons == 0, "disconnect clears immediately");
                 GamepadManager.UpdateDevice("mapped", State(x: .8f), true);
                 Check(GamepadManager.Snapshot.DeviceId == "mapped", "fallback after removal");
-                GamepadManager.UpdateDevice("mapped", State(trigger: .61f), true);
-                Check(GamepadManager.ActiveState.Down(GamepadButtons.RightTrigger), "manager trigger press");
-                GamepadManager.UpdateDevice("mapped", State(trigger: .57f), true);
-                Check(GamepadManager.ActiveState.Down(GamepadButtons.RightTrigger), "manager trigger hold");
-                GamepadManager.UpdateDevice("mapped", State(trigger: .44f), true);
-                Check(!GamepadManager.ActiveState.Down(GamepadButtons.RightTrigger), "manager trigger release");
+                GamepadManager.UpdateDevice("mapped", State(trigger: .61f), true, milliseconds: 3000);
+                Check(GamepadManager.ActiveState.Down(GamepadButtons.RightTrigger)
+                    && GamepadManager.Snapshot.GameplayButtons.TestFlag(GamepadButtons.RightTrigger),
+                    "trigger press reaches immediate and gameplay views");
+                GamepadManager.UpdateDevice("mapped", State(trigger: .55f), true, milliseconds: 3001);
+                Check(GamepadManager.ActiveState.Down(GamepadButtons.RightTrigger)
+                    && GamepadManager.Snapshot.GameplayButtons.TestFlag(GamepadButtons.RightTrigger),
+                    "trigger hysteresis holds both views");
+                GamepadManager.UpdateDevice("mapped", State(trigger: .50f), true, milliseconds: 3002);
+                Check(!GamepadManager.ActiveState.Down(GamepadButtons.RightTrigger)
+                    && GamepadManager.Snapshot.GameplayButtons.TestFlag(GamepadButtons.RightTrigger),
+                    "raw trigger releases immediately while gameplay rejects a transient low");
+                GamepadManager.UpdateDevice("mapped", State(trigger: .50f), true, milliseconds: 3009);
+                Check(!GamepadManager.Snapshot.GameplayButtons.TestFlag(GamepadButtons.RightTrigger),
+                    "sustained trigger release rearms gameplay");
+                GamepadManager.UpdateDevice("mapped", State(trigger: .61f), true, milliseconds: 3010);
+                Check(GamepadManager.ActiveState.Down(GamepadButtons.RightTrigger)
+                    && GamepadManager.Snapshot.GameplayButtons.TestFlag(GamepadButtons.RightTrigger),
+                    "rapid trigger repress registers immediately");
                 GamepadContexts.Current = GamepadContext.Gameplay;
                 GamepadManager.UpdateDevice("mapped", State(), true); GamepadInput.BeginFrame();
                 GamepadManager.UpdateDevice("mapped", State(GamepadButtons.A), true); GamepadInput.BeginFrame();

@@ -91,6 +91,13 @@ namespace MphRead.Droid
             if (pad == null) return false;
             GamepadButtons button = Map(keyCode);
             if (button == 0) return false;
+            if (button == GamepadButtons.LeftTrigger && pad.Profile.LeftTrigger.HasValue
+                || button == GamepadButtons.RightTrigger && pad.Profile.RightTrigger.HasValue)
+            {
+                pad.Input.Key(button, false);
+                Publish(pad);
+                return true;
+            }
             if (down && e.RepeatCount > 0) return true;
             pad.Input.Key(button, down); Publish(pad);
             return true;

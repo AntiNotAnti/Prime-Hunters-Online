@@ -19,6 +19,9 @@ namespace MphRead.Mods.Input
         public GamepadState State { get; internal set; }
         public GamepadState RawState { get; internal set; }
         internal bool LeftTriggerHeld, RightTriggerHeld;
+        internal bool GameplayLeftTriggerHeld, GameplayRightTriggerHeld;
+        internal long LeftTriggerBelowSince = -1, RightTriggerBelowSince = -1;
+        internal GamepadButtons GameplayButtons;
         internal GamepadRuntimeConfig Runtime = new();
         internal long Revision;
         internal GamepadDeviceSnapshot Snapshot => new() { DeviceId = DeviceId, Name = Name, ProfileKey = ProfileKey,
@@ -29,6 +32,7 @@ namespace MphRead.Mods.Input
     public readonly record struct GamepadSnapshot(string? DeviceId, GamepadState State, long Revision)
     {
         internal GamepadRuntimeConfig? Runtime { get; init; }
+        internal GamepadButtons GameplayButtons { get; init; }
     }
 
     public static class GamepadManager
@@ -68,12 +72,17 @@ namespace MphRead.Mods.Input
         {
             GamepadRuntimeConfig.Current = _active?.Runtime ?? GamepadRuntimeConfig.Fallback;
             GamepadProfiles.NoteActive(GamepadRuntimeConfig.Current.ProfileName);
-            _snapshot = new(_active?.DeviceId, _active?.State ?? default, _revision) { Runtime = _active?.Runtime ?? GamepadRuntimeConfig.Fallback };
+            _snapshot = new(_active?.DeviceId, _active?.State ?? default, _revision)
+            {
+                Runtime = _active?.Runtime ?? GamepadRuntimeConfig.Fallback,
+                GameplayButtons = _active?.GameplayButtons ?? 0
+            };
         }
 
         public static void UpdateDevice(string id, GamepadState state, bool mapped,
             GamepadFamily family = GamepadFamily.Unknown,
-            GamepadCapabilities capabilities = GamepadCapabilities.None, string? mapping = null)
+            GamepadCapabilities capabilities = GamepadCapabilities.None, string? mapping = null,
+            long? milliseconds = null)
         {
             GamepadDeviceSnapshot? notification = null;
             bool activeChanged;
@@ -102,12 +111,29 @@ namespace MphRead.Mods.Input
                 (state.RightX, state.RightY) = options.RightCalibration.Normalize(state.RightX, state.RightY);
                 state.LeftTrigger = GamepadCalibration.Trigger(state.LeftTrigger, options.LeftTriggerMin, options.LeftTriggerMax);
                 state.RightTrigger = GamepadCalibration.Trigger(state.RightTrigger, options.RightTriggerMin, options.RightTriggerMax);
-                device.LeftTriggerHeld = GamepadAnalog.Trigger(state.LeftTrigger, device.LeftTriggerHeld, options.TriggerThreshold);
-                device.RightTriggerHeld = GamepadAnalog.Trigger(state.RightTrigger, device.RightTriggerHeld, options.TriggerThreshold);
+                long now = milliseconds ?? Environment.TickCount64;
+                GamepadButtons gameplayButtons = state.Buttons;
+
+                // State is the truthful, immediate hardware view used by menus,
+                // rebinding and diagnostics. Gameplay gets a second trigger view
+                // that rejects a one-sample low without making UI releases sticky.
+                device.LeftTriggerHeld = GamepadAnalog.Trigger(state.LeftTrigger, device.LeftTriggerHeld,
+                    options.TriggerThreshold);
+                device.RightTriggerHeld = GamepadAnalog.Trigger(state.RightTrigger, device.RightTriggerHeld,
+                    options.TriggerThreshold);
+                device.GameplayLeftTriggerHeld = GamepadAnalog.TriggerStable(state.LeftTrigger,
+                    device.GameplayLeftTriggerHeld, ref device.LeftTriggerBelowSince, now, options.TriggerThreshold);
+                device.GameplayRightTriggerHeld = GamepadAnalog.TriggerStable(state.RightTrigger,
+                    device.GameplayRightTriggerHeld, ref device.RightTriggerBelowSince, now, options.TriggerThreshold);
+
                 if (device.LeftTriggerHeld) state.Buttons |= GamepadButtons.LeftTrigger;
                 if (device.RightTriggerHeld) state.Buttons |= GamepadButtons.RightTrigger;
+                if (device.GameplayLeftTriggerHeld) gameplayButtons |= GamepadButtons.LeftTrigger;
+                if (device.GameplayRightTriggerHeld) gameplayButtons |= GamepadButtons.RightTrigger;
+
                 state.Connected = true;
                 device.State = state;
+                device.GameplayButtons = gameplayButtons;
                 string name = state.Name ?? "gamepad";
                 if (added || device.Name != name || family != GamepadFamily.Unknown)
                     device.Family = family == GamepadFamily.Unknown ? GamepadGlyphs.Detect(name) : family;
@@ -180,6 +206,9 @@ namespace MphRead.Mods.Input
                 device.State = new GamepadState { Connected = true, Name = device.Name };
                 device.RawState = device.State;
                 device.LeftTriggerHeld = device.RightTriggerHeld = false;
+                device.GameplayLeftTriggerHeld = device.GameplayRightTriggerHeld = false;
+                device.LeftTriggerBelowSince = device.RightTriggerBelowSince = -1;
+                device.GameplayButtons = 0;
                 if (_active == device) { _revision++; Publish(); }
             }
         }

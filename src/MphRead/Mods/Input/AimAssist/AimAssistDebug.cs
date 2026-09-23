@@ -33,9 +33,10 @@ namespace MphRead.Mods.Input.AimAssist
                     $"Target {Result.TargetSlot} score {Result.Score:0.00} distance {Target.Distance:0.0} body {Target.BodyError.Length():0.00} head {Target.HeadError.Length():0.00}",
                     $"LOS body {Target.BodyVisible} head {Target.HeadVisible} point {Result.PointType} blend {Result.HeadBlend:0.00}",
                     $"Friction {Result.Friction:0.00} rotation {Result.RotationStrength:0.00} velocity {Velocity.X:0.0},{Velocity.Y:0.0}",
+                    $"Align {Result.InputAlignment:0.00} prediction {Result.HeadPrediction:0.00} hidden {Result.Occluded} saturated {Result.Saturated}",
                     $"Raw {Raw.X:0.00},{Raw.Y:0.00} final {Result.X:0.00},{Result.Y:0.00} correction {Result.X-Raw.X:0.00},{Result.Y-Raw.Y:0.00}" };
             }
-            scene.DrawHudFlatBox(2, 2, 254, 37, new OpenTK.Mathematics.Vector4(0, 0, 0, .8f));
+            scene.DrawHudFlatBox(2, 2, 254, 43, new OpenTK.Mathematics.Vector4(0, 0, 0, .8f));
             float y = 4;
             foreach (string line in _lines)
             {

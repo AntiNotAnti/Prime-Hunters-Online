@@ -8,7 +8,7 @@ namespace MphRead.Mods.Input
     public sealed class GamepadOptionState
     {
         public StickCalibration LeftCalibration = StickCalibration.Default, RightCalibration = StickCalibration.Default;
-        public float LeftInner = 0.2f, RightInner = 0.2f, LeftOuter, RightOuter;
+        public float LeftInner = 0.15f, RightInner = 0.12f, LeftOuter, RightOuter;
         public float LookX = 1, LookY = 1, TriggerThreshold = 0.60f, ActivityThreshold = 0.35f;
         public bool InvertX, InvertY, Southpaw, Vibration = true;
         public float VibrationStrength = 0.65f;
@@ -66,10 +66,11 @@ namespace MphRead.Mods.Input
                     if (used == 63) Array.Copy(parsed, WheelOrder, 6);
                 }
             }
+            bool hasLegacyDead = values.ContainsKey("gamepad_deadzone");
             float legacyDead = Number("gamepad_deadzone", 0.2f, 0, 0.9f);
             float legacyLook = Number("gamepad_look", 1, 0.1f, 5);
-            LeftInner = Number("gamepad_left_inner_deadzone", legacyDead, 0, 0.9f);
-            RightInner = Number("gamepad_right_inner_deadzone", legacyDead, 0, 0.9f);
+            LeftInner = Number("gamepad_left_inner_deadzone", hasLegacyDead ? legacyDead : 0.15f, 0, 0.9f);
+            RightInner = Number("gamepad_right_inner_deadzone", hasLegacyDead ? legacyDead : 0.12f, 0, 0.9f);
             LeftOuter = Number("gamepad_left_outer_deadzone", 0, 0, 0.5f);
             RightOuter = Number("gamepad_right_outer_deadzone", 0, 0, 0.5f);
             LookX = Number("gamepad_look_x", legacyLook, 0.1f, 5);

@@ -94,6 +94,27 @@ namespace MphRead.Mods.Input
         /// is where console shooters have sat since they settled the question.
         /// </summary>
         private const float TurnRate = 3.5f;
+        private const float TurnAccelerationThreshold = .85f;
+        private const int TurnAccelerationDelayFrames = 9;
+        private const int TurnAccelerationRampFrames = 12;
+        private const float TurnAccelerationMax = 1.5f;
+        private static int _outerAimFrames;
+        private static float _turnRateScale = 1;
+
+        private static void ResetAimRamp()
+        {
+            _outerAimFrames = 0;
+            _turnRateScale = 1;
+        }
+
+        private static void UpdateAimRamp(float magnitude)
+        {
+            if (magnitude > TurnAccelerationThreshold) _outerAimFrames++;
+            else _outerAimFrames = 0;
+            float ramp = Math.Clamp((_outerAimFrames - TurnAccelerationDelayFrames)
+                / (float)TurnAccelerationRampFrames, 0, 1);
+            _turnRateScale = 1 + (TurnAccelerationMax - 1) * ramp;
+        }
 
         /// <summary>
         /// Render-only projection of the currently held aim stick through the
@@ -119,11 +140,12 @@ namespace MphRead.Mods.Input
                     options.LeftInner, options.LeftOuter)
                 : GamepadAnalog.ApplyRadialDeadZone(state.RightX, state.RightY,
                     options.RightInner, options.RightOuter);
+            (x, y) = GamepadAnalog.ApplyRadialResponseCurve(x, y, options.Curve);
             float fraction = (float)Math.Clamp(alpha, 0.0, 1.0);
             return (
-                -GamepadAnalog.ApplyResponseCurve(x, options.Curve) * TurnRate
+                -x * TurnRate * _turnRateScale
                     * options.LookX * (options.InvertX ? -1 : 1) * fraction,
-                GamepadAnalog.ApplyResponseCurve(y, options.Curve) * TurnRate
+                y * TurnRate * _turnRateScale
                     * options.LookY * (options.InvertY ? -1 : 1) * fraction
             );
         }
@@ -146,32 +168,46 @@ namespace MphRead.Mods.Input
             FrameSnapshot = snapshot;
             GamepadRuntimeConfig.Frame = snapshot.Runtime;
             _frame = snapshot.State;
+            GamepadButtons gameplayButtons = snapshot.GameplayButtons;
             var context = GamepadContexts.Current;
             _pressed = Edges.Update(snapshot);
             long contextRevision = GamepadContexts.Revision;
             if (_context != context || _revision != snapshot.Revision || _contextRevision != contextRevision || _bindingsRevision != PadBindings.Revision)
             {
                 Actions.Reset();
+                ResetAimRamp();
                 _bindingsRevision = PadBindings.Revision;
-                _blocked = _frame.Buttons;
+                _blocked = gameplayButtons;
                 _pressed = 0;
             }
             _context = context; _revision = snapshot.Revision; _contextRevision = contextRevision;
-            _blocked &= _frame.Buttons;
+            _blocked &= gameplayButtons;
             _frame.Buttons &= ~_blocked;
+            gameplayButtons &= ~_blocked;
             AimDeltaX = AimDeltaY = 0;
             if (context != GamepadContext.Gameplay || !GamepadContexts.Focused || !_frame.Connected
                 || (PlayerEntity.MainPlayerIndex >= 0 && PlayerEntity.MainPlayerIndex < PlayerEntity.Players.Count
-                    && PlayerEntity.Players[PlayerEntity.MainPlayerIndex] is { Health: 0 })) AimInputSourceTracker.Reset();
+                    && PlayerEntity.Players[PlayerEntity.MainPlayerIndex] is { Health: 0 }))
+            {
+                AimInputSourceTracker.Reset();
+                ResetAimRamp();
+            }
             if (!GamepadContexts.Focused) { _frame = default; _pressed = 0; return; }
-            if (!_frame.Connected) { Actions.Reset(); return; }
-            Actions.Update(_frame.Buttons,
+            if (!_frame.Connected) { Actions.Reset(); ResetAimRamp(); return; }
+            Actions.Update(gameplayButtons,
                 replayContext: MphRead.Mods.Network.DemoPlayback.IsActive);
-            if (context != GamepadContext.Gameplay || WheelHeld) return;
+            if (context != GamepadContext.Gameplay || WheelHeld)
+            {
+                ResetAimRamp();
+                return;
+            }
             var (x, y) = AimStick;
-            AimDeltaX = -GamepadAnalog.ApplyResponseCurve(x, GamepadOptions.Curve) * TurnRate * GamepadOptions.LookX
+            float magnitude = MathF.Sqrt(x * x + y * y);
+            UpdateAimRamp(magnitude);
+            (x, y) = GamepadAnalog.ApplyRadialResponseCurve(x, y, GamepadOptions.Curve);
+            AimDeltaX = -x * TurnRate * _turnRateScale * GamepadOptions.LookX
                 * (GamepadOptions.InvertX ? -1 : 1);
-            AimDeltaY = GamepadAnalog.ApplyResponseCurve(y, GamepadOptions.Curve) * TurnRate * GamepadOptions.LookY
+            AimDeltaY = y * TurnRate * _turnRateScale * GamepadOptions.LookY
                 * (GamepadOptions.InvertY ? -1 : 1);
         }
 
