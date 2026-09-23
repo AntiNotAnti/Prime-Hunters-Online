@@ -28,10 +28,6 @@ namespace MphRead.Droid
             GameFiles.ApplyPaths();
             if (NetSession.Active)
                 NetSession.ReportMatchLoadProgress(MatchLoadStage.Preflight);
-            // Cheap once the binaries exist -- a file check per map -- and the
-            // one place that is guaranteed to run before a room is loaded, so
-            // a map added since the last launch is built rather than missing.
-            AndroidMaps.EnsureBuilt();
             if (plan.Kind == LaunchKind.Demo)
             {
                 return BuildDemo(input, size, plan, close);
@@ -57,6 +53,7 @@ namespace MphRead.Droid
             }
             else
             {
+                AndroidMaps.EnsureBuilt(plan.RoomKey);
                 // Offline the plan's mode is the match, so it is what decides
                 // teams. GameState's own list rather than the mode's name:
                 // Capture is a team mode that does not end in "Teams".
@@ -100,6 +97,7 @@ namespace MphRead.Droid
                 throw new ProgramException("The demo has no match info in it.");
             }
             Menu.SaveSlot = 0;
+            AndroidMaps.EnsureBuilt(room.Value.RoomKey);
             var scene = new Scene(size, input.Keyboard, input.Mouse, _ => { }, close);
             NetLaunch.BuildPlayers(scene, Hunter.Samus, localRecolor: 0,
                 teams: GameState.IsTeamMode(room.Value.Mode), localSlot: -1);
@@ -179,6 +177,7 @@ namespace MphRead.Droid
             {
                 throw new ProgramException("The server did not say which map it is running.");
             }
+            AndroidMaps.EnsureBuilt(roomKey);
             // The server's mode, not the plan's: online it is the only thing
             // that may decide who is on which team, for the reason MatchStart
             // gives -- a client splitting an FFA server's slots into two halves
