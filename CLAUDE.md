@@ -386,9 +386,9 @@ Gotchas worth keeping in view without opening another file:
 - **There is no console window at all** on the Windows build (`WinExe`).
   `Mods.ConsoleWindow.Prepare` attaches to a parent console when a command was
   typed, allocates one when double-clicked, and does neither for the launcher.
-- **A bare invocation opens the launcher on Windows and macOS**; on Linux it
-  still opens upstream's console menu, since that's a screen people there
-  already use — `-launcher` asks for the window there too.
+- **A bare invocation opens the launcher on Windows, Linux and macOS**.
+  Headless Linux falls back to the text launcher; `-launcher` explicitly asks
+  for the launcher and `-menu` explicitly asks for the legacy console menu.
 - Offline matches can hold eight players; `PlayerEntity.MaxPlayers` defaults
   to four (a DS match's cap), so the launcher raises it before creating
   players or asking for seven opponents silently produces three.

@@ -50,10 +50,10 @@ Key implementation notes
 
 Windows, and the loop
 
-- A bare invocation opens the launcher on Windows and macOS -- the platforms
-  where a program is normally started by double-clicking it. On Linux it still
-  opens upstream's console menu, which is the screen people there are already
-  using; `-launcher` is how they ask for the window.
+- A bare invocation opens the launcher on Windows, Linux and macOS. On a
+  headless Linux session the graphical launcher fails cleanly and falls back to
+  the text launcher. `-launcher` explicitly requests the launcher, while
+  `-menu` keeps the upstream console menu available on demand.
 - The toolkit is set up **once per process, on the game's own thread**
   (`GuiLauncher.EnsureSetup`), on Avalonia's headless backend: the screens are
   rendered into a buffer and composited into the game window. `Shell.Run` is
