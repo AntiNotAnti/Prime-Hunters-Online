@@ -1160,7 +1160,7 @@ namespace MphRead.Entities
             // looking at, spawn into that world, then walk the shot forward to
             // the present. A no-op except on the machine simulating a match,
             // and there only for players who are not on it. Mods.Network.NetUnlagged.
-            Mods.Network.NetUnlagged.BeginShot(this);
+            Mods.Network.NetUnlagged.BeginShot(this, shotOrigin, shotVec);
             BeamResultFlags result = BeamProjectileEntity.Spawn(this, EquipInfo, shotOrigin, shotVec, flags, NodeRef, _scene);
             Mods.Network.NetUnlagged.EndShot(this);
             if (result == BeamResultFlags.NoSpawn)

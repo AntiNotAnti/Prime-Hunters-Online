@@ -89,7 +89,7 @@ public readonly record struct NetCombatSnapshot(long Predicted, long Confirmed, 
     long ClaimsApplied, long ClaimsDuplicate, long ClaimsRejected, long ClaimsTooOld, long DeadShooter, long DeadVictim);
 public readonly record struct NetTelemetrySnapshot(NetTransportSnapshot? Transport, long SnapshotsAccepted,
     long SnapshotsOutOfOrder, long IntentFallbackFrames, NetPresentationSnapshot Presentation,
-    NetLagCompSnapshot LagComp, NetCombatSnapshot Combat);
+    NetLagCompSnapshot LagComp, NetCombatSnapshot Combat, LagShadowSnapshot Shadow);
 
 public static class NetTelemetry
 {
@@ -125,5 +125,5 @@ public static class NetTelemetry
             NetUnlagged.HistoryMisses, NetUnlagged.CatchUpSteps, NetUnlagged.CatchUpHits),
         new(NetHitPrediction.Predicted, NetHitPrediction.Confirmed, NetHitPrediction.Denied, NetHitClaims.Received,
             NetHitClaims.AppliedHere, NetHitClaims.DuplicateHere, NetHitClaims.RefusedHere, NetHitClaims.TooOldHere,
-            NetHitClaims.VoidedDeadShooter, NetHitClaims.VoidedDeadVictim));
+            NetHitClaims.VoidedDeadShooter, NetHitClaims.VoidedDeadVictim), LagCompensationPolicy.CaptureTotal());
 }

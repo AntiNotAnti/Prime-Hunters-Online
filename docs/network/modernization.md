@@ -88,3 +88,11 @@ It exposed stale fixture assumptions about ready defaults, truncated test names,
 replay error wording and the old packet budget. Fixtures now assert current behavior.
 The full eight-player/56-health-spawn snapshot requires 1418 bytes with the transport
 envelope, so protocol 17 uses the IPv4 Ethernet UDP limit of 1472.
+
+## P2-B
+
+Shadow plausibility uses ACK RTT, variance, recent minimum and fresh per-shooter
+presentation-delay reports. Release rejects enforcement. Fractional existing
+rewind remains unchanged; missing timing/history is explicit. Historical biped
+Imperialist first-segment comparisons are read-only geometric diagnostics, not
+second damage applications or full projectile outcome predictions.

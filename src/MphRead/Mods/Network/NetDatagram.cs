@@ -82,6 +82,8 @@ public sealed class NetConnection
     private uint _nextSequence;
     private long _sent, _acked, _lost, _duplicates, _reordered, _old;
     private double? _rtt, _variance, _minimum;
+    private readonly double[] _recentRtt = new double[64];
+    private int _recentCount, _recentCursor;
     private NetTokenBucket _intentBudget, _stateBudget, _controlBudget, _backgroundBudget;
     public bool Allow(PacketType type, double nowMs) => type == PacketType.Intent
         ? _intentBudget.Take(nowMs, 180, 64)
@@ -137,7 +139,12 @@ public sealed class NetConnection
         attempt.Pending = false; _acked++;
         if (attempt.EventId.HasValue) Reliable.Acknowledge(attempt.EventId.Value);
         double sample = Math.Max(0, nowMs - attempt.SentAt);
-        _minimum = Math.Min(_minimum ?? sample, sample);
+        _recentRtt[_recentCursor++ % _recentRtt.Length] = sample;
+        _recentCursor %= _recentRtt.Length;
+        _recentCount = Math.Min(_recentCount + 1, _recentRtt.Length);
+        double minimum = sample;
+        for (int i = 0; i < _recentCount; i++) minimum = Math.Min(minimum, _recentRtt[i]);
+        _minimum = minimum;
         _variance = _rtt.HasValue ? .75 * _variance!.Value + .25 * Math.Abs(sample - _rtt.Value) : sample / 2;
         _rtt = _rtt.HasValue ? .875 * _rtt.Value + .125 * sample : sample;
     }

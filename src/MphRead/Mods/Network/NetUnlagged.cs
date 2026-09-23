@@ -353,6 +353,7 @@ namespace MphRead.Mods.Network
 
         public static void Reset()
         {
+            LagCompensationPolicy.Reset();
             Array.Clear(_stamp);
             Array.Clear(_moved);
             _newest = 0;
@@ -440,6 +441,22 @@ namespace MphRead.Mods.Network
         /// of impact is nowhere near the body this returns. Read-only -- it
         /// moves nobody, unlike <see cref="Reconcile"/>.
         /// </summary>
+        internal static bool TryHistoricalBiped(PlayerEntity player, double target, out Vector3 position)
+        {
+            position = default;
+            if (!double.IsFinite(target) || target < 1) return false;
+            uint frame = (uint)Math.Floor(target); int slot = player.SlotIndex;
+            if (!PositionAt(slot, frame, NetPlayerLifecycle.Generation(slot), NetPlayerLifecycle.Get(slot), out position)) return false;
+            int index = (int)(frame % HistoryFrames);
+            if (_altForm[slot, index]) return false;
+            float fraction = (float)(target - frame);
+            int next = (int)((frame + 1) % HistoryFrames);
+            if (fraction > .0001f && !_altForm[slot, next]
+                && PositionAt(slot, frame + 1, NetPlayerLifecycle.Generation(slot), NetPlayerLifecycle.Get(slot), out Vector3 then)
+                && (then - position).LengthSquared <= 16f) position += (then - position) * fraction;
+            return true;
+        }
+
         public static bool PositionAt(int slot, uint frame, ushort expectedGeneration, ushort expectedLife, out Vector3 position)
         {
             position = Vector3.Zero;
@@ -551,7 +568,7 @@ namespace MphRead.Mods.Network
         /// they are in the same packet as the trigger, and
         /// <see cref="NetPlayerBridge"/> has already put them there.
         /// </summary>
-        public static void BeginShot(PlayerEntity shooter)
+        public static void BeginShot(PlayerEntity shooter, Vector3 origin = default, Vector3 direction = default)
         {
             if (shooter.SceneServices.IsReplica) return;
             if (_inProgress)
@@ -566,6 +583,21 @@ namespace MphRead.Mods.Network
             }
             int slot = shooter.SlotIndex;
             double rewind = RewindFor(slot, out int requested);
+            if (LagCompensationPolicy.Plausibility != LagCompPlausibility.Off && rewind > 0)
+            {
+                var decision = LagCompensationPolicy.Evaluate(Math.Max(rewind, requested), LagCompensationPolicy.Timing(slot),
+                    PressAgeEnabled ? NetPlayerBridge.ShootPressAge[slot] : 0, ceiling: MaxRewindFrames);
+                // Preserve fractional ACK time exactly; rounded histograms must
+                // never become the gameplay time source, including in Shadow.
+                decision = decision with { HardAppliedFrames = rewind,
+                    FramesShadowRefused = Math.Max(0, rewind - (decision.ShadowAllowedFrames ?? rewind)),
+                    WouldClamp = decision.ShadowAllowedFrames.HasValue && rewind > decision.ShadowAllowedFrames.Value };
+                var outcome = decision.ShadowAllowedFrames.HasValue
+                    ? NetHistoricalTrace.CompareShot(shooter, origin, direction, rewind, Math.Min(rewind, decision.ShadowAllowedFrames.Value))
+                    : ShadowOutcome.HistoricalDataUnavailable;
+                LagCompensationPolicy.Record(slot, NetShotDiagnostics.Bucket(shooter.CurrentWeapon), decision, outcome);
+                rewind = LagCompensationPolicy.Applied(decision);
+            }
             if (requested > 0 && requested < DepthHistogram.Length)
             {
                 DepthHistogram[requested]++;

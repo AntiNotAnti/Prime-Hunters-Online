@@ -298,6 +298,9 @@ namespace MphRead.Mods
             // that raises it has to be otherwise identical to the run that
             // did not. Read on the machine that simulates the match, which is
             // the only one that rewinds anything.
+            string? plausibility = ValueAfter(args, "lagcompplausibility");
+            if (plausibility != null && !Network.LagCompensationPolicy.Configure(plausibility))
+                Console.WriteLine("[net] lagcomp plausibility refused; off/shadow supported, enforce requires a Debug build");
             string? maxRewind = ValueAfter(args, "maxrewind");
             if (maxRewind != null)
             {

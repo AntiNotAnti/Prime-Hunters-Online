@@ -73,6 +73,10 @@ namespace MphRead.Mods.Network
             /// </summary>
             public bool PostMatchReady;
             public bool MatchReady;
+            public float? PresentationDelay;
+            public double TimingReportedAt;
+            public ushort TimingMatch;
+            public ulong TimingEpoch;
             public bool LobbyReady;
             public sbyte TeamIndex = -1;
             public readonly Dictionary<uint, LobbyCommandResultPacket> Commands = new();
@@ -903,6 +907,15 @@ namespace MphRead.Mods.Network
             switch (packet.Type)
             {
                 case PacketType.LobbyCommand: HandleLobbyCommand(packet, now); break;
+                case PacketType.PeerTiming:
+                    Peer? timingPeer = Find(packet.Sender);
+                    if (timingPeer != null && PeerTimingPacket.TryRead(packet.Payload, out var timing)
+                        && timing.MatchId == _matchId && timing.AuthorityEpoch == _authorityEpoch)
+                    {
+                        timingPeer.PresentationDelay = timing.DelayFrames; timingPeer.TimingReportedAt = now;
+                        timingPeer.TimingMatch = timing.MatchId; timingPeer.TimingEpoch = timing.AuthorityEpoch;
+                    }
+                    break;
                 case PacketType.MatchLoaded: HandleMatchLoaded(packet, now); break;
                 case PacketType.MatchLoadFailed: HandleMatchLoadFailed(packet); break;
                 case PacketType.Hello:
@@ -2179,6 +2192,13 @@ namespace MphRead.Mods.Network
                     : intent.SlotGeneration != _slotGenerations[peer.SlotIndex] ? NetIntentRejection.WrongGeneration
                     : intent.LifeId != life ? NetIntentRejection.WrongLife : NetIntentRejection.None;
                 if (rejection != NetIntentRejection.None) { peer.Telemetry.Intent(intent.Frame, rejection); return; }
+                var connection = _transport?.ConnectionStats(peer.EndPoint);
+                LagCompensationPolicy.SetTiming(peer.SlotIndex, new LagTiming(
+                    connection?.RttMilliseconds ?? (peer.Ping > 0 ? peer.Ping : null),
+                    connection?.RttJitterMilliseconds,
+                    connection?.MinimumRttMilliseconds,
+                    peer.TimingMatch == _matchId && peer.TimingEpoch == _authorityEpoch
+                        && now - peer.TimingReportedAt <= 3 ? peer.PresentationDelay : null));
                 if (_sim != null)
                 {
                     // Straight into the simulation, one hop earlier than a
