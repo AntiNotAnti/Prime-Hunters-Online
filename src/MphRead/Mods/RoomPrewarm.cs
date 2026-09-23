@@ -23,6 +23,7 @@ namespace MphRead.Mods
         private static int _generation;
         private static Dictionary<string, Lazy<byte[]>> _files = new(PathComparer);
         private static Lazy<Model>? _roomModel;
+        private static TaskCompletionSource<bool>? _prepared;
 
         public static void Begin(string roomName)
         {
@@ -52,17 +53,22 @@ namespace MphRead.Mods
                 MphRead.Sound.Sfx.Prewarm();
 
             int generation;
+            TaskCompletionSource<bool> prepared;
             lock (Gate)
             {
                 if (String.Equals(_room, metadata.Name, StringComparison.OrdinalIgnoreCase))
                     return;
+                _prepared?.TrySetResult(false);
                 _room = metadata.Name;
                 generation = ++_generation;
                 _files = new Dictionary<string, Lazy<byte[]>>(PathComparer);
                 _roomModel = null;
+                prepared = new TaskCompletionSource<bool>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                _prepared = prepared;
             }
 
-            _ = Task.Run(() => Warm(metadata, generation));
+            _ = Task.Run(() => Warm(metadata, generation, prepared));
         }
 
         public static void Release(string roomName)
@@ -80,6 +86,37 @@ namespace MphRead.Mods
         {
             lock (Gate)
                 ClearLocked();
+        }
+
+        /// <summary>
+        /// Join an in-flight lobby prewarm once custom-map generation is complete
+        /// and the shared lazy file/model sources have been published.
+        /// </summary>
+        public static bool JoinForLoad(string roomName)
+        {
+            Task<bool>? task;
+            lock (Gate)
+            {
+                task = String.Equals(_room, roomName, StringComparison.OrdinalIgnoreCase)
+                    ? _prepared?.Task
+                    : null;
+            }
+            if (task == null)
+                return false;
+
+            var clock = Stopwatch.StartNew();
+            try
+            {
+                bool ready = task.GetAwaiter().GetResult();
+                if (ready && clock.Elapsed.TotalMilliseconds >= 5)
+                    Console.WriteLine($"[prewarm] joined {roomName} after "
+                        + $"{clock.Elapsed.TotalMilliseconds:0} ms");
+                return ready;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         internal static bool TryGetFile(string fullPath, out byte[] bytes)
@@ -140,7 +177,8 @@ namespace MphRead.Mods
             }
         }
 
-        private static void Warm(RoomMetadata metadata, int generation)
+        private static void Warm(RoomMetadata metadata, int generation,
+            TaskCompletionSource<bool> prepared)
         {
             var clock = Stopwatch.StartNew();
             try
@@ -169,10 +207,16 @@ namespace MphRead.Mods
                 {
                     if (generation != _generation
                         || !String.Equals(_room, metadata.Name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        prepared.TrySetResult(false);
                         return;
+                    }
                     _files = files;
                     _roomModel = model;
                 }
+                // The real loader may start now and consume these same Lazy
+                // instances while this worker continues forcing the rest.
+                prepared.TrySetResult(true);
 
                 long bytes = 0;
                 int count = 0;
@@ -208,6 +252,7 @@ namespace MphRead.Mods
             }
             catch (Exception ex)
             {
+                prepared.TrySetResult(false);
                 lock (Gate)
                 {
                     if (generation == _generation)
@@ -245,6 +290,8 @@ namespace MphRead.Mods
         private static void ClearLocked()
         {
             _generation++;
+            _prepared?.TrySetResult(false);
+            _prepared = null;
             _room = "";
             _files = new Dictionary<string, Lazy<byte[]>>(PathComparer);
             _roomModel = null;
