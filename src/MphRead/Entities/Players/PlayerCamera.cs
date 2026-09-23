@@ -1025,8 +1025,25 @@ namespace MphRead.Entities
             {
                 up = Vector3.UnitY;
             }
+            // LookAt's up hint must not collapse toward the facing vector
+            // during a fast turn. Remove any forward component and rebuild a
+            // deterministic fallback only when the authored up becomes nearly
+            // parallel to the interpolated direction.
+            up -= facing * Vector3.Dot(up, facing);
+            if (!IsFinite(up) || up.LengthSquared < 0.000001f)
+            {
+                Vector3 reference = MathF.Abs(facing.Y) < 0.999f
+                    ? Vector3.UnitY : Vector3.UnitZ;
+                up = reference - facing * Vector3.Dot(reference, facing);
+            }
+            if (!IsFinite(up) || up.LengthSquared < 0.000001f)
+            {
+                return false;
+            }
+            up = up.Normalized();
+
             fov = _drawPreviousFov + (_drawCurrentFov - _drawPreviousFov) * t;
-            return IsFinite(position) && IsFinite(target) && IsFinite(up)
+            return IsFinite(position) && IsFinite(target)
                 && (target - position).LengthSquared >= 0.000001f;
         }
 
@@ -1073,15 +1090,17 @@ namespace MphRead.Entities
             if (dot < -0.9995f)
             {
                 // Exactly opposite vectors have infinitely many valid great
-                // circles. Pick a stable perpendicular axis deterministically
-                // so a 180-degree spin remains finite and continuous.
-                Vector3 basis = MathF.Abs(a.Y) < 0.9f ? Vector3.UnitY : Vector3.UnitX;
-                Vector3 axis = Vector3.Cross(a, basis);
-                if (!IsFinite(axis) || axis.LengthSquared < 0.000001f)
+                // circles. Camera turns are overwhelmingly yaw, so prefer the
+                // world-up rotation axis whenever the direction is not itself
+                // vertical. That keeps a 180-degree horizontal spin horizontal
+                // instead of choosing an arbitrary path through the sky.
+                Vector3 axis = MathF.Abs(a.Y) < 0.999f
+                    ? Vector3.UnitY : Vector3.UnitX;
+                if (MathF.Abs(Vector3.Dot(axis, a)) > 0.999f)
                 {
-                    basis = Vector3.UnitZ;
-                    axis = Vector3.Cross(a, basis);
+                    axis = Vector3.UnitZ;
                 }
+                axis -= a * Vector3.Dot(axis, a);
                 if (!IsFinite(axis) || axis.LengthSquared < 0.000001f)
                 {
                     return false;
