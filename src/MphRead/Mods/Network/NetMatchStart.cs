@@ -13,21 +13,26 @@ public sealed class NetMatchStart
     public StartStage Stage { get; private set; }
     public byte Expected { get; private set; }
     public byte Loaded { get; private set; }
+    public double SlowLoadDeadline { get; private set; }
     public double LoadDeadline { get; private set; }
     public double CountdownDeadline { get; private set; }
-    public const double CountdownSeconds = 1.5, LoadTimeoutSeconds = 15;
+    // Fifteen seconds is now diagnostic only. Cold Android/custom-map loads can
+    // legitimately cross it; sixty seconds is the actual stuck-loader boundary.
+    public const double CountdownSeconds = 1.5, SlowLoadSeconds = 15, LoadTimeoutSeconds = 60;
     private uint _generation;
     public void Begin(ushort match, ulong epoch, byte participants)
     {
         _generation = unchecked(_generation + 1); if (_generation == 0) _generation = 1;
         Identity = new(match, epoch, _generation);
         Expected = participants; Loaded = 0; Stage = StartStage.Preparing;
-        LoadDeadline = CountdownDeadline = 0;
+        SlowLoadDeadline = LoadDeadline = CountdownDeadline = 0;
     }
     public void AuthorityReady(double now)
     {
         if (Stage != StartStage.Preparing) return;
-        Stage = StartStage.Loading; LoadDeadline = now + LoadTimeoutSeconds;
+        Stage = StartStage.Loading;
+        SlowLoadDeadline = now + SlowLoadSeconds;
+        LoadDeadline = now + LoadTimeoutSeconds;
     }
     public bool MarkLoaded(int slot, MatchStartIdentity identity)
     {
@@ -38,7 +43,12 @@ public sealed class NetMatchStart
     }
     public void Remove(int slot)
     { if ((uint)slot < 8) { Expected &= (byte)~(1 << slot); Loaded &= Expected; } }
-    public byte MissingAtDeadline(double now) => Stage == StartStage.Loading && now >= LoadDeadline ? (byte)(Expected & ~Loaded) : (byte)0;
+    public byte MissingAtSlowDeadline(double now) => Stage == StartStage.Loading && now >= SlowLoadDeadline
+        ? (byte)(Expected & ~Loaded) : (byte)0;
+    public byte MissingAtDeadline(double now) => Stage == StartStage.Loading && now >= LoadDeadline
+        ? (byte)(Expected & ~Loaded) : (byte)0;
+    public static bool ClientReleaseReady(StartStage stage, double deadline, double now) =>
+        stage == StartStage.Countdown && deadline > 0 && now >= deadline;
     public bool Advance(double now)
     {
         if (Stage == StartStage.Loading && Loaded == Expected)
@@ -50,5 +60,5 @@ public sealed class NetMatchStart
     public ushort RemainingMilliseconds(double now) => Stage == StartStage.Countdown
         ? (ushort)Math.Clamp(Math.Ceiling((CountdownDeadline - now) * 1000), 0, ushort.MaxValue) : (ushort)0;
     public void Reset()
-    { Stage = StartStage.None; Expected = Loaded = 0; LoadDeadline = CountdownDeadline = 0; }
+    { Stage = StartStage.None; Expected = Loaded = 0; SlowLoadDeadline = LoadDeadline = CountdownDeadline = 0; }
 }

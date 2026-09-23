@@ -64,6 +64,8 @@ namespace MphRead.Mods.Network
         MapChunk = 34,      // server -> client, one piece of the .ppmap
         SessionState = 36, LobbyCommand = 37, LobbyCommandResult = 38,
         MatchLoaded = 39, MatchLoadFailed = 40,
+        MatchStartCommit = 44, // server -> clients, fresh remaining time for the shared release edge
+        MatchLoadProgress = 45, // client -> server, additive loading-stage telemetry
         PeerTiming = 43,     // client -> authority, bounded presentation-delay diagnostic
         ReplayWorld = 42,    // optional authority -> recorder facts; no live gameplay effects
         CareerIdentity = 41, // client -> server, short-lived career attribution ticket
@@ -95,6 +97,7 @@ namespace MphRead.Mods.Network
         public const byte ReasonProtocol = 2;
         public const byte ReasonKicked = 3;
         public const byte ReasonInMatch = 4;
+        public const byte ReasonLoadTimeout = 5;
 
         public byte Reason;
         public byte Players;
@@ -123,6 +126,7 @@ namespace MphRead.Mods.Network
             {
                 ReasonKicked => "You were removed by the lobby owner.",
                 ReasonInMatch => "This server does not allow joining a match in progress.",
+                ReasonLoadTimeout => "The match could not wait any longer for this client to finish loading.",
                 ReasonFull => $"{where} is full ({Players}/{MaxPlayers} players). "
                     + "Try again when somebody leaves.",
                 ReasonProtocol => $"{where} is running a different version of the game. "

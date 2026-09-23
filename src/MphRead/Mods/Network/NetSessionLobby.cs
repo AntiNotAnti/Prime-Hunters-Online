@@ -19,10 +19,16 @@ namespace MphRead.Mods.Network
         public static bool IsPlaying => SessionPhase == SessionPhase.InMatch;
         public static bool IsPostMatch => SessionPhase == SessionPhase.PostMatch;
         public static double StartCountdownRemainingSeconds =>
-            IsStarting ? Math.Max(0, _startCountdownEndsAt - Clock) : 0;
+            IsStarting && _startCountdownEndsAt > 0 ? Math.Max(0, _startCountdownEndsAt - Clock) : 0;
+        public static bool StartReleaseReached => ServerSession is { } session
+            && session.Phase == SessionPhase.Starting && session.StartStage == StartStage.Countdown
+            && NetMatchStart.ClientReleaseReady(session.StartStage, _startCountdownEndsAt, Clock);
         public static bool CanEditLobby => IsInLobby && LocalIsLobbyOwner;
         public static bool PersistentLobby => ServerSession?.Policy == ServerSessionPolicy.Lobby;
-        public static bool FreezeGameplay => SessionPhase is SessionPhase.Lobby or SessionPhase.Starting;
+        // Loading stays frozen, but the countdown is a commitment made ahead of
+        // time. Release against that local deadline instead of waiting for the
+        // InMatch datagram to reach every client at a different instant.
+        public static bool FreezeGameplay => IsInLobby || (IsStarting && !StartReleaseReached);
         public static bool ShouldLoadMatch => ServerSession is { } session
             && (session.Phase == SessionPhase.InMatch || (session.Phase == SessionPhase.Starting
                 && LocalSlot >= 0 && (session.ExpectedParticipants & (1 << LocalSlot)) != 0));
@@ -38,7 +44,8 @@ namespace MphRead.Mods.Network
         private static MatchStartIdentity? _loadedStart;
         private static (ushort MatchId, ulong AuthorityEpoch)? _pendingLoadedScene;
         private static ushort _rosterSessionRevision;
-        private static double _lastLoadAck, _lastIdentity, _startCountdownEndsAt;
+        private static MatchLoadStage _loadStage;
+        private static double _lastLoadAck, _lastLoadProgress, _lastIdentity, _startCountdownEndsAt;
         private sealed class PendingLobbyCommand
         {
             public LobbyCommandPacket Packet;
@@ -88,6 +95,12 @@ namespace MphRead.Mods.Network
                 SendLobbyPacket(pending.Packet);
             }
 
+            // Keep the most recent load stage alive while the scene is already built
+            // and waiting at the barrier. Synchronous loading reports transitions
+            // directly; once Pump is running again this is a cheap heartbeat.
+            if (IsStarting && _loadStage != MatchLoadStage.None && now - _lastLoadProgress >= 1)
+                SendMatchLoadProgress(_loadStage);
+
             // Identity updates are also eventually reliable, without a second identity protocol.
             if (now - _lastIdentity >= 1)
             {
@@ -134,20 +147,10 @@ namespace MphRead.Mods.Network
             {
                 Mods.RoomPrewarm.Begin(state.Match.RoomKey);
             }
-            if (state.Phase == SessionPhase.Starting && state.StartCountdownMilliseconds > 0)
-            {
-                // The server reports time remaining at send-time. Subtract an
-                // estimated one-way trip so high-ping and low-ping clients show
-                // the same countdown edge instead of each starting their own
-                // full countdown when the packet arrives. Keep a small safety
-                // margin so presentation never races ahead of the authority.
-                double oneWay = LocalSlot >= 0 && LocalSlot < SlotPing.Length
-                    ? Math.Clamp(SlotPing[LocalSlot] / 2000.0, 0, 0.15)
-                    : 0;
-                double remaining = state.StartCountdownMilliseconds / 1000.0;
-                _startCountdownEndsAt = Clock + Math.Max(0, remaining - oneWay + 0.03);
-            }
-            else if (state.Phase != SessionPhase.Starting)
+            if (state.Phase == SessionPhase.Starting && state.StartStage == StartStage.Countdown
+                && state.StartCountdownMilliseconds > 0)
+                ArmStartCountdown(state.StartCountdownMilliseconds);
+            else if (state.Phase != SessionPhase.Starting || state.StartStage != StartStage.Countdown)
                 _startCountdownEndsAt = 0;
             if (ServerMatch == null || ServerMatch.Value.MatchId != state.MatchId
                 || ServerMatch.Value.AuthorityEpoch != state.AuthorityEpoch)
@@ -159,7 +162,14 @@ namespace MphRead.Mods.Network
                         | (state.Match.ShadowFreeze ? 0 : MatchStatePacket.FlagNoShadowFreeze)
                         | MatchStatePacket.RuleFlags(1, state.Match.AffinityWeapons)) }, rotated: false);
             }
-            if (newMatch || _loadedStart?.StartGeneration != state.StartGeneration) { _loadedMatch = null; _loadedStart = null; }
+            if (newMatch || returningToLobby || _loadedStart?.StartGeneration != state.StartGeneration)
+            {
+                _loadedMatch = null; _loadedStart = null; _loadStage = MatchLoadStage.None;
+                _lastLoadProgress = 0;
+            }
+            if (state.Phase == SessionPhase.Starting && LocalSlot >= 0
+                && (state.ExpectedParticipants & (1 << LocalSlot)) != 0)
+                ReportMatchLoadProgress(MatchLoadStage.StartReceived);
             if (pendingScene is { } scene && scene.MatchId == state.MatchId
                 && scene.AuthorityEpoch == state.AuthorityEpoch
                 && state.Phase is SessionPhase.Starting or SessionPhase.InMatch)
@@ -175,8 +185,51 @@ namespace MphRead.Mods.Network
             LobbyMessage = result.ResultCode == LobbyResultCode.Ok ? "" : result.Reason;
         }
 
+        private static void ArmStartCountdown(ushort remainingMilliseconds)
+        {
+            double oneWay = LocalSlot >= 0 && LocalSlot < SlotPing.Length
+                ? Math.Clamp(SlotPing[LocalSlot] / 2000.0, 0, 0.15)
+                : 0;
+            double target = Clock + Math.Max(0, remainingMilliseconds / 1000.0 - oneWay + 0.03);
+            // A delayed reliable SessionState can carry an older remaining value.
+            // Fresh 10 Hz commit packets may move the estimate earlier, never later.
+            if (_startCountdownEndsAt <= 0 || target < _startCountdownEndsAt)
+                _startCountdownEndsAt = target;
+        }
+
+        internal static void ApplyStartCommit(MatchStartCommitPacket commit)
+        {
+            if (ServerSession is not { } state || state.Phase != SessionPhase.Starting
+                || state.StartStage != StartStage.Countdown || commit.Identity != new MatchStartIdentity(
+                    state.MatchId, state.AuthorityEpoch, state.StartGeneration)
+                || LocalSlot < 0 || (state.ExpectedParticipants & (1 << LocalSlot)) == 0)
+                return;
+            ArmStartCountdown(commit.RemainingMilliseconds);
+        }
+
+        public static void ReportMatchLoadProgress(MatchLoadStage stage)
+        {
+            if (stage == MatchLoadStage.None || ServerSession is not { } state
+                || state.Phase != SessionPhase.Starting || _hostEndPoint == null || LocalSlot < 0
+                || (state.ExpectedParticipants & (1 << LocalSlot)) == 0 || stage <= _loadStage)
+                return;
+            _loadStage = stage;
+            SendMatchLoadProgress(stage);
+        }
+
+        private static void SendMatchLoadProgress(MatchLoadStage stage)
+        {
+            if (ServerSession is not { } state || _hostEndPoint == null) return;
+            _lastLoadProgress = Clock;
+            new MatchLoadProgressPacket(state.MatchId, state.AuthorityEpoch,
+                state.StartGeneration, stage).Write(_scratch);
+            _transport?.Send(_hostEndPoint, PacketType.MatchLoadProgress,
+                _scratch.AsSpan(0, MatchLoadProgressPacket.Size));
+        }
+
         public static void MarkMatchLoaded()
         {
+            ReportMatchLoadProgress(MatchLoadStage.SceneReady);
             if (_hostEndPoint == null) return;
             // A late join can finish its scene after MatchState but before the
             // reliable SessionState carrying the start generation arrives.
@@ -228,7 +281,8 @@ namespace MphRead.Mods.Network
             _pendingLoadedScene = null;
             _rosterRevision = 0; _hasRoster = false; _ownerToken = Guid.Empty;
             _rosterSessionRevision = 0;
-            LobbyMessage = ""; _lastLoadAck = _lastIdentity = _startCountdownEndsAt = 0;
+            LobbyMessage = ""; _loadStage = MatchLoadStage.None;
+            _lastLoadAck = _lastLoadProgress = _lastIdentity = _startCountdownEndsAt = 0;
             Mods.RoomPrewarm.Clear();
             Array.Fill(SlotTeamIndex, (sbyte)-1); Array.Clear(SlotLobbyReady);
             Chat.NetChat.Clear();
