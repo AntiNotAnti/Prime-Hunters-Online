@@ -458,9 +458,10 @@ hit's damage out of the health the victim is being held at.
 
 Nothing is rolled back, because nothing durable is ever written. Health is
 assigned from the snapshot on the very next `ApplyState` -- the same line that
-has always corrected it -- and the afflictions are flags on the wire that the
-same snapshot re-asserts or clears. A prediction the authority never confirms
-simply ages out.
+has always corrected it. Remote gameplay afflictions are deliberately not
+predicted: the local hit still carries its exact affliction mask in the hit
+claim, and the authority's snapshot owns freeze/burn/disrupt state. A prediction
+the authority never confirms simply ages out.
 
 ### What counts as a shot
 
@@ -781,10 +782,11 @@ row), which is the open question in `KNOWN-GAPS.md`, measured there at 78.
   the beam's effectiveness multiplier, the damage level and the halfturret
   split *after* the suppression check, so a clamp at the top of the function
   is a clamp on a number that is not the damage yet.
-- **A frozen puppet stops taking its owner's positions.** A mispredicted
-  freeze therefore stalls a puppet locally until the next snapshot's
-  `ModSetFrozen(false)` thaws it -- which is one frame, and is why the freeze
-  is left to predict along with everything else rather than special-cased.
+- **Remote afflictions are authority-owned.** Predicting a Judicator freeze
+  locally let a pre-hit snapshot thaw it for one frame and the next authoritative
+  snapshot freeze it again; the longer graphics timer made that thaw look like a
+  block of ice sliding around. Damage/flinch stay predicted, while the hit claim
+  carries the exact affliction and snapshots apply the gameplay state once.
 - **`Tick` lives in the simulation step.** Both the pending ages and the
   mark's countdown are measured in frames; a picture with no step behind it
   must not advance either. See `render/FRAME-PACING.md`.
