@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <strong><a href="https://github.com/AntiNotAnti/Prime-Hunters-Online/releases/latest">Download the latest release</a></strong>
+  <strong><a href="https://github.com/AntiNotAnti/Project-Prime/releases/latest">Download the latest release</a></strong>
 </p>
 
 ---
@@ -150,7 +150,7 @@ Project Prime currently supports:
 
 Download the latest version from:
 
-**[Project Prime Releases](https://github.com/AntiNotAnti/Prime-Hunters-Online/releases/latest)**
+**[Project Prime Releases](https://github.com/AntiNotAnti/Project-Prime/releases/latest)**
 
 Choose the package for your platform.
 
