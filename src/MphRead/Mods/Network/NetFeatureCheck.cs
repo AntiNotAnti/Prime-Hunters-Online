@@ -478,7 +478,7 @@ namespace MphRead.Mods.Network
                         // Captured at the moment it is worst, because the
                         // interesting question is what the puppet was doing
                         // while it refused to change form.
-                        record.WorstFormContext = $"phase {phase}, authority wanted "
+                        record.WorstFormContext = $"frame {NetSession.NetFrame}, phase {phase}, authority wanted "
                             + $"{(wantAlt ? "alt" : "biped")}, puppet {player.ModFormState()}, "
                             + $"hp {player.Health}";
                     }

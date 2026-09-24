@@ -90,6 +90,28 @@ internal static class DynamicGeometryTests
             NetArchitectureTests.Check(engineDoor.Flags.TestFlag(DoorFlags.Locked) && engineDoor.Flags.TestFlag(DoorFlags.ShotOpen)
                 && !engineDoor.Flags.TestFlag(DoorFlags.Open) && engineField.Active && meshAdapter.CaptureNetworkCollisionState() == meshPresent,
                 "restore collision exactly while preserving new shot effects");
+            var rotating = new Geometry(4, true);
+            var rotationHistory = new NetDynamicGeometryHistory(new INetRewindableGeometry[] { rotating });
+            rotating.State = new(Matrix4.Identity, Matrix4.Identity, Matrix4.Identity, Vector3.UnitX, true);
+            rotationHistory.Record(1);
+            var quarterTurn = Matrix4.CreateRotationZ(MathF.PI / 2);
+            rotating.State = new(quarterTurn, quarterTurn.Inverted(), quarterTurn.Inverted(), Vector3.UnitY, true);
+            rotationHistory.Record(2);
+            using (rotationHistory.Begin(1.5))
+            {
+                var expectedCenter = Matrix.Vec3MultMtx4(Vector3.UnitX, rotating.State.Transform);
+                NetArchitectureTests.Check((rotating.State.Center - expectedCenter).Length < .00001f
+                    && MathF.Abs(rotating.State.Center.Length - 1) < .00001f,
+                    "rotating mesh broadphase center follows the interpolated transform, not the chord");
+            }
+            var scale2 = Matrix4.CreateScale(2); var scale4 = Matrix4.CreateScale(4);
+            rotating.State = new(scale2, scale2.Inverted(), scale2.Inverted(), Vector3.UnitX * 2, true);
+            rotationHistory.Record(3);
+            rotating.State = new(scale4, scale4.Inverted(), scale4.Inverted(), Vector3.UnitX * 4, true);
+            rotationHistory.Record(4);
+            using (rotationHistory.Begin(3.5))
+                NetArchitectureTests.Check(rotating.State.Transform.ExtractScale() == new Vector3(3)
+                    && rotating.State.Center == Vector3.UnitX * 3, "animated collision scale and transformed center are preserved");
             Console.WriteLine("PASS: doors, force fields, moving collision, fractional sampling, catch-up, exception restoration, misses and 0 rewind allocations"); return 0;
         }
         catch (Exception e) { Console.Error.WriteLine(e); return 1; }

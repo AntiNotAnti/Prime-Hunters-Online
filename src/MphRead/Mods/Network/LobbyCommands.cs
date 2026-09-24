@@ -450,7 +450,7 @@ namespace MphRead.Mods.Network
                     peer.SlowLoadLogged = true;
                     string stage = peer.MatchLoadStage == MatchLoadStage.None
                         ? "no progress reported" : peer.MatchLoadStage.ToString();
-                    Log($"[lobby] slot {peer.SlotIndex} is still loading after "
+                    Log($"[lobby] slot {peer.SlotIndex} is waiting at {_start.Stage} (scene={peer.SceneLoaded}, world={peer.MatchReady}) after "
                         + $"{NetMatchStart.SlowLoadSeconds:0}s ({stage}); keeping the client in the barrier");
                 }
 
@@ -468,7 +468,7 @@ namespace MphRead.Mods.Network
                 if (_phase != SessionPhase.Starting) return;
                 bool advanced = _start.Advance(now);
                 if (advanced && _start.Stage == StartStage.Synchronizing)
-                { TouchLobbyRevision("synchronizing authoritative world"); advanced = _start.Advance(now); }
+                { TouchLobbyRevision($"synchronizing authoritative world expected={_start.Expected:X2} loaded={_start.Loaded:X2} ready={_start.WorldReady:X2}"); advanced = _start.Advance(now); }
                 if (_start.Stage == StartStage.Countdown)
                 {
                     if (advanced) TouchLobbyRevision("all participants ready; countdown started");

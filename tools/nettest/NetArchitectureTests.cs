@@ -59,7 +59,7 @@ internal static class NetArchitectureTests
             byte[] output = new byte[IntentPacket.FullSize]; intent.Write(output);
             Check(output.SequenceEqual(fixture), "v16 intent byte fixture");
             Check(intent.AckFrame == 0x87654321 && intent.AckSubFrame == 128 && IntentPacket.PressHistory == 8,
-                "displayed world ACK and eight edges retained");
+                "displayed world ACK and eight-frame edge retention");
             string[] forbidden = { "MovementCommand", "MovementAck", "ProcessedMovementFrame", "MovementReconciliation",
                 "PredictedMovementState", "IntentBundle", "SnapshotDelta", "SnapshotKeyframe" };
             Check(!typeof(IntentPacket).Assembly.GetTypes().Any(t => forbidden.Any(n => t.Name.Contains(n))),

@@ -70,7 +70,19 @@ namespace MphRead.Mods.Network
 
         public static void Pump(double time = 0) => Update(time);
 
-        internal static void PumpLoading() => Update(Clock, advanceFrame: false);
+        internal static void PumpLoading()
+        {
+            Update(Clock, advanceFrame: false);
+            // A bootstrap/countdown release can be followed by a newer fast
+            // snapshot in this same receive batch. The renderer draws after
+            // this pump without taking a simulation step: apply any newer
+            // life/spawn now so that first picture cannot show the old body.
+            if (!FreezeGameplay && IsClient && !IsAuthority)
+            {
+                NetSlotManager.Sync();
+                NetHooks.ApplyRemoteStates();
+            }
+        }
 
         // Called once per rendered frame by both platform hosts. Frozen time
         // never becomes gameplay debt, including the frame crossing release.
@@ -364,6 +376,9 @@ namespace MphRead.Mods.Network
 
         private static void ResetLobbySession()
         {
+            _appliedBootstrap = _receivingBootstrap = null;
+            _bootstrapMask = 0;
+            _laneReceiver.Reset(0, 0);
             ServerSession = null; _pendingLobby.Clear(); _loadedMatch = null; _loadedStart = null;
             _pendingLoadedScene = null;
             _rosterRevision = 0; _hasRoster = false; _ownerToken = Guid.Empty;

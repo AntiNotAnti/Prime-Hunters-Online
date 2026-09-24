@@ -152,7 +152,7 @@ namespace MphRead.Mods.Network
         }
 
         /// <summary>
-        /// Rising edges from the last few frames, newest first, so a
+        /// Sequenced rising edges from the last eight frames, oldest first, so a
         /// one-frame press survives a lost packet. See IntentPacket.Presses.
         /// </summary>
         private InputEdgeHistory _pressHistory;

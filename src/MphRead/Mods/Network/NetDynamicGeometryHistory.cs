@@ -62,16 +62,17 @@ public sealed class NetDynamicGeometryHistory
             {
                 var geometry = _objects[i]; var state = _states[i, at];
                 _present[i] = geometry.CaptureNetworkCollisionState(); _moved[i] = true;
-                if (geometry.Continuous && interpolate && state.Enabled == _states[i, next].Enabled)
+                if (geometry.Continuous && interpolate && state.Enabled && _states[i, next].Enabled)
                 {
                     var after = _states[i, next];
                     var rotation = Quaternion.Slerp(state.Transform.ExtractRotation(), after.Transform.ExtractRotation(), fraction);
-                    var transform = Matrix4.CreateFromQuaternion(rotation);
+                    var scale = Vector3.Lerp(state.Transform.ExtractScale(), after.Transform.ExtractScale(), fraction);
+                    var transform = Matrix4.CreateScale(scale) * Matrix4.CreateFromQuaternion(rotation);
                     transform.Row3 = new Vector4(Vector3.Lerp(state.Transform.Row3.Xyz, after.Transform.Row3.Xyz, fraction), 1);
-                    // Collision transforms are rigid (engine strips scale).
+                    // Preserve scale from animated collision attachment nodes too.
                     var inverse = transform.Inverted();
                     state = state with { Transform = transform, Inverse1 = inverse, Inverse2 = inverse,
-                        Center = Vector3.Lerp(state.Center, after.Center, fraction) };
+                        Center = Matrix.Vec3MultMtx4(Matrix.Vec3MultMtx4(state.Center, state.Inverse1), transform) };
                     InterpolationCount++;
                 }
                 else if (!geometry.Continuous) DiscreteSamples++;

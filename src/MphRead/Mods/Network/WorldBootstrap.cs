@@ -44,7 +44,7 @@ public static partial class NetSession
             && baseline.SlotGeneration == NetPlayerLifecycle.Generation(LocalSlot);
     private static void HandleWorldBootstrap(ReceivedPacket packet)
     {
-        if (ServerSession is not { } session || _loadedStart != StartIdentity(session)
+        if (!_hasRoster || ServerSession is not { } session || _loadedStart != StartIdentity(session)
             || !WorldBootstrapIdentity.TryRead(packet.Payload, out var identity)
             || identity.Start != StartIdentity(session)
             || identity.SlotGeneration != NetPlayerLifecycle.Generation(LocalSlot)) return;
@@ -66,12 +66,25 @@ public static partial class NetSession
         {
             if (laneData.Length < SnapshotHeader.Size || laneData.Length > _bootstrapFast.Length
                 || SnapshotHeader.Read(laneData).Frame != identity.AuthorityFrame) return;
+            if ((_bootstrapMask & 1) != 0 && !laneData.SequenceEqual(_bootstrapFast.AsSpan(0, _bootstrapFastLength))) return;
             laneData.CopyTo(_bootstrapFast); _bootstrapFastLength = laneData.Length;
         }
-        else if (!_bootstrapReceiver.Receive(lane == 1 ? PacketType.PlayerSlowState : PacketType.WorldState,
-            laneData, identity.Start.MatchId, identity.Start.AuthorityEpoch) && (_bootstrapMask & (1 << lane)) == 0) return;
-        if (lane == 1) { laneData.CopyTo(_bootstrapSlow); _bootstrapSlowLength = laneData.Length; }
-        if (lane == 2) { laneData.CopyTo(_bootstrapWorld); _bootstrapWorldLength = laneData.Length; }
+        else
+        {
+            var stored = lane == 1 ? _bootstrapSlow.AsSpan(0, _bootstrapSlowLength)
+                : _bootstrapWorld.AsSpan(0, _bootstrapWorldLength);
+            if ((_bootstrapMask & (1 << lane)) != 0)
+            {
+                if (!laneData.SequenceEqual(stored)) return;
+            }
+            else
+            {
+                if (!_bootstrapReceiver.Receive(lane == 1 ? PacketType.PlayerSlowState : PacketType.WorldState,
+                    laneData, identity.Start.MatchId, identity.Start.AuthorityEpoch)) return;
+                if (lane == 1) { laneData.CopyTo(_bootstrapSlow); _bootstrapSlowLength = laneData.Length; }
+                else { laneData.CopyTo(_bootstrapWorld); _bootstrapWorldLength = laneData.Length; }
+            }
+        }
         _bootstrapMask |= (byte)(1 << lane);
         if (_bootstrapMask != 7 || _bootstrapReceiver.SlowRevision != identity.SlowRevision
             || _bootstrapReceiver.WorldRevision != identity.WorldRevision) return;
@@ -83,21 +96,45 @@ public static partial class NetSession
         // remain gated. No gameplay or simulation step runs in this path.
         _laneCanonical[0] = (byte)PacketType.Snapshot;
         var baseline = new ReceivedPacket(packet.Sender, _laneCanonical, 1 + length, packet.ArrivedAt);
+        Array.Clear(RemoteStateValid); // Readiness requires acceptance from this exact baseline.
         HandleSnapshot(baseline, bootstrap: true);
         if (_lastSnapshotFrame != identity.AuthorityFrame || !RemoteStateValid[LocalSlot]) return;
         for (int slot = 0; slot < RemoteStates.Length; slot++)
             if (session.Phase == SessionPhase.Starting && (session.ExpectedParticipants & (1 << slot)) != 0 && !RemoteStateValid[slot]) return;
+        var header = SnapshotHeader.Read(payload);
+        for (int i = 0; i < header.PlayerCount; i++)
+        {
+            var state = PlayerState.Read(payload[(SnapshotHeader.Size + i * PlayerState.Size)..]);
+            // A departed/replaced occupant may still occur in a cached late-join
+            // baseline. Every occupant that still matches the current roster
+            // must have accepted its state before this client can play.
+            if (NetPlayerLifecycle.Generation(state.SlotIndex) == state.SlotGeneration
+                && !RemoteStateValid[state.SlotIndex]) return;
+        }
         if (PlayerEntity.Players.Count <= LocalSlot) return;
         NetSlotManager.Sync();
-        NetHooks.ApplyRemoteStates();
         for (int slot = 0; slot < PlayerEntity.Players.Count; slot++)
         {
             if (!RemoteStateValid[slot]) continue;
             var state = RemoteStates[slot]; var player = PlayerEntity.Players[slot];
+            NetPlayerBridge.ApplyState(player, state, isLocal: false);
+            bool alt = (state.Flags & PlayerState.FlagAltForm) != 0;
+            if (state.Health > 0)
+            {
+                // A baseline is already the settled authoritative form. Build
+                // form-owned entities, then finish without advancing animation.
+                if (player.IsAltForm != alt && !player.IsMorphing && !player.IsUnmorphing)
+                    player.ModStartFormSwitch();
+                player.ModForceForm(alt);
+            }
             player.ModPlaceAt(state.Position); player.Speed = state.Speed;
             player.ModSetSpawnFacing(state.Facing);
             GameState.Points[slot] = state.Points; GameState.Kills[slot] = state.Kills; GameState.Deaths[slot] = state.Deaths;
         }
+        NetHealthSync.ApplyBootstrap();
+        // Spawn/form presentation may consume random values while applying.
+        Rng.SetRng1(header.Rng1); Rng.SetRng2(header.Rng2);
+        NoteStatesApplied();
         _laneReceiver.Reset(identity.Start.MatchId, identity.Start.AuthorityEpoch);
         // The same lanes seed live recovery; later fast packets cannot erase
         // the scoreboard or world state applied at the barrier.
@@ -159,7 +196,9 @@ public sealed partial class DedicatedServer
             || !WorldBootstrapIdentity.TryRead(packet.Payload, out var ready)
             || ready != peer.BootstrapIdentity || ready.Start != CurrentStartIdentity
             || ready.SlotGeneration != _slotGenerations[peer.SlotIndex]) return;
-        peer.LastSeen = now; peer.MatchReady = true;
+        peer.LastSeen = now;
+        if (!peer.MatchReady) Log($"[lobby] slot {peer.SlotIndex} applied world revision {ready.Revision}, frame {ready.AuthorityFrame}");
+        peer.MatchReady = true;
         if (_phase == SessionPhase.Starting && _start.MarkWorldReady(peer.SlotIndex, ready.Start))
         { TouchLobbyRevision($"slot {peer.SlotIndex} world ready"); CheckLoadBarrier(now); }
     }

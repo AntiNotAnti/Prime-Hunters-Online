@@ -55,6 +55,36 @@ public static class NetGeometrySceneCheck
                     throw new InvalidOperationException($"Field {field.Id}: trace or restore failed");
                 field.ModSetNetworkCollisionActive(original);
             }
+            foreach (var entity in scene.Entities)
+            {
+                if (entity.Type is not (EntityType.Platform or EntityType.Object)) continue;
+                foreach (var collision in entity.EntityCollision)
+                {
+                    if (collision?.Collision == null) continue;
+                    var original = new NetGeometryState(collision.Transform, collision.Inverse1, collision.Inverse2,
+                        collision.CurrentCenter, collision.Collision.Active);
+                    NetDynamicGeometryHistory.RecordWorld(20);
+                    collision.Transform *= Matrix4.CreateTranslation(10, 0, 0);
+                    collision.Inverse1 = collision.Transform.Inverted(); collision.Inverse2 = collision.Inverse1;
+                    collision.CurrentCenter += Vector3.UnitX * 10;
+                    NetDynamicGeometryHistory.RecordWorld(21);
+                    try
+                    {
+                        NetDynamicGeometryHistory.ReconcileWorld(20.5);
+                        if (MathF.Abs(collision.Transform.Row3.X - original.Transform.Row3.X - 5) > .0001f)
+                            throw new InvalidOperationException("Real mesh interpolation did not use the same historical fraction");
+                        // Inject a failure inside an applied production rewind.
+                        throw new ApplicationException("fixture projectile failure");
+                    }
+                    catch (ApplicationException) { }
+                    finally { NetDynamicGeometryHistory.RestoreWorld(); }
+                    if (MathF.Abs(collision.Transform.Row3.X - original.Transform.Row3.X - 10) > .0001f)
+                        throw new InvalidOperationException("Real mesh exception restoration failed");
+                    collision.Transform = original.Transform; collision.Inverse1 = original.Inverse1;
+                    collision.Inverse2 = original.Inverse2; collision.CurrentCenter = original.Center;
+                    collision.Collision.Active = original.Enabled;
+                }
+            }
             Console.WriteLine($"GEOMETRY PASS: real asset traces, historical blocked={NetDynamicGeometryHistory.ShadowHistoricalBlocked}, current blocked={NetDynamicGeometryHistory.ShadowCurrentBlocked}, exact restoration");
             return 0;
         }

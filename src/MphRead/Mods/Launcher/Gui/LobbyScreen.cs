@@ -743,7 +743,9 @@ namespace MphRead.Mods.Launcher.Gui
                         ? reason
                         : NetSession.StartCountdownRemainingSeconds > 0
                             ? $"Match starts in {Math.Max(1, (int)Math.Ceiling(NetSession.StartCountdownRemainingSeconds))}..."
-                            : $"{CountParticipants(session.LoadedParticipants)}/{CountParticipants(session.ExpectedParticipants)} players loaded...";
+                            : session.StartStage == StartStage.Synchronizing
+                                ? $"Synchronizing world: {CountParticipants(session.WorldReadyParticipants)}/{CountParticipants(session.ExpectedParticipants)} ready..."
+                                : $"Loading world: {CountParticipants(session.LoadedParticipants)}/{CountParticipants(session.ExpectedParticipants)} loaded...";
 
             if (_chatRevision != NetChat.Revision)
             {
@@ -769,12 +771,14 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 _startCountdown.Text = Math.Max(1, (int)Math.Ceiling(remaining))
                     .ToString(CultureInfo.InvariantCulture);
-                _startDetail.Text = "MATCH STARTING";
+                _startDetail.Text = "READY  //  MATCH STARTING";
             }
             else
             {
                 _startCountdown.Text = "...";
-                _startDetail.Text = $"PREPARING MATCH  //  {loaded}/{expected} PLAYERS LOADED";
+                _startDetail.Text = session.StartStage == StartStage.Synchronizing
+                    ? $"SYNCHRONIZING WORLD  //  {CountParticipants(session.WorldReadyParticipants)}/{expected} READY"
+                    : $"LOADING WORLD  //  {loaded}/{expected} LOADED";
             }
         }
 

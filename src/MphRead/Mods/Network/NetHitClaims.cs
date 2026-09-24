@@ -795,34 +795,11 @@ namespace MphRead.Mods.Network
         private static int _disagreementsLogged;
 
         /// <summary>
-        /// How far two acks may differ and still possibly be the same shot.
-        ///
-        /// <b>A loose sanity bound, not the match.</b> It was tried as the
-        /// match -- eight frames -- on the reasoning that two copies of one
-        /// shot resolve at the same world-frame, and that is true of the shot
-        /// but not of what either machine can stamp it with. The authority's
-        /// stamp is <see cref="FireFrameOf"/>, the shooter's ack as the
-        /// authority currently knows it, which for anything that travels was
-        /// sampled long after the trigger and is a further downstream trip
-        /// behind the shooter's own. Measured at 400 ms: the two differ by
-        /// more than eight frames on nearly every shot, the match failed
-        /// almost always, and applications went *up* from 7 to 13 -- the
-        /// opposite of the fix. Identifying the shot properly means carrying
-        /// the rewind target from <c>BeginShot</c> through to the beam's
-        /// impact, which nothing does yet.
-        ///
-        /// So the match is back on arrival time, sized from the round trip,
-        /// and this only stops a claim pairing with a hit from a completely
-        /// different exchange.
+        /// ACK sanity bound for the legacy fallback when a launch identity
+        /// is unavailable. Exact nonzero ShotKey matching always runs first;
+        /// conflicting valid launch identities are never paired by this window.
         /// </summary>
         private const int AckMatchFrames = 120;
-
-        /// <summary>
-        /// How far two launch frames may differ and still be one shot. Both
-        /// machines name the same instant, so this is slack for the frame the
-        /// stamp was taken on and nothing more.
-        /// </summary>
-        private const int LaunchMatchFrames = 0;
 
         /// <summary>
         /// File a hit the authority resolved for itself, so that a claim about
@@ -1626,7 +1603,7 @@ namespace MphRead.Mods.Network
             }
             TrackDeaths();
             uint now = NetSession.NetFrame;
-            // Oldest fire-frame first. Selection over a 64-entry array with
+            // Oldest fire-frame first. Selection over the bounded per-shooter table with
             // almost nothing live in it: the loop below normally finds nothing
             // at all, and the sort only ever orders claims that came due on
             // the same frame, which is two in the case this exists for.
@@ -1771,6 +1748,17 @@ namespace MphRead.Mods.Network
         /// <summary>Hits the authority was refused because a claim had them.</summary>
         public static long SuppressedHere { get; private set; }
 
+        private static bool CanRememberRescue(int attacker, int victim, uint launch)
+        {
+            if (launch == 0) return true;
+            int start = (attacker * Slots + victim) * 512;
+            var key = ShotKey.For(attacker, launch);
+            for (int i = start; i < start + 512; i++)
+                if (_rescuedOwed[i] == 0 || NetSession.NetFrame - _rescuedAt[i] > RescuedFrames
+                    || (_rescuedKeys[i] == key && NetPlayerLifecycle.Matches(victim, _rescuedVictimGeneration[i], _rescuedVictimLife[i]))) return true;
+            return false;
+        }
+
         private static void NoteRescued(int attacker, int victim, uint launch)
         {
             if (launch == 0)
@@ -1889,6 +1877,14 @@ namespace MphRead.Mods.Network
                 Answer(shooterSlot, entry.Id, HitVerdictPacket.ResultDeadShooter);
                 return;
             }
+            if (!CanRememberRescue(shooterSlot, victimSlot, entry.LaunchFrame)
+                || (_ledgerUnsafeUntil[shooterSlot, victimSlot] != 0
+                    && (int)(_ledgerUnsafeUntil[shooterSlot, victimSlot] - NetSession.NetFrame) >= 0))
+            {
+                ClaimsCapacityRefused++;
+                Answer(shooterSlot, entry.Id, HitVerdictPacket.ResultClaimCapacity);
+                return;
+            }
             DamageFlags flags = DamageFlags.NoDmgInvuln;
             if ((entry.Flags & HitClaimPacket.FlagHeadshot) != 0)
             {
@@ -1898,7 +1894,7 @@ namespace MphRead.Mods.Network
             // way through TakeDamage, filed under this ack and already used.
             //
             // It used to be written here *as well*, which put two entries in an
-            // eight-deep ring for every rescue: one used, one free for a later
+            // resolved-hit ledger for every rescue: one used, one free for a later
             // claim to match against by mistake, and the pair evicting genuine
             // authority hits twice as fast as they arrived.
             ApplyingClaim = true;

@@ -37,13 +37,25 @@ internal static class ClaimStressTests
                 for (int i = 0; i < NetHitClaims.PendingPerShooter; i++)
                     Call("Park", shooter, new HitClaimPacket { ClaimId = (ushort)(i + 1), VictimSlot = 1 });
             NetArchitectureTests.Check(NetHitClaims.ClaimsPendingCurrent == 512, "isolated per-shooter storage");
+            byte capacityVerdict = 255;
+            NetHitClaims.VerdictSink = (int slot, ReadOnlySpan<(ushort Id, byte Result)> verdicts) =>
+            { foreach (var verdict in verdicts) if (slot == 0 && verdict.Id == 65) capacityVerdict = verdict.Result; };
             Call("Park", 0, new HitClaimPacket { ClaimId = 65, VictimSlot = 1 });
+            Call("FlushVerdicts");
+            NetArchitectureTests.Check(capacityVerdict == HitVerdictPacket.ResultClaimCapacity, "full partition sends terminal capacity verdict");
             NetArchitectureTests.Check(NetHitClaims.ClaimsCapacityRefused == 1, "capacity is explicit");
             NetArchitectureTests.Check(NetHitClaims.ResolvedLedgerOverwrittenUnused == 0, "no unmatched overwrite");
+            NetHitClaims.Reset(); Frame(80);
+            for (uint launch = 1; launch <= 65; launch++) Call("NoteLedger", 0, 1, 80u, launch, 1, false);
+            NetArchitectureTests.Check(NetHitClaims.ResolvedLedgerCapacityRefused == 1
+                && NetHitClaims.ResolvedLedgerOverwrittenUnused == 0, "saturated resolution storage preserves all unused identities");
+            Call("Park", 0, new HitClaimPacket { ClaimId = 66, VictimSlot = 1 });
+            NetArchitectureTests.Check(NetHitClaims.ClaimsPendingCurrent == 0 && NetHitClaims.ClaimsCapacityRefused == 1,
+                "unrecorded physical hit fences rescue until grace expires");
             Console.WriteLine("PASS: claim retention, multiplicity, exact matching, shooter isolation and capacity refusal");
             return 0;
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
-        finally { NetSession.Stop(); }
+        finally { NetHitClaims.VerdictSink = null; NetSession.Stop(); }
     }
 }

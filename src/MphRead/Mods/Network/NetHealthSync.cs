@@ -6,8 +6,8 @@ using MphRead.Mods.Multiplayer;
 
 namespace MphRead.Mods.Network
 {
-    // A bounded tail on the normal authoritative snapshot, not a second
-    // channel. Full state repeats so loss and joining late repair themselves.
+    // Bounded full world state: the canonical snapshot tail is sent in the
+    // protocol-18 WorldState lane and the reliable bootstrap.
     public static class NetHealthSync
     {
         public const int MaxSpawns = 56;
@@ -74,6 +74,12 @@ namespace MphRead.Mods.Network
                     if (BinaryPrimitives.ReadInt16LittleEndian(src[previous..]) == id) return false;
             }
             return true;
+        }
+
+        internal static void ApplyBootstrap()
+        {
+            foreach (var spawn in _spawns)
+                if (_states.TryGetValue((short)spawn.Id, out var state)) spawn.ModApplyNetworkHealthState(state, feedback: false);
         }
 
         public static void Receive(ReadOnlySpan<byte> src)
