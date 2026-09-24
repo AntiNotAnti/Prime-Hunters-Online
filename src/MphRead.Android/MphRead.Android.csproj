@@ -115,6 +115,8 @@
 
   <ItemGroup>
     <EmbeddedResource Include="..\MphRead\Assets\Fonts\Roboto-Bold.ttf" Link="Assets\Fonts\Roboto-Bold.ttf" />
+    <EmbeddedResource Include="..\MphRead\Assets\Sounds\Combat\*.wav"
+                      Link="Assets\Sounds\Combat\%(Filename)%(Extension)" />
     <PackageReference Include="Avalonia" Version="12.1.2" />
     <PackageReference Include="Avalonia.Android" Version="12.1.2" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.2" />
