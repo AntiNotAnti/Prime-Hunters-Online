@@ -232,6 +232,10 @@ namespace MphRead.Mods.Sound
             }
 
             CuePlayer? player = TryGetPlayer(id);
+            if (player == null && id.StartsWith(CustomPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                player = TryGetPlayer(DefaultSelection(cue));
+            }
             if (player == null)
             {
                 return;
