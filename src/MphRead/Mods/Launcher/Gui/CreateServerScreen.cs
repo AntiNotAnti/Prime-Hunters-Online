@@ -147,6 +147,7 @@ namespace MphRead.Mods.Launcher.Gui
         /// </summary>
         private bool _asking = true;
         private CancellationTokenSource? _work;
+        private int _hostDiscoveryGeneration;
 
         public CreateServerScreen(IReadOnlyList<string> rooms, string? firstMap = null,
             bool discoverHosts = true)
@@ -326,6 +327,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
         {
+            _hostDiscoveryGeneration++;
             _work?.Cancel();
             base.OnDetachedFromVisualTree(e);
         }
@@ -497,14 +499,21 @@ namespace MphRead.Mods.Launcher.Gui
         /// </summary>
         private void AskDirectories()
         {
+            int generation = ++_hostDiscoveryGeneration;
             _asking = true;
             _candidates.Clear();
             _chosen = null;
             NetMasterClient.FindHosts(LauncherPrefs.MasterHost, LauncherPrefs.MasterPort,
-                onFound: candidate => Dispatcher.UIThread.Post(() => Arrived(candidate)),
+                onFound: candidate => Dispatcher.UIThread.Post(() =>
+                {
+                    if (generation == _hostDiscoveryGeneration)
+                    {
+                        Arrived(candidate);
+                    }
+                }),
                 onDone: () => Dispatcher.UIThread.Post(() =>
                 {
-                    if (_finished)
+                    if (_finished || generation != _hostDiscoveryGeneration)
                     {
                         return;
                     }
@@ -738,7 +747,8 @@ namespace MphRead.Mods.Launcher.Gui
                 maxPlayers: PlayerEntity.SlotCapacity, timeLimit: 7 * 60,
                 pointGoal: MatchGoalRules.DefaultValue(maps[0].Mode),
                 masterHost: LauncherPrefs.MasterHost, masterPort: LauncherPrefs.MasterPort,
-                listed: LauncherPrefs.ListHostedGame, cancel: cancel.Token, lobby: true));
+                listed: LauncherPrefs.ListHostedGame, cancel: cancel.Token, lobby: true,
+                requestedPort: NetConfig.DefaultPort));
             if (port < 0)
             {
                 Fail(LocalServer.LastError ?? "the server would not start");

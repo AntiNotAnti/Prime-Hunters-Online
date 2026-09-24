@@ -35,8 +35,6 @@ namespace MphRead.Mods.Network
             public HostedServerProcess Process = null!;
             public int Port;
             public string Name = "";
-            /// <summary>Who asked, so a second request replaces it rather than piling up.</summary>
-            public IPAddress Asker = IPAddress.None;
             public double StartedAt;
             /// <summary>When it last had anybody in it, so an abandoned game can be reaped.</summary>
             public double LastOccupied;
@@ -88,21 +86,11 @@ namespace MphRead.Mods.Network
         /// </summary>
         public HostReplyPacket Start(HostRequestPacket request, IPEndPoint asker, double now)
         {
-            // One game per host. Somebody who quits and asks again is asking
-            // for a *replacement*, not a second one -- and the old one is
-            // sitting there empty, holding a port and a row on everybody's
-            // list. Only if it is empty, though: two people behind one router
-            // share an address, and the second of them starting a game must
-            // not throw the first out of theirs.
-            for (int i = _hosted.Count - 1; i >= 0; i--)
-            {
-                Hosted previous = _hosted[i];
-                if (previous.Asker.Equals(asker.Address)
-                    && previous.Process.ProbePlayers(now, force: true) == 0)
-                {
-                    Stop(previous, "the same player asked for another game", now);
-                }
-            }
+            // Do not treat a public IP address as a player identity. Multiple
+            // people behind one NAT legitimately share it, so replacing an
+            // empty game merely because the next request came from that IP can
+            // destroy somebody else's lobby. Abandoned games are bounded by
+            // the normal startup/empty reaper instead.
             int port = FreePort(now);
             if (port < 0)
             {
@@ -132,7 +120,6 @@ namespace MphRead.Mods.Network
                 Process = process,
                 Port = port,
                 Name = name,
-                Asker = asker.Address,
                 StartedAt = now,
                 LastOccupied = now
             };
@@ -169,6 +156,10 @@ namespace MphRead.Mods.Network
                         continue;
                     }
                     _cooling.Remove(port);
+                }
+                if (!LocalServer.PortAvailable(port))
+                {
+                    continue;
                 }
                 return port;
             }

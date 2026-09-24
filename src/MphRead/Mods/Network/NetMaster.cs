@@ -248,8 +248,6 @@ namespace MphRead.Mods.Network
             public HostedServerProcess Process = null!;
             public int Port;
             public string Name = "";
-            /// <summary>Who asked for it, so a second request replaces it rather than piling up.</summary>
-            public IPAddress Asker = IPAddress.None;
             public double StartedAt;
             /// <summary>When it last had anybody in it, so an abandoned game can be reaped.</summary>
             public double LastOccupied;
@@ -528,23 +526,10 @@ namespace MphRead.Mods.Network
 
         private HostReplyPacket StartHosted(HostRequestPacket request, IPEndPoint asker, double now)
         {
-            // One game per host. Somebody who quits and asks again is asking
-            // for a *replacement*, not a second one -- and the old one is
-            // sitting there empty, holding a port and a row on everybody's
-            // list. Two attempts used to leave two of them.
-            //
-            // Only if it is empty, though: two people behind one router share
-            // an address, and the second of them starting a game must not
-            // throw the first out of theirs.
-            for (int i = _hosted.Count - 1; i >= 0; i--)
-            {
-                Hosted previous = _hosted[i];
-                if (previous.Asker.Equals(asker.Address)
-                    && previous.Process.ProbePlayers(now, force: true) == 0)
-                {
-                    StopHosted(previous, "the same player asked for another game");
-                }
-            }
+            // A public IP is not a player identity. Home NAT and carrier-grade
+            // NAT can put unrelated players behind the same address. Never
+            // replace an empty hosted game solely because another request came
+            // from that IP; the bounded idle reaper cleans abandoned attempts.
             int port = FreeHostPort(now);
             if (port < 0)
             {
@@ -575,7 +560,6 @@ namespace MphRead.Mods.Network
                 Process = process,
                 Port = port,
                 Name = name,
-                Asker = asker.Address,
                 StartedAt = now,
                 LastOccupied = now
             };
@@ -612,6 +596,10 @@ namespace MphRead.Mods.Network
                         continue;
                     }
                     _cooling.Remove(port);
+                }
+                if (!LocalServer.PortAvailable(port))
+                {
+                    continue;
                 }
                 return port;
             }
@@ -1240,13 +1228,69 @@ namespace MphRead.Mods.Network
                         continue;
                     }
                     HostReplyPacket answer = HostReplyPacket.Read(reply.AsSpan(1));
+                    if (!answer.Started)
+                    {
+                        return new HostedGame
+                        {
+                            Started = false,
+                            OwnerToken = answer.OwnerToken,
+                            Host = masterHost,
+                            Port = answer.Port,
+                            Reason = answer.Reason
+                        };
+                    }
+
+                    // Process.Start is not readiness. A host service can spawn a
+                    // child that immediately dies on bind/startup and, before
+                    // this check, the launcher was told "started" and only
+                    // learned the truth from an eight-second join timeout.
+                    // StatusQuery proves the actual game endpoint is answering.
+                    var readyClock = System.Diagnostics.Stopwatch.StartNew();
+                    const int readyTimeoutMs = 8_000;
+                    while (readyClock.ElapsedMilliseconds < readyTimeoutMs)
+                    {
+                        int remaining = readyTimeoutMs - (int)readyClock.ElapsedMilliseconds;
+                        ServerStatus status = NetStatus.Query(masterHost, answer.Port,
+                            allowJoinProbe: false, timeoutMs: Math.Clamp(remaining, 20, 250));
+                        if (status.Online)
+                        {
+                            if (status.Protocol > 0
+                                && status.Protocol != NetConfig.ProtocolVersion)
+                            {
+                                return new HostedGame
+                                {
+                                    Started = false,
+                                    OwnerToken = answer.OwnerToken,
+                                    Host = masterHost,
+                                    Port = answer.Port,
+                                    Reason = $"{masterHost}:{answer.Port} started with protocol "
+                                        + $"{status.Protocol}; this build speaks "
+                                        + NetConfig.ProtocolVersion
+                                };
+                            }
+                            return new HostedGame
+                            {
+                                Started = true,
+                                OwnerToken = answer.OwnerToken,
+                                Host = masterHost,
+                                Port = answer.Port,
+                                Reason = ""
+                            };
+                        }
+                        remaining = readyTimeoutMs - (int)readyClock.ElapsedMilliseconds;
+                        if (remaining > 0)
+                        {
+                            Thread.Sleep(Math.Min(50, remaining));
+                        }
+                    }
                     return new HostedGame
                     {
-                        Started = answer.Started,
+                        Started = false,
                         OwnerToken = answer.OwnerToken,
                         Host = masterHost,
                         Port = answer.Port,
-                        Reason = answer.Reason
+                        Reason = $"{masterHost} started a server on UDP {answer.Port}, "
+                            + "but it never became reachable"
                     };
                 }
                 return new HostedGame { Reason = $"{masterHost} did not answer" };

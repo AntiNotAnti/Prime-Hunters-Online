@@ -32,10 +32,10 @@ namespace MphRead.Mods.Network
     /// different build outright at Hello, so a server started from a *freshly
     /// downloaded* package on a client that is one release behind is a server
     /// that client cannot join -- the exact failure the download was meant to
-    /// prevent. So this build's own binary is preferred wherever it can run a
-    /// server, which is everywhere but Android, and the download is the
-    /// fallback for the one case that has no binary to reuse rather than the
-    /// first thing tried.
+    /// prevent. Release builds therefore download the server package from the
+    /// same release tag as the client, while local/development builds use the
+    /// latest package as a fallback. This build's own binary is still preferred
+    /// wherever it can run a server, which is everywhere but Android.
     /// </summary>
     public static class LocalServer
     {
@@ -50,12 +50,10 @@ namespace MphRead.Mods.Network
         /// <summary>
         /// The release tag of the package last installed, or "".
         ///
-        /// Worth saying out loud, because it is the one thing about a
-        /// downloaded server that can bite: it is the *latest* release, which
-        /// is not necessarily this build, and
-        /// <c>NetConfig.ProtocolVersion</c> makes a server refuse a client on
-        /// a different one at Hello. The refusal is clear when it happens;
-        /// naming the tag is what lets somebody see it coming.
+        /// Release builds install the package from their own release tag so
+        /// client and server stay on the same protocol. Local/development
+        /// builds have no tag to match and use the latest package fallback;
+        /// naming the installed tag still makes that case diagnosable.
         /// </summary>
         public static string InstalledTag { get; private set; } = "";
 
@@ -159,7 +157,8 @@ namespace MphRead.Mods.Network
         public static bool CanInstall => UpdateCheck.ServerRid().Length > 0;
 
         /// <summary>
-        /// Fetch the latest release's server package and unpack it into
+        /// Fetch this client's matching release server package (or the latest
+        /// package for a local/development build) and unpack it into
         /// <see cref="Directory"/>, then put a copy of <c>paths.txt</c> beside
         /// it.
         ///
@@ -304,6 +303,11 @@ namespace MphRead.Mods.Network
                     : "no free UDP port could be found for a server";
                 return -1;
             }
+            if (requestedPort.HasValue && !PortAvailable(port))
+            {
+                LastError = $"requested UDP port {port} is already in use";
+                return -1;
+            }
             // One file per port. Hosted games may be started side by side by
             // the same directory process; sharing maprotation-launcher.txt
             // lets the second request rewrite the first server's file while
@@ -422,25 +426,50 @@ namespace MphRead.Mods.Network
             {
                 return port;
             }
-            // Loading the first room on a cold cache is not fast, and a
-            // refusal shows up as the process being gone rather than as an
-            // error anybody here can read.
-            for (int i = 0; i < 120 && !cancel.IsCancellationRequested; i++)
+            // Loading the first room on a cold cache is not fast. Keep the
+            // thirty-second promise as a wall-clock deadline: each status
+            // probe has its own timeout, so "120 probes plus sleeps" can take
+            // minutes when nothing is listening.
+            const int startupTimeoutMs = 30_000;
+            var readyClock = Stopwatch.StartNew();
+            while (!cancel.IsCancellationRequested
+                && readyClock.ElapsedMilliseconds < startupTimeoutMs)
             {
-                if (Running.HasExited && Running.ExitCode != 0)
+                if (Running.HasExited)
                 {
                     LastError = "the server stopped while starting up -- its window says "
                         + "why; usually the game files or a port already in use";
+                    Running.Dispose();
                     Running = null;
                     return -1;
                 }
-                if (NetStatus.Query("127.0.0.1", port, allowJoinProbe: false).Online)
+
+                int remaining = startupTimeoutMs - (int)readyClock.ElapsedMilliseconds;
+                int probeTimeout = Math.Clamp(remaining, 20, 200);
+                ServerStatus status = NetStatus.Query("127.0.0.1", port,
+                    allowJoinProbe: false, timeoutMs: probeTimeout);
+                if (status.Online)
                 {
+                    if (status.Protocol > 0 && status.Protocol != NetConfig.ProtocolVersion)
+                    {
+                        LastError = $"the installed server speaks protocol {status.Protocol}, "
+                            + $"but this build speaks {NetConfig.ProtocolVersion}; reinstall "
+                            + "the server files for this version";
+                        Stop();
+                        return -1;
+                    }
                     return port;
                 }
-                Thread.Sleep(250);
+
+                remaining = startupTimeoutMs - (int)readyClock.ElapsedMilliseconds;
+                if (remaining > 0)
+                {
+                    Thread.Sleep(Math.Min(50, remaining));
+                }
             }
-            LastError = "the server did not answer in thirty seconds";
+            LastError = cancel.IsCancellationRequested
+                ? "server startup was cancelled"
+                : "the server did not answer in thirty seconds";
             Stop();
             return -1;
         }
@@ -536,6 +565,8 @@ namespace MphRead.Mods.Network
             }
             return -1;
         }
+
+        internal static bool PortAvailable(int port) => CanBind(port);
 
         private static bool CanBind(int port)
         {
