@@ -15,7 +15,7 @@ namespace MphRead
         private static readonly object _runtimeDataGate = new();
         private static string _runtimeDataStamp = "";
 
-        public static void Setup(string path)
+        public static bool Setup(string path)
         {
             byte[] bytes = File.ReadAllBytes(path);
             RomHeader header = Read.ReadStruct<RomHeader>(bytes);
@@ -39,19 +39,19 @@ namespace MphRead
                 if (!fhCodes.TryGetValue(gameCode, out List<byte>? fhVersions))
                 {
                     PrintExit($"The specified ROM file has invalid game code {gameCode}.");
-                    return;
+                    return false;
                 }
                 if (!fhVersions.Contains(header.Version))
                 {
                     PrintExit($"The specified {gameCode} ROM has unexpected version {header.Version}.");
-                    return;
+                    return false;
                 }
                 isFh = true;
             }
             else if (!mphVersions.Contains(header.Version))
             {
                 PrintExit($"The specified {gameCode} ROM has unexpected version {header.Version}.");
-                return;
+                return false;
             }
             Paths.UpdatePaths();
             if (File.Exists("paths.txt"))
@@ -64,7 +64,7 @@ namespace MphRead
                     string input = (Console.ReadLine() ?? "").Trim().ToLower();
                     if (input != "y" && input != "yes")
                     {
-                        return;
+                        return false;
                     }
                 }
             }
@@ -75,7 +75,7 @@ namespace MphRead
                 if (!ValidateRuntimeProfile(header, bytes, rootName, out string? layoutProblem))
                 {
                     PrintExit(layoutProblem ?? $"The {rootName} ROM layout is not compatible with this build.");
-                    return;
+                    return false;
                 }
             }
             ExtractRomFs(header, bytes, rootName, hasArchives: !isFh);
@@ -106,6 +106,7 @@ namespace MphRead
             lines.Add($"Export={Paths.AllPaths["Export"]}");
             File.WriteAllText("paths.txt", String.Join(Environment.NewLine, lines));
             Nop();
+            return true;
         }
 
         private class RomDataValues
