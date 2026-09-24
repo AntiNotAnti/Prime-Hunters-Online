@@ -21,10 +21,11 @@ namespace MphRead.Mods.Input
     /// to do with it. What a flick actually is, is "the movement that would
     /// have spun me round if I were on foot", so that is what is measured:
     /// the delta is converted with the game's own aim arithmetic
-    /// (<c>delta / 4 * sensitivity</c> degrees) and compared against
-    /// <see cref="TurnDegrees"/>. It then self-calibrates to whatever
-    /// sensitivity the player already chose, which is the one number in the
-    /// program that does describe their hand.
+    /// (<c>delta / 4 * mouse sensitivity</c> degrees) and compared against
+    /// <see cref="TurnDegrees"/>. Mouse sensitivity keeps the gesture calibrated
+    /// to the player's normal aim feel; alt-swipe sensitivity is then an
+    /// independent gesture multiplier, so raising it requires less travel
+    /// without changing ordinary aiming.
     ///
     /// **What is measured is a straight burst ending on this frame, not the
     /// window's largest displacement.** The first version summed whichever
@@ -162,15 +163,21 @@ namespace MphRead.Mods.Input
             {
                 _count++;
             }
-            float sensitivity = InputSettings.MouseSensitivity;
-            if (sensitivity <= 0)
+            float mouseSensitivity = InputSettings.MouseSensitivity;
+            if (!Single.IsFinite(mouseSensitivity) || mouseSensitivity <= 0)
             {
                 return false;
             }
-            // The aim arithmetic in ProcessBiped, run backwards: this many
-            // pixels is that many degrees of turn at the sensitivity in force.
-            float rest = RestDegrees * 4 / sensitivity;
-            float threshold = TurnDegrees * 4 / sensitivity;
+            float swipeSensitivity = InputSettings.AltSwipeSensitivity;
+            if (!Single.IsFinite(swipeSensitivity) || swipeSensitivity <= 0)
+            {
+                swipeSensitivity = 1;
+            }
+            // Rest still describes whether the physical mouse has stopped, so it
+            // follows normal aim sensitivity only. Alt-swipe sensitivity changes
+            // just the intentional gesture threshold: higher means less travel.
+            float rest = RestDegrees * 4 / mouseSensitivity;
+            float threshold = TurnDegrees * 4 / (mouseSensitivity * swipeSensitivity);
             float sumX = deltaX;
             float sumY = deltaY;
             float magnitude = MathF.Sqrt(sumX * sumX + sumY * sumY);
@@ -246,7 +253,8 @@ namespace MphRead.Mods.Input
                 // flicked" is a question about one gesture, and the first one
                 // of the session is never the one being complained about.
                 DebugLog.Line("input", $"mouse flick read as a boost: {magnitude:0} px, "
-                    + $"{magnitude / 4 * sensitivity:0} degrees of turn, direction "
+                    + $"{magnitude / 4 * mouseSensitivity:0} degrees of turn, "
+                    + $"swipe {swipeSensitivity:0.00}x, direction "
                     + $"({dirX:0.00}, {dirY:0.00}), {MathF.Atan2(-dirY, dirX) * 180 / MathF.PI:0} deg "
                     + "anticlockwise from screen right");
             }
