@@ -2341,7 +2341,7 @@ namespace MphRead.Entities
                 // row has a number reads as "unknown" rather than as
                 // "unlimited", so both say so.
                 int ammoAmount = _ammo[info.AmmoType];
-                ReadOnlySpan<char> ammo = "--";
+                scoped ReadOnlySpan<char> ammo = "--";
                 if (info.AmmoCost > 0 && ammoAmount >= 0)
                 {
                     int shots = ammoAmount / info.AmmoCost;
