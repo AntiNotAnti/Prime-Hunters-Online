@@ -115,6 +115,14 @@ namespace MphRead.Mods.Launcher
         /// </summary>
         public static bool ReduceMotion { get; set; }
 
+        /// <summary>Master gain for Project Prime combat-feedback cues, before the normal SFX volume.</summary>
+        public static float CombatFeedbackVolume { get; set; } = 1f;
+        public static string ImperialistHeadshotSound { get; set; } = "prime";
+        public static string DoubleKillSound { get; set; } = "double";
+        public static string TripleKillSound { get; set; } = "triple";
+        public static string QuadraKillSound { get; set; } = "quadra";
+        public static string KillingSpreeSound { get; set; } = "spree";
+
         /// <summary>
         /// How the game window opens. Kept here rather than in MenuSettings
         /// for the same reason as everything else in this file, and read by
@@ -362,6 +370,28 @@ namespace MphRead.Mods.Launcher
                                 ReduceMotion = reduceMotion;
                             }
                             break;
+                        case "combat_feedback_volume":
+                            if (Single.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture,
+                                out float feedbackVolume))
+                            {
+                                CombatFeedbackVolume = Math.Clamp(feedbackVolume, 0, 1);
+                            }
+                            break;
+                        case "imperialist_headshot_sound":
+                            if (value.Length > 0) ImperialistHeadshotSound = value;
+                            break;
+                        case "double_kill_sound":
+                            if (value.Length > 0) DoubleKillSound = value;
+                            break;
+                        case "triple_kill_sound":
+                            if (value.Length > 0) TripleKillSound = value;
+                            break;
+                        case "quadra_kill_sound":
+                            if (value.Length > 0) QuadraKillSound = value;
+                            break;
+                        case "killing_spree_sound":
+                            if (value.Length > 0) KillingSpreeSound = value;
+                            break;
                         case "replay_storage_gb":
                             if (Int32.TryParse(value, NumberStyles.Integer,
                                 CultureInfo.InvariantCulture, out int replayStorage)
@@ -468,6 +498,12 @@ namespace MphRead.Mods.Launcher
                     $"player_outline={RenderOptions.PlayerOutline.ToString().ToLowerInvariant()}",
                     $"player_outline_width={RenderOptions.PlayerOutlineWidth.ToString(CultureInfo.InvariantCulture)}",
                     $"reduce_motion={ReduceMotion.ToString().ToLowerInvariant()}",
+                    $"combat_feedback_volume={CombatFeedbackVolume.ToString(CultureInfo.InvariantCulture)}",
+                    $"imperialist_headshot_sound={ImperialistHeadshotSound}",
+                    $"double_kill_sound={DoubleKillSound}",
+                    $"triple_kill_sound={TripleKillSound}",
+                    $"quadra_kill_sound={QuadraKillSound}",
+                    $"killing_spree_sound={KillingSpreeSound}",
                     $"replay_storage_gb={ReplayStorageLimitGb.ToString(CultureInfo.InvariantCulture)}",
                     $"replay_auto_prune={ReplayAutoPrune.ToString().ToLowerInvariant()}",
                     $"replay_delete_clips={ReplayDeleteClips.ToString().ToLowerInvariant()}",
