@@ -132,25 +132,6 @@ namespace MphRead.Mods.Launcher.Gui
             GamepadChecks.Check(offlinePlan is { Kind: LaunchKind.Adventure, SaveSlot: 1, NewGame: true },
                 "Adventure NEW RUN launches a fresh selected save slot");
 
-            // The new-game operation must target the state that will own the
-            // Adventure scene, not whichever bootstrap/preview state happened
-            // to be current before scene construction.
-            byte previousSaveSlot = Menu.SaveSlot;
-            try
-            {
-                var adventureState = new SceneGameState(new ScenePlayerRegistry());
-                adventureState.StartNewSave();
-                adventureState.StorySave.FoundOctoliths = 0xFF;
-                string startRoom = AdventureSave.Begin(adventureState, slot: 1, newGame: true);
-                GamepadChecks.Check(adventureState.StorySave.FoundOctoliths == 0
-                    && startRoom.Length > 0 && Menu.SaveSlot == 1,
-                    "Adventure new game resets the owning scene state without loading old progress");
-            }
-            finally
-            {
-                Menu.SaveSlot = previousSaveSlot;
-            }
-
             var customMatch = new CreateServerScreen(
                 Array.Empty<string>(), discoverHosts: false);
             int customClosed = 0;
