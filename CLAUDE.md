@@ -628,15 +628,16 @@ charge into the release branch and not a second boost path, and it needs no
 protocol change -- a player's position is reported rather than re-simulated
 from their buttons, so the boost reaches every other machine as movement.
 
-**No setting, and the threshold is a turn rather than a distance.** A number
-of pixels describes the player's mouse (the same whip is 200 px on one desk
-and 2000 on the next) and a fraction of the window describes their monitor,
-which has less to do with it again; what a flick *is*, is the movement that
-would have spun them round on foot. So the delta is run through the game's own
-aim arithmetic -- `delta / 4 * sensitivity` degrees -- and a third of a turn
-inside five simulation frames is a flick, which self-calibrates to the
-sensitivity the player already chose. The gates are all "is the mouse saying
-something else": the weapon wheel is answered by dragging, the boost bind held
+**The threshold is a turn rather than a raw pixel distance.** A number of
+pixels describes the player's mouse (the same whip is 200 px on one desk and
+2000 on the next) and a fraction of the window describes their monitor, which
+has less to do with it again; what a flick *is*, is the movement that would
+have spun them round on foot. So the delta is run through the game's own aim
+arithmetic -- `delta / 4 * mouse sensitivity` degrees -- and a third of a turn
+inside five simulation frames is the baseline flick. The shared **Alt swipe
+sensitivity** setting (0.25x-4.00x) then scales only that gesture threshold:
+higher values need less travel, without changing normal mouse aim or the
+rest/jitter gate. The gates are all "is the mouse saying something else": the weapon wheel is answered by dragging, the boost bind held
 is a charge being built on purpose, and a gap in the frame numbers (the ball
 just closed, the player was frozen or paused) throws the history away.
 `-debuglog` says so the first time one is read.
