@@ -1891,7 +1891,8 @@ namespace MphRead.Entities
             // low health kills on the frame it happens.
             // Mods.Network.NetHitPrediction.
             Mods.Network.NetHitPrediction.NoteHit(this, attacker, ref flags, ref damage,
-                beam?.Beam ?? BeamType.None, beam?.ModLaunchFrame ?? 0, beam?.Age ?? 0, direction);
+                beam?.Beam ?? BeamType.None, beam?.ModLaunchFrame ?? 0, beam?.Age ?? 0, direction,
+                afflictions: beam != null && !ignoreDamage ? beam.Afflictions : Affliction.None);
             if (attacker != this)
                 Mods.Input.AimAssist.AimAssistTelemetry.Hit(attacker, beam?.Beam ?? BeamType.None, damage);
             bool dead = false;
@@ -2447,7 +2448,16 @@ namespace MphRead.Entities
                 _health -= (int)damage; // todo?: if wifi, only do this if main player
                 if (beam != null && !ignoreDamage)
                 {
-                    if (beam.Afflictions.TestFlag(Affliction.Freeze))
+                    // Damage/flinch may be predicted on the shooter's client,
+                    // but gameplay afflictions are authority-owned. Predicting
+                    // a remote freeze made the next pre-hit snapshot thaw it,
+                    // then the authoritative snapshot froze it again; the ice
+                    // graphics outlived that one-frame thaw and made a frozen
+                    // hunter visibly slide. The exact affliction still travels
+                    // with the hit claim, so rescued hits retain it.
+                    bool applyBeamAfflictions = !Mods.Network.NetHitPrediction.Predicting
+                        || attacker == this;
+                    if (applyBeamAfflictions && beam.Afflictions.TestFlag(Affliction.Freeze))
                     {
                         if (flags.TestFlag(DamageFlags.Halfturret))
                         {
@@ -2478,7 +2488,8 @@ namespace MphRead.Entities
                             EndAltAttack();
                         }
                     }
-                    if (beam.Afflictions.TestFlag(Affliction.Disrupt) && !flags.TestFlag(DamageFlags.Halfturret))
+                    if (applyBeamAfflictions && beam.Afflictions.TestFlag(Affliction.Disrupt)
+                        && !flags.TestFlag(DamageFlags.Halfturret))
                     {
                         _disruptedTimer = 60 * 2; // todo: FPS stuff
                         if (IsMainPlayer)
@@ -2488,7 +2499,7 @@ namespace MphRead.Entities
                             _soundSource.PlaySfx(SfxId.LOB_DISRUPT);
                         }
                     }
-                    if (beam.Afflictions.TestFlag(Affliction.Burn))
+                    if (applyBeamAfflictions && beam.Afflictions.TestFlag(Affliction.Burn))
                     {
                         if (flags.TestFlag(DamageFlags.Halfturret))
                         {
