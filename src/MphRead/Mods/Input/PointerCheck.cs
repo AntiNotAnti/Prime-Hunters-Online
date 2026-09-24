@@ -194,6 +194,20 @@ namespace MphRead.Mods.Input
                 Require(MouseFlick.Check(300, 0, 200001, out float flickX, out float flickY)
                         && flickX > 0.99f && Math.Abs(flickY) < 0.001f,
                     "higher alt swipe sensitivity lowers desktop mouse flick travel");
+
+                // Reproduce a bot/offline rematch: the recognizer is static, but
+                // the replacement Scene starts FrameCount over at zero. The old
+                // absolute cooldown must not strand swipes until the new match
+                // reaches the previous match's frame number.
+                InputSettings.AltSwipeSensitivity = 1;
+                MouseFlick.Reset();
+                MouseFlick.Check(0, 0, 50000, out _, out _);
+                Require(MouseFlick.Check(500, 0, 50001, out _, out _),
+                    "desktop flick fires late in the old match");
+                MouseFlick.Reset();
+                MouseFlick.Check(0, 0, 10, out _, out _);
+                Require(MouseFlick.Check(500, 0, 11, out _, out _),
+                    "new match frame epoch clears stale desktop flick cooldown");
             }
             finally
             {
