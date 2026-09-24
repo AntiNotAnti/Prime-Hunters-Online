@@ -6,9 +6,9 @@ is deliberately wrong: a player disconnects, a line goes away, a ninth player
 arrives at an eight-slot server, everybody spectates, or a host is pushed
 toward capacity.
 
-Normal production matches are server authoritative. Client-authority/handover
-scenarios below are retained as historical regressions or explicit
-`RunsTheMatch=false` compatibility tests, not current production topology.
+Production matches are server authoritative with no client-authority fallback.
+Client-authority/handover scenarios below are historical records only; the
+`RunsTheMatch=false` executable compatibility mode has been removed.
 
 The dated results below were taken against specific remote hosts, often the
 Pi. **Do not assume that host, address, private harness directory or deployment
@@ -85,10 +85,9 @@ compatibility no-op. Point the batch at one with `MPH_SERVER_PORT`:
 MPH_SERVER_PORT=27919 ./hard/run-all.sh serverauth
 ```
 
-Legacy probes that know about client authority should now treat
-`PacketType.Authority` as a compatibility-path signal. In a normal run no
-client should receive it; that absence is an invariant, not merely a probe
-mode.
+Legacy probes may still know wire value `PacketType.Authority = 12`, but it is
+reserved only for packet-number stability. Current servers never send it and
+current clients ignore it; receiving it must never promote a player.
 
 | Where | What changes |
 |---|---|
