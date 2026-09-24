@@ -28,6 +28,7 @@ namespace MphRead.NetTest
                 OpponentHudCanHideHealth();
                 AuthoritativeHealRaisesOpponentHud();
                 PredictionReconcileDoesNotFakeHeal();
+                ClaimAfflictionComesFromCurrentHit();
                 RespawnClearsPredictedHealth();
                 DamageResetUsesNoAttackerSentinel();
                 FiredCounterRequiresActualSpawn();
@@ -154,6 +155,41 @@ namespace MphRead.NetTest
             Snapshot(2, State()); victim.Health = NetHitPrediction.HealthFor(1, 99);
             Check(NetHudHealth.Sample(victim).Health == 99, nameof(PredictionReconcileDoesNotFakeHeal));
         }
+        private static void ClaimAfflictionComesFromCurrentHit()
+        {
+            Session();
+            var victim = Player(1);
+            Field(victim, "_frozenTimer", (ushort)20);
+            uint damage = 12;
+            DamageFlags flags = 0;
+            NetHitPrediction.NoteHit(victim, Player(0), ref flags, ref damage,
+                BeamType.Judicator, launchFrame: 1, afflictions: Affliction.None);
+            byte[] claims = new byte[2048];
+            int size = NetHitClaims.Compose(claims);
+            Check(size > 0, "already-frozen victim still declared a normal claim");
+            HitClaimPacket claim = HitClaimPacket.Read(claims.AsSpan(1));
+            Check((claim.Flags & HitClaimPacket.FlagFrozen) == 0,
+                "already-frozen victim cannot contaminate a later non-freeze claim");
+
+            Session();
+            victim = Player(1);
+            damage = 12;
+            flags = 0;
+            NetHitPrediction.NoteHit(victim, Player(0), ref flags, ref damage,
+                BeamType.Judicator, launchFrame: 2, afflictions: Affliction.Freeze);
+            Array.Clear(claims);
+            size = NetHitClaims.Compose(claims);
+            Check(size > 0, "Judicator freeze declared a claim");
+            claim = HitClaimPacket.Read(claims.AsSpan(1));
+            Check((claim.Flags & HitClaimPacket.FlagFrozen) != 0,
+                "current Judicator freeze travels even before victim state changes");
+
+            byte extra = NetHitClaims.AfflictionClaimFlags(Affliction.Burn | Affliction.Disrupt);
+            Check((extra & HitClaimPacket.FlagBurning) != 0
+                && (extra & HitClaimPacket.FlagDisrupted) != 0,
+                "claim affliction encoder preserves burn and disrupt");
+        }
+
         private static void RespawnClearsPredictedHealth()
         {
             Session(); var victim = Player(1); Predict(victim);
