@@ -1873,10 +1873,6 @@ namespace MphRead.Entities
                     damage = 1;
                 }
             }
-            if (instaGibHit && damage > 0 && !ignoreDamage)
-            {
-                damage = (uint)_health;
-            }
             if (Flags2.TestFlag(PlayerFlags2.Halfturret) && attacker != null && !ignoreDamage)
             {
                 _halfturret.OnTakeDamage(attacker, damage);
@@ -1921,6 +1917,13 @@ namespace MphRead.Entities
             if (IsBot && source != null)
             {
                 AiData.OnTakeDamage((int)damage, source, attacker);
+            }
+            // Hunter-specific damage routing above may split or clamp normal
+            // damage. Insta-Gib deliberately overrides that final amount so
+            // every accepted Imperialist hit is lethal.
+            if (instaGibHit && damage > 0 && !ignoreDamage)
+            {
+                damage = (uint)_health;
             }
             // todo?: something for wifi
             // else...
