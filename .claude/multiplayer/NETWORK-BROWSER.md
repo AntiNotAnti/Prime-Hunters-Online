@@ -156,17 +156,18 @@ Three things in there are worth keeping in view:
   `LocalServer.Available()` takes `Environment.ProcessPath` (with the `.dll`
   as a prefix argument when that path is `dotnet`, since a framework-dependent
   apphost cannot find a runtime here). That is also the `ProtocolVersion`
-  argument: a server started from the *latest release* on a client a release
-  behind is a server that client cannot join, which is the failure the
-  download was meant to prevent — hence `-noautoupdate` on the child too.
+  argument. When Windows needs a separate server package, a tagged client now
+  downloads the package from **its own release tag**, not whatever release is
+  newest; local/development builds retain the latest-package fallback. The
+  child still gets `-noautoupdate` so it cannot drift after launch.
   **On Windows the game exe is not a candidate at all.** It accepts `-server`
   and it is a `WinExe`, so the server it starts has no console: nothing it
   logs is ever seen and there is no window to close. `ProjectPrimeServer.exe`
   is looked for beside the game first and in `<base>/server/` second, and its
   absence is the *only* case where the screen's install mark appears.
   `MphRead -installserver` is that download on its own, for when it is the
-  button that has to be diagnosed; it prints the tag it fetched, which is the
-  latest release and not necessarily this build.
+  button that has to be diagnosed; it prints the tag it fetched. Tagged builds
+  fetch their matching release, while local/development builds fetch latest.
 - **`paths.txt` is copied next to the server**, and only when the server is
   somewhere else. A server runs the match itself, so it needs the extracted
   game files, and it looks for `paths.txt` beside its own binary rather than

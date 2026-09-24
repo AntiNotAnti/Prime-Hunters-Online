@@ -294,25 +294,65 @@ namespace MphRead.Mods.Update
         }
 
         /// <summary>
-        /// The dedicated-server package for this machine, out of the latest
-        /// release, or null.
+        /// The dedicated-server package for this machine, matched to this
+        /// client release when the client has a release stamp, or the latest
+        /// release for a local/development build.
         ///
-        /// Nothing here compares versions: a player who has never had a server
-        /// package needs the one that exists, and a build that is a release,
-        /// ahead of one, or not a release at all is the same question. The
-        /// three that are published are win-x64, linux-x64 and linux-arm64 --
-        /// macOS has no server package, and saying so is the honest answer to
-        /// "install the files for me" on a Mac.
+        /// Matching tagged builds matters because the network protocol is a
+        /// hard compatibility boundary: installing a newer server beside an
+        /// older client creates a server the player cannot join. Local builds
+        /// have no release tag to match, so they retain the latest-release
+        /// fallback used by developer workflows.
         /// </summary>
         public static UpdateInfo? ServerAsset(CancellationToken cancel = default)
         {
             LastReason = null;
-            string? json = FetchLatest(cancel);
+            string? json = BuildVersion.IsRelease
+                ? FetchReleaseByTag(BuildVersion.Display, cancel)
+                : FetchLatest(cancel);
             if (json == null)
             {
                 return null;
             }
             return ServerAsset(json);
+        }
+
+        private static string? FetchReleaseByTag(string tag, CancellationToken cancel)
+        {
+            try
+            {
+                using var client = new HttpClient { Timeout = _timeout };
+                client.DefaultRequestHeaders.Add("User-Agent",
+                    $"{Mods.Branding.FileName}/{BuildVersion.Display}");
+                client.DefaultRequestHeaders.Add("Accept",
+                    "application/vnd.github+json");
+                string url = $"{_releasesApi}/tags/{Uri.EscapeDataString(tag)}";
+                using HttpResponseMessage response = SyncHttp.Send(client,
+                    new HttpRequestMessage(HttpMethod.Get, url),
+                    HttpCompletionOption.ResponseContentRead, cancel);
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    LastReason = $"release {tag} has no published server package";
+                    return null;
+                }
+                if (response.StatusCode == (System.Net.HttpStatusCode)403
+                    || response.StatusCode == (System.Net.HttpStatusCode)429)
+                {
+                    LastReason = "GitHub is rate-limiting this address; try later";
+                    return null;
+                }
+                if (!response.IsSuccessStatusCode)
+                {
+                    LastReason = $"GitHub answered {(int)response.StatusCode}";
+                    return null;
+                }
+                return response.Content.ReadAsStringAsync(cancel).GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                LastReason = $"could not reach GitHub ({ex.GetType().Name})";
+                return null;
+            }
         }
 
         /// <summary>Split out so it can be tested against a saved response.</summary>
