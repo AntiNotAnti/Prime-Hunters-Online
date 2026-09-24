@@ -131,11 +131,12 @@ namespace MphRead.Mods.Launcher.Gui
             var fire = new ToggleRow("Friendly fire", _settings.FriendlyFire == "on");
             var affinity = new ToggleRow("Affinity weapons", _settings.AffinityWeapons == "on");
             var freeze = new ToggleRow("Shadow freeze", _settings.ShadowFreeze == "on");
+            var spawnProtection = new ToggleRow("Spawn protection (3s)", _settings.SpawnProtection != "off");
             var radar = new ToggleRow("Hunter radar", _settings.HunterRadar == "on");
             var damage = new ChoiceRow("Damage", new[] { "low", "medium", "high" }, _settings.DamageLevel == "low" ? 0 : _settings.DamageLevel == "high" ? 2 : 1);
             var error = PrimeChrome.Text("", 12, PrimeTheme.DangerBrush);
             _overlays.Show(new PrimePanel(PrimeChrome.Stack(PrimeChrome.Title("ENGAGEMENT PROTOCOL"),
-                score, time, objective, damage, fire, affinity, freeze, radar, error,
+                score, time, objective, damage, fire, affinity, freeze, spawnProtection, radar, error,
                 PrimeChrome.Columns("*,*", new PrimeButton("CANCEL", _overlays.Close), new PrimeButton("APPLY RULES", () =>
                 {
                     bool Duration(string value) => TimeSpan.TryParseExact(value, @"m\:ss", null, out _)
@@ -144,7 +145,8 @@ namespace MphRead.Mods.Launcher.Gui
                     { error.Text = "Use a point goal from 0–999 and durations as m:ss."; return; }
                     _settings.PointGoal = score.Value; _settings.TimeLimit = time.Value; _settings.TimeGoal = objective.Value;
                     _settings.FriendlyFire = fire.On ? "on" : "off"; _settings.AffinityWeapons = affinity.On ? "on" : "off";
-                    _settings.ShadowFreeze = freeze.On ? "on" : "off"; _settings.HunterRadar = radar.On ? "on" : "off";
+                    _settings.ShadowFreeze = freeze.On ? "on" : "off"; _settings.SpawnProtection = spawnProtection.On ? "on" : "off";
+                    _settings.HunterRadar = radar.On ? "on" : "off";
                     _settings.DamageLevel = damage.Value; _overlays.Close();
                 }, true)))), PrimeModalSize.Medium);
         }
