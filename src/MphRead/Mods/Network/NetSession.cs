@@ -1705,12 +1705,8 @@ namespace MphRead.Mods.Network
         }
 
         /// <summary>
-        /// Authority -> server: the match this client is simulating is over.
-        ///
-        /// The server keeps the rotation but has no scoreboard, so a match
-        /// won on points ends on the authority's machine and nowhere else.
-        /// Sent repeatedly by NetMatchEnd until the server's state comes back
-        /// saying it heard.
+        /// Finish the authoritative match when the in-process server simulation
+        /// reaches its goal. Player clients cannot author match completion.
         /// </summary>
         public static void SendMatchEnd()
         {
@@ -1722,7 +1718,7 @@ namespace MphRead.Mods.Network
             if (Role == NetRole.Server) ReplayWorldSink?.Invoke(payload);
         }
 
-        /// <summary>Host -> clients: authoritative state for every active player.</summary>
+        /// <summary>Server simulation -> clients: authoritative state for every active player.</summary>
         public static void BroadcastSnapshot()
         {
             if (!NetRoomChange.GameplayReady || Role != NetRole.Server || _snapshotSink == null) return;

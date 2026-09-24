@@ -747,9 +747,8 @@ namespace MphRead.Mods.Network
         /// else. An installation that has been running without the game files
         /// stops here, with the reason, on the first start after the update.
         ///
-        /// Skipped entirely when <see cref="RunsTheMatch"/> is false. That mode
-        /// exists for compatibility/tests; normal hosted games run in isolated
-        /// server processes with RunsTheMatch=true.
+        /// Production never skips this. Asset-free control-plane tests use a
+        /// private reflection-only seam and cannot be selected from a runtime flag.
         /// </summary>
         /// <exception cref="ProgramException">
         /// The world could not be built. Thrown rather than logged and limped
@@ -2175,6 +2174,8 @@ namespace MphRead.Mods.Network
             {
                 Announce($"{peer.Name} {reason}");
             }
+        }
+
         private Peer? Find(IPEndPoint endPoint)
         {
             for (int i = 0; i < _peers.Count; i++)
