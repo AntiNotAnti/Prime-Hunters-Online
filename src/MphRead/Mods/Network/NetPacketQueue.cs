@@ -35,7 +35,7 @@ public sealed class NetPacketQueue
             or PacketType.ReplayWorld or PacketType.MatchStartCommit => NetPacketPriority.Realtime,
         PacketType.Hello or PacketType.Welcome or PacketType.Bye or PacketType.Refused or PacketType.SessionState
             or PacketType.Roster or PacketType.MatchState or PacketType.MapChange or PacketType.Authority
-            or PacketType.MatchLoaded or PacketType.MatchLoadFailed or PacketType.MatchEnd
+            or PacketType.WorldReady or PacketType.WorldBootstrap or PacketType.MatchLoaded or PacketType.MatchLoadFailed or PacketType.MatchEnd
             or PacketType.LobbyCommand or PacketType.LobbyCommandResult => NetPacketPriority.Critical,
         _ => NetPacketPriority.Background
     };

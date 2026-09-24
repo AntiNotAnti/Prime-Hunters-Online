@@ -38,7 +38,7 @@ namespace MphRead.Mods.Network
         // Loading stays frozen, but the countdown is a commitment made ahead of
         // time. Release against that local deadline instead of waiting for the
         // InMatch datagram to reach every client at a different instant.
-        public static bool FreezeGameplay => IsInLobby || (IsStarting && !StartReleaseReached);
+        public static bool FreezeGameplay => IsInLobby || !WorldIsReady || (IsStarting && !StartReleaseReached);
         public static bool ShouldLoadMatch => ServerSession is { } session
             && (session.Phase == SessionPhase.InMatch || (session.Phase == SessionPhase.Starting
                 && LocalSlot >= 0 && (session.ExpectedParticipants & (1 << LocalSlot)) != 0));
@@ -191,6 +191,7 @@ namespace MphRead.Mods.Network
             // stage on every SessionState while a scene was still loading.
             if (newMatch || returningToLobby || _loadProgressIdentity != startIdentity)
             {
+                _appliedBootstrap = null;
                 _loadedMatch = null;
                 _loadedStart = null;
                 _loadProgressIdentity = state.Phase is SessionPhase.Starting or SessionPhase.InMatch
@@ -344,6 +345,7 @@ namespace MphRead.Mods.Network
         // The socket, local slot, identity, authoritative roster and lobby state survive this reset.
         public static void ResetMatchState(bool preserveRoomChange = false)
         {
+            _appliedBootstrap = null;
             _pendingLoadedScene = null;
             NetTelemetry.NewMatch();
             NetHealthSync.BeginRoom();

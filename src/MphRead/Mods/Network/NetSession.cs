@@ -808,6 +808,8 @@ namespace MphRead.Mods.Network
                 case PacketType.SessionState when Role == NetRole.Client:
                     if (SessionStatePacket.TryRead(packet.Payload, out var session)) ApplySessionState(session);
                     break;
+                case PacketType.WorldBootstrap when Role == NetRole.Client:
+                    HandleWorldBootstrap(packet); break;
                 case PacketType.MatchStartCommit when Role == NetRole.Client:
                     if (MatchStartCommitPacket.TryRead(packet.Payload, out var commit))
                         ApplyStartCommit(commit, _playback ? null : packet.ArrivedAt / (double)Stopwatch.Frequency);
@@ -1601,9 +1603,9 @@ namespace MphRead.Mods.Network
 
         public static long SnapshotsOutOfOrder { get; private set; }
 
-        private static void HandleSnapshot(ReceivedPacket packet)
+        private static void HandleSnapshot(ReceivedPacket packet, bool bootstrap = false)
         {
-            if (FreezeGameplay) return;
+            if (FreezeGameplay && !bootstrap) return;
             ReadOnlySpan<byte> payload = packet.Payload;
             if (payload.Length < SnapshotHeader.Size)
             {
@@ -1628,7 +1630,7 @@ namespace MphRead.Mods.Network
                 if (slot >= RemoteStates.Length || (occupied & (1 << slot)) != 0) return;
                 occupied |= 1 << slot;
             }
-            if (_hasSnapshot && !NetLifecycleTracker.Newer(header.Frame, _lastSnapshotFrame))
+            if (!bootstrap && _hasSnapshot && !NetLifecycleTracker.Newer(header.Frame, _lastSnapshotFrame))
             {
                 SnapshotsOutOfOrder++;
                 return;
@@ -1916,7 +1918,7 @@ namespace MphRead.Mods.Network
             {
                 MatchId = CurrentMatchId,
                 AuthorityEpoch = AuthorityEpoch,
-                Frame = NetFrame,
+                Frame = Math.Max(NetFrame, 1),
                 Rng1 = Rng.Rng1,
                 Rng2 = Rng.Rng2,
                 PlayerCount = (byte)count

@@ -67,6 +67,7 @@ namespace MphRead.Mods.Network
         MatchStartCommit = 44, // server -> clients, fresh remaining time for the shared release edge
         MatchLoadProgress = 45, // client -> server, additive loading-stage telemetry
         PeerTiming = 43,     // client -> authority, bounded presentation-delay diagnostic
+        WorldBootstrap = 46, WorldReady = 47, SnapshotFast = 48, PlayerSlowState = 49, WorldState = 50,
         ReplayWorld = 42,    // optional authority -> recorder facts; no live gameplay effects
         CareerIdentity = 41, // client -> server, short-lived career attribution ticket
         MapDone = 35,        // client -> server, "I have it and it hashes right"
@@ -2101,7 +2102,7 @@ namespace MphRead.Mods.Network
         /// directional momentum as the collision that produced the claim.
         /// Mixed v15/v16 peers must be refused because claim entry size changed.
         /// </summary>
-        public const int ProtocolVersion = 17;
+        public const int ProtocolVersion = 18;
         /// <summary>
         /// Frames between intent packets. One, so every frame.
         ///

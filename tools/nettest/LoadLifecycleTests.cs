@@ -28,7 +28,10 @@ internal static class LoadLifecycleTests
                 NetArchitectureTests.Check(!start.Advance(1 + lag), "slow participant holds loading barrier");
                 NetArchitectureTests.Check(start.MarkLoaded(7, identity), "last healthy participant accepted");
                 NetArchitectureTests.Check(!start.MarkLoaded(7, identity), "duplicate loaded idempotent");
-                NetArchitectureTests.Check(start.Advance(1 + lag) && start.Stage == StartStage.Countdown, "countdown follows readiness");
+                NetArchitectureTests.Check(start.Advance(1 + lag) && start.Stage == StartStage.Synchronizing, "loaded only enters synchronization");
+                NetArchitectureTests.Check(!start.Advance(1 + lag), "bootstrap gates countdown");
+                for (int slot = 0; slot < 8; slot++) start.MarkWorldReady(slot, identity);
+                NetArchitectureTests.Check(start.Advance(1 + lag) && start.Stage == StartStage.Countdown, "world readiness releases countdown");
                 NetArchitectureTests.Check(!start.Advance(2.49 + lag), "no early simulation");
                 NetArchitectureTests.Check(start.Advance(2.5 + lag) && start.Stage == StartStage.InMatch, "one authoritative start boundary");
                 start.Begin(43, 9, 255);
@@ -37,10 +40,11 @@ internal static class LoadLifecycleTests
             var missing = new NetMatchStart(); missing.Begin(1, 1, 7); missing.AuthorityReady(0);
             missing.MarkLoaded(0, missing.Identity); missing.MarkLoaded(1, missing.Identity);
             NetArchitectureTests.Check(missing.MissingAtSlowDeadline(14.9) == 0
-                && missing.MissingAtSlowDeadline(15) == 4, "15 seconds flags a slow loader without dropping it");
+                && missing.MissingAtSlowDeadline(15) == 7, "15 seconds flags a slow loader without dropping it");
             NetArchitectureTests.Check(missing.MissingAtDeadline(59.9) == 0
-                && missing.MissingAtDeadline(60) == 4, "60 second hard deadline identifies a stuck participant");
+                && missing.MissingAtDeadline(60) == 7, "60 second hard deadline identifies a stuck participant");
             missing.Remove(2); missing.Advance(60);
+            missing.MarkWorldReady(0, missing.Identity); missing.MarkWorldReady(1, missing.Identity); missing.Advance(60);
             NetArchitectureTests.Check(missing.Expected == 3 && missing.Stage == StartStage.Countdown, "hard-timeout removal preserves healthy participants");
             missing.Remove(0);
             NetArchitectureTests.Check(missing.Expected == 2 && missing.Loaded == 2, "owner disconnect cannot poison countdown");

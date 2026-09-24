@@ -35,7 +35,7 @@ public sealed class NetReliableChannel
     { foreach (var pending in _pending) if (pending?.Type == type) return true; return false; }
     public static bool IsReliable(PacketType type) => type is PacketType.Welcome or PacketType.SessionState
         or PacketType.Roster or PacketType.MapChange or PacketType.Authority or PacketType.LobbyCommand
-        or PacketType.LobbyCommandResult or PacketType.MatchLoaded or PacketType.MatchLoadFailed or PacketType.Refused
+        or PacketType.LobbyCommandResult or PacketType.WorldReady or PacketType.WorldBootstrap or PacketType.MatchLoaded or PacketType.MatchLoadFailed or PacketType.Refused
         or PacketType.Bye or PacketType.MatchEnd;
     public static bool IsCritical(PacketType type) => type is not (PacketType.Roster or PacketType.LobbyCommand or PacketType.LobbyCommandResult);
 

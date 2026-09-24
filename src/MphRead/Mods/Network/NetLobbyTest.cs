@@ -54,7 +54,7 @@ namespace MphRead.Mods.Network
 
         private static void ProtocolChecks()
         {
-            Check(NetConfig.ProtocolVersion == 17 && (byte)PacketType.SessionState == 36
+            Check(NetConfig.ProtocolVersion == 18 && (byte)PacketType.SessionState == 36
                 && (byte)PacketType.MapOffer == 32 && (byte)PacketType.MapDone == 35
                 && (byte)PacketType.MatchStartCommit == 44 && (byte)PacketType.MatchLoadProgress == 45,
                 "combined protocol and non-overlapping map/lobby/start IDs");
@@ -382,6 +382,8 @@ namespace MphRead.Mods.Network
             {
                 foreach (var packet in Transport.Drain())
                 {
+                    if (packet.Type == PacketType.WorldBootstrap && WorldBootstrapIdentity.TryRead(packet.Payload, out var bootstrap))
+                    { byte[] ready = new byte[WorldBootstrapIdentity.Size]; bootstrap.Write(ready); Send(PacketType.WorldReady, ready); }
                     if (packet.Type == PacketType.Welcome) Slot = packet.Payload[0];
                     if (packet.Type == PacketType.Authority) Authority = true;
                     if (packet.Type == PacketType.Refused) Refused = true;
@@ -428,12 +430,47 @@ namespace MphRead.Mods.Network
                 var clock = Stopwatch.StartNew();
                 do
                 {
+                    SeedAuthorityFixture();
                     foreach (var client in Clients) client.Drain();
                     if (_error != null) throw _error;
                     if (condition()) { Check(true, label); return; }
                     Thread.Sleep(5);
                 } while (clock.ElapsedMilliseconds < ms);
                 throw new InvalidOperationException($"Timed out: {label}");
+            }
+            private void SeedAuthorityFixture()
+            {
+                // This rig deliberately has no engine. Publish an explicit empty
+                // authority fixture; never add a production no-bootstrap bypass.
+                var type = typeof(DedicatedServer);
+                var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+                var match = (ushort)type.GetField("_matchId", flags)!.GetValue(Server)!;
+                var epoch = (ulong)type.GetField("_authorityEpoch", flags)!.GetValue(Server)!;
+                var storage = (byte[])type.GetField("_lastSnapshot", flags)!.GetValue(Server)!;
+                lock (storage)
+                {
+                    int length = SnapshotHeader.Size + NetMatchTimeSync.Size + NetHealthSync.HeaderSize;
+                    new SnapshotHeader { MatchId = match, AuthorityEpoch = epoch, Frame = 1 }.Write(storage);
+                    storage.AsSpan(SnapshotHeader.Size, length - SnapshotHeader.Size).Clear();
+                    BinaryPrimitives.WriteUInt16LittleEndian(storage.AsSpan(length - NetHealthSync.HeaderSize), match);
+                    type.GetField("_lastSnapshotLength", flags)!.SetValue(Server, length);
+                }
+                // The real socket client in this control-plane fixture has no
+                // scene. Stand in for successful scene application only here.
+                if (NetSession.ServerSession is { } state && NetSession.LocalSlot >= 0
+                    && NetSession.IsClient && NetSession.ServerSession.Value.Phase == SessionPhase.Starting)
+                {
+                    var peers = (System.Collections.IEnumerable)type.GetField("_peers", flags)!.GetValue(Server)!;
+                    foreach (var peer in peers)
+                    {
+                        var ptype = peer.GetType();
+                        if ((int)ptype.GetField("SlotIndex")!.GetValue(peer)! != NetSession.LocalSlot
+                            || (int)ptype.GetField("BootstrapLength")!.GetValue(peer)! == 0) continue;
+                        var identity = (WorldBootstrapIdentity)ptype.GetField("BootstrapIdentity")!.GetValue(peer)!;
+                        typeof(NetSession).GetField("_appliedBootstrap", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.SetValue(null, identity);
+                        typeof(NetSession).GetMethod("SendWorldReady", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.Invoke(null, new object[] { identity });
+                    }
+                }
             }
             public LobbyCommandResultPacket Expect(Client client, LobbyCommandPacket command, LobbyResultCode expected)
             {

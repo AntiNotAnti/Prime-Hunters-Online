@@ -73,7 +73,11 @@ namespace MphRead.Mods.Network
             /// match that is ending and not the one before it.
             /// </summary>
             public bool PostMatchReady;
-            public bool MatchReady;
+            public bool MatchReady, SceneLoaded;
+            public readonly byte[] Bootstrap = new byte[NetConfig.MaxPayloadSize];
+            public int BootstrapLength;
+            public WorldBootstrapIdentity BootstrapIdentity;
+            public double BootstrapSentAt;
             public MatchLoadStage MatchLoadStage;
             public double MatchLoadProgressAt;
             public bool SlowLoadLogged;
@@ -939,6 +943,7 @@ namespace MphRead.Mods.Network
                         timingPeer.TimingMatch = timing.MatchId; timingPeer.TimingEpoch = timing.AuthorityEpoch;
                     }
                     break;
+                case PacketType.WorldReady: HandleWorldReady(packet, now); break;
                 case PacketType.MatchLoaded: HandleMatchLoaded(packet, now); break;
                 case PacketType.MatchLoadFailed: HandleMatchLoadFailed(packet); break;
                 case PacketType.MatchLoadProgress: HandleMatchLoadProgress(packet, now); break;
@@ -1010,7 +1015,7 @@ namespace MphRead.Mods.Network
         {
             if (_phase != SessionPhase.InMatch) return;
             Peer? peer = Find(packet.Sender);
-            if (peer == null || peer.SlotIndex < 0 || !Simulating)
+            if (peer == null || !peer.MatchReady || peer.SlotIndex < 0 || !Simulating)
             {
                 return;
             }
