@@ -22,6 +22,7 @@ namespace MphRead.Mods.Input
                 CheckCameraBasis();
                 CheckZone();
                 CheckPlayerInput();
+                CheckOfflineInput();
                 CheckSettings();
                 Require(!WindowsPenInput.IsPromotedPointer(0), "physical mouse signature");
                 Require(WindowsPenInput.IsPromotedPointer(0xFF515701), "promoted pen signature");
@@ -591,6 +592,62 @@ namespace MphRead.Mods.Input
             PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, false);
             Require(controls.Shoot.IsDown && controls.AltAttack.IsDown && controls.Jump.IsPressed,
                 "normal mouse restores all primary bindings");
+            PlayerEntity.Reset();
+        }
+
+        private static void CheckOfflineInput()
+        {
+            // Include the post-simulation and presentation killcam hooks. Testing
+            // ProcessInput alone misses a reset that erases its history afterwards.
+            var keyboard = SyntheticInput.CreateKeyboard();
+            var mouse = SyntheticInput.CreateMouse();
+            var scene = new Scene(new OpenTK.Mathematics.Vector2i(256, 192),
+                keyboard, mouse, _ => { }, () => { }, initializeRuntime: false);
+            var player = scene.Players.Main;
+            player.LoadFlags = LoadFlags.Active;
+            player.Controls.MoveUp.Type = ButtonType.Key;
+            player.Controls.MoveUp.Key = Keys.W;
+            player.Controls.Shoot.Type = ButtonType.Mouse;
+            player.Controls.Shoot.MouseButton = MouseButton.Left;
+            var input = (PlayerEntity.PlayerInput)typeof(PlayerEntity).GetProperty("Input",
+                BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(player)!;
+            var setPosition = typeof(MouseState).GetProperty("Position")!.SetMethod!
+                .CreateDelegate<Action<MouseState, OpenTK.Mathematics.Vector2>>();
+            var setKey = typeof(KeyboardState).GetMethod("SetKeyState",
+                BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)!
+                .CreateDelegate<Action<KeyboardState, Keys, bool>>();
+            var setButton = typeof(MouseState).GetProperty("Item")!.SetMethod!
+                .CreateDelegate<Action<MouseState, MouseButton, bool>>();
+            foreach (var device in new[] { PointerDeviceType.Mouse, PointerDeviceType.Pen, PointerDeviceType.Touch })
+            {
+                PointerDevice.Reset();
+                PointerInput.StylusMode = device != PointerDeviceType.Mouse;
+                StylusZone.Enabled = false;
+                player.ModForgetInputDeltas();
+                setKey(keyboard, Keys.W, false);
+                setButton(mouse, MouseButton.Left, false);
+                for (int frame = 0; frame < 180; frame++)
+                {
+                    setPosition(mouse, new(frame * 4, frame * 2));
+                    setKey(keyboard, Keys.W, frame > 0);
+                    setButton(mouse, MouseButton.Left, frame > 0);
+                    PointerDevice.Update(new(device, 1, frame * 4, frame * 2,
+                        true, true, true), 1920, 1080);
+                    PlayerEntity.ProcessInput(scene.Players, keyboard, mouse, false);
+                    if (frame > 0)
+                    {
+                        Require(input.MouseDeltaX == 4 && input.MouseDeltaY == 2,
+                            $"offline {device} movement survives killcam housekeeping at frame {frame}");
+                        Require(player.Controls.MoveUp.IsDown && player.Controls.Shoot.IsDown,
+                            $"offline {device} held controls survive killcam housekeeping");
+                    }
+                    KillCam.AfterSimulation(scene);
+                    Require(KillCam.Presentation(scene) == null, "offline match has no killcam presentation");
+                }
+            }
+            KillCam.Reset();
+            PointerDevice.Reset();
+            PointerInput.StylusMode = false;
             PlayerEntity.Reset();
         }
 

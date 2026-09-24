@@ -47,8 +47,8 @@ namespace MphRead.Mods.Render
     /// decoded here rather than through Avalonia, for the reason
     /// <see cref="AppIcon"/> gives: this is GL's side of the window, it is
     /// compiled into builds that have no toolkit, and avares:// needs Avalonia
-    /// to read. The JPEG therefore travels as a plain embedded resource as
-    /// well as an Avalonia one -- the same half megabyte twice, which is the
+    /// to read. The PNG therefore travels as a plain embedded resource as
+    /// well as an Avalonia one -- the same asset twice, which is the
     /// price of the two heads reading it two ways.
     /// </summary>
     public static class LauncherPhoto

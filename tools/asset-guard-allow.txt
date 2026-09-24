@@ -10,8 +10,8 @@
 # server variant adds the dedicated-server badge.
 src/MphRead/Assets/project-prime-mark.png
 src/MphRead/Assets/project-prime-mark-server.png
-
-# Supplied Project Prime branding artwork: startup screen and banner. Keep
-# exact paths; locally extracted game previews are still excluded.
-src/MphRead/Assets/Backgrounds/launcher-bg.png
 src/MphRead/Assets/project-prime-banner.png
+
+# Supplied Project Prime startup artwork. Keep the exact path; locally
+# extracted game previews are still excluded.
+src/MphRead/Assets/Backgrounds/launcher-bg.png

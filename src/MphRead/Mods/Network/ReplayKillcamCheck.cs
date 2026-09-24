@@ -76,9 +76,28 @@ internal static class ReplayKillcamCheck
             Require(controller.Visible && controller.Frame <= 1, "Short history did not clamp its start to the available boundary.");
             controller.Reset(KillcamEndReason.Completed);
             Begin();
+            var liveInput = (PlayerEntity.PlayerInput)typeof(PlayerEntity).GetProperty("Input",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(live.Players.Main)!;
+            void SeedLiveInput()
+            {
+                live.Players.Main.Controls.MoveUp.IsDown = true;
+                liveInput.KeyboardState = SyntheticInput.CreateKeyboard();
+                liveInput.MouseState = SyntheticInput.CreateMouse();
+            }
+            SeedLiveInput();
             Require(controller.Input(true, true) && controller.Active, "Held fire skipped before release.");
             controller.Input(false, false); controller.Input(true, true);
             Require(!controller.Active && controller.EndReason == KillcamEndReason.Skipped, "Rising fire did not skip.");
+            Require(!live.Players.Main.Controls.MoveUp.IsDown
+                && liveInput.KeyboardState == null && liveInput.MouseState == null,
+                "Leaving an active killcam must release held controls and pointer history.");
+            SeedLiveInput();
+            controller.Reset(KillcamEndReason.Disconnected);
+            controller.Update(live, context with { Connected = false });
+            Require(live.Players.Main.Controls.MoveUp.IsDown
+                && liveInput.KeyboardState != null && liveInput.MouseState != null,
+                "Repeated cleanup after a killcam must preserve resumed gameplay input.");
+            live.Players.Main.Controls.ClearAll(); live.Players.Main.ModForgetInputDeltas();
             for (int cycle = 0; cycle < 24; cycle++)
             {
                 Begin();

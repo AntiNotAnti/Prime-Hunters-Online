@@ -64,7 +64,6 @@ internal sealed class KillcamController : IDisposable
 
     internal void Update(Scene live, KillcamContext context)
     {
-        _live = live;
         try
         {
             if (!context.Connected) { Reset(KillcamEndReason.Disconnected); return; }
@@ -199,12 +198,18 @@ internal sealed class KillcamController : IDisposable
     private static bool Matches(ReplayKillIdentity kill, KillcamContext context) => kill.MatchId == context.MatchId && kill.AuthorityEpoch == context.Epoch;
     internal void Stop(KillcamEndReason reason)
     {
+        // Start owns the live input handoff. An offline scene calls Reset on
+        // every update/draw even though no killcam ever started; attaching it
+        // in Update erased its input snapshots every step and made all pointer
+        // samples look like startup baselines. Release this ownership once.
+        Scene? live = _live;
+        _live = null;
         ReplayAudioOwner.Release(_audio); _audio = 0;
         _startup.Stop();
         _hud = null; _player?.Dispose(); _player = null; _playingClip?.Dispose(); _playingClip = null; _playing = null; State = KillcamState.None; Kind = KillCamKind.None;
         EndReason = reason;
-        if (_live != null && _live.Players.Items.Count > 0)
-        { _live.Players.Main.Controls.ClearAll(); _live.Players.Main.ModForgetInputDeltas(); }
+        if (live != null && live.Players.Items.Count > 0)
+        { live.Players.Main.Controls.ClearAll(); live.Players.Main.ModForgetInputDeltas(); }
     }
     internal void Reset(KillcamEndReason reason)
     { Stop(reason); _pending = _candidate = null; _finalClip?.Dispose(); _finalClip = null; }

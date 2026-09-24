@@ -165,10 +165,8 @@
                       Link="Assets\Fonts\%(Filename)%(Extension)" />
     <AvaloniaResource Include="..\MphRead\Assets\Fonts\Rajdhani-OFL.txt"
                       Link="Assets\Fonts\Rajdhani-OFL.txt" />
-    <AvaloniaResource Include="..\MphRead\Assets\Backgrounds\*.jpg"
+    <AvaloniaResource Include="..\MphRead\Assets\Backgrounds\*.png"
                       Link="Assets\Backgrounds\%(Filename)%(Extension)" />
-    <AvaloniaResource Include="..\MphRead\Assets\Backgrounds\launcher-bg.png"
-                      Link="Assets\Backgrounds\launcher-bg.png" />
     <!-- The IP-to-country ranges the server browser puts a flag with. Not a
          font, and a missing one here is only a browser with no flags in it,
          but it is named by the same kind of URI from the same shared file, so
