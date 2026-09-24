@@ -666,38 +666,6 @@ namespace MphRead.Mods.Launcher
             Console.WriteLine();
             Console.WriteLine();
             Console.WriteLine(ok ? "  Ready to play." : "  Setup did not finish.");
-            if (ok)
-            {
-                GenerateMissingThumbnails();
-            }
-        }
-
-        private static void GenerateMissingThumbnails()
-        {
-            IReadOnlyList<string> missing = ThumbnailGenerator.MissingThumbnails();
-            if (missing.Count == 0)
-            {
-                return;
-            }
-            Console.WriteLine("  Rendering map previews...");
-            bool redraw = !Console.IsOutputRedirected;
-            ThumbnailBatch.Run(missing, ThumbnailBatch.DefaultParallelism,
-                ThumbnailGenerator.ThumbnailWidth, ThumbnailGenerator.ThumbnailHeight,
-                line =>
-                {
-                    if (redraw)
-                    {
-                        Console.Write($"\r  {line,-70}");
-                    }
-                    else
-                    {
-                        Console.WriteLine($"  {line}");
-                    }
-                });
-            if (redraw)
-            {
-                Console.WriteLine();
-            }
         }
 
         private static bool AskRoom(MenuSettings settings, IReadOnlyList<string> rooms,
