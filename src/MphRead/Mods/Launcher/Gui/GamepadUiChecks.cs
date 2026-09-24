@@ -132,6 +132,18 @@ namespace MphRead.Mods.Launcher.Gui
             GamepadChecks.Check(offlinePlan is { Kind: LaunchKind.Adventure, SaveSlot: 1, NewGame: true },
                 "Adventure NEW RUN launches a fresh selected save slot");
 
+            // Asset-free guard for the September per-scene migration regression:
+            // Setup must leave SinglePlayer with the Adventure state handler.
+            // Every competitive mode assigns its own handler below this default;
+            // Adventure has no later branch to repair a null value.
+            var adventureState = new SceneGameState(new ScenePlayerRegistry())
+            {
+                Mode = GameMode.SinglePlayer
+            };
+            adventureState.Setup(null!);
+            GamepadChecks.Check(adventureState.ModeState != null,
+                "Adventure setup retains its gameplay state handler");
+
             var customMatch = new CreateServerScreen(
                 Array.Empty<string>(), discoverHosts: false);
             int customClosed = 0;

@@ -825,28 +825,29 @@ namespace MphRead.Mods.Launcher.Gui
                 {
                     continue;
                 }
+                // Resolve against the actual top-level surface, not the
+                // current view's unscaled layout box. The persistent Prime
+                // shell introduced a second LayoutTransformControl inside the
+                // view; translating only to _view made the synthetic hit-test
+                // reject controls that were visibly on screen after those
+                // nested transforms were applied.
                 Point? centre = control.TranslatePoint(
-                    new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), _view);
+                    new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), _window);
                 if (centre == null)
                 {
                     continue;
                 }
-                // Is it actually the thing at that point? A control can be in
-                // the tree and under something else -- the setup panel covers
-                // the front screen's whole menu on a fresh install -- and a
-                // check that reported a press it did not make would be worse
-                // than no check. Asked of the toolkit, in the same
-                // coordinates the toolkit lays out in.
+                // Is it actually the thing at that surface pixel? A control
+                // can be in the tree and under a modal; never report a click
+                // on something the player could not have reached.
                 if (!Covers(control, centre.Value))
                 {
                     continue;
                 }
-                // Points to surface pixels, then back out to the window's,
-                // because PointerMoved takes the window's and is the thing
-                // being proven. Undoing the conversion here rather than
-                // skipping it is what keeps the check on the real path.
-                double x = centre.Value.X * _factor / _raster;
-                double y = centre.Value.Y * _factor / _raster;
+                // _window is already in surface pixels. PointerMoved takes the
+                // game window's pixels, so only undo raster downscaling here.
+                double x = centre.Value.X / _raster;
+                double y = centre.Value.Y / _raster;
                 PointerMoved(x, y);
                 PointerButton(MouseButton.Left, down: true);
                 PointerButton(MouseButton.Left, down: false);
@@ -876,7 +877,7 @@ namespace MphRead.Mods.Launcher.Gui
                     continue;
                 }
                 Point? centre = control.TranslatePoint(
-                    new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), _view);
+                    new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), _window);
                 if (centre == null)
                 {
                     continue;
@@ -885,8 +886,8 @@ namespace MphRead.Mods.Launcher.Gui
                 {
                     continue;
                 }
-                PointerMoved(centre.Value.X * _factor / _raster,
-                    centre.Value.Y * _factor / _raster);
+                PointerMoved(centre.Value.X / _raster,
+                    centre.Value.Y / _raster);
                 return true;
             }
             return false;
@@ -903,7 +904,10 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 return false;
             }
-            IInputElement? hit = _view.InputHitTest(point);
+            // point is in the embedded top-level's surface-pixel coordinates.
+            // Using _window keeps hit testing in the same transformed space as
+            // the real input pipeline, including nested layout transforms.
+            IInputElement? hit = _window.InputHitTest(point);
             for (Visual? visual = hit as Visual; visual != null;
                 visual = visual.GetVisualParent())
             {

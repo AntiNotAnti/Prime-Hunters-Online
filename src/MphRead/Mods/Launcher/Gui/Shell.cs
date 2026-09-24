@@ -908,13 +908,28 @@ namespace MphRead.Mods.Launcher.Gui
                     Wait(0);
                     return;
                 }
-                // The screens could not start one -- no game files, or a map
-                // list that came up empty. Ask the shell directly so the rest
-                // of the sequence still runs.
+                // CI intentionally has no extracted game assets. In that
+                // environment the shell/UI checks above are the complete test:
+                // there is no legal room to start, so falling through to a
+                // direct match request only converts "no assets" into a false
+                // failure.
+                if (!GameFiles.Ready || _rooms.Count == 0)
+                {
+                    Console.WriteLine("[shellshot] no game files; screen-only checks complete");
+                    _shotDirectory = null;
+                    w.Close();
+                    return;
+                }
+
+                // A real installation had rooms available but the UI failed
+                // to start one. Fall back to the direct shell plan so the rest
+                // of the match/pause/result lifecycle can still be exercised,
+                // while the earlier missed press remains visible in ShotMisses.
                 Console.WriteLine("[shellshot] the play screen started nothing; asking directly");
                 if (!StartShotMatch())
                 {
-                    Console.WriteLine("[shellshot] no room to load; stopping after the screens");
+                    ShotMisses++;
+                    Console.WriteLine("[shellshot] game files are ready but no playable room was available");
                     _shotDirectory = null;
                     w.Close();
                     return;
