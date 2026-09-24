@@ -1297,7 +1297,7 @@ namespace MphRead
         Defender = 12,
         DefenderTeams = 13,
         PrimeHunter = 14,
-        Unknown15 = 15 // seems to be unused
+        InstaGib = 15
     }
 
     [Flags]
