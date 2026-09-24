@@ -759,9 +759,15 @@ namespace MphRead.Mods.Network
         ///
         /// Retained for caller compatibility; all remote lethal hits are held.
         /// </param>
+        /// <param name="afflictions">
+        /// Afflictions caused by this specific hit. This is carried separately
+        /// from the victim's current state so a later hit on somebody who is
+        /// already frozen cannot masquerade as a second Judicator freeze.
+        /// </param>
         public static void NoteHit(PlayerEntity victim, PlayerEntity? attacker,
             ref DamageFlags flags, ref uint damage, BeamType beam = BeamType.None,
-            uint launchFrame = 0, float flight = 0, Vector3? direction = null)
+            uint launchFrame = 0, float flight = 0, Vector3? direction = null,
+            Affliction afflictions = Affliction.None)
         {
             int local = NetHooks.LocalSlot;
             if (local < 0)
@@ -852,7 +858,7 @@ namespace MphRead.Mods.Network
                 {
                     ushort claimId = NetHitClaims.Declare(victim, attacker, beam, claimedDamage,
                         flags, claimedLethal, victim.Position, launchFrame,
-                        direction ?? Vector3.Zero);
+                        direction ?? Vector3.Zero, afflictions);
                     StampClaim(victim.SlotIndex, at, claimId);
                 }
                 if (headshot && !self)
