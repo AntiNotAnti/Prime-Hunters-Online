@@ -193,6 +193,17 @@ namespace MphRead.Mods.Launcher.Gui
         private ToggleRow _radarOutlinesRow = null!;
         private SliderRow _sfxVolume = null!;
         private SliderRow _musicVolume = null!;
+        private SliderRow _combatFeedbackVolume = null!;
+        private ChoiceRow _imperialistHeadshotSound = null!;
+        private ChoiceRow _doubleKillSound = null!;
+        private ChoiceRow _tripleKillSound = null!;
+        private ChoiceRow _quadraKillSound = null!;
+        private ChoiceRow _killingSpreeSound = null!;
+        private Mods.Sound.CombatFeedbackOption[] _imperialistHeadshotOptions = Array.Empty<Mods.Sound.CombatFeedbackOption>();
+        private Mods.Sound.CombatFeedbackOption[] _doubleKillOptions = Array.Empty<Mods.Sound.CombatFeedbackOption>();
+        private Mods.Sound.CombatFeedbackOption[] _tripleKillOptions = Array.Empty<Mods.Sound.CombatFeedbackOption>();
+        private Mods.Sound.CombatFeedbackOption[] _quadraKillOptions = Array.Empty<Mods.Sound.CombatFeedbackOption>();
+        private Mods.Sound.CombatFeedbackOption[] _killingSpreeOptions = Array.Empty<Mods.Sound.CombatFeedbackOption>();
         private ChoiceRow _languageRow = null!;
         private SliderRow _sensitivity = null!;
         private SliderRow _altSwipeSensitivity = null!;
@@ -926,10 +937,77 @@ namespace MphRead.Mods.Launcher.Gui
             _sfxVolume = Add(page, new SliderRow("Sound effects",
                 Percent(_settings.SfxVolume, 35)));
             _musicVolume = Add(page, new SliderRow("Music", Percent(_settings.MusicVolume, 50)));
+
+            Heading(page, "Combat feedback");
+            _combatFeedbackVolume = Add(page, new SliderRow("Feedback volume",
+                Math.Clamp((int)Math.Round(LauncherPrefs.CombatFeedbackVolume * 100), 0, 100)));
+
+            _imperialistHeadshotOptions = Mods.Sound.CombatFeedbackAudio.GetOptions(
+                Mods.Sound.CombatFeedbackCue.ImperialistHeadshot).ToArray();
+            _doubleKillOptions = Mods.Sound.CombatFeedbackAudio.GetOptions(
+                Mods.Sound.CombatFeedbackCue.DoubleKill).ToArray();
+            _tripleKillOptions = Mods.Sound.CombatFeedbackAudio.GetOptions(
+                Mods.Sound.CombatFeedbackCue.TripleKill).ToArray();
+            _quadraKillOptions = Mods.Sound.CombatFeedbackAudio.GetOptions(
+                Mods.Sound.CombatFeedbackCue.QuadraKill).ToArray();
+            _killingSpreeOptions = Mods.Sound.CombatFeedbackAudio.GetOptions(
+                Mods.Sound.CombatFeedbackCue.KillingSpree).ToArray();
+
+            _imperialistHeadshotSound = Add(page, new ChoiceRow("Imperialist headshot",
+                _imperialistHeadshotOptions.Select(o => o.Label).ToArray(),
+                CombatFeedbackIndex(_imperialistHeadshotOptions,
+                    LauncherPrefs.ImperialistHeadshotSound,
+                    Mods.Sound.CombatFeedbackCue.ImperialistHeadshot)));
+            _doubleKillSound = Add(page, new ChoiceRow("Double kill",
+                _doubleKillOptions.Select(o => o.Label).ToArray(),
+                CombatFeedbackIndex(_doubleKillOptions, LauncherPrefs.DoubleKillSound,
+                    Mods.Sound.CombatFeedbackCue.DoubleKill)));
+            _tripleKillSound = Add(page, new ChoiceRow("Triple kill",
+                _tripleKillOptions.Select(o => o.Label).ToArray(),
+                CombatFeedbackIndex(_tripleKillOptions, LauncherPrefs.TripleKillSound,
+                    Mods.Sound.CombatFeedbackCue.TripleKill)));
+            _quadraKillSound = Add(page, new ChoiceRow("Quadra kill",
+                _quadraKillOptions.Select(o => o.Label).ToArray(),
+                CombatFeedbackIndex(_quadraKillOptions, LauncherPrefs.QuadraKillSound,
+                    Mods.Sound.CombatFeedbackCue.QuadraKill)));
+            _killingSpreeSound = Add(page, new ChoiceRow("Killing spree (5 kills)",
+                _killingSpreeOptions.Select(o => o.Label).ToArray(),
+                CombatFeedbackIndex(_killingSpreeOptions, LauncherPrefs.KillingSpreeSound,
+                    Mods.Sound.CombatFeedbackCue.KillingSpree)));
+            Explain(page, "Built-in cues ship inside Project Prime. Add WAV, MP3 or FLAC files to:\n"
+                + Mods.Sound.CombatFeedbackAudio.CustomDirectory
+                + "\nApply settings to refresh the custom-sound list for the next visit.");
+
             Heading(page, "Language");
             string[] languages = Enum.GetNames<Language>();
             _languageRow = Add(page, new ChoiceRow("Text", languages,
                 Math.Max(0, Array.IndexOf(languages, _settings.Language))));
+        }
+
+        private static int CombatFeedbackIndex(Mods.Sound.CombatFeedbackOption[] options,
+            string selected, Mods.Sound.CombatFeedbackCue cue)
+        {
+            int index = Array.FindIndex(options, option =>
+                option.Id.Equals(selected, StringComparison.OrdinalIgnoreCase));
+            if (index >= 0)
+            {
+                return index;
+            }
+            string fallback = Mods.Sound.CombatFeedbackAudio.DefaultSelection(cue);
+            index = Array.FindIndex(options, option =>
+                option.Id.Equals(fallback, StringComparison.OrdinalIgnoreCase));
+            return Math.Max(0, index);
+        }
+
+        private static string SelectedCombatFeedback(
+            Mods.Sound.CombatFeedbackOption[] options, ChoiceRow row,
+            Mods.Sound.CombatFeedbackCue cue)
+        {
+            if (options.Length == 0)
+            {
+                return Mods.Sound.CombatFeedbackAudio.DefaultSelection(cue);
+            }
+            return options[Math.Clamp(row.Index, 0, options.Length - 1)].Id;
         }
 
         private static int Percent(string stored, int fallback)
@@ -1716,6 +1794,23 @@ namespace MphRead.Mods.Launcher.Gui
             _settings.SfxVolume = (_sfxVolume.Value / 100f).ToString(CultureInfo.InvariantCulture);
             _settings.MusicVolume = (_musicVolume.Value / 100f).ToString(CultureInfo.InvariantCulture);
             _settings.Language = _languageRow.Value;
+            LauncherPrefs.CombatFeedbackVolume = Math.Clamp(
+                _combatFeedbackVolume.Value / 100f, 0, 1);
+            LauncherPrefs.ImperialistHeadshotSound = SelectedCombatFeedback(
+                _imperialistHeadshotOptions, _imperialistHeadshotSound,
+                Mods.Sound.CombatFeedbackCue.ImperialistHeadshot);
+            LauncherPrefs.DoubleKillSound = SelectedCombatFeedback(
+                _doubleKillOptions, _doubleKillSound,
+                Mods.Sound.CombatFeedbackCue.DoubleKill);
+            LauncherPrefs.TripleKillSound = SelectedCombatFeedback(
+                _tripleKillOptions, _tripleKillSound,
+                Mods.Sound.CombatFeedbackCue.TripleKill);
+            LauncherPrefs.QuadraKillSound = SelectedCombatFeedback(
+                _quadraKillOptions, _quadraKillSound,
+                Mods.Sound.CombatFeedbackCue.QuadraKill);
+            LauncherPrefs.KillingSpreeSound = SelectedCombatFeedback(
+                _killingSpreeOptions, _killingSpreeSound,
+                Mods.Sound.CombatFeedbackCue.KillingSpree);
             // Controls
             InputSettings.MouseSensitivity = SliderToSensitivity(_sensitivity.Value);
             InputSettings.AltSwipeSensitivity = _altSwipeSensitivity.Value / 100f;
@@ -1814,6 +1909,11 @@ namespace MphRead.Mods.Launcher.Gui
                 LauncherPrefs.FinalKillCamEnabled = _finalKillCamRow.On;
             GameState.CommitSettings(_settings);
             LauncherPrefs.Save();
+            Mods.Sound.CombatFeedbackAudio.Reload();
+            if (_inGame)
+            {
+                Mods.Sound.CombatFeedbackAudio.Warm();
+            }
             if (LauncherPrefs.ReplayAutoPrune && LauncherPrefs.ReplayStorageLimitGb > 0)
             {
                 Mods.Replay.ReplayStorageManager.Apply(new Mods.Replay.ReplayStoragePolicy(
