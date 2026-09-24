@@ -29,6 +29,11 @@ namespace MphRead.Mods.Launcher
         /// </summary>
         public static void Launch(MenuSettings settings, LaunchPlan plan)
         {
+            // A standalone match window constructs its Scene immediately.
+            // No save slot may be active during that constructor: Adventure
+            // selects its slot on the owning SceneGameState below, and every
+            // other mode must never inherit a previous story session's slot.
+            Menu.SaveSlot = 0;
             RenderWindow.LogCreatingWindow();
             using var renderer = new RenderWindow();
             if (!Begin(renderer, settings, plan))
