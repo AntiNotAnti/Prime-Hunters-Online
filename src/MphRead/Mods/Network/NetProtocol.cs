@@ -1952,6 +1952,7 @@ namespace MphRead.Mods.Network
         public const byte ResultInvalidLaunch = 9;
         public const byte ResultNoDamage = 10;
         public const byte ResultImpulseLimit = 11;
+        public const byte ResultClaimCapacity = 12;
 
         public ushort ClaimId;
         public byte Result;
@@ -1976,6 +1977,7 @@ namespace MphRead.Mods.Network
         {
             return result switch
             {
+                ResultClaimCapacity => "authority claim capacity",
                 ResultWrongLife => "wrong lifecycle",
                 ResultGeometry => "hit point outside reconciliation radius",
                 ResultDamageLimit => "damage exceeds weapon limit",

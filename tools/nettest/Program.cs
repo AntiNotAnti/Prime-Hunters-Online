@@ -28,6 +28,7 @@ namespace MphRead.NetTest
 
         private static int Main(string[] args)
         {
+            if (args.Length > 0 && args[0] == "--claim-stress") return ClaimStressTests.Run();
             if (args.Length > 0 && args[0] == "--health-shots") return HealthShotTests.Run();
             if (args.Length > 0 && args[0] == "--lifecycle") return LifecycleTests.Run();
             if (args.Length > 0 && args[0] == "--architecture") return NetArchitectureTests.Run();

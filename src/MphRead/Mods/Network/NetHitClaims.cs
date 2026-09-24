@@ -205,7 +205,7 @@ namespace MphRead.Mods.Network
         // The shooter's side
         // ---------------------------------------------------------------
 
-        private const int OutboxCapacity = 32;
+        private const int OutboxCapacity = 128;
 
         private struct Outgoing
         {
@@ -395,6 +395,7 @@ namespace MphRead.Mods.Network
                     }
                 }
                 index = oldest;
+                NetHitPrediction.Settle(_outbox[index].VictimSlot, _outbox[index].Id, confirmed: false);
                 Unanswered++;
             }
             // The same world the intent is acking, and it has to be: the
@@ -634,7 +635,8 @@ namespace MphRead.Mods.Network
         // The authority's side
         // ---------------------------------------------------------------
 
-        private const int PendingCapacity = 64;
+        public const int PendingPerShooter = 64;
+        private const int PendingCapacity = Slots * PendingPerShooter;
 
         private struct Pending
         {
@@ -701,12 +703,46 @@ namespace MphRead.Mods.Network
         /// claim, which is the arithmetic that makes "already resolved" mean
         /// what the report says it means.
         ///
-        /// Eight deep per pair: the fastest weapon in the game resolves a hit
-        /// every other frame, so eight covers the 18-frame grace window at the
-        /// rate anything can actually be fired, and the whole table is 8x8x8
-        /// frames plus a flag each.
+        /// Sixty-four entries cover the 72-frame maximum grace at one hit
+        /// every two frames, with room for splash and burst skew.
         /// </summary>
-        private const int LedgerDepth = 8;
+        public const int LedgerDepth = 64;
+        private static readonly ShotKey[,,] _authorityKeys = new ShotKey[Slots, Slots, LedgerDepth];
+        private static readonly ushort[,,] _victimGeneration = new ushort[Slots, Slots, LedgerDepth];
+        private static readonly ushort[,,] _victimLife = new ushort[Slots, Slots, LedgerDepth];
+        private static readonly bool[,,] _authorityLive = new bool[Slots, Slots, LedgerDepth];
+        private static readonly uint[,] _ledgerUnsafeUntil = new uint[Slots, Slots];
+        public static long ClaimsCapacityRefused { get; private set; }
+        public static int ClaimsPendingHighWater { get; private set; }
+        public static int ResolvedLedgerHighWater { get; private set; }
+        public static long ResolvedLedgerExpiredUnused { get; private set; }
+        public static long ResolvedLedgerOverwrittenUnused { get; private set; }
+        public static long ResolvedLedgerCapacityRefused { get; private set; }
+        public static int ClaimsPendingCurrent
+        {
+            get { int count = 0; foreach (ref readonly var entry in _pending.AsSpan()) if (entry.Live) count++; return count; }
+        }
+        public static int ResolvedLedgerCurrent
+        {
+            get { int count = 0; foreach (bool live in _authorityLive) if (live) count++; return count; }
+        }
+        public static int RescuedLedgerCurrent
+        {
+            get { int count = 0; foreach (int owed in _rescuedOwed) if (owed > 0) count++; return count; }
+        }
+        private static bool LedgerLive(int attacker, int victim, int index)
+        {
+            if (!_authorityLive[attacker, victim, index]) return false;
+            if (NetSession.NetFrame - _authorityHit[attacker, victim, index] > MaxGraceFrames
+                || _authorityKeys[attacker, victim, index] != ShotKey.For(attacker, _authorityHitLaunch[attacker, victim, index])
+                || !NetPlayerLifecycle.Matches(victim, _victimGeneration[attacker, victim, index], _victimLife[attacker, victim, index]))
+            {
+                if (!_authorityHitUsed[attacker, victim, index]) ResolvedLedgerExpiredUnused++;
+                _authorityLive[attacker, victim, index] = false;
+                return false;
+            }
+            return true;
+        }
         private static readonly uint[,,] _authorityHit = new uint[Slots, Slots, LedgerDepth];
         /// <summary>
         /// The world-frame the shooter was looking at when the authority
@@ -786,7 +822,7 @@ namespace MphRead.Mods.Network
         /// machines name the same instant, so this is slack for the frame the
         /// stamp was taken on and nothing more.
         /// </summary>
-        private const int LaunchMatchFrames = 4;
+        private const int LaunchMatchFrames = 0;
 
         /// <summary>
         /// File a hit the authority resolved for itself, so that a claim about
@@ -795,13 +831,31 @@ namespace MphRead.Mods.Network
         private static void NoteLedger(int attacker, int victim, uint ack, uint launch,
             int damage, bool used = false)
         {
-            int head = _authorityHitHead[attacker, victim];
+            int head = -1;
+            for (int n = 0; n < LedgerDepth; n++)
+            {
+                int i = (_authorityHitHead[attacker, victim] + n) % LedgerDepth;
+                if (!LedgerLive(attacker, victim, i) || _authorityHitUsed[attacker, victim, i]) { head = i; break; }
+            }
+            if (head < 0)
+            {
+                // Fail closed: preserve every matchable identity and refuse rescue
+                // for this pair until the unrecorded resolution is outside grace.
+                _ledgerUnsafeUntil[attacker, victim] = NetSession.NetFrame + MaxGraceFrames;
+                ResolvedLedgerCapacityRefused++;
+                return;
+            }
+            _authorityLive[attacker, victim, head] = true;
+            _authorityKeys[attacker, victim, head] = ShotKey.For(attacker, launch);
+            _victimGeneration[attacker, victim, head] = NetPlayerLifecycle.Generation(victim);
+            _victimLife[attacker, victim, head] = NetPlayerLifecycle.Get(victim);
             _authorityHit[attacker, victim, head] = NetSession.NetFrame;
             _authorityHitAck[attacker, victim, head] = ack;
             _authorityHitLaunch[attacker, victim, head] = launch;
             _authorityHitDamage[attacker, victim, head] = damage;
             _authorityHitUsed[attacker, victim, head] = used;
             _authorityHitHead[attacker, victim] = (head + 1) % LedgerDepth;
+            ResolvedLedgerHighWater = Math.Max(ResolvedLedgerHighWater, ResolvedLedgerCurrent);
         }
 
         /// <summary>
@@ -862,12 +916,12 @@ namespace MphRead.Mods.Network
                 for (int i = 0; i < LedgerDepth; i++)
                 {
                     if (_authorityHitUsed[attacker, victim, i]
-                        || _authorityHit[attacker, victim, i] == 0)
+                        || !LedgerLive(attacker, victim, i))
                     {
                         continue;
                     }
                     uint launch = _authorityHitLaunch[attacker, victim, i];
-                    if (launch != 0 && Math.Abs((long)launch - claimLaunch) <= LaunchMatchFrames)
+                    if (launch != 0 && launch == claimLaunch)
                     {
                         _authorityHitUsed[attacker, victim, i] = true;
                         authorityDamage = _authorityHitDamage[attacker, victim, i];
@@ -884,7 +938,7 @@ namespace MphRead.Mods.Network
             long bestGap = Int64.MaxValue;
             for (int i = 0; i < LedgerDepth; i++)
             {
-                if (_authorityHitUsed[attacker, victim, i])
+                if (_authorityHitUsed[attacker, victim, i] || !LedgerLive(attacker, victim, i))
                 {
                     continue;
                 }
@@ -925,6 +979,7 @@ namespace MphRead.Mods.Network
         {
             for (int i = 0; i < LedgerDepth; i++)
             {
+                _authorityLive[attacker, victim, i] = false;
                 _authorityHit[attacker, victim, i] = 0;
                 _authorityHitAck[attacker, victim, i] = 0;
                 _authorityHitLaunch[attacker, victim, i] = 0;
@@ -932,6 +987,7 @@ namespace MphRead.Mods.Network
                 _authorityHitUsed[attacker, victim, i] = false;
             }
             _authorityHitHead[attacker, victim] = 0;
+            _ledgerUnsafeUntil[attacker, victim] = 0;
         }
 
         /// <summary>
@@ -1430,16 +1486,20 @@ namespace MphRead.Mods.Network
         private static void Park(int shooterSlot, in HitClaimPacket claim)
         {
             int index = -1;
-            for (int i = 0; i < PendingCapacity; i++)
+            int start = shooterSlot * PendingPerShooter;
+            for (int pass = 0; pass < 2 && index < 0; pass++)
             {
-                if (!_pending[i].Live)
-                {
-                    index = i;
-                    break;
-                }
+                for (int i = start; i < start + PendingPerShooter; i++)
+                    if (!_pending[i].Live) { index = i; break; }
+                // Settle expired/duplicate entries before refusing a new claim.
+                if (index < 0 && pass == 0) Tick();
             }
-            if (index < 0)
+            if (index < 0 || (_ledgerUnsafeUntil[shooterSlot, claim.VictimSlot] != 0
+                && (int)(_ledgerUnsafeUntil[shooterSlot, claim.VictimSlot] - NetSession.NetFrame) >= 0))
             {
+                ClaimsCapacityRefused++;
+                Answer(shooterSlot, claim.ClaimId, HitVerdictPacket.ResultClaimCapacity);
+                FlushVerdicts();
                 return;
             }
             _pending[index] = new Pending
@@ -1464,6 +1524,7 @@ namespace MphRead.Mods.Network
                 Grace = GraceFor(shooterSlot),
                 Live = true
             };
+            ClaimsPendingHighWater = Math.Max(ClaimsPendingHighWater, ClaimsPendingCurrent);
         }
 
         /// <summary>
@@ -1690,7 +1751,7 @@ namespace MphRead.Mods.Network
         /// and both machines produce both. Two claims applied means the next
         /// two of the authority's own hits for that shot are the same two.
         /// </summary>
-        private const int RescuedCapacity = 32;
+        private const int RescuedCapacity = Slots * Slots * 512;
         private static readonly byte[] _rescuedAttacker = new byte[RescuedCapacity];
         private static readonly byte[] _rescuedVictim = new byte[RescuedCapacity];
         private static readonly ShotKey[] _rescuedKeys = new ShotKey[RescuedCapacity];
@@ -1718,7 +1779,8 @@ namespace MphRead.Mods.Network
                 // there is for these, and it is why they are not zero.
                 return;
             }
-            for (int i = 0; i < RescuedCapacity; i++)
+            int pairStart = (attacker * Slots + victim) * 512;
+            for (int i = pairStart; i < pairStart + 512; i++)
             {
                 if (_rescuedOwed[i] > 0 && _rescuedKeys[i] == ShotKey.For(attacker, launch)
                     && _rescuedVictim[i] == victim
@@ -1729,8 +1791,14 @@ namespace MphRead.Mods.Network
                     return;
                 }
             }
-            int at = _rescuedHead;
-            _rescuedHead = (_rescuedHead + 1) % RescuedCapacity;
+            int at = pairStart;
+            for (int n = 0; n < 512; n++)
+            {
+                int candidate = pairStart + n;
+                if (_rescuedOwed[candidate] == 0 || NetSession.NetFrame - _rescuedAt[candidate] > RescuedFrames)
+                { at = candidate; break; }
+            }
+            _rescuedHead = (at + 1) % RescuedCapacity;
             _rescuedAttacker[at] = (byte)attacker;
             _rescuedVictim[at] = (byte)victim;
             _rescuedKeys[at] = ShotKey.For(attacker, launch);
@@ -1755,7 +1823,8 @@ namespace MphRead.Mods.Network
                 return false;
             }
             uint now = NetSession.NetFrame;
-            for (int i = 0; i < RescuedCapacity; i++)
+            int pairStart = (attacker * Slots + victim) * 512;
+            for (int i = pairStart; i < pairStart + 512; i++)
             {
                 if (_rescuedOwed[i] <= 0 || _rescuedKeys[i] != (launchKey ?? ShotKey.For(attacker, launch))
                     || _rescuedVictim[i] != victim
@@ -2011,6 +2080,8 @@ namespace MphRead.Mods.Network
             Array.Clear(_seenResults);
             Array.Clear(_newestId);
             Array.Clear(_lastResult);
+            Array.Clear(_authorityLive);
+            Array.Clear(_ledgerUnsafeUntil);
             Array.Clear(_authorityHit);
             Array.Clear(_authorityHitAck);
             Array.Clear(_authorityHitLaunch);
@@ -2024,6 +2095,8 @@ namespace MphRead.Mods.Network
             Array.Clear(_rescuedOwed);
             _rescuedHead = 0;
             _nextId = 1;
+            ClaimsCapacityRefused = ResolvedLedgerExpiredUnused = ResolvedLedgerOverwrittenUnused = ResolvedLedgerCapacityRefused = 0;
+            ClaimsPendingHighWater = ResolvedLedgerHighWater = 0;
             Declared = 0;
             Applied = 0;
             Duplicate = 0;
@@ -2106,6 +2179,8 @@ namespace MphRead.Mods.Network
             Array.Clear(_rescuedOwed);
             Array.Clear(_outbox);
             Array.Clear(_pending);
+            Array.Clear(_authorityLive);
+            Array.Clear(_ledgerUnsafeUntil);
             Array.Clear(_authorityHit);
             Array.Clear(_authorityHitAck);
             Array.Clear(_authorityHitUsed);
