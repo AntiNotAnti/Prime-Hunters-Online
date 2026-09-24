@@ -717,8 +717,8 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 Heading(page, "Window");
                 _windowRow = Add(page, new ChoiceRow("Mode",
-                    new[] { "Windowed", "Fullscreen (borderless)" },
-                    LauncherPrefs.WindowMode == WindowStartMode.BorderlessFullscreen ? 1 : 0));
+                    new[] { "Windowed", "Borderless", "Fullscreen" },
+                    (int)LauncherPrefs.WindowMode));
             }
 
             // Its own heading, above the performance rows, because it is not
@@ -1630,24 +1630,11 @@ namespace MphRead.Mods.Launcher.Gui
             // Display
             if (_windowRow != null)
             {
-                LauncherPrefs.WindowMode = _windowRow.Index == 1
-                    ? WindowStartMode.BorderlessFullscreen
-                    : WindowStartMode.Windowed;
+                LauncherPrefs.WindowMode = (WindowStartMode)_windowRow.Index;
                 WindowMode.Startup = LauncherPrefs.WindowMode;
-                // And now, not at the next launch. There is one window and
-                // this setting is about the one you are looking at: picking
-                // "Fullscreen" and having nothing happen reads as a setting
-                // that did not take. Asked for rather than done -- a window
-                // attribute belongs to the thread that owns the window, and
-                // this runs inside the toolkit; PauseMenu.Poll does it at the
-                // end of the frame, which is the same route Escape's own
-                // fullscreen entry takes.
-                bool wantFullscreen =
-                    LauncherPrefs.WindowMode == WindowStartMode.BorderlessFullscreen;
-                if (wantFullscreen != WindowMode.IsFullscreen)
-                {
-                    PauseMenu.RequestFullscreenToggle();
-                }
+                // Apply the selected mode, not a boolean toggle: Borderless ->
+                // Fullscreen changes focus policy without leaving fullscreen.
+                PauseMenu.RequestWindowMode(LauncherPrefs.WindowMode);
             }
             if (_clipSecondsRow != null)
             {

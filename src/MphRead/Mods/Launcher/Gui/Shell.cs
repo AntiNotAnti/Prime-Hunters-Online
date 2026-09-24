@@ -699,6 +699,30 @@ namespace MphRead.Mods.Launcher.Gui
             script[_shotStep++](window);
         }
 
+        private static Vector2i _shotWindowedSize, _shotWindowedLocation;
+        private static void CheckFullscreen(RenderWindow window, WindowStartMode mode)
+        {
+            var monitor = OpenTK.Windowing.Desktop.Monitors.GetMonitorFromWindow(window);
+            bool attached = Mods.WindowMode.HasMonitor(window);
+            bool fills = window.ClientSize == monitor.ClientArea.Size;
+            if (!attached || !fills || Mods.WindowMode.Current != mode
+                || window.AutoIconify != (mode == WindowStartMode.Fullscreen) || window.AlwaysOnTop)
+            {
+                ShotMisses++;
+                Console.WriteLine($"[shellshot] {mode} invalid: monitor={attached}, client={window.ClientSize}, display={monitor.ClientArea.Size}");
+            }
+            else Console.WriteLine($"[shellshot] {mode} covers the complete monitor: {window.ClientSize}");
+        }
+        private static void CheckWindowed(RenderWindow window)
+        {
+            if (Mods.WindowMode.HasMonitor(window) || Mods.WindowMode.IsFullscreen
+                || window.ClientSize != _shotWindowedSize || window.Location != _shotWindowedLocation)
+            {
+                ShotMisses++;
+                Console.WriteLine($"[shellshot] windowed geometry was not restored: {window.ClientSize} at {window.Location}");
+            }
+        }
+
         /// <summary>
         /// What the capture does, in order. Each step ends by saying how many
         /// frames to leave before the next one -- a window is not on the
@@ -747,12 +771,16 @@ namespace MphRead.Mods.Launcher.Gui
             w => { w.ClientSize = new Vector2i(1000, 620); Wait(20); },
             w => { Shot(w, "shell-resized"); w.WindowState = OpenTK.Windowing.Common.WindowState.Maximized; Wait(20); },
             w => { Shot(w, "shell-maximized"); w.WindowState = OpenTK.Windowing.Common.WindowState.Normal; Wait(20); },
-            w => { Mods.WindowMode.Toggle(w); Wait(25); },
+            w =>
+            {
+                _shotWindowedSize = w.ClientSize; _shotWindowedLocation = w.Location;
+                Mods.WindowMode.Set(w, WindowStartMode.Fullscreen); Wait(25);
+            },
             // The click that matters: at 1.5x, where a pointer conversion off
             // by the scale factor puts every press in the corner of the screen
             // and nothing can be pressed at all. The windowed click above
             // cannot catch that -- the scale there is 1.
-            w => { Shot(w, "shell-fullscreen"); ClickSettings(); Wait(15); },
+            w => { CheckFullscreen(w, WindowStartMode.Fullscreen); Shot(w, "shell-fullscreen"); ClickSettings(); Wait(15); },
             w =>
             {
                 Shot(w, "shell-fullscreen-click");
@@ -760,7 +788,32 @@ namespace MphRead.Mods.Launcher.Gui
                 Mods.WindowMode.Toggle(w);
                 Wait(25);
             },
-            w => { Shot(w, "shell-windowed"); Wait(5); },
+            w =>
+            {
+                CheckWindowed(w); Shot(w, "shell-windowed");
+                Mods.WindowMode.Set(w, WindowStartMode.BorderlessFullscreen); Wait(25);
+            },
+            w =>
+            {
+                CheckFullscreen(w, WindowStartMode.BorderlessFullscreen); Shot(w, "shell-borderless");
+                Mods.WindowMode.Set(w, WindowStartMode.Fullscreen); Wait(20);
+            },
+            w =>
+            {
+                CheckFullscreen(w, WindowStartMode.Fullscreen);
+                // A minimized fullscreen window still owns its monitor. The
+                // per-frame reconciliation must not turn Alt+Tab into Windowed.
+                unsafe { GLFW.IconifyWindow(w.WindowPtr); }
+                Wait(20);
+            },
+            w =>
+            {
+                Mods.WindowMode.Sync(w);
+                if (!Mods.WindowMode.HasMonitor(w) || Mods.WindowMode.Current != WindowStartMode.Fullscreen)
+                { ShotMisses++; Console.WriteLine("[shellshot] minimized fullscreen lost its monitor"); }
+                Mods.WindowMode.Leave(w); Wait(25);
+            },
+            w => { CheckWindowed(w); Wait(5); },
             // F11 on the front screen. The shell takes the whole keyboard
             // while a screen is up, so this is the one gesture that has to be
             // handled before it does -- and it was not, which made fullscreen

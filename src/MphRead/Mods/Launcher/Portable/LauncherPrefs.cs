@@ -469,7 +469,7 @@ namespace MphRead.Mods.Launcher
                     $"replay_delete_clips={ReplayDeleteClips.ToString().ToLowerInvariant()}",
                     $"kill_cam={KillCamEnabled.ToString().ToLowerInvariant()}",
                     $"final_kill_cam={FinalKillCamEnabled.ToString().ToLowerInvariant()}",
-                    $"window_mode={(WindowMode == WindowStartMode.BorderlessFullscreen ? "borderless" : "windowed")}",
+                    $"window_mode={Mods.WindowMode.Serialize(WindowMode)}",
                     $"window_size={WindowWidth.ToString(CultureInfo.InvariantCulture)}x"
                         + WindowHeight.ToString(CultureInfo.InvariantCulture),
                     $"window_pos={WindowX.ToString(CultureInfo.InvariantCulture)},"

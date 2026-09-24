@@ -208,7 +208,7 @@ namespace MphRead.Mods
                 + $"{LauncherPrefs.WindowHeight} at {LauncherPrefs.WindowX},"
                 + $"{LauncherPrefs.WindowY}"
                 + (LauncherPrefs.WindowMaximized ? ", maximized" : "")
-                + (LauncherPrefs.WindowMode == WindowStartMode.BorderlessFullscreen
+                + (LauncherPrefs.WindowMode != WindowStartMode.Windowed
                     ? ", fullscreen" : ""));
         }
 
@@ -233,9 +233,7 @@ namespace MphRead.Mods
             {
                 return;
             }
-            WindowStartMode mode = WindowMode.IsFullscreen
-                ? WindowStartMode.BorderlessFullscreen
-                : WindowStartMode.Windowed;
+            WindowStartMode mode = WindowMode.Current;
             if (LauncherPrefs.WindowMode == mode)
             {
                 return;
@@ -292,7 +290,7 @@ namespace MphRead.Mods
                 {
                     Vector2i size = WindowMode.WindowedSize;
                     return size.X > 0 && size.Y > 0
-                        && Store(size, WindowMode.WindowedLocation, maximized: false);
+                        && Store(size, WindowMode.WindowedLocation, maximized: WindowMode.WindowedMaximized);
                 }
                 if (window.WindowState == WindowState.Minimized)
                 {

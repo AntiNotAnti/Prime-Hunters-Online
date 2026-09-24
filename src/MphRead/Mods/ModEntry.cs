@@ -631,7 +631,11 @@ namespace MphRead.Mods
             // shell opens its window there and reads the saved window mode as
             // it does, so `-launcher -fullscreen` was answered windowed by a
             // preference that had not yet been overridden.
-            if (HasFlag(args, "fullscreen") || HasFlag(args, "borderless"))
+            if (HasFlag(args, "fullscreen"))
+            {
+                WindowMode.ForceStartup(WindowStartMode.Fullscreen);
+            }
+            else if (HasFlag(args, "borderless"))
             {
                 WindowMode.ForceStartup(WindowStartMode.BorderlessFullscreen);
             }

@@ -75,6 +75,12 @@ namespace MphRead.Mods.Launcher.Gui
                         .GlyphTypeface.FamilyName.Contains("Rajdhani", StringComparison.OrdinalIgnoreCase), "display resolves to bundled Rajdhani");
                     Check(new Avalonia.Media.Typeface(PrimeTypography.Label, weight: Avalonia.Media.FontWeight.SemiBold)
                         .GlyphTypeface.FamilyName.Contains("Rajdhani", StringComparison.OrdinalIgnoreCase), "controls resolve to bundled Rajdhani");
+                    foreach (var mode in Enum.GetValues<WindowStartMode>())
+                        Check(WindowMode.Parse(WindowMode.Serialize(mode), WindowStartMode.Windowed) == mode,
+                            "window mode preference round trip: " + mode);
+                    Check(WindowMode.Parse("borderless", WindowStartMode.Windowed) == WindowStartMode.BorderlessFullscreen
+                        && WindowMode.Parse("1", WindowStartMode.Windowed) == WindowStartMode.BorderlessFullscreen,
+                        "legacy borderless preferences remain valid");
                     var shell = Create();
                     var window = new Window { Width = 1280, Height = 720, Content = shell, ShowInTaskbar = false,
                         Position = new PixelPoint(-4000,-4000), WindowStartupLocation = WindowStartupLocation.Manual };

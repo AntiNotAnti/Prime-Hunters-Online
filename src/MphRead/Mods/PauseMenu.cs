@@ -26,6 +26,7 @@ namespace MphRead.Mods
         private static volatile bool _quit;
         private static volatile bool _toggleFullscreen;
         private static volatile bool _refocus;
+        private static WindowStartMode? _requestedWindowMode;
         /// <summary>Open right now: the cursor is free and the player is not driving.</summary>
         public static bool Open => _open;
 
@@ -91,14 +92,13 @@ namespace MphRead.Mods
                     // Not worth losing the match over.
                 }
             }
-            // The game window floats above the shell while it is fullscreen,
-            // and stands down while this menu is up. Here rather than in
-            // OpenMenu/Close because both of those are called from the menu's
-            // own event handlers, and a GLFW window attribute belongs to the
-            // thread that created the window -- which is this one, between
-            // frames. Cached inside, so a frame that changes nothing is a
-            // comparison and no call.
-            WindowMode.SyncTopmost(window);
+            WindowMode.Sync(window);
+            if (_requestedWindowMode is { } mode)
+            {
+                _requestedWindowMode = null;
+                _toggleFullscreen = false;
+                WindowMode.Set(window, mode);
+            }
             if (_toggleFullscreen)
             {
                 _toggleFullscreen = false;
@@ -145,6 +145,7 @@ namespace MphRead.Mods
         internal static void RequestQuit() => _quit = true;
 
         internal static void RequestFullscreenToggle() => _toggleFullscreen = true;
+        internal static void RequestWindowMode(WindowStartMode mode) => _requestedWindowMode = mode;
 
         internal static void MarkClosed()
         {
