@@ -240,34 +240,6 @@ namespace MphRead.Mods.Network
             NetSmoothing.Reset();
         }
 
-        public static void StartHost(int port = NetConfig.DefaultPort)
-        {
-            Stop();
-            try
-            {
-                _transport = new NetTransport(port);
-                Role = NetRole.Host;
-                LocalSlot = 0;
-                Array.Clear(_hostGenerations);
-                _hostGenerations[0] = 1;
-                NetPlayerLifecycle.SetOccupant(0, 1);
-                SlotOccupied[0] = true;
-                ServerMatch = new MatchStatePacket { MatchId = 1, AuthorityEpoch = (ulong)DateTime.UtcNow.Ticks };
-                NetFrame = 0;
-                LastError = null;
-                // This host arbitrates its clients' hit claims, so it needs a
-                // way to answer them. NetHitClaims.
-                NetHitClaims.VerdictSink = SendVerdicts;
-                Console.WriteLine($"[net] hosting on UDP {_transport.LocalPort}");
-            }
-            catch (Exception ex)
-            {
-                LastError = ex.Message;
-                Console.WriteLine($"[net] host failed: {ex.Message}");
-                Role = NetRole.Offline;
-            }
-        }
-
         public static void StartClient(string address, int port = NetConfig.DefaultPort, Guid ownerToken = default)
         {
             Stop();
@@ -457,8 +429,6 @@ namespace MphRead.Mods.Network
             _lastClientMaintenance = 0;
             ReAnnouncements = 0;
             LongestServerSilence = 0;
-            AuthorityStandDowns = 0;
-            _authorityNeedsStateApply = false;
             AuthorityFrames = 0;
             Refused = false;
             SnapshotStreamResets = 0;
@@ -656,10 +626,6 @@ namespace MphRead.Mods.Network
                 return;
             }
             if (advanceFrame) NetFrame++;
-            if (advanceFrame && IsAuthority)
-            {
-                AuthorityFrames++;
-            }
             foreach (ReceivedPacket packet in _transport.Drain())
             {
                 Handle(packet, time);
@@ -749,14 +715,6 @@ namespace MphRead.Mods.Network
         /// </summary>
         public static double LongestServerSilence { get; private set; }
 
-        /// <summary>
-        /// How many times this client gave the simulation back on being
-        /// re-admitted. Non-zero means it was out of touch long enough for
-        /// whoever it is playing on to have moved the authority -- which only
-        /// a hosted game does now; a dedicated server never hands it over.
-        /// </summary>
-        public static int AuthorityStandDowns { get; private set; }
-
         /// <summary>Set when a Hello goes out because the server had gone quiet.</summary>
         private static bool _reAnnounced;
 
@@ -834,36 +792,7 @@ namespace MphRead.Mods.Network
                     if (generation == 0 || (currentGeneration != 0 && generation != currentGeneration
                         && !NetLifecycleTracker.Newer(generation, currentGeneration))) break;
                     NetPlayerLifecycle.SetOccupant(packet.Payload[0], generation);
-                    if (_reAnnounced)
-                    {
-                        // Re-admitted after the server had stopped talking to
-                        // us. While we were away it may have given the
-                        // simulation to somebody else -- it promotes the next
-                        // peer the moment it drops one (DedicatedServer.Remove)
-                        // -- and it has no way to say so: PacketType.Authority
-                        // only ever promotes. So stand down here and wait to be
-                        // told again; the server re-sends Authority to whoever
-                        // holds it once a second, so a client that really is
-                        // still the authority has it back within one.
-                        //
-                        // Without this, an authority whose line dropped for
-                        // longer than the server's timeout came back believing
-                        // it still ran the match: it ignored every snapshot it
-                        // received, its own were dropped by the server as
-                        // coming from a non-authority, and it played on in a
-                        // private copy of the match that looked entirely
-                        // healthy from inside. Found by cutting the
-                        // authority's line for 40 s against the Pi.
-                        _reAnnounced = false;
-                        if (IsAuthority)
-                        {
-                            IsAuthority = false;
-                            AuthorityStandDowns++;
-                            Console.WriteLine("[net] re-admitted; standing down as the "
-                                + "simulation authority until the server says otherwise");
-                            NetLog.Event("re-admitted, authority relinquished");
-                        }
-                    }
+                    if (_reAnnounced) { _reAnnounced = false; NetLog.Event("re-admitted by server"); }
                     if (packet.Payload.Length >= 1)
                     {
                         int assigned = packet.Payload[0];
@@ -907,24 +836,6 @@ namespace MphRead.Mods.Network
                     break;
                 case PacketType.Snapshot when Role == NetRole.Client:
                     HandleSnapshot(packet);
-                    break;
-                case PacketType.Authority when Role == NetRole.Client:
-                    if (packet.Payload.Length != 13 || packet.Payload[0] != LocalSlot
-                        || !MatchesStream(BinaryPrimitives.ReadUInt16LittleEndian(packet.Payload[1..]),
-                            BinaryPrimitives.ReadUInt64LittleEndian(packet.Payload[3..]))
-                        || BinaryPrimitives.ReadUInt16LittleEndian(packet.Payload[11..]) != NetPlayerLifecycle.Generation(LocalSlot)) break;
-                    // Kept for compatibility/tests of the old client-authority
-                    // protocol. Normal dedicated, local-hosted and directory-hosted
-                    // matches run in server processes and do not send Authority to a
-                    // player. Do not use reception of this packet as evidence that a
-                    // normal hosted match should promote a client.
-                    if (!IsAuthority)
-                    {
-                        IsAuthority = true;
-                        _authorityNeedsStateApply = true;
-                        Console.WriteLine("[net] this client is now the simulation authority");
-                        NetLog.Event("became the simulation authority");
-                    }
                     break;
                 case PacketType.Refused when Role == NetRole.Client:
                     if (packet.Payload.Length >= 1 && (LocalSlot < 0 || packet.Payload[0] == RefusedPacket.ReasonKicked))
@@ -1378,33 +1289,8 @@ namespace MphRead.Mods.Network
         /// </summary>
         public static MatchStatePacket? ServerMatch { get; private set; }
 
-        /// <summary>
-        /// True when a dedicated server has designated this client as the
-        /// simulation authority. On a dedicated server every peer is
-        /// NetRole.Client, so without this nothing would ever broadcast
-        /// snapshots and no player would see another move.
-        /// </summary>
-        /// <summary>
-        /// Whether this process runs the match.
-        ///
-        /// True for <see cref="NetRole.Server"/>, set by
-        /// <see cref="StartServerAuthority"/>. It is still settable on a client
-        /// when exercising the legacy PacketType.Authority compatibility path;
-        /// normal hosting does not promote a player.
-        /// </summary>
+        /// <summary>True only inside the dedicated server's in-process simulation. Player clients are never authority.</summary>
         public static bool IsAuthority { get; private set; }
-
-        private static bool _authorityNeedsStateApply;
-
-        public static bool ConsumeAuthorityStateSync()
-        {
-            if (!_authorityNeedsStateApply)
-            {
-                return false;
-            }
-            _authorityNeedsStateApply = false;
-            return true;
-        }
 
         /// <summary>How many peers the server last reported, including us.</summary>
         public static int ServerPlayerCount => ServerMatch?.PlayerCount ?? 0;
@@ -1828,46 +1714,18 @@ namespace MphRead.Mods.Network
         /// </summary>
         public static void SendMatchEnd()
         {
-            if (Role == NetRole.Server)
-            {
-                // No datagram: the server that keeps the rotation is this
-                // process. Without this the sim reached the point goal, had
-                // nobody to tell, and the match ran on until the clock did --
-                // which on a rotation entry with no time limit is for ever.
-                _serverMatchEnded?.Invoke();
-                return;
-            }
-            if (_transport == null || Role != NetRole.Client || _hostEndPoint == null)
-            {
-                return;
-            }
-            BinaryPrimitives.WriteUInt16LittleEndian(_scratch, CurrentMatchId);
-            BinaryPrimitives.WriteUInt64LittleEndian(_scratch.AsSpan(2), AuthorityEpoch);
-            _transport.Send(_hostEndPoint, PacketType.MatchEnd, _scratch.AsSpan(0, 10));
+            if (Role == NetRole.Server) _serverMatchEnded?.Invoke();
         }
 
         internal static void SendReplayWorldPacket(ReadOnlySpan<byte> payload)
         {
             if (Role == NetRole.Server) ReplayWorldSink?.Invoke(payload);
-            else if (Role == NetRole.Host)
-                foreach (var peer in _peers) _transport?.Send(peer.EndPoint, PacketType.ReplayWorld, payload);
         }
 
         /// <summary>Host -> clients: authoritative state for every active player.</summary>
         public static void BroadcastSnapshot()
         {
-            if (!NetRoomChange.GameplayReady) return;
-            bool asServer = Role == NetRole.Server && _snapshotSink != null;
-            if (_transport == null && !asServer)
-            {
-                return;
-            }
-            bool asHost = Role == NetRole.Host && _peers.Count > 0;
-            bool asAuthority = Role == NetRole.Client && IsAuthority && _hostEndPoint != null;
-            if (!asHost && !asAuthority && !asServer)
-            {
-                return;
-            }
+            if (!NetRoomChange.GameplayReady || Role != NetRole.Server || _snapshotSink == null) return;
             int count = 0;
             int offset = SnapshotHeader.Size;
             for (int i = 0; i < PlayerEntity.Players.Count; i++)
@@ -1945,29 +1803,7 @@ namespace MphRead.Mods.Network
             // at all, which is every spawn, every hit and the whole
             // scoreboard. Same trick as the intent below.
             DemoRecorder.RecordOwnSnapshot(_scratch.AsSpan(0, offset));
-            if (asServer)
-            {
-                // Straight to the relay in this same process, which fans it
-                // out to every peer. No loopback datagram: the sender and the
-                // sender's server are the same program.
-                _snapshotSink!(_scratch.AsSpan(0, offset));
-                return;
-            }
-            // Past the server branch there is always a socket: asHost and
-            // asAuthority both require one. Said with a local rather than a
-            // `!` at each use, because the reason is the same both times.
-            NetTransport transport = _transport!;
-            _hostLanes.Prepare(_scratch.AsSpan(0, offset));
-            if (asAuthority)
-            {
-                // One send to the server, which relays to every other peer.
-                SendHostLanes(_hostEndPoint!);
-                return;
-            }
-            for (int i = 0; i < _peers.Count; i++)
-            {
-                SendHostLanes(_peers[i].EndPoint);
-            }
+            _snapshotSink(_scratch.AsSpan(0, offset));
         }
     }
 }

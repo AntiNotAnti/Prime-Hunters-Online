@@ -777,8 +777,7 @@ namespace MphRead.Mods.Network
                     + $"re-announce(s), longest gap "
                     + $"{NetSession.LongestServerSilence:0.0} s of engine time "
                     + $"({NetSession.LongestServerSilence * 60 / Math.Max(FramesPerSecond, 1):0.0} s "
-                    + $"of wall clock at this client's {FramesPerSecond:0} fps), "
-                    + $"{NetSession.AuthorityStandDowns} authority stand-down(s)");
+                    + $"of wall clock at this client's {FramesPerSecond:0} fps)");
             }
             if (pings.Length > 0)
             {

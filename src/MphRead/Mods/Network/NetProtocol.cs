@@ -32,11 +32,11 @@ namespace MphRead.Mods.Network
         MapChange = 9,      // server -> clients, rotation advanced
         Roster = 10,        // server -> clients, who is in which slot
         Identify = 11,      // client -> server, my display name and hunter
-        Authority = 12,     // server -> client, you are the simulation authority
-        SlotIntent = 13,    // server -> authority, one peer's input, tagged with its slot
+        Authority = 12,     // reserved legacy id; current servers never send it and clients ignore it
+        SlotIntent = 13,    // server -> clients, one peer's input tagged with its slot
         StatusQuery = 14,   // anyone -> server, "what is running?" -- claims no slot
         StatusReply = 15,   // server -> asker, the running match plus the player cap
-        MatchEnd = 16,      // authority -> server, somebody won or the clock ran out
+        MatchEnd = 16,      // reserved legacy client result; current server owns match end
         MasterHeartbeat = 17, // dedicated server -> master, "I am up, here is what I run"
         MasterQuery = 18,   // launcher -> master, "who is up?"
         MasterList = 19,    // master -> launcher, one page of the answer
