@@ -167,6 +167,7 @@ namespace MphRead.Mods.Launcher
             double loadSeconds = NetSession.Clock - loadStarted;
             Console.WriteLine($"[launcher] loaded {roomKey} in {loadSeconds:0.00}s"
                 + (joinedPrewarm ? " (joined prewarm)" : ""));
+            if (plan.Spectate && NetSession.Active) Mods.SpectatorMode.Start();
             NetSession.MarkMatchLoaded();
             return true;
         }

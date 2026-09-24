@@ -334,7 +334,7 @@ namespace MphRead.Mods.Launcher.Gui
         {
             if (e.Key == Key.Escape)
             {
-                Leave();
+                RequestBack();
                 e.Handled = true;
                 return;
             }
@@ -385,6 +385,11 @@ namespace MphRead.Mods.Launcher.Gui
         }
 
         private bool Dedicated => CanRunHere && _kind.Index == 1;
+
+        internal void RequestBack()
+        {
+            if (!_root.Children.Contains(_page)) ClosePage(); else Leave();
+        }
 
         private void Leave()
         {

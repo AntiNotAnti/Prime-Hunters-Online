@@ -16,7 +16,7 @@ namespace MphRead.Mods.Launcher.Gui
     /// anything changes, so the shell gets its motion from discrete focus and
     /// hover changes while the OpenGL scene remains free to animate underneath.
     /// </summary>
-    internal sealed class HubNavButton : ContentControl
+    internal class HubNavButton : ContentControl
     {
         private readonly Border _frame;
         private readonly Border _rail;
@@ -26,6 +26,20 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly IBrush _hotBackground;
         private readonly TranslateTransform _shift = new();
         private readonly bool _primary;
+        private bool _tactical, _tab;
+        protected void UseTacticalStyle(bool tab = false)
+        {
+            _tactical = true; _tab = tab; _rail.IsVisible = false;
+            _label.FontFamily = PrimeTypography.Label;
+            _label.FontWeight = FontWeight.SemiBold;
+            _label.FontSize = 16;
+            _label.HorizontalAlignment = HorizontalAlignment.Center;
+            _label.VerticalAlignment = VerticalAlignment.Center;
+            _label.TextWrapping = TextWrapping.Wrap;
+            _label.TextAlignment = TextAlignment.Center;
+            _frame.Padding = new Thickness(10, 8);
+            RefreshVisual();
+        }
         private bool _pointer;
         private bool _pressed;
         private bool _selected;
@@ -87,7 +101,7 @@ namespace MphRead.Mods.Launcher.Gui
                 Text = label,
                 FontFamily = HubTheme.Ui,
                 FontWeight = FontWeight.SemiBold,
-                FontSize = compact ? 11 : 14,
+                FontSize = compact ? PrimeTypography.BodySmall : PrimeTypography.HeadingSmall,
                 Foreground = primary ? _accent : HubTheme.TextBrush,
                 VerticalAlignment = VerticalAlignment.Center
             };
@@ -223,6 +237,19 @@ namespace MphRead.Mods.Launcher.Gui
 
         private void RefreshVisual()
         {
+            if (_frame == null) return;
+            if (_tactical)
+            {
+                bool hot = _pointer || IsFocused;
+                _frame.Background = _primary ? (_pressed ? PrimeTheme.AccentDeepBrush : hot ? PrimeTheme.GlowBrush : PrimeTheme.PrimaryBrush)
+                    : hot || _selected ? PrimeTheme.PanelHighlightBrush : _tab ? Brushes.Transparent : PrimeTheme.PanelRaisedBrush;
+                _frame.BorderBrush = hot || _selected ? PrimeTheme.GlowBrush : _tab ? Brushes.Transparent : PrimeTheme.BorderBrush;
+                _frame.BorderThickness = _tab && !IsFocused ? new Thickness(0, 0, 0, _selected ? 2 : 0) : new Thickness(1);
+                _label.Foreground = _primary ? (hot && !_pressed ? PrimeTheme.BackgroundDeepBrush : Brushes.White) : hot || _selected ? PrimeTheme.HighlightBrush : PrimeTheme.TextBrush;
+                _frame.Opacity = _pressed ? .76 : IsEnabled && IsEffectivelyEnabled ? 1 : .48;
+                _shift.X = 0;
+                return;
+            }
             bool interactive = _pointer || IsFocused;
             bool emphasized = interactive || _selected;
             _frame.Background = emphasized ? _hotBackground : _restBackground;
@@ -230,7 +257,7 @@ namespace MphRead.Mods.Launcher.Gui
             _rail.Opacity = emphasized || _primary ? 1 : 0.35;
             _label.Foreground = emphasized || _primary ? _accent : HubTheme.TextBrush;
             _shift.X = interactive && IsEffectivelyEnabled ? 2 : 0;
-            _frame.Opacity = _pressed ? 0.76 : IsEffectivelyEnabled ? 1 : 0.48;
+            _frame.Opacity = _pressed ? 0.76 : IsEnabled && IsEffectivelyEnabled ? 1 : 0.48;
         }
     }
 }

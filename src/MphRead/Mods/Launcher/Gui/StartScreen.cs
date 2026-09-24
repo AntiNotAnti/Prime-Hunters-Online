@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using MphRead.Mods.Network;
@@ -12,200 +11,52 @@ using MphRead.Mods.Update;
 
 namespace MphRead.Mods.Launcher.Gui
 {
-    /// <summary>
-    /// The front door to the game: a responsive FPS-style hub with direct
-    /// routes to Play, Map Editor, Replay Studio, Settings and Quit.
-    ///
-    /// The hub is intentionally a presentation layer over the existing launch
-    /// stack. Play, lobby, replay, setup and settings still own their existing
-    /// behaviour while the shell is migrated around them, so a visual overhaul
-    /// cannot quietly become a second implementation of networking or startup.
-    ///
-    /// It is a <see cref="UserControl"/> rather than a <see cref="Window"/>
-    /// for one reason: nothing shows it in a window. The desktop renders it
-    /// into the game window through <c>UiSurface</c>; the Android head
-    /// hands this same object to Avalonia as its single view.
-    /// There is no second front screen to keep in step, which is the point --
-    /// a phone-shaped copy was the previous arrangement and it drifted within
-    /// a release.
-    ///
-    /// Everything it opens is pushed onto one stack over the picture, on every
-    /// platform. There used to be three windows on the desktop and overlays on
-    /// the phone, which is two arrangements of the same four screens.
-    /// </summary>
-    internal sealed class StartScreen : UserControl
+    /// <summary>Setup, updates and game handoff around one persistent navigation shell.</summary>
+    internal sealed class StartScreen : UserControl, IDisposable
     {
         private readonly MenuSettings _settings;
         private readonly List<string> _rooms;
-        private readonly Panel _overlay;
-        private readonly List<Control> _stack = new();
-        private readonly TextBlock _version;
-        private readonly Border _versionBox;
-        private readonly Control _menu;
-        private readonly HubHomeView _hub;
-        private readonly Panel _root;
-        private readonly Control[] _ground;
-        private readonly Border _dark;
-        private string _controllerPrompt = "";
-
-        private bool _finished;
-        private bool _updating;
-        private bool _groundShown = true;
-#if MPHREAD_SHELL
+        private readonly PrimeShell _prime;
+        private readonly Panel _layers = new();
+        private PrimeStartupScreen? _startup;
+        private readonly LobbySessionCoordinator _session = new();
+        private LobbyScreen? _lobby;
+        private bool _finished, _updating, _bypassGuard;
         private bool _returnToMapStudio;
-#endif
-        private bool _browsingLobbyHome;
-        private readonly DispatcherTimer _lobbyKeeper;
-        private readonly DispatcherTimer _updateWatcher;
+        private bool _spectateNextMatch;
+        private readonly PrimeUiPulse _updateWatcher;
         private UpdateInfo? _pendingUpdatePrompt;
         private string? _lastPromptedUpdateTag;
         private bool _loadingVersions;
-
-        /// <summary>What the screen decided. Kind None means it was closed.</summary>
         public LaunchPlan Plan { get; private set; }
-
-        /// <summary>Raised once, when the screen is done with.</summary>
         public event EventHandler<LaunchPlan>? Done;
         public event EventHandler<LaunchPlan>? MatchRequested;
-        private LobbyScreen? _lobby;
-        public void ResumeLobby() => _lobby?.Resume();
-        public void SuspendLobby() => _lobby?.Suspend();
+        internal PrimeShell Prime => _prime;
+        public void ResumeLobby() { _lobby?.Resume(); _session.Start(); }
+        public void SuspendLobby() { _lobby?.Suspend(); }
 
         public StartScreen(MenuSettings settings, IReadOnlyList<string> rooms)
         {
-            _settings = settings;
-            _rooms = new List<string>(rooms);
-            Focusable = true;
-
-            LauncherBackdrop.Set(LauncherBackdropScene.Home);
-
-            // The wash is baked into the backdrop rather than laid over it:
-            // one bitmap a frame instead of four full-window layers. See
-            // BakedBackdrop.
-            Panel root = UiLayout.Backdrop(wash: UiLayout.BackdropWash.Light);
-            _root = root;
-            // The photograph, the moving layer and the washes, kept so they
-            // can be taken out of the tree again. See ShowGround.
-            _ground = new Control[root.Children.Count];
-            root.Children.CopyTo(_ground, 0);
-            _dark = new Border { Background = GuiTheme.InkBrush, IsVisible = false };
-            root.Children.Insert(0, _dark);
-
-            // The home surface is now a game hub rather than a launcher card.
-            // Child screens still use the established stack below, which keeps
-            // the UI overhaul independent from launch/network behaviour.
-            _hub = new HubHomeView();
-            _hub.NavigateRequested += NavigateHub;
-            _hub.ReturnToLobbyRequested += ReturnToLobby;
-            _menu = _hub;
-
-            // A lobby is a network session, not a screen lifetime. Keep its
-            // control plane alive while the player browses Settings, Replays
-            // or the hub itself, otherwise detaching LobbyScreen also stops
-            // the only lobby pump and the session silently times out.
-            _lobbyKeeper = new DispatcherTimer
+            _settings = settings; _rooms = new List<string>(rooms); Focusable = true;
+            _prime = new PrimeShell(CreateWorkspace, OpenVersionManager);
+            _prime.IsVisible = false; _prime.IsEnabled = false;
+            _layers.Children.Add(_prime);
+            _startup = new PrimeStartupScreen();
+            _startup.Continued += ContinueStartup;
+            _layers.Children.Add(_startup);
+            Content = _layers;
+            _prime.Router.CanNavigate = CanNavigate;
+            _prime.Router.Changed += _ => { UpdateReplayBackground(); TryShowUpdatePrompt(); };
+            _prime.BackRequested = () =>
             {
-                Interval = TimeSpan.FromMilliseconds(50)
+                if (_prime.Router.Current == PrimeRoute.Lobby)
+                { _prime.Router.Navigate(PrimeRoute.News); return true; }
+                return false;
             };
-            _lobbyKeeper.Tick += (_, _) => MaintainLobby();
-            AttachedToVisualTree += (_, _) => _lobbyKeeper.Start();
-            DetachedFromVisualTree += (_, _) => _lobbyKeeper.Stop();
-
-            // A release can appear while the launcher has been open for hours.
-            // Poll slowly enough to stay friendly to GitHub's anonymous API,
-            // then react on the UI thread when a genuinely new tag appears.
-            _updateWatcher = new DispatcherTimer
-            {
-                Interval = TimeSpan.FromMinutes(5)
-            };
-            _updateWatcher.Tick += (_, _) => CheckForUpdates();
-            AttachedToVisualTree += (_, _) =>
-            {
-                _updateWatcher.Start();
-                // Also check immediately whenever the launcher comes back from
-                // a detached state, such as returning from a long match.
-                CheckForUpdates();
-            };
-            DetachedFromVisualTree += (_, _) => _updateWatcher.Stop();
-            root.Children.Add(_menu);
-
-            _version = new TextBlock
-            {
-                Text = $"BUILD  //  {VersionNumber()}",
-                FontFamily = HubTheme.Data,
-                FontSize = 8.5,
-                Foreground = HubTheme.TextDimBrush,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                TextTrimming = TextTrimming.CharacterEllipsis
-            };
-            // Build/update state lives in the lower command strip now, opposite
-            // the input hints. Keeping it out of the header stops a utility
-            // detail competing with the Project Prime identity/status block.
-            _versionBox = new Border
-            {
-                Background = HubTheme.PanelBrush,
-                BorderBrush = HubTheme.EdgeBrush,
-                BorderThickness = new Thickness(1),
-                Padding = new Thickness(8, 4),
-                HorizontalAlignment = HorizontalAlignment.Right,
-                VerticalAlignment = VerticalAlignment.Bottom,
-                Margin = new Thickness(0, 0, 24, 10),
-                MaxWidth = 460,
-                Child = _version
-            };
-            _versionBox.Focusable = true;
-            _versionBox.KeyDown += (_, e) =>
-            {
-                if (e.Key == Key.Enter || e.Key == Key.Space)
-                {
-                    e.Handled = true;
-                    OpenVersionManager();
-                }
-            };
-            _versionBox.PointerPressed += (_, e) =>
-            {
-                e.Handled = true;
-                OpenVersionManager();
-            };
-            root.Children.Add(_versionBox);
-            var help = new TextBlock
-            {
-                Foreground = HubTheme.TextDimBrush,
-                FontFamily = HubTheme.DataBold,
-                FontSize = 8.5,
-                VerticalAlignment = VerticalAlignment.Center,
-                HorizontalAlignment = HorizontalAlignment.Left,
-                IsHitTestVisible = false
-            };
-            var helpBox = new Border
-            {
-                Background = HubTheme.PanelBrush,
-                BorderBrush = HubTheme.EdgeBrush,
-                BorderThickness = new Thickness(1),
-                Padding = new Thickness(8, 4),
-                Margin = new Thickness(24, 0, 0, 10),
-                VerticalAlignment = VerticalAlignment.Bottom,
-                HorizontalAlignment = HorizontalAlignment.Left,
-                IsHitTestVisible = false,
-                Child = help
-            };
-
-            var hints = new DispatcherTimer(TimeSpan.FromMilliseconds(250), DispatcherPriority.Background, (_, _) =>
-            {
-                string prompt = Mods.Input.InputSourceTracker.Current == Mods.Input.InputSource.Gamepad
-                    ? $"{Mods.Input.InputPrompt.For(Mods.Input.UiAction.Accept).Glyph}  SELECT"
-                        + $"   //   {Mods.Input.InputPrompt.For(Mods.Input.UiAction.Back).Glyph}  BACK"
-                        + $"   //   {Mods.Input.InputPrompt.For(Mods.Input.UiAction.PreviousTab).Glyph}/{Mods.Input.InputPrompt.For(Mods.Input.UiAction.NextTab).Glyph}  TABS"
-                    : "ENTER  SELECT   //   ESC  BACK";
-                if (prompt != _controllerPrompt) { help.Text = prompt; _controllerPrompt = prompt; }
-            });
-            AttachedToVisualTree += (_, _) => hints.Start();
-            DetachedFromVisualTree += (_, _) => hints.Stop();
-
-            _overlay = new Panel { Background = Brushes.Transparent, IsVisible = false };
-            root.Children.Add(_overlay);
-            root.Children.Add(helpBox);
-            Content = root;
+            _session.IsForeground = () => _prime.Router.Current == PrimeRoute.Lobby;
+            AttachedToVisualTree += (_, _) => _session.Start();
+            DetachedFromVisualTree += (_, _) => _session.Stop();
+            _prime.Start();
 #if ANDROID
             var navigation = new GamepadNavigation();
             var timer = new DispatcherTimer(TimeSpan.FromMilliseconds(16), DispatcherPriority.Input,
@@ -213,596 +64,261 @@ namespace MphRead.Mods.Launcher.Gui
             AttachedToVisualTree += (_, _) => timer.Start();
             DetachedFromVisualTree += (_, _) => timer.Stop();
 #endif
-
-            // The first automatic check runs when this view is attached. That
-            // same hook fires when the launcher returns after a match, so a
-            // release published while playing does not wait for a restart.
+            _updateWatcher = new PrimeUiPulse(TimeSpan.FromMinutes(5), CheckForUpdates);
+            AttachedToVisualTree += (_, _) => { _updateWatcher.Start(); CheckForUpdates(); };
+            DetachedFromVisualTree += (_, _) => _updateWatcher.Stop();
             RefreshVersionLine();
             _ = CatchUpPreviews();
         }
-
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
             base.OnAttachedToVisualTree(e);
-            // A fresh install has nothing to play, so the one thing it needs is
-            // the whole screen rather than one refused entry among three.
-            //
-            // **After the first frame, not during the attachment.** Two things
-            // go wrong when a screen is pushed from inside this method, and
-            // the second is worse than the first.
-            //
-            // A control added to the tree while an ancestor is still being
-            // attached never inherits <see cref="Deck.EmProperty"/> from the
-            // <see cref="DeckStage"/> above it: it is laid out on the
-            // property's own default -- 10.81, which happens to be the
-            // capture's em and is why nothing on the desktop showed it -- and
-            // the panel comes out a column of text a dozen characters wide
-            // with no card behind it.
-            //
-            // And on Android the tree is swapped before the toolkit has put
-            // anything on the glass at all, which leaves a window that never
-            // draws: the compositor does not come back to a control whose
-            // first render drew nothing, so the app sits on the activity's
-            // background colour until some input forces a pass. That is what
-            // "black screen on the first launch, and back gets past it" was,
-            // and a dispatcher turn is not enough for it -- <see
-            // cref="Deck.NextFrame"/> is, because it is the one hook here that
-            // waits for a *frame* rather than for the queue to drain.
-            if (!GameFiles.Ready && _stack.Count == 0)
-            {
-                Deck.NextFrame(this, () =>
-                {
-                    if (!GameFiles.Ready && _stack.Count == 0)
-                    {
-                        OpenSetup();
-                    }
-                });
-            }
+            if (_startup == null) ShowInitialPrompt();
         }
-
-        protected override void OnKeyDown(KeyEventArgs e)
+        private void ContinueStartup()
         {
-            if (e.Key == Key.Escape && _browsingLobbyHome && _lobby != null
-                && _stack.Count > 0 && ReferenceEquals(_stack[^1], _lobby))
+            if (_startup == null) return;
+            _prime.IsVisible = true;
+            _startup.Reveal(() =>
             {
-                ReturnToLobby();
-                e.Handled = true;
-                return;
-            }
-            if (e.Key == Key.Escape && _stack.Count == 0)
-            {
-                AskToQuit();
-                e.Handled = true;
-                return;
-            }
-            base.OnKeyDown(e);
+                var startup = _startup; _startup = null;
+                if (startup != null) { _layers.Children.Remove(startup); startup.Dispose(); }
+                _prime.IsEnabled = true;
+                FocusNavigator.Ensure(_prime);
+                ShowInitialPrompt();
+            });
         }
-
-        /// <summary>
-        /// Come back from a match and be usable again. Android keeps this view
-        /// alive across a match, where the desktop builds a new one each time
-        /// round <see cref="GuiLauncher"/>'s loop.
-        /// </summary>
-        public void Reset()
+        private void ShowInitialPrompt()
         {
-            _lobby?.Suspend();
-            _lobby = null;
-            _browsingLobbyHome = false;
-            _hub.SetLobbyActive(false, 0);
-            _finished = false;
-            Plan = default;
-#if MPHREAD_SHELL
-            // A Map Studio playtest temporarily hides this exact StartScreen.
-            // Keep the editor document and undo stack alive when the match ends.
-            if (_returnToMapStudio)
+            Deck.NextFrame(this, () =>
             {
-                _returnToMapStudio = false;
-                ShowGround(true);
-                LauncherBackdrop.Set(LauncherBackdropScene.MapEditor);
-                RefreshRooms();
-                _hub.RefreshProfile();
-                RefreshVersionLine();
-                return;
-            }
-#endif
-            while (_stack.Count > 0)
-            {
-                Pop();
-            }
-            ShowGround(true);
-            // Android keeps one of these for the life of the app, so this is
-            // where a launch begins there -- the roll behind "Random" is held
-            // for exactly one launch.
-            Hunters.Reroll();
-            LauncherPrefs.Load();
-            RefreshRooms();
-            _hub.RefreshProfile();
-            RefreshVersionLine();
-            if (!GameFiles.Ready)
-            {
-                OpenSetup();
-            }
+                if (_startup != null || TopLevel.GetTopLevel(this) == null) return;
+                if (!GameFiles.Ready && !_prime.Overlays.IsOpen) OpenSetup();
+                else TryShowUpdatePrompt();
+            });
         }
-
-        /// <summary>
-        /// Answer a back gesture: Escape and the phone's back button are the
-        /// same question. True when this screen dealt with it.
-        /// </summary>
-        public bool GoBack()
+        private bool CanNavigate(PrimeRoute route)
         {
-            if (_stack.Count == 0)
+            if (_startup != null) return false;
+            if (_bypassGuard) return true;
+            if (_prime.Overlays.IsOpen) return false;
+            if (route == PrimeRoute.Lobby && _lobby == null) return false;
+            if (route == PrimeRoute.Play && _lobby != null && NetSession.Active)
+            { _prime.Router.Navigate(PrimeRoute.Lobby); return false; }
+            if (_prime.Router.Current == PrimeRoute.Settings
+                && _prime.Workspaces.Get(PrimeRoute.Settings) is SettingsView settings && settings.IsDirty)
             {
+                ShowUnsaved(settings, () => { _bypassGuard = true; _prime.Router.Navigate(route); _bypassGuard = false; });
                 return false;
             }
-            if (_stack[^1] is LobbyScreen lobby)
-            {
-                if (_browsingLobbyHome && ReferenceEquals(lobby, _lobby))
-                    ReturnToLobby();
-                else
-                    lobby.Leave("");
-            }
-            else Pop();
             return true;
         }
+        private Control CreateWorkspace(PrimeRoute route)
+        {
+            switch (route)
+            {
+                case PrimeRoute.News:
+                    return new NewsWorkspace(r => _prime.Router.Navigate(r), _prime.Overlays, quit: AskToQuit);
+                case PrimeRoute.Play:
+                    var play = new PlayWorkspace();
+                    play.Closed += (_, _) => _prime.Back();
+                    play.CreateLobbyRequested += (_, _) => { if (EnsureGameFiles()) OpenCreateServer(); };
+                    play.Launched += (_, plan) => ConnectedOrFinished(plan);
+                    play.Overlays = _prime.Overlays;
+                    play.CanLaunch = CanLaunchLocal;
+                    return play;
+                case PrimeRoute.Settings:
+                    var settings = new SettingsView(_settings, shell: true);
+                    settings.Closed += (_, _) => _prime.Back();
+                    settings.GameFilesRequested += (_, _) => OpenSetup();
+                    return settings;
+                case PrimeRoute.HunterLicense:
+                    var license = new LicenseWorkspace();
+                    license.Closed += (_, _) => _prime.Back();
+                    return license;
+                case PrimeRoute.Theatre:
+                    var theatre = new TheatreWorkspace();
+                    theatre.CanLaunch = CanLaunchLocal;
+                    theatre.EditorChanged += () => UpdateReplayBackground();
+                    theatre.Closed += (_, _) => _prime.Back();
+                    theatre.Launched += (_, plan) => Finish(plan);
+                    return theatre;
+                case PrimeRoute.Offline:
+                    var offline = new OfflineWorkspace(_settings, _rooms, _prime.Overlays);
+                    offline.Launched += (_, plan) => LaunchLocal(plan);
+                    return offline;
+                case PrimeRoute.Forge:
+#if MPHREAD_SHELL
+                    var forge = new MapStudioScreen(_prime.Overlays);
+                    forge.Closed += (_, _) => _prime.Back();
+                    forge.PlayRequested += (_, definition) =>
+                    {
+                        if (!CanLaunchLocal()) return;
+                        _returnToMapStudio = true;
+                        Shell.PrepareStudioPreview(definition);
+                        Finish(new LaunchPlan { Kind = LaunchKind.Offline, RoomKey = definition.Name, IsPlaytest = true,
+                            Hunter = Hunter.Samus, Mode = GameMode.Battle, Bots = 0, BotLevel = 5, PlayerName = "Map author" });
+                    };
+                    return forge;
+#else
+                    return new PrimePanel(PrimeChrome.Stack(PrimeChrome.Title("FORGE"),
+                        PrimeChrome.Text("Map Studio requires the desktop renderer.")));
+#endif
+                case PrimeRoute.Lobby:
+                    return _lobby ?? (Control)new PrimePanel(PrimeChrome.Text("No active lobby."));
+                default: throw new ArgumentOutOfRangeException(nameof(route));
+            }
+        }
+        internal void ShowReplayEditor(Action close, Action fullscreen)
+        {
+            _finished = false;
+            if (_prime.Workspaces.Get(PrimeRoute.Theatre) is TheatreWorkspace theatre)
+                theatre.ShowEditor(close, fullscreen);
+            _prime.Router.Navigate(PrimeRoute.Theatre);
+            UpdateReplayBackground();
+        }
+        private void UpdateReplayBackground()
+        {
+            bool editor = _prime.Router.Current == PrimeRoute.Theatre
+                && _prime.Workspaces.TryGet(PrimeRoute.Theatre) is TheatreWorkspace { EditorActive: true };
+            _prime.Background = editor ? Brushes.Transparent : PrimeTheme.BackgroundBrush;
+        }
 
-        // -------------------------------------------------------------- stack
-
-        /// <summary>
-        /// Take the front screen's own backdrop out of the tree, or put it
-        /// back.
-        ///
-        /// Every screen pushed onto the stack draws an opaque backdrop of its
-        /// own, so what is underneath has never mattered -- except for the one
-        /// screen that deliberately draws none. The pause menu is a scrim and
-        /// nothing else, so on the head that shows it here it was read against
-        /// the front screen's photograph and its moving layer: the main menu's
-        /// background, over a match, with the layer still costing a field and
-        /// a full-window blend thirty times a second behind a menu. The
-        /// desktop never showed it because there the same menu goes into the
-        /// game window through <see cref="InGameMenu"/>, where there is no
-        /// front screen to show through to.
-        ///
-        /// Removed rather than hidden: <see cref="MovingBackdrop"/> stops on
-        /// a detach and IsVisible is not one.
-        /// </summary>
+        private bool EnsureGameFiles()
+        { if (GameFiles.Ready) return true; OpenSetup(); return false; }
+        private bool CanLaunchLocal()
+        {
+            if (DemoPlayback.IsActive)
+            {
+                _prime.Overlays.Show(new PrimePanel(PrimeChrome.Stack(PrimeChrome.Title("REPLAY SESSION ACTIVE"),
+                    PrimeChrome.Text("Return to Theatre and close the current replay before starting another session."),
+                    new PrimeButton("CLOSE", Pop))), PrimeModalSize.Small);
+                return false;
+            }
+            if (NetSession.Active && NetSession.PersistentLobby)
+            {
+                _prime.Overlays.Show(new PrimePanel(PrimeChrome.Stack(PrimeChrome.Title("LOBBY ACTIVE"),
+                    PrimeChrome.Text("Leave your multiplayer lobby before starting local gameplay or replay playback."),
+                    new PrimeButton("RETURN", Pop))), PrimeModalSize.Small);
+                return false;
+            }
+            return EnsureGameFiles();
+        }
+        private void LaunchLocal(LaunchPlan plan) { if (CanLaunchLocal()) Finish(plan); }
+        public void Reset()
+        {
+            if (_prime.Workspaces.TryGet(PrimeRoute.Theatre) is TheatreWorkspace theatre) theatre.CloseEditor();
+            _finished = false; Plan = default; ShowGround(true); _prime.Overlays.Clear();
+            if (_lobby != null && NetSession.Active) { ResumeLobby(); return; }
+            if (_lobby != null) { _session.Screen = null; _lobby = null; _prime.Workspaces.Remove(PrimeRoute.Lobby); _prime.Router.Forget(PrimeRoute.Lobby); }
+            if (_returnToMapStudio) { _returnToMapStudio = false; RefreshRooms(); }
+            Hunters.Reroll(); LauncherPrefs.Load(); RefreshRooms(); _prime.Refresh(); RefreshVersionLine();
+            if (_prime.Router.Current == PrimeRoute.Lobby) _prime.Router.Navigate(PrimeRoute.Play);
+            if (!GameFiles.Ready) OpenSetup();
+        }
+        public bool GoBack() { if (_startup == null) _prime.Back(); return true; }
+        public void Dispose() { _startup?.Dispose(); _startup = null; Content = null; _session.Dispose(); _updateWatcher.Dispose(); _prime.Overlays.Clear(); _prime.Dispose(); }
         private void ShowGround(bool show)
         {
-            if (_groundShown == show)
-            {
-                return;
-            }
-            _groundShown = show;
-            _dark.IsVisible = !show;
-            if (show)
-            {
-                _root.Children.InsertRange(1, _ground);
-                return;
-            }
-            for (int i = 0; i < _ground.Length; i++)
-            {
-                _root.Children.Remove(_ground[i]);
-            }
+            _prime.Header.IsVisible = show; _prime.Footer.IsVisible = show;
+            _prime.Workspaces.IsVisible = show;
+            _prime.Background = show ? PrimeTheme.BackgroundBrush : Brushes.Transparent;
         }
-
-        private void Push(Control view)
-        {
-            _stack.Add(view);
-            _overlay.Children.Clear();
-            _overlay.Children.Add(view);
-            _overlay.IsVisible = true;
-            _menu.IsVisible = false;
-            _versionBox.IsVisible = false;
-            HubMotion.Enter(view);
-            Dispatcher.UIThread.Post(() => view.Focus(), DispatcherPriority.Background);
-        }
-
+        private void Push(Control view) => _prime.Overlays.Show(view);
         private void Pop()
         {
-            if (_stack.Count > 0)
-            {
-                _stack.RemoveAt(_stack.Count - 1);
-            }
-            _overlay.Children.Clear();
-            if (_browsingLobbyHome && _lobby != null && _stack.Count > 0
-                && ReferenceEquals(_stack[^1], _lobby))
-            {
-                ShowHubSurface();
-                return;
-            }
-            ShowTopOrHub();
+            _prime.Overlays.Close();
+            Dispatcher.UIThread.Post(TryShowUpdatePrompt, DispatcherPriority.Background);
         }
-
-        private void ShowTopOrHub()
-        {
-            _overlay.Children.Clear();
-            if (_stack.Count > 0)
-            {
-                Control top = _stack[^1];
-                _overlay.Children.Add(top);
-                _overlay.IsVisible = true;
-                _menu.IsVisible = false;
-                _versionBox.IsVisible = false;
-                HubMotion.Enter(top, lift: -6);
-                Dispatcher.UIThread.Post(() => top.Focus(), DispatcherPriority.Background);
-                return;
-            }
-            ShowHubSurface();
-        }
-
-        private void ShowHubSurface()
-        {
-            _overlay.Children.Clear();
-            _overlay.IsVisible = false;
-            _menu.IsVisible = true;
-            _versionBox.IsVisible = true;
-            ShowGround(true);
-            LauncherBackdrop.Set(LauncherBackdropScene.Home);
-            _hub.SetLobbyActive(_lobby != null && NetSession.Active, LobbyPlayerCount());
-            _hub.RefreshProfile();
-            RefreshVersionLine();
-            TryShowUpdatePrompt();
-            HubMotion.Enter(_hub, lift: -6);
-            Dispatcher.UIThread.Post(() => Focus(), DispatcherPriority.Background);
-        }
-
-        /// <summary>Hand the answer back, once.</summary>
         private void Finish(LaunchPlan plan)
         {
-            if (_finished)
-            {
-                return;
-            }
-            _finished = true;
-            Plan = plan;
-            Done?.Invoke(this, plan);
+            if (_finished) return;
+            _finished = true; Plan = plan; Done?.Invoke(this, plan);
         }
-
-        // ------------------------------------------------------------- screens
-
-        private void NavigateHub(HubDestination destination)
+        internal void OpenMapStudio()
         {
-            // PLAY while a lobby is parked means "go back to the session", not
-            // "open a second networking stack on top of the first one".
-            if (_browsingLobbyHome && _lobby != null && destination == HubDestination.Play)
-            {
-                ReturnToLobby();
-                return;
-            }
-            switch (destination)
-            {
-                case HubDestination.Play:
-                    OpenDeployment();
-                    break;
-                case HubDestination.MapEditor:
-                    OpenMapStudio();
-                    break;
-                case HubDestination.ReplayStudio:
-                    _ = OpenReplayStudio();
-                    break;
-                case HubDestination.HunterLicense:
-                    OpenHunterLicense();
-                    break;
-                case HubDestination.Settings:
-                    _ = OpenSettings();
-                    break;
-                case HubDestination.Quit:
-                    AskToQuit();
-                    break;
-            }
+            // An explicit editor launch bypasses the ordinary startup gate.
+            if (_startup != null) { _layers.Children.Remove(_startup); _startup.Dispose(); _startup = null; }
+            _prime.IsVisible = true; _prime.IsEnabled = true;
+            _prime.Router.Navigate(PrimeRoute.Forge);
         }
-
-        private void OpenDeployment()
-        {
-            if (!GameFiles.Ready)
-            {
-                OpenSetup();
-                return;
-            }
-            var view = new HubPlayView();
-            view.Closed += (_, _) => Pop();
-            view.Selected += destination =>
-            {
-                switch (destination)
-                {
-                    case HubPlayDestination.Multiplayer:
-                        OpenMultiplayer();
-                        break;
-                    case HubPlayDestination.Offline:
-                        OpenOffline();
-                        break;
-                    case HubPlayDestination.Adventure:
-                        OpenAdventure();
-                        break;
-                }
-            };
-            Push(view);
-        }
-
-        private void OpenOffline()
-        {
-            var view = new HubOfflineView(_settings, _rooms);
-            view.Closed += (_, _) => Pop();
-            view.Launched += (_, plan) => Finish(plan);
-            Push(view);
-        }
-
-        private void OpenAdventure()
-        {
-            var view = new HubAdventureView();
-            view.Closed += (_, _) => Pop();
-            view.Launched += (_, plan) => Finish(plan);
-            Push(view);
-        }
-
-        private void OpenMultiplayer()
-        {
-            var view = new HubMultiplayerView();
-            view.Closed += (_, _) => Pop();
-            view.CreateLobbyRequested += (_, _) => OpenCreateServer();
-            view.Launched += (_, plan) => ConnectedOrFinished(plan);
-            Push(view);
-        }
-
-        private Task OpenPlay(PlayScreen.Face face = PlayScreen.Face.Online,
-            bool singleFace = false)
-        {
-            if (!GameFiles.Ready)
-            {
-                OpenSetup();
-                return Task.CompletedTask;
-            }
-            var view = new PlayScreen(_settings, _rooms, face,
-                singleFace: singleFace);
-            view.Closed += (_, _) => Pop();
-            view.Launched += (_, plan) => ConnectedOrFinished(plan);
-            view.CreateRequested += (_, _) => OpenCreateServer();
-            Push(view);
-            return Task.CompletedTask;
-        }
-
-        private Task OpenReplayStudio()
-        {
-            var view = new HubReplayStudioView();
-            view.Closed += (_, _) => Pop();
-            view.Launched += (_, plan) => Finish(plan);
-            Push(view);
-            return Task.CompletedTask;
-        }
-
-        /// <summary>
-        /// Create a custom multiplayer lobby. The screen is pushed over
-        /// whichever Multiplayer surface opened it, so Back returns to the
-        /// player's previous context without duplicating hosting state.
-        /// </summary>
         private void OpenCreateServer()
         {
+            if (NetSession.Active) { _prime.Router.Navigate(PrimeRoute.Lobby); return; }
+            if (!CanLaunchLocal()) return;
             var view = new CreateServerScreen(_rooms, _settings.RoomKey);
             view.Closed += (_, _) => Pop();
             view.Launched += (_, plan) => { Pop(); ConnectedOrFinished(plan); };
-            Push(view);
+            _prime.Overlays.Show(view, cancel: view.RequestBack);
         }
-
         private void ConnectedOrFinished(LaunchPlan plan)
         {
             if (NetSession.Active && NetSession.PersistentLobby)
             {
-                _browsingLobbyHome = false;
-                _lobby = new LobbyScreen(_rooms, plan.Lobby);
-                _lobby.HubRequested += (_, _) => ShowHubFromLobby();
+                _spectateNextMatch = plan.Spectate;
+                _lobby = new LobbyScreen(_rooms, plan.Lobby) { Overlays = _prime.Overlays };
+                _session.Screen = _lobby;
+                _lobby.HubRequested += (_, _) => _prime.Router.Navigate(PrimeRoute.News);
                 _lobby.MatchRequested += (_, match) =>
                 {
-                    ShowLobbyForMatchStart();
-                    MatchRequested?.Invoke(this, match);
+                    // The server's start barrier is not optional navigation. Preserve
+                    // any configuration draft, close sheets and show the countdown.
+                    _prime.Overlays.Clear(); _bypassGuard = true;
+                    _prime.Router.Navigate(PrimeRoute.Lobby); _bypassGuard = false;
+                    MatchRequested?.Invoke(this, match with { Spectate = _spectateNextMatch });
                 };
                 _lobby.Closed += (_, reason) => LobbyClosed(reason);
-                _hub.SetLobbyActive(true, LobbyPlayerCount());
-                Push(_lobby);
+                _prime.Workspaces.Set(PrimeRoute.Lobby, _lobby);
+                _prime.Router.Navigate(PrimeRoute.Lobby); _prime.Refresh();
             }
             else Finish(plan);
         }
-
-        private int LobbyPlayerCount() =>
-            _lobby != null && NetSession.Active ? NetSession.LobbyRoster().Count : 0;
-
-        private bool LobbyIsForeground =>
-            _lobby != null && _overlay.IsVisible && _stack.Count > 0
-                && ReferenceEquals(_stack[^1], _lobby);
-
-        private void MaintainLobby()
-        {
-            if (_lobby == null || _finished || NetSession.IsPlaying) return;
-
-            if (!LobbyIsForeground)
-                _lobby.BackgroundTick();
-            else if (_lobby.IsSuspended && NetSession.IsStarting)
-                _lobby.RefreshStartPresentation();
-
-            if (_lobby != null)
-                _hub.SetLobbyActive(NetSession.Active, LobbyPlayerCount());
-        }
-
-        private void ShowHubFromLobby()
-        {
-            if (_lobby == null || !NetSession.Active) return;
-            _browsingLobbyHome = true;
-            _lobby.Suspend();
-            ShowHubSurface();
-        }
-
-        private void ReturnToLobby()
-        {
-            if (_lobby == null || !_stack.Contains(_lobby)) return;
-            int index = _stack.IndexOf(_lobby);
-            if (index >= 0 && index + 1 < _stack.Count)
-                _stack.RemoveRange(index + 1, _stack.Count - index - 1);
-
-            _browsingLobbyHome = false;
-            _overlay.Children.Clear();
-            _overlay.Children.Add(_lobby);
-            _overlay.IsVisible = true;
-            _menu.IsVisible = false;
-            _versionBox.IsVisible = false;
-            _lobby.Resume();
-            _hub.SetLobbyActive(true, LobbyPlayerCount());
-            HubMotion.Enter(_lobby, lift: -6);
-            Dispatcher.UIThread.Post(() => _lobby?.Focus(), DispatcherPriority.Background);
-        }
-
-        private void ShowLobbyForMatchStart()
-        {
-            if (_lobby == null || !_stack.Contains(_lobby)) return;
-            int index = _stack.IndexOf(_lobby);
-            if (index + 1 < _stack.Count)
-                _stack.RemoveRange(index + 1, _stack.Count - index - 1);
-
-            _browsingLobbyHome = false;
-            _overlay.Children.Clear();
-            _overlay.Children.Add(_lobby);
-            _overlay.IsVisible = true;
-            _menu.IsVisible = false;
-            _versionBox.IsVisible = false;
-            // RequestMatchLoadIfNeeded suspended the lobby timer before raising
-            // the event. Keep it suspended while the synchronous scene build
-            // runs; StartScreen's keeper refreshes the countdown presentation.
-            _hub.SetLobbyActive(true, LobbyPlayerCount());
-        }
-
         private void LobbyClosed(string reason)
         {
-            LobbyScreen? lobby = _lobby;
-            if (lobby == null) return;
-
-            bool wasTop = _stack.Count > 0 && ReferenceEquals(_stack[^1], lobby);
-            bool homeWasVisible = _browsingLobbyHome && !_overlay.IsVisible;
-            _stack.Remove(lobby);
-            _lobby = null;
-            _browsingLobbyHome = false;
-            _hub.SetLobbyActive(false, 0);
-
-            if (wasTop || homeWasVisible)
-                ShowTopOrHub();
-
-            for (int i = _stack.Count - 1; i >= 0; i--)
-            {
-                if (_stack[i] is PlayScreen play)
-                {
-                    play.SessionEnded(reason);
-                    break;
-                }
-                if (_stack[i] is HubMultiplayerView multiplayer)
-                {
-                    multiplayer.SessionEnded(reason);
-                    break;
-                }
-            }
+            _session.Screen = null; _lobby = null;
+            _prime.Overlays.Clear();
+            if (_prime.Router.Current == PrimeRoute.Lobby) _prime.Router.Navigate(PrimeRoute.Play);
+            _prime.Router.Forget(PrimeRoute.Lobby); _prime.Workspaces.Remove(PrimeRoute.Lobby);
+            if (_prime.Workspaces.Get(PrimeRoute.Play) is PlayWorkspace play) play.SessionEnded(reason);
+            _prime.Refresh();
         }
-
-        private Task OpenSettings()
-        {
-            var landing = new HubSettingsView();
-            landing.Closed += (_, _) => Pop();
-            landing.SectionRequested += section => OpenSettingsSection(section);
-            Push(landing);
-            return Task.CompletedTask;
-        }
-
-        private void OpenSettingsSection(string section)
-        {
-            var view = new SettingsView(_settings);
-            view.ShowSection(section);
-            view.Closed += (_, _) => Pop();
-            view.GameFilesRequested += (_, _) =>
-            {
-                Pop();
-                OpenSetup();
-            };
-            Push(view);
-        }
-
-        internal void OpenMapStudio()
-        {
-#if MPHREAD_SHELL
-            var view = new MapStudioScreen();
-            view.Closed += (_, _) =>
-            {
-                Pop();
-                RefreshRooms();
-                LauncherBackdrop.Set(LauncherBackdropScene.Home);
-            };
-            view.PlayRequested += (_, definition) =>
-            {
-                // Browsing the hub must not destroy a persistent lobby, but an
-                // offline editor playtest cannot safely share its network session.
-                if (NetSession.Active && NetSession.PersistentLobby)
-                {
-                    view.ShowStatus("Leave the multiplayer lobby before starting a Map Studio playtest.");
-                    return;
-                }
-                _returnToMapStudio = true;
-                Shell.PrepareStudioPreview(definition);
-                Finish(new LaunchPlan
-                {
-                    Kind = LaunchKind.Offline,
-                    RoomKey = definition.Name,
-                    Hunter = Hunter.Samus,
-                    Mode = GameMode.Battle,
-                    Bots = 0,
-                    BotLevel = 5,
-                    PlayerName = "Map author"
-                });
-            };
-            Push(view);
-#else
-            var view = new HubPlaceholderView(
-                "MAP EDITOR",
-                "DESKTOP TOOL",
-                "Map Studio is available in the desktop Project Prime build.");
-            view.Closed += (_, _) => Pop();
-            Push(view);
-#endif
-        }
-
-        private void OpenHunterLicense()
-        {
-            var view = new HubHunterLicenseView();
-            view.Closed += (_, _) => Pop();
-            Push(view);
-        }
-
         private void OpenSetup()
         {
             var view = new SetupScreen();
-            view.Closed += (_, _) =>
-            {
-                Pop();
-                RefreshRooms();
-            };
+            view.Closed += (_, _) => { Pop(); RefreshRooms(); _prime.Refresh(); };
             Push(view);
         }
-
+        private void ShowUnsaved(SettingsView settings, Action continuation)
+        {
+            _prime.Overlays.Show(new PrimePanel(PrimeChrome.Stack(PrimeChrome.Title("UNSAVED CONFIGURATION"),
+                PrimeChrome.Text("Apply your configuration, discard these edits, or keep editing."),
+                PrimeChrome.Columns("*,*,*", new PrimeButton("APPLY", () => { if (settings.ApplyDraft()) { Pop(); continuation(); } }, true),
+                    new PrimeButton("DISCARD", () => { settings.DiscardDraft(); Pop(); continuation(); }),
+                    new PrimeButton("CANCEL", Pop)))), PrimeModalSize.Medium);
+        }
         private void AskToQuit()
         {
-            var view = new ConfirmScreen("Quit Project Prime?");
+            if (_prime.Workspaces.TryGet(PrimeRoute.Settings) is SettingsView { IsDirty: true } settings)
+            { ShowUnsaved(settings, AskToQuit); return; }
+#if MPHREAD_SHELL
+            var forge = _prime.Workspaces.TryGet(PrimeRoute.Forge) as MapStudioScreen;
+            string prompt = forge?.IsDirty == true
+                ? "Quit Project Prime? Unsaved Forge edits will be kept as a recovery copy."
+                : "Quit Project Prime?";
+#else
+            const string prompt = "Quit Project Prime?";
+#endif
+            var view = new ConfirmScreen(prompt);
             view.Answered += (_, yes) =>
             {
-                Pop();
-                if (yes)
-                {
-                    Finish(default);
-                }
+                Pop(); if (!yes) return;
+#if MPHREAD_SHELL
+                if (forge != null && !forge.SaveRecovery()) { _prime.Router.Navigate(PrimeRoute.Forge); return; }
+#endif
+                Finish(default);
             };
             Push(view);
         }
-
-        /// <summary>
-        /// The pause menu, over a running match.
-        ///
-        /// Android takes this path, where the front screen is the view the
-        /// activity keeps; the desktop pushes the same menu onto
-        /// <see cref="InGameMenu"/> instead, over the frame. Both show the
-        /// same <see cref="PauseMenuView"/>, so the menu cannot drift into
-        /// being two menus.
-        /// </summary>
         public void ShowPauseMenu(Action onResume, Action onLeave, Action onQuit,
             Action? onSpectate = null, Action? onRejoin = null, ScenePlayerRegistry? players = null)
         {
@@ -860,7 +376,7 @@ namespace MphRead.Mods.Launcher.Gui
                 settings.Closed += (_, _) => Pop();
                 Push(settings);
             };
-            Push(view);
+            _prime.Overlays.Show(view, cancel: () => { Pop(); onResume(); });
             view.FocusResume();
         }
 
@@ -972,23 +488,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         private void Say(string text, Color colour, bool pressable = false)
         {
-            _version.Text = text;
-            _version.Foreground = new SolidColorBrush(colour);
-            _version.FontFamily = pressable ? HubTheme.DataBold : HubTheme.Data;
-            _version.FontSize = pressable ? 9 : 8.5;
-            _versionBox.Background = pressable
-                ? HubTheme.AccentPanel(HubTheme.Warm, 68)
-                : HubTheme.PanelBrush;
-            _versionBox.BorderBrush = pressable
-                ? HubTheme.WarmBrush
-                : HubTheme.EdgeBrush;
-            _versionBox.BorderThickness = new Thickness(1);
-            _versionBox.Padding = pressable
-                ? new Thickness(10, 5)
-                : new Thickness(8, 4);
-            // The build chip always opens Version Manager, even when there
-            // is no newer release.
-            _versionBox.Cursor = new Cursor(StandardCursorType.Hand);
+            _prime.Footer.SetStatus(text);
         }
 
         /// <summary>
@@ -1013,7 +513,7 @@ namespace MphRead.Mods.Launcher.Gui
                     HubTheme.Warm, pressable: true);
                 return;
             }
-            Say($"BUILD  //  {number}  //  VERSIONS", BuildVersion.IsRelease && Updater.Checked
+            Say($"SIM: 60 HZ  //  BUILD  //  {number}  //  VERSIONS", BuildVersion.IsRelease && Updater.Checked
                 ? GuiTheme.Good : GuiTheme.TextDim);
         }
 
@@ -1050,7 +550,9 @@ namespace MphRead.Mods.Launcher.Gui
         private void TryShowUpdatePrompt()
         {
             if (_pendingUpdatePrompt is not UpdateInfo update
-                || _stack.Count != 0 || _updating || _loadingVersions
+                || _startup != null || _prime.Overlays.IsOpen || _prime.Router.Current != PrimeRoute.News
+                || !_prime.Header.IsVisible || TopLevel.GetTopLevel(this) == null
+                || NetSession.Active || _updating || _loadingVersions
                 || !GameFiles.Ready)
             {
                 return;
@@ -1096,6 +598,7 @@ namespace MphRead.Mods.Launcher.Gui
                 await Task.Run(() => UpdateCheck.Releases(30));
             string reason = UpdateCheck.LastReason ?? "no releases were found";
             _loadingVersions = false;
+            if (TopLevel.GetTopLevel(this) == null) return;
             if (releases.Count == 0)
             {
                 Say($"BUILD  //  {number}  //  {reason}", HubTheme.Warm);

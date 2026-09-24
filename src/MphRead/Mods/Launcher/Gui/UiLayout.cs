@@ -650,19 +650,6 @@ namespace MphRead.Mods.Launcher.Gui
         /// </summary>
         private static Border CinematicFallback()
         {
-            (Color a, Color b) = LauncherBackdrop.Scene switch
-            {
-                LauncherBackdropScene.Adventure =>
-                    (Color.FromRgb(0x18, 0x23, 0x35), Color.FromRgb(0x07, 0x12, 0x1c)),
-                LauncherBackdropScene.ReplayStudio =>
-                    (Color.FromRgb(0x0b, 0x25, 0x2d), Color.FromRgb(0x05, 0x0b, 0x12)),
-                LauncherBackdropScene.CreateLobby or LauncherBackdropScene.Multiplayer =>
-                    (Color.FromRgb(0x0c, 0x2d, 0x38), Color.FromRgb(0x07, 0x0d, 0x14)),
-                LauncherBackdropScene.MapEditor =>
-                    (Color.FromRgb(0x28, 0x1d, 0x12), Color.FromRgb(0x08, 0x0d, 0x13)),
-                _ =>
-                    (Color.FromRgb(0x10, 0x29, 0x36), Color.FromRgb(0x06, 0x0c, 0x13))
-            };
             return new Border
             {
                 Background = new LinearGradientBrush
@@ -671,9 +658,9 @@ namespace MphRead.Mods.Launcher.Gui
                     EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
                     GradientStops =
                     {
-                        new GradientStop(a, 0),
-                        new GradientStop(Color.FromRgb(0x08, 0x13, 0x1d), 0.48),
-                        new GradientStop(b, 1)
+                        new GradientStop(PrimeTheme.PanelRaised, 0),
+                        new GradientStop(PrimeTheme.Background, 0.48),
+                        new GradientStop(PrimeTheme.BackgroundDeep, 1)
                     }
                 }
             };
@@ -681,17 +668,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         private static Border CinematicTint()
         {
-            Color tint = LauncherBackdrop.Scene switch
-            {
-                LauncherBackdropScene.Adventure => Color.FromArgb(56, 0x58, 0x69, 0x9c),
-                LauncherBackdropScene.ReplayStudio => Color.FromArgb(62, 0x13, 0x79, 0x8d),
-                LauncherBackdropScene.Settings => Color.FromArgb(74, 0x08, 0x18, 0x27),
-                LauncherBackdropScene.MapEditor => Color.FromArgb(62, 0xa2, 0x63, 0x2d),
-                LauncherBackdropScene.CreateLobby => Color.FromArgb(52, 0xe0, 0x99, 0x45),
-                LauncherBackdropScene.Multiplayer => Color.FromArgb(54, 0x29, 0xb5, 0xd4),
-                LauncherBackdropScene.Offline => Color.FromArgb(48, 0x3d, 0x9a, 0x7a),
-                _ => Color.FromArgb(46, 0x26, 0xa8, 0xc9)
-            };
+            Color tint = Color.FromArgb(42, PrimeTheme.Primary.R, PrimeTheme.Primary.G, PrimeTheme.Primary.B);
             return new Border
             {
                 Background = new LinearGradientBrush

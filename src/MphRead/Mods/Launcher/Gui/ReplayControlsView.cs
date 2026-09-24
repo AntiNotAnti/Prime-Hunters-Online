@@ -57,7 +57,7 @@ namespace MphRead.Mods.Launcher.Gui
         private string _message = "";
         private bool _takeControlArmed;
 
-        public ReplayControlsView()
+        public ReplayControlsView(bool shell = false)
         {
             Background = Brushes.Transparent;
             Focusable = true;
@@ -430,7 +430,7 @@ namespace MphRead.Mods.Launcher.Gui
             };
             var back = new UiMark(UiMark.Shape.Cancel, "back");
             back.Click += (_, _) => Closed?.Invoke(this, EventArgs.Empty);
-            Content = UiLayout.Page(overGame: true, UiLayout.WellSettings,
+            Content = shell ? scroll : UiLayout.Page(overGame: true, UiLayout.WellSettings,
                 "replay studio", strip: null, body: scroll, no: back);
 
             _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };

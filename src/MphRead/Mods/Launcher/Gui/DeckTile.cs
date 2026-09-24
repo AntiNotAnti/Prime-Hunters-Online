@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -72,6 +73,7 @@ namespace MphRead.Mods.Launcher.Gui
         public string Verb { get; set; } = "Select";
 
         public string ChosenVerb { get; set; } = "Selected";
+        public bool Tactical { get; set; }
 
         /// <summary>
         /// How many people have picked this map, and whether it is winning.
@@ -264,6 +266,23 @@ namespace MphRead.Mods.Launcher.Gui
             double em = Em;
             double radius = em * 0.55;
             bool hot = _over || (IsFocused && Deck.KeyboardDriving);
+
+            if (Tactical)
+            {
+                var rect = new Rect(1, 1, Math.Max(0, w - 2), Math.Max(0, h - 2));
+                context.FillRectangle(PrimeTheme.PanelBrush, rect);
+                using (context.PushClip(rect))
+                {
+                    if (_ground != null) context.DrawImage(_ground, new Rect(0, 0, w, h));
+                    Info(context, w, h, em);
+                    Badge(context, w, em);
+                }
+                var border = _chosen || Leader ? PrimeTheme.PrimaryBrush
+                    : hot ? PrimeTheme.TextBrush : PrimeTheme.BorderBrush;
+                context.DrawRectangle(null, new Pen(border, hot || _chosen ? 2 : 1), rect);
+                if (_chosen) context.FillRectangle(PrimeTheme.PrimaryBrush, new Rect(1, 1, 4, Math.Max(0, h - 2)));
+                return;
+            }
 
             using (context.PushTransform(
                 Avalonia.Matrix.CreateTranslation(-w / 2, -h / 2)
@@ -660,6 +679,18 @@ namespace MphRead.Mods.Launcher.Gui
         /// </summary>
         private void Info(DrawingContext context, double w, double h, double em)
         {
+            if (Tactical)
+            {
+                var codeText = DeckText.Run(Code.ToUpperInvariant(), new Typeface(PrimeTypography.Data), 11, PrimeTheme.HighlightBrush);
+                context.FillRectangle(PrimeTheme.BackgroundBrush, new Rect(8, 8, Math.Min(w - 16, codeText.Width + 12), 20));
+                context.DrawText(codeText, new Point(14, 11));
+                string label = _chosen ? "SELECTED // " + Blurb : Blurb;
+                var name = DeckText.Run(label.ToUpperInvariant(), new Typeface(PrimeTypography.Label, weight: FontWeight.SemiBold), 16, PrimeTheme.TextBrush);
+                name.MaxTextWidth = Math.Max(1, w - 24); name.MaxLineCount = 2;
+                name.Trimming = TextTrimming.CharacterEllipsis;
+                context.DrawText(name, new Point(12, Math.Max(34, h - name.Height - 12)));
+                return;
+            }
             double pad = Math.Round(em * 0.5);
 
             // `.tag`, with its code in the accent.
@@ -790,7 +821,7 @@ namespace MphRead.Mods.Launcher.Gui
         {
             foreach (Control child in Children)
             {
-                if (child is DeckTile tile && tile.Bounds.Contains(at))
+                if (child is DeckTile tile && tile.IsVisible && tile.IsEnabled && tile.Bounds.Contains(at))
                 {
                     return tile;
                 }
@@ -902,13 +933,14 @@ namespace MphRead.Mods.Launcher.Gui
                 }
                 child.Measure(slot);
             }
-            int rows = (Children.Count + columns - 1) / columns;
+            int rows = (Children.Count(c => c.IsVisible) + columns - 1) / columns;
             return new Size(width, rows * high + Math.Max(0, rows - 1) * gap);
         }
 
         public bool HandleKey(Key key)
         {
-            if (Children.Count == 0) return false;
+            var visible = Children.Where(c => c.IsVisible && c.IsEnabled).ToArray();
+            if (visible.Length == 0) return false;
             int step = key switch
             {
                 Key.Left => -1,
@@ -920,17 +952,17 @@ namespace MphRead.Mods.Launcher.Gui
             if (step == 0) return false;
 
             int at = -1;
-            for (int i = 0; i < Children.Count; i++)
+            for (int i = 0; i < visible.Length; i++)
             {
-                if (Children[i].IsFocused)
+                if (visible[i].IsFocused)
                 {
                     at = i;
                     break;
                 }
             }
-            int next = at < 0 ? 0 : Math.Clamp(at + step, 0, Children.Count - 1);
-            Children[next].Focus();
-            Children[next].BringIntoView();
+            int next = at < 0 ? 0 : Math.Clamp(at + step, 0, visible.Length - 1);
+            visible[next].Focus();
+            visible[next].BringIntoView();
             return true;
         }
 
@@ -940,11 +972,13 @@ namespace MphRead.Mods.Launcher.Gui
             double gap = Gap;
             double cell = Math.Max(1, (finalSize.Width - gap * (columns - 1)) / columns);
             double high = Math.Round(cell / Math.Max(0.1, Ratio));
-            for (int i = 0; i < Children.Count; i++)
+            int slotIndex = 0;
+            foreach (Control child in Children)
             {
-                int row = i / columns, column = i % columns;
-                Children[i].Arrange(new Rect(
-                    column * (cell + gap), row * (high + gap), cell, high));
+                if (!child.IsVisible) continue;
+                int row = slotIndex / columns, column = slotIndex % columns;
+                child.Arrange(new Rect(column * (cell + gap), row * (high + gap), cell, high));
+                slotIndex++;
             }
             return finalSize;
         }

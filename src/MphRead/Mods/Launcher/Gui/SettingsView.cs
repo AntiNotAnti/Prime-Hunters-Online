@@ -41,12 +41,29 @@ namespace MphRead.Mods.Launcher.Gui
     {
         private readonly MenuSettings _settings;
         private readonly bool _inGame;
+        private readonly bool _shell;
+        private SettingsDraft? _draft;
+        public bool IsDirty => _draft?.IsDirty == true;
+        internal void TrackControllerDraft() => _draft?.TrackController();
+        public bool ApplyDraft()
+        {
+            try { Commit(); _saveError.IsVisible = false; return true; }
+            catch (Exception ex) { _saveError.Text = "Could not save: " + ex.Message; _saveError.IsVisible = true; return false; }
+        }
+        public void DiscardDraft()
+        {
+            _draft?.Discard();
+            RenderOptions.FieldOfView = RenderOptions.ParseFov(_settings.FieldOfView, RenderOptions.DefaultFov);
+            _gamepadSettings.Reload();
+            InvalidateVisual();
+        }
         private readonly ScenePlayerRegistry? _players;
 
         private readonly Panel _pages = new();
         private readonly List<(string Name, Control Page)> _sections = new();
         private UiTabs _tabs = null!;
         private readonly List<HubNavButton> _sectionNav = new();
+        private readonly List<PrimeTabButton> _categoryTabs = new();
         private StackPanel _sectionNavStack = null!;
         private ScrollViewer _sectionNavScroll = null!;
         private Border _sectionNavHost = null!;
@@ -209,8 +226,9 @@ namespace MphRead.Mods.Launcher.Gui
         /// <summary>True when this was opened over a match rather than the launcher.</summary>
         public bool InGame => _inGame;
 
-        public SettingsView(MenuSettings settings, bool inGame = false, ScenePlayerRegistry? players = null)
+        public SettingsView(MenuSettings settings, bool inGame = false, ScenePlayerRegistry? players = null, bool shell = false)
         {
+            _shell = shell;
             _settings = settings;
             _inGame = inGame;
             _players = players;
@@ -310,9 +328,9 @@ namespace MphRead.Mods.Launcher.Gui
                 ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
                 ColumnSpacing = 10
             };
-            var back = new HubNavButton("BACK", compact: true);
+            var back = new HubNavButton(shell ? "DISCARD" : "BACK", compact: true);
             ControllerNav.Identify(back, "settings.detail.back");
-            back.Click += (_, _) => Close();
+            back.Click += (_, _) => { if (_shell) DiscardDraft(); else Close(); };
             footer.Children.Add(back);
 
             _saveError = new Note("", HubTheme.Warm)
@@ -324,8 +342,7 @@ namespace MphRead.Mods.Launcher.Gui
             Grid.SetColumn(_saveError, 1);
             footer.Children.Add(_saveError);
 
-            var save = new HubNavButton(inGame ? "APPLY" : "SAVE",
-                primary: true, compact: true);
+            var save = new PrimeButton(shell ? "APPLY CHANGES" : inGame ? "APPLY" : "SAVE", primary: true);
             ControllerNav.Identify(save, "settings.detail.save");
             save.Click += (_, _) => TryCommit();
             Grid.SetColumn(save, 2);
@@ -333,9 +350,50 @@ namespace MphRead.Mods.Launcher.Gui
             Grid.SetRow(footer, 2);
             contentRoot.Children.Add(footer);
 
-            Panel backdrop = UiLayout.Backdrop(inGame);
-            backdrop.Children.Add(contentRoot);
-            Content = backdrop;
+            if (shell)
+            {
+                // Same settings controls and persistence, arranged inside the shell.
+                contentRoot.RowDefinitions = new("Auto,Auto,*");
+                Grid.SetRow(_settingsBody, 2);
+                contentRoot.Children.Remove(footer);
+                var tabs = new Grid { ColumnSpacing = 4 };
+                for (int i = 0; i < _sections.Count; i++)
+                {
+                    int index = i;
+                    tabs.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+                    var tab = new PrimeTabButton(_sections[i].Name.ToUpperInvariant(), () =>
+                    { _tabs.Index = index; ShowPage(index); });
+                    Grid.SetColumn(tab, i); tabs.Children.Add(tab); _categoryTabs.Add(tab);
+                }
+                Grid.SetRow(tabs, 1); contentRoot.Children.Add(tabs);
+                _settingsBody.ColumnDefinitions = new("240,*,320");
+                var calibration = new PrimeFovPreview(() => _fovRow.Value);
+                _fovRow.ValueChanged += (_, _) => calibration.InvalidateVisual();
+                var diagnostics = PrimeChrome.Stack(new PrimeBadge("CALIBRATION VIEWPORT"), calibration,
+                    PrimeChrome.Text("HARDWARE DIAGNOSTICS", 12, PrimeTheme.HighlightBrush, true),
+                    PrimeChrome.Text($"PLATFORM // {System.Runtime.InteropServices.RuntimeInformation.OSDescription}\n"
+                        + $"PROCESS // {System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture}\n"
+                        + $"LOGICAL CORES // {Environment.ProcessorCount}\nSIMULATION // 60 HZ", 11, data: true));
+                footer.Children.Clear();
+                var command = PrimeChrome.Stack(save, back, _saveError);
+                var right = new Grid { RowDefinitions = new("*,Auto"), RowSpacing = 12 };
+                right.Children.Add(new PrimePanel(diagnostics));
+                var commandPanel = new PrimePanel(command);
+                Grid.SetRow(commandPanel, 1); right.Children.Add(commandPanel);
+                Grid.SetColumn(right, 2); _settingsBody.Children.Add(right);
+                foreach (var (name, i) in _sections.Select((s, i) => (s.Name, i)))
+                {
+                    _sectionNav[i].MinHeight = 54;
+                    _sectionNav[i].Label = $"{i + 1:00} // {name.ToUpperInvariant()}";
+                }
+                Content = contentRoot;
+            }
+            else
+            {
+                Panel backdrop = UiLayout.Backdrop(inGame);
+                backdrop.Children.Add(contentRoot); Content = backdrop;
+            }
+            if (shell) _draft = new SettingsDraft(_pages);
             SizeChanged += (_, e) => ApplyShellResponsive(e.NewSize);
             ShowPage(0);
             ApplyShellResponsive(new Size(960, 600));
@@ -385,6 +443,7 @@ namespace MphRead.Mods.Launcher.Gui
         /// </summary>
         private void Close()
         {
+            if (_shell) { Closed?.Invoke(this, EventArgs.Empty); return; }
             if (!Saved)
             {
                 RenderOptions.FieldOfView = RenderOptions.ParseFov(_settings.FieldOfView,
@@ -452,6 +511,7 @@ namespace MphRead.Mods.Launcher.Gui
                     _sectionNav[i].Selected = i == index;
                 }
             }
+            for (int i = 0; i < _categoryTabs.Count; i++) _categoryTabs[i].Selected = i == index;
             if (_sectionTitle != null)
             {
                 string name = _sections[index].Name;
@@ -514,6 +574,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         private void ApplyShellResponsive(Size size)
         {
+            if (_shell) return;
             bool compact = size.Width < 760 || size.Height < 500;
             if (compact == _compactShell)
             {
@@ -1745,7 +1806,8 @@ namespace MphRead.Mods.Launcher.Gui
             // opens from the pause menu.
             Mods.GameSettings.Apply(_settings);
             Saved = true;
-            Close();
+            _draft?.Accept();
+            if (!_shell) Close();
         }
     }
 }

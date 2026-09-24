@@ -1,3 +1,4 @@
+using Avalonia.LogicalTree;
 using System;
 using System.Linq;
 using Avalonia.Controls;
@@ -33,6 +34,7 @@ namespace MphRead.Mods.Launcher.Gui
         }
         public void Reload()
         {
+            this.GetLogicalAncestors().OfType<SettingsView>().FirstOrDefault()?.TrackControllerDraft();
             var focused = FocusNavigator.Focused(this);
             string? focusedId = focused?.GetValue(ControllerNav.NavIdProperty);
             Children.Clear(); _deviceList = ""; _devices = null; _presetRow = null;

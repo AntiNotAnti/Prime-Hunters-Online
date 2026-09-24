@@ -22,22 +22,22 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 Text = path,
                 FontFamily = HubTheme.DataBold,
-                FontSize = 8.5,
+                FontSize = PrimeTypography.DataSmall,
                 Foreground = HubTheme.AccentBrush
             });
             copy.Children.Add(new TextBlock
             {
                 Text = title,
-                FontFamily = HubTheme.Ui,
+                FontFamily = PrimeTypography.Display,
                 FontWeight = FontWeight.Bold,
-                FontSize = 27,
+                FontSize = PrimeTypography.DisplayMedium,
                 Foreground = HubTheme.TextBrush
             });
             copy.Children.Add(new TextBlock
             {
                 Text = subtitle,
                 FontFamily = HubTheme.Ui,
-                FontSize = 10.5,
+                FontSize = PrimeTypography.BodySmall,
                 Foreground = HubTheme.TextDimBrush,
                 TextWrapping = TextWrapping.Wrap
             });
@@ -56,7 +56,7 @@ namespace MphRead.Mods.Launcher.Gui
                     {
                         Text = status,
                         FontFamily = HubTheme.DataBold,
-                        FontSize = 8,
+                        FontSize = PrimeTypography.Micro,
                         Foreground = statusBrush ?? HubTheme.TextDimBrush
                     }
                 };
@@ -78,7 +78,7 @@ namespace MphRead.Mods.Launcher.Gui
         {
             Text = text,
             FontFamily = HubTheme.DataBold,
-            FontSize = 8,
+            FontSize = PrimeTypography.Micro,
             Foreground = brush ?? HubTheme.AccentBrush
         };
     }

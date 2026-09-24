@@ -210,6 +210,20 @@ jobs:
           xvfb-run -a --server-args="-screen 0 1280x800x24" \
             publish/${{ matrix.id }}/ProjectPrime -uishot "$RUNNER_TEMP/uishot"
 
+      - name: persistent shell navigation and responsive layouts
+        if: matrix.id == 'linux-x64'
+        run: >
+          xvfb-run -a --server-args="-screen 0 1920x1080x24"
+          publish/${{ matrix.id }}/ProjectPrime -primeuicheck -shots "$RUNNER_TEMP/prime-shell"
+
+      - name: persistent shell captures
+        if: matrix.id == 'linux-x64' && always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: prime-shell-layouts
+          path: ${{ runner.temp }}/prime-shell
+          if-no-files-found: warn
+
       - name: the headless UI layouts
         if: matrix.id == 'linux-x64' && always()
         uses: actions/upload-artifact@v7

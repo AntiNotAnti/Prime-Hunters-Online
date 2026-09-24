@@ -47,6 +47,14 @@ namespace MphRead.Mods.Launcher.Gui
             Changed?.Invoke();
             Control? root = _keyboard?.NavigationRoot ?? _root;
             if (root == null) return;
+            var startup = root.GetVisualDescendants().OfType<PrimeStartupScreen>()
+                .FirstOrDefault(s => s.IsEffectivelyVisible);
+            if (startup != null)
+            {
+                if (action == UiAction.Accept || (action == UiAction.Back
+                    && GamepadManager.Snapshot.State.Down(GamepadButtons.Start))) startup.Continue();
+                return;
+            }
             var focused = FocusNavigator.Ensure(root);
             if (focused == null) return;
             if (action == UiAction.Accept && focused is KeyRow keyboardRow)
@@ -61,6 +69,8 @@ namespace MphRead.Mods.Launcher.Gui
             if (action == UiAction.Back && _keyboard != null) { _keyboard.Close(false); return; }
             if (action == UiAction.PreviousTab || action == UiAction.NextTab)
             {
+                var shell = root as PrimeShell ?? root.GetVisualDescendants().OfType<PrimeShell>().FirstOrDefault();
+                if (shell != null) { shell.SwitchTab(action == UiAction.NextTab); return; }
                 var tabs = root.GetVisualDescendants().OfType<UiTabs>().FirstOrDefault(t => t.IsEffectivelyVisible);
                 if (tabs != null) { tabs.Index += action == UiAction.NextTab ? 1 : -1; FocusNavigator.Ensure(root); }
                 return;

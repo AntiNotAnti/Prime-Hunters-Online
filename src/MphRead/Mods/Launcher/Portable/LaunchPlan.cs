@@ -83,6 +83,9 @@ namespace MphRead.Mods.Launcher
     {
         public LaunchKind Kind { get; init; }
         public LobbyContext? Lobby { get; init; }
+        // Enter the existing spectator camera after the joined match has loaded.
+        public bool Spectate { get; init; }
+        public bool IsPlaytest { get; init; }
 
         /// <summary>
         /// The hunter to play, already rolled if the player asked for a random

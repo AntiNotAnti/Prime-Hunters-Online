@@ -13,33 +13,9 @@ using MphRead.Mods.Network;
 namespace MphRead.Mods.Launcher.Gui
 {
     /// <summary>
-    /// What the results screen asks: where next, and who you are coming back
-    /// as. The reference's <c>.endside</c>.
-    ///
-    /// <para>
-    /// <b>The scoreboard is not in here and must not be.</b> The engine draws
-    /// the results itself and that stays the game's screen -- plain rows in
-    /// the HUD's own idiom, no cards, no lips, no radius. A scoreboard is not
-    /// a place to put a theme, and the reference says so in as many words.
-    /// What this panel is for is the part the theme *should* touch: the
-    /// ballot and the hunter picker, which used to be drawn in the HUD as a
-    /// column of arrows and swatches beside a 32x32 sprite.
-    /// </para>
-    ///
-    /// <para>
-    /// A panel down the right, over the match, the way the pause menu already
-    /// is: `top: .9em; right: .9em; bottom: .9em; width: 22em`. Two faces on a
-    /// strip -- the map ballot and the hunter -- because they are two
-    /// questions asked at the same moment and neither is worth half a panel.
-    /// </para>
-    ///
-    /// <para>
-    /// It decides nothing itself. Every press goes to the same places the
-    /// HUD's own picker went: <see cref="MapPick.Choose"/> and
-    /// <see cref="Mods.EndScreen.Pick"/>. The server owns the rotation
-    /// and the respawn, and a second opinion held in a menu is how two screens
-    /// come to disagree about what you picked.
-    /// </para>
+    /// Tactical arena selection over the engine scoreboard. Network matches
+    /// retain the existing ballot; local bot matches keep their configuration
+    /// and repeat the current arena unless the player selects another one.
     /// </summary>
     internal sealed class EndPanelView : UserControl
     {
@@ -52,6 +28,9 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly ChoiceRow _hunter;
         private readonly ChoiceRow _suit;
         private readonly Note _count = new("");
+        private readonly TextBlock _next = PrimeChrome.Text("CURRENT ARENA // REMATCH", PrimeTypography.DataSmall,
+            PrimeTheme.HighlightBrush, data: true);
+        private readonly TextBox _search = new() { PlaceholderText = "Search arenas" };
 
         /// <summary>What the ballot face says before the server has sent one.</summary>
         private readonly Note _empty = new("The rotation decides where next.")
@@ -84,6 +63,7 @@ namespace MphRead.Mods.Launcher.Gui
                     ? new[] { "Change hunter" }
                     : new[] { "Results" }));
             _tabs.Changed += (_, _) => ShowFace();
+            _tabs.IsVisible = Mods.EndScreen.CharacterChangeEnabled;
 
             _ballotScroll = new ScrollViewer
             {
@@ -118,42 +98,31 @@ namespace MphRead.Mods.Launcher.Gui
             body.Children.Add(_empty);
             body.Children.Add(_hunterPane);
 
-            var foot = new Grid();
-            _count.VerticalAlignment = VerticalAlignment.Center;
-            foot.Children.Add(_count);
+            var start = new PrimeButton("START NEXT MATCH", () => OfflineRematch.Continue(), primary: true)
+            { IsVisible = !NetSession.Active };
+            start.SetValue(ControllerNav.NavIdProperty, "results.next");
+            var foot = PrimeChrome.Stack(_next, _count, start,
+                PrimeChrome.Text("ESC / PAUSE  //  LEAVE MATCH", PrimeTypography.DataSmall, PrimeTheme.TextSecondaryBrush, data: true));
+            _search.TextChanged += (_, _) => FilterMaps();
+            var heading = PrimeChrome.Stack(new PrimeBadge("POST-MATCH DEPLOYMENT"),
+                PrimeChrome.Title("NEXT ARENA"), _tabs, _search);
 
             var stack = new Grid
             {
                 RowDefinitions = new RowDefinitions("Auto,*,Auto"),
                 RowSpacing = 8
             };
-            Grid.SetRow(_tabs, 0);
-            stack.Children.Add(_tabs);
+            stack.Children.Add(heading);
             Grid.SetRow(body, 1);
             stack.Children.Add(body);
             Grid.SetRow(foot, 2);
             stack.Children.Add(foot);
 
-            // `.endside`: down the right, inset by .9em, 22 ems wide. Not the
-            // page layout every other screen uses -- this one shares the frame
-            // with a scoreboard it must not cover.
-            var card = new DeckCard
-            {
-                Child = stack,
-                MaxWidthEms = 22,
-                Fill = true,
-                VerticalAlignment = VerticalAlignment.Stretch
-            };
             var root = new Panel();
             var host = new Border
             {
-                Child = card,
-                // Narrower on a phone. It is the same 340 points either way
-                // and the frame is not: a phone lays these screens out in a
-                // box about 830 points across against a desktop's eleven
-                // hundred, so the same panel takes 41% of the width there and
-                // 31% here -- and the difference is exactly the scoreboard's
-                // deaths column, which it must not cover.
+                Child = new PrimePanel(stack),
+                // Preserve the original scoreboard's deaths-column clearance.
                 Width = Deck.Phone ? 285 : 340,
                 HorizontalAlignment = HorizontalAlignment.Right,
                 VerticalAlignment = VerticalAlignment.Stretch,
@@ -173,6 +142,15 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 _tabs.Index = _hasBallot ? 1 : 0;
             }
+        }
+
+        private void FilterMaps()
+        {
+            string query = _search.Text?.Trim() ?? "";
+            foreach (Control child in _ballot.Children)
+                if (child is DeckTile tile)
+                    tile.IsVisible = tile.RoomKey.Contains(query, StringComparison.OrdinalIgnoreCase)
+                        || tile.Blurb.Contains(query, StringComparison.OrdinalIgnoreCase);
         }
 
         private int HunterIndex() =>
@@ -260,6 +238,7 @@ namespace MphRead.Mods.Launcher.Gui
                     var tile = new DeckTile(room, code)
                     {
                         Blurb = MapPick.NameOf(room),
+                        Tactical = true,
                         // No slab: the whole card is the button, and on a
                         // ballot of 27 it was a third of every one of them.
                         Verb = "",
@@ -273,6 +252,7 @@ namespace MphRead.Mods.Launcher.Gui
                     };
                     _ballot.Children.Add(tile);
                 }
+                FilterMaps();
             }
             bool showingBallot = _hasBallot
                 && (!Mods.EndScreen.CharacterChangeEnabled || _tabs.Index == 0);
@@ -290,14 +270,15 @@ namespace MphRead.Mods.Launcher.Gui
                     continue;
                 }
                 int votes = MapPick.VotesFor(tile.RoomKey);
+                int tally = NetSession.Active ? votes : -1;
                 bool leader = best > 0 && votes == best;
                 // Only when one of them moved. This runs ten times a second
                 // off TickEndPanel, and an invalidation here re-rasterises
                 // the whole window and re-uploads it: unconditionally, that
                 // was half the frame rate for as long as the panel was up.
-                if (tile.Tally != votes || tile.Leader != leader)
+                if (tile.Tally != tally || tile.Leader != leader)
                 {
-                    tile.Tally = votes;
+                    tile.Tally = tally;
                     tile.Leader = leader;
                     tile.InvalidateVisual();
                 }
@@ -320,9 +301,12 @@ namespace MphRead.Mods.Launcher.Gui
                 _stand.Suit = wantSuit;
             }
 
-            _count.Text = _hasBallot && MapPick.Eligible > 1
-                ? $"{MapPick.Eligible} in the room"
-                : "";
+            string next = MapPick.Picked;
+            _next.Text = next.Length > 0 ? "SELECTED // " + MapPick.NameOf(next).ToUpperInvariant()
+                : NetSession.Active ? "NEXT // " + Mods.EndScreen.NextRoomName.ToUpperInvariant() : "CURRENT ARENA // REMATCH";
+            _count.Text = GameState.MatchState == MatchState.Ending
+                ? $"DEPLOYING IN {Math.Max(0, Math.Ceiling(GameState.MatchTime)):0} SEC"
+                : "RESULTS // CHOOSE YOUR NEXT ARENA";
         }
     }
 }

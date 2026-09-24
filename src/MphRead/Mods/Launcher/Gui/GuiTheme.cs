@@ -10,7 +10,7 @@ namespace MphRead.Mods.Launcher.Gui
     /// <summary>
     /// Shared launcher palette and typography.
     ///
-    /// The FPS-hub direction uses cold dark panels, cyan focus/selection,
+    /// The FPS-hub direction uses cold dark panels, blue focus/selection,
     /// restrained semantic status colours and Inter as the player-facing UI
     /// face. JetBrains Mono is reserved for technical data. Older deck controls
     /// still consume these tokens while their layouts are migrated, which is
@@ -18,24 +18,24 @@ namespace MphRead.Mods.Launcher.Gui
     /// </summary>
     internal static class GuiTheme
     {
-        public static readonly Color Ink = Color.FromRgb(7, 13, 20);
-        public static readonly Color Panel = Color.FromRgb(13, 23, 34);
-        public static readonly Color PanelLight = Color.FromRgb(18, 34, 49);
-        public static readonly Color Edge = Color.FromRgb(45, 67, 87);
+        public static readonly Color Ink = PrimeTheme.Background;
+        public static readonly Color Panel = PrimeTheme.Panel;
+        public static readonly Color PanelLight = PrimeTheme.PanelRaised;
+        public static readonly Color Edge = PrimeTheme.Border;
         /// <summary>Under Panel: the well a row or a card sits in.</summary>
-        public static readonly Color PanelDeep = Color.FromRgb(8, 17, 26);
-        public static readonly Color Text = Color.FromRgb(237, 247, 255);
-        public static readonly Color TextDim = Color.FromRgb(138, 160, 179);
+        public static readonly Color PanelDeep = PrimeTheme.BackgroundDeep;
+        public static readonly Color Text = PrimeTheme.Text;
+        public static readonly Color TextDim = PrimeTheme.TextSecondary;
         /// <summary>The primary focus/selection colour across hub and migrated screens.</summary>
-        public static readonly Color Accent = Color.FromRgb(98, 217, 255);
-        public static readonly Color Warm = Color.FromRgb(240, 174, 85);
+        public static readonly Color Accent = PrimeTheme.Primary;
+        public static readonly Color Warm = PrimeTheme.Warning;
         // The deck palette's, not the old neon pair: #6ee787 and #ff6b6b were
         // chosen against a flat dark panel and buzz on this one, which is two
         // stops down and forty points less saturated. A ping column is where
         // that showed -- three rows of vivid green over a map render.
-        public static readonly Color Good = Color.FromRgb(0x75, 0xd6, 0x9d);
-        public static readonly Color Warn = Color.FromRgb(0xf0, 0xae, 0x55);
-        public static readonly Color Bad = Color.FromRgb(0xdb, 0x6b, 0x74);
+        public static readonly Color Good = PrimeTheme.Green;
+        public static readonly Color Warn = PrimeTheme.Warning;
+        public static readonly Color Bad = PrimeTheme.Danger;
 
         public static readonly IBrush InkBrush = new SolidColorBrush(Ink);
         public static readonly IBrush PanelBrush = new SolidColorBrush(Panel);
@@ -73,7 +73,7 @@ namespace MphRead.Mods.Launcher.Gui
         /// </summary>
         public static readonly FontFamily Interface = new("fonts:Inter#Inter");
 
-        public static FontFamily Display => Interface;
+        public static FontFamily Display => PrimeTypography.Display;
 
         /// <summary>
         /// Roboto Bold remains for a handful of legacy prose/credit call sites.
@@ -81,23 +81,6 @@ namespace MphRead.Mods.Launcher.Gui
         /// </summary>
         public static readonly FontFamily Prose =
             new("avares://ProjectPrime/Assets/Fonts/Roboto-Bold.ttf#Roboto");
-
-        /// <summary>
-        /// Legacy Pixelify asset retained while old wordmark/deck code is
-        /// retired. It is no longer the launcher display role.
-        /// </summary>
-        public static readonly FontFamily Pixel =
-            new("avares://ProjectPrime/Assets/Fonts/PixelifySans-Regular.ttf#Pixelify Sans");
-
-        /// <summary>
-        /// Legacy static Pixelify weights. Kept only until the remaining
-        /// Pixelify-specific controls/assets are removed.
-        /// </summary>
-        public static readonly FontFamily PixelSemi =
-            new("avares://ProjectPrime/Assets/Fonts/PixelifySans-SemiBold.ttf#Pixelify Sans");
-
-        public static readonly FontFamily PixelBold =
-            new("avares://ProjectPrime/Assets/Fonts/PixelifySans-Bold.ttf#Pixelify Sans");
 
         /// <summary>
         /// Legacy Pixelify grid helper. New Inter text must not use it.

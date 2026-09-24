@@ -23,7 +23,7 @@ namespace MphRead.Mods.Launcher.Gui
     /// Playback/editor state remains in DemoPlayback/ReplayStudio. This view
     /// only owns library presentation and file-management actions.
     /// </summary>
-    internal sealed class HubReplayStudioView : UserControl
+    internal sealed class TheatreWorkspace : UserControl, IDisposable
     {
         private readonly UiList _list = new() { AutoSelectFirst = true };
         private readonly TextBlock _title;
@@ -51,7 +51,6 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly Dictionary<string, ReplayVirtualClipDocument> _virtual =
             new(StringComparer.OrdinalIgnoreCase);
         private readonly List<ReplayLibraryEntry> _entries = new();
-        private readonly DispatcherTimer _previewTimer;
 
         private Bitmap? _bitmap;
         private string[] _previewPaths = Array.Empty<string>();
@@ -76,14 +75,40 @@ namespace MphRead.Mods.Launcher.Gui
             string SearchText);
 
         public event EventHandler? Closed;
+        public Func<bool>? CanLaunch { get; set; }
+        private Control? _libraryRoot;
+        public bool EditorActive { get; private set; }
+        public event Action? EditorChanged;
+        public void ShowEditor(Action close, Action fullscreen)
+        {
+            if (EditorActive) return;
+            _libraryRoot = Content as Control;
+            EditorActive = true;
+            var editor = new ReplayControlsView(shell: true);
+            editor.Closed += (_, _) => close();
+            editor.ResumeRequested += (_, _) => fullscreen();
+            var viewport = new Grid { RowDefinitions = new("Auto,*,Auto") };
+            viewport.Children.Add(new PrimeBadge("REPLAY VIEWPORT // CINEMATIC EDITOR"));
+            var actions = PrimeChrome.Columns("*,*", new PrimeButton("BACK TO ARCHIVE", close),
+                new PrimeButton("FULLSCREEN PLAYBACK", fullscreen));
+            Grid.SetRow(actions, 2); viewport.Children.Add(actions);
+            Content = PrimeChrome.Columns("1.7*,1*", viewport, new PrimePanel(editor));
+            EditorChanged?.Invoke();
+        }
+        public void CloseEditor()
+        {
+            if (!EditorActive) return;
+            EditorActive = false; Content = _libraryRoot; _libraryRoot = null;
+            EditorChanged?.Invoke();
+        }
         public event EventHandler<LaunchPlan>? Launched;
 
-        public HubReplayStudioView()
+        public TheatreWorkspace(bool manageStorage = true)
         {
             Focusable = true;
             Background = Brushes.Transparent;
 
-            ApplyStoragePolicy();
+            if (manageStorage) ApplyStoragePolicy();
 
             var root = new Grid
             {
@@ -118,17 +143,6 @@ namespace MphRead.Mods.Launcher.Gui
             _filter.Changed += (_, _) => Populate(_selected);
             _sort.Changed += (_, _) => Populate(_selected);
 
-            _previewTimer = new DispatcherTimer
-            {
-                Interval = TimeSpan.FromMilliseconds(1100)
-            };
-            _previewTimer.Tick += (_, _) =>
-            {
-                if (_previewPaths.Length <= 1)
-                    return;
-                _previewIndex = (_previewIndex + 1) % _previewPaths.Length;
-                ShowPreview();
-            };
 
             _list.SelectionChanged += (_, row) =>
             {
@@ -190,7 +204,7 @@ namespace MphRead.Mods.Launcher.Gui
             _title = new TextBlock
             {
                 Text = "NO REPLAY SELECTED",
-                FontFamily = HubTheme.Ui,
+                FontFamily = PrimeTypography.Display,
                 FontWeight = FontWeight.Bold,
                 FontSize = 19,
                 Foreground = HubTheme.TextBrush,
@@ -271,25 +285,20 @@ namespace MphRead.Mods.Launcher.Gui
                 Child = detailStack
             };
 
-            var body = new Grid
-            {
-                ColumnDefinitions = new ColumnDefinitions("1.12*,0.88*"),
-                ColumnSpacing = 12
-            };
-            body.Children.Add(listPanel);
-            Grid.SetColumn(detailPanel, 1);
-            body.Children.Add(detailPanel);
-
-            var scroll = new ScrollViewer
-            {
-                Content = body,
-                HorizontalScrollBarVisibility =
-                    Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
-                VerticalScrollBarVisibility =
-                    Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
-            };
-            Grid.SetRow(scroll, 1);
-            root.Children.Add(scroll);
+            detailStack.Children.Remove(_title); detailStack.Children.Remove(_metadata);
+            if (_preview.Parent is Border previewFrame) { previewFrame.Child = null; detailStack.Children.Remove(previewFrame); }
+            // Thumbnail is a preview; live transport becomes available in the editor.
+            var viewer = new Grid { RowDefinitions = new("Auto,*,Auto"), RowSpacing = 12 };
+            viewer.Children.Add(_title);
+            Grid.SetRow(_preview, 1); viewer.Children.Add(_preview);
+            Grid.SetRow(_metadata, 2); viewer.Children.Add(_metadata);
+            library.Children.Remove(libraryControls);
+            libraryControls.ColumnDefinitions = new("1.6*,1*,1*");
+            var body = PrimeChrome.Columns("1*,1.25*,1*", listPanel, new PrimePanel(viewer),
+                new ScrollViewer { Content = detailPanel, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled });
+            var archive = new Grid { RowDefinitions = new("Auto,*"), RowSpacing = 12 };
+            archive.Children.Add(libraryControls); Grid.SetRow(body, 1); archive.Children.Add(body);
+            Grid.SetRow(archive, 1); root.Children.Add(archive);
 
             var footer = new Grid
             {
@@ -318,7 +327,7 @@ namespace MphRead.Mods.Launcher.Gui
             Grid.SetColumn(_status, 2);
             footer.Children.Add(_status);
 
-            _watch = new HubNavButton("WATCH", compact: true, primary: true)
+            _watch = new PrimeButton("LAUNCH CINEMATIC EDITOR", primary: true)
             {
                 IsEnabled = false
             };
@@ -341,36 +350,15 @@ namespace MphRead.Mods.Launcher.Gui
                     ShowPreview();
                 LauncherBackdrop.Set(LauncherBackdropScene.ReplayStudio,
                     _backdropRoom.Length > 0 ? _backdropRoom : null);
-                _previewTimer.Start();
-            };
-
-            SizeChanged += (_, e) =>
-            {
-                bool compact = e.NewSize.Width < 760;
-                body.ColumnDefinitions = compact
-                    ? new ColumnDefinitions("*")
-                    : new ColumnDefinitions("1.12*,0.88*");
-                body.RowDefinitions = compact
-                    ? new RowDefinitions("300,Auto")
-                    : new RowDefinitions("*");
-                Grid.SetColumn(detailPanel, compact ? 0 : 1);
-                Grid.SetRow(detailPanel, compact ? 1 : 0);
-                body.RowSpacing = compact ? 10 : 0;
+                // Static preview until an explicit selection changes; no idle slideshow timer.
             };
 
             Reload();
         }
 
-        protected override void OnDetachedFromVisualTree(
-            VisualTreeAttachmentEventArgs e)
+        public void Dispose()
         {
-            _previewTimer.Stop();
-            // A retained launcher view can be measured again on return from
-            // playback. Detach the image before releasing its native bitmap.
-            _preview.Source = null;
-            _bitmap?.Dispose();
-            _bitmap = null;
-            base.OnDetachedFromVisualTree(e);
+            _preview.Source = null; _bitmap?.Dispose(); _bitmap = null;
         }
 
         protected override void OnKeyDown(KeyEventArgs e)
@@ -903,6 +891,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         private async Task WatchAsync()
         {
+            if (CanLaunch?.Invoke() == false) return;
             if (_selected is not string path)
                 return;
             if (path.EndsWith(".part", StringComparison.OrdinalIgnoreCase))
@@ -923,7 +912,7 @@ namespace MphRead.Mods.Launcher.Gui
                             path, out ReplayOpenResult result);
                         return (output, result);
                     });
-                _watch.Label = "WATCH";
+                _watch.Label = "LAUNCH CINEMATIC EDITOR";
                 _watch.IsEnabled = true;
                 if (resolved == null)
                 {
@@ -936,7 +925,7 @@ namespace MphRead.Mods.Launcher.Gui
             _watch.IsEnabled = false;
             _watch.Label = "LOADING";
             bool joined = await Task.Run(() => DemoPlayback.Join(source));
-            _watch.Label = "WATCH";
+            _watch.Label = "LAUNCH CINEMATIC EDITOR";
             _watch.IsEnabled = true;
             if (!joined)
             {

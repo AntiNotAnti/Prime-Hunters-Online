@@ -55,9 +55,11 @@ namespace MphRead.Mods.Launcher.Gui
         }
         public static void Move(Control root, UiAction direction)
         {
+            root = ControllerNav.ModalRoot(root);
             var current = Ensure(root);
             if (current == null) return;
             Control scope = ControllerNav.Scope(current, root);
+            if (scope != root && !root.IsVisualAncestorOf(scope)) scope = root;
             var explicitTarget = ControllerNav.Find(scope, ControllerNav.Neighbor(current, direction));
             if (explicitTarget != null && Eligible(explicitTarget, scope)) { Focus(explicitTarget); return; }
             root = scope;

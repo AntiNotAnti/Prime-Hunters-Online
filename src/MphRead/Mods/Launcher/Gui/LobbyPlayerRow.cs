@@ -7,6 +7,7 @@ namespace MphRead.Mods.Launcher.Gui
 {
     internal sealed class LobbyPlayerRow : Border
     {
+        private readonly TextBlock _ready, _player, _hunter, _team, _ping;
         public LobbyPlayerRow(RosterPacket roster, int index, byte owner,
             bool showTeam = true, bool selected = false)
         {
@@ -24,7 +25,7 @@ namespace MphRead.Mods.Launcher.Gui
                 ColumnSpacing = 8,
                 MinHeight = 22
             };
-            var ready = new TextBlock
+            var ready = _ready = new TextBlock
             {
                 Text = state,
                 FontFamily = GuiTheme.Display,
@@ -32,7 +33,7 @@ namespace MphRead.Mods.Launcher.Gui
                 Foreground = roster.LobbyReady[index] ? GuiTheme.GoodBrush : GuiTheme.TextDimBrush,
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
             };
-            var player = new TextBlock
+            var player = _player = new TextBlock
             {
                 Text = name,
                 FontFamily = GuiTheme.Display,
@@ -41,7 +42,7 @@ namespace MphRead.Mods.Launcher.Gui
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
             };
-            var hunterText = new TextBlock
+            var hunterText = _hunter = new TextBlock
             {
                 Text = hunter,
                 FontFamily = Deck.Mono,
@@ -49,7 +50,7 @@ namespace MphRead.Mods.Launcher.Gui
                 Foreground = GuiTheme.TextDimBrush,
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
             };
-            var teamText = new TextBlock
+            var teamText = _team = new TextBlock
             {
                 Text = team,
                 FontFamily = Deck.Mono,
@@ -57,7 +58,7 @@ namespace MphRead.Mods.Launcher.Gui
                 Foreground = GuiTheme.TextDimBrush,
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
             };
-            var ping = new TextBlock
+            var ping = _ping = new TextBlock
             {
                 Text = $"{roster.Pings[index]} ms",
                 FontFamily = Deck.Mono,
@@ -91,6 +92,18 @@ namespace MphRead.Mods.Launcher.Gui
             BorderBrush = selected ? HubTheme.AccentBrush : Brushes.Transparent;
             BorderThickness = selected ? new Thickness(1) : new Thickness(0);
             Child = line;
+        }
+        internal void Update(RosterPacket roster, int index, byte owner, bool selected)
+        {
+            _ready.Text = roster.LobbyReady[index] ? "READY" : "WAIT";
+            _ready.Foreground = roster.LobbyReady[index] ? GuiTheme.GoodBrush : GuiTheme.TextDimBrush;
+            _player.Text = roster.Names[index] + (roster.Slots[index] == owner ? "  [OWNER]" : "");
+            _hunter.Text = $"{(Hunter)roster.Hunters[index]} · S{roster.Colors[index] + 1}";
+            _team.Text = roster.Teams[index] < 0 ? "AUTO" : $"TEAM {(char)('A' + roster.Teams[index])}";
+            _ping.Text = $"{roster.Pings[index]} ms";
+            Background = selected ? HubTheme.AccentPanel(HubTheme.Accent, 34) : Brushes.Transparent;
+            BorderBrush = selected ? HubTheme.AccentBrush : Brushes.Transparent;
+            BorderThickness = selected ? new Thickness(1) : new Thickness(0);
         }
     }
 }

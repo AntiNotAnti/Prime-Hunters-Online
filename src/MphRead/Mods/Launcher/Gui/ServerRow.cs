@@ -194,7 +194,6 @@ namespace MphRead.Mods.Launcher.Gui
             Height = SlabHeight;
             Focusable = true;
             Cursor = new Cursor(StandardCursorType.Hand);
-            Avalonia.Media.RenderOptions.SetEdgeMode(this, EdgeMode.Aliased);
             // A second click joins, as it does in the map list. See UiListRow.
             DoubleTapped += (_, _) =>
             {
@@ -209,10 +208,17 @@ namespace MphRead.Mods.Launcher.Gui
 
         /// <summary>Whether this row can be picked at all: it has answered.</summary>
         public bool IsLive => _answered && !_asking;
+        public bool CanJoin { get; private set; }
+        public bool Tactical { get; set; }
+        private string _availability = "CHECKING";
 
         /// <summary>Fill the columns in once the server has answered.</summary>
         public void SetStatus(ServerStatus status)
         {
+            CanJoin = status.Online && status.Protocol == NetConfig.ProtocolVersion
+                && (status.MaxPlayers <= 0 || status.Players < status.MaxPlayers);
+            _availability = !status.Online ? "OFFLINE" : status.Protocol != NetConfig.ProtocolVersion ? "BUILD MISMATCH"
+                : CanJoin ? "JOINABLE" : "LOBBY FULL";
             _asking = false;
             _answered = status.Online;
             if (!status.Online)
@@ -359,6 +365,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         public override void Render(DrawingContext context)
         {
+            if (Tactical) { RenderTactical(context); return; }
             double w = Bounds.Width;
             if (w <= 0)
             {
@@ -441,6 +448,27 @@ namespace MphRead.Mods.Launcher.Gui
             }
             Cell(context, _ping, columns.PingX, columns.PingWidth, top,
                 0.86, display: false, _pingBrush, rightAlign: true);
+        }
+
+        private void RenderTactical(DrawingContext context)
+        {
+            var rect = new Rect(Bounds.Size);
+            bool active = _selected || IsFocused || _hot;
+            context.FillRectangle(active ? PrimeTheme.PanelHighlightBrush : PrimeTheme.PanelBrush, rect);
+            context.DrawRectangle(new Pen(active ? PrimeTheme.HighlightBrush : PrimeTheme.BorderBrush, 1), rect.Deflate(.5));
+            context.FillRectangle(active ? PrimeTheme.PrimaryBrush : PrimeTheme.BorderBrush, new Rect(1, 8, 5, Math.Max(0, Bounds.Height - 16)));
+            void Text(string value, double x, double y, double width, double size, IBrush ink, bool mono = false)
+            {
+                if (width <= 0) return;
+                var laid = DeckText.Run(value, mono ? Deck.Body(bold: true) : Deck.Label(strong: true), size, ink, width);
+                using (context.PushClip(new Rect(x, y, width, 24))) context.DrawText(laid, new Point(x, y));
+            }
+            double main = Math.Max(0, Bounds.Width - 200);
+            Text(_name.ToUpperInvariant(), 20, 11, main, 20, PrimeTheme.TextBrush);
+            Text((_map + "  //  " + _mode).ToUpperInvariant(), 20, 43, main, 11, PrimeTheme.TextSecondaryBrush, true);
+            Text(_players + " PLAYERS", Bounds.Width - 164, 11, 150, 12, PrimeTheme.TextBrush, true);
+            Text(_ping + " MS // " + _availability, Bounds.Width - 190, 43, 178, 10,
+                CanJoin ? PrimeTheme.GreenBrush : PrimeTheme.DangerBrush, true);
         }
 
         /// <summary>

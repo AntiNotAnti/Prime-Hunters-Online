@@ -526,8 +526,10 @@ namespace MphRead.Droid
 #pragma warning restore CA1422
 
         /// <summary>Load what the plan asks for and hand the screen to it.</summary>
+        private bool _spectateOnLoad;
         internal void StartMatch(LaunchPlan plan)
         {
+            _spectateOnLoad = plan.Spectate;
             AndroidApp.Home?.SuspendLobby();
             if (_content == null || InMatch)
             {
@@ -831,6 +833,14 @@ namespace MphRead.Droid
             {
                 return;
             }
+            OfflineRematch.StartNext = selected =>
+            {
+                if (NetSession.Active || !OfflineRematch.TryPlan(plan, selected, out var next)) return false;
+                // Queue onto Android's UI thread; never stop/join the render
+                // thread from the results update that is currently running on it.
+                RunOnUiThread(() => { EndMatch(); StartMatch(next); });
+                return true;
+            };
             _gameView = new GameView(this, _controls, input,
                 (i, size) => AndroidMatch.Build(i, size, plan, () => RunOnUiThread(EndMatch)),
                 () => RunOnUiThread(EndMatch),
@@ -885,6 +895,7 @@ namespace MphRead.Droid
         /// <summary>The room is loaded; reveal it only at the shared start edge.</summary>
         private void MatchLoaded()
         {
+            if (_spectateOnLoad) { _spectateOnLoad = false; _gameView?.RequestSpectate(); }
             // The load is over, so a resize is one frame's wait rather than a
             // freeze; the phone can turn end for end again.
             RequestedOrientation = ScreenOrientation.SensorLandscape;
@@ -1136,6 +1147,7 @@ namespace MphRead.Droid
             {
                 return;
             }
+            OfflineRematch.StartNext = null;
             _pending = null;
             _pauseMenuOpen = false;
             HideNotice();

@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -18,7 +19,7 @@ namespace MphRead.Mods.Launcher.Gui
     /// Multiplayer is one workspace, not three menu cards: Quick Play,
     /// the live server browser, manual join and lobby creation all meet here.
     /// </summary>
-    internal sealed class HubMultiplayerView : UserControl
+    internal sealed class PlayWorkspace : UserControl
     {
         private static readonly string[] _hunters =
             Enumerable.Range(0, Hunters.Playable).Select(i => ((Hunter)i).ToString())
@@ -42,6 +43,9 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly HubNavButton _quick;
         private readonly HubNavButton _refresh;
         private readonly HubNavButton _join;
+        private readonly PrimeButton _favorite;
+        private readonly PrimeButton _spectate;
+        private string? _selectedEndpoint;
         private CancellationTokenSource? _discover;
         private CancellationTokenSource? _quickSearch;
         private string _backdropRoom = "";
@@ -52,7 +56,7 @@ namespace MphRead.Mods.Launcher.Gui
         public event EventHandler? CreateLobbyRequested;
         public event EventHandler<LaunchPlan>? Launched;
 
-        public HubMultiplayerView(IReadOnlyList<ServerBrowserEntry>? sample = null)
+        public PlayWorkspace(IReadOnlyList<ServerBrowserEntry>? sample = null)
         {
             _sample = sample;
             Focusable = true;
@@ -88,7 +92,7 @@ namespace MphRead.Mods.Launcher.Gui
             _detailName = new TextBlock
             {
                 Text = "SELECT A SERVER",
-                FontFamily = HubTheme.Ui,
+                FontFamily = PrimeTypography.Display,
                 FontWeight = FontWeight.Bold,
                 FontSize = 18,
                 Foreground = HubTheme.TextBrush,
@@ -114,144 +118,122 @@ namespace MphRead.Mods.Launcher.Gui
             _servers.SelectionChanged += (_, row) => SelectionChanged(row);
             _servers.Activated += (_, row) =>
             {
-                if (row is ServerRow server && server.IsLive)
+                if (row is ServerRow server && server.CanJoin)
                     _ = JoinAsync();
             };
 
             var root = new Grid
             {
-                Margin = new Thickness(24, 20, 24, 34),
-                RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto"),
-                RowSpacing = 12
+                Margin = PrimeMetrics.PageMargin,
+                RowDefinitions = new("Auto,Auto,*"), RowSpacing = 12
             };
-
-            root.Children.Add(BuildHeader());
-
-            var identity = new Grid
-            {
-                ColumnDefinitions = new ColumnDefinitions("220,*"),
-                ColumnSpacing = 9
-            };
-            identity.Children.Add(_name);
-            Grid.SetColumn(_address, 1);
-            identity.Children.Add(_address);
-            Grid.SetRow(identity, 1);
-            root.Children.Add(identity);
-
-            var body = new Grid
-            {
-                ColumnDefinitions = new ColumnDefinitions("*,310"),
-                ColumnSpacing = 14
-            };
-
-            var listStack = new Grid
-            {
-                RowDefinitions = new RowDefinitions("Auto,*"),
-                RowSpacing = 7
-            };
-            listStack.Children.Add(HubChrome.Kicker("LIVE SERVERS"));
-            var listFrame = new Border
-            {
-                Background = HubTheme.PanelBrush,
-                BorderBrush = HubTheme.EdgeBrush,
-                BorderThickness = new Thickness(1),
-                Padding = new Thickness(8),
-                Child = _servers
-            };
-            Grid.SetRow(listFrame, 1);
-            listStack.Children.Add(listFrame);
-            body.Children.Add(listStack);
-
-            Border detail = BuildDetailPanel();
-            Grid.SetColumn(detail, 1);
-            body.Children.Add(detail);
-            Grid.SetRow(body, 2);
-            root.Children.Add(body);
-
-            var footer = new Grid
-            {
-                ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,*,Auto,Auto"),
-                ColumnSpacing = 7
-            };
-
-            var back = new HubNavButton("BACK", compact: true);
-            ControllerNav.Identify(back, "multiplayer.back");
-            back.Click += (_, _) => Closed?.Invoke(this, EventArgs.Empty);
-            footer.Children.Add(back);
-
-            _quick = new HubNavButton("QUICK PLAY",
-                "Find the best compatible open server", compact: true, primary: true);
+            _quick = new PrimeButton("QUICK PLAY", primary: true);
             ControllerNav.Identify(_quick, "multiplayer.quick", initial: true);
             _quick.Click += (_, _) => _ = QuickPlayAsync();
-            Grid.SetColumn(_quick, 1);
-            footer.Children.Add(_quick);
-
-            var create = new HubNavButton("CREATE LOBBY", compact: true,
-                accent: HubTheme.Warm);
+            var create = new PrimeButton("CREATE LOBBY", () => CreateLobbyRequested?.Invoke(this, EventArgs.Empty));
+            var direct = new PrimeButton("DIRECT CONNECT", DirectConnect);
             ControllerNav.Identify(create, "multiplayer.create");
-            create.Click += (_, _) => CreateLobbyRequested?.Invoke(this, EventArgs.Empty);
-            Grid.SetColumn(create, 2);
-            footer.Children.Add(create);
-
-            _refresh = new HubNavButton("REFRESH", compact: true);
+            var browserTab = new PrimeTabButton("SERVER BROWSER", () => _servers.FocusFirst()) { Selected = true };
+            root.Children.Add(PrimeChrome.Columns("Auto,Auto,Auto,Auto,*", _quick, browserTab, create, direct, _summary));
+            _refresh = new PrimeButton("REFRESH");
             ControllerNav.Identify(_refresh, "multiplayer.refresh");
             _refresh.Click += (_, _) => RefreshServers();
-            Grid.SetColumn(_refresh, 4);
-            footer.Children.Add(_refresh);
-
-            _join = new HubNavButton("JOIN SERVER", compact: true,
-                accent: HubTheme.Good)
-            {
-                IsEnabled = false
-            };
+            var identity = PrimeChrome.Columns("210,*,Auto", _name, _address, _refresh);
+            Grid.SetRow(identity, 1); root.Children.Add(identity);
+            _join = new PrimeButton("ENGAGE & JOIN", primary: true) { IsEnabled = false };
             ControllerNav.Identify(_join, "multiplayer.join");
+            _spectate = new PrimeButton("SPECTATE", () => _ = JoinAsync(spectate: true)) { IsEnabled = false };
+            ToolTip.SetTip(_spectate, "Join an available player slot and watch using the spectator camera.");
             _join.Click += (_, _) => _ = JoinAsync();
-            Grid.SetColumn(_join, 5);
-            footer.Children.Add(_join);
-
-            back.SetValue(ControllerNav.NavRightProperty, "multiplayer.quick");
-            _quick.SetValue(ControllerNav.NavLeftProperty, "multiplayer.back");
-            _quick.SetValue(ControllerNav.NavRightProperty, "multiplayer.create");
-            create.SetValue(ControllerNav.NavLeftProperty, "multiplayer.quick");
-            create.SetValue(ControllerNav.NavRightProperty, "multiplayer.refresh");
-            _refresh.SetValue(ControllerNav.NavLeftProperty, "multiplayer.create");
-            _refresh.SetValue(ControllerNav.NavRightProperty, "multiplayer.join");
-            _join.SetValue(ControllerNav.NavLeftProperty, "multiplayer.refresh");
-
-            Grid.SetRow(footer, 3);
-            root.Children.Add(footer);
-
-            Content = root;
+            var copy = new PrimeButton("COPY ADDRESS", async () =>
+            {
+                if (TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
+                    await clipboard.SetTextAsync(_address.Value);
+            });
+            _favorite = new PrimeButton("FAVORITE", () =>
+            {
+                if (_selectedEndpoint == null) return;
+                if (!LauncherPrefs.FavoriteServers.Add(_selectedEndpoint)) LauncherPrefs.FavoriteServers.Remove(_selectedEndpoint);
+                LauncherPrefs.Save(); RefreshFavorite(); FilterServers(_searchText, _filterIndex);
+            }) { IsEnabled = false };
+            var filter = new ChoiceRow("Directory", new[] { "All", "Joinable", "Low ping (<80 ms)", "Favorites" });
+            var search = new DeckField("", 0, watermark: "Search servers or maps");
+            filter.Changed += (_, _) => FilterServers(search.Value, filter.Index);
+            search.Box.TextChanged += (_, _) => FilterServers(search.Value, filter.Index);
+            var left = new Grid { RowDefinitions = new("Auto,*,Auto"), RowSpacing = 10 };
+            left.Children.Add(PrimeChrome.Columns("*,*", search, filter));
+            Grid.SetRow(_servers, 1); left.Children.Add(_servers);
+            var inspector = new PrimePanel(PrimeChrome.Stack(new PrimeBadge("SELECTED SESSION"), _detailName, _detailMeta,
+                PrimeChrome.Columns("Auto,Auto,Auto,*", copy, _favorite, _spectate, _join)));
+            Grid.SetRow(inspector, 2); left.Children.Add(inspector);
+            _stand.Height = 190;
+            _mapPreview.Height = 100;
+            var loadout = new PrimePanel(PrimeChrome.Stack(new PrimeBadge("DEPLOYMENT TELEMETRY"),
+                PrimeChrome.Title("HUNTER LOADOUT"), _stand, _hunter, _suit,
+                PrimeChrome.Text("ARENA PREVIEW", 11, PrimeTheme.TextSecondaryBrush, true), _mapPreview));
+            var body = PrimeChrome.Columns("1.6*,1*", left, loadout);
+            Grid.SetRow(body, 2); root.Children.Add(body); Content = root;
             AttachedToVisualTree += (_, _) =>
             {
                 LauncherBackdrop.Set(LauncherBackdropScene.Multiplayer,
                     _backdropRoom.Length > 0 ? _backdropRoom : null);
-                RefreshServers();
+                if (!_loaded) { _loaded = true; RefreshServers(); }
             };
             DetachedFromVisualTree += (_, _) => CancelWork();
+        }
 
-            SizeChanged += (_, e) =>
+        public PrimeOverlayHost? Overlays { get; set; }
+        public Func<bool>? CanLaunch { get; set; }
+        private bool _loaded;
+        private readonly List<ServerRow> _rows = new();
+        private CancellationTokenSource? _connect;
+        private TextBlock? _connectionStatus;
+        private bool _progressOpen;
+        private string _searchText = "";
+        private int _filterIndex;
+        private void FilterServers(string search, int filter)
+        {
+            _searchText = search; _filterIndex = filter;
+            foreach (var row in _rows)
+                row.IsVisible = (row.DisplayName + " " + row.MapName).Contains(search, StringComparison.OrdinalIgnoreCase)
+                    && (filter == 0 || filter == 3 || row.CanJoin)
+                    && (filter != 3 || LauncherPrefs.FavoriteServers.Contains(row.Endpoint))
+                    && (filter != 2 || (int.TryParse(row.PingText, out int ping) && ping < 80));
+        }
+        private void DirectConnect()
+        {
+            if (Overlays == null || _joining || NetSession.Active) return;
+            var endpoint = new DeckField(_address.Value, 0, watermark: "host:port");
+            var error = PrimeChrome.Text("", 12, PrimeTheme.DangerBrush);
+            Overlays.Show(new PrimePanel(PrimeChrome.Stack(PrimeChrome.Title("DIRECT CONNECT"),
+                PrimeChrome.Text("Host or IP address and port", 13), endpoint, error,
+                PrimeChrome.Columns("*,*", new PrimeButton("CANCEL", Overlays.Close),
+                    new PrimeButton("CONNECT", () =>
+                    {
+                        if (!ServerBrowserService.TryParseEndpoint(endpoint.Value, LauncherPrefs.ServerAddress,
+                            LauncherPrefs.ServerPort, out _, out _)) { error.Text = "Enter a valid host:port (1–65535)."; return; }
+                        _address.Value = endpoint.Value; Overlays.Close(); _ = JoinAsync();
+                    }, true)))), PrimeModalSize.Medium);
+        }
+        private void ShowProgress(string message)
+        {
+            if (Overlays == null) return;
+            if (_progressOpen) { if (_connectionStatus != null) _connectionStatus.Text = message; return; }
+            _connectionStatus = PrimeChrome.Text(message);
+            _progressOpen = true;
+            void Cancel()
             {
-                bool compact = e.NewSize.Width < 760;
-                identity.ColumnDefinitions = compact
-                    ? new ColumnDefinitions("*")
-                    : new ColumnDefinitions("220,*");
-                identity.RowDefinitions = compact
-                    ? new RowDefinitions("Auto,Auto")
-                    : new RowDefinitions("*");
-                Grid.SetColumn(_address, compact ? 0 : 1);
-                Grid.SetRow(_address, compact ? 1 : 0);
-
-                body.ColumnDefinitions = compact
-                    ? new ColumnDefinitions("*")
-                    : new ColumnDefinitions("*,310");
-                body.RowDefinitions = compact
-                    ? new RowDefinitions("260,Auto")
-                    : new RowDefinitions("*");
-                Grid.SetColumn(detail, compact ? 0 : 1);
-                Grid.SetRow(detail, compact ? 1 : 0);
-                body.RowSpacing = compact ? 10 : 0;
-            };
+                _connect?.Cancel(); CancelQuickSearch();
+                _quick.IsEnabled = true; _refresh.IsEnabled = true;
+                _summary.Text = "CONNECTION CANCELLED";
+                CloseProgress();
+            }
+            Overlays.Show(new PrimePanel(PrimeChrome.Stack(PrimeChrome.Title("ESTABLISHING UPLINK"),
+                _connectionStatus, new PrimeButton("CANCEL", Cancel))), PrimeModalSize.Small, Cancel);
+        }
+        private void CloseProgress()
+        {
+            if (_progressOpen) { _progressOpen = false; Overlays?.Close(); }
         }
 
         protected override void OnKeyDown(KeyEventArgs e)
@@ -265,85 +247,6 @@ namespace MphRead.Mods.Launcher.Gui
             base.OnKeyDown(e);
         }
 
-        private Grid BuildHeader()
-        {
-            var header = new Grid
-            {
-                ColumnDefinitions = new ColumnDefinitions("*,Auto")
-            };
-            var copy = new StackPanel { Spacing = 2 };
-            copy.Children.Add(new TextBlock
-            {
-                Text = "PLAY  /  MULTIPLAYER",
-                FontFamily = HubTheme.DataBold,
-                FontSize = 8.5,
-                Foreground = HubTheme.AccentBrush
-            });
-            copy.Children.Add(new TextBlock
-            {
-                Text = "MULTIPLAYER",
-                FontFamily = HubTheme.Ui,
-                FontWeight = FontWeight.Bold,
-                FontSize = 26,
-                Foreground = HubTheme.TextBrush
-            });
-            copy.Children.Add(new TextBlock
-            {
-                Text = "QUICK PLAY  /  LIVE SERVERS  /  LOBBIES",
-                FontFamily = HubTheme.DataBold,
-                FontSize = 8.5,
-                Foreground = HubTheme.GoodBrush
-            });
-            header.Children.Add(copy);
-
-            var badge = new Border
-            {
-                Background = HubTheme.PanelBrush,
-                BorderBrush = HubTheme.EdgeBrush,
-                BorderThickness = new Thickness(1),
-                Padding = new Thickness(9, 5),
-                Child = _summary,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            Grid.SetColumn(badge, 1);
-            header.Children.Add(badge);
-            return header;
-        }
-
-        private Border BuildDetailPanel()
-        {
-            var stack = new StackPanel
-            {
-                Margin = new Thickness(14),
-                Spacing = 8
-            };
-            stack.Children.Add(HubChrome.Kicker("SELECTED SESSION"));
-            stack.Children.Add(_detailName);
-            stack.Children.Add(_detailMeta);
-
-            stack.Children.Add(new Border
-            {
-                Height = 126,
-                Background = HubTheme.InkBrush,
-                BorderBrush = HubTheme.EdgeBrush,
-                BorderThickness = new Thickness(1),
-                ClipToBounds = true,
-                Child = _mapPreview
-            });
-            stack.Children.Add(HubChrome.Kicker("DEPLOY AS", HubTheme.TextDimBrush));
-            stack.Children.Add(_stand);
-            stack.Children.Add(_hunter);
-            stack.Children.Add(_suit);
-
-            return new Border
-            {
-                Background = HubTheme.PanelStrongBrush,
-                BorderBrush = HubTheme.EdgeBrush,
-                BorderThickness = new Thickness(1),
-                Child = stack
-            };
-        }
-
         private void RefreshHunter()
         {
             _stand.Name2 = _hunters[_hunter.Index];
@@ -355,6 +258,7 @@ namespace MphRead.Mods.Launcher.Gui
             if (row is not ServerRow server)
                 return;
 
+            _selectedEndpoint = server.Endpoint; RefreshFavorite();
             _address.Value = server.Endpoint;
             _detailName.Text = server.DisplayName.ToUpperInvariant();
             _detailMeta.Text = server.IsLive
@@ -366,9 +270,14 @@ namespace MphRead.Mods.Launcher.Gui
                 _backdropRoom = server.RoomKey;
                 LauncherBackdrop.Set(LauncherBackdropScene.Multiplayer, _backdropRoom);
             }
-            _join.IsEnabled = server.IsLive && !_joining;
+            _join.IsEnabled = _spectate.IsEnabled = server.CanJoin && !_joining;
         }
 
+        private void RefreshFavorite()
+        {
+            _favorite.IsEnabled = _selectedEndpoint != null;
+            _favorite.Label = _selectedEndpoint != null && LauncherPrefs.FavoriteServers.Contains(_selectedEndpoint) ? "★ FAVORITED" : "☆ FAVORITE";
+        }
         private void CancelDiscovery()
         {
             _discover?.Cancel();
@@ -387,15 +296,18 @@ namespace MphRead.Mods.Launcher.Gui
         {
             CancelDiscovery();
             CancelQuickSearch();
+            _quick.IsEnabled = !_joining; _refresh.IsEnabled = !_joining;
         }
 
         private async void RefreshServers()
         {
             CancelWork();
             _servers.Clear();
+            _rows.Clear();
+            _selectedEndpoint = null; RefreshFavorite();
             _replied = 0;
             _live = 0;
-            _join.IsEnabled = false;
+            _join.IsEnabled = _spectate.IsEnabled = false;
             _mapPreview.Source = null;
 
             if (_sample != null)
@@ -435,9 +347,11 @@ namespace MphRead.Mods.Launcher.Gui
 
         private void AddEntry(ServerBrowserEntry entry)
         {
-            var row = new ServerRow(entry.Name, entry.Endpoint);
+            var row = new ServerRow(entry.Name, entry.Endpoint) { Tactical = true, Height = 72 };
             row.SetStatus(entry.Status);
             _servers.Add(row, _ => _address.Value = entry.Endpoint);
+            _rows.Add(row);
+            FilterServers(_searchText, _filterIndex);
             _replied++;
             if (entry.Live)
                 _live++;
@@ -446,13 +360,14 @@ namespace MphRead.Mods.Launcher.Gui
 
         private async Task QuickPlayAsync()
         {
-            if (_joining || _quickSearch != null)
+            if (CanLaunch?.Invoke() == false) return;
+            if (_joining || _quickSearch != null || NetSession.Active)
                 return;
 
             CancelDiscovery();
             _quick.IsEnabled = false;
             _refresh.IsEnabled = false;
-            _join.IsEnabled = false;
+            _join.IsEnabled = _spectate.IsEnabled = false;
             _summary.Text = "QUICK PLAY  /  SEARCHING";
             _summary.Foreground = HubTheme.AccentBrush;
 
@@ -482,6 +397,7 @@ namespace MphRead.Mods.Launcher.Gui
                 return;
             }
 
+            ShowProgress("Searching for a compatible open server…");
             var cancel = new CancellationTokenSource();
             _quickSearch = cancel;
             QuickPlaySearchResult result = await ServerBrowserService.FindBestAsync(cancel.Token);
@@ -494,6 +410,7 @@ namespace MphRead.Mods.Launcher.Gui
 
             if (!result.Found)
             {
+                CloseProgress();
                 _summary.Text = result.Message.ToUpperInvariant();
                 _summary.Foreground = HubTheme.WarmBrush;
                 return;
@@ -507,6 +424,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         private void ShowEntry(ServerBrowserEntry entry)
         {
+            _selectedEndpoint = entry.Endpoint; RefreshFavorite();
             _address.Value = entry.Endpoint;
             string room = entry.Status.RoomKey;
             string mapName = Metadata.RoomMetadata.TryGetValue(room, out RoomMetadata? meta)
@@ -528,12 +446,13 @@ namespace MphRead.Mods.Launcher.Gui
                 _backdropRoom = room;
                 LauncherBackdrop.Set(LauncherBackdropScene.Multiplayer, _backdropRoom);
             }
-            _join.IsEnabled = entry.Live && !_joining;
+            _join.IsEnabled = _spectate.IsEnabled = entry.Live && !_joining;
         }
 
-        private async Task JoinAsync()
+        private async Task JoinAsync(bool spectate = false)
         {
-            if (_joining)
+            if (CanLaunch?.Invoke() == false) return;
+            if (_joining || NetSession.Active)
                 return;
 
             if (!ServerBrowserService.TryParseEndpoint(_address.Value,
@@ -551,16 +470,22 @@ namespace MphRead.Mods.Launcher.Gui
             int suit = Math.Clamp(_suit.Index, 0, 3);
 
             _joining = true;
+            _connect = new CancellationTokenSource();
+            ShowProgress($"Connecting to {host}:{port}…");
             _quick.IsEnabled = false;
             _refresh.IsEnabled = false;
-            _join.IsEnabled = false;
+            _join.IsEnabled = _spectate.IsEnabled = false;
             _summary.Text = $"CONNECTING TO {host}:{port}";
             _summary.Foreground = HubTheme.AccentBrush;
             CancelDiscovery();
 
             OnlineJoinResult result = await ServerBrowserService.JoinAsync(
-                host, port, player, hunter, suit);
+                host, port, player, hunter, suit, _connect.Token);
 
+            bool cancelled = _connect.IsCancellationRequested;
+            _connect.Dispose(); _connect = null;
+            if (cancelled && result.Joined) { NetSession.Stop(); result = new OnlineJoinResult(false, default, "Join cancelled."); }
+            CloseProgress();
             _joining = false;
             _quick.IsEnabled = true;
             _refresh.IsEnabled = true;
@@ -568,10 +493,10 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 _summary.Text = result.Error.ToUpperInvariant();
                 _summary.Foreground = HubTheme.DangerBrush;
-                _join.IsEnabled = true;
+                _join.IsEnabled = _spectate.IsEnabled = true;
                 return;
             }
-            Launched?.Invoke(this, result.Plan);
+            Launched?.Invoke(this, result.Plan with { Spectate = spectate });
         }
 
         public void SessionEnded(string reason)

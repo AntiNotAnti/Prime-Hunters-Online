@@ -73,6 +73,9 @@ namespace MphRead.Mods
 
         public static IReadOnlyList<Entry> Entries { get; } = new[]
         {
+            new Entry("Indian Type Foundry", "Rajdhani: tactical headings and controls. SIL Open Font License 1.1; "
+                + "unmodified SemiBold and Bold fonts, with license bundled in the application.",
+                "https://github.com/itfoundry/rajdhani"),
             new Entry("NoneGiven", "MphRead: the model viewer, scene renderer, "
                 + "format parsers and gameplay recreation this is built on",
                 "https://github.com/NoneGiven/MphRead"),

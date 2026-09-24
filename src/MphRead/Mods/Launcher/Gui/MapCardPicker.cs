@@ -21,7 +21,7 @@ namespace MphRead.Mods.Launcher.Gui
             (RoomMetadata? meta, _) = Metadata.GetRoomByName(room);
             return new DeckTile(room, code)
             {
-                Blurb = meta?.InGameName ?? ""
+                Blurb = meta?.InGameName ?? room, Tactical = true, Verb = "SELECT", ChosenVerb = "SELECTED"
             };
         }
     }
@@ -35,25 +35,34 @@ namespace MphRead.Mods.Launcher.Gui
         public event EventHandler<string>? Done;
         public event EventHandler? Cancelled;
 
-        private readonly DeckGrid _grid = new();
+        private readonly DeckGrid _grid = new() { FixedColumns = 2, Ratio = 16 / 9.0 };
+        private readonly Image _preview = new() { Stretch = Stretch.UniformToFill, Height = 150 };
+        private readonly TextBlock _name = PrimeChrome.Title("SELECT AN ARENA");
+        private readonly TextBox _search = new() { PlaceholderText = "Search arena name or code" };
         private readonly Note _note = new("");
-        private readonly UiMark _use;
+        private readonly PrimeButton _use;
         private string? _selected;
 
         public MapCardPicker(IReadOnlyList<string> rooms, string? selected)
         {
             Background = Brushes.Transparent;
             Focusable = true;
-            _selected = selected;
+            _selected = selected != null && System.Linq.Enumerable.Contains(rooms, selected) ? selected : null;
 
-            var back = new UiMark(UiMark.Shape.Cancel, "back");
-            back.Click += (_, _) => Cancelled?.Invoke(this, EventArgs.Empty);
-
-            _use = new UiMark(UiMark.Shape.Accept, "use map");
-            _use.Click += (_, _) =>
+            var back = new PrimeButton("CANCEL", () => Cancelled?.Invoke(this, EventArgs.Empty));
+            _use = new PrimeButton("USE MAP", () =>
             {
-                if (!String.IsNullOrWhiteSpace(_selected))
-                    Done?.Invoke(this, _selected);
+                if (!String.IsNullOrWhiteSpace(_selected)) Done?.Invoke(this, _selected);
+            }, primary: true);
+            _use.SetValue(ControllerNav.NavIdProperty, "map-picker.use");
+            _search.SetValue(ControllerNav.NavIdProperty, "map-picker.search");
+            _search.TextChanged += (_, _) =>
+            {
+                string query = _search.Text?.Trim() ?? "";
+                foreach (Control child in _grid.Children)
+                    if (child is DeckTile tile)
+                        tile.IsVisible = tile.RoomKey.Contains(query, StringComparison.OrdinalIgnoreCase)
+                            || tile.Blurb.Contains(query, StringComparison.OrdinalIgnoreCase);
             };
 
             var scroll = new ScrollViewer
@@ -64,17 +73,19 @@ namespace MphRead.Mods.Launcher.Gui
                 VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
             };
 
-            var body = new Grid
-            {
-                RowDefinitions = new RowDefinitions("*,Auto"),
-                RowSpacing = 6
-            };
-            body.Children.Add(scroll);
-            Grid.SetRow(_note, 1);
-            body.Children.Add(_note);
-
-            Content = UiLayout.Page(overGame: false, UiLayout.WellPlay,
-                "choose map", strip: null, body: body, no: back, yes: _use);
+            var gallery = new Grid { RowDefinitions = new("Auto,*"), RowSpacing = PrimeMetrics.PanelGap };
+            gallery.Children.Add(_search); Grid.SetRow(scroll, 1); gallery.Children.Add(scroll);
+            var inspector = new PrimePanel(PrimeChrome.Stack(new PrimeBadge("DEPLOYMENT PREVIEW"),
+                _preview, _name, _note, PrimeChrome.Text("Select an arena, then confirm to update the match.",
+                    PrimeTypography.BodySmall, PrimeTheme.TextSecondaryBrush)));
+            var body = PrimeChrome.Columns("2*,*", gallery, inspector);
+            var frame = new Grid { RowDefinitions = new("Auto,*,Auto"), RowSpacing = PrimeMetrics.PanelGap,
+                Margin = new Thickness(PrimeMetrics.PanelPadding) };
+            frame.Children.Add(PrimeChrome.Stack(new PrimeBadge("ARENA DIRECTORY"), PrimeChrome.Title("CHOOSE DEPLOYMENT ZONE")));
+            Grid.SetRow(body, 1); frame.Children.Add(body);
+            var actions = PrimeChrome.Columns("*,*", back, _use);
+            Grid.SetRow(actions, 2); frame.Children.Add(actions);
+            Content = frame;
 
             if (rooms.Count == 0)
             {
@@ -136,6 +147,8 @@ namespace MphRead.Mods.Launcher.Gui
                 ? "Choose a map."
                 : $"Selected: {Metadata.GetRoomByName(_selected).Item1?.InGameName ?? _selected}";
             _note.Foreground = GuiTheme.TextDimBrush;
+            _name.Text = String.IsNullOrWhiteSpace(_selected) ? "SELECT AN ARENA" : MapPick.NameOf(_selected).ToUpperInvariant();
+            _preview.Source = MapShot.For(_selected);
         }
     }
 }

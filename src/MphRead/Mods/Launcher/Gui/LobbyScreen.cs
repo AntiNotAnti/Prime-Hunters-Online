@@ -7,6 +7,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -46,13 +47,15 @@ namespace MphRead.Mods.Launcher.Gui
         public event EventHandler? HubRequested;
         public event EventHandler<string>? Closed;
 
-        private readonly DispatcherTimer _timer;
         private readonly Grid _root = new();
         private readonly Control _mainPage;
         private readonly StackPanel _players = new() { Spacing = 1 };
+        private bool _rosterTeams;
+        private string[] _targetNames = Array.Empty<string>();
         private readonly StackPanel _ownerControls = new() { Spacing = 2 };
         private readonly Note _status = new("");
         private readonly Note _chat = new("", lines: 0);
+        public PrimeOverlayHost? Overlays { get; set; }
         private readonly Border _startOverlay;
         private readonly TextBlock _startCountdown;
         private readonly TextBlock _startDetail;
@@ -227,76 +230,24 @@ namespace MphRead.Mods.Launcher.Gui
                 ColumnSpacing = 5
             };
             _transferButton = SmallButton("TRANSFER OWNER",
-                () => Admin(LobbyCommandType.TransferOwner), HubTheme.Warm);
+                () => Confirm("TRANSFER LOBBY OWNERSHIP?", () => Admin(LobbyCommandType.TransferOwner)), HubTheme.Warm);
             adminButtons.Children.Add(_transferButton);
             _kickButton = SmallButton("KICK",
-                () => Admin(LobbyCommandType.KickPlayer), HubTheme.Danger);
+                () => Confirm("KICK SELECTED PLAYER?", () => Admin(LobbyCommandType.KickPlayer)), HubTheme.Danger);
             Grid.SetColumn(_kickButton, 1);
             adminButtons.Children.Add(_kickButton);
             administration.Children.Add(adminButtons);
 
-            _closeLobby = SmallButton("CLOSE LOBBY", () =>
+            _closeLobby = SmallButton("CLOSE LOBBY", () => Confirm("CLOSE LOBBY FOR EVERYONE?", () =>
             {
                 if (NetSession.SendLobbyCommand(LobbyCommandType.CloseLobby))
                 {
                     _closingLobby = true;
                     _status.Text = "Closing lobby...";
                 }
-            }, HubTheme.Danger);
+            }), HubTheme.Danger);
             _closeLobby.HorizontalAlignment = HorizontalAlignment.Stretch;
             administration.Children.Add(_closeLobby);
-
-            // Four compact rows of toggles plus the two numeric limits keep
-            // the match panel dense enough to share its column with team and
-            // lobby administration, freeing the roster column for players.
-            _ownerControls.Children.Add(limits);
-            _ownerControls.Children.Add(toggles);
-            _ownerControls.Children.Add(_layoutSummary);
-
-            // Match settings and team/lobby administration share the third
-            // column. The roster column is reserved for the complete roster and
-            // local hunter controls so eight players never disappear behind an
-            // inner scrollbar on a normal desktop window.
-            var ruleContent = new StackPanel { Spacing = 5 };
-            ruleContent.Children.Add(_ownerControls);
-            ruleContent.Children.Add(new Border
-            {
-                Height = 1,
-                Background = HubTheme.EdgeBrush,
-                Margin = new Thickness(0, 4, 0, 2)
-            });
-            ruleContent.Children.Add(administration);
-
-            var arenaPanel = LobbyPanel("ARENA", arena, HubTheme.Accent);
-            var rulesPanel = LobbyPanel("MATCH & TEAMS", ruleContent, HubTheme.Warm);
-
-            var rosterContent = new StackPanel { Spacing = 3 };
-            rosterContent.Children.Add(_players);
-            rosterContent.Children.Add(new Border
-            {
-                Height = 1,
-                Background = HubTheme.EdgeBrush,
-                Margin = new Thickness(0, 5, 0, 3)
-            });
-            rosterContent.Children.Add(LobbySubhead("YOUR HUNTER"));
-            rosterContent.Children.Add(_hunter);
-            rosterContent.Children.Add(_suit);
-            rosterContent.Children.Add(_team);
-            var rosterPanel = LobbyPanel("ROSTER", rosterContent, HubTheme.Good);
-
-            // A real three-column lobby on desktop: roster, arena and rules.
-            // The previous nested two-column arrangement made the right panel
-            // tall enough to scroll even with acres of unused roster space.
-            var columns = new Grid
-            {
-                ColumnDefinitions = new ColumnDefinitions("1.02*,1.03*,1.15*"),
-                ColumnSpacing = 10
-            };
-            columns.Children.Add(rosterPanel);
-            Grid.SetColumn(arenaPanel, 1);
-            columns.Children.Add(arenaPanel);
-            Grid.SetColumn(rulesPanel, 2);
-            columns.Children.Add(rulesPanel);
 
             _chatHistory = new ScrollViewer
             {
@@ -333,23 +284,14 @@ namespace MphRead.Mods.Launcher.Gui
             chatBody.Children.Add(_chatHistory);
             Grid.SetRow(chatInput, 1);
             chatBody.Children.Add(chatInput);
-            var chatPanel = LobbyPanel("LOBBY CHAT", chatBody, HubTheme.Accent);
 
-            var actions = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                Spacing = 6,
-                HorizontalAlignment = HorizontalAlignment.Right
-            };
-            _leave = ActionButton("LEAVE", () => Leave(""), accent: HubTheme.Danger);
+            _leave = ActionButton("LEAVE", () => Confirm("LEAVE LOBBY?", () => Leave("")), accent: HubTheme.Danger);
             ControllerNav.Identify(_leave, "lobby.leave", initial: true);
-            actions.Children.Add(_leave);
 
             _mainMenu = ActionButton("MAIN MENU",
                 () => HubRequested?.Invoke(this, EventArgs.Empty),
                 accent: HubTheme.Accent);
             ControllerNav.Identify(_mainMenu, "lobby.menu");
-            actions.Children.Add(_mainMenu);
 
             _ready = ActionButton("READY", () =>
             {
@@ -358,12 +300,10 @@ namespace MphRead.Mods.Launcher.Gui
                         ready: !NetSession.SlotLobbyReady[NetSession.LocalSlot]);
             }, accent: HubTheme.Accent);
             ControllerNav.Identify(_ready, "lobby.ready");
-            actions.Children.Add(_ready);
 
             _start = ActionButton("START MATCH", StartMatchRequested,
                 primary: true);
             ControllerNav.Identify(_start, "lobby.start");
-            actions.Children.Add(_start);
 
             _leave.SetValue(ControllerNav.NavRightProperty, "lobby.menu");
             _mainMenu.SetValue(ControllerNav.NavLeftProperty, "lobby.leave");
@@ -371,36 +311,6 @@ namespace MphRead.Mods.Launcher.Gui
             _ready.SetValue(ControllerNav.NavLeftProperty, "lobby.menu");
             _ready.SetValue(ControllerNav.NavRightProperty, "lobby.start");
             _start.SetValue(ControllerNav.NavLeftProperty, "lobby.ready");
-
-            var footer = new Grid
-            {
-                ColumnDefinitions = new ColumnDefinitions("*,Auto"),
-                ColumnSpacing = 10
-            };
-            _status.VerticalAlignment = VerticalAlignment.Center;
-            footer.Children.Add(_status);
-            Grid.SetColumn(actions, 1);
-            footer.Children.Add(actions);
-
-            var mainScroll = new ScrollViewer
-            {
-                Content = columns,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                // Never clip lobby controls. On a normal window the content fits
-                // and no bar is drawn; shorter windows get a vertical escape hatch
-                // instead of silently losing the bottom of Arena/Rules/Roster.
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto
-            };
-            var body = new Grid
-            {
-                RowDefinitions = new RowDefinitions("*,Auto,Auto"),
-                RowSpacing = 8
-            };
-            body.Children.Add(mainScroll);
-            Grid.SetRow(chatPanel, 1);
-            body.Children.Add(chatPanel);
-            Grid.SetRow(footer, 2);
-            body.Children.Add(footer);
 
             var frame = new Grid
             {
@@ -437,7 +347,7 @@ namespace MphRead.Mods.Launcher.Gui
             header.Children.Add(heading);
             var live = new TextBlock
             {
-                Text = "● CONNECTED",
+                Text = NetSession.Active ? "● CONNECTED" : "● NO ACTIVE SESSION",
                 FontFamily = HubTheme.DataBold,
                 FontSize = 8.5,
                 Foreground = HubTheme.GoodBrush,
@@ -447,53 +357,39 @@ namespace MphRead.Mods.Launcher.Gui
             header.Children.Add(live);
             frame.Children.Add(header);
 
-            Grid.SetRow(body, 1);
-            frame.Children.Add(body);
 
-            // Narrow windows/phones stack the same three panels and enable
-            // scrolling for that compact case only. Desktop keeps the full
-            // settings surface visible at once.
-            frame.SizeChanged += (_, e) =>
-            {
-                bool compact = e.NewSize.Width < 980 || e.NewSize.Height < 640;
-                mainScroll.VerticalScrollBarVisibility = compact
-                    ? ScrollBarVisibility.Auto
-                    : ScrollBarVisibility.Disabled;
-                if (compact)
-                {
-                    columns.ColumnDefinitions = new ColumnDefinitions("*");
-                    columns.RowDefinitions = new RowDefinitions("Auto,Auto,Auto");
-                    Grid.SetColumn(rosterPanel, 0);
-                    Grid.SetRow(rosterPanel, 0);
-                    Grid.SetColumn(arenaPanel, 0);
-                    Grid.SetRow(arenaPanel, 1);
-                    Grid.SetColumn(rulesPanel, 0);
-                    Grid.SetRow(rulesPanel, 2);
-                    columns.RowSpacing = 10;
-                    _preview.Height = 112;
-                }
-                else
-                {
-                    columns.ColumnDefinitions =
-                        new ColumnDefinitions("1.02*,1.03*,1.15*");
-                    // Natural height is deliberate. A star row inside a
-                    // ScrollViewer constrained all three cards to the viewport
-                    // and clipped whichever card was tallest.
-                    columns.RowDefinitions = new RowDefinitions("Auto");
-                    Grid.SetColumn(rosterPanel, 0);
-                    Grid.SetRow(rosterPanel, 0);
-                    Grid.SetColumn(arenaPanel, 1);
-                    Grid.SetRow(arenaPanel, 0);
-                    Grid.SetColumn(rulesPanel, 2);
-                    Grid.SetRow(rulesPanel, 0);
-                    columns.RowSpacing = 0;
-                    _preview.Height = e.NewSize.Height < 700 ? 104 : 124;
-                }
-            };
-
-            Panel backdrop = UiLayout.Backdrop(wash: UiLayout.BackdropWash.Standard);
-            backdrop.Children.Add(frame);
-            _mainPage = backdrop;
+            // Primary tactical layout. Advanced controls keep their existing command
+            // handlers and open as sheets over this same workspace.
+            arena.Children.Remove(_mode); arena.Children.Remove(_format); arena.Children.Remove(_customTeams);
+            _preview.Height = 145;
+            var advanced = PrimeChrome.Stack(toggles, _customTeams, _layoutSummary);
+            var parameters = PrimeChrome.Stack(_mode, _format, limits,
+                new PrimeButton("ADVANCED RULES", () => ShowSheet("LOBBY RULES", advanced)),
+                new PrimeButton("TEAMS & ADMINISTRATION", () => ShowSheet("TEAM MANAGEMENT", administration)));
+            _ownerControls.Children.Add(parameters);
+            foreach (var element in new Control[] { _players, _hunter, _suit, _team, arena, _ownerControls, administration, chatBody })
+                if (element.Parent is Panel parent) parent.Children.Remove(element);
+            var nativeLeft = new Grid { RowDefinitions = new("*,Auto"), RowSpacing = 12 };
+            nativeLeft.Children.Add(new PrimePanel(PrimeChrome.Stack(PrimeChrome.Title("ROSTER MANIFEST"), _players)));
+            var loadout = new PrimePanel(PrimeChrome.Stack(PrimeChrome.Title("OPERATIVE LOADOUT"), _hunter, _suit, _team));
+            Grid.SetRow(loadout, 1); nativeLeft.Children.Add(loadout);
+            var nativeMiddle = new Grid { RowDefinitions = new("Auto,*"), RowSpacing = 12 };
+            nativeMiddle.Children.Add(new PrimePanel(PrimeChrome.Stack(PrimeChrome.Title("DEPLOYMENT ZONE"), arena)));
+            var matchParameters = new PrimePanel(PrimeChrome.Stack(PrimeChrome.Title("MATCH PARAMETERS"), _ownerControls));
+            Grid.SetRow(matchParameters, 1); nativeMiddle.Children.Add(matchParameters);
+            _chatHistory.Height = double.NaN; _chatHistory.MinHeight = 80;
+            chatBody.RowDefinitions = new("*,Auto"); chatInput.Height = 44;
+            var comms = new Grid { RowDefinitions = new("Auto,*,Auto,Auto"), RowSpacing = 12 };
+            comms.Children.Add(PrimeChrome.Title("COMMS TERMINAL"));
+            Grid.SetRow(chatBody, 1); comms.Children.Add(chatBody);
+            Grid.SetRow(_status, 2); comms.Children.Add(_status);
+            _start.MinHeight = 64;
+            var sessionActions = PrimeChrome.Stack(_start, _ready,
+                PrimeChrome.Columns("*,*,*", new PrimeButton("INVITE", Invite), _mainMenu, _leave));
+            Grid.SetRow(sessionActions, 3); comms.Children.Add(sessionActions);
+            var nativeBody = PrimeChrome.Columns("1.04*,1.05*,1*", nativeLeft, nativeMiddle, new PrimePanel(comms));
+            Grid.SetRow(nativeBody, 1); frame.Children.Add(nativeBody);
+            _mainPage = frame;
             _root.Children.Add(_mainPage);
 
             _startCountdown = new TextBlock
@@ -536,18 +432,7 @@ namespace MphRead.Mods.Launcher.Gui
             _root.Children.Add(_startOverlay);
             Content = _root;
 
-            _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.0 / 30) };
-            _timer.Tick += (_, _) =>
-            {
-                Tick();
-                administration.IsVisible = NetSession.LocalIsLobbyOwner;
-                administration.IsEnabled = NetSession.CanEditLobby
-                    && !NetSession.LobbyCommandPending;
-            };
-            administration.IsVisible = NetSession.LocalIsLobbyOwner;
-            administration.IsEnabled = NetSession.CanEditLobby
-                && !NetSession.LobbyCommandPending;
-            Refresh();
+
         }
 
         private static ButtonToggleRow Toggle(string label, bool on = false)
@@ -560,8 +445,7 @@ namespace MphRead.Mods.Launcher.Gui
         private static HubNavButton ActionButton(string label, Action action,
             bool primary = false, Color? accent = null)
         {
-            var button = new HubNavButton(label, primary: primary, compact: true,
-                accent: accent)
+            var button = new PrimeButton(label, primary: primary, danger: accent == HubTheme.Danger)
             {
                 MinWidth = 92
             };
@@ -574,33 +458,6 @@ namespace MphRead.Mods.Launcher.Gui
             var button = new HubNavButton(label, compact: true, accent: accent);
             button.Click += (_, _) => action();
             return button;
-        }
-
-        private static Border LobbyPanel(string title, Control content, Color accent)
-        {
-            var stack = new Grid
-            {
-                RowDefinitions = new RowDefinitions("Auto,*"),
-                RowSpacing = 8,
-                Margin = new Thickness(12)
-            };
-            stack.Children.Add(new TextBlock
-            {
-                Text = title,
-                FontFamily = HubTheme.Ui,
-                FontWeight = FontWeight.SemiBold,
-                FontSize = 11,
-                Foreground = new SolidColorBrush(accent)
-            });
-            Grid.SetRow(content, 1);
-            stack.Children.Add(content);
-            return new Border
-            {
-                Background = HubTheme.PanelStrongBrush,
-                BorderBrush = HubTheme.EdgeBrush,
-                BorderThickness = new Thickness(1),
-                Child = stack
-            };
         }
 
         private static TextBlock LobbySubhead(string text) => new()
@@ -616,12 +473,10 @@ namespace MphRead.Mods.Launcher.Gui
             base.OnAttachedToVisualTree(e);
             LauncherBackdrop.Set(LauncherBackdropScene.Lobby,
                 _draftRoom.Length > 0 ? _draftRoom : null);
-            if (!_suspended && !_closed) _timer.Start();
         }
 
         protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
         {
-            _timer.Stop();
             base.OnDetachedFromVisualTree(e);
         }
 
@@ -630,22 +485,35 @@ namespace MphRead.Mods.Launcher.Gui
             _suspended = false;
             if (NetSession.IsInLobby) _matchRequestIssued = false;
             _shownRevision = null;
-            _timer.Start();
         }
 
         public void Suspend()
         {
             _suspended = true;
-            _timer.Stop();
+        }
+
+        private void Invite()
+        {
+            string endpoint = $"{LauncherPrefs.ServerAddress}:{LauncherPrefs.ServerPort}";
+            var status = PrimeChrome.Text(LauncherPrefs.ServerAddress is "127.0.0.1" or "localhost" or "::1"
+                ? "Hosted locally: replace the loopback host with your LAN or public address before sharing. Players join through Play / Direct Connect."
+                : "Share this address with another player. They can use Play / Direct Connect.", 13);
+            var content = PrimeChrome.Stack(new PrimeBadge("LOBBY ADDRESS"), PrimeChrome.Text(endpoint, 18, data: true), status,
+                new PrimeButton("COPY INVITE ADDRESS", async () =>
+                {
+                    if (TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
+                    { await clipboard.SetTextAsync(endpoint); status.Text = "Address copied."; }
+                }));
+            ShowSheet("INVITE PLAYER", content);
         }
 
         internal bool IsSuspended => _suspended;
 
-        internal void BackgroundTick()
+        internal void SessionTick(bool foreground)
         {
-            if (_closed) return;
-            NetSession.Pump();
-            if (!CheckConnection()) return;
+            if (_closed || !CheckConnection()) return;
+            if (!_suspended) Tick(foreground);
+            else if (NetSession.IsStarting) RefreshStartPresentation();
             RequestMatchLoadIfNeeded();
         }
 
@@ -659,19 +527,17 @@ namespace MphRead.Mods.Launcher.Gui
         {
             if (_closed) return;
             _closed = true;
-            _timer.Stop();
             _bitmap?.Dispose();
             NetSession.Stop();
             NetHostSession.Stop();
             Closed?.Invoke(this, reason);
         }
 
-        private void Tick()
+        private void Tick(bool foreground)
         {
             if (_suspended || _closed) return;
-            NetSession.Pump();
             if (!CheckConnection()) return;
-            Refresh();
+            if (foreground) Refresh();
             if (_closingLobby && !NetSession.LobbyCommandPending
                 && NetSession.LobbyMessage.Length > 0)
             {
@@ -747,15 +613,19 @@ namespace MphRead.Mods.Launcher.Gui
                 byte selected = _target.Index < _targetSlots.Count
                     ? _targetSlots[_target.Index]
                     : byte.MaxValue;
-                _players.Children.Clear();
+                bool teamMode = GameState.IsTeamMode(session.Match.Mode);
+                bool rebuild = _rosterTeams != teamMode || !_targetSlots.SequenceEqual(roster.Slots.Take(roster.Count));
+                _rosterTeams = teamMode;
+                if (rebuild) _players.Children.Clear();
                 _targetSlots.Clear();
                 var names = new List<string>();
                 for (int i = 0; i < roster.Count; i++)
                 {
                     byte slot = roster.Slots[i];
+                    if (rebuild)
+                    {
                     var playerRow = new LobbyPlayerRow(roster, i, session.OwnerSlot,
-                        showTeam: GameState.IsTeamMode(session.Match.Mode),
-                        selected: slot == selected);
+                        showTeam: teamMode, selected: slot == selected);
                     playerRow.Cursor = new Cursor(StandardCursorType.Hand);
                     playerRow.PointerPressed += (_, e) =>
                     {
@@ -769,13 +639,19 @@ namespace MphRead.Mods.Launcher.Gui
                         }
                     };
                     _players.Children.Add(playerRow);
+                    }
+                    else ((LobbyPlayerRow)_players.Children[i]).Update(roster, i, session.OwnerSlot, slot == selected);
                     _targetSlots.Add(slot);
                     string team = roster.Teams[i] < 0
                         ? "AUTO"
                         : $"TEAM {(char)('A' + roster.Teams[i])}";
                     names.Add($"{roster.Names[i]}  //  {team}");
                 }
-                _target.SetItems(names, Math.Max(0, _targetSlots.IndexOf(selected)));
+                if (!_targetNames.SequenceEqual(names))
+                {
+                    _targetNames = names.ToArray();
+                    _target.SetItems(names, Math.Max(0, _targetSlots.IndexOf(selected)));
+                }
             }
 
             if (_shownMatch != session.Match || _shownRules != session.RuleFlags)
@@ -811,6 +687,8 @@ namespace MphRead.Mods.Launcher.Gui
             }
 
             _ownerControls.IsEnabled = NetSession.CanEditLobby && !NetSession.LobbyCommandPending;
+            foreach (var toggle in new[] { _fire, _affinity, _freeze, _opponentHealth, _requireReady, _join, _lockTeams, _disablePowerups })
+                toggle.IsEnabled = _ownerControls.IsEnabled;
             _closeLobby.IsEnabled = NetSession.CanEditLobby && !NetSession.LobbyCommandPending;
             TeamLayout activeLayout = LobbyRules.ResolveTeamLayout(session.Match);
             bool chooseTeams = PlayerChoosesTeam(session.Match);
@@ -1217,8 +1095,26 @@ namespace MphRead.Mods.Launcher.Gui
             OpenPage(picker);
         }
 
+        private void ShowSheet(string title, Control content)
+        {
+            if (Overlays == null) return;
+            // Sheets are reused too: release the previous frame's child before
+            // attaching the rule controls to their next presentation.
+            if (content.Parent is Panel old) old.Children.Remove(content);
+            Overlays.Show(new PrimePanel(PrimeChrome.Stack(PrimeChrome.Title(title), content,
+                new PrimeButton("DONE", Overlays.Close))), PrimeModalSize.Medium);
+        }
+        private void Confirm(string title, Action action)
+        {
+            if (Overlays == null) { action(); return; }
+            Overlays.Show(new PrimePanel(PrimeChrome.Stack(PrimeChrome.Title(title),
+                PrimeChrome.Columns("*,*", new PrimeButton("CANCEL", Overlays.Close),
+                    new PrimeButton("CONFIRM", () => { Overlays.Close(); action(); }, danger: true)))), PrimeModalSize.Small);
+        }
+
         private void OpenPage(Control page)
         {
+            if (Overlays != null) { Overlays.Show(page); return; }
             _root.Children.Clear();
             _root.Children.Add(page);
             Dispatcher.UIThread.Post(() => page.Focus(), DispatcherPriority.Background);
@@ -1226,6 +1122,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         private void ClosePage()
         {
+            if (Overlays != null) { Overlays.Close(); return; }
             _root.Children.Clear();
             _root.Children.Add(_mainPage);
             Dispatcher.UIThread.Post(() => _map.Focus(), DispatcherPriority.Background);

@@ -4,27 +4,20 @@ using Avalonia.Media;
 
 namespace MphRead.Mods.Launcher.Gui
 {
-    /// <summary>
-    /// Palette for the FPS hub.
-    ///
-    /// Kept separate from <see cref="GuiTheme"/> on purpose: the existing
-    /// deck controls still serve the dense game/settings screens while the
-    /// shell moves to a flatter tactical language. Once the child screens
-    /// migrate, this can become the single product palette.
-    /// </summary>
+    /// <summary>Compatibility names for controls sharing the Prime palette.</summary>
     internal static class HubTheme
     {
-        public static readonly Color Ink = Color.FromRgb(0x07, 0x0d, 0x14);
-        public static readonly Color Panel = Color.FromRgb(0x0d, 0x17, 0x22);
-        public static readonly Color PanelHot = Color.FromRgb(0x12, 0x22, 0x31);
-        public static readonly Color Edge = Color.FromRgb(0x2d, 0x43, 0x57);
-        public static readonly Color Accent = Color.FromRgb(0x62, 0xd9, 0xff);
-        public static readonly Color AccentSoft = Color.FromRgb(0x9b, 0xe8, 0xff);
-        public static readonly Color Text = Color.FromRgb(0xed, 0xf7, 0xff);
-        public static readonly Color TextDim = Color.FromRgb(0x8a, 0xa0, 0xb3);
-        public static readonly Color Good = Color.FromRgb(0x75, 0xd6, 0x9d);
-        public static readonly Color Warm = Color.FromRgb(0xf0, 0xae, 0x55);
-        public static readonly Color Danger = Color.FromRgb(0xdb, 0x6b, 0x74);
+        public static readonly Color Ink = PrimeTheme.Background;
+        public static readonly Color Panel = PrimeTheme.Panel;
+        public static readonly Color PanelHot = PrimeTheme.PanelHighlight;
+        public static readonly Color Edge = PrimeTheme.Border;
+        public static readonly Color Accent = PrimeTheme.Primary;
+        public static readonly Color AccentSoft = PrimeTheme.Highlight;
+        public static readonly Color Text = PrimeTheme.Text;
+        public static readonly Color TextDim = PrimeTheme.TextSecondary;
+        public static readonly Color Good = PrimeTheme.Green;
+        public static readonly Color Warm = PrimeTheme.Warning;
+        public static readonly Color Danger = PrimeTheme.Danger;
 
         public static readonly IBrush InkBrush =
             new SolidColorBrush(Color.FromArgb(0xe8, Ink.R, Ink.G, Ink.B));
@@ -35,10 +28,10 @@ namespace MphRead.Mods.Launcher.Gui
             Color.FromArgb(0xd8, PanelHot.R, PanelHot.G, PanelHot.B),
             Color.FromArgb(0xe2, Panel.R, Panel.G, Panel.B));
         public static readonly IBrush PanelStrongBrush = PanelGradient(
-            Color.FromArgb(0xf2, 0x12, 0x22, 0x31),
+            Color.FromArgb(0xf2, PrimeTheme.PanelRaised.R, PrimeTheme.PanelRaised.G, PrimeTheme.PanelRaised.B),
             Color.FromArgb(0xf2, Panel.R, Panel.G, Panel.B));
         public static readonly IBrush PanelHotBrush = PanelGradient(
-            Color.FromArgb(0xf4, 0x18, 0x31, 0x43),
+            Color.FromArgb(0xf4, PanelHot.R, PanelHot.G, PanelHot.B),
             Color.FromArgb(0xf2, PanelHot.R, PanelHot.G, PanelHot.B));
         public static readonly IBrush EdgeBrush = new SolidColorBrush(Edge);
         public static readonly IBrush AccentBrush = new SolidColorBrush(Accent);

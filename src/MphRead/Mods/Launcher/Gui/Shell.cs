@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
 using MphRead.Mods.Network;
@@ -140,6 +141,7 @@ namespace MphRead.Mods.Launcher.Gui
                 PublishNativeHandle(window);
                 _window = window;
                 Active = true;
+                OfflineRematch.StartNext = PlayAnother;
                 ShowFrontScreen();
                 window.Run();
                 return true;
@@ -153,6 +155,7 @@ namespace MphRead.Mods.Launcher.Gui
             finally
             {
                 Active = false;
+                OfflineRematch.StartNext = null;
                 _window = null;
                 _pending = null;
                 _endMatch = false;
@@ -169,6 +172,8 @@ namespace MphRead.Mods.Launcher.Gui
                     window.Context.MakeCurrent();
                     UiSurface.Current?.ReleaseMapRenderer();
                 }
+                _front?.Dispose();
+                _front = null;
                 window?.Dispose();
             }
         }
@@ -425,7 +430,7 @@ namespace MphRead.Mods.Launcher.Gui
         /// Online there is a server with a rotation and this is not its
         /// business; a story match and a demo have no next map to pick.
         /// </summary>
-        public static bool CanPlayAnother => Active && _pending == null
+        public static bool CanPlayAnother => Active && _pending == null && !NetSession.Active
             && _played is LaunchPlan plan && plan.Kind == LaunchKind.Offline;
 
         /// <summary>
@@ -438,15 +443,16 @@ namespace MphRead.Mods.Launcher.Gui
         /// again without ever being drawn. Offline that is the whole of what a
         /// rotation is.
         /// </summary>
-        public static void PlayAnother(string roomKey)
+        public static bool PlayAnother(string roomKey)
         {
-            if (!CanPlayAnother || String.IsNullOrWhiteSpace(roomKey)
-                || _played is not LaunchPlan plan)
+            if (!CanPlayAnother || _played is not LaunchPlan plan
+                || !OfflineRematch.TryPlan(plan, roomKey, out var next))
             {
-                return;
+                return false;
             }
             _endMatch = true;
-            _pending = plan with { RoomKey = roomKey };
+            _pending = next;
+            return true;
         }
 
         private static void StartMatch(RenderWindow window, LaunchPlan plan)
@@ -477,6 +483,11 @@ namespace MphRead.Mods.Launcher.Gui
                     // until it publishes InMatch removes the black gap and gives
                     // every participant the same visible start boundary.
                     _matchLoading = true;
+                }
+                else if (plan.Kind == LaunchKind.Demo && _front != null)
+                {
+                    _front.ShowReplayEditor(RequestEndMatch, () => UiSurface.Current?.Hide());
+                    UiSurface.Current?.Show(_front);
                 }
                 else
                 {
@@ -698,7 +709,21 @@ namespace MphRead.Mods.Launcher.Gui
         private static Action<RenderWindow>[] Script => new Action<RenderWindow>[]
         {
             _ => Wait(20),
-            w => { Shot(w, "shell-start"); Escape(); Wait(15); },
+            w =>
+            {
+                Shot(w, "shell-startup");
+                var startup = _front?.GetVisualDescendants().OfType<PrimeStartupScreen>().FirstOrDefault();
+                if (startup == null) { ShotMisses++; Console.WriteLine("[shellshot] startup gate was missing"); }
+                else Key(Keys.Enter);
+                Wait(12);
+            },
+            w => { Shot(w, "shell-startup-transition"); Wait(25); },
+            w =>
+            {
+                if (_front?.Prime is not { IsVisible: true, IsEnabled: true })
+                { ShotMisses++; Console.WriteLine("[shellshot] startup did not reveal the shell"); }
+                Shot(w, "shell-start"); Escape(); Wait(15);
+            },
             // Escape on the front screen is the quit prompt, so a second
             // picture that differs from the first is the keyboard reaching a
             // screen that is no longer a window.
@@ -763,10 +788,11 @@ namespace MphRead.Mods.Launcher.Gui
             w =>
             {
                 Shot(w, "shell-play");
-                ClickIfReady(c => c is ServerRow row && row.IsLive);
+                // Directory availability is external to the layout smoke test.
+                UiSurface.Current?.ClickOn(c => c is ServerRow row && row.IsLive);
                 Wait(25);
             },
-            w => { Shot(w, "shell-server-side"); Key(Keys.Right); Wait(15); },
+            w => { Shot(w, "shell-server-side"); ClickIfReady(c => FrontAction(c, "OFFLINE")); Wait(15); },
             // A card, not a row: the offline face is every map at once now.
             // See DeckTile.
             // Land the pointer in the middle of the grid, then scroll it for
@@ -780,14 +806,16 @@ namespace MphRead.Mods.Launcher.Gui
                 Scroll(60, 1);
                 Wait(10);
             },
-            w => { ClickIfReady(c => c is DeckTile); Wait(25); },
+            w => { ClickIfReady(c => c.GetValue(ControllerNav.NavIdProperty) == "offline.map"); Wait(25); },
             w =>
             {
                 // Still the play screen, with the drawer open beside it: a
                 // press on a card picks it and starts nothing. A picture of a
                 // room here is the regression.
                 Shot(w, "shell-play-selected");
-                ClickIfReady(c => c is DeckButton go && go.Text == "START");
+                ClickIfReady(c => c is UiListRow);
+                if (GameFiles.Ready) Key(Keys.Enter);
+                ClickIfReady(c => c.GetValue(ControllerNav.NavIdProperty) == "offline.start");
                 Wait(40);
             },
             w =>
@@ -848,11 +876,27 @@ namespace MphRead.Mods.Launcher.Gui
             w =>
             {
                 Shot(w, "shell-endgame");
-                Click(c => c is DeckButton tab && tab.Text == "Change hunter");
+                // Some rule sets do not expose character changes at results.
+                UiSurface.Current?.ClickOn(c => c is DeckButton tab && tab.Text == "Change hunter");
                 Wait(30);
             },
-            w => { Shot(w, "shell-endgame-hunter"); ReleaseResults(); Wait(20); },
-            _ => { EndShotMatch(); Wait(90); },
+            w => { Shot(w, "shell-endgame-hunter"); MapPick.Reset(); ReleaseResults(); Wait(90); },
+            w =>
+            {
+                CheckShotRematch(w, _played?.RoomKey);
+                Shot(w, "shell-bot-rematch"); HoldResults(); Wait(20);
+            },
+            _ =>
+            {
+                _shotNextRoom = MapPick.Order.FirstOrDefault(room => !MapPick.IsReturnToLobby(room));
+                if (_shotNextRoom != null) MapPick.Choose(MapPick.IndexOf(_shotNextRoom));
+                ReleaseResults(); Wait(90);
+            },
+            w =>
+            {
+                CheckShotRematch(w, _shotNextRoom);
+                Shot(w, "shell-bot-next-map"); RequestEndMatch(); Wait(90);
+            },
             w => { Shot(w, "shell-back-fullscreen"); Mods.WindowMode.Toggle(w); Wait(25); },
             w => { Shot(w, "shell-back"); Wait(5); }
         };
@@ -862,45 +906,10 @@ namespace MphRead.Mods.Launcher.Gui
             _shotWait = frames;
         }
 
-        /// <summary>
-        /// Press something on whatever the front screen is.
-        ///
-        /// Two screens, because there are two: with game files it is the menu,
-        /// and the SETTINGS button is a <see cref="DeckButton"/> since the
-        /// deck theme -- the predicate that still said <see cref="UiWord"/> is
-        /// why every click here quietly matched nothing for weeks. Without
-        /// them the setup screen is pushed over the menu and *is* the front
-        /// screen, so a press aimed at the menu lands on the panel covering
-        /// it. CI is always the second case; a machine set up to play is
-        /// always the first.
-        /// </summary>
-        private static void ClickSettings()
-        {
-            if (GameFiles.Ready)
-            {
-                Click(c => FrontAction(c, "SETTINGS"));
-                return;
-            }
-            // The setup screen's tick, which is the only thing on it that can
-            // be pressed: the path to type beside it is gone. That used to be
-            // the target here ("Use this file"), so removing it failed the
-            // whole capture rather than the screen -- and is why
-            // NativeFilePicker.Suppressed exists. With it set the press takes
-            // the screen's own no-dialog path: nothing opens, the sentence
-            // about it goes on screen, and what is being proven -- that the
-            // press arrives at all -- is proven.
-            Click(c => c is UiMark mark && mark.Label == "choose your .nds file");
-        }
-
-        private static void HoverFront()
-        {
-            if (GameFiles.Ready)
-            {
-                Hover(c => FrontAction(c, "SETTINGS"));
-                return;
-            }
-            Hover(c => c is UiMark mark && mark.Label == "choose your .nds file");
-        }
+        // The initial Escape dismisses the setup sheet when assets are absent.
+        // Settings remains available in the persistent header in either case.
+        private static void ClickSettings() => Click(c => FrontAction(c, "SETTINGS"));
+        private static void HoverFront() => Hover(c => FrontAction(c, "SETTINGS"));
 
         /// <summary>
         /// The steps that need a room to load. Skipped rather than failed
@@ -1024,7 +1033,7 @@ namespace MphRead.Mods.Launcher.Gui
         /// <summary>
         /// Put the match at its results and keep it there.
         ///
-        /// <see cref="EndShotMatch"/> shortens the results to a fifth of a
+        /// The continuation check shortens the results to a fifth of a
         /// second because the capture it belongs to is about what comes
         /// *after* them. This one is about the results themselves, so the
         /// clock is given thirty seconds instead -- the screen it photographs
@@ -1060,10 +1069,17 @@ namespace MphRead.Mods.Launcher.Gui
             GameState.MatchTime = 0.2f;
         }
 
-        private static void EndShotMatch()
+        private static string? _shotNextRoom;
+        private static void CheckShotRematch(RenderWindow window, string? expected)
         {
-            GameState.MatchState = MatchState.Ending;
-            GameState.MatchTime = 0.2f;
+            int expectedId = expected == null ? -1 : Metadata.GetRoomByName(expected).Item2;
+            if (!window.HasScene || GameState.MatchState != MatchState.InProgress
+                || expectedId < 0 || window.Scene.RoomId != expectedId)
+            {
+                ShotMisses++;
+                Console.WriteLine($"[shellshot] bot rematch failed: expected {expected}, scene={window.HasScene}, state={GameState.MatchState}");
+            }
+            else Console.WriteLine($"[shellshot] bot rematch loaded {expected}");
         }
 
         private static void Shot(RenderWindow window, string name)
