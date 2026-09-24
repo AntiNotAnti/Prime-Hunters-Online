@@ -126,6 +126,15 @@ public static partial class NetSession
                 if (player.IsAltForm != alt && !player.IsMorphing && !player.IsUnmorphing)
                     player.ModStartFormSwitch();
                 player.ModForceForm(alt);
+                // EnterAltForm splits local health while creating its entity.
+                // Restore both canonical values before acknowledging WorldReady.
+                player.Health = state.Health;
+                if (player.Hunter == Hunter.Weavel && player.Halfturret != null
+                    && player.Flags2.TestFlag(PlayerFlags2.Halfturret))
+                {
+                    player.Halfturret.Health = state.HalfturretActive ? state.HalfturretHealth : 0;
+                    if (!state.HalfturretActive) player.OnHalfturretDied();
+                }
             }
             player.ModPlaceAt(state.Position); player.Speed = state.Speed;
             player.ModSetSpawnFacing(state.Facing);
@@ -198,6 +207,8 @@ public sealed partial class DedicatedServer
             || ready.SlotGeneration != _slotGenerations[peer.SlotIndex]) return;
         peer.LastSeen = now;
         if (!peer.MatchReady) Log($"[lobby] slot {peer.SlotIndex} applied world revision {ready.Revision}, frame {ready.AuthorityFrame}");
+        if (!peer.MatchReady) Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.Lifecycle, NetSession.NetFrame,
+            Player: (byte)peer.SlotIndex, Result: 200, A: ready.AuthorityFrame));
         peer.MatchReady = true;
         if (_phase == SessionPhase.Starting && _start.MarkWorldReady(peer.SlotIndex, ready.Start))
         { TouchLobbyRevision($"slot {peer.SlotIndex} world ready"); CheckLoadBarrier(now); }

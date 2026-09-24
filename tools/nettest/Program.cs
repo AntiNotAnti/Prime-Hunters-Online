@@ -28,6 +28,19 @@ namespace MphRead.NetTest
 
         private static int Main(string[] args)
         {
+            if (args.Length > 1 && args[0] == "--protocol19-scene")
+            {
+                System.IO.Directory.SetCurrentDirectory(System.IO.Path.GetFullPath(args[1]));
+                Paths.UpdatePaths(); Paths.ChooseMphPath();
+                return NetProtocol19Check.Run(args.Length > 2 ? args[2] : "MP1 SANCTORUS");
+            }
+            if (args.Length > 0 && args[0] == "--protocol19") return Protocol19Tests.Run();
+            if (args.Length > 1 && args[0] == "--continuous-scene")
+            {
+                System.IO.Directory.SetCurrentDirectory(System.IO.Path.GetFullPath(args[1]));
+                Paths.UpdatePaths(); Paths.ChooseMphPath();
+                return NetContinuousTargetCheck.Run(args.Length > 2 ? args[2] : "MP1 SANCTORUS");
+            }
             if (args.Length > 1 && args[0] == "--alt-scene")
             {
                 System.IO.Directory.SetCurrentDirectory(System.IO.Path.GetFullPath(args[1]));
@@ -35,6 +48,7 @@ namespace MphRead.NetTest
                 return NetAltHitCheck.Run(args.Length > 2 ? args[2] : "MP1 SANCTORUS");
             }
             if (args.Length > 0 && args[0] == "--alt-hits") return AltFormHitTests.Run();
+            if (args.Length > 0 && args[0] == "--continuous-targets") return ContinuousTargetTests.Run();
             if (args.Length > 0 && args[0] == "--dynamic-geometry") return DynamicGeometryTests.Run();
             if (args.Length > 0 && args[0] == "--input-edges") return InputEdgeTests.Run();
             if (args.Length > 0 && args[0] == "--protocol18") return Protocol18Tests.Run();

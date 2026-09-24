@@ -61,6 +61,9 @@ Check(nearWrap == uint.MaxValue && pastWrap == (ulong)uint.MaxValue + 2,
     "held phase advances monotonically through intent frame rollover");
 
 clocks.Reset();
+ulong dedicated = clocks.Resolve(0, 2500, true, false, 9000, true, 401, 1, out _, receivedBeforeStep: true);
+Check(dedicated == 401, "dedicated pre-step arrival does not shift source phase by one tick");
+clocks.Reset();
 int[] positions = new int[32];
 for (uint step = 0; step < 64; step++)
 {

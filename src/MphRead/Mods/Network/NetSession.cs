@@ -257,7 +257,7 @@ namespace MphRead.Mods.Network
                 LastError = null;
                 // This host arbitrates its clients' hit claims, so it needs a
                 // way to answer them. NetHitClaims.
-                NetHitClaims.VerdictSink = SendVerdicts;
+                NetHitClaims.CombatAckSink = SendVerdicts;
                 Console.WriteLine($"[net] hosting on UDP {_transport.LocalPort}");
             }
             catch (Exception ex)
@@ -349,6 +349,8 @@ namespace MphRead.Mods.Network
         public static void RewindPlayback()
         {
             ContinuousPhase.Reset();
+            NetContinuousTargeting.Reset();
+            NetContinuousTargetDiagnostics.Reset();
             NetPlayerLifecycle.ResetLives();
             _hasRoster = false;
             _rosterRevision = 0;
@@ -451,6 +453,8 @@ namespace MphRead.Mods.Network
             Array.Clear(RemoteIntentValid);
             Array.Clear(RemoteIntentArrived);
             ContinuousPhase.Reset();
+            NetContinuousTargeting.Reset();
+            NetContinuousTargetDiagnostics.Reset();
             Array.Clear(SlotPing);
             Array.Clear(_lastSlotIntentFrame);
             _lastServerPacket = 0;
@@ -955,7 +959,7 @@ namespace MphRead.Mods.Network
                 case PacketType.MapChange when Role == NetRole.Client:
                     HandleMatchState(packet, packet.Type == PacketType.MapChange);
                     break;
-                case PacketType.HitVerdict when Role == NetRole.Client:
+                case PacketType.CombatAck when Role == NetRole.Client:
                     NetHitClaims.ApplyVerdicts(packet.Payload);
                     break;
                 case PacketType.HitClaim when Role == NetRole.Host:
@@ -1018,7 +1022,7 @@ namespace MphRead.Mods.Network
         /// transport; the dedicated server hangs its own off the same hook.
         /// </summary>
         private static void SendVerdicts(int slot,
-            ReadOnlySpan<(ushort Id, byte Result)> verdicts)
+            ReadOnlySpan<CombatAckEntry> verdicts)
         {
             if (verdicts.Length == 0 || _transport == null)
             {
@@ -1032,7 +1036,7 @@ namespace MphRead.Mods.Network
                 }
                 HitVerdictPacket.Write(_scratch, verdicts, NetSession.CurrentMatchId, NetSession.AuthorityEpoch,
                     NetPlayerLifecycle.Generation(slot), NetPlayerLifecycle.Get(slot));
-                _transport.Send(_peers[i].EndPoint, PacketType.HitVerdict,
+                _transport.Send(_peers[i].EndPoint, PacketType.CombatAck,
                     _scratch.AsSpan(0, HitVerdictPacket.HeaderSize + verdicts.Length * HitVerdictPacket.EntrySize));
                 return;
             }
@@ -1239,7 +1243,7 @@ namespace MphRead.Mods.Network
 
         private static void HandleIntent(ReceivedPacket packet, double time)
         {
-            if (packet.Payload.Length < IntentPacket.Size)
+            if (packet.Payload.Length < IntentPacket.FullSize)
             {
                 return;
             }
@@ -1278,7 +1282,7 @@ namespace MphRead.Mods.Network
         /// </summary>
         private static void HandleSlotIntent(ReceivedPacket packet)
         {
-            if (packet.Payload.Length < 1 + IntentPacket.Size)
+            if (packet.Payload.Length < 1 + IntentPacket.FullSize)
             {
                 return;
             }
@@ -1356,6 +1360,7 @@ namespace MphRead.Mods.Network
             }
             NetTelemetry.NewLife(slot);
             ContinuousPhase.ResetSlot(slot);
+            NetContinuousTargeting.ForgetSlot(slot);
             _lastSlotIntentFrame[slot] = 0;
             RemoteIntentArrived[slot] = 0;
             RemoteIntentValid[slot] = false;
@@ -1907,6 +1912,8 @@ namespace MphRead.Mods.Network
                     Speed = player.Speed,
                     Facing = player.FacingVector,
                     Health = (ushort)Math.Clamp(player.Health, 0, ushort.MaxValue),
+                    HalfturretActive = player.Flags2.TestFlag(PlayerFlags2.Halfturret),
+                    HalfturretHealth = (ushort)Math.Clamp(player.Halfturret?.Health ?? 0, 0, ushort.MaxValue),
                     CurrentWeapon = (byte)player.CurrentWeapon,
                     Team = (byte)player.Team
                 };

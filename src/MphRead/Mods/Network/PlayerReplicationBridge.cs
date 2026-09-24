@@ -218,7 +218,7 @@ namespace MphRead.Mods.Network
                 _latchedBoostDamage = player.ModBoostDamage;
                 _latchedHomingTarget = c.Shoot.IsReleased
                     ? player.ModPickNetworkHomingTarget()
-                    : (byte)0;
+                    : default;
                 if (c.Shoot.IsReleased)
                 {
                     // The owner's visual projectile consumes the same decision
@@ -235,7 +235,7 @@ namespace MphRead.Mods.Network
         /// </summary>
         private int _latchedCharge;
         private int _latchedBoostDamage;
-        private byte _latchedHomingTarget;
+        private NetTargetIdentity _latchedHomingTarget;
         private bool _hasLatch;
 
         /// <summary>Local player's controls and aim -> wire intent (client side).</summary>
@@ -319,7 +319,8 @@ namespace MphRead.Mods.Network
                     _hasLatch ? _latchedBoostDamage : player.ModBoostDamage, 0, 255),
                 ShotFlags = (byte)((player.DoubleDamage ? IntentPacket.FlagDoubleDamage : 0)
                     | (player.IsPrimeHunter ? IntentPacket.FlagPrimeHunter : 0)),
-                HomingTarget = _hasLatch ? _latchedHomingTarget : (byte)0,
+                Target = player.CurrentWeapon == BeamType.ShockCoil ? player.ModContinuousNetworkTarget
+                    : _hasLatch ? _latchedHomingTarget : default,
                 HasState = true,
                 // Which frame of the authority's simulation this player was
                 // looking at while they aimed and fired. The authority rewinds
@@ -526,12 +527,19 @@ namespace MphRead.Mods.Network
             // Only on the authority, like the form above: it is the machine
             // whose copy of this shot decides what it hit, and a client that
             // also acted on it would be correcting a puppet from two sources.
-            if (intent.HasState && intent.HomingTarget != 0
+            if (intent.HasState && intent.Target.IsSupplied
+                && intent.WeaponSelect == (byte)BeamType.VoltDriver
                 && player.SlotIndex != _host.LocalSlot)
             {
                 // Unlike charge/damage state, this is a one-shot visual/physics
                 // decision that every machine simulating the projectile needs.
-                player.ModSetPendingHomingTarget(intent.HomingTarget);
+                player.ModSetPendingHomingTarget(intent.Target);
+            }
+            else if (intent.WeaponSelect != (byte)BeamType.VoltDriver && player.SlotIndex != _host.LocalSlot)
+            {
+                // Continuous reports are persistent state, never a queued release
+                // for a later charged projectile after the player changes weapons.
+                player.ModSetPendingHomingTarget(default);
             }
             if (intent.HasState && (_host.IsAuthority || _host.IsHost))
             {
@@ -732,6 +740,14 @@ namespace MphRead.Mods.Network
             {
                 player.Health = _host.HealthFor(player, state.Health, local: true);
             }
+            // Form owns existence; a health sample never creates a turret.
+            if (player.Hunter == Hunter.Weavel && player.Halfturret != null
+                && (player.IsAltForm || player.IsMorphing))
+            {
+                if (state.HalfturretActive) player.ModRestoreHalfturretFlag();
+                player.Halfturret.Health = NetHitPrediction.TurretHealthFor(slot, state.HalfturretActive ? state.HalfturretHealth : 0);
+                if (!state.HalfturretActive) player.OnHalfturretDied();
+            }
             player.ModSetFrozen((state.Flags & PlayerState.FlagFrozen) != 0);
             ApplyAfflictions(player, state);
         }
@@ -757,9 +773,18 @@ namespace MphRead.Mods.Network
             {
                 return;
             }
+            bool wasMismatching = _formReconciliation[slot].EpisodeActive;
             FormCorrection correction = ReconcileForm(slot, _host.Frame,
                 altForm, player.IsAltForm, player.IsMorphing, player.IsUnmorphing,
                 _host.Ping(slot));
+            ref var episode = ref _formReconciliation[slot];
+            if (episode.EpisodeActive || wasMismatching || correction != FormCorrection.None)
+                Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.Form, _host.Frame,
+                    Player: (byte)slot, Generation: NetPlayerLifecycle.Generation(slot), Life: NetPlayerLifecycle.Get(slot),
+                    Id: episode.EpisodeId, Result: (int)episode.Reason,
+                    Flags: (altForm ? 1 : 0) | (player.IsAltForm ? 2 : 0) | (player.IsMorphing ? 4 : 0) | (player.IsUnmorphing ? 8 : 0) | (wasMismatching && !episode.EpisodeActive ? 16 : 0),
+                    A: _host.Frame - episode.EpisodeStartedFrame,
+                    B: NetSession.AppliedSnapshotFrame, C: NetSession.RemoteIntents[slot].Frame));
             // First the real transition, because that is what creates the
             // parts of a form that are separate entities -- Weavel's
             // halfturret exists only because EnterAltForm adds it, so a

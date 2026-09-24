@@ -59,6 +59,13 @@ internal static class NetCheckSimulation
             + $"clips={clips} clipsPassed={clipsPassed} recordingError={DemoRecorder.LastError ?? "none"} captureError={ReplayCapture.WorldCapture.LastError ?? "none"}");
         Console.WriteLine(HitRig.Describe());
         Console.WriteLine(NetContactLagComp.Describe());
+        Console.WriteLine(NetContinuousTargetDiagnostics.Describe());
+        Console.WriteLine(NetHitPrediction.Describe());
+        if (Environment.GetEnvironmentVariable("PRIME_CONTINUOUS_TRACE") is string tracePath)
+        {
+            using var traceWriter = System.IO.File.CreateText(tracePath);
+            NetContinuousTargetDiagnostics.WriteTraces(traceWriter);
+        }
         Console.WriteLine(NetUnlagged.Describe());
         Console.WriteLine(ReplayPerfTelemetry.Summary(ReplayCapture.Recorder.Timeline));
         bool stationaryTarget = HitRig.IsSniper && (HitRig.Mode == HitRig.RigMode.AltStatic || HitRig.Mode == HitRig.RigMode.AltContact);

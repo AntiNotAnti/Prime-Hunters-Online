@@ -1,5 +1,23 @@
 # Netcode modernization evidence
 
+## Protocol 19 continuous targeting and combat telemetry (2026-09-24)
+
+Implemented together with combat telemetry on `feature/net-v19-combat-telemetry`, including the historical
+alt-form prerequisite from `fix/alt-form-lag-compensation`. Owner-selected Shock Coil
+targets now carry generation/life identity, historical validation, explicit none,
+lifecycle resets, bounded diagnostics and deterministic/real-scene tests. The same
+identity serves charged Volt Driver. Intent payload increases from 92 to 96 bytes.
+
+The paired traces exposed and fixed the post-input newest-snapshot overwrite of the
+displayed world and a dedicated initial phase offset. Damage/ramp/cones remain
+unchanged. Accepted target identities agree, but impaired hit-count acceptance is
+still open; do not describe this as meeting the full 95% criterion. See
+[continuous-targeting.md](continuous-targeting.md) for mechanics, commands and
+measurement boundaries.
+
+
+The coordinated follow-up adds Weavel turret fast/bootstrap state, stored CombatAck outcomes and immediate correction, absolute form mismatch episodes, and bounded anonymous telemetry. See [combat-telemetry.md](combat-telemetry.md).
+
 ## Protocol 18 enhancement (2026-09-24)
 
 Implemented on `feature/net-v18-combat-lifecycle` from main

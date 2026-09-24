@@ -24,6 +24,8 @@ namespace MphRead.Entities
                 bool fresh = local || (replication.TryGetIntent(SlotIndex, out var intent)
                     && intent.Frame != 0 && replication.IntentAge(SlotIndex)
                         <= Mods.Network.ContinuousWeaponPhase.MaxIntentAge);
+                if (!fresh || CurrentWeapon != BeamType.ShockCoil || !Controls.Shoot.IsDown || !ModIsInPlay)
+                    NetContinuousTargeting.ResetPlayer(this);
                 _scene.WeaponPhase.Observe(SlotIndex, _scene.FrameCount,
                     EquipWeapon.Flags.TestFlag(WeaponFlags.Continuous) && Controls.Shoot.IsDown, fresh);
             }

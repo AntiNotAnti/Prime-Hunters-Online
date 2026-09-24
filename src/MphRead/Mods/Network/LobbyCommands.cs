@@ -59,6 +59,7 @@ namespace MphRead.Mods.Network
         {
             Log($"[lobby] phase {_phase} -> {phase}, match {_matchId}");
             _phase = phase;
+            Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.Lifecycle, NetSession.NetFrame, Result: 128 + (int)phase));
             TouchLobbyRevision("phase changed");
         }
 

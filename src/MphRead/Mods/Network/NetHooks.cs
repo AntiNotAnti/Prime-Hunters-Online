@@ -10,6 +10,21 @@ namespace MphRead.Mods.Network
     /// </summary>
     public static class NetHooks
     {
+        private static bool _continuousIntentPending;
+        private static IntentPacket _continuousIntent;
+        private static uint _continuousIntentFrame;
+        internal static void ResetContinuousIntent() => _continuousIntentPending = false;
+        internal static void CaptureContinuousShot(PlayerEntity player)
+        {
+            if (!_continuousIntentPending || _continuousIntentFrame != NetSession.NetFrame
+                || player.SlotIndex != NetSession.LocalSlot) return;
+            // Targeting runs after aim/input processing. The proposal must carry that
+            // same pose and ray, not the values captured before this simulation step.
+            _continuousIntent.Aim = player.ModGunVector;
+            _continuousIntent.Position = player.Position;
+            player.SceneServices.PlayerReplication.StampAcknowledgement(ref _continuousIntent);
+        }
+
         /// <summary>
         /// Which slot this machine drives. 0 when offline, so the single
         /// upstream call site reads the same in both cases.
@@ -453,7 +468,19 @@ namespace MphRead.Mods.Network
             NetSlotManager.Sync();
             // Apply an allocated life before input is stamped or simulation
             // can hit a body still belonging to the previous life.
-            if (NetSession.IsClient && !NetSession.IsAuthority && NetRoomChange.GameplayReady) ApplyRemoteStates();
+            if (NetSession.IsClient && !NetSession.IsAuthority && NetRoomChange.GameplayReady)
+            {
+                ApplyRemoteStates();
+                // Lifecycle adoption also writes the newest snapshot position. It runs
+                // AFTER TryApplyRemoteInput restored the displayed read point. Restore
+                // that same point again before the local selector/shot consumes it;
+                // otherwise ACK names a world roughly one smoothing buffer behind it.
+                if (SnapshotPositions)
+                    for (int i = 0; i < scene.Players.Items.Count; i++)
+                        if (i != NetSession.LocalSlot && NetSession.RemoteStateValid[i]
+                            && scene.Players.Items[i].ModIsInPlay)
+                            NetPlayerBridge.RestoreSnapshotPresentationPosition(scene.Players.Items[i], NetSession.RemoteStates[i]);
+            }
             // After the slots, because it reads which hunter each of them is
             // playing: a player who changed hunter between lives has changed
             // who they might collide with. See PlayerColors.
@@ -507,9 +534,17 @@ namespace MphRead.Mods.Network
                 // gaps in everyone's position stream.
                 Mods.KillCam.FilterInput(scene);
                 NetPlayerBridge.RecordPresses(player);
+                player.ModContinuousNetworkTarget = NetTargetIdentity.None;
                 if (NetSession.NetFrame % NetConfig.IntentSendInterval == 0)
                 {
-                    NetSession.SendIntent(NetPlayerBridge.CaptureIntent(player));
+                    var intent = NetPlayerBridge.CaptureIntent(player);
+                    if (player.CurrentWeapon == BeamType.ShockCoil && player.Controls.Shoot.IsDown)
+                    {
+                        // Queue input now; latch the firing pose and decision at the actual selector.
+                        _continuousIntent = intent; _continuousIntentFrame = NetSession.NetFrame;
+                        _continuousIntentPending = true;
+                    }
+                    else NetSession.SendIntent(intent);
                 }
             }
             else
@@ -538,6 +573,16 @@ namespace MphRead.Mods.Network
             if (!NetSession.Active || !NetRoomChange.GameplayReady)
             {
                 return;
+            }
+            if (_continuousIntentPending)
+            {
+                _continuousIntentPending = false;
+                if (_continuousIntentFrame == NetSession.NetFrame && NetSession.LocalSlot >= 0
+                    && NetSession.LocalSlot < PlayerEntity.Players.Count)
+                {
+                    _continuousIntent.Target = PlayerEntity.Players[NetSession.LocalSlot].ModContinuousNetworkTarget;
+                    NetSession.SendIntent(_continuousIntent);
+                }
             }
             // The playout clock, before anything reads a puppet position from
             // it. One tick a simulation frame, like every other counter here:

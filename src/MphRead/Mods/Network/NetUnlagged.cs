@@ -312,6 +312,9 @@ namespace MphRead.Mods.Network
         private static readonly Vector3[,] _position = new Vector3[Slots, HistoryFrames];
         private static readonly HistoricalAltAttackState[,] _attackPose = new HistoricalAltAttackState[Slots, HistoryFrames];
         private static readonly AltCollisionPose[,] _altPose = new AltCollisionPose[Slots, HistoryFrames];
+        private static readonly bool[,] _morphing = new bool[Slots, HistoryFrames];
+        private static readonly int[,] _targetTeam = new int[Slots, HistoryFrames];
+        private static readonly bool[,] _targetable = new bool[Slots, HistoryFrames];
         private static readonly bool[,] _altForm = new bool[Slots, HistoryFrames];
         private static readonly bool[,] _inPlay = new bool[Slots, HistoryFrames];
         public static long FormRewinds, FormMismatches, KandenHistoricalSegmentChecks, KandenHistoricalSegmentHits;
@@ -438,6 +441,9 @@ namespace MphRead.Mods.Network
                 {
                     _position[i, index] = player.Position;
                     _altForm[i, index] = player.IsAltForm;
+                    _morphing[i, index] = player.IsMorphing;
+                    _targetTeam[i, index] = player.TeamIndex;
+                    _targetable[i, index] = player.GetTargetable();
                     _altPose[i, index] = player.ModCaptureAltPose();
                     _attackPose[i, index] = NetContactLagComp.CaptureHistory(player, frame);
                 }
@@ -479,6 +485,24 @@ namespace MphRead.Mods.Network
                 pose = InterpolatePose(pose, new(nextPosition, _altForm[slot, next], _altPose[slot, next]), fraction);
             }
             return true;
+        }
+
+        internal static bool TryContinuousTargetPose(PlayerEntity owner, PlayerEntity target,
+            out HistoricalPlayerPose pose, out bool morphing, out int team)
+        {
+            pose = default; morphing = target.IsMorphing; team = target.TeamIndex;
+            // Reuse the same fractional ACK, age and hard ceiling as the shot world.
+            double frame = _inProgress && _shooter == owner ? _shotTargetFrame
+                : NetSession.NetFrame - (Enabled ? RewindFor(owner.SlotIndex, false, out _, out _) : 0);
+            if (frame >= NetSession.NetFrame)
+            {
+                pose = new(target.Position, target.ModCollisionIsAltForm, default);
+                return target.ModIsInPlay && target.GetTargetable();
+            }
+            if (!TryHistoricalPose(target, frame, out pose)) return false;
+            int index = (int)((uint)Math.Floor(frame) % HistoryFrames);
+            morphing = _morphing[target.SlotIndex, index]; team = _targetTeam[target.SlotIndex, index];
+            return _targetable[target.SlotIndex, index];
         }
 
         // Discrete attack state is for diagnostics; ACK time names opponents,
@@ -561,41 +585,13 @@ namespace MphRead.Mods.Network
                 // the present is the only defensible guess for either.
                 return 0;
             }
-            double depth = now - ack;
-            // Less the fraction of a frame past that ack the shooter's world
-            // actually sat at. A client that interpolates its puppets is
-            // drawing a point between two snapshots, and it says which one and
-            // how far past it; rewinding to the whole frame would put every
-            // victim up to a frame of their own movement away from where they
-            // were being aimed at -- which on a headshot band 0.3 units tall
-            // is the whole band. Zero from a client that does not interpolate,
-            // which is what every build before protocol 7 was.
-            // IntentPacket.AckSubFrame.
-            depth -= NetSession.RemoteIntents[slot].AckSubFrame / 256.0;
-            // Plus however long the trigger pull sat in a press history before
-            // it reached here. The ack belongs to the packet that carried the
-            // edge, not to the frame the edge happened on, and those are the
-            // same frame only when nothing was lost.
-            if (PressAgeEnabled && allowPressAge && slot < NetPlayerBridge.ShootPressAge.Length)
-            {
-                int age = NetPlayerBridge.ShootPressAge[slot];
-                if (age > 0)
-                {
-                    depth += age;
-                    StalePresses++;
-                    StalePressFrames += age;
-                }
-            }
-            // Recorded before the clamp, because the clamp is the thing being
-            // measured. A depth past the ring is filed in the last cell rather
-            // than dropped: it is still a shot that asked for more than it got.
-            rawRequested = Math.Max(0, depth);
-            requested = (int)Math.Min(Math.Round(depth), HistoryFrames);
-            if (depth > MaxRewindFrames)
-            {
-                depth = MaxRewindFrames;
-            }
-            return depth < 0 ? 0 : depth;
+            int age = PressAgeEnabled && allowPressAge && slot < NetPlayerBridge.ShootPressAge.Length
+                ? NetPlayerBridge.ShootPressAge[slot] : 0;
+            if (age > 0) { StalePresses++; StalePressFrames += age; }
+            var decision = LagCompensationPolicy.Evaluate(slot, now, ack, NetSession.RemoteIntents[slot].AckSubFrame, age);
+            rawRequested = decision.RequestedDepth;
+            requested = (int)Math.Min(Math.Round(rawRequested), HistoryFrames);
+            return decision.GlobalServedDepth;
         }
 
         /// <summary>
@@ -639,8 +635,9 @@ namespace MphRead.Mods.Network
             double rewind = RewindFor(slot, _shotPolicy.AllowPressAge, out int requested, out double rawRequested);
             if (_shotPolicy.UseShadowPlausibility && LagCompensationPolicy.Plausibility != LagCompPlausibility.Off && rewind > 0)
             {
-                var decision = LagCompensationPolicy.Evaluate(rawRequested, LagCompensationPolicy.Timing(slot),
-                    PressAgeEnabled ? NetPlayerBridge.ShootPressAge[slot] : 0, ceiling: MaxRewindFrames);
+                var policy = LagCompensationPolicy.Evaluate(slot, NetSession.NetFrame, NetSession.RemoteIntents[slot].AckFrame,
+                    NetSession.RemoteIntents[slot].AckSubFrame, PressAgeEnabled && _shotPolicy.AllowPressAge ? NetPlayerBridge.ShootPressAge[slot] : 0);
+                var decision = policy.Timing;
                 // Preserve fractional ACK time exactly; rounded histograms must
                 // never become the gameplay time source, including in Shadow.
                 decision = decision with { HardAppliedFrames = rewind,
@@ -650,6 +647,11 @@ namespace MphRead.Mods.Network
                     ? NetHistoricalTrace.CompareShot(shooter, origin, direction, rewind, Math.Min(rewind, decision.ShadowAllowedFrames.Value))
                     : ShadowOutcome.HistoricalDataUnavailable;
                 LagCompensationPolicy.Record(slot, NetShotDiagnostics.Bucket(shooter.CurrentWeapon), decision, outcome);
+                LagCompensationPolicy.RecordShotContext(slot, LaunchFrameFor(shooter), policy, NetShotDiagnostics.Bucket(shooter.CurrentWeapon));
+                Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.Shot, NetSession.NetFrame,
+                    Player: (byte)slot, Weapon: (byte)shooter.CurrentWeapon, Id: NetSession.RemoteIntents[slot].AckFrame,
+                    Result: (int)outcome, A: rawRequested, B: rewind, C: decision.ShadowAllowedFrames ?? -1,
+                    D: PressAgeEnabled && _shotPolicy.AllowPressAge ? NetPlayerBridge.ShootPressAge[slot] : 0));
                 rewind = LagCompensationPolicy.Applied(decision);
             }
             if (requested > 0 && requested < DepthHistogram.Length)

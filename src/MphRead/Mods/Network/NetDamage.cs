@@ -25,6 +25,7 @@ namespace MphRead.Mods.Network
     {
         private const int Slots = PlayerEntity.SlotCapacity;
 
+        public static ushort Sequence(int slot) => (uint)slot < Slots ? _sequence[slot] : (ushort)0;
         private static readonly ushort[] _sequence = new ushort[Slots];
         private static readonly DamageEvent[,] _history = new DamageEvent[Slots, PlayerState.DamageHistory];
         private static readonly byte[] _attacker = new byte[Slots];

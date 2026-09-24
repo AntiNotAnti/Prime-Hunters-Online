@@ -802,7 +802,9 @@ namespace MphRead.Entities
             _disruptedTimer = 0;
             _burnedBy = null;
             _burnTimer = 0;
-            _modPendingHomingTarget = 0;
+            _modPendingHomingTarget = default;
+            ModContinuousNetworkTarget = Mods.Network.NetTargetIdentity.None;
+            ModContinuousTargetState = default;
             if (IsMainPlayer)
             {
                 ResetRespawnVisualState();
@@ -1834,6 +1836,7 @@ namespace MphRead.Entities
             {
                 _halfturret.OnTakeDamage(attacker, damage);
             }
+            uint combatUnsplitDamage = damage;
             if (flags.TestFlag(DamageFlags.Halfturret) && !ignoreDamage) // todo?: and either main player or not wifi
             {
                 uint turretDamage;
@@ -1881,6 +1884,8 @@ namespace MphRead.Entities
             // landed, so the authority's record of this hit and a claim for the
             // same shot can be paired however long the projectile was in the
             // air. Mods.Network.NetHitClaims.
+            int combatHealthBefore = _health;
+            ushort combatSequenceBefore = Mods.Network.NetDamage.Sequence(SlotIndex);
             Mods.Network.NetDamage.Note(this, attacker, beam?.Beam ?? BeamType.None, flags, direction,
                 damage, bomb != null, beam?.ModLaunchFrame ?? 0);
             // The last point at which the damage is final and the death has
@@ -1893,7 +1898,7 @@ namespace MphRead.Entities
             Mods.Network.NetHitPrediction.NoteHit(this, attacker, ref flags, ref damage,
                 beam?.Beam ?? BeamType.None, beam?.ModLaunchFrame ?? 0, beam?.Age ?? 0, direction,
                 afflictions: beam != null && !ignoreDamage && !flags.TestFlag(DamageFlags.Halfturret)
-                    ? beam.Afflictions : Affliction.None);
+                    ? beam.Afflictions : Affliction.None, unsplitDamage: combatUnsplitDamage);
             if (attacker != this)
                 Mods.Input.AimAssist.AimAssistTelemetry.Hit(attacker, beam?.Beam ?? BeamType.None, damage, flags);
             bool dead = false;
@@ -2660,6 +2665,9 @@ namespace MphRead.Entities
             {
                 // todo: rumble
             }
+            ushort combatSequence = Mods.Network.NetDamage.Sequence(SlotIndex);
+            if (combatSequence != combatSequenceBefore)
+                Mods.Network.NetHitClaims.CompleteAuthorityHit(this, attacker, combatHealthBefore, flags, combatSequence, beam?.ModLaunchFrame ?? 0, beam?.Beam ?? BeamType.None);
         }
 
         private static readonly string[] _altAttackNames = new string[8];

@@ -187,6 +187,7 @@ namespace MphRead.Mods.Network
                     : p.IsAltForm ? 'A' : p.IsMorphing ? 'm' : p.IsUnmorphing ? 'u' : 'b');
             }
             line.Append("] altSaid=[").Append(NetPlayerBridge.FormSaidByAuthority()).Append(']');
+            line.Append(" ").Append(NetContinuousTargetDiagnostics.Describe());
             line.Append(" shockcoil=").Append(NetDamage.ShockCoilAcquired)
                 .Append('/').Append(NetDamage.ShockCoilSpawned);
             line.Append(" bomb=").Append(NetDamage.BombHits)

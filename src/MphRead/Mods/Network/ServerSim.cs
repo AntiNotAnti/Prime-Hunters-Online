@@ -64,6 +64,16 @@ namespace MphRead.Mods.Network
         /// operator actually has: is this box keeping up with 60 Hz.
         /// </summary>
         public double StepSeconds { get; private set; }
+        public long StepAllocatedBytes { get; private set; }
+        private readonly long[] _stepHistogram = new long[20001];
+        public double StepPercentile(double quantile)
+        {
+            long threshold = (long)Math.Ceiling(Frames * Math.Clamp(quantile, 0, 1)), count = 0;
+            if (Frames == 0) return 0;
+            for (int i = 0; i < _stepHistogram.Length; i++)
+            { count += _stepHistogram[i]; if (count >= threshold) return i == _stepHistogram.Length - 1 ? WorstStepSeconds * 1000 : i / 100.0; }
+            return WorstStepSeconds * 1000;
+        }
 
         /// <summary>Longest single step, which is what a stutter is made of.</summary>
         public double WorstStepSeconds { get; private set; }
@@ -247,7 +257,7 @@ namespace MphRead.Mods.Network
                 scene.OnLoad();
                 _scene = scene;
                 Frames = 0;
-                StepSeconds = 0;
+                StepSeconds = 0; StepAllocatedBytes = 0; Array.Clear(_stepHistogram);
                 WorstStepSeconds = 0;
                 OverrunSteps = 0;
                 StepFailures = 0;
@@ -290,6 +300,7 @@ namespace MphRead.Mods.Network
             {
                 return;
             }
+            long allocated = GC.GetAllocatedBytesForCurrentThread();
             long start = Stopwatch.GetTimestamp();
             try
             {
@@ -316,6 +327,12 @@ namespace MphRead.Mods.Network
                 NetLog.Event($"server simulation step failed: {ex}");
             }
             double elapsed = Stopwatch.GetElapsedTime(start).TotalSeconds;
+            Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.ServerStep, NetSession.NetFrame,
+                A: elapsed * 1000, B: DroppedSteps, C: GC.GetAllocatedBytesForCurrentThread() - allocated,
+                D: GC.CollectionCount(0), E: GC.CollectionCount(1), F: GC.CollectionCount(2)));
+            elapsed = Stopwatch.GetElapsedTime(start).TotalSeconds;
+            StepAllocatedBytes += GC.GetAllocatedBytesForCurrentThread() - allocated;
+            _stepHistogram[Math.Min(_stepHistogram.Length - 1, (int)(elapsed * 100000))]++;
             Frames++;
             StepSeconds += elapsed;
             if (elapsed > WorstStepSeconds)
@@ -330,6 +347,7 @@ namespace MphRead.Mods.Network
 
         public void Stop(bool preserveRoomPrewarm = false)
         {
+            Telemetry.ProductionTelemetry.End();
             if (_scene == null)
             {
                 if (!preserveRoomPrewarm) Mods.RoomPrewarm.Clear();
@@ -429,7 +447,7 @@ namespace MphRead.Mods.Network
             }
             double mean = Frames > 0 ? StepSeconds / Frames * 1000 : 0;
             return $"{Room} ({GameState.Mode}), {Frames} step(s), "
-                + $"{mean:0.00} ms mean, {WorstStepSeconds * 1000:0.0} ms worst, "
+                + $"{mean:0.00} ms mean, {StepPercentile(.95):0.00} ms p95, {StepPercentile(.99):0.00} ms p99, {WorstStepSeconds * 1000:0.0} ms worst, {StepAllocatedBytes} allocated bytes, "
                 + $"{OverrunSteps} overrun, {DroppedSteps} dropped, {Stalls} stall(s)"
                 + (StepFailures > 0 ? $", {StepFailures} FAILED" : "");
         }

@@ -3,6 +3,8 @@ using System;
 namespace MphRead.Mods.Network
 {
     internal enum FormCorrection { None, Start, Force }
+    public enum FormCorrectionReason
+    { None, GraceExpired, TransitionTimeout, FailedTransition, DesiredChanged, LifecycleReset, ForcedMaximumMismatch }
 
     /// <summary>Per-slot timing for reconciling a puppet's form with its source.</summary>
     internal struct FormReconciliation
@@ -12,6 +14,12 @@ namespace MphRead.Mods.Network
         // The model's morph/unmorph animation length is asset dependent.
         // This is an emergency ceiling, not the normal mismatch grace.
         private const uint MaximumTransition = 90;
+        public const uint MaximumMismatch = 90;
+        public uint EpisodeId { get; private set; }
+        public uint EpisodeStartedFrame { get; private set; }
+        public FormCorrectionReason Reason { get; private set; }
+        public bool EpisodeActive { get; private set; }
+        private bool _episodeDesired;
         private uint _mismatchSince;
         private uint _attemptSince;
         private uint _transitionSince;
@@ -27,6 +35,20 @@ namespace MphRead.Mods.Network
         public FormCorrection Step(uint frame, bool desiredAlt, bool actualAlt,
             bool morphing, bool unmorphing, int pingMilliseconds)
         {
+            Reason = FormCorrectionReason.None;
+            if (actualAlt == desiredAlt) EpisodeActive = false;
+            else if (!EpisodeActive || _episodeDesired != desiredAlt)
+            {
+                Reason = EpisodeActive ? FormCorrectionReason.DesiredChanged : FormCorrectionReason.None;
+                EpisodeActive = true; _episodeDesired = desiredAlt;
+                EpisodeStartedFrame = frame; EpisodeId++;
+                _attempted = _mismatching = _transitionActive = false;
+            }
+            if (EpisodeActive && frame - EpisodeStartedFrame >= MaximumMismatch)
+            {
+                Reason = FormCorrectionReason.ForcedMaximumMismatch;
+                return FormCorrection.Force;
+            }
             bool transitioning = morphing || unmorphing;
             if (transitioning)
             {
@@ -57,7 +79,7 @@ namespace MphRead.Mods.Network
             {
                 if (frame - _transitionSince >= MaximumTransition)
                 {
-                    Reset();
+                    Reason = FormCorrectionReason.TransitionTimeout;
                     return FormCorrection.Force;
                 }
                 return FormCorrection.None;
@@ -75,7 +97,7 @@ namespace MphRead.Mods.Network
                 {
                     return FormCorrection.None;
                 }
-                Reset();
+                Reason = FormCorrectionReason.FailedTransition;
                 return FormCorrection.Force;
             }
             if (!_mismatching)
@@ -89,6 +111,7 @@ namespace MphRead.Mods.Network
             }
             _attempted = true;
             _attemptSince = frame;
+            Reason = FormCorrectionReason.GraceExpired;
             return FormCorrection.Start;
         }
     }

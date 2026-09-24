@@ -25,7 +25,7 @@ internal static class Protocol17Tests
     {
         try
         {
-            Check(NetConfig.ProtocolVersion == 18, "protocol train is 18");
+            Check(NetConfig.ProtocolVersion == 19, "protocol train is 19");
             var window = new NetReceiveWindow();
             Check(window.Observe(uint.MaxValue - 1) == SequenceResult.New, "initial sequence");
             Check(window.Observe(0) == SequenceResult.New && window.Bits == 2, "wrap skips missing sequence");
@@ -85,7 +85,7 @@ internal static class Protocol17Tests
             socket.Send(staleWelcome, clientAddress);
             Check(SpinWait.SpinUntil(() => client.Telemetry.Capture().Invalid > beforeStale, 2000)
                 && client.ConnectionStats(serverAddress)!.Value.ConnectionId == replacement, "old Welcome cannot restore superseded connection");
-            Console.WriteLine("PASS: protocol 18 transport sequences, ACK bits, wrap, identity and UDP integration"); return 0;
+            Console.WriteLine("PASS: protocol 19 transport sequences, ACK bits, wrap, identity and UDP integration"); return 0;
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
     }

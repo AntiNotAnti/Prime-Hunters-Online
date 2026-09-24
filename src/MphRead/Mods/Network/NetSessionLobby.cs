@@ -146,7 +146,7 @@ namespace MphRead.Mods.Network
             // Identity updates are also eventually reliable, without a second identity protocol.
             if (now - _lastIdentity >= 1)
             {
-                _lastIdentity = now; SendIdentify();
+                _lastIdentity = now; SendIdentify(); SendCombatStudy();
                 if (_hostEndPoint != null && ServerSession is { } session)
                 {
                     new PeerTimingPacket(session.MatchId, session.AuthorityEpoch, (float)NetSmoothing.Delay).Write(_scratch);

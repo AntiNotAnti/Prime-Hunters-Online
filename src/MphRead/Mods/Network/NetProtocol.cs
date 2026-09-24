@@ -56,7 +56,9 @@ namespace MphRead.Mods.Network
         MapChoices = 28,    // server -> clients, the ballot for the next map
         MapPick = 29,       // client -> server, which of them this player wants
         HitClaim = 30,      // client -> authority, "this shot of mine landed"
-        HitVerdict = 31,    // authority -> client, what it did with those claims
+        CombatStudy = 51, // bounded unreliable client correction measurements
+        CombatAck = 31,
+        HitVerdict = CombatAck,    // authority -> client, what it did with those claims
         // Map transfer is negotiated before loading a custom room. All requests
         // are bounded and identify package hashes rather than peer filenames.
         MapOffer = 32,      // server -> client, "the next map is custom: name, hash, size"
@@ -1153,7 +1155,7 @@ namespace MphRead.Mods.Network
         public const int Size = 4 + 4 + 12 + 1 + EdgeHistoryBytes + 12 + 2 + 2 + 4 + 1 + 14;
 
         /// <summary>
-        /// Four bytes appended <b>past</b> <see cref="Size"/>, carrying the
+        /// Eight bytes appended <b>past</b> <see cref="Size"/>, carrying the
         /// state that decides what this player's next shot is worth.
         ///
         /// <b>Why it is sent at all.</b> Everything else about a shot was
@@ -1172,12 +1174,11 @@ namespace MphRead.Mods.Network
         /// shooter can simply not have one -- a factor of two on every shot,
         /// with no packet anywhere that would say so.
         ///
-        /// Appended rather than folded in, so nothing about the protocol
-        /// moves: every receiver reads exactly <see cref="Size"/> bytes and
-        /// then asks whether there are four more, and a build from before this
-        /// finds none and behaves exactly as it always did.
+        /// Protocol 19 appends target generation and life after the original
+        /// four bytes. Live entrypoints require all eight bytes and refuse older
+        /// protocol peers; short records are supported only by offline inspection.
         /// </summary>
-        public const int StateSize = 4;
+        public const int StateSize = 8;
         public const int FullSize = Size + StateSize;
 
         /// <summary>
@@ -1202,15 +1203,12 @@ namespace MphRead.Mods.Network
         public byte ShotFlags;
 
         /// <summary>
-        /// Owner-selected player target for a homing shot released with this
-        /// state. Zero preserves the legacy behavior (receiver chooses). When
-        /// bit 7 is set, the low seven bits are authoritative input: zero means
-        /// no homing target, otherwise the value is player slot + 1.
-        ///
-        /// This occupies the state block's existing reserved fourth byte, so
-        /// packet size and the base protocol layout do not change.
+        /// Owner-selected, generation/life-fenced player target. Protocol 19 extends
+        /// the shot-state tail by four bytes; explicit none prevents player fallback.
         /// </summary>
-        public byte HomingTarget;
+        public NetTargetIdentity Target;
+        // Source compatibility for callers; the wire identity includes generation and life.
+        public byte HomingTarget { readonly get => Target.EncodedSlot; set => Target = Target with { EncodedSlot = value }; }
         public const byte HomingTargetValid = 1 << 7;
         public const byte HomingTargetMask = 0x7F;
 
@@ -1347,7 +1345,9 @@ namespace MphRead.Mods.Network
                 dest[Size] = ChargeLevel;
                 dest[Size + 1] = BoostDamage;
                 dest[Size + 2] = ShotFlags;
-                dest[Size + 3] = HomingTarget;
+                dest[Size + 3] = Target.EncodedSlot;
+                BinaryPrimitives.WriteUInt16LittleEndian(dest[(Size + 4)..], Target.Generation);
+                BinaryPrimitives.WriteUInt16LittleEndian(dest[(Size + 6)..], Target.LifeId);
             }
         }
 
@@ -1388,7 +1388,9 @@ namespace MphRead.Mods.Network
                 ChargeLevel = src.Length >= FullSize ? src[Size] : (byte)0,
                 BoostDamage = src.Length >= FullSize ? src[Size + 1] : (byte)0,
                 ShotFlags = src.Length >= FullSize ? src[Size + 2] : (byte)0,
-                HomingTarget = src.Length >= FullSize ? src[Size + 3] : (byte)0
+                Target = src.Length >= FullSize ? new NetTargetIdentity(src[Size + 3],
+                    BinaryPrimitives.ReadUInt16LittleEndian(src[(Size + 4)..]),
+                    BinaryPrimitives.ReadUInt16LittleEndian(src[(Size + 6)..])) : default
             };
         }
     }
@@ -1450,7 +1452,9 @@ namespace MphRead.Mods.Network
     {
         public ushort SlotGeneration;
         public ushort LifeId;
-        public const int Size = 54 + DamageEvent.Size * DamageHistory;
+        public const int Size = 57 + DamageEvent.Size * DamageHistory;
+        public bool HalfturretActive;
+        public ushort HalfturretHealth;
 
         public byte SlotIndex;
         public byte Flags;          // bit 0 = active, bit 1 = alt form, bit 2 = spawned
@@ -1581,6 +1585,8 @@ namespace MphRead.Mods.Network
             BinaryPrimitives.WriteUInt16LittleEndian(dest[48..], SlotGeneration);
             BinaryPrimitives.WriteUInt16LittleEndian(dest[50..], LifeId);
             BinaryPrimitives.WriteUInt16LittleEndian(dest[52..], DamageEventId);
+            dest[Size - 3] = HalfturretActive ? (byte)1 : (byte)0;
+            BinaryPrimitives.WriteUInt16LittleEndian(dest[(Size - 2)..], HalfturretHealth);
             for (int i = 0; i < DamageHistory; i++)
             {
                 EventAt(i).Write(dest[(54 + i * DamageEvent.Size)..]);
@@ -1605,6 +1611,8 @@ namespace MphRead.Mods.Network
                 SlotGeneration = BinaryPrimitives.ReadUInt16LittleEndian(src[48..]),
                 LifeId = BinaryPrimitives.ReadUInt16LittleEndian(src[50..]),
                 DamageEventId = BinaryPrimitives.ReadUInt16LittleEndian(src[52..]),
+                HalfturretActive = src[Size - 3] != 0,
+                HalfturretHealth = BinaryPrimitives.ReadUInt16LittleEndian(src[(Size - 2)..]),
                 Damage0 = DamageEvent.Read(src[54..]),
                 Damage1 = DamageEvent.Read(src[(54 + DamageEvent.Size)..]),
                 Damage2 = DamageEvent.Read(src[(54 + 2 * DamageEvent.Size)..]),
@@ -1748,6 +1756,7 @@ namespace MphRead.Mods.Network
         public const byte FlagBurning = 1 << 3;
         /// <summary>Volt Driver disruption.</summary>
         public const byte FlagDisrupted = 1 << 4;
+        public const byte FlagHalfturret = 1 << 5;
 
         /// <summary>
         /// Rolling, per shooter, so a verdict can name a claim and a repeat
@@ -1885,7 +1894,7 @@ namespace MphRead.Mods.Network
     public struct HitVerdictPacket
     {
         public const int HeaderSize = 15;
-        public const int EntrySize = 3;
+        public const int EntrySize = CombatAckEntry.Size;
         public const int MaxPerPacket = 16;
 
         /// <summary>The authority applied it. The shooter's screen was right.</summary>
@@ -1940,9 +1949,19 @@ namespace MphRead.Mods.Network
             for (int i = 0; i < entries.Length; i++)
             {
                 int at = HeaderSize + i * EntrySize;
-                BinaryPrimitives.WriteUInt16LittleEndian(dest[at..], entries[i].Id);
-                dest[at + 2] = entries[i].Result;
+                new CombatAckEntry { ClaimId = entries[i].Id, Result = entries[i].Result, VictimSlot = 255 }.Write(dest[at..]);
             }
+        }
+
+        public static void Write(Span<byte> dest, ReadOnlySpan<CombatAckEntry> entries,
+            ushort matchId, ulong epoch, ushort generation, ushort lifeId)
+        {
+            dest[0] = (byte)entries.Length;
+            BinaryPrimitives.WriteUInt16LittleEndian(dest[1..], matchId);
+            BinaryPrimitives.WriteUInt64LittleEndian(dest[3..], epoch);
+            BinaryPrimitives.WriteUInt16LittleEndian(dest[11..], generation);
+            BinaryPrimitives.WriteUInt16LittleEndian(dest[13..], lifeId);
+            for (int i = 0; i < entries.Length; i++) entries[i].Write(dest[(HeaderSize + i * EntrySize)..]);
         }
 
         public static string Describe(byte result)
@@ -2072,8 +2091,11 @@ namespace MphRead.Mods.Network
         /// HitClaimPacket. A rescued explosive hit can now preserve the same
         /// directional momentum as the collision that produced the claim.
         /// Mixed v15/v16 peers must be refused because claim entry size changed.
+        /// v19 extends intent shot state to eight bytes for fenced player targeting,
+        /// adds three canonical turret-state bytes and exact CombatAck outcomes;
+        /// older peers must be refused before gameplay decoding.
         /// </summary>
-        public const int ProtocolVersion = 18;
+        public const int ProtocolVersion = 19;
         /// <summary>
         /// Frames between intent packets. One, so every frame.
         ///

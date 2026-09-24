@@ -223,6 +223,7 @@ namespace MphRead.Mods.Network
             public byte VictimSlot;
             public byte Beam;
             public ushort Damage;
+            public ushort PredictedBodyDamage;
             public byte Flags;
             public Vector3 HitPoint;
             public Vector3 Direction;
@@ -351,7 +352,7 @@ namespace MphRead.Mods.Network
         /// </returns>
         public static ushort Declare(PlayerEntity victim, PlayerEntity attacker,
             BeamType beam, uint damage, DamageFlags flags, bool lethal, Vector3 hitPoint,
-            uint launchFrame, Vector3 direction, Affliction afflictions = Affliction.None)
+            uint launchFrame, Vector3 direction, Affliction afflictions = Affliction.None, uint? predictedBodyDamage = null)
         {
             if (!Claiming || victim == attacker || damage == 0
                 || NetPlayerLifecycle.Get(victim.SlotIndex) == 0 || NetPlayerLifecycle.Get(attacker.SlotIndex) == 0)
@@ -364,6 +365,7 @@ namespace MphRead.Mods.Network
                 return 0;
             }
             byte claimFlags = AfflictionClaimFlags(afflictions);
+            if (flags.TestFlag(DamageFlags.Halfturret)) claimFlags |= HitClaimPacket.FlagHalfturret;
             if (flags.TestFlag(DamageFlags.Headshot))
             {
                 claimFlags |= HitClaimPacket.FlagHeadshot;
@@ -423,6 +425,7 @@ namespace MphRead.Mods.Network
                 VictimSlot = (byte)slot,
                 Beam = beam == BeamType.None ? HitClaimPacket.NoBeam : (byte)beam,
                 Damage = (ushort)Math.Min(damage, UInt16.MaxValue),
+                PredictedBodyDamage = (ushort)Math.Min(Math.Min(predictedBodyDamage ?? damage, (uint)Math.Max(0, victim.Health)), ushort.MaxValue),
                 Flags = claimFlags,
                 HitPoint = hitPoint,
                 // Only beam claims can prove an impulse ceiling from weapon
@@ -564,7 +567,8 @@ namespace MphRead.Mods.Network
                 || !NetPlayerLifecycle.Matches(NetSession.LocalSlot,
                     System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(payload[11..]),
                     System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(payload[13..]))) return;
-            int count = Math.Min((int)payload[0], HitVerdictPacket.MaxPerPacket);
+            int count = payload[0];
+            if (count > HitVerdictPacket.MaxPerPacket || payload.Length != HitVerdictPacket.HeaderSize + count * HitVerdictPacket.EntrySize) return;
             for (int i = 0; i < count; i++)
             {
                 int at = HitVerdictPacket.HeaderSize + i * HitVerdictPacket.EntrySize;
@@ -574,6 +578,8 @@ namespace MphRead.Mods.Network
                 }
                 ushort id = (ushort)(payload[at] | (payload[at + 1] << 8));
                 byte result = payload[at + 2];
+                CombatAckEntry ack = CombatAckEntry.Read(payload[at..]);
+                if (result > (byte)CombatAckResult.Corrected) continue;
                 for (int j = 0; j < OutboxCapacity; j++)
                 {
                     ref Outgoing entry = ref _outbox[j];
@@ -582,7 +588,20 @@ namespace MphRead.Mods.Network
                     {
                         continue;
                     }
+                    if (ack.VictimSlot != 255 && (ack.VictimSlot != entry.VictimSlot
+                        || ack.VictimGeneration != entry.VictimGeneration || ack.VictimLife != entry.VictimLifeId)) continue;
                     entry.Live = false;
+                    if (!NetHitPrediction.ApplyCombatAck(ack, entry.Age))
+                    {
+                        // A snapshot often settles the hit before its claim is
+                        // answered. Retain that healthy path in the study too.
+                        bool headCorrection = ((entry.Flags & HitClaimPacket.FlagHeadshot) != 0)
+                            != ((ack.Flags & CombatAckFlags.Headshot) != 0);
+                        CombatStudyReports.Record(ack, entry.Age, ack.DamageApplied - entry.PredictedBodyDamage, 0, headCorrection);
+                        Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.CombatAck, NetSession.NetFrame,
+                            Player: (byte)NetSession.LocalSlot, Victim: entry.VictimSlot, Id: id, Result: result,
+                            A: entry.Age * (1000.0 / 60), B: ack.DamageApplied - entry.PredictedBodyDamage, D: headCorrection ? 1 : 0));
+                    }
                     int weapon = NetShotDiagnostics.Bucket((BeamType)entry.Beam);
                     if (result == HitVerdictPacket.ResultApplied) NetShotDiagnostics.Rescues[weapon]++;
                     else if (result != HitVerdictPacket.ResultDuplicate) NetShotDiagnostics.Refusals[weapon]++;
@@ -591,6 +610,7 @@ namespace MphRead.Mods.Network
                         (BeamType)entry.Beam, $"id={id} result={HitVerdictPacket.Describe(result)}");
                     switch (result)
                     {
+                    case (byte)CombatAckResult.Corrected:
                     case HitVerdictPacket.ResultApplied:
                         Applied++;
                         // The authority has the damage. Retire the prediction
@@ -685,6 +705,11 @@ namespace MphRead.Mods.Network
         private const int SeenCapacity = 128;
         private const byte ResultPending = 255;
         private static readonly ushort[,] _seenIds = new ushort[Slots, SeenCapacity];
+        private static readonly CombatAckEntry[,] _seenOutcomes = new CombatAckEntry[Slots, SeenCapacity];
+        private static readonly CombatAckEntry[,,] _authorityOutcomes = new CombatAckEntry[Slots, Slots, LedgerDepth];
+        private static readonly CombatAckEntry[] _latestOutcome = new CombatAckEntry[Slots];
+        private static CombatAckEntry _takenOutcome;
+        private static readonly int[] _completingLedger = new int[Slots];
         private static readonly byte[,] _seenResults = new byte[Slots, SeenCapacity];
         private static readonly BeamType[,] _seenBeams = new BeamType[Slots, SeenCapacity];
         private static readonly ShotKey[,] _seenKeys = new ShotKey[Slots, SeenCapacity];
@@ -808,6 +833,7 @@ namespace MphRead.Mods.Network
         private static void NoteLedger(int attacker, int victim, uint ack, uint launch,
             int damage, bool used = false)
         {
+            _completingLedger[victim] = -1;
             int head = -1;
             for (int n = 0; n < LedgerDepth; n++)
             {
@@ -822,6 +848,7 @@ namespace MphRead.Mods.Network
                 ResolvedLedgerCapacityRefused++;
                 return;
             }
+            _completingLedger[victim] = head;
             _authorityLive[attacker, victim, head] = true;
             _authorityKeys[attacker, victim, head] = ShotKey.For(attacker, launch);
             _victimGeneration[attacker, victim, head] = NetPlayerLifecycle.Generation(victim);
@@ -830,6 +857,7 @@ namespace MphRead.Mods.Network
             _authorityHitAck[attacker, victim, head] = ack;
             _authorityHitLaunch[attacker, victim, head] = launch;
             _authorityHitDamage[attacker, victim, head] = damage;
+            _authorityOutcomes[attacker, victim, head] = default;
             _authorityHitUsed[attacker, victim, head] = used;
             _authorityHitHead[attacker, victim] = (head + 1) % LedgerDepth;
             ResolvedLedgerHighWater = Math.Max(ResolvedLedgerHighWater, ResolvedLedgerCurrent);
@@ -902,6 +930,7 @@ namespace MphRead.Mods.Network
                     {
                         _authorityHitUsed[attacker, victim, i] = true;
                         authorityDamage = _authorityHitDamage[attacker, victim, i];
+                        _takenOutcome = _authorityOutcomes[attacker, victim, i];
                         MatchedByLaunch++;
                         return true;
                     }
@@ -948,6 +977,7 @@ namespace MphRead.Mods.Network
             }
             _authorityHitUsed[attacker, victim, best] = true;
             authorityDamage = _authorityHitDamage[attacker, victim, best];
+            _takenOutcome = _authorityOutcomes[attacker, victim, best];
             MatchedByWindow++;
             return true;
         }
@@ -1084,6 +1114,41 @@ namespace MphRead.Mods.Network
         /// acks. For the authority's own player, and for a bot, it is the
         /// present: they aim at what they hold.
         /// </summary>
+        public static CombatAckEntry CaptureOutcome(PlayerEntity victim, int damage, CombatAckFlags flags) => new()
+        {
+            VictimSlot = (byte)victim.SlotIndex,
+            VictimGeneration = NetPlayerLifecycle.Generation(victim.SlotIndex),
+            VictimLife = NetPlayerLifecycle.Get(victim.SlotIndex),
+            DamageApplied = (ushort)Math.Clamp(damage, 0, ushort.MaxValue),
+            HealthAfter = (ushort)Math.Clamp(victim.Health, 0, ushort.MaxValue),
+            HalfturretHealthAfter = (ushort)Math.Clamp(victim.Halfturret?.Health ?? 0, 0, ushort.MaxValue),
+            DamageSequence = NetDamage.Sequence(victim.SlotIndex),
+            Flags = flags | CombatAckFlags.OutcomePresent
+                | (victim.Health == 0 ? CombatAckFlags.Lethal : 0)
+                | (victim.ModFrozen ? CombatAckFlags.Frozen : 0)
+                | (victim.ModBurning ? CombatAckFlags.Burning : 0)
+                | (victim.ModDisrupted ? CombatAckFlags.Disrupted : 0)
+        };
+
+        public static void CompleteAuthorityHit(PlayerEntity victim, PlayerEntity? attacker, int before, DamageFlags flags, ushort sequence, uint launchFrame = 0, BeamType beam = BeamType.None)
+        {
+            if (!Arbitrating || sequence == 0 || sequence != NetDamage.Sequence(victim.SlotIndex)) return;
+            int slot = victim.SlotIndex;
+            var outcome = CaptureOutcome(victim, before - victim.Health,
+                (flags.TestFlag(DamageFlags.Headshot) ? CombatAckFlags.Headshot : 0)
+                | (flags.TestFlag(DamageFlags.Halfturret) ? CombatAckFlags.HalfturretAffected : 0));
+            _latestOutcome[slot] = outcome;
+            Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.AuthorityResult, NetSession.NetFrame,
+                Player: (byte)(attacker?.SlotIndex ?? 255), Victim: (byte)slot, Weapon: (byte)beam, Generation: outcome.VictimGeneration,
+                Life: outcome.VictimLife, Id: outcome.DamageSequence, Flags: (int)outcome.Flags,
+                A: outcome.DamageApplied, B: outcome.HealthAfter, C: outcome.HalfturretHealthAfter));
+            if (attacker == null) return;
+            int owner = attacker.SlotIndex;
+            if (!ApplyingClaim) LagCompensationPolicy.RecordImpact(owner, slot, launchFrame);
+            int at = _completingLedger[slot];
+            if (at >= 0 && _authorityLive[owner, slot, at]) _authorityOutcomes[owner, slot, at] = outcome;
+        }
+
         private static uint FireFrameOf(int slot)
         {
             if (slot < 0 || slot >= Slots || slot == NetSession.LocalSlot
@@ -1147,6 +1212,7 @@ namespace MphRead.Mods.Network
                 _seenKeys[shooterSlot, claimAt] = ShotKey.For(shooterSlot, claim.LaunchFrame);
                 NetShotDiagnostics.Claims[NetShotDiagnostics.Bucket((BeamType)claim.Beam)]++;
                 Remember(shooterSlot, claim.ClaimId, ResultPending);
+                _seenOutcomes[shooterSlot, claimAt] = new CombatAckEntry { VictimSlot = claim.VictimSlot, VictimGeneration = claim.VictimGeneration, VictimLife = claim.VictimLifeId };
                 byte immediate = Judge(shooterSlot, claim);
                 if (immediate != HitVerdictPacket.ResultApplied)
                 {
@@ -1200,6 +1266,9 @@ namespace MphRead.Mods.Network
         private static byte Judge(int shooterSlot, in HitClaimPacket claim)
         {
             int victimSlot = claim.VictimSlot;
+            if (Telemetry.ProductionTelemetry.Enabled)
+                LagCompensationPolicy.Study(shooterSlot, victimSlot, NetShotDiagnostics.Bucket((BeamType)claim.Beam),
+                    LagCompensationPolicy.Evaluate(shooterSlot, NetSession.NetFrame, claim.AckFrame, 0, 0), -1);
             if (shooterSlot < 0 || shooterSlot >= Slots || shooterSlot >= PlayerEntity.Players.Count
                 || victimSlot < 0 || victimSlot >= Slots || victimSlot == shooterSlot
                 || victimSlot >= PlayerEntity.Players.Count)
@@ -1454,6 +1523,8 @@ namespace MphRead.Mods.Network
             {
                 return;
             }
+            _takenOutcome = CaptureOutcome(victim, resolved + (int)applied, CombatAckFlags.Headshot);
+            _takenOutcome.Result = (byte)CombatAckResult.Corrected;
             HeadshotCorrections++;
             NetLog.Event($"claim {entry.Id}: reconciled Imperialist headshot on slot "
                 + $"{victimSlot}, authority body={resolved}, shooter headshot={entry.Damage}, "
@@ -1643,7 +1714,7 @@ namespace MphRead.Mods.Network
                         DuplicateHere++;
                         NoteAgreement(entry.ShooterSlot, entry.VictimSlot, entry.Beam,
                             entry.Damage, resolved);
-                        Answer(entry.ShooterSlot, entry.Id, HitVerdictPacket.ResultDuplicate);
+                        Answer(entry.ShooterSlot, entry.Id, _takenOutcome.Result == (byte)CombatAckResult.Corrected ? _takenOutcome.Result : HitVerdictPacket.ResultDuplicate, outcome: _takenOutcome);
                         continue;
                     }
                     if (next < 0 || (entry.LaunchFrame != 0 ? entry.LaunchFrame : entry.AckFrame)
@@ -1886,6 +1957,12 @@ namespace MphRead.Mods.Network
                 return;
             }
             DamageFlags flags = DamageFlags.NoDmgInvuln;
+            if ((entry.Flags & HitClaimPacket.FlagHalfturret) != 0)
+            {
+                if (victim.Hunter != Hunter.Weavel || !victim.Flags2.TestFlag(PlayerFlags2.Halfturret))
+                { Answer(shooterSlot, entry.Id, HitVerdictPacket.ResultNoDamage); return; }
+                flags |= DamageFlags.Halfturret;
+            }
             if ((entry.Flags & HitClaimPacket.FlagHeadshot) != 0)
             {
                 flags |= DamageFlags.Headshot;
@@ -1902,6 +1979,7 @@ namespace MphRead.Mods.Network
             ApplyingClaimLaunch = entry.LaunchFrame;
             bool lethal = victim.Health <= entry.Damage;
             uint before = (uint)victim.Health;
+            int turretBefore = victim.Halfturret?.Health ?? 0;
             // The scope carries two things into TakeDamage: the beam the claim
             // names, so the victim's own machine replays the right hit rather
             // than a nameless one, and the fact that this is a claim, so the
@@ -1927,7 +2005,7 @@ namespace MphRead.Mods.Network
             {
                 ApplyingClaim = false;
             }
-            if (victim.Health >= before)
+            if (victim.Health >= before && (victim.Halfturret?.Health ?? 0) >= turretBefore)
             {
                 // Spawn protection, teams and other damage rules can refuse a
                 // geometrically valid hit. Never freeze or prepay that flight.
@@ -1954,6 +2032,9 @@ namespace MphRead.Mods.Network
                 }
             }
             AppliedHere++;
+            if (Telemetry.ProductionTelemetry.Enabled)
+                LagCompensationPolicy.Study(shooterSlot, victimSlot, NetShotDiagnostics.Bucket((BeamType)entry.Beam),
+                    LagCompensationPolicy.Evaluate(shooterSlot, NetSession.NetFrame, entry.AckFrame, 0, 0), 2);
             // Remember the shot, so the authority's own copy of it -- which
             // for a slow projectile can still be in the air -- is refused when
             // it lands rather than paid a second time.
@@ -1993,7 +2074,7 @@ namespace MphRead.Mods.Network
                 + $", aimed at frame {entry.AckFrame}, "
                 + $"{NetSession.NetFrame - entry.AckFrame} frames ago"
                 + (_dead[shooterSlot] ? " -- and was dead by the time it arrived" : ""));
-            Answer(shooterSlot, entry.Id, HitVerdictPacket.ResultApplied);
+            Answer(shooterSlot, entry.Id, HitVerdictPacket.ResultApplied, outcome: CaptureOutcome(victim, (int)(before - victim.Health), _latestOutcome[victimSlot].Flags));
         }
 
         /// <summary>
@@ -2005,6 +2086,8 @@ namespace MphRead.Mods.Network
             ReadOnlySpan<(ushort Id, byte Result)> verdicts);
 
         public static VerdictWriter? VerdictSink { get; set; }
+        public delegate void CombatAckWriter(int slot, ReadOnlySpan<CombatAckEntry> entries);
+        public static CombatAckWriter? CombatAckSink { get; set; }
 
         /// <summary>
         /// Verdicts waiting to go out, per shooter.
@@ -2018,11 +2101,10 @@ namespace MphRead.Mods.Network
         /// hundreds.
         /// </summary>
         private const int VerdictCapacity = HitVerdictPacket.MaxPerPacket;
-        private static readonly (ushort Id, byte Result)[,] _verdicts =
-            new (ushort, byte)[Slots, VerdictCapacity];
+        private static readonly CombatAckEntry[,] _verdicts = new CombatAckEntry[Slots, VerdictCapacity];
         private static readonly int[] _verdictCount = new int[Slots];
 
-        private static void Answer(int slot, ushort id, byte result, bool remember = true)
+        private static void Answer(int slot, ushort id, byte result, bool remember = true, CombatAckEntry? outcome = null)
         {
             if (slot < 0 || slot >= Slots)
             {
@@ -2039,19 +2121,25 @@ namespace MphRead.Mods.Network
             }
             // Remember even when this datagram's answer queue is full: a retry
             // must repeat the verdict, never park the already applied hit again.
-            if (remember) Remember(slot, id, result);
+            CombatAckEntry answer = outcome ?? (_seenIds[slot, at] == id ? _seenOutcomes[slot, at] : new CombatAckEntry { VictimSlot = 255 });
+            answer.ClaimId = id; answer.Result = result;
+            Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.Claim, NetSession.NetFrame,
+                Player: (byte)slot, Victim: answer.VictimSlot, Id: id, Result: result, Flags: (int)answer.Flags,
+                A: answer.DamageApplied, B: answer.HealthAfter));
+            if (remember) { Remember(slot, id, result); _seenOutcomes[slot, at] = answer; }
             if (_verdictCount[slot] >= VerdictCapacity) return;
-            _verdicts[slot, _verdictCount[slot]++] = (id, result);
+            _verdicts[slot, _verdictCount[slot]++] = answer;
         }
 
         private static void FlushVerdicts()
         {
-            if (VerdictSink == null)
+            if (VerdictSink == null && CombatAckSink == null)
             {
                 Array.Clear(_verdictCount);
                 return;
             }
-            Span<(ushort Id, byte Result)> scratch = stackalloc (ushort, byte)[VerdictCapacity];
+            Span<CombatAckEntry> scratch = stackalloc CombatAckEntry[VerdictCapacity];
+            Span<(ushort Id, byte Result)> legacy = stackalloc (ushort, byte)[VerdictCapacity];
             for (int slot = 0; slot < Slots; slot++)
             {
                 int count = _verdictCount[slot];
@@ -2064,7 +2152,12 @@ namespace MphRead.Mods.Network
                     scratch[i] = _verdicts[slot, i];
                 }
                 _verdictCount[slot] = 0;
-                VerdictSink(slot, scratch[..count]);
+                CombatAckSink?.Invoke(slot, scratch[..count]);
+                if (VerdictSink != null)
+                {
+                    for (int i = 0; i < count; i++) legacy[i] = (scratch[i].ClaimId, scratch[i].Result);
+                    VerdictSink(slot, legacy[..count]);
+                }
             }
         }
 
@@ -2074,6 +2167,7 @@ namespace MphRead.Mods.Network
             Array.Clear(_pending);
             Array.Clear(_seenIds);
             Array.Clear(_seenResults);
+            Array.Clear(_seenOutcomes); Array.Clear(_authorityOutcomes); Array.Clear(_latestOutcome);
             Array.Clear(_newestId);
             Array.Clear(_lastResult);
             Array.Clear(_authorityLive);
@@ -2170,6 +2264,7 @@ namespace MphRead.Mods.Network
         {
             Array.Clear(_seenIds);
             Array.Clear(_seenResults);
+            Array.Clear(_seenOutcomes); Array.Clear(_authorityOutcomes); Array.Clear(_latestOutcome);
             Array.Clear(_newestId);
             Array.Clear(_verdictCount);
             Array.Clear(_rescuedOwed);

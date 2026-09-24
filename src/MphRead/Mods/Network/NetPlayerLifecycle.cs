@@ -128,6 +128,8 @@ namespace MphRead.Mods.Network
                 Log(slot, $"DROP {rejection}", frame, state.Health, (state.Flags & PlayerState.FlagSpawned) != 0);
                 return false;
             }
+            if (fresh || next is NetworkPlayerState.Dead or NetworkPlayerState.Spectating)
+                NetContinuousTargeting.ForgetSlot(slot);
             if (fresh) NetSmoothing.ResetSlot(slot);
             if (fresh || before != next)
             {

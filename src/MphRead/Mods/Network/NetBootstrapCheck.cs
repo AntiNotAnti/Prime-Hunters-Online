@@ -30,6 +30,8 @@ public static class NetBootstrapCheck
             PlayerEntity.Players[0].ModArmWeapon(BeamType.Missile);
             PlayerEntity.Players[0].Health = 77; GameState.Points[0] = 17;
             foreach (int slot in new[] { 1, 6 }) { PlayerEntity.Players[slot].ModStartFormSwitch(); PlayerEntity.Players[slot].ModForceForm(true); }
+            PlayerEntity.Players[6].Health = 71;
+            PlayerEntity.Players[6].Halfturret.Health = 13;
             NetSession.BroadcastSnapshot();
             Check(length > 0 && SnapshotHeader.Read(canonical).Frame != 0, "authority baseline exists while frozen");
             var lanes = new NetReplicationLanes(); lanes.Prepare(canonical.AsSpan(0, length));
@@ -73,7 +75,8 @@ public static class NetBootstrapCheck
             Check(PlayerEntity.Players[0].Position == position, "owner starts at authoritative spawn");
             Check(PlayerEntity.Players[0].Health == 77 && PlayerEntity.Players[0].CurrentWeapon == BeamType.Missile
                 && GameState.Points[0] == 17 && PlayerEntity.Players[1].IsAltForm && !PlayerEntity.Players[1].IsMorphing && PlayerEntity.Players[6].IsAltForm
-                && PlayerEntity.Players[6].Flags2.TestFlag(PlayerFlags2.Halfturret),
+                && PlayerEntity.Players[6].Flags2.TestFlag(PlayerFlags2.Halfturret)
+                && PlayerEntity.Players[6].Health == 71 && PlayerEntity.Players[6].Halfturret.Health == 13,
                 "health, weapon, score and settled remote alt form applied before WorldReady");
             var appliedHeader = SnapshotHeader.Read(canonical);
             Check(Rng.Rng1 == appliedHeader.Rng1 && Rng.Rng2 == appliedHeader.Rng2, "bootstrap preserves authoritative random state");

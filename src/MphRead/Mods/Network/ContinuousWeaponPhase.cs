@@ -69,7 +69,8 @@ namespace MphRead.Mods.Network
         }
 
         internal ulong Resolve(int slot, ulong sceneFrame, bool networked, bool localOwner,
-            uint netFrame, bool intentValid, uint intentFrame, uint intentAge, out bool shared)
+            uint netFrame, bool intentValid, uint intentFrame, uint intentAge, out bool shared,
+            bool receivedBeforeStep = false)
         {
             if (networked && localOwner && netFrame != 0)
             {
@@ -83,7 +84,11 @@ namespace MphRead.Mods.Network
                 Advance(ref clock, sceneFrame);
                 if (!clock.Valid)
                 {
-                    clock.Phase = (ulong)intentFrame + intentAge;
+                    // Dedicated input is timestamped before NetSession advances its clock.
+                    // That enclosing step is the first consumption of this report, not
+                    // an extra source firing tick. Keep the freshness age unchanged.
+                    uint elapsed = receivedBeforeStep && intentAge > 0 ? intentAge - 1 : intentAge;
+                    clock.Phase = (ulong)intentFrame + elapsed;
                     clock.SceneFrame = sceneFrame;
                     clock.Valid = true;
                 }

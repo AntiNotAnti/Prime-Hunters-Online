@@ -579,6 +579,7 @@ namespace MphRead.Mods.Network
         public static void Reset()
         {
             Array.Clear(_life);
+            Array.Clear(_ackHealthValid);
             Array.Clear(_generation);
             Array.Clear(_pendingLife);
             Array.Clear(_pendingGeneration);
@@ -767,7 +768,7 @@ namespace MphRead.Mods.Network
         public static void NoteHit(PlayerEntity victim, PlayerEntity? attacker,
             ref DamageFlags flags, ref uint damage, BeamType beam = BeamType.None,
             uint launchFrame = 0, float flight = 0, Vector3? direction = null,
-            Affliction afflictions = Affliction.None)
+            Affliction afflictions = Affliction.None, uint unsplitDamage = 0)
         {
             int local = NetHooks.LocalSlot;
             if (local < 0)
@@ -856,9 +857,9 @@ namespace MphRead.Mods.Network
                 // See _pendingClaim.
                 if (!self && attacker != null)
                 {
-                    ushort claimId = NetHitClaims.Declare(victim, attacker, beam, claimedDamage,
+                    ushort claimId = NetHitClaims.Declare(victim, attacker, beam, flags.TestFlag(DamageFlags.Halfturret) ? unsplitDamage : claimedDamage,
                         flags, claimedLethal, victim.Position, launchFrame,
-                        direction ?? Vector3.Zero, afflictions);
+                        direction ?? Vector3.Zero, afflictions, predictedBodyDamage: claimedDamage);
                     StampClaim(victim.SlotIndex, at, claimId);
                 }
                 if (headshot && !self)
@@ -1063,6 +1064,7 @@ namespace MphRead.Mods.Network
                 _pendingSelf[slot, i] = false;
             }
             if (slot == NetHooks.LocalSlot) { _healCount = 0; _healHead = 0; }
+            _ackHealthValid[slot] = false;
             _pendingCount[slot] = 0;
             _pendingHead[slot] = 0;
             _settledCredit[slot] = 0;
@@ -1226,6 +1228,13 @@ namespace MphRead.Mods.Network
             if (!Enabled || slot < 0 || slot >= Slots)
             {
                 return authorityHealth;
+            }
+            if (_ackHealthValid[slot])
+            {
+                ushort latest = NetSession.RemoteStates[slot].DamageEventId;
+                ushort ackSequence = (ushort)_ackHealth[slot].DamageSequence;
+                if (latest == ackSequence || NetLifecycleTracker.Newer(latest, ackSequence)) _ackHealthValid[slot] = false;
+                else authorityHealth = authorityHealth > 0 ? Math.Max(1, (int)_ackHealth[slot].HealthAfter) : 0;
             }
             // A rise in the authority's own number is a heal or a respawn,
             // and the floor may not refuse it: it exists to stop a bar
@@ -1609,6 +1618,72 @@ namespace MphRead.Mods.Network
         /// (<c>Applied</c>) -- and false for every refusal, which is a
         /// prediction that was wrong and should stop holding the picture.
         /// </summary>
+        private static readonly CombatAckEntry[] _ackHealth = new CombatAckEntry[Slots];
+        private static readonly bool[] _ackHealthValid = new bool[Slots];
+        public static long CombatAcks, DamageCorrections, HealthCorrections, HeadshotCorrections;
+
+        internal static int TurretHealthFor(int slot, int health)
+        {
+            EnsureLife(slot);
+            if ((uint)slot >= Slots || !_ackHealthValid[slot]) return health;
+            ushort latest = NetSession.RemoteStates[slot].DamageEventId;
+            ushort sequence = (ushort)_ackHealth[slot].DamageSequence;
+            return latest == sequence || NetLifecycleTracker.Newer(latest, sequence) ? health : _ackHealth[slot].HalfturretHealthAfter;
+        }
+
+        public static bool ApplyCombatAck(in CombatAckEntry ack, int latencyFrames)
+        {
+            int slot = ack.VictimSlot;
+            if ((uint)slot >= Slots || !NetPlayerLifecycle.Matches(slot, ack.VictimGeneration, ack.VictimLife)) return false;
+            EnsureLife(slot);
+            for (int i = 0; i < _pendingCount[slot]; i++)
+            {
+                int at = (_pendingHead[slot] + i) % PendingCapacity;
+                if (_pendingClaim[slot, at] != ack.ClaimId) continue;
+                int predicted = _pendingDamage[slot, at];
+                bool head = _pendingHeadshot[slot, at];
+                Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.CombatAck, NetSession.NetFrame,
+                    Player: (byte)NetSession.LocalSlot, Victim: ack.VictimSlot, Id: ack.ClaimId, Result: ack.Result,
+                    A: latencyFrames * (1000.0 / 60), B: ack.DamageApplied - predicted,
+                    C: ack.HealthAfter - _shownHealth[slot], D: head == ((ack.Flags & CombatAckFlags.Headshot) != 0) ? 0 : 1));
+                CombatStudyReports.Record(ack, latencyFrames, ack.DamageApplied - predicted,
+                    ack.HealthAfter - _shownHealth[slot], head != ((ack.Flags & CombatAckFlags.Headshot) != 0));
+                CombatAcks++;
+                if (predicted != ack.DamageApplied) DamageCorrections++;
+                if (head != ack.Flags.HasFlag(CombatAckFlags.Headshot)) HeadshotCorrections++;
+                if (_shownHealth[slot] != ack.HealthAfter) HealthCorrections++;
+                ResolveHeld(slot, at, ack.Accepted && (ack.Flags & CombatAckFlags.Lethal) != 0);
+                Settle(slot, ack.ClaimId, ack.Accepted);
+                // Exact acknowledgement retires this debit immediately. Other
+                // outstanding claims retain their own independent debits.
+                _pendingDamage[slot, at] = 0;
+                _pendingLethal[slot, at] = _pendingHeadshot[slot, at] = false;
+                _shownHealth[slot] = 0;
+                if (ack.Accepted && (ack.Flags & CombatAckFlags.OutcomePresent) != 0)
+                {
+                    ushort sequence = (ushort)ack.DamageSequence;
+                    ushort snapshot = NetSession.RemoteStates[slot].DamageEventId;
+                    if (NetLifecycleTracker.Newer(sequence, snapshot)
+                        && (!_ackHealthValid[slot] || NetLifecycleTracker.Newer(sequence, (ushort)_ackHealth[slot].DamageSequence)))
+                    { _ackHealth[slot] = ack; _ackHealthValid[slot] = true; }
+                }
+                var player = PlayerEntity._players[slot];
+                if (player != null && player.Health > 0)
+                {
+                    player.Health = Math.Max(1, HealthFor(slot, NetSession.RemoteStates[slot].Health));
+                    if (player.IsAltForm && player.Halfturret != null && _ackHealthValid[slot]
+                        && ((ack.Flags & CombatAckFlags.HalfturretAffected) != 0 || NetSession.RemoteStates[slot].HalfturretActive))
+                    {
+                        player.Halfturret.Health = TurretHealthFor(slot, player.Halfturret.Health);
+                        if (player.Halfturret.Health > 0) player.ModRestoreHalfturretFlag();
+                        else player.OnHalfturretDied();
+                    }
+                }
+                return true;
+            }
+            return false;
+        }
+
         public static void Settle(int slot, ushort claimId, bool confirmed)
         {
             EnsureLife(slot);
