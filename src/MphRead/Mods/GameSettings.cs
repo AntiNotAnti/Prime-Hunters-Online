@@ -140,6 +140,9 @@ namespace MphRead.Mods
             GameState.FriendlyFire = settings.FriendlyFire == "on";
             GameState.RadarPlayers = settings.HunterRadar == "on";
             GameState.AffinityWeapons = settings.AffinityWeapons == "on";
+            // New settings files default this on, and treating anything other
+            // than an explicit off as enabled keeps older files on that default.
+            GameState.SpawnProtection = settings.SpawnProtection != "off";
             // Anything but an explicit "off" is the cartridge's behaviour, so
             // a settings file written before this rule existed plays exactly
             // as it did.
