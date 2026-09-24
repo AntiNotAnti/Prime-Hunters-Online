@@ -852,6 +852,10 @@ namespace MphRead.Mods.Network
                     // classification, and the rest of the hit is skipped
                     // because its feedback was already shown.
                     player.QueueHudMessage(128, 40, 20 / 30f, 0, 228);
+                    BeamType feedbackBeam = state.DamageBeam == NoBeam
+                        ? BeamType.None : (BeamType)state.DamageBeam;
+                    Mods.Sound.CombatFeedbackAudio.OnConfirmedHeadshot(
+                        player.OwningScene, feedbackBeam);
                 }
                 return;
             }
