@@ -181,8 +181,8 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 ColumnDefinitions = new ColumnDefinitions("*,*"),
                 RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto"),
-                ColumnSpacing = 8,
-                RowSpacing = 2
+                ColumnSpacing = 24,
+                RowSpacing = 10
             };
             Control[] toggleRows =
             {
@@ -625,7 +625,8 @@ namespace MphRead.Mods.Launcher.Gui
                     if (rebuild)
                     {
                     var playerRow = new LobbyPlayerRow(roster, i, session.OwnerSlot,
-                        showTeam: teamMode, selected: slot == selected);
+                        showTeam: teamMode, selected: slot == selected,
+                        changeTeam: direction => CyclePlayerTeam(slot, direction));
                     playerRow.Cursor = new Cursor(StandardCursorType.Hand);
                     playerRow.PointerPressed += (_, e) =>
                     {
@@ -810,6 +811,20 @@ namespace MphRead.Mods.Launcher.Gui
                 ? _targetSlots[_target.Index]
                 : byte.MaxValue;
 
+        private static bool CanChangePlayerTeam(SessionStatePacket session, byte slot) =>
+            PlayerChoosesTeam(session.Match) && NetSession.IsInLobby && !NetSession.LobbyCommandPending
+            && (NetSession.LocalIsLobbyOwner || (slot == NetSession.LocalSlot && !session.LockTeams));
+
+        private void CyclePlayerTeam(byte slot, int direction)
+        {
+            if (NetSession.ServerSession is not { } session || !CanChangePlayerTeam(session, slot)) return;
+            var roster = NetSession.LobbyRoster();
+            var layout = LobbyRules.ResolveTeamLayout(session.Match);
+            if (LobbyPlayerRow.NextTeam(roster, slot, layout, direction) is { } team)
+                NetSession.SendLobbyCommand(LobbyCommandType.SetTeam, slot, team);
+            Refresh();
+        }
+
         private void AssignSelectedTeam(sbyte team)
         {
             byte target = SelectedTargetSlot();
@@ -835,6 +850,15 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 int team = roster.Teams[i];
                 if (team >= 0 && team < counts.Length) counts[team]++;
+            }
+
+            for (int i = 0; i < roster.Count && i < _players.Children.Count; i++)
+            {
+                byte slot = roster.Slots[i];
+                bool canChange = CanChangePlayerTeam(session, slot);
+                ((LobbyPlayerRow)_players.Children[i]).SetTeamAvailability(
+                    canChange && LobbyPlayerRow.NextTeam(roster, slot, layout, -1).HasValue,
+                    canChange && LobbyPlayerRow.NextTeam(roster, slot, layout, 1).HasValue);
             }
 
             string[] choices = Enumerable.Range(0, layout.TeamCount)

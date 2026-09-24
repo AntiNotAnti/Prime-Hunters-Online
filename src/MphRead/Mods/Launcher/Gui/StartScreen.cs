@@ -118,7 +118,7 @@ namespace MphRead.Mods.Launcher.Gui
             switch (route)
             {
                 case PrimeRoute.News:
-                    return new NewsWorkspace(r => _prime.Router.Navigate(r), _prime.Overlays, quit: AskToQuit);
+                    return new NewsWorkspace(_prime.Overlays);
                 case PrimeRoute.Play:
                     var play = new PlayWorkspace();
                     play.Closed += (_, _) => _prime.Back();

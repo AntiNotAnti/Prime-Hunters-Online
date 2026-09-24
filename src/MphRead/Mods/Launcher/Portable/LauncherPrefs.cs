@@ -474,7 +474,7 @@ namespace MphRead.Mods.Launcher
                     $"kill_cam={KillCamEnabled.ToString().ToLowerInvariant()}",
                     $"final_kill_cam={FinalKillCamEnabled.ToString().ToLowerInvariant()}",
                     $"kill_cam_camera={KillCamCamera}",
-                    $"window_mode={(WindowMode == WindowStartMode.BorderlessFullscreen ? "borderless" : "windowed")}",
+                    $"window_mode={Mods.WindowMode.Serialize(WindowMode)}",
                     $"window_size={WindowWidth.ToString(CultureInfo.InvariantCulture)}x"
                         + WindowHeight.ToString(CultureInfo.InvariantCulture),
                     $"window_pos={WindowX.ToString(CultureInfo.InvariantCulture)},"

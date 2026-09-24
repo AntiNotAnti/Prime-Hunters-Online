@@ -366,7 +366,9 @@ namespace MphRead.Mods.Launcher.Gui
                     Grid.SetColumn(tab, i); tabs.Children.Add(tab); _categoryTabs.Add(tab);
                 }
                 Grid.SetRow(tabs, 1); contentRoot.Children.Add(tabs);
-                _settingsBody.ColumnDefinitions = new("240,*,320");
+                _settingsBody.Children.Remove(_sectionNavHost);
+                _settingsBody.ColumnDefinitions = new("*,320");
+                Grid.SetColumn(_sectionContentHost, 0);
                 var calibration = new PrimeFovPreview(() => _fovRow.Value);
                 _fovRow.ValueChanged += (_, _) => calibration.InvalidateVisual();
                 var diagnostics = PrimeChrome.Stack(new PrimeBadge("CALIBRATION VIEWPORT"), calibration,
@@ -380,12 +382,7 @@ namespace MphRead.Mods.Launcher.Gui
                 right.Children.Add(new PrimePanel(diagnostics));
                 var commandPanel = new PrimePanel(command);
                 Grid.SetRow(commandPanel, 1); right.Children.Add(commandPanel);
-                Grid.SetColumn(right, 2); _settingsBody.Children.Add(right);
-                foreach (var (name, i) in _sections.Select((s, i) => (s.Name, i)))
-                {
-                    _sectionNav[i].MinHeight = 54;
-                    _sectionNav[i].Label = $"{i + 1:00} // {name.ToUpperInvariant()}";
-                }
+                Grid.SetColumn(right, 1); _settingsBody.Children.Add(right);
                 Content = contentRoot;
             }
             else
@@ -413,7 +410,11 @@ namespace MphRead.Mods.Launcher.Gui
             base.OnAttachedToVisualTree(e);
             Dispatcher.UIThread.Post(() =>
             {
-                if (_sectionNav.Count > 0)
+                if (_shell && _categoryTabs.Count > 0)
+                {
+                    _categoryTabs[Math.Clamp(_tabs.Index, 0, _categoryTabs.Count - 1)].Focus();
+                }
+                else if (_sectionNav.Count > 0)
                 {
                     _sectionNav[Math.Clamp(_tabs.Index, 0, _sectionNav.Count - 1)].Focus();
                 }
@@ -682,23 +683,28 @@ namespace MphRead.Mods.Launcher.Gui
         private void BuildCredits(StackPanel page)
         {
             Heading(page, "Project Prime");
-            Explain(page, Mods.Credits.Summary);
+            page.Children.Add(PrimeChrome.Text(Mods.Credits.Summary, 14, PrimeTheme.TextSecondaryBrush));
 
-            Heading(page, "Community contributors");
-            page.Children.Add(new Caption(Mods.Credits.Author));
-            page.Children.Add(new Note(Mods.Credits.ForkWork));
+            void Credit(Mods.Credits.Entry entry)
+            {
+                page.Children.Add(PrimeChrome.Text(entry.Who, 16, PrimeTheme.HighlightBrush));
+                page.Children.Add(PrimeChrome.Text(entry.What + (entry.Where.Length > 0 ? "\n" + entry.Where : ""),
+                    14, PrimeTheme.TextSecondaryBrush));
+            }
 
-            Heading(page, "Built on");
+            Heading(page, "MphRead");
+            Credit(Mods.Credits.Foundation);
+
+            Heading(page, "Fruity Prime");
+            page.Children.Add(PrimeChrome.Text(Mods.Credits.Author, 16, PrimeTheme.HighlightBrush));
+            page.Children.Add(PrimeChrome.Text(Mods.Credits.ForkWork, 14, PrimeTheme.TextSecondaryBrush));
+
+            Heading(page, "Additional upstream work & acknowledgements");
             foreach (Mods.Credits.Entry entry in Mods.Credits.Entries)
             {
-                page.Children.Add(new Caption(entry.Who));
-                string what = entry.What;
-                if (entry.Where.Length > 0)
-                {
-                    what += "\n" + entry.Where;
-                }
-                page.Children.Add(new Note(what));
+                if (entry != Mods.Credits.Foundation) Credit(entry);
             }
+
         }
 
         // ------------------------------------------------------------- display
@@ -711,8 +717,8 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 Heading(page, "Window");
                 _windowRow = Add(page, new ChoiceRow("Mode",
-                    new[] { "Windowed", "Fullscreen (borderless)" },
-                    LauncherPrefs.WindowMode == WindowStartMode.BorderlessFullscreen ? 1 : 0));
+                    new[] { "Windowed", "Borderless", "Fullscreen" },
+                    (int)LauncherPrefs.WindowMode));
             }
 
             // Its own heading, above the performance rows, because it is not
@@ -1626,24 +1632,11 @@ namespace MphRead.Mods.Launcher.Gui
             // Display
             if (_windowRow != null)
             {
-                LauncherPrefs.WindowMode = _windowRow.Index == 1
-                    ? WindowStartMode.BorderlessFullscreen
-                    : WindowStartMode.Windowed;
+                LauncherPrefs.WindowMode = (WindowStartMode)_windowRow.Index;
                 WindowMode.Startup = LauncherPrefs.WindowMode;
-                // And now, not at the next launch. There is one window and
-                // this setting is about the one you are looking at: picking
-                // "Fullscreen" and having nothing happen reads as a setting
-                // that did not take. Asked for rather than done -- a window
-                // attribute belongs to the thread that owns the window, and
-                // this runs inside the toolkit; PauseMenu.Poll does it at the
-                // end of the frame, which is the same route Escape's own
-                // fullscreen entry takes.
-                bool wantFullscreen =
-                    LauncherPrefs.WindowMode == WindowStartMode.BorderlessFullscreen;
-                if (wantFullscreen != WindowMode.IsFullscreen)
-                {
-                    PauseMenu.RequestFullscreenToggle();
-                }
+                // Apply the selected mode, not a boolean toggle: Borderless ->
+                // Fullscreen changes focus policy without leaving fullscreen.
+                PauseMenu.RequestWindowMode(LauncherPrefs.WindowMode);
             }
             if (_clipSecondsRow != null)
             {

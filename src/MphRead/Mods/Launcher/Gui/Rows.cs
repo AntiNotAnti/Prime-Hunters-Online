@@ -444,8 +444,8 @@ namespace MphRead.Mods.Launcher.Gui
     /// </summary>
     internal sealed class ButtonToggleRow : Grid
     {
-        private readonly DeckButton _off;
-        private readonly DeckButton _onButton;
+        private readonly PrimeButton _off;
+        private readonly PrimeButton _onButton;
         private bool _on;
 
         public event EventHandler? Changed;
@@ -470,29 +470,24 @@ namespace MphRead.Mods.Launcher.Gui
             _on = on;
             ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto");
             ColumnSpacing = compact ? 4 : 5;
-            MinHeight = compact ? 28 : 32;
+            MinHeight = 44;
 
             var caption = new TextBlock
             {
                 Text = label,
+                TextWrapping = TextWrapping.Wrap,
                 FontFamily = GuiTheme.Display,
-                FontSize = compact ? 11 : 12,
+                FontSize = 14,
                 Foreground = GuiTheme.TextDimBrush,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(4, 0, compact ? 5 : 8, 0)
             };
             Children.Add(caption);
 
-            _off = new DeckButton("OFF", Deck.Face.Slate,
-                sizeEms: compact ? 0.66 : 0.72,
-                padXEms: compact ? 0.48 : 0.62,
-                padYEms: compact ? 0.18 : 0.26,
-                lip: compact ? 2 : 3);
-            _onButton = new DeckButton("ON", Deck.Face.Slate,
-                sizeEms: compact ? 0.66 : 0.72,
-                padXEms: compact ? 0.54 : 0.72,
-                padYEms: compact ? 0.18 : 0.26,
-                lip: compact ? 2 : 3);
+            _off = new PrimeButton("OFF") { Width = 54, MinHeight = 40 };
+            _onButton = new PrimeButton("ON") { Width = 54, MinHeight = 40 };
+            Avalonia.Automation.AutomationProperties.SetName(_off, label + " off");
+            Avalonia.Automation.AutomationProperties.SetName(_onButton, label + " on");
             _off.Click += (_, _) => On = false;
             _onButton.Click += (_, _) => On = true;
 
@@ -505,8 +500,8 @@ namespace MphRead.Mods.Launcher.Gui
 
         private void Mark()
         {
-            _off.Wear(_on ? Deck.Face.Slate : Deck.Face.Rust, selected: !_on);
-            _onButton.Wear(_on ? Deck.Face.Moss : Deck.Face.Slate, selected: _on);
+            _off.Selected = !_on;
+            _onButton.Selected = _on;
         }
     }
 

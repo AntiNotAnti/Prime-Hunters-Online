@@ -585,8 +585,8 @@ namespace MphRead.Mods.Launcher
             LauncherPrefs.PlayerName = AskName();
             LauncherPrefs.LastHunter = AskHunter();
             LauncherPrefs.WindowMode = AskYesNo("  Start fullscreen",
-                LauncherPrefs.WindowMode == WindowStartMode.BorderlessFullscreen)
-                ? WindowStartMode.BorderlessFullscreen
+                LauncherPrefs.WindowMode != WindowStartMode.Windowed)
+                ? WindowStartMode.Fullscreen
                 : WindowStartMode.Windowed;
             string endpoint = Ask("  Default server",
                 $"{LauncherPrefs.ServerAddress}:{LauncherPrefs.ServerPort}");

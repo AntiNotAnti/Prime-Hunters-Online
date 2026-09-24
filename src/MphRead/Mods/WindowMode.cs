@@ -9,301 +9,182 @@ namespace MphRead.Mods
     public enum WindowStartMode
     {
         Windowed,
-        BorderlessFullscreen
+        BorderlessFullscreen,
+        Fullscreen
     }
 
     /// <summary>
-    /// Windowed or borderless fullscreen, and the two ways in and out of it
-    /// that people expect: F11 and Alt+Enter. Escape belongs to the pause
-    /// menu now, which is where the same switch also sits as an entry.
-    ///
-    /// Borderless rather than exclusive fullscreen: it alt-tabs instantly,
-    /// keeps the desktop resolution, and does not black the screen while the
-    /// display mode changes -- which matters most for the one thing this
-    /// build is for, a match somebody is trying to join while talking to
-    /// their friends on something else.
-    ///
-    /// The window's own state is the truth. Nothing here caches "am I
-    /// fullscreen" beyond what it needs to put the window back where it was.
+    /// Native monitor fullscreen, with desktop-resolution borderless and normal
+    /// fullscreen focus policies. GLFW owns taskbar/Dock coverage and display
+    /// restoration; a floating, almost-monitor-sized window cannot provide that.
     /// </summary>
     public static class WindowMode
     {
-        /// <summary>
-        /// How the next window should open. Set by the launcher from its
-        /// saved preference, or by -fullscreen on the command line.
-        /// </summary>
         public static WindowStartMode Startup { get; set; } = WindowStartMode.Windowed;
-
-        /// <summary>
-        /// Whether <see cref="Startup"/> came from the command line, and so
-        /// must not be overwritten by the saved preference.
-        ///
-        /// The launcher reads the preference as it opens its window, and it
-        /// does that *after* the flags have been parsed: without this,
-        /// `-launcher -fullscreen` opened windowed, because the preference
-        /// landed on top of the flag. The flag is the more specific
-        /// instruction -- somebody typed it for this run.
-        ///
-        /// What happens to the preference afterwards is not this flag's
-        /// business: the window goes fullscreen, and
-        /// <see cref="WindowGeometry.NoteMode"/> writes down where the window
-        /// ended up, the same as it would for F11. Somebody who starts
-        /// fullscreen and quits from fullscreen was last in fullscreen.
-        /// </summary>
         public static bool StartupForced { get; private set; }
+        public static WindowStartMode Current { get; private set; } = WindowStartMode.Windowed;
+        public static bool IsFullscreen => Current != WindowStartMode.Windowed;
 
-        /// <summary>The command line asking for a mode, once.</summary>
+        private static WindowStartMode _lastFullscreen = WindowStartMode.Fullscreen;
+        private static Vector2i _savedLocation, _savedClientLocation, _savedSize;
+        private static WindowState _savedState;
+        private static bool _savedAutoIconify, _saved;
+        private static NativeWindow? _window;
+        private static bool _changing;
+
+        public static Vector2i WindowedSize => _saved ? _savedSize : Vector2i.Zero;
+        public static Vector2i WindowedLocation => _savedLocation;
+        public static bool WindowedMaximized => _saved && _savedState == WindowState.Maximized;
+
         public static void ForceStartup(WindowStartMode mode)
         {
             Startup = mode;
             StartupForced = true;
         }
 
-        public static bool IsFullscreen { get; private set; }
-
-        private static WindowBorder _savedBorder = WindowBorder.Resizable;
-        private static Vector2i _savedLocation;
-        private static Vector2i _savedSize;
-        private static bool _saved;
-
-        /// <summary>
-        /// The shape the window had before fullscreen took it, for whoever
-        /// needs the *windowed* geometry while the window is reporting the
-        /// monitor's.
-        ///
-        /// <see cref="WindowGeometry"/> is the caller: a player who quits from
-        /// fullscreen must not have the monitor's rectangle saved as their
-        /// window size, or their next windowed session opens the size of the
-        /// screen with a title bar pushing it off the bottom.
-        /// </summary>
-        public static Vector2i WindowedSize => _saved ? _savedSize : Vector2i.Zero;
-
-        public static Vector2i WindowedLocation => _savedLocation;
-
-        /// <summary>Called once, after the window is first shown.</summary>
         public static void ApplyStartup(NativeWindow window)
         {
-            if (Startup == WindowStartMode.BorderlessFullscreen && !IsFullscreen)
+            if (!ReferenceEquals(_window, window))
             {
-                Enter(window);
+                _window = window;
+                Current = WindowStartMode.Windowed;
+                _saved = false;
+                _lastFullscreen = Startup == WindowStartMode.BorderlessFullscreen
+                    ? Startup : WindowStartMode.Fullscreen;
             }
+            Set(window, Startup);
         }
 
-        /// <summary>
-        /// The keys that change the mode: F11 and Alt+Enter. Returns true when
-        /// the key was one of them, so the caller can stop.
-        ///
-        /// Escape is not one of them any more: it opens the pause menu, which
-        /// is where leaving fullscreen now lives along with everything else
-        /// somebody presses Escape looking for.
-        /// </summary>
         public static bool HandleKey(NativeWindow window, KeyboardKeyEventArgs e)
         {
-            if (e.Key == Keys.F11 || (e.Key == Keys.Enter && e.Alt))
-            {
-                Toggle(window);
-                return true;
-            }
-            return false;
+            if (e.Key != Keys.F11 && !(e.Key == Keys.Enter && e.Alt)) return false;
+            Toggle(window);
+            return true;
         }
 
-        public static void Toggle(NativeWindow window)
+        public static void Toggle(NativeWindow window) =>
+            Set(window, IsFullscreen ? WindowStartMode.Windowed : _lastFullscreen);
+
+        public static void Enter(NativeWindow window) => Set(window, _lastFullscreen);
+        public static void Leave(NativeWindow window) => Set(window, WindowStartMode.Windowed);
+
+        /// <summary>Called on the window thread, including requests from Settings.</summary>
+        public static void Set(NativeWindow window, WindowStartMode mode)
         {
-            if (IsFullscreen)
-            {
-                Leave(window);
-            }
-            else
-            {
-                Enter(window);
-            }
-        }
-
-        public static void Enter(NativeWindow window)
-        {
-            if (IsFullscreen)
-            {
-                return;
-            }
-            if (!_saved)
-            {
-                _savedBorder = window.WindowBorder;
-                _savedLocation = window.Location;
-                _savedSize = window.ClientSize;
-                _saved = true;
-            }
-            // Before the window is touched, not after the geometry is set --
-            // and after the monitor lookup, which is the one line above that
-            // can fail and leave this method without a fullscreen window to
-            // describe.
-            //
-            // Windows dispatches WM_SIZE from inside SetWindowPos, so the
-            // resize callback for the lines below runs *during* them, and
-            // WindowGeometry.Capture reads this flag to decide whether the
-            // rectangle it is being handed is the player's window or the
-            // monitor. Set at the end instead, the one callback that matters
-            // arrived while it still said "windowed", and the monitor's
-            // rectangle went into the remembered window size.
-            MonitorInfo monitor = Monitors.GetMonitorFromWindow(window);
-            IsFullscreen = true;
-            // State first: leaving any Maximized/Minimized state before the
-            // border changes, so the window manager isn't asked to strip
-            // decorations off a window it still considers snapped.
-            window.WindowState = WindowState.Normal;
-            window.WindowBorder = WindowBorder.Hidden;
-            // Some window managers only apply a border change once they've
-            // processed an event since it was requested -- setting the
-            // geometry in the same tick can compute it against the window's
-            // pre-change (decorated) size, which is what needed a second F11
-            // press to actually take effect. Pumping events here flushes that
-            // pending change before Location/ClientSize are set below.
-            GLFW.PollEvents();
-            window.Location = monitor.ClientArea.Min;
-            // One pixel short of the monitor, not an exact match: a
-            // borderless window that covers a display exactly is what
-            // Windows' fullscreen optimizations key off to promote it into
-            // an exclusive-like mode, which then refuses to show *any* other
-            // window above it -- and which also costs the compositor's own
-            // overlays. The pause menu no longer depends on it (it is drawn
-            // inside this window now), but the promotion has other effects
-            // nobody asked for. One pixel is not visible and keeps it from
-            // triggering.
-            window.ClientSize = new Vector2i(monitor.ClientArea.Size.X, monitor.ClientArea.Size.Y - 1);
-            // And above the taskbar, which is the other half of covering the
-            // screen. A borderless window is an ordinary window as far as the
-            // desktop is concerned: it sits in the normal z-band, and the
-            // taskbar (and the dock, and a panel) is always-on-top, so it
-            // stayed drawn over the game -- pressing F11 filled the screen and
-            // left the taskbar sitting on it, which is how it was reported.
-            //
-            // Exclusive fullscreen is what usually takes the screen away from
-            // the shell, and it is the thing this deliberately is not; asking
-            // for always-on-top instead gets the same picture while keeping
-            // every reason borderless was chosen (instant alt-tab, no display
-            // mode change, no black flash).
-            SetTopmost(window, true);
-            // And written down, so the next session opens this way. See
-            // WindowGeometry.NoteMode: F11 used to be a decision the program
-            // forgot on exit.
-            WindowGeometry.NoteMode();
-        }
-
-        public static void Leave(NativeWindow window)
-        {
-            if (!IsFullscreen)
-            {
-                return;
-            }
-            window.WindowState = WindowState.Normal;
-            window.WindowBorder = _saved ? _savedBorder : WindowBorder.Resizable;
-            GLFW.PollEvents();
-            if (_saved)
-            {
-                window.ClientSize = _savedSize;
-                window.Location = _savedLocation;
-            }
-            IsFullscreen = false;
-            // Forget it, so the *next* Enter captures where the window is
-            // then. Without this the saved rectangle is whatever the window
-            // was the first time fullscreen was ever used: go fullscreen,
-            // come back, drag the window somewhere else, go fullscreen again,
-            // and leaving put it back at the first size rather than the one
-            // it was just at.
-            _saved = false;
-            SetTopmost(window, false);
-            WindowGeometry.NoteMode();
-        }
-
-        /// <summary>
-        /// Whether the game window sits above the shell's own always-on-top
-        /// windows. True for the length of borderless fullscreen, and dropped
-        /// while the pause menu is up.
-        /// </summary>
-        public static bool IsTopmost => _topmost;
-
-        private static bool _topmost;
-
-        /// <summary>
-        /// Ask the window manager to float this window, or stop.
-        ///
-        /// Cached, because <see cref="SyncTopmost"/> is called once a frame
-        /// and this is a round trip to the window manager, not a field.
-        ///
-        /// Best-effort by nature: X11 window managers are free to ignore it
-        /// and Wayland has no concept of it at all, so a failure here is a
-        /// taskbar that is still visible, not a broken window. It is never
-        /// worth an exception reaching the render loop.
-        /// </summary>
-        public static void SetTopmost(NativeWindow window, bool topmost)
-        {
-            if (_topmost == topmost)
-            {
-                return;
-            }
-            _topmost = topmost;
+            if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
+            if (_changing || (Current == mode && IsFullscreen == HasMonitor(window))) return;
+            _changing = true;
             try
+            {
+                if (mode == WindowStartMode.Windowed)
+                {
+                    RestoreWindow(window);
+                }
+                else if (IsFullscreen && HasMonitor(window))
+                {
+                    // Both modes use the current desktop resolution. Switching
+                    // focus policy must not replace the saved windowed rectangle.
+                    window.AutoIconify = mode == WindowStartMode.Fullscreen;
+                    Current = _lastFullscreen = mode;
+                }
+                else
+                {
+                    // Resolve the display before changing window state. Entering
+                    // fullscreen never moves the game to the primary monitor.
+                    MonitorInfo monitor = Monitors.GetMonitorFromWindow(window);
+                    _window = window;
+                    _savedState = window.WindowState;
+                    _savedAutoIconify = window.AutoIconify;
+                    Current = mode; // Resize callbacks must not save monitor geometry.
+                    if (_savedState == WindowState.Maximized)
+                    {
+                        window.WindowState = WindowState.Normal;
+                        GLFW.PollEvents();
+                    }
+                    _savedLocation = window.Location;
+                    _savedClientLocation = window.ClientLocation;
+                    _savedSize = window.ClientSize;
+                    _saved = true;
+                    window.AutoIconify = mode == WindowStartMode.Fullscreen;
+                    // Match the desktop video mode for full display coverage
+                    // without a resolution switch, including Retina displays.
+                    unsafe
+                    {
+                        var video = GLFW.GetVideoMode(monitor.Handle.ToUnsafePtr<Monitor>());
+                        if (video == null) throw new InvalidOperationException("No video mode for the current monitor.");
+                        window.MakeFullscreen(monitor.Handle, video->Width, video->Height, video->RefreshRate);
+                    }
+                    if (!HasMonitor(window))
+                        throw new InvalidOperationException("The window manager did not enter fullscreen.");
+                    _lastFullscreen = mode;
+                }
+                WindowGeometry.NoteMode();
+            }
+            catch
+            {
+                RestoreWindow(window);
+                throw;
+            }
+            finally { _changing = false; }
+        }
+
+        private static void RestoreWindow(NativeWindow window)
+        {
+            // Minimized fullscreen still owns its monitor, but OpenTK's cached
+            // state no longer says Fullscreen. Explicitly detach that case too.
+            window.WindowState = WindowState.Normal;
+            if (HasMonitor(window))
             {
                 unsafe
                 {
-                    GLFW.SetWindowAttrib(window.WindowPtr, WindowAttribute.Floating, topmost);
+                    GLFW.SetWindowMonitor(window.WindowPtr, null,
+                        _savedClientLocation.X, _savedClientLocation.Y,
+                        _savedSize.X, _savedSize.Y, GLFW.DontCare);
                 }
             }
-            catch (Exception)
+            GLFW.PollEvents();
+            if (_saved)
             {
-                // See above: not worth a match.
+                window.AutoIconify = _savedAutoIconify;
+                window.ClientSize = _savedSize;
+                window.Location = _savedLocation;
+                if (_savedState == WindowState.Maximized) window.WindowState = WindowState.Maximized;
+            }
+            Current = WindowStartMode.Windowed;
+            _saved = false;
+        }
+
+        // OpenTK's IsFullscreen reads WindowState, which becomes Minimized on
+        // focus loss. The monitor attachment survives iconification.
+        internal static unsafe bool HasMonitor(NativeWindow window) => GLFW.GetWindowMonitor(window.WindowPtr) != null;
+
+        /// <summary>Reconcile a monitor unplug or an external fullscreen exit.</summary>
+        public static void Sync(NativeWindow window)
+        {
+            if (!_changing && IsFullscreen && !HasMonitor(window))
+            {
+                RestoreWindow(window);
+                WindowGeometry.NoteMode();
+                WindowGeometry.Note(window);
             }
         }
 
-        /// <summary>
-        /// Keep the floating state right, once a frame.
-        ///
-        /// The pause menu is a separate always-on-top Avalonia window, and two
-        /// windows in the same always-on-top band are ordered by whichever the
-        /// desktop last raised -- which is not something to rely on for the one
-        /// window the player needs to be able to press. So the game window
-        /// stands down for as long as the menu is up and takes the band back
-        /// when it closes.
-        ///
-        /// **And it stands down the moment the window is not the focused
-        /// one.** An always-on-top borderless window cannot be alt-tabbed away
-        /// from in any way a person would recognise: the switch happens, the
-        /// other window is given the keyboard, and the game stays drawn over
-        /// the top of it -- which reads as a window that refuses to let go,
-        /// and is how it was reported. Floating is only ever wanted for the
-        /// one thing it was added for (covering the taskbar while the game is
-        /// the window being used), and that is exactly the case where this
-        /// window has the focus. Alt-tab away and it drops out of the band on
-        /// the next frame; alt-tab back and it takes it again.
-        /// </summary>
-        public static void SyncTopmost(NativeWindow window)
+        public static string Serialize(WindowStartMode mode) => mode switch
         {
-            // Not "unless the pause menu is up" any more. That exception was
-            // for a menu that was its *own* window and had to be allowed above
-            // this one; the menu is drawn inside this window now, so dropping
-            // out of the band while it is open only lets the taskbar cover the
-            // bottom of our own screen -- which is where Save and Cancel are,
-            // and they became unclickable the moment Escape was pressed in
-            // fullscreen.
-            SetTopmost(window, IsFullscreen && window.IsFocused);
-        }
+            WindowStartMode.Fullscreen => "fullscreen",
+            WindowStartMode.BorderlessFullscreen => "borderless",
+            _ => "windowed"
+        };
 
-        /// <summary>"borderless"/"fullscreen"/"windowed" from a settings file or a flag.</summary>
         public static WindowStartMode Parse(string? value, WindowStartMode fallback)
         {
-            if (value == null)
+            return value?.Trim().ToLowerInvariant() switch
             {
-                return fallback;
-            }
-            string text = value.Trim().ToLowerInvariant();
-            if (text is "borderless" or "fullscreen" or "borderless fullscreen" or "1" or "true")
-            {
-                return WindowStartMode.BorderlessFullscreen;
-            }
-            if (text is "windowed" or "window" or "0" or "false")
-            {
-                return WindowStartMode.Windowed;
-            }
-            return fallback;
+                "fullscreen" or "exclusive" or "2" => WindowStartMode.Fullscreen,
+                "borderless" or "borderless fullscreen" or "1" or "true" => WindowStartMode.BorderlessFullscreen,
+                "windowed" or "window" or "0" or "false" => WindowStartMode.Windowed,
+                _ => fallback
+            };
         }
     }
 }

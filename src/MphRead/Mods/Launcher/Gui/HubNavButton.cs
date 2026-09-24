@@ -27,17 +27,18 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly TranslateTransform _shift = new();
         private readonly bool _primary;
         private bool _tactical, _tab;
-        protected void UseTacticalStyle(bool tab = false)
+        protected void UseTacticalStyle(bool tab = false, bool compact = false)
         {
             _tactical = true; _tab = tab; _rail.IsVisible = false;
             _label.FontFamily = PrimeTypography.Label;
             _label.FontWeight = FontWeight.SemiBold;
-            _label.FontSize = 16;
+            _label.FontSize = compact ? 14 : 16;
             _label.HorizontalAlignment = HorizontalAlignment.Center;
             _label.VerticalAlignment = VerticalAlignment.Center;
             _label.TextWrapping = TextWrapping.Wrap;
             _label.TextAlignment = TextAlignment.Center;
-            _frame.Padding = new Thickness(10, 8);
+            _frame.Padding = compact ? new Thickness(4, 2) : new Thickness(10, 8);
+            if (compact) MinHeight = 28;
             RefreshVisual();
         }
         private bool _pointer;

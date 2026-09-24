@@ -4,41 +4,22 @@ using System.Collections.Generic;
 namespace MphRead.Mods
 {
     /// <summary>
-    /// Who this is built on.
-    ///
-    /// Project Prime is a fork of NoneGiven's MphRead, which is itself built on
-    /// the work of several other projects; the list below is the one in
-    /// upstream's README, kept here so that it is in the program a player runs
-    /// and not only in a file on GitHub. The multiplayer, the launcher and the
-    /// dedicated server are what this fork adds. Everything that makes the game
-    /// run at all is upstream's or its sources'.
+    /// Runtime attribution, following the repository README's Credits section.
+    /// Keep the project lineage and required dependency acknowledgements together.
     /// </summary>
     public static class Credits
     {
         public readonly record struct Entry(string Who, string What, string Where);
 
-        /// <summary>
-        /// A named contributor to Project Prime. Kept in Credits rather than
-        /// used as the identity of the project itself: Project Prime is a
-        /// community fork, not a personal-branded fork.
-        /// </summary>
         public const string Author = "Livetek";
-
-        /// <summary>What Livetek contributed to the community fork, in one line.</summary>
-        public const string ForkWork = "Project Prime development: multiplayer and the dedicated server, "
-            + "the launcher, custom maps, the Android head and the pro HUD";
-
-        /// <summary>
-        /// Where to say thank you, for anyone who wants to.
-        ///
-        /// Https only and opened through the same path the update check uses,
-        /// which refuses anything else and reports when there is no browser to
-        /// open rather than appearing to do nothing.
-        /// </summary>
-        public const string SupportUrl = "https://ko-fi.com/livetek";
+        public const string ForkWork = "Development of Fruity Prime, an earlier fork in Project Prime's development lineage.";
 
         public static string Summary =>
-            $"{Branding.Name} is a Metroid Prime Hunters fork for the community, by the community.";
+            $"{Branding.Name} is a community-developed continuation of Metroid Prime Hunters, built on the work of the projects and developers credited below.";
+
+        public static Entry Foundation { get; } = new("NoneGiven",
+            "MphRead: the foundational Metroid Prime Hunters recreation, model viewer, renderer, file format parsers and related systems.",
+            "https://github.com/NoneGiven/MphRead");
 
         /// <summary>
         /// The attribution as a corner of a screen can carry it: the fork, and
@@ -67,18 +48,13 @@ namespace MphRead.Mods
                         names.Add(entry.Who);
                     }
                 }
-                return String.Join(" · ", names);
+                return $"{Author} (Fruity Prime) · " + String.Join(" · ", names);
             }
         }
 
         public static IReadOnlyList<Entry> Entries { get; } = new[]
         {
-            new Entry("Indian Type Foundry", "Rajdhani: tactical headings and controls. SIL Open Font License 1.1; "
-                + "unmodified SemiBold and Bold fonts, with license bundled in the application.",
-                "https://github.com/itfoundry/rajdhani"),
-            new Entry("NoneGiven", "MphRead: the model viewer, scene renderer, "
-                + "format parsers and gameplay recreation this is built on",
-                "https://github.com/NoneGiven/MphRead"),
+            Foundation,
             new Entry("dsgraph", "the original MPH model viewer, on which all "
                 + "other projects are built", ""),
             new Entry("chmcl95", "documentation of the model format",
@@ -101,8 +77,11 @@ namespace MphRead.Mods
                 "https://github.com/hackyourlife/mph-viewer"),
             new Entry("OpenTK", "the OpenGL bindings the renderer uses",
                 "https://github.com/opentk/opentk"),
-            new Entry("OpenAL Soft and SoundFlow", "audio",
-                "https://github.com/LSXPrime/SoundFlow"),
+            new Entry("OpenAL Soft", "audio playback", "https://github.com/kcat/openal-soft"),
+            new Entry("SoundFlow", "audio", "https://github.com/LSXPrime/SoundFlow"),
+            new Entry("Indian Type Foundry", "Rajdhani: tactical headings and controls. SIL Open Font License 1.1; "
+                + "unmodified SemiBold and Bold fonts, with license bundled in the application.",
+                "https://github.com/itfoundry/rajdhani"),
             // CC BY 4.0 asks for this by name, so it is an entry rather than a
             // line in a file beside the data.
             new Entry("DB-IP", "IP geolocation, for the flags in the server "
@@ -116,9 +95,8 @@ namespace MphRead.Mods
             Console.WriteLine($"  {Branding.NameAndVersion}");
             Console.WriteLine($"  {Summary}");
             Console.WriteLine();
-            Console.WriteLine($"  {Author}");
+            Console.WriteLine($"  Fruity Prime — {Author}");
             Console.WriteLine($"      {ForkWork}");
-            Console.WriteLine($"      support this project: {SupportUrl}");
             Console.WriteLine();
             Console.WriteLine("  A significant portion of this project's code is based on the");
             Console.WriteLine("  file format information or source code of these projects:");
