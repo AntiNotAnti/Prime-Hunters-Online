@@ -53,6 +53,7 @@ namespace MphRead
         public string FriendlyFire { get; set; } = "off";
         public string AffinityWeapons { get; set; } = "off";
         public string ShadowFreeze { get; set; } = "on";
+        public string SpawnProtection { get; set; } = "on";
         public string SaveSlot { get; set; } = "none";
         public string SaveFromExit { get; set; } = "never";
         public string SaveFromShip { get; set; } = "prompt";
