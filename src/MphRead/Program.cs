@@ -217,7 +217,10 @@ namespace MphRead
                     return true;
                 }
                 Console.WriteLine($"Recognised: Metroid Prime Hunters, {label}");
-                Extract.Setup(args[0]);
+                if (!Extract.Setup(args[0]))
+                {
+                    Environment.ExitCode = 1;
+                }
                 return true;
             }
             if (!File.Exists("paths.txt"))
