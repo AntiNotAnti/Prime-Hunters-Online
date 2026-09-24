@@ -201,6 +201,7 @@ namespace MphRead.Mods.Network
                     PointGoal = state.Match.PointGoal, TimeRemaining = state.Match.TimeLimitSeconds, MatchId = state.MatchId,
                     Flags = (byte)(MatchStatePacket.FlagInProgress | (state.Match.FriendlyFire ? MatchStatePacket.FlagFriendlyFire : 0)
                         | (state.Match.ShadowFreeze ? 0 : MatchStatePacket.FlagNoShadowFreeze)
+                        | (state.Match.SpawnProtection ? 0 : MatchStatePacket.FlagNoSpawnProtection)
                         | MatchStatePacket.RuleFlags(1, state.Match.AffinityWeapons)) }, rotated: false);
             }
             MatchStartIdentity startIdentity = StartIdentity(state);
