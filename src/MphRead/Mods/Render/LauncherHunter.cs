@@ -50,6 +50,10 @@ namespace MphRead.Mods.Render
         /// <summary>Whether a screen is asking for one this frame.</summary>
         public static bool Wanted { get; set; }
 
+        // Recheck at draw time: a dialog can open between the UI heartbeat
+        // and this native pass.
+        internal static Func<bool>? CanPresent { get; set; }
+
         /// <summary>Who, and in which suit.</summary>
         public static Hunter Hunter { get; set; } = Hunter.Samus;
 
@@ -90,6 +94,7 @@ namespace MphRead.Mods.Render
         public static void Reset()
         {
             Wanted = false;
+            CanPresent = null;
             Drawn = false;
             Scene.LauncherPreview = false;
         }
@@ -104,7 +109,7 @@ namespace MphRead.Mods.Render
         public static void Draw(RenderWindow window, int width, int height)
         {
             Drawn = false;
-            if (_failed || !Wanted || width <= 0 || height <= 0)
+            if (_failed || !Wanted || CanPresent?.Invoke() == false || width <= 0 || height <= 0)
             {
                 Scene.LauncherPreview = false;
                 return;

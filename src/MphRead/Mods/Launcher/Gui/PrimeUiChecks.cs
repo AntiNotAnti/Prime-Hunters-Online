@@ -9,6 +9,7 @@ using Avalonia.Input;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using MphRead.Mods.Network;
+using MphRead.Mods.Multiplayer;
 namespace MphRead.Mods.Launcher.Gui
 {
     internal static class PrimeUiChecks
@@ -53,7 +54,7 @@ namespace MphRead.Mods.Launcher.Gui
                 roster.Slots[i] = (byte)i; roster.Names[i] = "PLAYER " + (i + 1);
                 roster.Hunters[i] = (byte)(i % 7); roster.Teams[i] = (sbyte)(i % 2);
                 roster.LobbyReady[i] = true; roster.Pings[i] = (ushort)(18 + i * 3);
-                players.Children.Add(new LobbyPlayerRow(roster, i, 0));
+                players.Children.Add(new LobbyPlayerRow(roster, i, 0, changeTeam: _ => { }));
             }
             return lobby;
         }
@@ -104,8 +105,11 @@ namespace MphRead.Mods.Launcher.Gui
                     FocusNavigator.Key(join, Key.Up); Drain(window);
                     Check(FocusNavigator.Focused(shell) != join, "keyboard arrows move spatial focus");
                     join.Focus();
+                    var stand = play.GetVisualDescendants().OfType<HunterStand>().First();
+                    Check(stand.CanPresentPreview(), "visible workspace hunter can present");
                     shell.Overlays.Show(new PrimePanel(PrimeChrome.Stack(new PrimeButton("CANCEL", shell.Overlays.Close))), PrimeModalSize.Small);
                     Drain(window);
+                    Check(!stand.CanPresentPreview(), "workspace hunter cannot paint over a modal");
                     Check(ControllerNav.ModalRoot(shell) == shell.Overlays, "controller focus is trapped in modal");
                     foreach (var direction in new[] { Mods.Input.UiAction.Up, Mods.Input.UiAction.Down, Mods.Input.UiAction.Left, Mods.Input.UiAction.Right })
                     {
@@ -115,11 +119,17 @@ namespace MphRead.Mods.Launcher.Gui
                     FocusNavigator.Key(FocusNavigator.Ensure(shell)!, Key.Escape); Drain(window);
                     Check(!shell.Overlays.IsOpen && shell.Router.Current == PrimeRoute.Play, "Escape closes modal first");
                     Check(join.IsFocused, "modal close restores focus");
+                    Check(stand.CanPresentPreview(), "hunter presentation resumes after modal closes");
                     bool resumed = false;
                     shell.Overlays.Show(new PrimePanel(PrimeChrome.Text("pause")), cancel: () => { shell.Overlays.Close(); resumed = true; });
                     shell.Back(); Check(resumed && !shell.Overlays.IsOpen, "Back dispatches overlay cancellation semantics");
                     shell.Router.Navigate(PrimeRoute.Settings); Drain(window);
                     var settings = (SettingsView)shell.Workspaces.Content!;
+                    Check(settings.GetVisualDescendants().OfType<PrimeTabButton>().Count() == 7
+                        && !settings.GetVisualDescendants().OfType<Control>().Any(c =>
+                            c.GetValue(ControllerNav.NavIdProperty)?.StartsWith("settings.detail.Display", StringComparison.OrdinalIgnoreCase) == true),
+                        "shell settings has one category strip without a duplicate sidebar");
+                    CheckTeamCycling();
                     var slider = settings.GetVisualDescendants().OfType<SliderRow>().First();
                     int value = slider.Value; slider.Value = value == 0 ? 1 : value - 1;
                     Check(settings.IsDirty, "settings edit marks draft dirty");
@@ -178,6 +188,16 @@ namespace MphRead.Mods.Launcher.Gui
                             Check(UiCapture.Capture(shell, path, size), "capture " + path);
                             Geometry(shell, size, route);
                         }
+                        shell.Router.Navigate(PrimeRoute.Lobby);
+                        var lobby = (Control)shell.Workspaces.Content!;
+                        var rules = lobby.GetVisualDescendants().OfType<PrimeButton>().Single(b => b.Label == "ADVANCED RULES");
+                        rules.Focus(); FocusNavigator.Key(rules, Key.Enter);
+                        Check(shell.Overlays.IsOpen, "lobby rules open");
+                        Check(UiCapture.Capture(shell, Path.Combine(directory, "prime-lobby-rules-1280x720.png"), new Size(1280,720)), "lobby rules capture");
+                        foreach (var toggle in shell.Overlays.GetVisualDescendants().OfType<ButtonToggleRow>().Where(t => t.IsVisible))
+                        foreach (var button in toggle.GetVisualDescendants().OfType<PrimeButton>())
+                            Check(button.Bounds.Width >= 50 && button.Bounds.Height >= 38, "rule toggle has a readable hit target");
+                        shell.Overlays.Close();
                         shell.Router.Navigate(PrimeRoute.Play);
                         shell.Overlays.Show(new MapCardPicker(new[] { "MP1 SANCTORUS", "MP3 PROVING GROUND" }, "MP1 SANCTORUS"));
                         Check(UiCapture.Capture(shell, Path.Combine(directory, "prime-map-picker-1280x720.png"), new Size(1280,720)), "map picker capture");
@@ -248,6 +268,23 @@ namespace MphRead.Mods.Launcher.Gui
             }
             finally { LauncherPrefs.AutoUpdate = autoUpdate; }
         }
+        private static void CheckTeamCycling()
+        {
+            var roster = RosterPacket.Create(); roster.Count = 3;
+            for (int i = 0; i < 3; i++) { roster.Slots[i] = (byte)i; roster.Teams[i] = (sbyte)i; }
+            var layout = new TeamLayout(3, 2, 1, 2);
+            Check(LobbyPlayerRow.NextTeam(roster, 0, layout, 1) == 2, "team arrows skip full destinations");
+            Check(LobbyPlayerRow.NextTeam(roster, 0, layout, -1) == 2, "previous team wraps");
+            Check(LobbyPlayerRow.NextTeam(roster, 2, layout, 1) == 0, "next team wraps");
+            Check(LobbyPlayerRow.NextTeam(roster, 0, new TeamLayout(3, 1, 1, 1), 1) == null,
+                "full teams cannot be selected");
+            Check(LobbyPlayerRow.NextTeam(roster, 7, layout, 1) == null, "departed player cannot change team");
+            Check(LobbyPlayerRow.NextTeam(roster, 0, default, 1) == null, "FFA has no team destinations");
+            roster.Teams[0] = -1;
+            Check(LobbyPlayerRow.NextTeam(roster, 0, layout, 1) == 0, "unassigned player can choose first team");
+            Check(LobbyPlayerRow.NextTeam(roster, 0, layout, -1) == 2, "unassigned previous chooses last team");
+        }
+
         private static void Geometry(PrimeShell shell, Size size, PrimeRoute route)
         {
             foreach (var element in shell.GetVisualDescendants().OfType<Control>())
@@ -262,6 +299,10 @@ namespace MphRead.Mods.Launcher.Gui
                 Check(players.Length == 8, "eight-player roster rendered");
                 var bottom = players[^1].TranslatePoint(new Point(0, players[^1].Bounds.Height), shell);
                 Check(bottom.HasValue && bottom.Value.Y < size.Height - 20, "eight-player roster fits");
+                var rosterPanel = players[^1].GetVisualAncestors().OfType<PrimePanel>().First();
+                var rosterBottom = players[^1].TranslatePoint(new Point(0, players[^1].Bounds.Height), rosterPanel);
+                Check(rosterBottom.HasValue && rosterBottom.Value.Y <= rosterPanel.Bounds.Height,
+                    "eight-player roster fits inside its panel above loadout");
             }
             string? cta = route switch { PrimeRoute.Play => "multiplayer.join", PrimeRoute.Offline => "offline.start",
                 PrimeRoute.Lobby => "lobby.start", PrimeRoute.Settings => "settings.detail.save", _ => null };

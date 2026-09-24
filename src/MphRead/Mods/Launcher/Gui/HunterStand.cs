@@ -7,6 +7,8 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
+using System.Linq;
 
 namespace MphRead.Mods.Launcher.Gui
 {
@@ -308,8 +310,22 @@ namespace MphRead.Mods.Launcher.Gui
 
         private readonly DispatcherTimer _turn;
 
+        // Native previews are composited after Avalonia. Only a stand in the
+        // active modal layer may publish or draw over that layer.
+        internal bool CanPresentPreview()
+        {
+            if (!IsEffectivelyVisible) return false;
+            var root = TopLevel.GetTopLevel(this);
+            if (root == null) return false;
+            Control modal = ControllerNav.ModalRoot(root);
+            return ReferenceEquals(modal, root) || this.GetVisualAncestors().Contains(modal);
+        }
+
+        private readonly Func<bool> _canPresentPreview;
+
         public HunterStand()
         {
+            _canPresentPreview = CanPresentPreview;
             Focusable = false;
             Cursor = new Cursor(StandardCursorType.SizeWestEast);
             Avalonia.Media.RenderOptions.SetEdgeMode(this, EdgeMode.Antialias);
@@ -440,7 +456,7 @@ namespace MphRead.Mods.Launcher.Gui
             _swapping = Scene.PreviewDrawnHunter == Asked
                 && Scene.PreviewDrawnSuit == _suit ? 0 : _swapping + 1;
 #if MPHREAD_SHELL
-            if (!IsEffectivelyVisible)
+            if (!CanPresentPreview())
             {
                 Mods.Render.LauncherHunter.Wanted = false;
                 return;
@@ -567,6 +583,7 @@ namespace MphRead.Mods.Launcher.Gui
             }
             double left = origin.X;
             double top = origin.Y;
+            Mods.Render.LauncherHunter.CanPresent = _canPresentPreview;
             Mods.Render.LauncherHunter.Wanted = true;
             Mods.Render.LauncherHunter.Hunter =
                 Enum.TryParse(_who, ignoreCase: true, out MphRead.Hunter which)

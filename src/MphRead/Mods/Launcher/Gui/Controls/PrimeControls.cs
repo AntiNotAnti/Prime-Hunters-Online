@@ -21,10 +21,10 @@ namespace MphRead.Mods.Launcher.Gui
     // Keep the tested pointer, touch and controller behavior of the shared buttons.
     internal class PrimeButton : HubNavButton
     {
-        public PrimeButton(string text, Action? action = null, bool primary = false, bool danger = false)
+        public PrimeButton(string text, Action? action = null, bool primary = false, bool danger = false, bool compact = false)
             : base(text, primary: primary, compact: true, accent: danger ? PrimeTheme.Danger : null)
         {
-            UseTacticalStyle();
+            UseTacticalStyle(compact: compact);
             if (action != null) Click += (_, _) => action();
         }
     }

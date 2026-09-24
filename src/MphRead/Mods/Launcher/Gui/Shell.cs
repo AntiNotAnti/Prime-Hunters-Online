@@ -792,7 +792,20 @@ namespace MphRead.Mods.Launcher.Gui
                 UiSurface.Current?.ClickOn(c => c is ServerRow row && row.IsLive);
                 Wait(25);
             },
-            w => { Shot(w, "shell-server-side"); ClickIfReady(c => FrontAction(c, "OFFLINE")); Wait(15); },
+            w =>
+            {
+                Shot(w, "shell-server-side");
+                ClickIfReady(c => c.GetValue(ControllerNav.NavIdProperty) == "multiplayer.create");
+                Wait(15);
+            },
+            w =>
+            {
+                Shot(w, "shell-create-lobby");
+                if (_front?.Prime.Overlays.IsOpen != true || Mods.Render.LauncherHunter.Drawn)
+                { ShotMisses++; Console.WriteLine("[shellshot] create lobby must cover the native hunter preview"); }
+                Escape(); Wait(90);
+            },
+            w => { Shot(w, "shell-create-lobby-closed"); ClickIfReady(c => FrontAction(c, "OFFLINE")); Wait(15); },
             // A card, not a row: the offline face is every map at once now.
             // See DeckTile.
             // Land the pointer in the middle of the grid, then scroll it for

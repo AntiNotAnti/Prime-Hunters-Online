@@ -366,7 +366,9 @@ namespace MphRead.Mods.Launcher.Gui
                     Grid.SetColumn(tab, i); tabs.Children.Add(tab); _categoryTabs.Add(tab);
                 }
                 Grid.SetRow(tabs, 1); contentRoot.Children.Add(tabs);
-                _settingsBody.ColumnDefinitions = new("240,*,320");
+                _settingsBody.Children.Remove(_sectionNavHost);
+                _settingsBody.ColumnDefinitions = new("*,320");
+                Grid.SetColumn(_sectionContentHost, 0);
                 var calibration = new PrimeFovPreview(() => _fovRow.Value);
                 _fovRow.ValueChanged += (_, _) => calibration.InvalidateVisual();
                 var diagnostics = PrimeChrome.Stack(new PrimeBadge("CALIBRATION VIEWPORT"), calibration,
@@ -380,12 +382,7 @@ namespace MphRead.Mods.Launcher.Gui
                 right.Children.Add(new PrimePanel(diagnostics));
                 var commandPanel = new PrimePanel(command);
                 Grid.SetRow(commandPanel, 1); right.Children.Add(commandPanel);
-                Grid.SetColumn(right, 2); _settingsBody.Children.Add(right);
-                foreach (var (name, i) in _sections.Select((s, i) => (s.Name, i)))
-                {
-                    _sectionNav[i].MinHeight = 54;
-                    _sectionNav[i].Label = $"{i + 1:00} // {name.ToUpperInvariant()}";
-                }
+                Grid.SetColumn(right, 1); _settingsBody.Children.Add(right);
                 Content = contentRoot;
             }
             else
@@ -413,7 +410,11 @@ namespace MphRead.Mods.Launcher.Gui
             base.OnAttachedToVisualTree(e);
             Dispatcher.UIThread.Post(() =>
             {
-                if (_sectionNav.Count > 0)
+                if (_shell && _categoryTabs.Count > 0)
+                {
+                    _categoryTabs[Math.Clamp(_tabs.Index, 0, _categoryTabs.Count - 1)].Focus();
+                }
+                else if (_sectionNav.Count > 0)
                 {
                     _sectionNav[Math.Clamp(_tabs.Index, 0, _sectionNav.Count - 1)].Focus();
                 }
