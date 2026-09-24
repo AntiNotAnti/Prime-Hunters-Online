@@ -128,7 +128,7 @@ tools/check-no-game-assets.sh publish/win-x64    # a build
 
 Notes
 
-- `AntiNotAnti/Prime-Hunters-Online` is public and is the single source, tag, release and updater repository. The release workflow uses its built-in `GITHUB_TOKEN`; no cross-repository release PAT is required. `Mods/Branding.cs` keeps `ReleaseRepository` as a semantic alias of `Repository`.
+- `AntiNotAnti/Project-Prime` is public and is the single source, tag, release and updater repository. The release workflow uses its built-in `GITHUB_TOKEN`; no cross-repository release PAT is required. `Mods/Branding.cs` keeps `ReleaseRepository` as a semantic alias of `Repository`.
 - `MPHREAD_SERVER` (defined on server builds) is a different question from "has no launcher": it is what makes a bare invocation print what the binary is for, instead of falling through to upstream's setup check.
 
 ## Updating in place

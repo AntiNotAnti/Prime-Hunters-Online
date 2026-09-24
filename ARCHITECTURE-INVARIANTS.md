@@ -75,7 +75,7 @@ This file is the short, machine-oriented source of truth for architectural assum
 
 ## Updates and release packaging
 
-- Source, tags and public release binaries live together in `AntiNotAnti/Prime-Hunters-Online`; clients use that repository's anonymous GitHub Releases API as the update source.
+- Source, tags and public release binaries live together in `AntiNotAnti/Project-Prime`; clients use that repository's anonymous GitHub Releases API as the update source.
 - One-click Windows/Linux/Android installs require a GitHub-provided SHA-256 asset digest before executing/replacing files.
 - Android in-place updates additionally require the release APK signer to match the installed app.
 - macOS opens the release page instead of replacing files inside the signed app bundle.
@@ -86,7 +86,7 @@ This file is the short, machine-oriented source of truth for architectural assum
 
 - The public product name is **Project Prime**.
 - Desktop binaries/packages use `ProjectPrime` / `ProjectPrimeServer`; Android uses `com.projectprime.game`; macOS uses the **Project Prime** bundle identity.
-- The GitHub repository currently retains the legacy `AntiNotAnti/Prime-Hunters-Online` slug as an infrastructure locator for releases and updates.
+- The GitHub repository uses `AntiNotAnti/Project-Prime` as the canonical infrastructure locator for releases and updates.
 - The C# root namespace remains `MphRead` to minimize upstream merge churn.
 
 ## Documentation policy

@@ -72,7 +72,7 @@ src/MapPlatform/Compilation/MapBuildSnapshot.cs
 Current Project Prime repository:
 
 ```text
-AntiNotAnti/Prime-Hunters-Online
+AntiNotAnti/Project-Prime
 ```
 
 Before implementation begins:
