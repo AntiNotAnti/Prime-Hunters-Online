@@ -94,7 +94,7 @@ namespace MphRead.Mods.Launcher.Gui
             ControllerNav.Identify(discord, "news.discord");
             root.Children.Add(PrimeChrome.Columns("*,Auto", filters, discord));
             var art = new Grid { MinHeight = 170, Background = PrimeTheme.BackgroundDeepBrush, ClipToBounds = true };
-            art.Children.Add(new Image { Source = MapShot.For("MP1 SANCTORUS"), Stretch = Stretch.UniformToFill });
+            art.Children.Add(new Image { Source = MapShot.For("MP11 BREAKTHROUGH"), Stretch = Stretch.UniformToFill });
             art.Children.Add(new TextBlock { Text = "PROJECT PRIME\nCOMMUNITY TRANSMISSIONS", FontFamily = PrimeTypography.Data,
                 FontSize = 22, Foreground = PrimeTheme.HighlightBrush, Margin = new Thickness(20), VerticalAlignment = VerticalAlignment.Bottom });
             var heroGrid = new Grid { RowDefinitions = new("Auto,Auto,Auto,*,Auto"), RowSpacing = 14 };
