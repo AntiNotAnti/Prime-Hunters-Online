@@ -857,7 +857,15 @@ namespace MphRead.Mods.Network
             PumpUntil(() => NetSession.IsPlaying, "real load ack starts match");
             Check(!NetSession.FreezeGameplay, "gameplay released after barrier");
             NetSession.SendMatchEnd();
-            PumpUntil(() => NetSession.IsPostMatch, "real client results");
+            var clientEndAttempt = Stopwatch.StartNew();
+            while (clientEndAttempt.ElapsedMilliseconds < 300)
+            {
+                NetSession.Pump();
+                Thread.Sleep(10);
+            }
+            Check(NetSession.IsPlaying, "real client cannot author match completion");
+            rig.EndMatchForTest();
+            PumpUntil(() => NetSession.IsPostMatch, "authoritative server enters results");
             PumpUntil(() => NetSession.IsInLobby,
                 "real client returns to lobby without post-match input", PostMatchWaitMilliseconds);
             NetSession.ResetMatchState();
