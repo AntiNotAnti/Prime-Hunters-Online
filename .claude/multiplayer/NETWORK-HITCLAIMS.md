@@ -351,10 +351,9 @@ headshots corrected.
   `Receive` answers what it can refuse on sight, `Tick` answers what waited out
   its grace — and a client repeating six claims in one packet would otherwise
   be answered with six datagrams.
-- **The legacy `RunsTheMatch=false` compatibility path cannot authoritatively
-  judge claims** because it has no server simulation history. Normal hosting
-  never selects that path; normal hosted matches use isolated authoritative
-  server processes.
+- **There is no client-authority compatibility path.** Every live claim is
+  judged by the dedicated server simulation; a server with no authoritative
+  world does not start the match.
 - **Repeats are counted separately on both ends** or the outcomes do not add up
   to what was received, and a line reading `8 received, 1 applied, 2 already
   resolved` looks like five lost claims rather than five repeated ones.

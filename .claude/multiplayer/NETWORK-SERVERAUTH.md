@@ -5,9 +5,10 @@ Current architecture: every normal online match is server-authoritative. Code:
 `HostPool.cs`, `NetMaster.cs`, `Mods/Headless.cs`, and the `NetRole.Server`
 branches in `NetSession.cs` / `DedicatedServer.cs`.
 
-`-simulate` and `-authority` are compatibility no-ops. `RunsTheMatch=false`
-and `PacketType.Authority` remain for legacy protocol/testing paths, not normal
-launcher hosting.
+`-simulate` and `-authority` remain accepted no-op command-line aliases for
+old service scripts. The executable client-authority path is gone:
+`DedicatedServer` has no `RunsTheMatch=false` mode, never sends
+`PacketType.Authority`, and current clients ignore that reserved wire value.
 
 ## Current authority model
 
@@ -18,8 +19,9 @@ launcher hosting.
 - **Directory/overflow hosting:** each hosted game gets an isolated server
   process via `HostedServerProcess`, so the static `NetSession` belongs to that
   match alone.
-- **No normal player is simulation authority.** The historical first-client
-  authority/hand-over path is compatibility coverage only.
+- **No player is simulation authority.** The historical first-client
+  authority/hand-over path is no longer executable; it survives only in dated
+  documentation/results.
 - **Combat, health, score, match state and match end are server authoritative.**
   Movement position still comes from the owner's `IntentPacket.Position`; this
   is not a fully server-derived movement model.
@@ -63,13 +65,12 @@ positions set when the attack begins or the render transforms. The
 | `NetRole.Server` | authority, `LocalSlot = -1`, no socket of its own |
 | `NetSession.StartServerAuthority(sink, matchEnded)` | takes the role; the finished snapshot is handed to the relay in this same process rather than sent as a datagram |
 | `ServerSim.Advance(now)` | the same fixed-step accumulator the game window runs. A server's loop is woken by packets, at no fixed rate, which is exactly what an accumulator is for |
-| `DedicatedServer.RunsTheMatch` | true for normal game servers. False exists only for compatibility/tests |
+| `DedicatedServer` | always owns gameplay authority; an idle lobby delays constructing `ServerSim` until Start Match but never delegates authority |
 
 The current wire protocol is defined only by `NetConfig.ProtocolVersion`
-(currently 16). Normal server-authority matches never send
-`PacketType.Authority` to a player. The packet is still understood so legacy
-compatibility tests can exercise the old topology; it is not a normal hosting
-mechanism.
+(currently 17). Current servers never send `PacketType.Authority` to a player and current
+clients do not act on it. Value 12 stays reserved solely to preserve packet
+numbering across the protocol.
 `HandleIntent` feeds `NetSession.AcceptSlotIntent` one hop earlier than a
 client authority got the same bytes, through the same call, so the ordering
 rule that guards a rejoining player's restarted frame counter is the one that
@@ -243,10 +244,9 @@ latency run is still needed to measure it in play. See
 
 ## Every normal hosted match has server authority
 
-`RunsTheMatch` defaults to true and the standalone `-server` path never changes
-it, so a dedicated server simulates or does not start. `-simulate` and
-`-authority` are accepted and do nothing, which keeps deployed service units
-and launch scripts compatible.
+A dedicated server simulates or does not start. There is no runtime switch that
+hands simulation to a client. `-simulate` and `-authority` remain accepted
+no-ops only so deployed service units and old launch scripts keep starting.
 
 `NetSession` is still static, which means one process can still simulate only
 one match. The old workaround for the other hosting paths was to set
@@ -270,9 +270,10 @@ join-in-progress rule, friendly fire, Shadow Freeze and affinity-weapons state
 are passed into the child command line so process isolation does not change the
 match rules.
 
-`DedicatedServer.NotifyAuthority` and the `RunsTheMatch = false` compatibility
-path still exist for old protocol/testing code, but the normal hosting paths do
-not select them.
+`DedicatedServer.NotifyAuthority`, `RunsTheMatch=false`, client snapshot
+relay, client-authored `MatchEnd`, and authority handover have been removed.
+Asset-free control-plane tests use a private reflection-only seam that cannot be
+selected by a production command line.
 
 ## Current constraints and validation gaps
 
