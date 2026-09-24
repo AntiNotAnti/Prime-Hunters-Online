@@ -169,9 +169,10 @@ namespace MphRead.Mods
 
             GLFW.GetMonitorPos(handle, out int x, out int y);
             int width = Math.Max(1, video->Width);
-            // One pixel short avoids Windows promoting an exact monitor-sized
-            // hidden-border window into an exclusive-like optimization path.
-            int height = Math.Max(1, video->Height - 1);
+            // On Windows, one pixel short avoids promotion of an exact
+            // monitor-sized hidden-border window into an exclusive-like
+            // optimization path. Other desktops can use the full height.
+            int height = Math.Max(1, video->Height - (OperatingSystem.IsWindows() ? 1 : 0));
 
             SetTopmost(window, false);
             window.AutoIconify = false;
@@ -202,12 +203,6 @@ namespace MphRead.Mods
             SetTopmost(window, false);
             window.AutoIconify = true;
             window.WindowState = WindowState.Normal;
-
-            // Do not carry the hidden border from borderless mode back into a
-            // later windowed restore. It is irrelevant while monitor-attached,
-            // but restoring it here also avoids a decoration flash on exit.
-            window.WindowBorder = _savedBorder;
-            GLFW.PollEvents();
 
             var video = GLFW.GetVideoMode(monitor.Handle.ToUnsafePtr<Monitor>());
             if (video == null) throw new InvalidOperationException("No video mode for the current monitor.");
