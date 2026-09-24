@@ -16,7 +16,7 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly IReadOnlyList<string> _rooms;
         private readonly PrimeOverlayHost _overlays;
         private readonly ChoiceRow _hunter, _suit, _mode, _bots, _skill;
-        private readonly PrimeButton _map, _resume, _start;
+        private readonly PrimeButton _map, _resume, _newRun, _start;
         private readonly TextBlock _saveDetail;
         private readonly PrimeButton[] _slots = new PrimeButton[AdventureSave.SlotCount];
         private readonly Image _preview = new() { Height = 120, Stretch = Stretch.UniformToFill };
@@ -38,7 +38,7 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 if (_room.Length == 0) return;
                 Launched?.Invoke(this, OfflineLaunch.Create(settings, _room, OfflineLaunch.Modes[_mode.Index].Mode,
-                    Enum.Parse<Hunter>(_hunter.Value), _suit.Index, _bots.Index, _skill.Index));
+                    SelectedHunter(), _suit.Index, _bots.Index, _skill.Index));
             }, true) { IsEnabled = rooms.Count > 0 };
             ControllerNav.Identify(start, "offline.start");
             var botBody = PrimeChrome.Stack(new PrimeBadge("MODE 01 // TACTICAL SIMULATION"), PrimeChrome.Title("BOT SKIRMISH"),
@@ -47,16 +47,20 @@ namespace MphRead.Mods.Launcher.Gui
             var bot = WithAction(botBody, start);
             _saveDetail = PrimeChrome.Text("", 13, PrimeTheme.TextSecondaryBrush);
             _resume = new PrimeButton("▷ RESUME", () => Adventure(false), true);
+            ControllerNav.Identify(_resume, "offline.adventure.resume");
             var adventureBody = PrimeChrome.Stack(new PrimeBadge("MODE 02 // NARRATIVE CAMPAIGN", PrimeTheme.GreenBrush),
                 PrimeChrome.Title("ADVENTURE RUNS"), PrimeChrome.Text("Explore the Alimbic Cluster and recover the Octoliths.", 14, PrimeTheme.TextSecondaryBrush));
             for (byte i = 1; i <= AdventureSave.SlotCount; i++)
             {
                 byte slot = i;
                 var button = new PrimeButton("SLOT " + i, () => SelectSlot(slot));
+                ControllerNav.Identify(button, $"offline.adventure.slot{i}");
                 _slots[i - 1] = button; adventureBody.Children.Add(button);
             }
             adventureBody.Children.Add(_saveDetail);
-            var adventure = WithAction(adventureBody, PrimeChrome.Columns("*,*", _resume, new PrimeButton("+ NEW RUN", () => Adventure(true))));
+            _newRun = new PrimeButton("+ NEW RUN", () => Adventure(true));
+            ControllerNav.Identify(_newRun, "offline.adventure.new");
+            var adventure = WithAction(adventureBody, PrimeChrome.Columns("*,*", _resume, _newRun));
             var stand = new HunterStand { MinHeight = 220, Name2 = _hunter.Value, Suit = _suit.Index };
             _hunter.Changed += (_, _) => stand.Name2 = _hunter.Value;
             _suit.Changed += (_, _) => stand.Suit = _suit.Index;
@@ -89,9 +93,16 @@ namespace MphRead.Mods.Launcher.Gui
             _saveDetail.Text = save.Used ? $"{save.Area}\nOCTOLITHS: {save.Octoliths} / 8\nENERGY: {save.Health} / {save.HealthMax}"
                 : "Initialize a fresh expedition from Celestial Archives.";
         }
+        private Hunter SelectedHunter()
+        {
+            return Enum.TryParse(_hunter.Value, ignoreCase: true, out Hunter hunter)
+                && Enum.IsDefined(hunter) ? hunter : Hunter.Samus;
+        }
+
         private void Adventure(bool fresh)
         {
-            void Launch() => Launched?.Invoke(this, AdventureLaunch.Create(_slot, fresh, Enum.Parse<Hunter>(_hunter.Value)));
+            void Launch() => Launched?.Invoke(this,
+                AdventureLaunch.Create(_slot, fresh, SelectedHunter()));
             if (fresh && AdventureSave.Read(_slot).Used)
             {
                 _overlays.Show(new PrimePanel(PrimeChrome.Stack(PrimeChrome.Title("REPLACE SAVE SLOT " + _slot + "?"),
