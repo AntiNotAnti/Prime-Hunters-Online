@@ -868,7 +868,7 @@ namespace MphRead.Entities
         // Render-only camera history. Gameplay always reads the public fields
         // above; this history exists solely to turn 60 Hz spectator/replay
         // cameras into smooth high-refresh presentation.
-        private Vector3 _drawOlderPosition, _drawPreviousPosition, _drawCurrentPosition;
+        private Vector3 _drawPreviousPosition, _drawCurrentPosition;
         private Vector3 _drawPreviousTarget, _drawCurrentTarget;
         private Vector3 _drawPreviousUp = Vector3.UnitY, _drawCurrentUp = Vector3.UnitY;
         private float _drawPreviousFov, _drawCurrentFov;
@@ -892,7 +892,7 @@ namespace MphRead.Entities
 
         internal void ModResetDrawState()
         {
-            _drawOlderPosition = _drawPreviousPosition = _drawCurrentPosition = Position;
+            _drawPreviousPosition = _drawCurrentPosition = Position;
             _drawPreviousTarget = _drawCurrentTarget = Target;
             _drawPreviousUp = _drawCurrentUp = UpVector;
             _drawPreviousFov = _drawCurrentFov = Fov;
@@ -906,7 +906,6 @@ namespace MphRead.Entities
                 ModResetDrawState();
                 return;
             }
-            _drawOlderPosition = _drawPreviousPosition;
             _drawPreviousPosition = _drawCurrentPosition;
             _drawPreviousTarget = _drawCurrentTarget;
             _drawPreviousUp = _drawCurrentUp;
@@ -922,57 +921,6 @@ namespace MphRead.Entities
             if (!_drawStateValid) return Position;
             float t = (float)Math.Clamp(alpha, 0.0, 1.0);
             return Vector3.Lerp(_drawPreviousPosition, _drawCurrentPosition, t);
-        }
-
-        /// <summary>
-        /// Low-latency translation for the local fixed-crosshair first-person camera.
-        /// The simulation camera still advances only at 60 Hz. Extra pictures project
-        /// the player's latest body translation into the fractional remainder of the
-        /// next step while interpolating camera-local visual offset (walk bob, landing
-        /// response and camera switching) between completed samples. Keeping those two
-        /// motions separate avoids both locomotion stair-steps and bob reversal snaps.
-        /// Teleports/respawns already rebase the history through ModResetDrawState.
-        /// </summary>
-        internal Vector3 ModGetResponsiveDrawPosition(double alpha,
-            Vector3 previousBodyPosition, Vector3 currentBodyPosition)
-        {
-            if (!_drawStateValid || !Mods.Render.FrameTiming.HighRefreshPresentation)
-            {
-                return Position;
-            }
-
-            float t = (float)Math.Clamp(alpha, 0.0, 1.0);
-            if (!IsFinite(previousBodyPosition) || !IsFinite(currentBodyPosition))
-            {
-                return _drawCurrentPosition;
-            }
-
-            Vector3 bodyStep = currentBodyPosition - previousBodyPosition;
-            // A respawn/teleport is a discontinuity, not velocity to predict.
-            if (!IsFinite(bodyStep) || bodyStep.LengthSquared > 16f)
-            {
-                return _drawCurrentPosition;
-            }
-
-            // CameraInfo.Position contains two different kinds of motion:
-            // locomotion and camera-local visual motion (walk bob, landing
-            // response, camera switching). Predicting the whole vector made
-            // bob reverse direction between 60 Hz samples and abruptly trip
-            // the old direction/confidence guards, which appeared as a small
-            // hitch while simply walking. Project only the body translation.
-            // The visual offset is interpolated one sample behind, so it stays
-            // continuous through the exact point where bob changes direction.
-            Vector3 previousOffset = _drawPreviousPosition - previousBodyPosition;
-            Vector3 currentOffset = _drawCurrentPosition - currentBodyPosition;
-            if (!IsFinite(previousOffset) || !IsFinite(currentOffset))
-            {
-                return _drawCurrentPosition;
-            }
-
-            Vector3 predictedBody = currentBodyPosition + bodyStep * t;
-            Vector3 visualOffset = Vector3.Lerp(previousOffset, currentOffset, t);
-            Vector3 predicted = predictedBody + visualOffset;
-            return IsFinite(predicted) ? predicted : _drawCurrentPosition;
         }
 
         internal Matrix4 ModGetDrawView(double alpha)

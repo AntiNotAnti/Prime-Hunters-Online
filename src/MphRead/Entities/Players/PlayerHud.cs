@@ -2244,6 +2244,11 @@ namespace MphRead.Entities
             float iconBoxX = iconBox * aspectFix;
             float ammoRightX = panelX + panelWidth - 1.5f * scale * aspectFix;
             float y = 46;
+            // Reuse one stack buffer for every numeric ammo readout. Pro HUD
+            // can be drawn several times per 60 Hz simulation step, so creating
+            // one managed string per weapon per picture causes needless GC
+            // pressure at high refresh rates.
+            Span<char> ammoTextBuffer = stackalloc char[12];
             // Drawn in _weaponOrder, not in BeamType's own numeric order: that
             // enum is declaration order (Power Beam, Volt Driver, Missile,
             // ...), not the cartridge's cycling order (Power Beam, Missile,
@@ -2336,9 +2341,15 @@ namespace MphRead.Entities
                 // row has a number reads as "unknown" rather than as
                 // "unlimited", so both say so.
                 int ammoAmount = _ammo[info.AmmoType];
-                string ammo = info.AmmoCost > 0 && ammoAmount >= 0
-                    ? (ammoAmount / info.AmmoCost).ToString()
-                    : "--";
+                ReadOnlySpan<char> ammo = "--";
+                if (info.AmmoCost > 0 && ammoAmount >= 0)
+                {
+                    int shots = ammoAmount / info.AmmoCost;
+                    if (shots.TryFormat(ammoTextBuffer, out int written))
+                    {
+                        ammo = ammoTextBuffer[..written];
+                    }
+                }
                 // White, like the reference's: the colour is carried by the
                 // icon block beside it, and a coloured number as well made
                 // every row a different brightness to read.
@@ -2905,15 +2916,16 @@ namespace MphRead.Entities
             return " ";
         }
 
-        private void DrawModeScore(int messageId, string text)
+        private void DrawModeScore(int messageId)
         {
             if (Features.ProHud)
             {
-                // Drawn by DrawProHud instead, in its own place and its own
-                // size. Suppressed here rather than at each of the seven
-                // modes that calls this.
+                // Pro HUD replaces this score entirely. Format only after the
+                // guard so a high-refresh draw loop does not allocate a native
+                // score string that is immediately discarded.
                 return;
             }
+            string text = FormatModeScore(_scene.Players.MainPlayerIndex);
             float posX = _hudObjects.ScorePosX + _objShiftX;
             float posY = _hudObjects.ScorePosY + _objShiftY;
             _textSpacingY = 8;
@@ -2927,12 +2939,12 @@ namespace MphRead.Entities
 
         private void DrawHudBattle()
         {
-            DrawModeScore(212, FormatModeScore(_scene.Players.MainPlayerIndex)); // points
+            DrawModeScore(212); // points
         }
 
         private void DrawHudSurvival()
         {
-            DrawModeScore(213, FormatModeScore(_scene.Players.MainPlayerIndex)); // lives left
+            DrawModeScore(213); // lives left
         }
 
         private void DrawOctolithInst(int frame)
@@ -2966,24 +2978,24 @@ namespace MphRead.Entities
 
         private void DrawHudBounty()
         {
-            DrawModeScore(215, FormatModeScore(_scene.Players.MainPlayerIndex)); // octoliths
+            DrawModeScore(215); // octoliths
             DrawOctolithInst(frame: 0);
         }
 
         private void DrawHudCapture()
         {
-            DrawModeScore(216, FormatModeScore(_scene.Players.MainPlayerIndex)); // octoliths
+            DrawModeScore(216); // octoliths
             DrawOctolithInst(frame: TeamIndex == 0 ? 4 : 3);
         }
 
         private void DrawHudDefender()
         {
-            DrawModeScore(217, FormatModeScore(_scene.Players.MainPlayerIndex)); // ring time
+            DrawModeScore(217); // ring time
         }
 
         private void DrawHudNodes()
         {
-            DrawModeScore(218, FormatModeScore(_scene.Players.MainPlayerIndex)); // points
+            DrawModeScore(218); // points
             DrawNodesBonuses();
             DrawNodesIcons();
             if (_nodesHudState == 1 && !IsHudMessageQueued(mask: 16))
@@ -3154,7 +3166,7 @@ namespace MphRead.Entities
                     _textSpacingY = 0;
                 }
             }
-            DrawModeScore(214, FormatModeScore(_scene.Players.MainPlayerIndex)); // prime time
+            DrawModeScore(214); // prime time
         }
 
         private int _doubleDamageSpeed = 0;

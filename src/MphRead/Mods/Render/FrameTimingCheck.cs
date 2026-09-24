@@ -107,7 +107,7 @@ namespace MphRead.Mods.Render
             failures += RunStallCase() ? 0 : 1;
             failures += RunPresentationAlphaCase() ? 0 : 1;
             failures += RunFirstPersonPresentationCase() ? 0 : 1;
-            failures += RunResponsiveCameraTranslationCase() ? 0 : 1;
+            failures += RunFixedCameraTranslationCase() ? 0 : 1;
             failures += RunAngularCameraPresentationCase() ? 0 : 1;
             failures += RunFastLateAimCase() ? 0 : 1;
             failures += RunLockjawNoiseCases();
@@ -226,12 +226,12 @@ namespace MphRead.Mods.Render
         }
 
         /// <summary>
-        /// Modern first-person translation should fill the fractional gap between
-        /// 60 Hz simulation steps without adding a one-tick interpolation delay.
-        /// Stable motion projects forward, deceleration reduces that projection,
-        /// reversal stops it, discontinuities rebase, and 60 Hz remains exact.
+        /// Fixed-crosshair first-person translation must stay between completed
+        /// camera samples. A draw-only frame may smooth known motion, but it must
+        /// never predict past the current 60 Hz state and then correct backward
+        /// when the next simulation step arrives.
         /// </summary>
-        private static bool RunResponsiveCameraTranslationCase()
+        private static bool RunFixedCameraTranslationCase()
         {
             int priorCap = FrameTiming.FrameRateCap;
             try
@@ -249,59 +249,46 @@ namespace MphRead.Mods.Render
                 };
                 camera.ModResetDrawState();
 
-                Vector3 previousBody = Vector3.UnitX;
-                camera.Position = previousBody + new Vector3(0, .10f, 0);
+                camera.Position = new Vector3(1f, .10f, 0);
                 camera.ModCaptureDrawState();
-                Vector3 currentBody = Vector3.UnitX * 2;
-                camera.Position = currentBody + new Vector3(0, .20f, 0);
+                camera.Position = new Vector3(2f, .20f, 0);
                 camera.ModCaptureDrawState();
 
-                Vector3 steady = camera.ModGetResponsiveDrawPosition(
-                    0.5, previousBody, currentBody);
-                bool steadyOk = (steady - new Vector3(2.5f, .15f, 0)).LengthSquared
+                Vector3 steady = camera.ModGetDrawPosition(0.5);
+                bool steadyOk = (steady - new Vector3(1.5f, .15f, 0)).LengthSquared
+                    < 0.00000001f;
+                bool boundedOk = steady.X >= 1f && steady.X <= 2f;
+
+                camera.Position = new Vector3(2.25f, .10f, 0);
+                camera.ModCaptureDrawState();
+                Vector3 decelerating = camera.ModGetDrawPosition(0.5);
+                bool decelerationOk = (decelerating - new Vector3(2.125f, .15f, 0)).LengthSquared
                     < 0.00000001f;
 
-                // Body velocity changes are projected from the latest actual
-                // player step, while the visual offset continues to blend.
-                previousBody = currentBody;
-                currentBody = new Vector3(2.25f, 0, 0);
-                camera.Position = currentBody + new Vector3(0, .10f, 0);
+                camera.Position = new Vector3(2f, .05f, 0);
                 camera.ModCaptureDrawState();
-                Vector3 decelerating = camera.ModGetResponsiveDrawPosition(
-                    0.5, previousBody, currentBody);
-                bool decelerationOk = (decelerating - new Vector3(2.375f, .15f, 0)).LengthSquared
+                Vector3 reversed = camera.ModGetDrawPosition(0.5);
+                bool reversalOk = (reversed - new Vector3(2.125f, .075f, 0)).LengthSquared
                     < 0.00000001f;
 
-                // A body reversal is real locomotion, not a reason to snap the
-                // render camera back to the simulation pose.
-                previousBody = currentBody;
-                currentBody = new Vector3(2f, 0, 0);
-                camera.Position = currentBody + new Vector3(0, .05f, 0);
+                // Teleport-sized camera motion rebases history rather than smearing.
+                camera.Position = new Vector3(10f, 0, 0);
                 camera.ModCaptureDrawState();
-                Vector3 reversed = camera.ModGetResponsiveDrawPosition(
-                    0.5, previousBody, currentBody);
-                bool reversalOk = (reversed - new Vector3(1.875f, .075f, 0)).LengthSquared
-                    < 0.00000001f;
-
-                // Teleport-sized body motion is never extrapolated.
-                previousBody = currentBody;
-                currentBody = new Vector3(10f, 0, 0);
-                camera.Position = currentBody;
-                camera.ModCaptureDrawState();
-                Vector3 rebased = camera.ModGetResponsiveDrawPosition(
-                    0.5, previousBody, currentBody);
+                Vector3 rebased = camera.ModGetDrawPosition(0.5);
                 bool rebaseOk = (rebased - camera.Position).LengthSquared < 0.0000000001f;
 
+                // At 60 Hz PresentationAlpha is current-state (1.0), so this path
+                // adds no interpolation latency when there are no extra pictures.
                 FrameTiming.FrameRateCap = 60;
-                previousBody = currentBody;
-                currentBody = new Vector3(11f, 0, 0);
-                camera.Position = currentBody;
-                Vector3 sixty = camera.ModGetResponsiveDrawPosition(
-                    0.5, previousBody, currentBody);
+                FrameTiming.Reset();
+                FrameTiming.ResetDiagnostics();
+                camera.Position = new Vector3(11f, 0, 0);
+                camera.ModCaptureDrawState();
+                Vector3 sixty = camera.ModGetDrawPosition(FrameTiming.PresentationAlpha);
                 bool sixtyOk = (sixty - camera.Position).LengthSquared < 0.0000000001f;
 
-                bool ok = steadyOk && decelerationOk && reversalOk && rebaseOk && sixtyOk;
-                Console.WriteLine($"FRAMETIMING {(ok ? "ok  " : "FAIL")} responsive camera translation"
+                bool ok = steadyOk && boundedOk && decelerationOk && reversalOk && rebaseOk && sixtyOk;
+                Console.WriteLine($"FRAMETIMING {(ok ? "ok  " : "FAIL")} fixed camera translation"
                     + $" | steady {steady.X:0.00000}/{steady.Y:0.00000}"
                     + $" | decel {decelerating.X:0.00000}/{decelerating.Y:0.00000}"
                     + $" | reverse {reversed.X:0.00000}/{reversed.Y:0.00000}"
