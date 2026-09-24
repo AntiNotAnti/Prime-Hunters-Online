@@ -18,12 +18,16 @@ namespace MphRead.Mods.Launcher.Gui
         public Func<bool> IsForeground { get; set; } = () => false;
         public LobbySessionCoordinator()
         {
-            _pulse = new PrimeUiPulse(TimeSpan.FromMilliseconds(50), () =>
-            {
-                if (Screen is not { } screen || NetSession.IsPlaying) return;
-                NetSession.Pump();
-                screen.SessionTick(IsForeground());
-            });
+            _pulse = new PrimeUiPulse(TimeSpan.FromMilliseconds(50), Tick);
+        }
+        internal void Tick()
+        {
+            // InMatch describes the server, not this client's scene. A late
+            // join already has that phase while its lobby still needs to emit
+            // MatchRequested. Yield the pump only after the local handoff.
+            if (Screen is not { } screen || (screen.IsSuspended && NetSession.IsPlaying)) return;
+            NetSession.Pump();
+            screen.SessionTick(IsForeground());
         }
         public void Start() { _attached = true; if (Screen != null) _pulse.Start(); }
         public void Stop() { _attached = false; _pulse.Stop(); }

@@ -58,6 +58,40 @@ namespace MphRead.Mods.Launcher.Gui
             }
             return lobby;
         }
+        private static void CheckInProgressAdmission()
+        {
+            // Connect already knows the server is InMatch before creating the
+            // lobby screen. Repeat after disconnect to cover same-match rejoin.
+            try
+            {
+                for (int attempt = 0; attempt < 2; attempt++)
+                {
+                    NetSession.StartClient("127.0.0.1", 9);
+                    NetSession.ApplySessionState(new SessionStatePacket
+                    {
+                        Policy = ServerSessionPolicy.Lobby, Phase = SessionPhase.InMatch,
+                        MatchId = 1, AuthorityEpoch = 1, StartGeneration = 1, Revision = 1,
+                        Match = new MatchDefinition { RoomKey = "MP1 SANCTORUS", Mode = GameMode.Battle }
+                    });
+                    var lobby = new LobbyScreen(new[] { "MP1 SANCTORUS" });
+                    using var coordinator = new LobbySessionCoordinator { Screen = lobby };
+                    int requests = 0;
+                    lobby.MatchRequested += (_, plan) =>
+                    {
+                        Check(plan.Kind == LaunchKind.Online && plan.RoomKey == "MP1 SANCTORUS",
+                            "in-progress admission loads the active match");
+                        requests++;
+                    };
+                    coordinator.Tick();
+                    Check(requests == 1 && lobby.IsSuspended,
+                        "in-progress join/rejoin hands the lobby connection to gameplay");
+                    coordinator.Tick();
+                    Check(requests == 1, "gameplay handoff does not request a duplicate scene load");
+                    NetSession.Stop();
+                }
+            }
+            finally { NetSession.Stop(); }
+        }
         public static int Run(string? directory)
         {
             if (!GuiLauncher.EnsureSetup(requireDisplay: false)) return 1;
@@ -81,6 +115,7 @@ namespace MphRead.Mods.Launcher.Gui
                     Check(WindowMode.Parse("borderless", WindowStartMode.Windowed) == WindowStartMode.BorderlessFullscreen
                         && WindowMode.Parse("1", WindowStartMode.Windowed) == WindowStartMode.BorderlessFullscreen,
                         "legacy borderless preferences remain valid");
+                    CheckInProgressAdmission();
                     var shell = Create();
                     var window = new Window { Width = 1280, Height = 720, Content = shell, ShowInTaskbar = false,
                         Position = new PixelPoint(-4000,-4000), WindowStartupLocation = WindowStartupLocation.Manual };
