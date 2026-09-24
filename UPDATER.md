@@ -2,7 +2,7 @@
 
 Project Prime publishes source code, tags, release notes, and downloadable binaries from the same public repository:
 
-`AntiNotAnti/Prime-Hunters-Online`
+`AntiNotAnti/Project-Prime`
 
 The in-app updater reads the repository's public GitHub Releases API. No GitHub credential is embedded in client builds.
 
@@ -23,7 +23,7 @@ Android rejects an in-place update signed by a different certificate, so keep th
 
 ### GitHub Actions
 
-Open **Actions -> release -> Run workflow** in `AntiNotAnti/Prime-Hunters-Online`.
+Open **Actions -> release -> Run workflow** in `AntiNotAnti/Project-Prime`.
 
 - Choose `patch`, `minor`, or `major`.
 - Leave **publish** enabled to publish after every build and verification job succeeds.
@@ -46,13 +46,13 @@ Tags must use `vMAJOR.MINOR.PATCH`.
 
 Release builds are stamped with the tag version. When automatic update checks are enabled, the launcher asks for the latest release at startup and then every five minutes while the launcher UI is attached:
 
-`https://api.github.com/repos/AntiNotAnti/Prime-Hunters-Online/releases/latest`
+`https://api.github.com/repos/AntiNotAnti/Project-Prime/releases/latest`
 
 A newly discovered stable release updates the build chip immediately. When the player is on the hub it also opens an in-app update prompt; if another launcher screen is active, the prompt is deferred until the player returns to the hub. Choosing **Later** suppresses that tag for the rest of the current process, while a newer tag can still prompt.
 
 The build chip also opens **Version Manager**. It reads the stable published release history from:
 
-`https://api.github.com/repos/AntiNotAnti/Prime-Hunters-Online/releases`
+`https://api.github.com/repos/AntiNotAnti/Project-Prime/releases`
 
 Automatic updates remain forward-only. Version Manager is the explicit path that may select an older release.
 
