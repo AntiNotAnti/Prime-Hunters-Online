@@ -188,7 +188,7 @@ namespace MphRead.Mods.Network
         private ServerSim? _sim;
         // Asset-free tests exercise admission/lobby control through reflection.
         // Production has no flag or public API that can disable server authority.
-        private bool _controlPlaneOnlyForTests;
+        private bool _controlPlaneOnlyForTests = false;
         // Owned by the server loop; Send consumes synchronously, recorder takes its own copy.
         private readonly byte[] _lastSnapshot = new byte[NetConfig.MaxPacketSize];
         private int _lastSnapshotLength;
@@ -333,9 +333,8 @@ namespace MphRead.Mods.Network
         public bool AutoUpdate { get; set; }
 
         /// <summary>
-        /// Canonical server replay recording/retention for any server process
-        /// that runs the authoritative match. The legacy RunsTheMatch=false
-        /// compatibility path does not produce canonical server replays.
+        /// Canonical server replay recording/retention for the authoritative
+        /// server simulation. Player clients never record canonical authority state.
         /// </summary>
         public ServerReplayPolicy ReplayPolicy { get; set; } = ServerReplayPolicy.Default;
 
@@ -1856,7 +1855,6 @@ namespace MphRead.Mods.Network
                 if (LobbyRules.TeamCount(CurrentDefinition) > 0 && team < 0)
                 { SendRefusal(packet.Sender, RefusedPacket.ReasonFull); return; }
                 _slotGenerations[slot] = NetLifecycleTracker.Next(_slotGenerations[slot]);
-                _slotLives[slot] = 0;
                 peer = new Peer { EndPoint = packet.Sender, SlotIndex = slot, ClientId = clientId, TeamIndex = team };
                 _peers.Add(peer);
                 CareerPeerJoined(peer);

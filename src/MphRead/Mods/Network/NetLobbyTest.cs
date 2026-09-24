@@ -372,7 +372,7 @@ namespace MphRead.Mods.Network
             public bool Refused;
             public readonly List<ChatPacket> Chats = new();
             public readonly Dictionary<uint, LobbyCommandResultPacket> Results = new();
-            private uint _command, _frame;
+            private uint _command;
             public Client(int port, uint id, Guid token = default)
             {
                 Id = id; Server = new IPEndPoint(IPAddress.Loopback, port);
