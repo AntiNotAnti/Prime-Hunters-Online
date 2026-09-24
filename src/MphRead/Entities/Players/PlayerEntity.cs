@@ -1892,7 +1892,8 @@ namespace MphRead.Entities
             // Mods.Network.NetHitPrediction.
             Mods.Network.NetHitPrediction.NoteHit(this, attacker, ref flags, ref damage,
                 beam?.Beam ?? BeamType.None, beam?.ModLaunchFrame ?? 0, beam?.Age ?? 0, direction,
-                afflictions: beam != null && !ignoreDamage ? beam.Afflictions : Affliction.None);
+                afflictions: beam != null && !ignoreDamage && !flags.TestFlag(DamageFlags.Halfturret)
+                    ? beam.Afflictions : Affliction.None);
             if (attacker != this)
                 Mods.Input.AimAssist.AimAssistTelemetry.Hit(attacker, beam?.Beam ?? BeamType.None, damage);
             bool dead = false;
