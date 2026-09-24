@@ -143,6 +143,7 @@ namespace MphRead
                 new("story", "Adventure"),
                 new("1p", "Adventure"),
                 new("battle", "Battle"),
+                new("instagib", "InstaGib"),
                 new("battleteams", "Battle Teams"),
                 new("survival", "Survival"),
                 new("survivalteams", "Survival Teams"),
@@ -157,7 +158,7 @@ namespace MphRead
             ]);
             var modes = new List<string>()
             {
-                "auto-select", "Adventure", "Battle", "Battle Teams", "Survival", "Survival Teams", "Capture",
+                "auto-select", "Adventure", "Battle", "InstaGib", "Battle Teams", "Survival", "Survival Teams", "Capture",
                 "Bounty", "Bounty Teams", "Nodes", "Nodes Teams", "Defender", "Defender Teams", "Prime Hunter"
             };
             var teamsModes = new List<string>()
