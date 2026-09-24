@@ -67,7 +67,7 @@ namespace MphRead.Entities
                 // corners.
                 _scene.DrawHudFlatBox(2 * aspect, 170, 46 * aspect, 190, ProHudPanel);
                 Span<char> healthBuffer = stackalloc char[12];
-                ReadOnlySpan<char> healthText = "?";
+                scoped ReadOnlySpan<char> healthText = "?";
                 if (ModHudHealth.TryFormat(healthBuffer, out int healthLength))
                 {
                     healthText = healthBuffer[..healthLength];
@@ -114,7 +114,7 @@ namespace MphRead.Entities
 
             int amount = _ammo[info.AmmoType];
             Span<char> ammoBuffer = stackalloc char[12];
-            ReadOnlySpan<char> ammo = "--";
+            scoped ReadOnlySpan<char> ammo = "--";
             if (amount >= 0)
             {
                 int shots = amount / info.AmmoCost;
