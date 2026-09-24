@@ -700,18 +700,29 @@ namespace MphRead.Mods.Launcher.Gui
         }
 
         private static Vector2i _shotWindowedSize, _shotWindowedLocation;
-        private static void CheckFullscreen(RenderWindow window, WindowStartMode mode)
+        private static unsafe void CheckFullscreen(RenderWindow window, WindowStartMode mode)
         {
             var monitor = OpenTK.Windowing.Desktop.Monitors.GetMonitorFromWindow(window);
+            var video = GLFW.GetVideoMode(monitor.Handle.ToUnsafePtr<Monitor>());
             bool attached = Mods.WindowMode.HasMonitor(window);
-            bool fills = window.ClientSize == monitor.ClientArea.Size;
-            if (!attached || !fills || Mods.WindowMode.Current != mode
-                || window.AutoIconify != (mode == WindowStartMode.Fullscreen) || window.AlwaysOnTop)
+            bool native = mode == WindowStartMode.Fullscreen;
+            bool fills = video != null
+                && window.ClientSize.X == video->Width
+                && (native
+                    ? window.ClientSize.Y == video->Height
+                    : Math.Abs(window.ClientSize.Y - video->Height) <= 1);
+            bool shape = native
+                ? attached && window.AutoIconify && !Mods.WindowMode.IsTopmost
+                : !attached && !window.AutoIconify
+                    && window.WindowBorder == OpenTK.Windowing.Common.WindowBorder.Hidden;
+            if (!shape || !fills || Mods.WindowMode.Current != mode)
             {
                 ShotMisses++;
-                Console.WriteLine($"[shellshot] {mode} invalid: monitor={attached}, client={window.ClientSize}, display={monitor.ClientArea.Size}");
+                Console.WriteLine($"[shellshot] {mode} invalid: monitor={attached}, client={window.ClientSize}, "
+                    + $"display={(video == null ? "unknown" : $"{video->Width}x{video->Height}")}, "
+                    + $"border={window.WindowBorder}, autoIconify={window.AutoIconify}, topmost={Mods.WindowMode.IsTopmost}");
             }
-            else Console.WriteLine($"[shellshot] {mode} covers the complete monitor: {window.ClientSize}");
+            else Console.WriteLine($"[shellshot] {mode} covers the monitor with the expected focus policy: {window.ClientSize}");
         }
         private static void CheckWindowed(RenderWindow window)
         {
