@@ -64,6 +64,7 @@ namespace MphRead
         /// </summary>
         public const float MatchFinalCameraSeconds = 5;
         public const float MatchEndingSeconds = 10;
+        public const float MatchKillcamSeconds = 5;
 
         public GameMode Mode { get; set; } = GameMode.SinglePlayer;
         public bool SinglePlayer => Mode == GameMode.SinglePlayer;
@@ -539,7 +540,7 @@ namespace MphRead
                         && Mods.Network.NetSession.AppliedSnapshotFrame != 0
                             ? Mods.Network.NetSession.AppliedSnapshotFrame
                             : Mods.Network.NetSession.NetFrame;
-                    Mods.KillCam.BeginFinal(finalFrame);
+                    if (!scene.Services.IsReplica) Mods.KillCam.BeginFinal(finalFrame);
                     Sfx.Instance.StopFreeSfxScripts();
                     Sfx.Instance.StopAllSound();
                     _players.Main.StopLongSfx();
@@ -552,12 +553,10 @@ namespace MphRead
             }
             else if (MatchState == MatchState.GameOver)
             {
-                if (Mods.KillCam.IsFinal)
+                if (!scene.Services.IsReplica && Mods.KillCam.IsFinal)
                 {
-                    // The final-kill replay owns the entire five-second
-                    // GameOver camera window. Do not let the stock winner
-                    // camera or intro sequence rewrite camera state underneath
-                    // it; Ending takes over immediately after this window.
+                    // The native winner scene has finished. The isolated final
+                    // replay now owns presentation before results.
                     _stateChanged = false;
                 }
                 else
@@ -582,7 +581,7 @@ namespace MphRead
                 }
                 if (MatchTime == 0 && (scene.Services.IsReplica || !Mods.KillCam.FinalPresentationPending))
                 {
-                    Mods.KillCam.EndFinal();
+                    if (!scene.Services.IsReplica) Mods.KillCam.EndFinal();
                     MatchState = MatchState.Ending;
                     // Ten seconds of results, where the DS gave five.
                     //

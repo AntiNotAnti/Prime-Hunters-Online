@@ -52,6 +52,7 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly ChoiceRow _exportFps;
         private readonly ToggleRow _exportHud;
         private readonly TextBlock _exportQueueStatus;
+        private readonly ChoiceRow _exportEncoder = new("Encoder", new[] { "libx264" }, 0);
         private readonly DispatcherTimer _timer;
         private readonly ReplayHighlight[] _highlights;
         private string _message = "";
@@ -101,6 +102,12 @@ namespace MphRead.Mods.Launcher.Gui
             _timeline = new ReplayTimeline
             {
                 HorizontalAlignment = HorizontalAlignment.Stretch,
+                CameraMoved = ReplayCamera.MoveKeyframe,
+                RangeRequested = (start, end) =>
+                {
+                    if (start > ReplayController.ClipIn) { ReplayController.SetMarkOut(end); ReplayController.SetMarkIn(start); }
+                    else { ReplayController.SetMarkIn(start); ReplayController.SetMarkOut(end); }
+                },
                 Margin = new Thickness(0, 0, 0, 2),
                 FrameRequested = frame =>
                 {
@@ -270,6 +277,7 @@ namespace MphRead.Mods.Launcher.Gui
             AddAction("MARK IN", ReplayController.MarkIn, face: Deck.Face.Brass);
             AddAction("MARK OUT", ReplayController.MarkOut, face: Deck.Face.Brass);
             AddAction("SAVE REPLAY CLIP", SaveSelection, face: Deck.Face.Moss);
+            AddAction("CANCEL CLIP SAVE", () => _clipSave?.Cancel());
             AddAction("SAVE VIRTUAL CLIP", SaveVirtualSelection, face: Deck.Face.Moss);
 
             body.Children.Add(new Caption("Cinematic camera"));
@@ -348,6 +356,8 @@ namespace MphRead.Mods.Launcher.Gui
             };
             body.Children.Add(_exportPreset);
             body.Children.Add(_exportResolution);
+            body.Children.Add(_exportEncoder);
+            _ = LoadEncoders();
             body.Children.Add(_exportFps);
             body.Children.Add(_exportHud);
 
@@ -383,6 +393,19 @@ namespace MphRead.Mods.Launcher.Gui
             AddOutput("EXPORT REEL", QueueReelExport, Deck.Face.Moss);
             AddOutput("CANCEL EXPORT", CancelExport, Deck.Face.Rust);
             AddOutput("RETRY EXPORT", RetryExport);
+            AddOutput("CLEAR PENDING", ReplayExportQueue.ClearPending);
+#if !ANDROID
+            AddOutput("OPEN OUTPUT FOLDER", () =>
+            {
+                try
+                {
+                    string? output = ReplayVideoExporter.LastOutput;
+                    if (output == null) { _message = "Complete an export to open its output folder."; return; }
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Path.GetDirectoryName(output)!) { UseShellExecute = true });
+                }
+                catch (Exception ex) { _message = "Could not open output folder: " + ex.Message; }
+            });
+#endif
             AddOutput("SAVE HIGHLIGHTS", SaveHighlights, Deck.Face.Moss);
             AddOutput("TAKE CONTROL", TakeControl, Deck.Face.Rust);
             AddOutput("ANALYTICS HUD", () => ReplayHud.ShowAnalytics = !ReplayHud.ShowAnalytics);
@@ -863,9 +886,21 @@ namespace MphRead.Mods.Launcher.Gui
             ReplayCamera.SetMode(next);
         }
 
-        private void SaveSelection()
+        private bool _savingClip;
+        private System.Threading.CancellationTokenSource? _clipSave;
+        private async void SaveSelection()
         {
-            ReplayOpenResult result = ReplayController.SaveSelection();
+            if (_savingClip) return;
+            _savingClip = true; _message = "Saving clip...";
+            using var cancellation = new System.Threading.CancellationTokenSource();
+            _clipSave = cancellation;
+            string? source = DemoPlayback.CurrentPath;
+            ReplayOpenResult result;
+            try { result = await ReplayController.SaveSelectionAsync(cancellation.Token); }
+            catch (OperationCanceledException) { _message = "Clip save cancelled."; return; }
+            catch (Exception ex) { _message = "Could not save clip: " + ex.Message; return; }
+            finally { _savingClip = false; _clipSave = null; }
+            if (source != DemoPlayback.CurrentPath) return;
             _message = result == ReplayOpenResult.Success
                 ? "Standalone .ppdemo clip saved."
                 : result == ReplayOpenResult.Empty
@@ -945,6 +980,11 @@ namespace MphRead.Mods.Launcher.Gui
             };
         }
 
+        private async System.Threading.Tasks.Task LoadEncoders()
+        {
+            var encoders = await ReplayEncoderCapabilities.Available;
+            _exportEncoder.SetItems(encoders);
+        }
         private void QueueExport()
         {
             if (DemoPlayback.CurrentPath == null)
@@ -967,6 +1007,7 @@ namespace MphRead.Mods.Launcher.Gui
                     DemoPlayback.CurrentPath, start, end, SelectedPreset(),
                     director: ReplayCamera.Director,
                     cameraTrack: ReplayCamera.PlayTrack);
+                job = ReplayEncoderCapabilities.Apply(job, _exportEncoder.Value);
                 ReplayExportQueue.Enqueue(job);
                 bool active = ReplayExportQueue.Pump();
                 _message = active
@@ -995,6 +1036,7 @@ namespace MphRead.Mods.Launcher.Gui
                     .Segments(DemoPlayback.CurrentPath).ToArray();
                 ReplayVideoExportManifest job = ReplayVideoExport.CreateReelManifest(
                     DemoPlayback.CurrentPath, segments, SelectedPreset());
+                job = ReplayEncoderCapabilities.Apply(job, _exportEncoder.Value);
                 ReplayExportQueue.Enqueue(job);
                 bool active = ReplayExportQueue.Pump();
                 _message = active
@@ -1096,6 +1138,7 @@ namespace MphRead.Mods.Launcher.Gui
                 ? $"{ReplayVideoExporter.Status} · {ReplayVideoExporter.Progress:P0} · "
                     + $"{ReplayExportQueue.PendingCount} queued"
                 : ReplayExportQueue.Status;
+            ToolTip.SetTip(_exportQueueStatus, ReplayExportQueue.RecentFailures.Count == 0 ? null : "Recent failures\n" + string.Join("\n", ReplayExportQueue.RecentFailures));
 
             _cameraStatus.Text =
                 $"{ReplayCamera.KeyframeCount} keys · {ReplayCamera.TrackInterpolation} · "
@@ -1141,7 +1184,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
         {
-            _timer.Stop();
+            _timer.Stop(); _clipSave?.Cancel();
             base.OnDetachedFromVisualTree(e);
         }
 

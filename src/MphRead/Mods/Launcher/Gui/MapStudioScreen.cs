@@ -41,8 +41,21 @@ namespace MphRead.Mods.Launcher.Gui
         private MapViewport? _viewport;
         private CancellationTokenSource? _work;
         private bool _refreshing;
+        private long _editorGeneration;
+        private bool _detached;
+        private MapAutosaveService _autosave = new();
+        private DocumentStateId? _validatedState;
+        private string? _validationSignature;
+        private MapDocument? _jobDocument;
+        private DocumentStateId? _jobState;
+        private long _jobGeneration;
+        private void GuardJob(CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            if (_detached || _editorGeneration != _jobGeneration || _document != _jobDocument
+                || _document?.CurrentStateId != _jobState) throw new OperationCanceledException();
+        }
         private DateTime _autosaved = DateTime.MinValue;
-        private DateTime _checked=DateTime.MinValue;
         private bool _checking;
         private MapBuildResult? _lastBuild;
         private TextBlock? _diagnostics;
@@ -75,7 +88,7 @@ namespace MphRead.Mods.Launcher.Gui
             AddButton(toolbar,"Import Q3",Import);AddButton(toolbar,"Save",Save);AddButton(toolbar,"Save as",()=>Browse("Save project",true,p=>SaveTo(p),".json"));
             AddButton(toolbar,"Undo",()=>_document?.History.Undo());AddButton(toolbar,"Redo",()=>_document?.History.Redo());
             AddButton(toolbar,"Validate",()=>_=Validate());AddButton(toolbar,"Build",()=>_=Build(false));AddButton(toolbar,"Build .ppmap",()=>_=Build(true));
-            AddButton(toolbar,"Play from here",()=>_=Play());AddButton(toolbar,"Run map test",()=>_=Audit());
+            AddButton(toolbar,"Playtest",PlaytestInspector);AddButton(toolbar,"Run map test",()=>_=Audit());
             _editingControls.AddRange(toolbar.Children);
             AddButton(toolbar,"Cancel job",()=>_work?.Cancel());
             _root.Children.Add(toolbar);
@@ -90,6 +103,7 @@ namespace MphRead.Mods.Launcher.Gui
                 box.SelectionChanged+=(_,_)=>{if(box.SelectedItem is string text)choose(text);};tools.Children.Add(box);
             }
             Choice(new[]{"Move","Rotate","Scale"},name=>{if(_viewport!=null)_viewport.Tool=name;});
+            Choice(new[]{"Free","X","Y","Z","XY","XZ","YZ"},name=>{if(_viewport!=null)_viewport.Axes=name;});
             Choice(new[]{"Perspective","Top","Front","Side"},name=>_viewport?.SetView(name));
             Choice(new[]{"Add object","Box","Wedge","Prism","Convex","Spawn","Pickup","Jump pad","Navigation link"},name=>{if(name!="Add object")AddObject(name);});
             Choice(new[]{"Overlays","Rendered","Wireframe","Collision","Kill plane","Navigation"},name=>
@@ -98,7 +112,7 @@ namespace MphRead.Mods.Launcher.Gui
                 if(name=="Navigation"){_=Navigation();return;}
                 _viewport.Wireframe=name=="Wireframe";_viewport.Collision=name=="Collision";_viewport.KillPlane=name=="Kill plane";_viewport.InvalidateVisual();
             });
-            Choice(new[]{"Inspector","Environment","Materials","Assets & music","Snapping","Statistics"},name=>{if(name=="Materials")MaterialInspector();else if(name=="Assets & music")AssetInspector();else if(name=="Snapping")SnapInspector();else if(name=="Statistics")Statistics();else Inspect();});
+            Choice(new[]{"Inspector","Environment","Materials","Assets & music","Snapping","Arrange","Map health","Navigation path","Statistics"},name=>{if(name=="Materials")MaterialInspector();else if(name=="Assets & music")AssetInspector();else if(name=="Snapping")SnapInspector();else if(name=="Statistics"||name=="Map health")Statistics();else if(name=="Arrange")ArrangeInspector();else if(name=="Navigation path")NavigationInspector();else Inspect();});
             AddButton(tools,"Frame all",()=>_viewport?.FrameAll());AddButton(tools,"Focus",()=>_viewport?.FrameSelection());
             AddButton(tools,"Duplicate",()=>EditSelection("Duplicate",MapObjects.Duplicate));AddButton(tools,"Delete",()=>EditSelection("Delete",MapObjects.Delete));
             AddButton(tools,"Capture preview",CapturePreview);
@@ -109,10 +123,11 @@ namespace MphRead.Mods.Launcher.Gui
             Grid.SetRow(_problems,3);_root.Children.Add(_problems);Grid.SetRow(_status,4);_root.Children.Add(_status);
             var layer=new Panel();layer.Children.Add(_root);layer.Children.Add(_modal);Content=layer;
             _search.TextChanged+=(_,_)=>RefreshHierarchy();
-            _hierarchy.SelectionChanged+=(_,_)=>
+            _hierarchy.SelectionChanged+=(_,selection)=>
             {
                 if(_refreshing||_document==null)return;
                 _document.Selection.Clear();foreach(var item in _hierarchy.SelectedItems?.OfType<MapObject>()??Enumerable.Empty<MapObject>())_document.Selection.Add(item.Id);
+                if(selection.AddedItems.OfType<MapObject>().LastOrDefault() is { } active)_document.ActiveObjectId=active.Id;
                 _document.SelectionChanged();Inspect();_viewport?.InvalidateVisual();
             };
             _problems.SelectionChanged+=(_,_)=>
@@ -124,23 +139,39 @@ namespace MphRead.Mods.Launcher.Gui
             _idle.Tick+=async(_,_)=>
             {
                 if (_diagnostics != null && _inspector.Children.Contains(_diagnostics)) RefreshStatistics();
-                if(_work==null&&!_checking&&_document!=null&&_document.LastEditUtc>_checked&&DateTime.UtcNow-_document.LastEditUtc>TimeSpan.FromMilliseconds(500))
+                if (_detached) return;
+                if (_work == null && !_checking && _document is { } document
+                    && document.CurrentStateId != _validatedState
+                    && DateTime.UtcNow - document.LastEditUtc > TimeSpan.FromMilliseconds(500))
                 {
-                    var document=_document;var edited=document.LastEditUtc;var snapshot=document.Snapshot();_checking=true;
-                    try{var result=await Task.Run(()=>MapValidator.Validate(snapshot.Definition,false));if(_document==document&&document.LastEditUtc==edited){_checked=edited;_problems.ItemsSource=result.Diagnostics.Select(d=>new ProblemRow(d)).ToArray();}}
-                    catch(Exception ex){Failure(ex);}finally{_checking=false;}
+                    var state = document.CurrentStateId; long generation = _editorGeneration;
+                    var snapshot = document.CaptureBuildSnapshot(); _checking = true;
+                    try
+                    {
+                        var result = await Task.Run(() => MapValidator.Validate(snapshot.CreateDefinition(), false));
+                        if (!_detached && _document == document && document.CurrentStateId == state && generation == _editorGeneration)
+                        {
+                            _validatedState = state; document.Diagnostics = result; _viewport?.InvalidateVisual();
+                            string signature = string.Join("\n", result.Diagnostics.Select(d => d.ToString()));
+                            if (signature != _validationSignature)
+                            { _validationSignature = signature; _problems.ItemsSource = result.Diagnostics.Select(d => new ProblemRow(d)).ToArray(); }
+                        }
+                    }
+                    catch (Exception ex) { if (!_detached && generation == _editorGeneration) Failure(ex); }
+                    finally { _checking = false; }
                 }
+                if (_autosave.Result is { Error: { } error } saved && _document?.CurrentStateId == saved.State)
+                    _status.Text = "Autosave failed: " + error;
                 if(_document==null||!_document.IsDirty||_document.LastEditUtc<=_autosaved||DateTime.UtcNow-_document.LastEditUtc<TimeSpan.FromSeconds(3))return;
-                try{_document.Autosave(CustomRooms.MapDirectory);_autosaved=DateTime.UtcNow;}
-                catch(Exception ex) when(ex is IOException or UnauthorizedAccessException){_status.Text="Autosave failed: "+ex.Message;}
+                if (_autosave.Queue(_document.CaptureAutosave(CustomRooms.MapDirectory))) _autosaved = _document.LastEditUtc;
             };
-            AttachedToVisualTree+=(_,_)=>{LauncherBackdrop.Set(LauncherBackdropScene.MapEditor);_idle.Start();};
-            DetachedFromVisualTree+=(_,_)=>{_idle.Stop();_work?.Cancel();};
+            AttachedToVisualTree+=(_,_)=>{_detached=false;_autosave=new();LauncherBackdrop.Set(LauncherBackdropScene.MapEditor);_idle.Start();};
+            DetachedFromVisualTree+=(_,_)=>{_detached=true;_editorGeneration++;_idle.Stop();_work?.Cancel();_autosave.Dispose();foreach(var bitmap in _images)bitmap.Dispose();_images.Clear();};
             if (preview) Load(MapTemplates.Create("Studio example", true)); else ShowLibrary();
         }
         public void Dispose()
         {
-            _idle.Stop(); _work?.Cancel();
+            _detached=true; _editorGeneration++; _idle.Stop(); _work?.Cancel(); _autosave.Dispose();
             if (_document != null) _document.Changed -= Changed;
             foreach (var bitmap in _images) bitmap.Dispose();
             _images.Clear();
@@ -163,12 +194,23 @@ namespace MphRead.Mods.Launcher.Gui
         private void Confirm(string message,Action yes)
         {var view=new ConfirmScreen(message);view.Answered+=(_,answer)=>{Dismiss();if(answer)yes();};Modal(view);}
         private void WithUnsaved(Action action)
-        {if(_document?.IsDirty==true)Confirm("Discard unsaved changes? A recovery copy will remain available.",()=>{_document.Autosave(CustomRooms.MapDirectory);action();});else action();}
+        {if(_document?.IsDirty==true)Confirm("Discard unsaved changes? A recovery copy will remain available.",()=>{_=PreserveThen(action);});else action();}
         internal bool IsDirty => _document?.IsDirty == true;
         internal bool SaveRecovery()
         {
             try { if (_document?.IsDirty == true) _document.Autosave(CustomRooms.MapDirectory); return true; }
             catch (Exception ex) { Failure(ex); return false; }
+        }
+        private async Task PreserveThen(Action action)
+        {
+            var document = _document; long generation = _editorGeneration;
+            if (document == null) { action(); return; }
+            using var save = new MapAutosaveService();
+            save.Queue(document.CaptureAutosave(CustomRooms.MapDirectory));
+            await save.Completion;
+            if (_detached || generation != _editorGeneration || document != _document) return;
+            if (save.Result?.Error is { } error) { _status.Text = "Recovery failed: " + error; return; }
+            action();
         }
         private void Close()
         {
@@ -177,6 +219,7 @@ namespace MphRead.Mods.Launcher.Gui
         }
         internal void Load(MapProject project,string? path=null)
         {
+            _editorGeneration++; _work?.Cancel(); _autosave.Dispose(); _autosave=new(); _validatedState=null; _validationSignature=null; _autosaved=DateTime.MinValue;
             _lastBuild = null;
             if(_document!=null)_document.Changed-=Changed;
             _document=new(project,path);_document.Changed+=Changed;_viewport=new(_document);_viewport.SelectionChanged+=()=>{RefreshHierarchy();Inspect();};
@@ -371,6 +414,64 @@ namespace MphRead.Mods.Launcher.Gui
             }
             AddButton(_inspector,"Apply",()=>{try{_document.EditObjects("Edit properties",new[]{id},d=>{var target=MapObjects.All(d).First(o=>o.Id==id).Value;foreach(var edit in edits)edit(target);});}catch(Exception ex){Failure(ex);}});
         }
+        private void ArrangeInspector()
+        {
+            _inspector.Children.Clear(); if (_document == null) return;
+            _inspector.Children.Add(Text("ARRANGE SELECTION"));
+            var axis = new ComboBox { ItemsSource = new[] { "X", "Y", "Z" }, SelectedIndex = 0 };
+            _inspector.Children.Add(axis);
+            foreach (var edge in new[] { -1, 0, 1 })
+                AddButton(_inspector, "Align " + (edge < 0 ? "minimum" : edge > 0 ? "maximum" : "center"),
+                    () => EditSelection("Align", (d, ids) => MapLayoutCommands.Align(d, ids, axis.SelectedIndex, edge)));
+            AddButton(_inspector, "Distribute centers", () => EditSelection("Distribute", (d, ids) => MapLayoutCommands.Distribute(d, ids, axis.SelectedIndex)));
+            AddButton(_inspector, "Snap to grid", () => EditSelection("Snap to grid", (d, ids) => MapLayoutCommands.Snap(d, ids, Math.Max(.01f, _viewport?.Snap ?? 1))));
+            AddButton(_inspector, "Snap to floor", () =>
+            {
+                if (_viewport == null) return;
+                var faces = _viewport.Cache.NativeFaces.Concat(_viewport.Cache.ImportedCollisionFaces).ToArray();
+                EditSelection("Snap to floor", (d, ids) => MapLayoutCommands.SnapToFloor(d, ids, faces));
+            });
+            var count = new TextBox { Text = "4" }; var spacing = new TextBox { Text = "4" };
+            _inspector.Children.Add(Text("Copies (1–256)")); _inspector.Children.Add(count);
+            _inspector.Children.Add(Text("Spacing / radial offset")); _inspector.Children.Add(spacing);
+            void Duplicate(bool radial)
+            {
+                try
+                {
+                    int copies = int.Parse(count.Text ?? "", CultureInfo.InvariantCulture);
+                    float distance = Number(spacing.Text ?? "");
+                    var delta = axis.SelectedIndex == 0 ? new System.Numerics.Vector3(distance, 0, 0)
+                        : axis.SelectedIndex == 1 ? new System.Numerics.Vector3(0, distance, 0) : new System.Numerics.Vector3(0, 0, distance);
+                    EditSelection(radial ? "Radial array" : "Array", (d, ids) => MapLayoutCommands.Array(d, ids, copies, delta, radial));
+                }
+                catch (Exception ex) { Failure(ex); }
+            }
+            AddButton(_inspector, "Create array", () => Duplicate(false));
+            AddButton(_inspector, "Create radial array", () => Duplicate(true));
+            AddButton(_inspector, "Duplicate in place", () => EditSelection("Duplicate in place", (d, ids) => MapLayoutCommands.Array(d, ids, 1, System.Numerics.Vector3.Zero)));
+        }
+        private void NavigationInspector()
+        {
+            _inspector.Children.Clear();
+            _inspector.Children.Add(Text("NAVIGATION PATH"));
+            AddButton(_inspector, "Generate navigation", () => _ = Navigation());
+            var start = new TextBox { Text = "0" }; var end = new TextBox { Text = "1" };
+            _inspector.Children.Add(Text("Start node")); _inspector.Children.Add(start);
+            _inspector.Children.Add(Text("Destination node")); _inspector.Children.Add(end);
+            AddButton(_inspector, "Show path", () =>
+            {
+                try
+                {
+                    if (_viewport?.Navigation is not { } graph) throw new InvalidOperationException("Generate navigation first.");
+                    int from = int.Parse(start.Text ?? ""), to = int.Parse(end.Text ?? "");
+                    var path = MapNavigationInspection.Find(graph, from, to);
+                    _viewport.NavigationPath = path; _viewport.InvalidateVisual();
+                    float length = 0; for (int i = 1; i < path.Length; i++) length += (graph.Positions[path[i]] - graph.Positions[path[i-1]]).Length;
+                    _status.Text = path.Length == 0 ? "Destination is unreachable." : $"Path: {path.Length} nodes · {length:0.0} units · region {graph.Components[from]}";
+                }
+                catch (Exception ex) { Failure(ex); }
+            });
+        }
         private void Statistics()
         {
             _inspector.Children.Clear();
@@ -381,7 +482,11 @@ namespace MphRead.Mods.Launcher.Gui
         {
             if (_diagnostics == null || _document == null || _viewport == null) return;
             var cache = _viewport.Cache; var jobs = MapBuildScheduler.Shared;
-            _diagnostics.Text = $"Viewport rebuilds\nGeometry: {cache.GeometryRebuildCount} ({cache.GeometryObjectsRebuilt} objects)\n"
+            var d = _document.Project.Definition;
+            _diagnostics.Text = $"MAP HEALTH\nGeometry: {cache.NativeFaces.Count + cache.ImportedFaces.Count:N0} faces\n"
+                + $"Spawns: {d.Spawns.Count} · Entities: {cache.Entities.Count}\nAssets: {d.Assets.Count} · Materials: {d.Materials.Count}\n"
+                + (_viewport.Navigation is { } nav ? $"Navigation: {nav.Positions.Length:N0} nodes · {nav.Components.Distinct().Count()} regions\n" : "Navigation: not generated\n")
+                + $"Autosave: {_autosave.Result?.Milliseconds ?? 0:0.0} ms\n\nViewport rebuilds\nGeometry: {cache.GeometryRebuildCount} ({cache.GeometryObjectsRebuilt} objects)\n"
                 + $"Imported: {cache.ImportedRebuildCount}\nSelection: {cache.SelectionRebuildCount}\nEntities: {cache.EntityRebuildCount}\n"
                 + $"Collision: {cache.CollisionRebuildCount}\nNavigation invalidations: {cache.NavigationInvalidationCount}\n\n"
                 + $"History: {_document.History.CommandCount} commands / {_document.History.ApproximateBytes / 1024d:0.0} KiB\n\n"
@@ -447,25 +552,51 @@ namespace MphRead.Mods.Launcher.Gui
             string root=_document.Project.Definition.BaseDirectory??CustomRooms.MapDirectory;
             string relative=kind+"/"+Guid.NewGuid().ToString("N")+extension;
             AtomicFile.Write(Path.Combine(root,relative),bytes);
-            _document.Edit("Add "+kind,d=>{d.BaseDirectory=root;d.Assets.Add(new(){Path=relative,Kind=kind=="audio"?"audio":kind=="preview"?"preview":"texture"});});
+            _document.RegisterGeneratedAsset(relative,root);
+            _document.Edit(kind=="preview"?"Replace preview":"Add "+kind,d=>{d.BaseDirectory=root;if(kind=="preview")d.Assets.RemoveAll(a=>a.Kind=="preview");d.Assets.Add(new(){Path=relative,Kind=kind=="audio"?"audio":kind=="preview"?"preview":"texture"});});
             return relative;
         }
         private void AssetInspector()
         {
             _inspector.Children.Clear();if(_document==null)return;_inspector.Children.Add(Text("ASSETS & MUSIC"));
-            foreach(var asset in _document.Project.Definition.Assets)_inspector.Children.Add(Text(asset.Kind+" · "+Path.GetFileName(asset.Path)));
+            foreach(var asset in _document.Project.Definition.Assets)
+            {
+                var entry = asset;
+                string root = _document.Project.Definition.BaseDirectory ?? CustomRooms.MapDirectory;
+                string file = Path.GetFullPath(Path.Combine(root, entry.Path));
+                int uses = _document.Project.Definition.Materials.Count(m => m.Texture == entry.Path)
+                    + (_document.Project.Definition.Audio?.Music == entry.Path ? 1 : 0)
+                    + (entry.Kind == "preview" ? 1 : 0);
+                string size = File.Exists(file) ? $"{new FileInfo(file).Length / 1024d:0.0} KiB" : "MISSING";
+                _inspector.Children.Add(Text($"{entry.Kind} · {entry.Name ?? Path.GetFileName(entry.Path)} · {size} · {uses} uses"));
+                AddButton(_inspector, "Find usages", () => _status.Text = string.Join(" · ", _document.Project.Definition.Materials.Where(m => m.Texture == entry.Path).Select(m => m.Name))
+                    + (_document.Project.Definition.Audio?.Music == entry.Path ? " · Map music" : ""));
+                var logicalName = new TextBox { Text = entry.Name ?? Path.GetFileNameWithoutExtension(entry.Path) };
+                _inspector.Children.Add(logicalName);
+                AddButton(_inspector, "Rename asset", () => { _document.Edit("Rename asset", d =>
+                    { var asset = d.Assets.Find(a => a.Path == entry.Path); if (asset != null) asset.Name = logicalName.Text?.Trim(); }); AssetInspector(); });
+#if !ANDROID
+                AddButton(_inspector, "Reveal folder", () => { try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                    Path.GetDirectoryName(_document.Project.Definition.BundlePath ?? file)!) { UseShellExecute = true }); } catch (Exception ex) { Failure(ex); } });
+#endif
+                AddButton(_inspector, "Replace asset", () => Browse("Replace " + entry.Kind, false,
+                    path => _ = ReplaceAsset(entry.Path, path)));
+                if (uses == 0) AddButton(_inspector, "Remove unused reference", () => { _document.Edit("Remove unused asset", d => d.Assets.RemoveAll(a => a.Path == entry.Path)); AssetInspector(); });
+            }
+            AddButton(_inspector,"Clean generated orphans",()=>{try{_status.Text=$"Removed {_document.CleanupGeneratedAssets()} generated files. Undo and recovery assets retained.";}catch(Exception ex){Failure(ex);}});
             AddButton(_inspector,"Import texture",()=>Browse("Choose a texture image",false,path=>_=Job("Baking texture",async token=>
             {
                 try
                 {
                     if(new FileInfo(path).Length>16*1024*1024)throw new IOException("Texture image exceeds 16 MiB.");
-                    byte[] baked=await Task.Run(()=>MapTextureBake.BakeImage(File.ReadAllBytes(path)));
-                    token.ThrowIfCancellationRequested();
+                    byte[] baked=await Task.Run(()=>MapTextureBake.BakeImage(File.ReadAllBytes(path), token));
+                    GuardJob(token);
                     string asset=StoreAsset("textures",".tex",baked);
                     _document.Edit("Add custom material",d=>d.Materials.Add(new(){Id=Guid.NewGuid(),Name=Path.GetFileNameWithoutExtension(path),Texture=asset,TexScale=16}));
                     MaterialInspector();
                 }
-                catch(Exception ex){Failure(ex);}
+                catch(OperationCanceledException){throw;}
+                catch(Exception ex){GuardJob(token);Failure(ex);}
             }),".png",".jpg",".jpeg"));
             AddButton(_inspector,"Choose custom music",()=>Browse("Choose map music",false,path=>
             {
@@ -484,6 +615,41 @@ namespace MphRead.Mods.Launcher.Gui
             AddButton(_inspector,"Apply audio",()=>{try{_document.Edit("Audio settings",d=>{d.Audio??=new();d.Audio.Volume=Number(volume.Text??"");d.Audio.Loop=loop.IsChecked==true;});}catch(Exception ex){Failure(ex);}});
             AddButton(_inspector,"Use default audio",()=>_document.Edit("Default audio",d=>d.Audio=null));
         }
+        private Task ReplaceAsset(string previous, string source) => Job("Replacing asset", async token =>
+        {
+            if (_document == null) return;
+            var document = _document;
+            var original = document.Project.Definition.Assets.Find(asset => asset.Path == previous);
+            if (original == null) return;
+            string root = document.Project.Definition.BaseDirectory ?? CustomRooms.MapDirectory;
+            string kind = original.Kind;
+            var replacement = await Task.Run(() =>
+            {
+                token.ThrowIfCancellationRequested();
+                if (new FileInfo(source).Length > 32 * 1024 * 1024) throw new IOException("Assets must be no larger than 32 MiB.");
+                byte[] bytes = File.ReadAllBytes(source);
+                string extension = Path.GetExtension(source).ToLowerInvariant();
+                if (kind == "texture") { bytes = MapTextureBake.BakeImage(bytes, token); extension = ".tex"; }
+                else if (kind == "preview" && extension != ".png") throw new IOException("Choose a PNG preview.");
+                else if (kind == "audio" && extension is not (".wav" or ".ogg" or ".mp3")) throw new IOException("Choose WAV, OGG or MP3 audio.");
+                string relative = kind + "/" + Guid.NewGuid().ToString("N") + extension;
+                token.ThrowIfCancellationRequested();
+                AtomicFile.Write(Path.Combine(root, relative), bytes);
+                return relative;
+            }, token);
+            // Record ownership even if cancellation arrives just after publication, so
+            // later explicit cleanup can reclaim the generated orphan safely.
+            document.RegisterGeneratedAsset(replacement, root);
+            GuardJob(token);
+            document.Edit("Replace asset", d =>
+            {
+                var asset = d.Assets.Find(a => a.Path == previous); if (asset == null) return;
+                asset.Path = replacement; d.BaseDirectory = root;
+                foreach (var material in d.Materials) if (material.Texture == previous) material.Texture = replacement;
+                if (d.Audio?.Music == previous) d.Audio.Music = replacement;
+            });
+            AssetInspector(); _status.Text = "Asset replaced. Previous version remains available to Undo.";
+        });
         private void CapturePreview()
         {
             if(_viewport==null||_document==null||_viewport.Bounds.Width<1||_viewport.Bounds.Height<1)return;
@@ -495,22 +661,23 @@ namespace MphRead.Mods.Launcher.Gui
 #if MPHREAD_SHELL
                 preview = _viewport.CaptureGpuPreview(preview);
 #endif
-                _document.Edit("Replace preview",d=>d.Assets.RemoveAll(a=>a.Kind=="preview"));
                 StoreAsset("preview",".png",preview);_status.Text="Preview captured.";
             }
             catch(Exception ex){Failure(ex);}
         }
         private void Problems(MapValidationResult result)
-        {_problems.ItemsSource=result.Diagnostics.Select(d=>new ProblemRow(d)).ToArray();_status.Text=(result.IsValid?"Validation passed. ":"Build blocked. ")+string.Join(" · ",result.Budgets.Select(b=>$"{b.Name}: {b.Used:N0}"+(b.Limit!=null?$" / {b.Limit:N0}":"")));}
+        {if(_document!=null)_document.Diagnostics=result;_viewport?.InvalidateVisual();_problems.ItemsSource=result.Diagnostics.Select(d=>new ProblemRow(d)).ToArray();_status.Text=(result.IsValid?"Validation passed. ":"Build blocked. ")+string.Join(" · ",result.Budgets.Select(b=>$"{b.Name}: {b.Used:N0}"+(b.Limit!=null?$" / {b.Limit:N0}":"")));}
         private async Task Work(string label,Func<MapProject,CancellationToken,Task> action)
         {
-            if(_document==null||_work!=null)return;var snapshot=_document.Snapshot();await Job(label,token=>action(snapshot,token));
+            if(_document==null||_work!=null)return;var snapshot=_document.CaptureBuildSnapshot();await Job(label,async token=>{var project=await Task.Run(()=>new MapProject(snapshot.CreateDefinition()),token);GuardJob(token);await action(project,token);});
         }
         private async Task Job(string label,Func<CancellationToken,Task> action)
         {
-            if(_work!=null)return;_work=new();_status.Text=label+"…";
+            if(_work!=null||_detached)return;var work=new CancellationTokenSource();_work=work;
+            _jobDocument=_document;_jobState=_document?.CurrentStateId;_jobGeneration=_editorGeneration;long generation=_editorGeneration;
+            _status.Text=label+"…";
             SetBusy(true);
-            try{await action(_work.Token);}catch(OperationCanceledException){_status.Text="Cancelled.";}catch(Exception ex){Failure(ex);}finally{_work.Dispose();_work=null;SetBusy(false);}
+            try{await action(work.Token);}catch(OperationCanceledException){if(!_detached&&generation==_editorGeneration)_status.Text="Cancelled.";}catch(Exception ex){if(!_detached&&generation==_editorGeneration)Failure(ex);}finally{work.Dispose();if(_work==work){_work=null;if(!_detached)SetBusy(false);}}
         }
         private void SetBusy(bool busy){foreach(var control in _editingControls)control.IsEnabled=!busy;}
         private void SnapInspector()
@@ -520,6 +687,12 @@ namespace MphRead.Mods.Launcher.Gui
             var angle=new TextBox {Text=_viewport.AngleSnap.ToString(CultureInfo.InvariantCulture)};
             var scale=new TextBox {Text=_viewport.ScaleSnap.ToString(CultureInfo.InvariantCulture)};
             var local=new CheckBox {Content="Local transform axes",IsChecked=_viewport.LocalAxes};
+            var pivot=new ComboBox {ItemsSource=new[]{"Individual","Center","Active","World","Cursor"},SelectedItem=_viewport.PivotMode};
+            var cursor=new TextBox {Text=$"{_viewport.CursorPivot.X},{_viewport.CursorPivot.Y},{_viewport.CursorPivot.Z}"};
+            _inspector.Children.Add(Text("Pivot"));_inspector.Children.Add(pivot);
+            _inspector.Children.Add(Text("Custom cursor X, Y, Z"));_inspector.Children.Add(cursor);
+            pivot.SelectionChanged+=(_,_)=>{if(pivot.SelectedItem is string value)_viewport.PivotMode=value;};
+            AddButton(_inspector,"Set cursor",()=>{try{var v=ParseVector(cursor.Text??"",3);_viewport.CursorPivot=new(v[0],v[1],v[2]);}catch(Exception ex){Failure(ex);}});
             _inspector.Children.Add(Text("Grid spacing (0 disables snapping)"));_inspector.Children.Add(grid);
             _inspector.Children.Add(Text("Rotation step (degrees)"));_inspector.Children.Add(angle);
             _inspector.Children.Add(Text("Scale step"));_inspector.Children.Add(scale);_inspector.Children.Add(local);
@@ -528,13 +701,13 @@ namespace MphRead.Mods.Launcher.Gui
         private Task Validate()=>Work("Validating",async(p,token)=>
         {
             var result=await MapBuildScheduler.Shared.AnalyzeAsync(MapBuildSnapshot.Capture(p),cancellation:token);
-            token.ThrowIfCancellationRequested();Problems(result.Validation());
+            GuardJob(token);Problems(result.Validation());
             if(result.Succeeded&&p.Definition.Import!=null)_viewport?.SetImported(result);
         });
         private Task Navigation()=>Work("Generating navigation",async(p,token)=>
         {
             var result=await MapBuildScheduler.Shared.AnalyzeAsync(MapBuildSnapshot.Capture(p),navigation:true,cancellation:token);
-            token.ThrowIfCancellationRequested();Problems(result.Validation());if(!result.Succeeded)return;
+            GuardJob(token);Problems(result.Validation());if(!result.Succeeded)return;
             var graph=result.CreateNavigation();if(graph==null)return;
             if(_viewport!=null){_viewport.Navigation=graph;_viewport.InvalidateVisual();}
             int components=graph.Components.Distinct().Count();_status.Text=$"{graph.Positions.Length} navigation nodes · {graph.Edges} edges · {components} connected regions";
@@ -548,35 +721,51 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 string output=Path.ChangeExtension(_path.Text??Path.Combine(CustomRooms.MapDirectory,p.Definition.Name),".ppmap");
                 string path=await MapBuildScheduler.Shared.PackageAsync(MapBuildSnapshot.Capture(p),output,token);
-                token.ThrowIfCancellationRequested();_status.Text="Package built: "+path;
+                GuardJob(token);_status.Text="Package built: "+path;
             }
             else
             {
                 if(!GameFiles.Ready)throw new IOException("Set up game files in Settings before building runtime files.");GameFiles.ApplyPaths();
                 var built = await MapBuildScheduler.Shared.BuildAsync(MapBuildSnapshot.Capture(p), token);
-                _lastBuild = built;
-                token.ThrowIfCancellationRequested(); Problems(built.Validation()); if (!built.Succeeded) return;
+                GuardJob(token); _lastBuild = built;
+                 Problems(built.Validation()); if (!built.Succeeded) return;
                 await Task.Run(()=>{token.ThrowIfCancellationRequested();MapBuildScheduler.Install(built,p.Definition,CustomRooms.ArchiveDirectory(p.Definition),CustomRooms.EntityDirectory(),CustomRooms.NodeDirectory());},token);
-                Metadata.RegisterDownloadedMap(p.Definition);_status.Text=$"Runtime map ready · {(built.CacheHit ? "cache hit" : "compiled")} · {built.Milliseconds:0} ms";
+                GuardJob(token); Metadata.RegisterDownloadedMap(p.Definition);_status.Text=$"Runtime map ready · {(built.CacheHit ? "cache hit" : "compiled")} · {built.Milliseconds:0} ms";
             }
         });
         }
-        private Task Play()=>Work("Preparing playtest",async(p,token)=>
+        private void PlaytestInspector()
+        {
+            _inspector.Children.Clear(); _inspector.Children.Add(Text("PLAYTEST START"));
+            AddButton(_inspector,"From camera",()=>_=Play());
+            AddButton(_inspector,"From selected spawn",()=>
+            {
+                var spawn=_document?.Project.Definition.Spawns.FirstOrDefault(s=>_document.Selection.Contains(s.Id));
+                if(spawn==null){_status.Text="Select a spawn first.";return;} _=Play(spawn);
+            });
+            foreach(int team in new[]{0,1}) AddButton(_inspector,team==0?"From Team A spawn":"From Team B spawn",()=>
+            {
+                var spawn=_document?.Project.Definition.Spawns.FirstOrDefault(s=>s.Team==team);
+                if(spawn==null){_status.Text="No spawn exists for this team.";return;} _=Play(spawn);
+            });
+        }
+        private Task Play(MapSpawn? start=null)=>Work("Preparing playtest",async(p,token)=>
         {
             if(!GameFiles.Ready)throw new IOException("Set up game files in Settings before playtesting.");GameFiles.ApplyPaths();
             p.Definition.Name=_previewName;p.Definition.SourcePath=null;
             p.Definition.Capabilities=null;
             if(p.Definition.Import!=null)p.Definition.Import.KeepSpawns=false;
-            if(_viewport!=null){var pos=_viewport.CameraPosition;p.Definition.Spawns.Clear();p.Definition.Spawns.Add(new(){Position=new[]{pos.X,pos.Y,pos.Z}});}
+            if(start!=null){p.Definition.Spawns.Clear();p.Definition.Spawns.Add(new(){Position=(float[])start.Position.Clone(),Yaw=start.Yaw,Team=start.Team});}
+            else if(_viewport!=null){var pos=_viewport.CameraPosition;p.Definition.Spawns.Clear();p.Definition.Spawns.Add(new(){Position=new[]{pos.X,pos.Y,pos.Z}});}
             var result=await MapBuildScheduler.Shared.BuildAsync(MapBuildSnapshot.Capture(p),token);
-            token.ThrowIfCancellationRequested();Problems(result.Validation());if(!result.Succeeded)return;
+            GuardJob(token);Problems(result.Validation());if(!result.Succeeded)return;
             await Task.Run(()=>{token.ThrowIfCancellationRequested();MapBuildScheduler.Install(result,p.Definition,CustomRooms.ArchiveDirectory(p.Definition),CustomRooms.EntityDirectory(),CustomRooms.NodeDirectory());},token);
-            PlayRequested?.Invoke(this,p.Definition);
+            GuardJob(token); PlayRequested?.Invoke(this,p.Definition);
         });
         private Task Audit()=>Work("Running map audit",async(p,token)=>
         {
             if(!GameFiles.Ready)throw new IOException("Set up game files before running a map audit.");
-            var result=await MapAuditRunner.Run(p,token);_status.Text=result.Passed?"Map audit passed.":"Map audit failed.";
+            var result=await MapAuditRunner.Run(p,token);GuardJob(token);_status.Text=result.Passed?"Map audit passed.":"Map audit failed.";
             _problems.ItemsSource=result.Lines;
         });
         private void Import()=>Browse("Choose a Quake 3 source",false,source=>
@@ -595,12 +784,13 @@ namespace MphRead.Mods.Launcher.Gui
                         MapValidator.RequireRuntimeName(room);string directory=Path.Combine(CustomRooms.MapDirectory,room.ToLowerInvariant());
                         if(Directory.Exists(directory))throw new IOException("A map folder already has this name. Choose a new name.");
                         Dismiss();_status.Text="Importing Quake 3 map…";
-                        int status=await Task.Run(()=>Q3Convert.Run(source,map,room,directory,!keep,false,string.IsNullOrWhiteSpace(size)?null:Number(size),64));
-                        token.ThrowIfCancellationRequested();
+                        int status=await Task.Run(()=>Q3Convert.Run(source,map,room,directory,!keep,false,string.IsNullOrWhiteSpace(size)?null:Number(size),64,token));
+                        GuardJob(token);
                         if(status!=0)throw new IOException("Import failed; inspect the build log.");
                         string path=Directory.EnumerateFiles(directory,"*.json").Single();Load(MapProjectMigrator.Upgrade(MapProjectSerializer.Load(path)),path);
                     }
-                    catch(Exception ex){Failure(ex);}
+                    catch(OperationCanceledException){throw;}
+                    catch(Exception ex){GuardJob(token);Failure(ex);}
                 }));
             });AddButton(view,"Cancel",Dismiss);Modal(view);
         },".pk3",".bsp");
@@ -611,6 +801,7 @@ namespace MphRead.Mods.Launcher.Gui
             if(_work!=null){if(e.Key==Key.Escape)_work.Cancel();e.Handled=true;return;}
             if(e.Key==Key.Escape){if(_modal.IsVisible)Dismiss();else Close();e.Handled=true;}
             else if(e.KeyModifiers.HasFlag(KeyModifiers.Control)&&e.Key==Key.S){Save();e.Handled=true;}
+            else if(e.KeyModifiers.HasFlag(KeyModifiers.Control)&&e.Key==Key.Enter){_=Play();e.Handled=true;}
             else base.OnKeyDown(e);
         }
     }

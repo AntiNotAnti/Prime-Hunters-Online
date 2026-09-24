@@ -107,6 +107,9 @@ namespace MphRead.Mods.MapGen
                 if (!Position(s.Position) || !float.IsFinite(s.Yaw)) { r.Error("FP-MAP-014", "Spawn requires position within fixed-point range and finite yaw.", s.Id); continue; }
                 if (s.Team is < -1 or > 3) r.Error("FP-MAP-014", "Spawn team must be neutral (-1) or 0–3.", s.Id);
                 if (s.Position[1] <= d.KillHeight) r.Error("FP-MAP-014", "Spawn is below the kill plane.", s.Id);
+                if (d.Spawns.Any(other => other != null && !ReferenceEquals(other, s) && Position(other.Position)
+                    && (MapBuilder.ToVector(other.Position) - MapBuilder.ToVector(s.Position)).LengthSquared < 4))
+                    r.Warning("FP-MAP-014", "Spawn is within two units of another spawn.", s.Id);
                 var position=MapBuilder.ToVector(s.Position);
                 bool InSolid(Vector3 p)=>solids.Any(faces=>faces.All(f=>Vector3.Dot(f.Normal,p-f.Points[0])<-.01f));
                 if(InSolid(position))r.Error("FP-MAP-002","Spawn is inside solid geometry.",s.Id);
@@ -138,6 +141,8 @@ namespace MphRead.Mods.MapGen
                     && (pad.Target == null || Position(pad.Target))
                     && (pad.Vector == null || (Vector(pad.Vector) && pad.Vector.Any(x => x != 0) && float.IsFinite(pad.Speed) && pad.Speed > 0));
                 if (!valid) { r.Error("FP-MAP-016", "Jump pad requires positive trigger dimensions and exactly one of target or nonzero vector plus positive speed.", pad.Id); continue; }
+                if (pad.Target != null && pad.Target[1] <= d.KillHeight)
+                    r.Warning("FP-MAP-016", "Jump destination is below the kill plane.", pad.Id);
                 var (direction, speed) = MapBuilder.SolveJumpPad(pad);
                 if (!float.IsFinite(speed) || speed <= 0) r.Error("FP-MAP-016", "Jump pad trajectory cannot be solved.", pad.Id);
                 else if (safeBrushes)
@@ -149,7 +154,10 @@ namespace MphRead.Mods.MapGen
                     {
                         float t = duration * i / 60;
                         var p = MapBuilder.ToVector(pad.Position) + velocity * t - Vector3.UnitY * (0.5f * (77 / 4096f) * t * t);
-                        if (d.Brushes.Any(b => b.Solid && Inside(new[] { p.X, p.Y, p.Z }, b, 0)))
+                        if (p.Y <= d.KillHeight)
+                        { r.Warning("FP-MAP-016", "Jump trajectory crosses the kill plane.", pad.Id); break; }
+                        if (solids.Any(faces => faces.All(f => Vector3.Dot(f.Normal, p-f.Points[0]) < -.01f))
+                            || d.Brushes.Any(b => b.Solid && Inside(new[] { p.X, p.Y, p.Z }, b, 0)))
                         { r.Warning("FP-MAP-016", "Jump trajectory crosses solid geometry.", pad.Id); break; }
                     }
                 }

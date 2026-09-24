@@ -26,6 +26,25 @@ cannot move the edge. InMatch remains the authoritative server phase and confirm
 the transition instead of deciding the client's first playable frame by
 packet-arrival timing.
 
+Fresh commitments use their monotonic socket-arrival timestamp, so time spent
+queued behind a client load or render hitch does not restart the countdown.
+Release is latched for the start identity: a late refresh cannot freeze gameplay
+again after the committed edge. A new start generation resets that latch.
+
+Both desktop and Android pump control traffic on every frozen render frame,
+without advancing the scene or NetFrame. Reconnect retries keep their wall-clock
+cadence while frozen and are disabled for playback. They reset the fixed-step accumulator
+through the barrier and discard the render interval crossing release. Headless
+scene stepping has the same simulation guard. MatchLoaded is emitted only by
+scene-load completion paths; stepping an old scene while a new match is Starting
+must not acknowledge that new scene.
+
+The initial Starting publication sends three independent datagram sequences for
+one reliable event before authority construction begins. Identical outstanding
+payloads retain their event ID and receiver deduplication still applies once.
+The socket worker also services ordinary reliable retries during a synchronous
+authority build; the burst avoids waiting for its retransmission deadline.
+
 A late-join scene that finishes before SessionState retains its MatchId/epoch
 until the matching start generation arrives. Teardown or a different match drops
 that pending readiness; a delayed packet cannot ready an unrelated scene.
@@ -48,7 +67,19 @@ The one-room cache remains bounded to the currently advertised room and survives
 the match so a same-map rematch can reuse it; selecting or editing a different
 room invalidates/replaces it.
 
+Authority initialization and match-runtime teardown preserve this lobby-owned
+cache. Full NetSession.Stop and dedicated-server shutdown release it. Read's
+ordinary scene caches still clear at teardown, keeping retention bounded to the
+one prewarmed room.
+
 `--load-lifecycle` combines virtual-time boundary tests with the real UDP lobby
 suite (admission, ownership, commands, rematches, teams, late join and rotation).
 Asset-free tests prove control-plane behavior; rendered loading/first-frame quality
 still requires extracted game assets and an actual multiplayer run.
+The suite also covers a lost first start notice with immediate wire copies,
+exactly-once burst delivery, delayed countdown draining and release latching,
+frozen scene/RNG/network clocks, and lazy prewarm reuse across authority restarts.
+
+Authoritative world bootstrap/WorldReady remains a separate architectural change:
+the current barrier acknowledges scene construction, and it does not yet prove
+that every replica has applied an authoritative spawn snapshot before release.

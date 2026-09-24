@@ -1,5 +1,10 @@
 using System;
+using System.Buffers.Binary;
+using System.Net;
+using System.Net.Sockets;
+using System.Threading;
 using MphRead.Mods.Network;
+using MphRead.Mods.Multiplayer;
 
 namespace MphRead.NetTest;
 
@@ -9,6 +14,7 @@ internal static class LoadLifecycleTests
     {
         try
         {
+            StartAnnouncementBurst();
             foreach (double lag in new[] { 0.0, .1, 2, 10 })
             {
                 var start = new NetMatchStart(); start.Begin(42, 9, 255); var identity = start.Identity;
@@ -68,5 +74,72 @@ internal static class LoadLifecycleTests
             return NetLobbyTest.Run();
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
+    }
+
+    private static void StartAnnouncementBurst()
+    {
+        using var server = new NetTransport(0);
+        using var wire = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+        wire.Client.ReceiveTimeout = 2000;
+        var clientAddress = (IPEndPoint)wire.Client.LocalEndPoint!;
+        var serverAddress = new IPEndPoint(IPAddress.Loopback, server.LocalPort);
+        server.Send(clientAddress, PacketType.Welcome, new byte[17]);
+        byte[] Read(PacketType type)
+        {
+            var from = new IPEndPoint(IPAddress.Any, 0);
+            for (int i = 0; i < 100; i++)
+            {
+                byte[] bytes = wire.Receive(ref from);
+                if (NetHeader.TryRead(bytes, out var header) && header.Type == type) return bytes;
+            }
+            throw new Exception("Expected startup datagram missing");
+        }
+        byte[] welcome = Read(PacketType.Welcome);
+        NetHeader.TryRead(welcome, out var admission);
+        var receiver = new NetConnection(serverAddress, admission.ConnectionId);
+        receiver.Receive(admission, 0);
+        void Ack()
+        {
+            var bytes = new byte[NetHeader.Size];
+            receiver.Send(0, 0, NetHeaderFlags.AckOnly).Write(bytes);
+            wire.Send(bytes, serverAddress);
+        }
+        Ack();
+        NetArchitectureTests.Check(SpinWait.SpinUntil(() => server.ReliableStats(clientAddress)?.Pending == 0, 2000),
+            "welcome acknowledged without application pumping");
+
+        var state = new SessionStatePacket { Phase = SessionPhase.Starting, MatchId = 42,
+            AuthorityEpoch = 9, StartGeneration = 17, StartStage = StartStage.Preparing,
+            MaxPlayers = 8, OwnerSlot = 255, WorldProfile = MatchWorldProfile.Resolve(8),
+            Match = new MatchDefinition { RoomKey = "test", Mode = MphRead.GameMode.Battle } };
+        var payload = new byte[SessionStatePacket.Size]; state.Write(payload);
+        server.Send(clientAddress, PacketType.SessionState, payload);
+        byte[] lost = Read(PacketType.SessionState); // Deliberately drop the original notice.
+        uint eventId = BinaryPrimitives.ReadUInt32LittleEndian(lost.AsSpan(NetHeader.Size));
+        server.Send(clientAddress, PacketType.SessionState, payload, immediateCopies: 3);
+        int applications = 0;
+        var sequences = new System.Collections.Generic.HashSet<uint>();
+        // No server Drain or simulation step: the entire burst is on the wire
+        // before synchronous authority construction can block its owner.
+        for (int i = 0; i < 3; i++)
+        {
+            byte[] bytes = Read(PacketType.SessionState);
+            NetHeader.TryRead(bytes, out var header);
+            uint id = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(NetHeader.Size));
+            NetArchitectureTests.Check(id == eventId && sequences.Add(header.Sequence),
+                "burst retains one event identity with independent datagram sequences");
+            receiver.Receive(header, 1);
+            if (receiver.Reliable.Receive(id))
+            {
+                applications++;
+                NetArchitectureTests.Check(SessionStatePacket.TryRead(bytes.AsSpan(NetHeader.Size + 4), out var received)
+                    && received.MatchId == 42 && received.StartGeneration == 17,
+                    "lost initial announcement still delivers frozen startup identity");
+            }
+        }
+        Ack();
+        NetArchitectureTests.Check(applications == 1
+            && SpinWait.SpinUntil(() => server.ReliableStats(clientAddress)?.Pending == 0, 2000),
+            "startup burst applies once and ACK of a surviving copy completes delivery");
     }
 }

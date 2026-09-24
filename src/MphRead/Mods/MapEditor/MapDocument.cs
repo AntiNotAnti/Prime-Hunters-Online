@@ -12,6 +12,7 @@ namespace MphRead.Mods.MapEditor
         public MapProject Project { get; private set; }
         public string? FilePath { get; private set; }
         public HashSet<Guid> Selection { get; } = new();
+        public Guid ActiveObjectId { get; set; }
         public MapCommandHistory History { get; } = new();
         public MapValidationResult Diagnostics { get; set; } = new();
         public DateTime LastEditUtc { get; private set; } = DateTime.UtcNow;
@@ -39,10 +40,48 @@ namespace MphRead.Mods.MapEditor
             _recoveryKey = MapBuildFingerprint.HashText(path == null ? Guid.NewGuid().ToString() : Path.GetFullPath(path));
         }
 
-        public void SelectionChanged() => Invalidated?.Invoke(new(MapChangeDomain.Selection));
+        public void SelectionChanged()
+        {
+            if (!Selection.Contains(ActiveObjectId)) ActiveObjectId = Selection.FirstOrDefault();
+            Invalidated?.Invoke(new(MapChangeDomain.Selection));
+        }
         public void OverlayChanged() => Invalidated?.Invoke(new(MapChangeDomain.Overlay));
 
-        public MapProject Snapshot() => new(Project.ToDefinition());
+        private DocumentStateId? _snapshotState;
+        private MapBuildSnapshot? _snapshot;
+        public MapBuildSnapshot CaptureBuildSnapshot()
+        {
+            if (_snapshot == null || _snapshotState != CurrentStateId)
+            { _snapshot = MapBuildSnapshot.Capture(Project); _snapshotState = CurrentStateId; }
+            return _snapshot;
+        }
+        public MapProject Snapshot() => new(CaptureBuildSnapshot().CreateDefinition());
+        private readonly HashSet<string> _recoveryAssets = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, string> _generatedAssets = new(StringComparer.Ordinal);
+        public void RegisterGeneratedAsset(string relative, string root)
+            => _generatedAssets[relative] = Path.GetFullPath(root);
+        public int CleanupGeneratedAssets()
+        {
+            var retained = Project.Definition.Assets.Select(a => a.Path).Concat(History.RetainedAssets).Concat(_recoveryAssets).ToHashSet(StringComparer.Ordinal);
+            int removed = 0;
+            foreach (var entry in _generatedAssets.ToArray())
+            {
+                if (retained.Contains(entry.Key)) continue;
+                string root = entry.Value + Path.DirectorySeparatorChar;
+                string path = Path.GetFullPath(Path.Combine(root, entry.Key));
+                if (!path.StartsWith(root, StringComparison.Ordinal) || File.GetAttributes(Path.GetDirectoryName(path)!).HasFlag(FileAttributes.ReparsePoint)) continue;
+                if (File.Exists(path)) { File.Delete(path); removed++; }
+                _generatedAssets.Remove(entry.Key);
+            }
+            return removed;
+        }
+        public MapAutosavePayload CaptureAutosave(string directory)
+        {
+            foreach (var asset in Project.Definition.Assets) _recoveryAssets.Add(asset.Path);
+            return new(CaptureBuildSnapshot(), RecoveryPath(directory), FilePath,
+                Project.Definition.BaseDirectory, Project.Definition.BundlePath, CurrentStateId);
+        }
+
         public void Edit(string label, Action<MapDefinition> edit, MapChangeDomain domains = MapChangeDomain.All)
         {
             MapDefinition before = Project.ToDefinition(), after = Project.ToDefinition();
@@ -55,6 +94,7 @@ namespace MphRead.Mods.MapEditor
         {
             private readonly MapDocument _document;
             private readonly MapDefinition _before, _after;
+            public IEnumerable<string> RetainedAssets => _before.Assets.Concat(_after.Assets).Select(a => a.Path);
             public string Label { get; }
             public long ApproximateBytes { get; }
             public MapDocumentChange Change { get; }
@@ -97,7 +137,7 @@ namespace MphRead.Mods.MapEditor
             definition.BundlePath = null;
             if (definition.Import != null) { definition.Import.BaseDirectory=definition.BaseDirectory; definition.Import.BundlePath=null; }
             if (definition.Collision != null) { definition.Collision.BaseDirectory=definition.BaseDirectory; definition.Collision.BundlePath=null; }
-            Project = new(definition); SavedStateId = CurrentStateId; History.MarkSaved();
+            _snapshot = null; Project = new(definition); SavedStateId = CurrentStateId; History.MarkSaved();
             Invalidated?.Invoke(new(MapChangeDomain.Metadata)); Changed?.Invoke();
         }
         public string RecoveryPath(string directory) => Path.Combine(directory, ".autosave", _recoveryKey + ".json");
@@ -192,7 +232,20 @@ namespace MphRead.Mods.MapEditor
         }
         public static void Duplicate(MapDefinition d, ISet<Guid> ids)
         {
-            var copy = MapProjectSerializer.Clone(d);
+            var copy = new MapDefinition();
+            foreach (var item in All(d).Where(o => ids.Contains(o.Id)).ToArray())
+            {
+                object value = MapSnapshotCopy.Copy(item.Value);
+                switch (value)
+                {
+                    case MapGeometry g: copy.Geometry.Add(g); break;
+                    case MapBrush b: copy.Brushes.Add(b); break;
+                    case MapSpawn spawn: copy.Spawns.Add(spawn); break;
+                    case MapItem pickup: copy.Items.Add(pickup); break;
+                    case MapJumpPad pad: copy.JumpPads.Add(pad); break;
+                    case MapNavigationLink link: copy.NavigationLinks.Add(link); break;
+                }
+            }
             foreach(var o in All(copy).Where(o=>ids.Contains(o.Id)).ToArray())
             {
                 o.SetId(Guid.NewGuid()); o.Move(new[] {1f,0,1});

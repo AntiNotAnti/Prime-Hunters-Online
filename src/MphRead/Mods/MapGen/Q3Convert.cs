@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -55,8 +56,9 @@ namespace MphRead.Mods.MapGen
         public const float TargetExtent = 130f;
 
         public static int Run(string source, string? mapName, string? roomName, string? outputDir,
-            bool dropClip, bool dropItems, float? forcedScale, int textureSize)
+            bool dropClip, bool dropItems, float? forcedScale, int textureSize, CancellationToken cancellation = default)
         {
+            cancellation.ThrowIfCancellationRequested();
             if (!File.Exists(source))
             {
                 Console.WriteLine($"No such file: {source}");
@@ -65,8 +67,9 @@ namespace MphRead.Mods.MapGen
             Q3Bsp bsp;
             try
             {
-                bsp = Q3Bsp.Load(source, mapName);
+                bsp = Q3Bsp.Load(source, mapName, cancellation);
             }
+            catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
                 Console.WriteLine(ex.Message);
@@ -99,11 +102,14 @@ namespace MphRead.Mods.MapGen
             string beside = Path.Combine(directory, levelName);
             if (Path.GetFullPath(beside) != Path.GetFullPath(source))
             {
-                File.Copy(source, beside, overwrite: true);
+                using var input = File.OpenRead(source);
+                using var output = File.Create(beside);
+                byte[] buffer = new byte[81920]; int count;
+                while ((count = input.Read(buffer)) > 0) { cancellation.ThrowIfCancellationRequested(); output.Write(buffer, 0, count); }
             }
 
             string texturePath = Path.Combine(directory, $"{prefix}.tex");
-            MapTextureBake.Result baked = MapTextureBake.Bake(bsp, new[] { source }, texturePath, textureSize);
+            MapTextureBake.Result baked = MapTextureBake.Bake(bsp, new[] { source }, texturePath, textureSize, cancellation: cancellation);
             Console.WriteLine($"  {baked.Baked} textures at {textureSize}x{textureSize}"
                 + $" -> {baked.Bytes:N0} B  {Path.GetFileName(texturePath)}");
             if (baked.Missing.Count > 0)
@@ -140,6 +146,7 @@ namespace MphRead.Mods.MapGen
             AddItems(definition, bsp, unit, dropItems);
 
             string path = Path.Combine(directory, $"{prefix}.json");
+            cancellation.ThrowIfCancellationRequested();
             definition.Save(path);
             Console.WriteLine($"  {definition.Spawns.Count} spawn points, {unit:0.#} Quake units per unit"
                 + $" -> {(max[0] - min[0]) / unit:0} x {(max[2] - min[2]) / unit:0} x {(max[1] - min[1]) / unit:0} units");

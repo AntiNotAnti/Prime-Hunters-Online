@@ -23,9 +23,16 @@ namespace MphRead.Mods.Network
         public static double StartCountdownRemainingSeconds => ServerSession is { } countdown
             && countdown.Phase == SessionPhase.Starting && _countdownIdentity == StartIdentity(countdown)
             && _startCountdownEndsAt > 0 ? Math.Max(0, _startCountdownEndsAt - Clock) : 0;
-        public static bool StartReleaseReached => ServerSession is { } session
-            && session.Phase == SessionPhase.Starting && _countdownIdentity == StartIdentity(session)
-            && NetMatchStart.ClientReleaseReady(StartStage.Countdown, _startCountdownEndsAt, Clock);
+        public static bool StartReleaseReached
+        {
+            get
+            {
+                if (ServerSession is not { Phase: SessionPhase.Starting } session
+                    || _countdownIdentity != StartIdentity(session)) return false;
+                _startReleased |= NetMatchStart.ClientReleaseReady(StartStage.Countdown, _startCountdownEndsAt, Clock);
+                return _startReleased;
+            }
+        }
         public static bool CanEditLobby => IsInLobby && LocalIsLobbyOwner;
         public static bool PersistentLobby => ServerSession?.Policy == ServerSessionPolicy.Lobby;
         // Loading stays frozen, but the countdown is a commitment made ahead of
@@ -51,6 +58,7 @@ namespace MphRead.Mods.Network
         private static MatchStartIdentity? _loadProgressIdentity, _countdownIdentity;
         private static ushort _lastStartCommitRemaining = ushort.MaxValue;
         private static bool _freshStartCommitSeen;
+        private static bool _startReleased, _loadingFrameHeld;
         private static double _lastLoadAck, _lastLoadProgress, _lastIdentity, _startCountdownEndsAt;
         private sealed class PendingLobbyCommand
         {
@@ -61,6 +69,20 @@ namespace MphRead.Mods.Network
         private static readonly Dictionary<uint, PendingLobbyCommand> _pendingLobby = new();
 
         public static void Pump(double time = 0) => Update(time);
+
+        internal static void PumpLoading() => Update(Clock, advanceFrame: false);
+
+        // Called once per rendered frame by both platform hosts. Frozen time
+        // never becomes gameplay debt, including the frame crossing release.
+        public static bool HoldLoadingFrame()
+        {
+            bool held = FreezeGameplay;
+            bool discardElapsed = held || _loadingFrameHeld;
+            if (held) PumpLoading();
+            _loadingFrameHeld = FreezeGameplay;
+            if (discardElapsed) Mods.Render.FrameTiming.Reset();
+            return discardElapsed;
+        }
 
         public static bool SendLobbyCommand(LobbyCommandType type, byte targetSlot = 255,
             sbyte team = -1, bool ready = false, SessionStatePacket? configuration = null)
@@ -211,16 +233,21 @@ namespace MphRead.Mods.Network
             _startCountdownEndsAt = 0;
             _lastStartCommitRemaining = ushort.MaxValue;
             _freshStartCommitSeen = false;
+            _startReleased = false;
         }
 
         private static void ArmStartCountdown(MatchStartIdentity identity, ushort remainingMilliseconds,
-            bool freshCommit)
+            bool freshCommit, double? receivedAt = null)
         {
             if (_countdownIdentity != identity)
             {
                 ResetStartCountdown();
                 _countdownIdentity = identity;
             }
+
+            // Once gameplay has been released, a late refresh cannot freeze it
+            // again, even if its timing estimate lands on a later frame.
+            if (StartReleaseReached) return;
 
             // Remaining time must decrease. Ignore duplicate/reordered commits,
             // then let the newest estimate move either direction. The previous
@@ -245,7 +272,7 @@ namespace MphRead.Mods.Network
                 0, 0.15);
             double jitterSafety = Math.Clamp(
                 (connection?.RttJitterMilliseconds ?? 0) / 1000.0 + 0.02, 0.03, 0.08);
-            double target = Clock + Math.Max(0,
+            double target = (receivedAt ?? Clock) + Math.Max(0,
                 remainingMilliseconds / 1000.0 - oneWay + jitterSafety);
 
             if (freshCommit)
@@ -254,7 +281,7 @@ namespace MphRead.Mods.Network
                 _startCountdownEndsAt = target;
         }
 
-        internal static void ApplyStartCommit(MatchStartCommitPacket commit)
+        internal static void ApplyStartCommit(MatchStartCommitPacket commit, double? receivedAt = null)
         {
             if (ServerSession is not { } state || state.Phase != SessionPhase.Starting
                 || commit.Identity != StartIdentity(state)
@@ -262,7 +289,7 @@ namespace MphRead.Mods.Network
                 return;
             // The commit itself proves the server reached Countdown; do not make
             // it wait for the reliable state packet to win the packet race.
-            ArmStartCountdown(commit.Identity, commit.RemainingMilliseconds, freshCommit: true);
+            ArmStartCountdown(commit.Identity, commit.RemainingMilliseconds, freshCommit: true, receivedAt);
         }
 
         public static void ReportMatchLoadProgress(MatchLoadStage stage)
@@ -341,8 +368,8 @@ namespace MphRead.Mods.Network
             _rosterSessionRevision = 0;
             LobbyMessage = ""; _loadStage = MatchLoadStage.None; _loadProgressIdentity = null;
             ResetStartCountdown();
+            _loadingFrameHeld = false;
             _lastLoadAck = _lastLoadProgress = _lastIdentity = 0;
-            Mods.RoomPrewarm.Clear();
             Array.Fill(SlotTeamIndex, (sbyte)-1); Array.Clear(SlotLobbyReady);
             Chat.NetChat.Clear();
         }

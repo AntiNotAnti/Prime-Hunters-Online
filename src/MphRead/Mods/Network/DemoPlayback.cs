@@ -103,7 +103,7 @@ public static class DemoPlayback
         scene.ReplayPreviewSize = _shell!.Size;
         var size = ReplayVideoExporter.OutputSize ?? _shell.Size;
         if (scene.Size != size) { scene.Size = size; scene.OnResize(); }
-        scene.ReplayRenderAlpha = ReplayVideoExporter.Active ? ReplayVideoExporter.PresentationAlpha
+        scene.ReplayRenderAlpha = ReplayVideoExporter.Rendering ? ReplayVideoExporter.PresentationAlpha
             : Render.FrameTiming.Active ? Session.Transport.PresentationAlpha(Render.FrameTiming.PresentationAlpha) : 1;
         return ReferenceEquals(scene, shell) ? null : scene;
     }

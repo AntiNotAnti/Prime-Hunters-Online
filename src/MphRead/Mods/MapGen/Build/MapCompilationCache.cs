@@ -23,8 +23,10 @@ internal sealed class MapCompilationCache
     }
     internal int Count { get { lock (_sync) return _entries.Count; } }
     internal long Bytes { get { lock (_sync) return _bytes; } }
-    internal MapCompilation Get(string key, MapDefinition definition)
+    internal MapCompilation Get(string key, MapDefinition definition, CancellationToken cancellation = default)
     {
+        cancellation.ThrowIfCancellationRequested();
+        string contentKey = key;
         key = ContextKey(key, definition);
         Entry entry;
         lock (_sync)
@@ -33,12 +35,20 @@ internal sealed class MapCompilationCache
                 _entries.Add(key, entry = new() { Value = new(() =>
                 {
                     Interlocked.Increment(ref _compilations);
-                    return MapCompiler.Compile(definition);
+                    return MapCompiler.Compile(definition, cancellation);
                 }) });
             entry.Used = ++_clock;
         }
         MapCompilation result;
         try { result = entry.Value.Value; }
+        catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
+        {
+            // A different job may have owned the Lazy and lost its last waiter.
+            // Remove only that attempt and let this live caller compile afresh.
+            lock (_sync)
+                if (_entries.TryGetValue(key, out var current) && ReferenceEquals(current, entry)) _entries.Remove(key);
+            return Get(contentKey, definition, cancellation);
+        }
         catch
         {
             lock (_sync)

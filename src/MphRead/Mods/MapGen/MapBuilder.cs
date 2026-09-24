@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Collections.Generic;
 using MphRead.Editor;
 using MphRead.Entities;
@@ -45,15 +46,16 @@ namespace MphRead.Mods.MapGen
         // reading as a flat silhouette
         private static readonly float[] _faceShades = new[] { 1f, 0.55f, 0.82f, 0.82f, 0.74f, 0.74f };
 
-        public static BuiltMap Build(MapDefinition def)
+        public static BuiltMap Build(MapDefinition def, CancellationToken cancellation = default)
         {
             var map = new BuiltMap(def);
             foreach (MapBrush brush in def.Brushes)
             {
+                cancellation.ThrowIfCancellationRequested();
                 AddBrush(map, def, brush);
             }
             AddEntities(map, def);
-            GeometryCompiler.Add(map, def);
+            GeometryCompiler.Add(map, def, cancellation);
             return map;
         }
 

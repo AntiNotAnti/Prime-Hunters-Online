@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -25,10 +26,11 @@ namespace MphRead.Mods.MapGen
     public static class MapTextureBake
     {
         public const int DefaultSize = 64;
-        public static byte[] BakeImage(byte[] image)
+        public static byte[] BakeImage(byte[] image, CancellationToken cancellation = default)
         {
+            cancellation.ThrowIfCancellationRequested();
             const int size=64;
-            var(palette,pixels)=Quantize(Decode(image,size),size);
+            var(palette,pixels)=Quantize(Decode(image,size,cancellation),size,cancellation);
             using var stream=new MemoryStream();using var writer=new BinaryWriter(stream,Encoding.UTF8);
             writer.Write(new[]{'F','P','T','X'});writer.Write((ushort)1);writer.Write((ushort)1);
             writer.Write((ushort)0);writer.Write((ushort)size);writer.Write((ushort)size);writer.Write((ushort)palette.Length);
@@ -61,7 +63,7 @@ namespace MphRead.Mods.MapGen
         /// .pk3 first, then whatever else the player has.
         /// </summary>
         public static Result Bake(Q3Bsp bsp, IReadOnlyList<string> archivePaths, string outputPath,
-            int size = DefaultSize, bool sky = true)
+            int size = DefaultSize, bool sky = true, CancellationToken cancellation = default)
         {
             var archives = new List<ZipArchive>();
             try
@@ -93,13 +95,14 @@ namespace MphRead.Mods.MapGen
                 var missing = new List<string>();
                 foreach ((int index, string name) in UsedTextures(bsp, sky))
                 {
+                    cancellation.ThrowIfCancellationRequested();
                     byte[]? raw = Find(files, name);
                     if (raw == null)
                     {
                         missing.Add(name);
                         continue;
                     }
-                    (ushort[] palette, byte[] pixels) = Quantize(Decode(raw, size), size);
+                    (ushort[] palette, byte[] pixels) = Quantize(Decode(raw, size, cancellation), size, cancellation);
                     entries.Add((index, name, palette, pixels));
                 }
                 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputPath))!);
@@ -190,7 +193,7 @@ namespace MphRead.Mods.MapGen
         }
 
         /// <summary>Decode and box-filter down to the square the hardware wants.</summary>
-        private static byte[] Decode(byte[] raw, int size)
+        private static byte[] Decode(byte[] raw, int size, CancellationToken cancellation)
         {
             using var source = new MemoryStream(raw);
             using StbImage image = StbImage.Load(source, StbiImageFormat.Rgb);
@@ -200,6 +203,7 @@ namespace MphRead.Mods.MapGen
             var result = new byte[size * size * 3];
             for (int y = 0; y < size; y++)
             {
+                cancellation.ThrowIfCancellationRequested();
                 int y0 = y * height / size;
                 int y1 = Math.Max(y0 + 1, (y + 1) * height / size);
                 for (int x = 0; x < size; x++)
@@ -237,7 +241,7 @@ namespace MphRead.Mods.MapGen
         /// 64x64 tile that will be seen at a distance on a texture unit that
         /// only reads 8-bit indices anyway.
         /// </summary>
-        private static (ushort[], byte[]) Quantize(byte[] rgb, int size)
+        private static (ushort[], byte[]) Quantize(byte[] rgb, int size, CancellationToken cancellation)
         {
             int count = size * size;
             var indices = new int[count];
@@ -249,6 +253,7 @@ namespace MphRead.Mods.MapGen
             while (boxes.Count < PaletteSize)
             {
                 int widest = -1;
+                cancellation.ThrowIfCancellationRequested();
                 int widestSpread = 0;
                 int widestChannel = 0;
                 for (int i = 0; i < boxes.Count; i++)

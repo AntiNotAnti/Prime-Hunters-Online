@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Runtime.CompilerServices;
 
 namespace MphRead.Mods.Network
 {
@@ -103,6 +104,7 @@ namespace MphRead.Mods.Network
             return _document = new Document();
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public static bool TryGet(string path, out DemoRecording recording)
         {
             recording = default;
@@ -126,6 +128,7 @@ namespace MphRead.Mods.Network
             }
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public static void Note(string path, DemoRecording recording, byte formatVersion)
         {
             var info = new FileInfo(path);
@@ -156,12 +159,14 @@ namespace MphRead.Mods.Network
             _dirty = true;
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public static void Remove(string path)
         {
             if (Load().Entries.Remove(Path.GetFileName(path)))
                 _dirty = true;
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public static void Prune(ISet<string> presentFileNames)
         {
             Document doc = Load();
@@ -173,6 +178,7 @@ namespace MphRead.Mods.Network
             }
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public static void Flush()
         {
             if (!_dirty) return;

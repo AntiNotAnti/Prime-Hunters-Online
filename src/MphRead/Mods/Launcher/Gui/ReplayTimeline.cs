@@ -1,6 +1,9 @@
 #if MPHREAD_AVALONIA
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.IO;
+using Avalonia.Media.Imaging;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -50,7 +53,13 @@ namespace MphRead.Mods.Launcher.Gui
         private static readonly Pen CameraPen = new(CameraBrush, 2);
         private static readonly Pen BookmarkPen = new(BookmarkBrush, 2);
 
-        private enum DragTarget { None, Playhead, MarkIn, MarkOut }
+        private enum DragTarget { None, Playhead, MarkIn, MarkOut, Range, Camera }
+        private (uint First, uint Last)? _dragWindow;
+        private uint _dragAnchor, _rangeIn, _rangeOut, _cameraFrame, _cameraDestination;
+        private int[] _density = Array.Empty<int>();
+        private uint _bucketFrames;
+        private int _eventCount;
+        private static readonly IBrush LaneBrush = new SolidColorBrush(Deck.Fade(0xffffff, 0.035));
 
         private DragTarget _dragTarget;
         private uint _duration;
@@ -69,6 +78,8 @@ namespace MphRead.Mods.Launcher.Gui
         public Action<uint>? FrameRequested { get; set; }
         public Action<uint>? MarkInRequested { get; set; }
         public Action<uint>? MarkOutRequested { get; set; }
+        public Action<uint, uint>? RangeRequested { get; set; }
+        public Action<uint, uint>? CameraMoved { get; set; }
         public double Zoom { get; private set; } = 1;
 
         public ReplayTimeline()
@@ -84,6 +95,15 @@ namespace MphRead.Mods.Launcher.Gui
             IReadOnlyList<ReplayNamedHighlight>? namedHighlights = null,
             int playerFilter = -1, ReplayTimelineFilter filter = ReplayTimelineFilter.All)
         {
+            if (!ReferenceEquals(events, _events) || events.Count != _eventCount || duration != _duration
+                || playerFilter != _playerFilter || filter != _filter)
+            {
+                _playerFilter = playerFilter; _filter = filter; _eventCount = events.Count;
+                _bucketFrames = Math.Max(60u, (duration + 599) / 600);
+                _density = new int[duration / _bucketFrames + 1];
+                foreach (var marker in events)
+                    if (marker.Frame <= duration && EventVisible(marker)) _density[marker.Frame / _bucketFrames]++;
+            }
             _duration = duration;
             _current = Math.Min(current, duration);
             _markIn = markIn;
@@ -106,6 +126,15 @@ namespace MphRead.Mods.Launcher.Gui
             (uint first, uint last) = Window();
             uint span = Math.Max(1, last - first);
 
+            int peak = _density.Length == 0 ? 1 : Math.Max(1, _density.Max());
+            for (int i = 0; i < _density.Length; i++)
+            {
+                uint begin = (uint)i * _bucketFrames, end = Math.Min(_duration, begin + _bucketFrames);
+                if (_density[i] == 0 || end < first || begin > last) continue;
+                double x1 = X(Math.Max(begin, first), first, span, width), x2 = X(Math.Min(end, last), first, span, width);
+                context.DrawRectangle(PlayedBrush, null, new Rect(x1, height - 7 - 6d * _density[i] / peak,
+                    Math.Max(1, x2 - x1), 6d * _density[i] / peak));
+            }
             const double laneTop = 15;
             const double laneHeight = 14;
             const double laneGap = 3;
@@ -198,8 +227,9 @@ namespace MphRead.Mods.Launcher.Gui
                 }
             }
 
-            foreach (uint key in _cameraKeys)
+            foreach (uint original in _cameraKeys)
             {
+                uint key = _dragTarget == DragTarget.Camera && original == _cameraFrame ? _cameraDestination : original;
                 if (key < first || key > last)
                     continue;
                 double x = X(key, first, span, width);
@@ -230,7 +260,7 @@ namespace MphRead.Mods.Launcher.Gui
         private static void DrawLane(DrawingContext context, double width,
             double y, IBrush brush)
         {
-            context.DrawRectangle(new SolidColorBrush(Deck.Fade(0xffffff, 0.035)),
+            context.DrawRectangle(LaneBrush,
                 null, new Rect(0, y - 6, width, 12));
             context.DrawRectangle(brush, null, new Rect(0, y - 0.5, 5, 1));
         }
@@ -279,7 +309,17 @@ namespace MphRead.Mods.Launcher.Gui
             base.OnPointerPressed(e);
             Focus();
             double x = e.GetPosition(this).X;
+            _dragWindow = Window(); _dragAnchor = FrameAt(x);
+            _rangeIn = _markIn ?? 0; _rangeOut = _markOut ?? 0;
             _dragTarget = PickDragTarget(x);
+            if (e.GetPosition(this).Y < 14)
+            {
+                uint? key = _cameraKeys.Cast<uint?>().OrderBy(k => DistanceTo(k, x)).FirstOrDefault();
+                if (DistanceTo(key, x) <= 10) { _dragTarget = DragTarget.Camera; _cameraFrame = _cameraDestination = key!.Value; }
+            }
+            else if (_dragTarget == DragTarget.Playhead && e.KeyModifiers.HasFlag(KeyModifiers.Shift)
+                && _markIn.HasValue && _markOut.HasValue && _dragAnchor >= _rangeIn && _dragAnchor <= _rangeOut)
+                _dragTarget = DragTarget.Range;
             e.Pointer.Capture(this);
             Request(_dragTarget, x);
             e.Handled = true;
@@ -289,7 +329,11 @@ namespace MphRead.Mods.Launcher.Gui
         {
             base.OnPointerMoved(e);
             if (_dragTarget == DragTarget.None)
+            {
+                uint hover = FrameAt(e.GetPosition(this).X);
+                ShowHover(hover);
                 return;
+            }
             Request(_dragTarget, e.GetPosition(this).X);
             e.Handled = true;
         }
@@ -300,14 +344,16 @@ namespace MphRead.Mods.Launcher.Gui
             if (_dragTarget == DragTarget.None)
                 return;
             Request(_dragTarget, e.GetPosition(this).X);
-            _dragTarget = DragTarget.None;
+            if (_dragTarget == DragTarget.Camera && _cameraFrame != _cameraDestination)
+                CameraMoved?.Invoke(_cameraFrame, _cameraDestination);
+            _dragTarget = DragTarget.None; _dragWindow = null;
             e.Pointer.Capture(null);
             e.Handled = true;
         }
 
         protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
         {
-            _dragTarget = DragTarget.None;
+            _dragTarget = DragTarget.None; _dragWindow = null;
             base.OnPointerCaptureLost(e);
         }
 
@@ -368,8 +414,19 @@ namespace MphRead.Mods.Launcher.Gui
         private void Request(DragTarget target, double x)
         {
             uint frame = FrameAt(x);
+            ShowHover(frame);
+            // Snap to confirmed events within six pixels; otherwise retain exact frame precision.
+            foreach (var marker in _events)
+                if (EventVisible(marker) && DistanceTo(marker.Frame, x) <= 6) { frame = marker.Frame; break; }
             switch (target)
             {
+                case DragTarget.Range:
+                    long delta = Math.Clamp((long)frame - _dragAnchor, -(long)_rangeIn, (long)_duration - _rangeOut);
+                    RangeRequested?.Invoke((uint)(_rangeIn + delta), (uint)(_rangeOut + delta));
+                    break;
+                case DragTarget.Camera:
+                    if (frame == _cameraFrame || !_cameraKeys.Contains(frame)) _cameraDestination = frame;
+                    break;
                 case DragTarget.MarkIn:
                     MarkInRequested?.Invoke(frame);
                     break;
@@ -381,6 +438,56 @@ namespace MphRead.Mods.Launcher.Gui
                     break;
             }
             InvalidateVisual();
+        }
+
+        private readonly List<(uint Frame, Bitmap Image)> _scrubThumbnails = new();
+        private readonly Image _hoverImage = new() { Width = 192, Height = 108, Stretch = Stretch.Uniform };
+        private readonly TextBlock _hoverText = new();
+        private StackPanel? _hoverPanel;
+        private long _thumbnailGeneration;
+        protected override async void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+        {
+            base.OnAttachedToVisualTree(e);
+            long generation = ++_thumbnailGeneration;
+            string? replay = DemoPlayback.CurrentPath;
+            uint duration = ReplayController.DurationFrames;
+            if (replay == null) return;
+            var images = await ReplayStorageJobs.Run(() =>
+            {
+                var loaded = new List<(uint Frame, Bitmap Image)>();
+                for (int i = 0; i < 3; i++)
+                {
+                    try
+                    {
+                        string path = ReplayVideoExporter.ThumbnailPath(replay, i);
+                        if (File.Exists(path)) loaded.Add((duration * (uint)(i + 1) / 4, new Bitmap(path)));
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException) { }
+                }
+                return loaded;
+            });
+            if (generation != _thumbnailGeneration || replay != DemoPlayback.CurrentPath)
+            { foreach (var thumbnail in images) thumbnail.Image.Dispose(); return; }
+            _scrubThumbnails.AddRange(images);
+        }
+        protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+        {
+            _thumbnailGeneration++; _hoverImage.Source = null;
+            foreach (var thumbnail in _scrubThumbnails) thumbnail.Image.Dispose();
+            _scrubThumbnails.Clear(); ToolTip.SetIsOpen(this, false);
+            base.OnDetachedFromVisualTree(e);
+        }
+        private void ShowHover(uint frame)
+        {
+            _hoverPanel ??= new StackPanel { Spacing = 5, Children = { _hoverImage, _hoverText } };
+            var nearby = _events.Where(marker => EventVisible(marker) && Math.Abs((long)marker.Frame - frame) <= 60)
+                .Take(3).Select(marker => marker.Type.ToString());
+            _hoverText.Text = ReplayHud.Time(frame) + "  " + string.Join(" / ", nearby)
+                + (_scrubThumbnails.Count > 0 ? "\nCached scene preview" : "") + "\nShift-drag to move a clip range";
+            _hoverImage.IsVisible = _scrubThumbnails.Count > 0;
+            if (_scrubThumbnails.Count > 0)
+                _hoverImage.Source = _scrubThumbnails.MinBy(image => Math.Abs((long)image.Frame - frame)).Image;
+            ToolTip.SetTip(this, _hoverPanel);
         }
 
         private uint FrameAt(double x)
@@ -395,6 +502,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         private (uint First, uint Last) Window()
         {
+            if (_dragWindow is { } captured) return captured;
             if (_duration == 0)
                 return (0, 1);
             uint visible = (uint)Math.Max(60, Math.Ceiling(_duration / Zoom));

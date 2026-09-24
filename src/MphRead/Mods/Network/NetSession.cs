@@ -1,6 +1,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using MphRead.Entities;
@@ -207,7 +208,7 @@ namespace MphRead.Mods.Network
         /// </param>
         public static void StartServerAuthority(SnapshotSink sink, Action matchEnded)
         {
-            Stop();
+            StopMatchRuntime();
             Role = NetRole.Server;
             _snapshotSink = sink;
             _serverMatchEnded = matchEnded;
@@ -402,10 +403,17 @@ namespace MphRead.Mods.Network
             throw new InvalidOperationException($"{address} has no IPv4 address");
         }
 
-        public static void Stop()
+        public static void Stop() => Stop(preserveRoomPrewarm: false);
+
+        // The dedicated lobby owns its bounded room cache across authority
+        // instances. Client disconnect and full server shutdown still clear it.
+        internal static void StopMatchRuntime() => Stop(preserveRoomPrewarm: true);
+
+        private static void Stop(bool preserveRoomPrewarm)
         {
             NetTelemetry.FullSessionReset();
             ResetLobbySession();
+            if (!preserveRoomPrewarm) Mods.RoomPrewarm.Clear();
             _playback = false;
             NetPlayerSetup.Reset();
             SpectatorMode.Reset();
@@ -446,6 +454,7 @@ namespace MphRead.Mods.Network
             Array.Clear(SlotPing);
             Array.Clear(_lastSlotIntentFrame);
             _lastServerPacket = 0;
+            _lastClientMaintenance = 0;
             ReAnnouncements = 0;
             LongestServerSilence = 0;
             AuthorityStandDowns = 0;
@@ -628,7 +637,9 @@ namespace MphRead.Mods.Network
         /// sampled so a remote intent that arrived this frame is visible to
         /// the input step that follows.
         /// </summary>
-        public static void Update(double time)
+        public static void Update(double time) => Update(time, advanceFrame: true);
+
+        private static void Update(double time, bool advanceFrame)
         {
             if (Role == NetRole.Client && !_playback) time = Clock;
             if (Role == NetRole.Server)
@@ -637,16 +648,15 @@ namespace MphRead.Mods.Network
                 // own thread and hands this session the intents that arrived.
                 // All this role owes the frame is the clock every snapshot,
                 // every ack and the whole rewind history are numbered by.
-                NetFrame++;
-                AuthorityFrames++;
+                if (advanceFrame) { NetFrame++; AuthorityFrames++; }
                 return;
             }
             if (_transport == null)
             {
                 return;
             }
-            NetFrame++;
-            if (IsAuthority)
+            if (advanceFrame) NetFrame++;
+            if (advanceFrame && IsAuthority)
             {
                 AuthorityFrames++;
             }
@@ -655,16 +665,21 @@ namespace MphRead.Mods.Network
                 Handle(packet, time);
             }
             PumpLobby(time);
+            // Reconnect/liveness is wall-clock work, including while scene
+            // simulation is parked. Never key it to a frozen NetFrame modulo.
+            bool serviceClientConnection = Role == NetRole.Client && !_playback
+                && time - _lastClientMaintenance >= 1;
+            if (serviceClientConnection) _lastClientMaintenance = time;
             if (Role == NetRole.Host)
             {
                 DropTimedOutPeers(time);
                 if (NetFrame % 60 == 0) BroadcastHostControl();
             }
-            else if (Role == NetRole.Client && (LocalSlot < 0 || _reAnnounced) && NetFrame % 60 == 0)
+            else if (serviceClientConnection && (LocalSlot < 0 || _reAnnounced))
             {
                 SendHello(); // still waiting to be admitted
             }
-            else if (Role == NetRole.Client && NetFrame % 60 == 0
+            else if (serviceClientConnection
                 && time - _lastServerPacket > SilenceBeforeRejoin)
             {
                 // The server has not said anything for a long time, which
@@ -694,16 +709,7 @@ namespace MphRead.Mods.Network
                 SendHello();
                 SendIdentify();
             }
-            else if (Role == NetRole.Client && NetFrame % 120 == 0
-                && LocalSlot >= 0 && LocalSlot < GameState.Nicknames.Length
-                && GameState.Nicknames[LocalSlot] != PlayerName)
-            {
-                // The roster still has a placeholder for this slot, so the
-                // Identify that went out with the join was lost. Nothing else
-                // resends it, and a client whose name never landed shows up as
-                // "PlayerN" on every other scoreboard for the whole match.
-                SendIdentify();
-            }
+            // PumpLobby already retries identity on its one-second clock.
         }
 
         /// <summary>
@@ -719,6 +725,7 @@ namespace MphRead.Mods.Network
         private const double SilenceBeforeRejoin = 5.0;
 
         private static double _lastServerPacket;
+        private static double _lastClientMaintenance;
         // Loading pauses gameplay, not the connection's monotonic clock.
         // Refresh packet liveness without advancing any simulation frame.
         internal static void PumpMapTransfer()
@@ -802,7 +809,8 @@ namespace MphRead.Mods.Network
                     if (SessionStatePacket.TryRead(packet.Payload, out var session)) ApplySessionState(session);
                     break;
                 case PacketType.MatchStartCommit when Role == NetRole.Client:
-                    if (MatchStartCommitPacket.TryRead(packet.Payload, out var commit)) ApplyStartCommit(commit);
+                    if (MatchStartCommitPacket.TryRead(packet.Payload, out var commit))
+                        ApplyStartCommit(commit, _playback ? null : packet.ArrivedAt / (double)Stopwatch.Frequency);
                     break;
                 case PacketType.LobbyCommandResult when Role == NetRole.Client:
                     if (LobbyCommandResultPacket.TryRead(packet.Payload, out var result)) ApplyLobbyResult(result);

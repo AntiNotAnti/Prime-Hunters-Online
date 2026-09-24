@@ -84,12 +84,9 @@ namespace MphRead.Mods.Network
             var state = BuildSessionState();
             if (_sim != null) NetSession.ApplySessionState(state);
             state.Write(_scratch);
-            for (int copy = 0; copy < copies; copy++)
-            {
-                foreach (Peer peer in _peers)
-                    _transport?.Send(peer.EndPoint, PacketType.SessionState,
-                        _scratch.AsSpan(0, SessionStatePacket.Size));
-            }
+            foreach (Peer peer in _peers)
+                _transport?.Send(peer.EndPoint, PacketType.SessionState,
+                    _scratch.AsSpan(0, SessionStatePacket.Size), immediateCopies: copies);
         }
 
         private sbyte ChooseTeam(MatchDefinition match, Peer? exclude = null)
@@ -245,7 +242,7 @@ namespace MphRead.Mods.Network
         {
             if (!matchEnded) AbandonCareerMatch();
             ServerReplayRecorder.Stop(matchEnded);
-            _sim?.Stop();
+            _sim?.Stop(preserveRoomPrewarm: true);
             _sim = null;
             _lastSnapshotLength = 0;
             NetHitClaims.VerdictSink = null;
@@ -286,20 +283,17 @@ namespace MphRead.Mods.Network
             _start.Begin(_matchId, _authorityEpoch, participants);
             _lastStartCommitBroadcast = 0;
             SetPhase(SessionPhase.Starting);
-            // StartSimulation is intentionally synchronous and can take several
-            // seconds on a cold server. A client that lost the one Starting
-            // datagram used to sit idle for that entire load and only begin
-            // loading after the authority finished. Redundant tiny control
-            // packets make the parallel-load handoff robust without moving the
-            // engine onto a second thread.
-            BroadcastSessionState();
+            // StartSimulation is synchronous. Send independent wire copies of
+            // the same reliable event so one lost datagram does not delay a
+            // client's parallel load until the worker's retransmission timer.
+            BroadcastSessionState(copies: 3);
             try
             {
                 StartSimulation();
             }
             catch (Exception ex)
             {
-                _sim?.Stop();
+                _sim?.Stop(preserveRoomPrewarm: true);
                 _sim = null;
                 Log($"[lobby] map load failed: {ex.Message}");
                 reason = "The server could not load this map.";

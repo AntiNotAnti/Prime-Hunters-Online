@@ -75,6 +75,45 @@ namespace MphRead.Mods
             });
         }
 
+        private static readonly System.Threading.SemaphoreSlim ThumbnailSlots = new(1);
+        private static readonly object PngGate = new();
+        // Readback must run on the GL owner. The returned task owns only detached pixels.
+        internal static System.Threading.Tasks.Task<bool>? QueueThumbnail(Scene scene, string path)
+        {
+            if (!ThumbnailSlots.Wait(0)) return null;
+            try
+            {
+                scene = Network.DemoPlayback.Presentation(scene) ?? scene;
+                byte[]? pixels = scene.ReadSceneTarget(out int width, out int height);
+                if (pixels == null || width <= 0 || height <= 0) { ThumbnailSlots.Release(); return null; }
+                var writer = PngWriter;
+                return System.Threading.Tasks.Task.Run(() =>
+                {
+                    try
+                    {
+                        if (LitFraction(pixels) < MinLitFraction) return false;
+                        string? directory = Path.GetDirectoryName(path);
+                        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+                        lock (PngGate)
+                        {
+                            if (writer != null) writer(pixels, width, height, path);
+                            else
+                            {
+                                using var stream = File.Create(path);
+                                StbImage.FlipVerticallyOnSave = true;
+                                StbImage.WritePng<byte>(pixels, width, height, StbiImageFormat.Rgb, stream);
+                            }
+                        }
+                        return true;
+                    }
+                    catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+                    { Console.WriteLine("[thumbnail] " + ex.Message); return false; }
+                    finally { ThumbnailSlots.Release(); }
+                });
+            }
+            catch { ThumbnailSlots.Release(); throw; }
+        }
+
         private delegate byte[]? ReadPixels(out int width, out int height);
 
         private static bool Save(Scene? scene, string path, ReadPixels read)
@@ -112,9 +151,12 @@ namespace MphRead.Mods
                     writer(pixels, width, height, path);
                     return true;
                 }
-                using FileStream stream = File.Create(path);
-                StbImage.FlipVerticallyOnSave = true;
-                StbImage.WritePng<byte>(pixels, width, height, StbiImageFormat.Rgb, stream);
+                lock (PngGate)
+                {
+                    using FileStream stream = File.Create(path);
+                    StbImage.FlipVerticallyOnSave = true;
+                    StbImage.WritePng<byte>(pixels, width, height, StbiImageFormat.Rgb, stream);
+                }
                 return true;
             }
             catch (Exception ex)

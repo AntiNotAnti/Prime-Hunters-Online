@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using MphRead.Editor;
 using MphRead.Formats.Collision;
 using MphRead.Utility;
@@ -16,8 +17,9 @@ namespace MphRead.Mods.MapGen
     public static class MapPacker
     {
         public static void Generate(BuiltMap map, string archiveDir, string entityDir, string nodeDir,
-            bool verbose = true)
+            bool verbose = true, CancellationToken cancellation = default)
         {
+            cancellation.ThrowIfCancellationRequested();
             MapDefinition def = map.Definition;
             if(Metadata.IsBuiltInRoom(def.Name))throw new MapAuthoringException("FP-MAP-010","A custom map cannot replace a built-in room.");
             var validation = MapValidator.Validate(def);
@@ -28,11 +30,13 @@ namespace MphRead.Mods.MapGen
             Directory.CreateDirectory(entityDir);
             byte[] model; int vertices;
             lock (MapCompiler.ContentReadLock) (model, vertices) = BuildModel(map);
+            cancellation.ThrowIfCancellationRequested();
             byte[] collision = BuildCollision(map);
             byte[] entities = Repack.PackEntities(map.Entities);
-            (byte[] nodes, int nodeCount, int edges) = MapNodePacker.Pack(map.Solid,def.NavigationLinks);
+            (byte[] nodes, int nodeCount, int edges) = MapNodePacker.Pack(map.Solid,def.NavigationLinks,cancellation);
             // Build every byte before replacing any output. The manifest is the
             // commit marker: an interrupted publication is rebuilt next launch.
+            cancellation.ThrowIfCancellationRequested();
             if (File.Exists(outputs.Manifest)) File.Delete(outputs.Manifest);
             AtomicFile.Write(outputs.Model, model);
             AtomicFile.Write(outputs.Animation, new byte[24]);

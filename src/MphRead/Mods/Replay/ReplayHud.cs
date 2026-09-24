@@ -42,7 +42,7 @@ namespace MphRead.Mods.Replay
 
         public static void Draw(Scene scene)
         {
-            if (!DemoPlayback.IsActive || ReplayVideoExporter.Active) return;
+            if (!DemoPlayback.IsActive || ReplayVideoExporter.Rendering) return;
             if (_scene != scene)
             {
                 _scene = scene;
@@ -186,7 +186,7 @@ namespace MphRead.Mods.Replay
                 }
             }
 
-            if (ReplayVideoExporter.Active)
+            if (ReplayVideoExporter.Rendering)
             {
                 scene.DrawHudFlatBox(46, 149, 210, 158,
                     new Vector4(0, 0, 0, 0.72f));

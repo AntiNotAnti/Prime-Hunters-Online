@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.IO;
 
@@ -58,8 +59,8 @@ namespace MphRead.Mods.Network
         /// a *relative* path resolved against the working directory. That is
         /// fine for writing and useless for handing to anything else.
         /// </summary>
-        private static readonly Dictionary<string, (long Bytes, DateTime Modified, uint Frames)> Durations = new();
-        private static readonly Dictionary<string, (long Bytes, DateTime Modified, ReplayIntegrity Integrity)> Validation = new();
+        private static readonly ConcurrentDictionary<string, (long Bytes, DateTime Modified, uint Frames)> Durations = new();
+        private static readonly ConcurrentDictionary<string, (long Bytes, DateTime Modified, ReplayIntegrity Integrity)> Validation = new();
         public static ReplayIntegrity? VerifiedIntegrity(string path)
         {
             var info = new FileInfo(path);
@@ -223,7 +224,7 @@ namespace MphRead.Mods.Network
             Replay.ReplayReels.DeleteFor(path);
             for (int i = 0; i < 3; i++)
                 File.Delete(path + $".thumb{i}.png");
-            Durations.Remove(path);
+            Durations.TryRemove(path, out _);
             ReplayLibraryIndex.Remove(path);
             ReplayLibraryIndex.Flush();
         }

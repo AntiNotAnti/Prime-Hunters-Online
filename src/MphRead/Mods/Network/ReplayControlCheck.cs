@@ -62,6 +62,7 @@ namespace MphRead.Mods.Network
 
                 Console.WriteLine("[replaycheck] timing: rates, presentation independence and deterministic receive clock passed");
                 Replay.ReplayCameraTrackCheck.Run();
+                Replay.ReplayHardeningCheck.Run(Require);
                 var poseA = new PlayerState { SlotGeneration = 1, LifeId = 1, Health = 99,
                     Flags = PlayerState.FlagActive | PlayerState.FlagSpawned, Position = OpenTK.Mathematics.Vector3.Zero };
                 var poseB = poseA; poseB.Position = OpenTK.Mathematics.Vector3.UnitX;

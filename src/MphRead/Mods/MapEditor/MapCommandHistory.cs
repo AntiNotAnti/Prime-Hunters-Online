@@ -17,6 +17,7 @@ public interface IMapEditCommand
     string Label { get; }
     long ApproximateBytes { get; }
     MapDocumentChange Change { get; }
+    IEnumerable<string> RetainedAssets => System.Array.Empty<string>();
     void Execute();
     void Undo();
     bool TryMerge(IMapEditCommand next) => false;
@@ -41,6 +42,14 @@ public sealed class MapCommandHistory
     {
         if (maximumCommands < 1 || maximumBytes < 1) throw new ArgumentOutOfRangeException();
         _maximumCommands = maximumCommands; _maximumBytes = maximumBytes;
+    }
+    public IEnumerable<string> RetainedAssets
+    {
+        get
+        {
+            foreach (var entry in _undo) foreach (string path in entry.Command.RetainedAssets) yield return path;
+            foreach (var entry in _redo) foreach (string path in entry.Command.RetainedAssets) yield return path;
+        }
     }
     public void MarkSaved() => _savedState = CurrentStateId;
     public void Execute(IMapEditCommand command, object? transaction = null)
