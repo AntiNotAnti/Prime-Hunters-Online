@@ -25,7 +25,7 @@ namespace MphRead.Mods.Launcher.Gui
             PrimeShell? shell = null;
             Control Create(PrimeRoute route) => route switch
             {
-                PrimeRoute.News => new NewsWorkspace(r => shell!.Router.Navigate(r), shell!.Overlays),
+                PrimeRoute.News => new NewsWorkspace(shell!.Overlays),
                 PrimeRoute.Play => new PlayWorkspace(new[] {
                     new ServerBrowserEntry(new MasterListing { Address = "127.0.0.1", Port = 27888, ServerName = "LOCAL TEST ARENA" },
                         new ServerStatus { Online = true, Protocol = NetConfig.ProtocolVersion, RoomKey = rooms[0],
@@ -188,6 +188,10 @@ namespace MphRead.Mods.Launcher.Gui
                             Check(UiCapture.Capture(shell, path, size), "capture " + path);
                             Geometry(shell, size, route);
                         }
+                        shell.Router.Navigate(PrimeRoute.Settings);
+                        settings.ShowSection("Credits");
+                        Check(UiCapture.Capture(shell, Path.Combine(directory, "prime-credits-1280x720.png"), new Size(1280,720)), "credits capture");
+                        settings.ShowSection("Display");
                         shell.Router.Navigate(PrimeRoute.Lobby);
                         var lobby = (Control)shell.Workspaces.Content!;
                         var rules = lobby.GetVisualDescendants().OfType<PrimeButton>().Single(b => b.Label == "ADVANCED RULES");

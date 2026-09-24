@@ -683,23 +683,28 @@ namespace MphRead.Mods.Launcher.Gui
         private void BuildCredits(StackPanel page)
         {
             Heading(page, "Project Prime");
-            Explain(page, Mods.Credits.Summary);
+            page.Children.Add(PrimeChrome.Text(Mods.Credits.Summary, 14, PrimeTheme.TextSecondaryBrush));
 
-            Heading(page, "Community contributors");
-            page.Children.Add(new Caption(Mods.Credits.Author));
-            page.Children.Add(new Note(Mods.Credits.ForkWork));
+            void Credit(Mods.Credits.Entry entry)
+            {
+                page.Children.Add(PrimeChrome.Text(entry.Who, 16, PrimeTheme.HighlightBrush));
+                page.Children.Add(PrimeChrome.Text(entry.What + (entry.Where.Length > 0 ? "\n" + entry.Where : ""),
+                    14, PrimeTheme.TextSecondaryBrush));
+            }
 
-            Heading(page, "Built on");
+            Heading(page, "MphRead");
+            Credit(Mods.Credits.Foundation);
+
+            Heading(page, "Fruity Prime");
+            page.Children.Add(PrimeChrome.Text(Mods.Credits.Author, 16, PrimeTheme.HighlightBrush));
+            page.Children.Add(PrimeChrome.Text(Mods.Credits.ForkWork, 14, PrimeTheme.TextSecondaryBrush));
+
+            Heading(page, "Additional upstream work & acknowledgements");
             foreach (Mods.Credits.Entry entry in Mods.Credits.Entries)
             {
-                page.Children.Add(new Caption(entry.Who));
-                string what = entry.What;
-                if (entry.Where.Length > 0)
-                {
-                    what += "\n" + entry.Where;
-                }
-                page.Children.Add(new Note(what));
+                if (entry != Mods.Credits.Foundation) Credit(entry);
             }
+
         }
 
         // ------------------------------------------------------------- display
