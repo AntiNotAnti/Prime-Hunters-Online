@@ -307,22 +307,6 @@ namespace MphRead.Mods.Network
             && NetSession.LocalSlot >= 0;
 
         /// <summary>
-        /// Record a hit this machine has just resolved for its own player, so
-        /// that the authority is told about it.
-        ///
-        /// Called from <see cref="NetHitPrediction.NoteHit"/>, which is the
-        /// one point at which the damage is final and the victim is known. A
-        /// hit on this machine's own player is not claimed: it is either the
-        /// player's own splash, which the authority computes identically from
-        /// the same inputs, or somebody else's shot, which is theirs to claim.
-        /// </summary>
-        /// <returns>
-        /// The id this claim was filed under, or zero when nothing was
-        /// claimed. The caller stamps it onto the prediction it has just
-        /// filed, so the verdict can retire that exact one --
-        /// <see cref="NetHitPrediction.Settle"/>.
-        /// </returns>
-        /// <summary>
         /// Convert the afflictions caused by one hit into claim flags.
         ///
         /// This deliberately takes the hit's affliction mask, not the victim's
@@ -349,6 +333,22 @@ namespace MphRead.Mods.Network
             return result;
         }
 
+        /// <summary>
+        /// Record a hit this machine has just resolved for its own player, so
+        /// that the authority is told about it.
+        ///
+        /// Called from <see cref="NetHitPrediction.NoteHit"/>, which is the
+        /// one point at which the damage is final and the victim is known. A
+        /// hit on this machine's own player is not claimed: it is either the
+        /// player's own splash, which the authority computes identically from
+        /// the same inputs, or somebody else's shot, which is theirs to claim.
+        /// </summary>
+        /// <returns>
+        /// The id this claim was filed under, or zero when nothing was
+        /// claimed. The caller stamps it onto the prediction it has just
+        /// filed, so the verdict can retire that exact one --
+        /// <see cref="NetHitPrediction.Settle"/>.
+        /// </returns>
         public static ushort Declare(PlayerEntity victim, PlayerEntity attacker,
             BeamType beam, uint damage, DamageFlags flags, bool lethal, Vector3 hitPoint,
             uint launchFrame, Vector3 direction, Affliction afflictions = Affliction.None)
