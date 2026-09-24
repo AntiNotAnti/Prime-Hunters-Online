@@ -941,6 +941,33 @@ namespace MphRead.Mods.Launcher.Gui
             }
         }
 
+        private readonly record struct ReplayLaunchProbe(
+            ReplayOpenResult Result, string? Error);
+
+        private static ReplayLaunchProbe ProbeReplayLaunch(string source)
+        {
+            using DemoReader? reader = DemoReader.Open(source,
+                out ReplayOpenResult result, metadataOnly: true);
+            if (reader == null)
+                return new(result, $"Cannot open replay: {result}.");
+
+            if (reader.ProtocolVersion != NetConfig.ProtocolVersion)
+            {
+                return new(ReplayOpenResult.ProtocolMismatch,
+                    $"This replay uses network protocol {reader.ProtocolVersion}. "
+                    + $"This build uses protocol {NetConfig.ProtocolVersion}.");
+            }
+
+            if (reader.Metadata is ReplayMetadata metadata)
+            {
+                result = ReplayMapIdentity.Validate(metadata);
+                if (result != ReplayOpenResult.Success)
+                    return new(result, $"Cannot load replay map: {result}.");
+            }
+
+            return new(ReplayOpenResult.Success, null);
+        }
+
         private async Task WatchAsync()
         {
             if (CanLaunch?.Invoke() == false) return;
@@ -975,17 +1002,20 @@ namespace MphRead.Mods.Launcher.Gui
             }
 
             _watch.IsEnabled = false;
-            _watch.Label = "LOADING";
-            bool joined = await ReplayStorageJobs.Run(() => DemoPlayback.Join(source));
+            _watch.Label = "CHECKING";
+            ReplayLaunchProbe probe =
+                await ReplayStorageJobs.Run(() => ProbeReplayLaunch(source));
             _watch.Label = "LAUNCH CINEMATIC EDITOR";
             _watch.IsEnabled = true;
-            if (!joined)
+            if (probe.Result != ReplayOpenResult.Success)
             {
-                Fail(DemoPlayback.LastError
-                    ?? "That file could not be read as a replay.");
+                Fail(probe.Error
+                    ?? $"That replay cannot be opened: {probe.Result}.");
                 return;
             }
 
+            _status.Text = "OPENING CINEMATIC EDITOR";
+            _status.Foreground = HubTheme.GoodBrush;
             Launched?.Invoke(this, new LaunchPlan
             {
                 Kind = LaunchKind.Demo,
