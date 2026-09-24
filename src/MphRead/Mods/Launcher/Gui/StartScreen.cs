@@ -50,7 +50,15 @@ namespace MphRead.Mods.Launcher.Gui
             _prime.BackRequested = () =>
             {
                 if (_prime.Router.Current == PrimeRoute.Lobby)
-                { _prime.Router.Navigate(PrimeRoute.News); return true; }
+                {
+                    _prime.Router.Navigate(PrimeRoute.News);
+                    return true;
+                }
+                if (_prime.Router.Current == PrimeRoute.News)
+                {
+                    AskToQuit();
+                    return true;
+                }
                 return false;
             };
             _session.IsForeground = () => _prime.Router.Current == PrimeRoute.Lobby;
