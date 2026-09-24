@@ -122,7 +122,7 @@ namespace MphRead.Mods.Network
             Frame = frame, AckFrame = NetSession.NetFrame, Aim = Vector3.UnitZ, Position = player.Position,
             WeaponSelect = 255, AmmoUa = 400, AmmoMissiles = 50,
             Buttons = (playing ? IntentButtons.InPlayState : 0) | (shoot ? IntentButtons.Shoot : 0),
-            Presses = new PressHistoryBuffer()
+            Presses = new InputEdgeHistory()
         };
 
         private static void PrepareClaims()

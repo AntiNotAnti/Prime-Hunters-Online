@@ -215,19 +215,19 @@ namespace MphRead.NetTest
             MatchId = 51, AuthorityEpoch = 4, SlotGeneration = 10, LifeId = life, Frame = frame,
             AckFrame = frame, Aim = Vector3.UnitZ, WeaponSelect = 255,
             Buttons = (playing ? IntentButtons.InPlayState : 0) | (shooting ? IntentButtons.Shoot : 0),
-            Presses = new PressHistoryBuffer()
+            Presses = new InputEdgeHistory()
         };
         private static void OldLifeShootPressIsRejected()
         {
             Session(); var shooter = Player(1); Snapshot(2, State(8));
-            var old = Intent(100, shooting: true); old.Presses[0] = (uint)IntentButtons.Shoot;
+            var old = Intent(100, shooting: true); old.Presses[0] = InputEdgeHistory.Encode(1, IntentButtons.Shoot, 0);
             NetSession.AcceptSlotIntent(1, old); NetPlayerBridge.ApplyIntent(shooter, old);
             Check(!NetSession.RemoteIntentValid[1] && !shooter.Controls.Shoot.IsDown, nameof(OldLifeShootPressIsRejected));
         }
         private static void RecoveredShootPressCannotCrossLife()
         {
             Session(); var shooter = Player(1); NetPlayerBridge.ApplyIntent(shooter, Intent(10));
-            var old = Intent(15); old.Presses[2] = (uint)IntentButtons.Shoot;
+            var old = Intent(15); old.Presses[0] = InputEdgeHistory.Encode(1, IntentButtons.Shoot, 2);
             Snapshot(2, State(8)); NetPlayerBridge.ForgetSlot(1); NetPlayerBridge.ApplyIntent(shooter, old);
             NetPlayerBridge.ApplyIntent(shooter, Intent(16, life: 8));
             Check(!shooter.Controls.Shoot.IsPressed, nameof(RecoveredShootPressCannotCrossLife));
@@ -237,7 +237,7 @@ namespace MphRead.NetTest
             Session(); var shooter = Player(1);
             var baseline = Intent(uint.MaxValue - 2);
             NetSession.AcceptSlotIntent(1, baseline); NetPlayerBridge.ApplyIntent(shooter, baseline);
-            var shot = Intent(0); shot.Presses[1] = (uint)IntentButtons.Shoot;
+            var shot = Intent(0); shot.Presses[0] = InputEdgeHistory.Encode(1, IntentButtons.Shoot, 1);
             NetSession.AcceptSlotIntent(1, shot); NetPlayerBridge.ApplyIntent(shooter, NetSession.RemoteIntents[1]);
             Check(shooter.Controls.Shoot.IsPressed, "recovered press crosses uint wrap");
             long accepted = NetSession.IntentsReceived;
@@ -252,7 +252,7 @@ namespace MphRead.NetTest
         private static void Ordering(bool reorder)
         {
             Session(); var shooter = Player(1); NetPlayerBridge.ApplyIntent(shooter, Intent(10));
-            var shot = Intent(12); shot.Presses[1] = (uint)IntentButtons.Shoot;
+            var shot = Intent(12); shot.Presses[0] = InputEdgeHistory.Encode(1, IntentButtons.Shoot, 1);
             NetSession.AcceptSlotIntent(1, shot); NetPlayerBridge.ApplyIntent(shooter, NetSession.RemoteIntents[1]);
             Check(shooter.Controls.Shoot.IsPressed, "lost edge recovered");
             NetSession.AcceptSlotIntent(1, reorder ? Intent(11, shooting: true) : shot);
@@ -263,7 +263,7 @@ namespace MphRead.NetTest
         {
             Session(); var shooter = Player(1); NetPlayerBridge.ApplyIntent(shooter, Intent(10));
             // The receiver has not seen death yet; the owner's packet explicitly says dead.
-            var dead = Intent(11, shooting: true, playing: false); dead.Presses[0] = (uint)IntentButtons.Shoot;
+            var dead = Intent(11, shooting: true, playing: false); dead.Presses[0] = InputEdgeHistory.Encode(1, IntentButtons.Shoot, 0);
             NetPlayerBridge.ApplyIntent(shooter, dead);
             Check(!shooter.Controls.Shoot.IsDown && !shooter.Controls.Shoot.IsPressed, nameof(DeadHeldFireDoesNotSpawnGhostShot));
         }
@@ -368,7 +368,7 @@ namespace MphRead.NetTest
                                 var input = Intent(frame, frame < 60 ? (ushort)7 : (ushort)8, shooting, alive);
                                 input.WeaponSelect = (byte)weapon;
                                 // A dead press repeated in history must not become an alive action.
-                                if (frame is >= 30 and < 35) input.Presses[(int)(frame - 30)] = (uint)IntentButtons.Shoot;
+                                if (frame is >= 30 and < 35) input.Presses[0] = InputEdgeHistory.Encode(1, IntentButtons.Shoot, (int)(frame - 30));
                                 byte[] bytes = new byte[IntentPacket.FullSize]; input.Write(bytes);
                                 queue.Enqueue(frame * 1000.0 / 60, bytes);
                             }

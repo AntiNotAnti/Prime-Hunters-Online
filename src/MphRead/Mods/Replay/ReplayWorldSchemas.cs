@@ -735,6 +735,8 @@ internal static class ReplayWorldSchemas
             "<MaxPlayers>k__BackingField",
             "<PlayersCreated>k__BackingField",
         ],
+        ["MphRead.Mods.Network.NetInputEdgeSender"] = ["_events", "_frames", "_count", "_sequence"],
+        ["MphRead.Mods.Network.NetInputEdgeReceiver"] = ["_seen", "_latest", "_received", "_actions", "_sources", "_count"],
         ["MphRead.Mods.Network.PlayerReplicationBridge"] = [
             "_formReconciliation",
             "PlacementsRefused",
@@ -746,7 +748,7 @@ internal static class ReplayWorldSchemas
             "<Snaps>k__BackingField",
             "<WorstSnap>k__BackingField",
             "NodeLookupsUnresolved",
-            "_pressHistory",
+            "_pressHistory", "_edgeSender", "_edgeReceivers",
             "_latchedCharge",
             "_latchedBoostDamage",
             "_latchedHomingTarget",
