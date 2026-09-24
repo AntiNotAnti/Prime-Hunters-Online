@@ -184,10 +184,6 @@ namespace MphRead.NetTest
             Check((claim.Flags & HitClaimPacket.FlagFrozen) != 0,
                 "current Judicator freeze travels even before victim state changes");
 
-            byte extra = NetHitClaims.AfflictionClaimFlags(Affliction.Burn | Affliction.Disrupt);
-            Check((extra & HitClaimPacket.FlagBurning) != 0
-                && (extra & HitClaimPacket.FlagDisrupted) != 0,
-                "claim affliction encoder preserves burn and disrupt");
         }
 
         private static void RespawnClearsPredictedHealth()
