@@ -743,6 +743,7 @@ namespace MphRead.Mods.Network
                 Flags = (byte)((ending ? MatchStatePacket.FlagEnding : MatchStatePacket.FlagInProgress)
                     | (entry.FriendlyFire ? MatchStatePacket.FlagFriendlyFire : 0)
                     | (entry.ShadowFreeze ? 0 : MatchStatePacket.FlagNoShadowFreeze)
+                    | (entry.SpawnProtection ? 0 : MatchStatePacket.FlagNoSpawnProtection)
                     | MatchStatePacket.RuleFlags(DamageLevel, entry.AffinityWeapons)),
                 PointGoal = entry.PointGoal,
                 MatchId = _matchId,
