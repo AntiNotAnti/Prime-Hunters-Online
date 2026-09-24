@@ -808,6 +808,10 @@ namespace MphRead.Mods.Network
                 case PacketType.SessionState when Role == NetRole.Client:
                     if (SessionStatePacket.TryRead(packet.Payload, out var session)) ApplySessionState(session);
                     break;
+                case PacketType.SnapshotFast:
+                case PacketType.PlayerSlowState:
+                case PacketType.WorldState:
+                    HandleLane(packet); break;
                 case PacketType.WorldBootstrap when Role == NetRole.Client:
                     HandleWorldBootstrap(packet); break;
                 case PacketType.MatchStartCommit when Role == NetRole.Client:
@@ -1948,15 +1952,16 @@ namespace MphRead.Mods.Network
             // asAuthority both require one. Said with a local rather than a
             // `!` at each use, because the reason is the same both times.
             NetTransport transport = _transport!;
+            _hostLanes.Prepare(_scratch.AsSpan(0, offset));
             if (asAuthority)
             {
                 // One send to the server, which relays to every other peer.
-                transport.Send(_hostEndPoint!, PacketType.Snapshot, _scratch.AsSpan(0, offset));
+                SendHostLanes(_hostEndPoint!);
                 return;
             }
             for (int i = 0; i < _peers.Count; i++)
             {
-                transport.Send(_peers[i].EndPoint, PacketType.Snapshot, _scratch.AsSpan(0, offset));
+                SendHostLanes(_peers[i].EndPoint);
             }
         }
     }

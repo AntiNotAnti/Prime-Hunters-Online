@@ -159,7 +159,7 @@ namespace MphRead.Mods.Network
             }
             lock (_stateLock)
             {
-                if (packet.Type == PacketType.Snapshot)
+                if (packet.Type is PacketType.Snapshot or PacketType.SnapshotFast)
                 {
                     if (_latestSnapshot.HasValue)
                     {

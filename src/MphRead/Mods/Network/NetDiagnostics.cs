@@ -57,6 +57,7 @@ namespace MphRead.Mods.Network
 
             var stats = NetSession.CaptureTelemetry();
             Console.WriteLine($"[netstats] rx={stats.Transport?.PacketsReceived} tx={stats.Transport?.PacketsSent} queue={stats.Transport?.QueueCurrent}/{stats.Transport?.QueueHighWater} drop={stats.Transport?.QueueDrops} delay={stats.Presentation.Delay:F2}f jitter={stats.Presentation.JitterFrames:F2}f rewind={stats.LagComp.MeanApplied:F2}f p95={stats.LagComp.RequestedP95} shadowWouldClamp={stats.Shadow.WouldClamp} shadowTimed={stats.Shadow.TimedShots}/{stats.Shadow.Shots}");
+            Console.WriteLine($"[netstats] fast={NetReplicationLanes.FastPackets}/{NetReplicationLanes.FastBytes}B max={NetReplicationLanes.FastMaximum} slow={NetReplicationLanes.SlowPackets}/{NetReplicationLanes.SlowBytes}B world={NetReplicationLanes.WorldPackets}/{NetReplicationLanes.WorldBytes}B claims={NetHitClaims.ClaimsPendingCurrent}/{NetHitClaims.ClaimsPendingHighWater} ledger={NetHitClaims.ResolvedLedgerCurrent}/{NetHitClaims.ResolvedLedgerHighWater} claim-cap={NetHitClaims.ClaimsCapacityRefused} overwritten={NetHitClaims.ResolvedLedgerOverwrittenUnused} bootstrap loaded={NetSession.ServerSession?.LoadedParticipants:X2} world={NetSession.ServerSession?.WorldReadyParticipants:X2}");
             var line = new StringBuilder();
             line.Append(NetPlayerLifecycle.Describe()).Append(" | ");
             line.Append("[netdbg] role=").Append(NetSession.Role);

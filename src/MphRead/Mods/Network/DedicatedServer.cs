@@ -74,7 +74,8 @@ namespace MphRead.Mods.Network
             /// </summary>
             public bool PostMatchReady;
             public bool MatchReady, SceneLoaded;
-            public readonly byte[] Bootstrap = new byte[NetConfig.MaxPayloadSize];
+            public readonly byte[][] Bootstrap = { new byte[1200], new byte[512], new byte[600] };
+            public readonly int[] BootstrapLengths = new int[3];
             public int BootstrapLength;
             public WorldBootstrapIdentity BootstrapIdentity;
             public double BootstrapSentAt;
@@ -841,16 +842,35 @@ namespace MphRead.Mods.Network
         /// the sender: the sender here is the server, and it is in nobody's
         /// slot.
         /// </summary>
+        private readonly NetReplicationLanes _replication = new();
+        private readonly NetReplicationReceiver _relayLanes = new();
+        private readonly byte[] _relayCanonical = new byte[NetConfig.MaxPacketSize + 1];
+        private void HandleAuthorityLane(ReceivedPacket packet, double now)
+        {
+            if (Simulating || Find(packet.Sender) is not { } peer || peer != _authority) return;
+            if (packet.Type != PacketType.SnapshotFast)
+            { _relayLanes.Receive(packet.Type, packet.Payload, _matchId, _authorityEpoch); return; }
+            int length = _relayLanes.Assemble(packet.Payload, _relayCanonical.AsSpan(1), _matchId, _authorityEpoch);
+            if (length == 0) return;
+            _relayCanonical[0] = (byte)PacketType.Snapshot;
+            HandleSnapshot(new ReceivedPacket(packet.Sender, _relayCanonical, length + 1, packet.ArrivedAt), now);
+        }
         private void SendSnapshot(ReadOnlySpan<byte> payload)
         {
             payload.CopyTo(_lastSnapshot);
             _lastSnapshotLength = payload.Length;
             EnsureCanonicalReplay(payload);
+            _replication.Prepare(payload);
             for (int i = 0; i < _peers.Count; i++)
             {
-                _transport?.Send(_peers[i].EndPoint, PacketType.Snapshot, payload);
+                SendLane(_peers[i], PacketType.SnapshotFast, _replication.Fast.AsSpan(0, _replication.FastLength));
+                if (_replication.SendSlow) SendLane(_peers[i], PacketType.PlayerSlowState, _replication.Slow.AsSpan(0, _replication.SlowLength));
+                if (_replication.SendWorld) SendLane(_peers[i], PacketType.WorldState, _replication.World.AsSpan(0, _replication.WorldLength));
             }
         }
+
+        private void SendLane(Peer peer, PacketType type, ReadOnlySpan<byte> payload)
+        { _transport?.Send(peer.EndPoint, type, payload); NetReplicationLanes.Count(type, payload.Length); }
 
         private void EnsureCanonicalReplay(ReadOnlySpan<byte> snapshot)
         {
@@ -943,6 +963,9 @@ namespace MphRead.Mods.Network
                         timingPeer.TimingMatch = timing.MatchId; timingPeer.TimingEpoch = timing.AuthorityEpoch;
                     }
                     break;
+                case PacketType.SnapshotFast:
+                case PacketType.PlayerSlowState:
+                case PacketType.WorldState: HandleAuthorityLane(packet, now); break;
                 case PacketType.WorldReady: HandleWorldReady(packet, now); break;
                 case PacketType.MatchLoaded: HandleMatchLoaded(packet, now); break;
                 case PacketType.MatchLoadFailed: HandleMatchLoadFailed(packet); break;
@@ -2292,7 +2315,7 @@ namespace MphRead.Mods.Network
 
         private void HandleSnapshot(ReceivedPacket packet, double now)
         {
-            if (_phase is SessionPhase.Lobby or SessionPhase.Starting) return;
+            if (_phase == SessionPhase.Lobby) return;
             Peer? peer = Find(packet.Sender);
             if (peer == null)
             {
@@ -2338,11 +2361,14 @@ namespace MphRead.Mods.Network
             _snapshotFrame = header.Frame;
             packet.Payload.CopyTo(_lastSnapshot);
             _lastSnapshotLength = packet.Payload.Length;
+            _replication.Prepare(packet.Payload);
             for (int i = 0; i < _peers.Count; i++)
             {
                 if (_peers[i] != peer)
                 {
-                    _transport?.Send(_peers[i].EndPoint, PacketType.Snapshot, packet.Payload);
+                    SendLane(_peers[i], PacketType.SnapshotFast, _replication.Fast.AsSpan(0, _replication.FastLength));
+                    if (_replication.SendSlow) SendLane(_peers[i], PacketType.PlayerSlowState, _replication.Slow.AsSpan(0, _replication.SlowLength));
+                    if (_replication.SendWorld) SendLane(_peers[i], PacketType.WorldState, _replication.World.AsSpan(0, _replication.WorldLength));
                 }
             }
         }

@@ -32,7 +32,13 @@ public readonly record struct WorldBootstrapIdentity(MatchStartIdentity Start, u
 
 public static partial class NetSession
 {
-    private static WorldBootstrapIdentity? _appliedBootstrap;
+    private static WorldBootstrapIdentity? _appliedBootstrap, _receivingBootstrap;
+    private static readonly NetReplicationReceiver _bootstrapReceiver = new();
+    private static readonly byte[] _bootstrapFast = new byte[1200];
+    private static int _bootstrapFastLength;
+    private static byte _bootstrapMask;
+    private static readonly byte[] _bootstrapSlow = new byte[256], _bootstrapWorld = new byte[512];
+    private static int _bootstrapSlowLength, _bootstrapWorldLength;
     public static bool WorldIsReady => ServerSession is not { } session || IsAuthority || IsHost || _playback
         || _appliedBootstrap is { } baseline && baseline.Start == StartIdentity(session)
             && baseline.SlotGeneration == NetPlayerLifecycle.Generation(LocalSlot);
@@ -45,17 +51,42 @@ public static partial class NetSession
         if (_appliedBootstrap == identity) { SendWorldReady(identity); return; }
         if (_appliedBootstrap is { } previous && previous.Start == identity.Start
             && !NetLifecycleTracker.Newer(identity.Revision, previous.Revision)) return;
-        var payload = packet.Payload[WorldBootstrapIdentity.Size..];
-        if (payload.Length < SnapshotHeader.Size || SnapshotHeader.Read(payload).Frame != identity.AuthorityFrame) return;
+        if (packet.Payload.Length <= WorldBootstrapIdentity.Size) return;
+        byte lane = packet.Payload[WorldBootstrapIdentity.Size];
+        if (lane > 2) return;
+        if (_receivingBootstrap != identity)
+        {
+            if (_receivingBootstrap is { } receiving && receiving.Start == identity.Start
+                && !NetLifecycleTracker.Newer(identity.Revision, receiving.Revision)) return;
+            _receivingBootstrap = identity; _bootstrapMask = 0; _bootstrapFastLength = 0;
+            _bootstrapReceiver.Reset(identity.Start.MatchId, identity.Start.AuthorityEpoch);
+        }
+        var laneData = packet.Payload[(WorldBootstrapIdentity.Size + 1)..];
+        if (lane == 0)
+        {
+            if (laneData.Length < SnapshotHeader.Size || laneData.Length > _bootstrapFast.Length
+                || SnapshotHeader.Read(laneData).Frame != identity.AuthorityFrame) return;
+            laneData.CopyTo(_bootstrapFast); _bootstrapFastLength = laneData.Length;
+        }
+        else if (!_bootstrapReceiver.Receive(lane == 1 ? PacketType.PlayerSlowState : PacketType.WorldState,
+            laneData, identity.Start.MatchId, identity.Start.AuthorityEpoch) && (_bootstrapMask & (1 << lane)) == 0) return;
+        if (lane == 1) { laneData.CopyTo(_bootstrapSlow); _bootstrapSlowLength = laneData.Length; }
+        if (lane == 2) { laneData.CopyTo(_bootstrapWorld); _bootstrapWorldLength = laneData.Length; }
+        _bootstrapMask |= (byte)(1 << lane);
+        if (_bootstrapMask != 7 || _bootstrapReceiver.SlowRevision != identity.SlowRevision
+            || _bootstrapReceiver.WorldRevision != identity.WorldRevision) return;
+        int length = _bootstrapReceiver.Assemble(_bootstrapFast.AsSpan(0, _bootstrapFastLength),
+            _laneCanonical.AsSpan(1), identity.Start.MatchId, identity.Start.AuthorityEpoch);
+        if (length == 0) return;
+        ReadOnlySpan<byte> payload = _laneCanonical.AsSpan(1, length);
         // Use the full-state decoder explicitly while frozen; ordinary snapshots
         // remain gated. No gameplay or simulation step runs in this path.
-        byte[] data = new byte[1 + payload.Length]; data[0] = (byte)PacketType.Snapshot;
-        payload.CopyTo(data.AsSpan(1));
-        var baseline = new ReceivedPacket(packet.Sender, data, data.Length, packet.ArrivedAt);
+        _laneCanonical[0] = (byte)PacketType.Snapshot;
+        var baseline = new ReceivedPacket(packet.Sender, _laneCanonical, 1 + length, packet.ArrivedAt);
         HandleSnapshot(baseline, bootstrap: true);
         if (_lastSnapshotFrame != identity.AuthorityFrame || !RemoteStateValid[LocalSlot]) return;
         for (int slot = 0; slot < RemoteStates.Length; slot++)
-            if (SlotOccupied[slot] && !RemoteStateValid[slot]) return;
+            if (session.Phase == SessionPhase.Starting && (session.ExpectedParticipants & (1 << slot)) != 0 && !RemoteStateValid[slot]) return;
         if (PlayerEntity.Players.Count <= LocalSlot) return;
         NetSlotManager.Sync();
         NetHooks.ApplyRemoteStates();
@@ -67,6 +98,11 @@ public static partial class NetSession
             player.ModSetSpawnFacing(state.Facing);
             GameState.Points[slot] = state.Points; GameState.Kills[slot] = state.Kills; GameState.Deaths[slot] = state.Deaths;
         }
+        _laneReceiver.Reset(identity.Start.MatchId, identity.Start.AuthorityEpoch);
+        // The same lanes seed live recovery; later fast packets cannot erase
+        // the scoreboard or world state applied at the barrier.
+        _laneReceiver.Receive(PacketType.PlayerSlowState, _bootstrapSlow.AsSpan(0, _bootstrapSlowLength), identity.Start.MatchId, identity.Start.AuthorityEpoch);
+        _laneReceiver.Receive(PacketType.WorldState, _bootstrapWorld.AsSpan(0, _bootstrapWorldLength), identity.Start.MatchId, identity.Start.AuthorityEpoch);
         _appliedBootstrap = identity;
         SendWorldReady(identity);
     }
@@ -96,14 +132,24 @@ public sealed partial class DedicatedServer
             var header = SnapshotHeader.Read(_lastSnapshot);
             if (header.Frame == 0 || header.MatchId != _matchId || header.AuthorityEpoch != _authorityEpoch) return;
             if (++_bootstrapRevision == 0) ++_bootstrapRevision;
+            _replication.Prepare(_lastSnapshot.AsSpan(0, _lastSnapshotLength));
             peer.BootstrapIdentity = new(CurrentStartIdentity, _bootstrapRevision,
-                _slotGenerations[peer.SlotIndex], header.Frame);
-            peer.BootstrapIdentity.Write(peer.Bootstrap);
-            _lastSnapshot.AsSpan(0, _lastSnapshotLength).CopyTo(peer.Bootstrap.AsSpan(WorldBootstrapIdentity.Size));
-            peer.BootstrapLength = WorldBootstrapIdentity.Size + _lastSnapshotLength;
+                _slotGenerations[peer.SlotIndex], header.Frame, _replication.SlowRevision, _replication.WorldRevision);
+            for (int lane = 0; lane < 3; lane++)
+            {
+                peer.BootstrapIdentity.Write(peer.Bootstrap[lane]);
+                peer.Bootstrap[lane][WorldBootstrapIdentity.Size] = (byte)lane;
+                var data = lane == 0 ? _replication.Fast.AsSpan(0, _replication.FastLength)
+                    : lane == 1 ? _replication.Slow.AsSpan(0, _replication.SlowLength)
+                    : _replication.World.AsSpan(0, _replication.WorldLength);
+                data.CopyTo(peer.Bootstrap[lane].AsSpan(WorldBootstrapIdentity.Size + 1));
+                peer.BootstrapLengths[lane] = WorldBootstrapIdentity.Size + 1 + data.Length;
+            }
+            peer.BootstrapLength = 1;
         }
         peer.BootstrapSentAt = now;
-        _transport.Send(peer.EndPoint, PacketType.WorldBootstrap, peer.Bootstrap.AsSpan(0, peer.BootstrapLength));
+        for (int lane = 0; lane < 3; lane++)
+            _transport.Send(peer.EndPoint, PacketType.WorldBootstrap, peer.Bootstrap[lane].AsSpan(0, peer.BootstrapLengths[lane]));
     }
     private void HandleWorldReady(ReceivedPacket packet, double now)
     {
