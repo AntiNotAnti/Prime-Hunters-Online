@@ -268,7 +268,8 @@ namespace MphRead.Mods.Launcher
             PlayerEntity.MaxPlayers = PlayerEntity.SlotCapacity;
             if (!DemoPlayback.Join(plan.DemoPath))
             {
-                Console.WriteLine("[demo] could not open or read the demo file");
+                Console.WriteLine("[demo] could not open replay: "
+                    + (DemoPlayback.LastError ?? DemoPlayback.LastResult.ToString()));
                 return false;
             }
             (string RoomKey, GameMode Mode)? room = NetLaunch.ServerRoom();
