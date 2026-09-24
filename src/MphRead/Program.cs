@@ -203,12 +203,13 @@ namespace MphRead
             }
             if (args.Length == 1 && !args[0].StartsWith('-') && File.Exists(args[0]))
             {
-                // Same MD5 whitelist the launcher's file picker checks, so
-                // dragging a ROM onto the executable can't skip it.
-                if (!Mods.Launcher.RomWhitelist.TryIdentify(args[0], out string? label))
+                // Use the same structural compatibility gate as the launcher,
+                // so drag-and-drop accepts padded/trimmed compatible dumps but
+                // still refuses unsupported revisions and rebuilt layouts.
+                if (!Mods.Launcher.RomCompatibility.TryIdentify(
+                    args[0], out string? label, out string? problem))
                 {
-                    Console.WriteLine("This .nds file doesn't match a known Metroid Prime Hunters "
-                        + "dump (checked by MD5).");
+                    Console.WriteLine(problem ?? "That .nds file is not compatible with this build.");
                     Console.WriteLine("Nothing was extracted.");
                     Console.WriteLine();
                     Console.WriteLine("Press any key to exit...");
@@ -216,7 +217,10 @@ namespace MphRead
                     return true;
                 }
                 Console.WriteLine($"Recognised: Metroid Prime Hunters, {label}");
-                Extract.Setup(args[0]);
+                if (!Extract.Setup(args[0]))
+                {
+                    Environment.ExitCode = 1;
+                }
                 return true;
             }
             if (!File.Exists("paths.txt"))

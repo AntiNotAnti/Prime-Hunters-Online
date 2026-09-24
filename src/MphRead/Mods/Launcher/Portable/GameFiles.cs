@@ -107,22 +107,22 @@ namespace MphRead.Mods.Launcher
         /// <summary>
         /// Extract a .nds ROM into files this build can load.
         ///
-        /// Returns true when paths.txt exists and points somewhere real
-        /// afterwards -- the child's exit code says nothing useful, because
-        /// upstream's setup reports a bad ROM by printing and waiting for a
-        /// key rather than by failing.
+        /// Returns true only when extraction explicitly succeeds and the
+        /// resulting paths.txt points at usable game files. The child now
+        /// propagates setup failure through its exit code, so a rejected ROM
+        /// cannot be mistaken for an older setup that happened to remain valid.
         /// </summary>
         public static bool RunSetup(string romPath, Action<string> report)
         {
             // Checked here rather than in each caller, since the GUI file
-            // picker, the text launcher's path prompt and Android's in-process
-            // setup all funnel through this one entry point. A file that
-            // isn't one of the seven known dumps is refused before anything
-            // is extracted -- see RomWhitelist.
-            if (!RomWhitelist.TryIdentify(romPath, out string? label))
+            // picker, text launcher and Android in-process setup all funnel
+            // through this one entry point. Compatibility is based on the MPH
+            // revision and the ROM structures Project Prime actually reads,
+            // not an exact whole-file hash.
+            if (!RomCompatibility.TryIdentify(
+                romPath, out string? label, out string? compatibilityProblem))
             {
-                report("This .nds file doesn't match a known Metroid Prime Hunters "
-                    + "dump (checked by MD5) -- nothing was extracted.");
+                report(compatibilityProblem ?? "That .nds file is not compatible with this build.");
                 return false;
             }
             report($"Recognised: Metroid Prime Hunters, {label}");
@@ -194,6 +194,14 @@ namespace MphRead.Mods.Launcher
                     report("The extraction took too long and was stopped.");
                     return false;
                 }
+                // Drain asynchronous stdout/stderr readers before deciding what
+                // happened, then trust the extractor's explicit success/failure.
+                child.WaitForExit();
+                if (child.ExitCode != 0)
+                {
+                    report("The extraction did not finish; the selected ROM was not installed.");
+                    return false;
+                }
             }
             catch (Exception ex)
             {
@@ -248,7 +256,10 @@ namespace MphRead.Mods.Launcher
             try
             {
                 Console.SetOut(new ReportWriter(report));
-                Extract.Setup(romPath);
+                if (!Extract.Setup(romPath))
+                {
+                    return false;
+                }
             }
             catch (Exception ex)
             {
