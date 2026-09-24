@@ -193,6 +193,14 @@ namespace MphRead.Mods.Launcher
                     report("The extraction took too long and was stopped.");
                     return false;
                 }
+                // Drain asynchronous stdout/stderr readers before deciding what
+                // happened, then trust the extractor's explicit success/failure.
+                child.WaitForExit();
+                if (child.ExitCode != 0)
+                {
+                    report("The extraction did not finish; existing game files were left unchanged.");
+                    return false;
+                }
             }
             catch (Exception ex)
             {
@@ -247,7 +255,10 @@ namespace MphRead.Mods.Launcher
             try
             {
                 Console.SetOut(new ReportWriter(report));
-                Extract.Setup(romPath);
+                if (!Extract.Setup(romPath))
+                {
+                    return false;
+                }
             }
             catch (Exception ex)
             {
