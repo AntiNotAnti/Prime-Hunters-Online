@@ -800,7 +800,7 @@ namespace MphRead.Entities
                 _weaponSlots[0] = BeamType.Imperialist;
                 _weaponSlots[1] = BeamType.None;
                 _weaponSlots[2] = BeamType.None;
-                _ammo[UA] = -1;
+                _ammo[UA] = Int32.MaxValue;
                 _ammo[Missiles] = 0;
             }
             PreviousWeapon = instaGib ? BeamType.Imperialist : BeamType.PowerBeam;
