@@ -285,7 +285,15 @@ namespace MphRead.Mods.Launcher.Gui
         private void OpenSetup()
         {
             var view = new SetupScreen();
-            view.Closed += (_, _) => { Pop(); RefreshRooms(); _prime.Refresh(); };
+            view.Closed += (_, _) =>
+            {
+                Pop();
+                RefreshRooms();
+                _prime.Refresh();
+                // Setup is already complete at this point. Fill missing preview
+                // art in the background without holding the setup sheet open.
+                if (GameFiles.Ready) _ = CatchUpPreviews();
+            };
             Push(view);
         }
         private void ShowUnsaved(SettingsView settings, Action continuation)
@@ -448,18 +456,27 @@ namespace MphRead.Mods.Launcher.Gui
         /// </summary>
         private async Task CatchUpPreviews()
         {
-            if (!GameFiles.Ready || !ThumbnailHost.CanRender
-                || ThumbnailGenerator.MissingThumbnails().Count == 0)
+            try
             {
-                return;
+                if (!GameFiles.Ready || !ThumbnailHost.CanRender
+                    || ThumbnailGenerator.MissingThumbnails().Count == 0)
+                {
+                    return;
+                }
+                await ThumbnailHost.RenderMissingAsync(_ => { });
+                Dispatcher.UIThread.Post(() =>
+                {
+                    MapShot.Forget();
+                    BakedBackdrop.Forget();
+                    LauncherBackdrop.Refresh();
+                });
             }
-            await ThumbnailHost.RenderMissingAsync(_ => { });
-            Dispatcher.UIThread.Post(() =>
+            catch (Exception ex)
             {
-                MapShot.Forget();
-                BakedBackdrop.Forget();
-                LauncherBackdrop.Refresh();
-            });
+                // A preview is decoration. A graphics/worker failure here must
+                // never turn successful game-file setup into a launcher failure.
+                Mods.DebugLog.Exception("thumbnails", ex);
+            }
         }
 
         private void RefreshRooms()
