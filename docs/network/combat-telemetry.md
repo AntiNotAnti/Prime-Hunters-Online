@@ -163,7 +163,9 @@ failures, HTTP 500, offline/slow upload, and draining shutdown. Run
 rescue/retry, stored historical outcomes and immediate prediction correction.
 `--bootstrap-scene` checks damaged turret health before WorldReady.
 
-The checked-in validation record identifies actual builds and completed runs.
+The [checked-in validation record](validation/protocol19-2026-09-24.md) identifies
+actual builds and completed runs, including the twenty-profile process matrix and
+eight-player Off/Aggregate/Study measurements.
 The prior Shock Coil WAN hit-count gate remains open even when accepted target
 identity agrees. Scripted local processes cannot substitute for thousands of
 real-player matches across maps, weapons, RTT and jitter buckets. Keep this
