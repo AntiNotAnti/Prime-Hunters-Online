@@ -272,7 +272,7 @@ namespace MphRead
             // this to null, which left SinglePlayer with no handler and made
             // the first gameplay frame crash at ModeState(scene).
             ModeState = ModeStateAdventure;
-            if (Mode == GameMode.Battle || Mode == GameMode.BattleTeams)
+            if (Mode == GameMode.Battle || Mode == GameMode.BattleTeams || Mode == GameMode.InstaGib)
             {
                 PointGoal = 7;
                 MatchTime = 7 * 60;
@@ -1265,7 +1265,7 @@ namespace MphRead
                     Time[i] = TeamTime[player.TeamIndex];
                 }
             }
-            if (Mode == GameMode.Battle || Mode == GameMode.BattleTeams || Mode == GameMode.Capture || Mode == GameMode.Bounty
+            if (Mode == GameMode.Battle || Mode == GameMode.BattleTeams || Mode == GameMode.InstaGib || Mode == GameMode.Capture || Mode == GameMode.Bounty
                 || Mode == GameMode.BountyTeams || Mode == GameMode.Nodes || Mode == GameMode.NodesTeams)
             {
                 int teamPoints = TeamPoints[_players.Main.TeamIndex];
@@ -1335,7 +1335,7 @@ namespace MphRead
             int deaths2 = Deaths[slot2];
             int kills1 = Kills[slot1];
             int kills2 = Kills[slot2];
-            if (Mode == GameMode.Battle || Mode == GameMode.BattleTeams)
+            if (Mode == GameMode.Battle || Mode == GameMode.BattleTeams || Mode == GameMode.InstaGib)
             {
                 if (points1 == points2 && deaths1 == deaths2)
                 {
