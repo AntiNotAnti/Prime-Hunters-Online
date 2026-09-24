@@ -107,10 +107,10 @@ namespace MphRead.Mods.Launcher
         /// <summary>
         /// Extract a .nds ROM into files this build can load.
         ///
-        /// Returns true when paths.txt exists and points somewhere real
-        /// afterwards -- the child's exit code says nothing useful, because
-        /// upstream's setup reports a bad ROM by printing and waiting for a
-        /// key rather than by failing.
+        /// Returns true only when extraction explicitly succeeds and the
+        /// resulting paths.txt points at usable game files. The child now
+        /// propagates setup failure through its exit code, so a rejected ROM
+        /// cannot be mistaken for an older setup that happened to remain valid.
         /// </summary>
         public static bool RunSetup(string romPath, Action<string> report)
         {
