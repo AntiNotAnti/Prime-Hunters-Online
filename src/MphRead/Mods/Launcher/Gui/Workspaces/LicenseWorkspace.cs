@@ -1000,7 +1000,13 @@ namespace MphRead.Mods.Launcher.Gui
         }
 
         private static string ModeName(int mode)
-            => Enum.IsDefined(typeof(GameMode), mode) ? ((GameMode)mode).ToString() : $"MODE {mode}";
+        {
+            if (mode < byte.MinValue || mode > byte.MaxValue)
+                return $"MODE {mode}";
+
+            GameMode value = (GameMode)(byte)mode;
+            return Enum.IsDefined(value) ? value.ToString() : $"MODE {mode}";
+        }
 
         private static string RoomName(string key)
         {
