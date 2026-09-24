@@ -1453,26 +1453,21 @@ namespace MphRead.Droid
                 _input.Apply(controls.RolltLeft, left);
                 _input.Apply(controls.RollRight, right);
 
-                // Samus/Kanden/Spire/Noxus do not use the aim-side drag to turn
-                // while transformed. Treat that drag as a second temporary roll
-                // stick instead. The physical/floating movement stick wins when
-                // both are active, avoiding contradictory directions.
-                if (main.IsAltForm
+                // Samus/Kanden/Spire/Noxus use the aim-side drag as an
+                // analogue virtual stick while transformed. Keep it separate
+                // from Roll keybinds so a real stick/keyboard/controller can
+                // take priority later in the shared input pass.
+                (bool Engaged, float X, float Y) altDrive = _controls.AltMoveDrive;
+                bool swipeOwnsMovement = main.IsAltForm
+                    && !main.IsMorphing && !main.IsUnmorphing
                     && Mods.Input.AltFormGesture.UsesRollMovement(main.Hunter)
                     && dir == TouchControls.Dir.None
                     && !GameState.DialogPause
-                    && !_controls.IsHeld(TouchAction.WeaponMenu))
-                {
-                    Mods.Input.AltMoveDirection move = _controls.AltMove;
-                    _input.Apply(controls.RollUp,
-                        (move & Mods.Input.AltMoveDirection.Up) != 0);
-                    _input.Apply(controls.RollDown,
-                        (move & Mods.Input.AltMoveDirection.Down) != 0);
-                    _input.Apply(controls.RolltLeft,
-                        (move & Mods.Input.AltMoveDirection.Left) != 0);
-                    _input.Apply(controls.RollRight,
-                        (move & Mods.Input.AltMoveDirection.Right) != 0);
-                }
+                    && !_controls.IsHeld(TouchAction.WeaponMenu)
+                    && altDrive.Engaged;
+                main.ModSetAltSwipeDrive(swipeOwnsMovement,
+                    swipeOwnsMovement ? altDrive.X : 0,
+                    swipeOwnsMovement ? altDrive.Y : 0);
 
                 // JUMP, or two quick taps on the aiming side, which is how the
                 // DS jumped with a stylus in hand.

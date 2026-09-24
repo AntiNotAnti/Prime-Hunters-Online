@@ -195,6 +195,7 @@ namespace MphRead.Mods.Launcher.Gui
         private SliderRow _musicVolume = null!;
         private ChoiceRow _languageRow = null!;
         private SliderRow _sensitivity = null!;
+        private SliderRow _altSwipeSensitivity = null!;
         private ToggleRow _invertY = null!;
         private ToggleRow _invertX = null!;
         private ToggleRow? _mouseMovementBoost;
@@ -1030,6 +1031,11 @@ namespace MphRead.Mods.Launcher.Gui
                 min: 1, max: 300, keyStep: 1));
             _invertY = Add(page, new ToggleRow("Invert vertical aim", InputSettings.InvertMouseY));
             _invertX = Add(page, new ToggleRow("Invert horizontal aim", InputSettings.InvertMouseX));
+            if (OperatingSystem.IsAndroid())
+            {
+                Heading(page, "Touch gestures");
+                BuildAltSwipeSensitivity(page);
+            }
 
             var advanced = new StackPanel { Spacing = 2, IsVisible = false };
             _scrollAllWeapons = Add(advanced, new ToggleRow("Wheel cycles every weapon",
@@ -1156,6 +1162,11 @@ namespace MphRead.Mods.Launcher.Gui
         {
             Heading(page, "Pen tablet");
             _penTablet = Add(page, new ToggleRow("Stylus mode", Mods.Input.PointerInput.StylusMode));
+            if (!OperatingSystem.IsAndroid())
+            {
+                Heading(page, "Alt-form gestures");
+                BuildAltSwipeSensitivity(page);
+            }
             BuildStylusZone(page);
             _penTablet.Changed += (_, _) => ShowStylusRows();
             ShowStylusRows();
@@ -1185,6 +1196,7 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 InputSettings.Reset();
                 _sensitivity.Value = SensitivityToSlider(InputSettings.MouseSensitivity);
+                _altSwipeSensitivity.Value = (int)MathF.Round(InputSettings.AltSwipeSensitivity * 100);
                 _invertY.On = InputSettings.InvertMouseY;
                 _invertX.On = InputSettings.InvertMouseX;
                 if (_mouseMovementBoost != null) _mouseMovementBoost.On = InputSettings.MouseMovementBoost;
@@ -1335,6 +1347,20 @@ namespace MphRead.Mods.Launcher.Gui
             }
             _touchButtonsRow.Changed += (_, _) => ShowTouchRows();
             ShowTouchRows();
+        }
+
+        private void BuildAltSwipeSensitivity(StackPanel page)
+        {
+            _altSwipeSensitivity = Add(page, new SliderRow("Alt swipe sensitivity",
+                Math.Clamp((int)MathF.Round(InputSettings.AltSwipeSensitivity * 100),
+                    (int)(InputSettings.MinAltSwipeSensitivity * 100),
+                    (int)(InputSettings.MaxAltSwipeSensitivity * 100)),
+                value => $"{(value / 100f).ToString("0.00", CultureInfo.InvariantCulture)}x",
+                min: (int)(InputSettings.MinAltSwipeSensitivity * 100),
+                max: (int)(InputSettings.MaxAltSwipeSensitivity * 100), keyStep: 5));
+            Explain(page, "Controls how quickly touch/pen alt-form movement reaches full deflection. "
+                + "Higher values need less travel. The fast flick threshold for Samus boost and "
+                + "Spire attack is unchanged.");
         }
 
         // Direct hundredths of the sensitivity itself, not an index over a
@@ -1692,6 +1718,7 @@ namespace MphRead.Mods.Launcher.Gui
             _settings.Language = _languageRow.Value;
             // Controls
             InputSettings.MouseSensitivity = SliderToSensitivity(_sensitivity.Value);
+            InputSettings.AltSwipeSensitivity = _altSwipeSensitivity.Value / 100f;
             InputSettings.InvertMouseY = _invertY.On;
             InputSettings.InvertMouseX = _invertX.On;
             if (_mouseMovementBoost != null)

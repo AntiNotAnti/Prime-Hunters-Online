@@ -236,6 +236,7 @@ namespace MphRead.Droid
         // stick. The anchor is where the aim-side finger went down, so holding
         // the drag keeps moving instead of requiring a stream of new deltas.
         private const float AltMoveDeadzoneDp = 18f;
+        private const float AltMoveFullScaleDp = 96f;
         private const float SwipeBoostDistanceDp = 50f;
         private const long SwipeBoostWindowMs = 120;
         private const long SwipeBoostCooldownMs = 350;
@@ -1077,24 +1078,34 @@ namespace MphRead.Droid
             }
         }
 
-        public AltMoveDirection AltMove
+        public (bool Engaged, float X, float Y) AltMoveDrive
         {
             get
             {
                 lock (_lock)
                 {
                     float deadZone = AltMoveDeadzoneDp * Density;
+                    float fullScale = AltMoveFullScaleDp * Density;
+                    float dx;
+                    float dy;
                     if (_aimPointer != -1)
                     {
-                        return AltFormGesture.Direction(
-                            _aimAbsX - _tapDownX, _aimAbsY - _tapDownY, deadZone);
+                        dx = _aimAbsX - _tapDownX;
+                        dy = _aimAbsY - _tapDownY;
                     }
-                    if (_fireAimPointer != -1)
+                    else if (_fireAimPointer != -1)
                     {
-                        return AltFormGesture.Direction(
-                            _fireAimX - _fireAimOriginX, _fireAimY - _fireAimOriginY, deadZone);
+                        dx = _fireAimX - _fireAimOriginX;
+                        dy = _fireAimY - _fireAimOriginY;
                     }
-                    return AltMoveDirection.None;
+                    else
+                    {
+                        return (false, 0, 0);
+                    }
+                    (float X, float Y) drive = AltFormGesture.Drive(
+                        dx, dy, deadZone, fullScale,
+                        MphRead.Mods.InputSettings.AltSwipeSensitivity);
+                    return (true, drive.X, drive.Y);
                 }
             }
         }

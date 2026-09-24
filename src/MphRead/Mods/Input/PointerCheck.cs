@@ -125,6 +125,29 @@ namespace MphRead.Mods.Input
                 "alt gesture dead zone rejects pointer jitter");
             Require(AltFormGesture.Direction(float.NaN, 10, 0) == AltMoveDirection.None,
                 "alt gesture rejects non-finite input");
+
+            (float driveX, float driveY) = AltFormGesture.Drive(0, -96, 18, 96, 1);
+            Require(Math.Abs(driveX) < 0.0001f && Math.Abs(driveY + 1) < 0.0001f,
+                "alt swipe reaches full analogue deflection");
+            var partialDrive = AltFormGesture.Drive(0, -57, 18, 96, 1);
+            driveY = partialDrive.Y;
+            Require(Math.Abs(driveY + 0.5f) < 0.001f,
+                "alt swipe preserves partial analogue travel");
+            var sensitiveDrive = AltFormGesture.Drive(0, -57, 18, 96, 2);
+            Require(Math.Abs(sensitiveDrive.Y) > Math.Abs(driveY),
+                "higher alt swipe sensitivity reaches stronger deflection with the same travel");
+
+            Require(AltFormGesture.TryPrecisionVelocity(0.31f, 0, -1, 0, 0.32f,
+                    out float reversedX, out float reversedZ)
+                && Math.Abs(reversedX + 0.32f) < 0.0001f && Math.Abs(reversedZ) < 0.0001f,
+                "precision swipe reverses normal roll velocity in one step");
+            Require(AltFormGesture.TryPrecisionVelocity(0.2f, 0, 0, 0, 0.32f,
+                    out float stoppedX, out float stoppedZ)
+                && stoppedX == 0 && stoppedZ == 0,
+                "precision swipe centre stops normal roll immediately");
+            Require(!AltFormGesture.TryPrecisionVelocity(0.6f, 0, -1, 0, 0.32f,
+                    out _, out _),
+                "precision swipe preserves high-speed boost or impact momentum");
             Require(AltFormGesture.UsesRollMovement(global::MphRead.Hunter.Samus)
                 && AltFormGesture.UsesRollMovement(global::MphRead.Hunter.Kanden)
                 && AltFormGesture.UsesRollMovement(global::MphRead.Hunter.Spire)
@@ -690,6 +713,20 @@ namespace MphRead.Mods.Input
                 Require(!InputSettings.MouseMovementBoost && !InputSettings.StylusMovementBoost,
                     "movement boost settings round trip");
 
+                File.WriteAllText(path, "alt_swipe_sensitivity=1.75\n");
+                InputSettings.Load();
+                Require(Math.Abs(InputSettings.AltSwipeSensitivity - 1.75f) < 0.0001f,
+                    "alt swipe sensitivity loads");
+                InputSettings.Save();
+                InputSettings.AltSwipeSensitivity = 1;
+                InputSettings.Load();
+                Require(Math.Abs(InputSettings.AltSwipeSensitivity - 1.75f) < 0.0001f,
+                    "alt swipe sensitivity round trips");
+                File.WriteAllText(path, "alt_swipe_sensitivity=99\n");
+                InputSettings.Load();
+                Require(InputSettings.AltSwipeSensitivity == InputSettings.MaxAltSwipeSensitivity,
+                    "alt swipe sensitivity clamps hand-edited values");
+
                 File.WriteAllText(path,
                     "stylus_mode=true\nstylus_zone=true\nstylus_zone_opacity=0.4\n");
                 InputSettings.Load();
@@ -720,6 +757,8 @@ namespace MphRead.Mods.Input
                     "reset restores ordinary mouse defaults");
                 Require(InputSettings.MouseMovementBoost && InputSettings.StylusMovementBoost,
                     "reset restores movement-triggered boost defaults");
+                Require(InputSettings.AltSwipeSensitivity == 1,
+                    "reset restores alt swipe sensitivity");
                 Require(Math.Abs(StylusZone.CursorOpacity - StylusZone.DefaultCursorOpacity) < 0.0001f
                     && Math.Abs(StylusZone.OutlineOpacity - StylusZone.DefaultOutlineOpacity) < 0.0001f
                     && Math.Abs(StylusZone.ButtonOpacity - StylusZone.DefaultButtonOpacity) < 0.0001f,

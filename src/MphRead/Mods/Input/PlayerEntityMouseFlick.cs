@@ -44,56 +44,86 @@ namespace MphRead.Entities
             }
         }
 
+        internal void ModSetAltSwipeDrive(bool engaged, float x, float y)
+        {
+            if (!global::System.Single.IsFinite(x) || !global::System.Single.IsFinite(y))
+            {
+                engaged = false;
+                x = y = 0;
+            }
+            bool wasEngaged = Input.AltSwipeEngaged;
+            if (!engaged && wasEngaged)
+            {
+                Input.AltSwipeStopRequested = true;
+            }
+            Input.AltSwipeEngaged = engaged;
+            Input.AltSwipeX = engaged ? x : 0;
+            Input.AltSwipeY = engaged ? y : 0;
+        }
+
+        private void ModResetAltSwipeDrive()
+        {
+            Input.ResetAltSwipe();
+        }
+
+        private void ModMarkAltSwipeInput()
+        {
+            if (Input.AltSwipeEngaged
+                && (Input.AltSwipeX != 0 || Input.AltSwipeY != 0))
+            {
+                Input.HasInput = true;
+            }
+        }
+
         /// <summary>
-        /// Feed an active desktop pen drag into the same Roll binds used by
-        /// keyboard/controller/touch. Ordinary mouse movement remains aiming and
-        /// transformed aim-capable hunters keep their existing pointer behavior.
+        /// Desktop Stylus Mode uses an anchored virtual stick for rolling alt
+        /// forms. Ordinary mouse movement remains aiming and Trace/Sylux/Weavel
+        /// keep their transformed pointer aim.
         /// </summary>
         private void ModApplyStylusAltMove()
         {
-            if (!IsMainPlayer || IsBot || !IsAltForm || IsMorphing || IsUnmorphing
-                || !Mods.Input.AltFormGesture.UsesRollMovement(Hunter)
-                || !Mods.Input.PointerDevice.Active
-                || Mods.Input.PointerDevice.Current.Device == Mods.Input.PointerDeviceType.Mouse
-                || !Mods.Input.PointerDevice.Current.InContact
-                || Flags1.TestFlag(PlayerFlags1.NoAimInput)
-                || Flags1.TestFlag(PlayerFlags1.WeaponMenuOpen)
-                || Mods.SpectatorMode.IsSpectating
-                || _scene.FrameAdvance || _scene.FrameAdvanceLastFrame
-                || CameraSequence.Current?.Flags.TestFlag(CamSeqFlags.BlockInput) == true)
+            // Android queues its anchored multi-touch sample in GameView before
+            // the shared hardware-input pass.
+            if (global::System.OperatingSystem.IsAndroid())
             {
                 return;
             }
 
-            // An explicit movement bind already has ownership for this frame.
-            if (Controls.RollUp.IsDown || Controls.RollDown.IsDown
-                || Controls.RolltLeft.IsDown || Controls.RollRight.IsDown)
+            bool valid = IsMainPlayer && !IsBot && IsAltForm
+                && !IsMorphing && !IsUnmorphing
+                && Mods.Input.AltFormGesture.UsesRollMovement(Hunter)
+                && Mods.Input.PointerDevice.Active
+                && Mods.Input.PointerDevice.Current.Device != Mods.Input.PointerDeviceType.Mouse
+                && Mods.Input.PointerDevice.Current.InContact
+                && (!Mods.Input.StylusZone.Enabled || Mods.Input.StylusZone.Aiming)
+                && !Flags1.TestFlag(PlayerFlags1.NoAimInput)
+                && !Flags1.TestFlag(PlayerFlags1.WeaponMenuOpen)
+                && !Mods.SpectatorMode.IsSpectating
+                && !_scene.FrameAdvance && !_scene.FrameAdvanceLastFrame
+                && CameraSequence.Current?.Flags.TestFlag(CamSeqFlags.BlockInput) != true;
+            if (!valid)
             {
+                Input.StylusAltTracking = false;
+                ModSetAltSwipeDrive(false, 0, 0);
                 return;
             }
 
-            Mods.Input.AltMoveDirection direction = Mods.Input.AltFormGesture.Direction(
-                Input.MouseDeltaX, Input.MouseDeltaY, deadZone: 2f);
-            if (direction == Mods.Input.AltMoveDirection.None)
+            Mods.Input.PointerSample sample = Mods.Input.PointerDevice.Current;
+            if (!Input.StylusAltTracking)
             {
+                Input.StylusAltTracking = true;
+                Input.StylusAltOriginX = sample.X;
+                Input.StylusAltOriginY = sample.Y;
+                ModSetAltSwipeDrive(true, 0, 0);
                 return;
             }
 
-            void Apply(Keybind bind, Mods.Input.AltMoveDirection flag)
-            {
-                if ((direction & flag) == 0)
-                {
-                    return;
-                }
-                bind.IsPressed |= !bind.IsDown;
-                bind.IsDown = true;
-                Input.HasInput = true;
-            }
-
-            Apply(Controls.RollUp, Mods.Input.AltMoveDirection.Up);
-            Apply(Controls.RollDown, Mods.Input.AltMoveDirection.Down);
-            Apply(Controls.RolltLeft, Mods.Input.AltMoveDirection.Left);
-            Apply(Controls.RollRight, Mods.Input.AltMoveDirection.Right);
+            (float X, float Y) drive = Mods.Input.AltFormGesture.Drive(
+                sample.X - Input.StylusAltOriginX,
+                sample.Y - Input.StylusAltOriginY,
+                deadZone: 6f, fullScale: 96f,
+                sensitivity: Mods.InputSettings.AltSwipeSensitivity);
+            ModSetAltSwipeDrive(true, drive.X, drive.Y);
         }
 
         /// <summary>

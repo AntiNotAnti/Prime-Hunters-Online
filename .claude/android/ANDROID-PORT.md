@@ -255,7 +255,7 @@ in GL -- it is a dozen circles that change when touched):
 | Control | Bind |
 |---|---|
 | Floating stick, left half | `MoveUp/Down/Left/Right` **and** `RollUp/Down/Left/Right`, eight-way. Both sets, because walking reads one and the morph ball the other |
-| Aim-side drag in rolling alt forms | Samus/Kanden/Spire/Noxus feed the same camera-relative `Roll*` controls from the drag anchor; the floating stick takes priority. Trace/Sylux/Weavel keep transformed aiming. Fast Samus/Spire flicks additionally trigger boost/alt attack. |
+| Aim-side drag in rolling alt forms | Samus/Kanden/Spire/Noxus use an analogue camera-relative virtual stick from the drag anchor. Returning to centre stops normal roll immediately; crossing the anchor reverses direction immediately. The floating stick/keyboard/controller takes priority, and boosts/high-speed impacts are preserved. Trace/Sylux/Weavel keep transformed aiming. Fast Samus/Spire flicks additionally trigger boost/alt attack. Alt swipe sensitivity is saved in controls.txt. |
 | FIRE | `Shoot` on foot and `AltAttack` in the morph ball |
 | JUMP | `Jump` **and** `Boost` -- one button on the DS, and the same key by default: jumping on foot is boosting in the ball |
 | MORPH | `Morph` |
