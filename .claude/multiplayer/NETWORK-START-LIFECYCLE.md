@@ -119,3 +119,9 @@ The loading pump also applies any newer fast snapshot received after release in
 the same drain, before the renderer draws without a simulation step. This closes
 the observed first-picture old-spawn race during late join. The asset bootstrap
 check covers that packet ordering and asserts that simulation time stays frozen.
+
+MatchLoaded deduplication includes the local slot and its generation as well as
+the match/start identity. Re-admission with a new occupant can reuse the loaded
+scene but sends MatchLoaded again and waits for a fresh WorldReady baseline. A
+duplicate Welcome for the same occupant leaves readiness intact. The asset
+bootstrap regression covers both paths without advancing the scene.

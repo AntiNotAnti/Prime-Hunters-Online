@@ -12,6 +12,37 @@ The simulation remains 60 Hz, rewind remains bounded to 45 frames with 128 frame
 of history, and movement remains client-owned. Damage values, weapon policy,
 remote hit prediction and smoothing tuning are unchanged.
 
+### Updated-main compatibility
+
+Rebased onto main `b59facfd39271cea94a92f077aef05042c97194a`, preserving its
+hit-affliction provenance and authority fixes, hosting hardening, Adventure fixes
+and launcher changes. Protocol 18 still intentionally requires matching clients
+and servers; compatibility with main here describes source integration.
+
+Integration testing exposed a same-match re-admission deadlock: a replacement
+slot generation reused the previous MatchLoaded deduplication state. MatchLoaded
+now includes slot identity and generation, and a new welcome reboots readiness
+for the already-loaded scene. Duplicate welcomes for the same occupant preserve
+readiness. Full roster/session retries also supersede obsolete revisions using
+fresh event IDs, leaving room for bootstrap lanes during startup bursts without
+changing command delivery or reliable queue bounds. Focused regressions cover
+both paths, including delayed ACKs and 96 state revisions.
+
+The compatibility manifest in `tools/nettest/baselines/compatibility-v18.json`
+records the tested source and assembly, 19 passing network/asset suites, the
+16-scenario smoke benchmark, replay and UI checks, and rendered integration runs.
+The existing extended benchmark and six-profile results below retain their
+original pre-rebase provenance. Gamepad/Adventure UI checks use an isolated user
+data directory so an existing save does not trigger overwrite confirmation.
+
+The final five-minute rendered extreme run (400 ms configured RTT, 80 ms jitter,
+5% loss, 3% reorder, 1% duplication) passed all eight feature reports, with no
+simulation failures, claim capacity refusals, ledger overwrites or input queue
+overflows. Cross-observer alt-attack counts still differed by up to two; the cause
+is unresolved. The manifest retains the initial failed run and short diagnostic,
+not just the successful rerun. The initial disconnect cause was not established;
+the re-admission deadlock and state-retry pressure path have focused regressions.
+
 ### Implemented architecture
 
 - Claims reserve 64 pending entries per shooter and 64 authoritative resolutions

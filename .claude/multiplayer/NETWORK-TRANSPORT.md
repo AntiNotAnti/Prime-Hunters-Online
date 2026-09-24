@@ -96,3 +96,11 @@ Connected sends cache a connection-owned SocketAddress and use synchronous
 Socket.SendTo over the caller's span. This removes the measured 72 B/send endpoint
 serialization allocation. Discovery/admission, delayed fault injection and replay
 ownership copies are separately scoped; the live send allocation test excludes them.
+
+During scene loading, newer full `Roster` and `SessionState` publications
+supersede older pending retries of that same type. Each replacement receives a
+new reliable event ID; the application revision still rejects reordered older
+state. Commands, results, Welcome and the three distinct WorldBootstrap lanes
+are never superseded. The 40-event capacity, 256-ID dedup span and explicit
+failure behavior remain bounded. `--reliable` covers a 96-revision startup burst,
+old ACK isolation, all three bootstrap lanes and ordinary-command exhaustion.

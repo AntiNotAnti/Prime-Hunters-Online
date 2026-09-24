@@ -1,0 +1,1007 @@
+{
+  "mainCommit": "b59facfd39271cea94a92f077aef05042c97194a",
+  "sourceCommit": "87f569ca71825c93f4e61acc7f91de4c0f04655e",
+  "assemblySha256": "ee6aee6b5fc36d6fdb94b9c363c0db22dd8390247fd5d263b608cb00b733b22f",
+  "suites": [
+    {
+      "suite": "architecture",
+      "exit": 0,
+      "seconds": 0.11,
+      "summary": [
+        "[net] server map:  (None, 0 s left)",
+        "PASS: architecture, owner position, full snapshots and v16 byte fixture"
+      ]
+    },
+    {
+      "suite": "lifecycle",
+      "exit": 0,
+      "seconds": 0.36,
+      "summary": [
+        "[net] server map:  (None, 0 s left)",
+        "[net] server map:  (None, 0 s left)",
+        "PASS: 3680 lifecycle assertions (production code, deterministic seed 8128)"
+      ]
+    },
+    {
+      "suite": "health-shots",
+      "exit": 0,
+      "seconds": 7.59,
+      "summary": [
+        "[net] server map:  (None, 0 s left)",
+        "Ghost input matrix: 7776 weapon/profiles, 2 delivery streams, dropped=18360 duplicated=8424 reordered=14256",
+        "PASS: 3338732 health/shot assertions"
+      ]
+    },
+    {
+      "suite": "claim-stress",
+      "exit": 0,
+      "seconds": 0.19,
+      "summary": [
+        "[net] server map:  (None, 0 s left)",
+        "PASS: claim retention, multiplicity, exact matching, shooter isolation and capacity refusal"
+      ]
+    },
+    {
+      "suite": "protocol17",
+      "exit": 0,
+      "seconds": 0.22,
+      "summary": [
+        "PASS: protocol 18 transport sequences, ACK bits, wrap, identity and UDP integration"
+      ]
+    },
+    {
+      "suite": "protocol18",
+      "exit": 0,
+      "seconds": 0.1,
+      "summary": [
+        "PASS: protocol 18 lane round-trip, revision fencing, 0 decode allocations, 903B worst-case fast datagram"
+      ]
+    },
+    {
+      "suite": "input-edges",
+      "exit": 0,
+      "seconds": 0.09,
+      "summary": [
+        "PASS: input sequence wrap, lifecycle reset, rapid identical actions, 0-3 lost packets, duplication, reorder and ages 0-7"
+      ]
+    },
+    {
+      "suite": "dynamic-geometry",
+      "exit": 0,
+      "seconds": 0.12,
+      "summary": [
+        "PASS: doors, force fields, moving collision, fractional sampling, catch-up, exception restoration, misses and 0 rewind allocations"
+      ]
+    },
+    {
+      "suite": "allocations",
+      "exit": 0,
+      "seconds": 0.95,
+      "summary": [
+        "Snapshot.Compose: 0.00 B/op",
+        "Snapshot.Decode: 0.00 B/op",
+        "NetTransport.Send UDP: 0.00 B/op (receive/fault/replay ownership excluded)"
+      ]
+    },
+    {
+      "suite": "reliable",
+      "exit": 0,
+      "seconds": 0.22,
+      "summary": [
+        "[net] reliable control failed for 127.0.0.1:63878; disconnecting",
+        "PASS: reliability under 5% loss / 80ms jitter / 3% reorder / 1% duplicate; capacity, dedup span and expiry"
+      ]
+    },
+    {
+      "suite": "queue-budget",
+      "exit": 0,
+      "seconds": 0.09,
+      "summary": [
+        "PASS: flood capacity, critical reserve, per-peer rate limits and pump budgets"
+      ]
+    },
+    {
+      "suite": "lagcomp-shadow",
+      "exit": 0,
+      "seconds": 0.1,
+      "summary": [
+        "PASS: 2352 shadow timing profiles, fractional equivalence, pure geometry and outcome categories"
+      ]
+    },
+    {
+      "suite": "weapon-policy",
+      "exit": 0,
+      "seconds": 0.24,
+      "summary": [
+        "OmegaCannon charged=True: ProjectileCatchUp, cap=45, homing=0/102/102",
+        "[net] server map:  (None, 0 s left)",
+        "PASS: 1620 weapon timing profiles, all MP variants, bounded catch-up equivalence"
+      ]
+    },
+    {
+      "suite": "transport-stress",
+      "exit": 0,
+      "seconds": 9.09,
+      "summary": [
+        "peer 6: configured RTT=400, snapshots=207, queueHigh=9, ACK RTT=457.8",
+        "peer 7: configured RTT=150, snapshots=207, queueHigh=23, ACK RTT=208.1",
+        "PASS: eight mixed-quality UDP peers, 1760 intents, 128 exact-once controls, 400ms client pump stall"
+      ]
+    },
+    {
+      "suite": "load-lifecycle",
+      "exit": 0,
+      "seconds": 94.18,
+      "summary": [
+        "[12:00:50] [server] no peers left; waiting for a new authority",
+        "[12:00:50] [server] shutting down",
+        "[netlobbytest] PASS: 2962 assertions; protocol, UDP lifecycle, direct post-match lobby return, abandoned-session cleanup, hosted ownership, teams, rebind and continuous rotation."
+      ]
+    },
+    {
+      "suite": "bootstrap-scene",
+      "exit": 0,
+      "seconds": 0.72,
+      "summary": [
+        "[net] slot 0 activated (BOOT0) -- 8 player(s) in scene",
+        "[net] joined as slot 0",
+        "BOOTSTRAP PASS: eight real players, frozen spawn, lane loss/reorder/duplicate, valid first ACK and rematch fence"
+      ]
+    },
+    {
+      "suite": "combat-scene",
+      "exit": 0,
+      "seconds": 0.79,
+      "summary": [
+        "COMBAT PASS ricochet child keeps original fire event/Judicator",
+        "COMBAT PASS no simulation failures",
+        "COMBAT PASS 98 assertions"
+      ]
+    },
+    {
+      "suite": "geometry-scene",
+      "exit": 0,
+      "seconds": 0.73,
+      "summary": [
+        "[net] player slots built, main player = slot 0",
+        "GEOMETRY room=UNIT1_RM1 doors=12 fields=11 meshes=9",
+        "GEOMETRY PASS: real asset traces, historical blocked=12, current blocked=23, exact restoration"
+      ]
+    },
+    {
+      "suite": "claim-load-scene",
+      "exit": 0,
+      "seconds": 1.96,
+      "summary": [
+        "CLAIM LOAD PASS rtt=250 claims=7200 rescued=0 suppressed=0 pendingHigh=106 ledgerHigh=512",
+        "CLAIM LOAD PASS rtt=320 claims=7200 rescued=0 suppressed=0 pendingHigh=109 ledgerHigh=512",
+        "CLAIM LOAD PASS rtt=400 claims=7200 rescued=0 suppressed=0 pendingHigh=106 ledgerHigh=512"
+      ]
+    },
+    {
+      "suite": "network-benchmark",
+      "exit": 0,
+      "seconds": 0.33,
+      "summary": [
+        "PASS: 16 seeded network benchmark scenarios"
+      ]
+    }
+  ],
+  "scope": "Compatibility verification after rebasing onto updated main. Original extended benchmark and six-profile results retain their original provenance in the other baseline files.",
+  "additionalChecks": [
+    {
+      "check": "-gamepadcheck",
+      "exit": 0,
+      "summary": [
+        "[primeuicheck] PASS: 78 checks",
+        "[gamepadcheck] PASS: 400 deterministic checks"
+      ],
+      "initialExit": 1,
+      "initialFailure": "The default application data contained an existing Adventure save, so NEW RUN opened overwrite confirmation instead of emitting a launch plan.",
+      "environment": "PROJECT_PRIME_USER_DATA set to an empty isolated temporary directory.",
+      "sourceCommit": "41f109d835f3aed2374b94aa43a0a0a387343ebe"
+    },
+    {
+      "check": "-pointercheck",
+      "exit": 0,
+      "summary": [
+        "Native: /Users/jarrett/Documents/Development/Prime Hunters Online/src/MphRead/bin/Release/net10.0/libAvaloniaNative.dylib",
+        "Native: /Users/jarrett/Documents/Development/Prime Hunters Online/src/MphRead/bin/Release/net10.0/libminiaudio.dylib",
+        "POINTERCHECK PASS (1755 assertions)"
+      ],
+      "sourceCommit": "41f109d835f3aed2374b94aa43a0a0a387343ebe"
+    },
+    {
+      "check": "-replayformatcheck",
+      "exit": 0,
+      "summary": [
+        "[net] server map: MP1 SANCTORUS (Battle, 300 s left)",
+        "[net] server map: MP1 SANCTORUS (Battle, 0 s left)",
+        "[replayformat] PASS 2710 checks (v2/v3/v4, order, metadata, CRC, recovery, extraction, malformed files)"
+      ],
+      "sourceCommit": "41f109d835f3aed2374b94aa43a0a0a387343ebe"
+    },
+    {
+      "check": "-replaycontrolcheck",
+      "exit": 0,
+      "summary": [
+        "[replaycheck] kill cam: eligibility and weapon labels passed",
+        "[replaycheck] input: replay controller context isolation passed",
+        "[replaycheck] studio: annotation sidecar round-trip passed"
+      ],
+      "sourceCommit": "41f109d835f3aed2374b94aa43a0a0a387343ebe"
+    },
+    {
+      "check": "-replayworldcheck",
+      "exit": 0,
+      "summary": [
+        "[replayreplica] PASS: 1801 gameplay/presentation hashes and decoder restores, 13753 animation restores, 7 detached worlds and 1650 continuation frames, 1572 frames with projectiles; interleaved scenes and teardown preserve foreground state.",
+        "[replayworld] PASS: all 12 multiplayer modes with detached restore, continuation and file/frozen-clip seeks."
+      ],
+      "sourceCommit": "87f569ca71825c93f4e61acc7f91de4c0f04655e"
+    }
+  ],
+  "guards": {
+    "noGameAssets": true,
+    "mapsShipped": true,
+    "benchmarkException": "Exact generated numerical benchmark path only; no extracted assets."
+  },
+  "renderedRuns": [
+    {
+      "scenario": "extreme",
+      "seconds": 300,
+      "elapsedSeconds": 316.686217792,
+      "profiles": [
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ]
+      ],
+      "results": [
+        {
+          "peer": 0,
+          "exit": 1,
+          "timedOut": false
+        },
+        {
+          "peer": 1,
+          "exit": 1,
+          "timedOut": false
+        },
+        {
+          "peer": 2,
+          "exit": 1,
+          "timedOut": false
+        },
+        {
+          "peer": 3,
+          "exit": 1,
+          "timedOut": false
+        },
+        {
+          "peer": 4,
+          "exit": 1,
+          "timedOut": false
+        },
+        {
+          "peer": 5,
+          "exit": 1,
+          "timedOut": false
+        },
+        {
+          "peer": 6,
+          "exit": 1,
+          "timedOut": false
+        },
+        {
+          "peer": 7,
+          "exit": 1,
+          "timedOut": false
+        }
+      ],
+      "host": "macOS-27.0-arm64-arm-64bit",
+      "assemblySha256": "aac08d003425e2e976b33346b9a58341a5fc89dc525d5ff551b6ea873570deff",
+      "observations": {
+        "maximumFastDatagram": 903,
+        "claimCapacityRefusals": 0,
+        "unusedLedgerOverwrites": 0,
+        "inputEdgeOverflow": 0,
+        "altAttackCrossReports": [
+          {
+            "source": "CHECK0",
+            "sent": 159,
+            "observed": {
+              "CHECK0": 159,
+              "CHECK1": 159,
+              "CHECK3": 0,
+              "CHECK2": 159,
+              "CHECK6": 0,
+              "CHECK7": 0,
+              "CHECK4": 0
+            },
+            "maximumDifference": 159
+          },
+          {
+            "source": "CHECK1",
+            "sent": 158,
+            "observed": {
+              "CHECK0": 158,
+              "CHECK1": 158,
+              "CHECK3": 0,
+              "CHECK2": 158,
+              "CHECK6": 0,
+              "CHECK7": 0,
+              "CHECK4": 0
+            },
+            "maximumDifference": 158
+          },
+          {
+            "source": "CHECK2",
+            "sent": 150,
+            "observed": {
+              "CHECK0": 150,
+              "CHECK1": 150,
+              "CHECK3": 0,
+              "CHECK2": 150,
+              "CHECK6": 0,
+              "CHECK7": 0,
+              "CHECK4": 0
+            },
+            "maximumDifference": 150
+          },
+          {
+            "source": "CHECK3",
+            "sent": 0,
+            "observed": {
+              "CHECK0": 0,
+              "CHECK1": 0,
+              "CHECK3": 0,
+              "CHECK2": 0
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK4",
+            "sent": 0,
+            "observed": {
+              "CHECK0": 0,
+              "CHECK1": 0,
+              "CHECK3": 0,
+              "CHECK2": 0,
+              "CHECK4": 0
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK5",
+            "sent": 0,
+            "observed": {
+              "CHECK0": 0,
+              "CHECK1": 0,
+              "CHECK3": 0,
+              "CHECK2": 0,
+              "CHECK5": 0,
+              "CHECK4": 0
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK6",
+            "sent": 0,
+            "observed": {
+              "CHECK0": 0,
+              "CHECK1": 0,
+              "CHECK3": 0,
+              "CHECK2": 0,
+              "CHECK6": 0,
+              "CHECK4": 0
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK7",
+            "sent": 0,
+            "observed": {
+              "CHECK0": 0,
+              "CHECK1": 0,
+              "CHECK3": 0,
+              "CHECK2": 0,
+              "CHECK6": 0,
+              "CHECK7": 0,
+              "CHECK4": 0
+            },
+            "maximumDifference": 0
+          }
+        ],
+        "lastServerSample": {
+          "steps": 17999.0,
+          "meanMilliseconds": 0.24,
+          "worstMilliseconds": 112.4,
+          "overruns": 3.0,
+          "droppedTicks": 1.0,
+          "stalls": 0.0
+        },
+        "serverQueueHighWater": 9,
+        "serverQueueDrops": 0,
+        "simulationFailureLogged": false,
+        "peerReportsPassed": 0,
+        "lastShadowSample": {
+          "wouldClamp": 186.0,
+          "timedShots": 673.0,
+          "refusedFrames": 234.0,
+          "geometryUnavailable": 634.0,
+          "shots": 679.0,
+          "maximumCatchUpSteps": 45.0,
+          "catchUpTruncations": 0.0
+        }
+      },
+      "note": "Initial 300-second run failed after early disconnects; replacement generations did not resend MatchLoaded. Original disconnect cause is unconfirmed because native stderr was not retained. A bounded state-retry queue pressure path was separately reproduced and fixed."
+    },
+    {
+      "scenario": "extreme",
+      "seconds": 40,
+      "elapsedSeconds": 62.898862125,
+      "profiles": [
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ]
+      ],
+      "results": [
+        {
+          "peer": 0,
+          "exit": 1,
+          "timedOut": false
+        },
+        {
+          "peer": 1,
+          "exit": 1,
+          "timedOut": false
+        },
+        {
+          "peer": 2,
+          "exit": 1,
+          "timedOut": false
+        },
+        {
+          "peer": 3,
+          "exit": 1,
+          "timedOut": false
+        },
+        {
+          "peer": 4,
+          "exit": 1,
+          "timedOut": false
+        },
+        {
+          "peer": 5,
+          "exit": 1,
+          "timedOut": false
+        },
+        {
+          "peer": 6,
+          "exit": 1,
+          "timedOut": false
+        },
+        {
+          "peer": 7,
+          "exit": 1,
+          "timedOut": false
+        }
+      ],
+      "host": "macOS-27.0-arm64-arm-64bit",
+      "assemblySha256": "aac08d003425e2e976b33346b9a58341a5fc89dc525d5ff551b6ea873570deff",
+      "observations": {
+        "maximumFastDatagram": 903,
+        "claimCapacityRefusals": 0,
+        "unusedLedgerOverwrites": 0,
+        "inputEdgeOverflow": 0,
+        "altAttackCrossReports": [
+          {
+            "source": "CHECK0",
+            "sent": 12,
+            "observed": {
+              "CHECK0": 12,
+              "CHECK1": 12,
+              "CHECK3": 12,
+              "CHECK2": 12,
+              "CHECK6": 12,
+              "CHECK7": 12,
+              "CHECK5": 12,
+              "CHECK4": 12
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK1",
+            "sent": 36,
+            "observed": {
+              "CHECK0": 36,
+              "CHECK1": 36,
+              "CHECK3": 36,
+              "CHECK2": 36,
+              "CHECK6": 36,
+              "CHECK7": 36,
+              "CHECK5": 36,
+              "CHECK4": 36
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK2",
+            "sent": 7,
+            "observed": {
+              "CHECK0": 7,
+              "CHECK1": 7,
+              "CHECK3": 7,
+              "CHECK2": 7,
+              "CHECK6": 7,
+              "CHECK7": 7,
+              "CHECK5": 7,
+              "CHECK4": 7
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK3",
+            "sent": 41,
+            "observed": {
+              "CHECK0": 41,
+              "CHECK1": 41,
+              "CHECK3": 41,
+              "CHECK2": 41,
+              "CHECK6": 41,
+              "CHECK7": 41,
+              "CHECK5": 41,
+              "CHECK4": 41
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK4",
+            "sent": 16,
+            "observed": {
+              "CHECK0": 16,
+              "CHECK1": 16,
+              "CHECK3": 16,
+              "CHECK2": 16,
+              "CHECK6": 16,
+              "CHECK7": 16,
+              "CHECK5": 16,
+              "CHECK4": 16
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK5",
+            "sent": 30,
+            "observed": {
+              "CHECK0": 30,
+              "CHECK1": 30,
+              "CHECK3": 30,
+              "CHECK2": 30,
+              "CHECK6": 30,
+              "CHECK7": 30,
+              "CHECK5": 30,
+              "CHECK4": 30
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK6",
+            "sent": 12,
+            "observed": {
+              "CHECK0": 12,
+              "CHECK1": 12,
+              "CHECK3": 12,
+              "CHECK2": 12,
+              "CHECK6": 12,
+              "CHECK7": 12,
+              "CHECK5": 12,
+              "CHECK4": 12
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK7",
+            "sent": 42,
+            "observed": {
+              "CHECK0": 42,
+              "CHECK1": 42,
+              "CHECK3": 42,
+              "CHECK2": 42,
+              "CHECK6": 42,
+              "CHECK7": 42,
+              "CHECK5": 42,
+              "CHECK4": 42
+            },
+            "maximumDifference": 0
+          }
+        ],
+        "lastServerSample": {
+          "steps": 3597.0,
+          "meanMilliseconds": 0.39,
+          "worstMilliseconds": 136.5,
+          "overruns": 3.0,
+          "droppedTicks": 3.0,
+          "stalls": 0.0
+        },
+        "serverQueueHighWater": 13,
+        "serverQueueDrops": 0,
+        "simulationFailureLogged": false,
+        "peerReportsPassed": 0,
+        "lastShadowSample": {
+          "wouldClamp": 401.0,
+          "timedShots": 687.0,
+          "refusedFrames": 762.0,
+          "geometryUnavailable": 687.0,
+          "shots": 687.0,
+          "maximumCatchUpSteps": 35.0,
+          "catchUpTruncations": 0.0
+        }
+      },
+      "note": "40-second startup diagnostic only: all eight bootstrapped, but duration was insufficient for combat feature coverage."
+    },
+    {
+      "scenario": "extreme",
+      "seconds": 300,
+      "elapsedSeconds": 328.797009375,
+      "profiles": [
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ]
+      ],
+      "results": [
+        {
+          "peer": 0,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 1,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 2,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 3,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 4,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 5,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 6,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 7,
+          "exit": 0,
+          "timedOut": false
+        }
+      ],
+      "host": "macOS-27.0-arm64-arm-64bit",
+      "assemblySha256": "ee6aee6b5fc36d6fdb94b9c363c0db22dd8390247fd5d263b608cb00b733b22f",
+      "observations": {
+        "maximumFastDatagram": 903,
+        "claimCapacityRefusals": 0,
+        "unusedLedgerOverwrites": 0,
+        "inputEdgeOverflow": 0,
+        "altAttackCrossReports": [
+          {
+            "source": "CHECK0",
+            "sent": 96,
+            "observed": {
+              "CHECK0": 96,
+              "CHECK1": 96,
+              "CHECK3": 96,
+              "CHECK2": 96,
+              "CHECK6": 96,
+              "CHECK7": 96,
+              "CHECK5": 96,
+              "CHECK4": 96
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK1",
+            "sent": 110,
+            "observed": {
+              "CHECK0": 110,
+              "CHECK1": 110,
+              "CHECK3": 110,
+              "CHECK2": 110,
+              "CHECK6": 110,
+              "CHECK7": 110,
+              "CHECK5": 110,
+              "CHECK4": 110
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK2",
+            "sent": 98,
+            "observed": {
+              "CHECK0": 97,
+              "CHECK1": 97,
+              "CHECK3": 97,
+              "CHECK2": 98,
+              "CHECK6": 96,
+              "CHECK7": 97,
+              "CHECK5": 97,
+              "CHECK4": 97
+            },
+            "maximumDifference": 2
+          },
+          {
+            "source": "CHECK3",
+            "sent": 93,
+            "observed": {
+              "CHECK0": 93,
+              "CHECK1": 91,
+              "CHECK3": 93,
+              "CHECK2": 93,
+              "CHECK6": 93,
+              "CHECK7": 93,
+              "CHECK5": 93,
+              "CHECK4": 93
+            },
+            "maximumDifference": 2
+          },
+          {
+            "source": "CHECK4",
+            "sent": 138,
+            "observed": {
+              "CHECK0": 138,
+              "CHECK1": 138,
+              "CHECK3": 138,
+              "CHECK2": 138,
+              "CHECK6": 138,
+              "CHECK7": 138,
+              "CHECK5": 138,
+              "CHECK4": 138
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK5",
+            "sent": 167,
+            "observed": {
+              "CHECK0": 167,
+              "CHECK1": 167,
+              "CHECK3": 167,
+              "CHECK2": 167,
+              "CHECK6": 167,
+              "CHECK7": 167,
+              "CHECK5": 167,
+              "CHECK4": 167
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK6",
+            "sent": 55,
+            "observed": {
+              "CHECK0": 55,
+              "CHECK1": 55,
+              "CHECK3": 55,
+              "CHECK2": 55,
+              "CHECK6": 55,
+              "CHECK7": 55,
+              "CHECK5": 55,
+              "CHECK4": 55
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK7",
+            "sent": 167,
+            "observed": {
+              "CHECK0": 167,
+              "CHECK1": 166,
+              "CHECK3": 167,
+              "CHECK2": 167,
+              "CHECK6": 167,
+              "CHECK7": 167,
+              "CHECK5": 167,
+              "CHECK4": 167
+            },
+            "maximumDifference": 1
+          }
+        ],
+        "lastServerSample": {
+          "steps": 17999.0,
+          "meanMilliseconds": 0.32,
+          "worstMilliseconds": 107.7,
+          "overruns": 4.0,
+          "droppedTicks": 1.0,
+          "stalls": 0.0
+        },
+        "serverQueueHighWater": 14,
+        "serverQueueDrops": 0,
+        "simulationFailureLogged": false,
+        "peerReportsPassed": 8,
+        "lastShadowSample": {
+          "wouldClamp": 1592.0,
+          "timedShots": 3521.0,
+          "refusedFrames": 2196.5,
+          "geometryUnavailable": 3438.0,
+          "shots": 3521.0,
+          "maximumCatchUpSteps": 45.0,
+          "catchUpTruncations": 0.0
+        }
+      },
+      "note": "Final 300-second extreme run: all eight feature reports pass. Observer alt-attack counts still differ by up to two; cause remains unresolved and passing feature reports do not imply exact cross-observer equality."
+    }
+  ]
+}
