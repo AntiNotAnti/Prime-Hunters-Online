@@ -432,7 +432,7 @@ namespace MphRead
             new (GameMode.Defender, new List<int>() { 14 }),
             new (GameMode.DefenderTeams, new List<int>() { 14 }),
             new (GameMode.PrimeHunter, new List<int>() { 0, 1, 2 }),
-            new (GameMode.Unknown15, new List<int>() { 13 })
+            new (GameMode.InstaGib, new List<int>() { 0, 1, 2 })
         ]);
 
         public static int GetMultiplayerEntityLayer(GameMode mode, int playerCount)
