@@ -90,6 +90,7 @@ namespace MphRead.Mods.Network
             else scene.GameState.PointGoal = match.PointGoal;
             scene.GameState.FriendlyFire = match.FriendlyFire;
             scene.GameState.ShadowFreeze = match.ShadowFreeze;
+            scene.GameState.SpawnProtection = State.Configuration?.Match.SpawnProtection ?? true;
             if (match.StatesRules) scene.GameState.AffinityWeapons = match.AffinityWeapons;
             else if (State.Configuration is { } configuration) scene.GameState.AffinityWeapons = configuration.Match.AffinityWeapons;
             scene.GameState.Teams = scene.GameState.IsTeamMode((GameMode)match.Mode);
