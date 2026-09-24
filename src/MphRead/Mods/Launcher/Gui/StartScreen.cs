@@ -316,7 +316,7 @@ namespace MphRead.Mods.Launcher.Gui
 #else
             const string prompt = "Quit Project Prime?";
 #endif
-            var view = new ConfirmScreen(prompt);
+            var view = new ConfirmScreen(prompt, yes: "exit game", no: "cancel");
             view.Answered += (_, yes) =>
             {
                 Pop(); if (!yes) return;
