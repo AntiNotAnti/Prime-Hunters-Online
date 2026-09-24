@@ -334,6 +334,12 @@ namespace MphRead.Mods.Network
         public bool ShadowFreeze { get; set; } = true;
 
         /// <summary>
+        /// Whether players receive the three-second spawn protection rule.
+        /// Enabled by default; lobby matches may override it per match.
+        /// </summary>
+        public bool SpawnProtection { get; set; } = true;
+
+        /// <summary>
         /// Whether this server keeps itself on the newest release.
         ///
         /// Opt-in, and set by exactly one caller: the standalone
