@@ -107,6 +107,7 @@ namespace MphRead.Mods.Render
             failures += RunStallCase() ? 0 : 1;
             failures += RunPresentationAlphaCase() ? 0 : 1;
             failures += RunFirstPersonPresentationCase() ? 0 : 1;
+            failures += HitReactionPresentationCheck.Run() ? 0 : 1;
             failures += RunFixedCameraTranslationCase() ? 0 : 1;
             failures += RunAngularCameraPresentationCase() ? 0 : 1;
             failures += RunFastLateAimCase() ? 0 : 1;

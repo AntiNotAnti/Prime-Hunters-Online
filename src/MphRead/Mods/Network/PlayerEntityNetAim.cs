@@ -309,8 +309,7 @@ namespace MphRead.Entities
         }
 
         private bool ModInterpolatedFirstPersonLocalPose(double presentationAlpha,
-            bool interpolateOrientation, out Vector3 position,
-            out Vector3 facing, out Vector3 up)
+            out Vector3 position, out Vector3 facing, out Vector3 up)
         {
             if (!_fpDrawStateValid)
             {
@@ -320,28 +319,19 @@ namespace MphRead.Entities
             float t = Mods.Render.FrameTiming.HighRefreshPresentation
                 ? (float)Math.Clamp(presentationAlpha, 0.0, 1.0)
                 : 1f;
-            // Bob/translation is visual-only and safe to smooth in both modes.
-            // Orientation is different: in modern fixed-crosshair mode the
-            // camera is current + late latch, so using previous/current aim
-            // interpolation here would recreate the one-tick gun lag we are
-            // eliminating. Legacy mode interpolates its camera too, so there
-            // both orientation and position use the same timestamp.
+            // These are camera-local visual offsets, not world-space aim.
+            // Smooth orientation on the same timeline as translation so hit
+            // shake cannot snap the cannon between 60 Hz samples. The shared
+            // render camera basis still applies current/late-latched turns
+            // immediately to both the camera and the cannon.
             position = Vector3.Lerp(
                 _fpPreviousGunLocalPosition, _fpCurrentGunLocalPosition, t);
-            if (interpolateOrientation)
+            if (!CameraInfo.ModInterpolateDirection(
+                    _fpPreviousGunLocalFacing, _fpCurrentGunLocalFacing, t, out facing)
+                || !CameraInfo.ModInterpolateDirection(
+                    _fpPreviousGunLocalUp, _fpCurrentGunLocalUp, t, out up))
             {
-                if (!CameraInfo.ModInterpolateDirection(
-                        _fpPreviousGunLocalFacing, _fpCurrentGunLocalFacing, t, out facing)
-                    || !CameraInfo.ModInterpolateDirection(
-                        _fpPreviousGunLocalUp, _fpCurrentGunLocalUp, t, out up))
-                {
-                    return ModCurrentFirstPersonLocalPose(out position, out facing, out up);
-                }
-            }
-            else
-            {
-                facing = _fpCurrentGunLocalFacing;
-                up = _fpCurrentGunLocalUp;
+                return ModCurrentFirstPersonLocalPose(out position, out facing, out up);
             }
             if (!ModFinite(position) || !ModFinite(facing) || !ModFinite(up)
                 || facing.LengthSquared < 0.000001f || up.LengthSquared < 0.000001f)
@@ -420,12 +410,11 @@ namespace MphRead.Entities
                 return CameraInfo.Facing;
             }
 
-            // Preserve the established local-aim presentation behavior: the
-            // raw gun direction is the endpoint the camera previews toward.
-            // The important change is that the viewmodel below is composed
-            // through this exact same render basis instead of staying at the
-            // previous 60 Hz pose.
-            Vector3 aim = _gunVec1;
+            // Continue from the same camera used when the delta is zero.
+            // Starting from the firing ray discarded damage shake/view tilt
+            // as soon as any unsimulated input arrived, then restored it at
+            // the next simulation step when that input was consumed.
+            Vector3 aim = CameraInfo.Facing;
             float targetAimY = Math.Clamp(_aimY + y,
                 IsAltForm ? -25f : -85f, IsAltForm ? 5f : 85f);
             float pitch = MathHelper.DegreesToRadians(targetAimY - _aimY);
@@ -527,7 +516,7 @@ namespace MphRead.Entities
             if (!ModPresentationBasis(renderFacing, upHint,
                     out Vector3 renderRight, out Vector3 renderUp, out Vector3 renderForward)
                 || !ModInterpolatedFirstPersonLocalPose(
-                    presentationAlpha, smoothLegacyCamera,
+                    presentationAlpha,
                     out Vector3 gunLocalPosition, out Vector3 gunLocalFacing,
                     out Vector3 gunLocalUp))
             {
