@@ -1,5 +1,16 @@
 # Instant hit registration
 
+## Protocol 18 integration
+
+Prediction policy and damage values are unchanged. Capacity refusal now produces
+an explicit terminal verdict and denies that claim's predicted debit. An evicted
+client outbox entry also settles its prediction. Expanded authority ledgers keep
+matchable physical hits for the full 72-frame grace, and exact launch matching
+cannot consume a conflicting valid identity. Four damage events remain in every
+fast snapshot, preserving existing loss recovery. WorldReady applies the initial
+authoritative baseline while gameplay and prediction are frozen. Remote lethal
+prediction remains disabled; movement ownership remains with the client.
+
 Code: `Mods/Network/NetHitPrediction.cs`. The other half of
 [lag compensation](NETWORK-UNLAGGED.md), and it only works because that
 exists.

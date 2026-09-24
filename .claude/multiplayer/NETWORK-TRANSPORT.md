@@ -1,10 +1,47 @@
-# Current protocol 17 transport (unreleased train)
+# Protocol 18 transport
+
+## Replication lanes
+
+| Packet | Cadence | Contents | Maximum datagram |
+|---|---|---|---|
+| SnapshotFast (48) | 60 Hz | Frame/RNG/lifecycle, pose, health, weapon/status and four damage events per player | 903 bytes, eight players |
+| PlayerSlowState (49) | 10 Hz + meaningful changes | Full generation-tagged team/points/kills/deaths and match clock data | 183 bytes |
+| WorldState (50) | 4 Hz + pickup state changes | Full NetHealthSync state | 433 bytes at 56 spawns |
+
+Slow/world streams carry MatchId, AuthorityEpoch and a monotonically ordered
+nonzero revision. Each packet is independently useful; no base-delta dependency
+chains exist. Fast packets merge the latest generation-matched slow state and
+world state into the canonical in-process snapshot. Replay retains that canonical
+representation. Live bootstrap (46) sends the same three lanes and WorldReady
+(47) echoes their required revisions; the largest bootstrap fits under 1200 too.
+`--protocol18` tests populated worst-case packets, byte-exact reconstruction,
+revision fencing and allocation-free warmed decoding. The diagnostic lane counters
+report aggregate sender packets/s, bytes/s, average and maximum fast sizes.
+
+## Sequenced input edges
+
+Intent keeps its 32-byte edge budget and overall packet size: 16 two-byte events
+replace eight frame masks. Low byte = wrapping event sequence; high byte = three
+age bits (0–7) and five action bits (zero means empty). Nonzero action IDs are the
+one-based IntentButtons bit positions. Sender history is oldest first and keeps
+each edge for eight frames. Overflow retains newer input and preferentially drops
+the oldest repeated action, with telemetry.
+
+Shoot, Jump, Morph, AltAttack, ScanVisor and four directional Roll presses are
+edge events. Movement and Boost remain held buttons; zoom/form and WeaponSelect
+are absolute state. Shoot retains both held and edge semantics. The receiver has
+a 64-sequence deduplication window and a bounded 128-event execution queue. It
+emits at most one edge per action per simulation step, retaining additional
+identical edges for later steps. Recovered Shoot age tracks its source frame.
+Reset all receive/queued state on life, slot generation, disconnect and match
+teardown. The replay checkpoint schema includes sender/receiver state and has a
+new fingerprint. Protocol-17 peers/replays cannot interpret the new codec.
 
 Established UDP datagrams have a 24-byte little-endian header: marker D7, packet
 type, flags, protocol, 64-bit random connection ID, uint sequence, uint ACK and
 32 ACK bits. ACK bit zero is ACK-1. Sequence ordering uses signed modular distance;
 32-step and larger jumps are handled explicitly. ACK validity has its own flag;
-sequence zero is valid. Payload codecs retain the full-state v16 representation.
+sequence zero is valid. Protocol 18 changes gameplay payloads as described below.
 
 Hello/discovery/directory traffic is unsequenced. An admitted Welcome creates a
 random nonzero ID at the server. The client accepts it only from its requested
@@ -13,8 +50,10 @@ old IDs at a reused endpoint are rejected before ACK processing. ClientId alone
 no longer silently migrates a connection to another endpoint. A rejoin requires
 new admission; it does not authenticate an account or transport encryption.
 
-Max datagram is 1472 bytes (IPv4 Ethernet UDP); max established payload is 1448.
-The old 1232-byte budget could not hold eight players plus 56 health spawns. Replay stores
+Rare control datagrams retain a 1472-byte maximum and 1448-byte payload budget.
+Realtime gameplay is independently bounded at 1200 bytes. Legacy admission/authority
+seed paths can still carry the canonical Snapshot as rare control traffic; normal
+60 Hz publication and WorldReady use the new lanes. Replay stores
 application packets, not live UDP envelopes. Replay-world fragmentation and
 snapshot tails respect the new payload budget. Historical v16 baselines remain
 in tools/nettest/baselines; protocol-bound replay compatibility rules are retained.

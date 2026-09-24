@@ -1,5 +1,13 @@
 # Opponents that move instead of teleporting
 
+## Protocol 18 integration
+
+SnapshotFast still publishes pose at 60 Hz and retains the existing presentation
+clock, interpolation buffer and smoothing constants. Slow scoreboard/world lanes
+do not lower movement fidelity. Bootstrap initializes owner and remote spawn
+state before gameplay is released. Sequenced input edges preserve repeated
+presses but do not retune presentation or introduce movement reconciliation.
+
 Code: `Mods/Network/NetSmoothing.cs`. Introduced in protocol 7; current compatibility is defined by `NetConfig.ProtocolVersion`.
 
 ## The fault

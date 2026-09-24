@@ -1,5 +1,186 @@
 # Netcode modernization evidence
 
+## Protocol 18 enhancement (2026-09-24)
+
+Implemented on `feature/net-v18-combat-lifecycle` from main
+`d375d9c147da7cd49488d0e956be7fe5eeb4f45b`. The first five commits isolate the
+claim, bootstrap, replication, input and geometry changes; the following commits
+contain regression coverage and documentation. This section supersedes the
+historical protocol-16/17 report below.
+
+The simulation remains 60 Hz, rewind remains bounded to 45 frames with 128 frames
+of history, and movement remains client-owned. Damage values, weapon policy,
+remote hit prediction and smoothing tuning are unchanged.
+
+### Implemented architecture
+
+- Claims reserve 64 pending entries per shooter and 64 authoritative resolutions
+  per attacker/victim pair. Valid launch identities match exactly; temporal
+  fallback cannot match two conflicting launch stamps. Capacity refusal is a
+  terminal verdict. Direct/splash multiplicity, Imperialist correction and
+  rescued-flight suppression remain supported. No still-matchable resolution is
+  overwritten to admit a new hit.
+- Starts now pass through `Synchronizing`. `Loaded` and `WorldReady` are separate
+  masks. The client applies a roster/lifecycle-fenced fast, slow and world baseline
+  while frozen, restores spawn, settled form, weapon, health, score, damage ACK,
+  clock, pickups and RNG, then echoes its exact bootstrap identity. Countdown and
+  late-join input admission require this acknowledgment.
+- Three independently decodable full-state lanes replace the 60 Hz full snapshot:
+  fast at 60 Hz, slow at 10 Hz plus changes, world at 4 Hz plus meaningful changes.
+  Worst-case datagrams, including the 24-byte envelope, are **903 / 183 / 433
+  bytes**. Rare legacy control seeds still use the larger canonical snapshot;
+  replay also keeps that canonical representation. Realtime Intent, HitClaim,
+  HitVerdict and fast snapshot sizes are hard-tested below 1,200 bytes.
+- Sixteen two-byte sequenced edges occupy the original 32-byte intent-history
+  budget. A receive window and bounded consumption queue retain repeated actions,
+  suppress duplicates and preserve recovered Shoot age. The intent remains 92
+  payload bytes. Slot/life/match replacement resets event state.
+- Door/connector state, force-field activity and Platform/Object collision meshes
+  share the player rewind frame and 128-frame history. Continuous transforms
+  interpolate translation, rotation and scale; discrete state uses the sampled
+  frame. Catch-up samples each historical step, and disposal/exception paths
+  restore the exact live collision state. Inventory is bounded to 512 components.
+  `-netgeometryshadow` compares without applying production rewind; production
+  rewind is enabled by default after the shadow and asset checks.
+
+Details live in `.claude/multiplayer/NETWORK-{HITCLAIMS,START-LIFECYCLE,TRANSPORT,
+UNLAGGED,PREDICTION,SMOOTHING}.md`. Protocol compatibility is bumped once to 18;
+replay world-schema accessors and their fingerprint include the new edge state.
+
+### Reproducible validation
+
+`tools/nettest/baselines/network-v18.json` contains all 2,016 seeded codec/network
+profiles: 2/4/8 players, RTT 0/50/100/150/250/320/400 ms, jitter 0/20/40/80 ms,
+loss 0/1/2/5%, reorder 0/1/3%, and duplication 0/1%. These use production codecs
+and a virtual-time impairment queue. Allocation totals include harness storage;
+separate warmed checks measure zero allocations for the hot codecs, connected
+UDP send, lane decode and collision rewind.
+
+The 19 headless/asset commands and their exact outcome summaries are retained in
+`tools/nettest/baselines/validation-v18.json`. Coverage includes:
+
+- 3,680 lifecycle assertions; more than 2,900 real-UDP lobby/barrier assertions; 3,338,728
+  health/shot assertions across 7,776 weapon/profile cases and two delivery streams.
+- Capacity exhaustion, shooter isolation, expired ledger reuse, exact/fallback
+  identity, direct/splash, headshot and rescue suppression. The real-entity claim
+  load check resolves 43,200 claims through production damage paths, with eight
+  shooters, sustained Shock Coil, up to 400 ms RTT/80 ms jitter/5% loss/3%
+  reordering/1% duplication and two queued 400 ms stalls. Every received claim
+  settles once and each victim loses exactly 900 health per profile. This is a
+  controlled collision fixture, not a substitute for rendered projectile flight.
+- Eight real bootstrap players representing all seven hunters, including settled
+  Kanden/Weavel forms and Weavel's turret; frozen placement, health/weapon/score,
+  RNG restoration, lane loss/reorder/duplicates, missing roster, malformed lanes,
+  first ACK, stale rematch identity, late join and participant removal. A release-
+  pump regression also delivers a newer spawn in the bootstrap packet batch and
+  verifies it is applied before the first draw without advancing simulation.
+- Repeated identical edges, simultaneous different actions, 0–3-packet loss
+  bursts, reordering/duplicates, sequence wrap, lifecycle reset and Shoot ages
+  0–7. Production health/shot and rendered checks provide integration coverage.
+- 98 real-asset combat assertions, 2,352 lag-compensation shadow profiles and
+  1,620 weapon-policy profiles. `UNIT1_RM1` supplies 12 real doors, 11 fields and
+  nine mesh components for historical obstruction and restoration checks.
+  Synthetic cases add fractional rotation/scale, history wrap, catch-up and
+  exception restoration.
+- Replay format (2,710 checks), control, timeline (43 checks) and all 12
+  multiplayer world modes. Each world mode verifies 1,801 recorded frame hashes,
+  seven detached restores, 1,650 continuation frames and file/frozen-clip seeks.
+  Existing form (699 checks), continuous-weapon phase and platform checks pass.
+
+Build and run commands (a configured extracted-assets directory is required for
+commands ending in `-scene` and rendered/replay world checks):
+
+```sh
+dotnet build tools/nettest/nettest.csproj -c Release
+
+dotnet tools/nettest/bin/Release/net10.0/nettest.dll --protocol18
+dotnet tools/nettest/bin/Release/net10.0/nettest.dll --input-edges
+dotnet tools/nettest/bin/Release/net10.0/nettest.dll --dynamic-geometry
+dotnet tools/nettest/bin/Release/net10.0/nettest.dll --claim-stress
+dotnet tools/nettest/bin/Release/net10.0/nettest.dll --load-lifecycle
+# Other suite switches are listed in validation-v18.json.
+dotnet tools/nettest/bin/Release/net10.0/nettest.dll --claim-load-scene /path/to/game-data
+dotnet tools/nettest/bin/Release/net10.0/nettest.dll --bootstrap-scene /path/to/game-data
+dotnet tools/nettest/bin/Release/net10.0/nettest.dll --geometry-scene /path/to/game-data
+dotnet tools/nettest/bin/Release/net10.0/nettest.dll --combat-scene /path/to/game-data
+
+dotnet tools/nettest/bin/Release/net10.0/nettest.dll --network-benchmark --extended \
+  --network-benchmark-json /tmp/network-v18.json
+python3 tools/nettest/run-assets.py --game-data /path/to/game-data \
+  --out /tmp/net-v18-rendered --scenario all --seconds 300
+```
+
+The rendered runner stages application data and uses an empty custom-map output
+directory, avoiding concurrent writes to the desktop app's global generated maps.
+It reads the existing extracted assets without copying or downloading them.
+Each arm saves server, client and diagnostic logs plus a summary with assembly
+SHA-256. Packet-size and claim/input overflow checks are part of its exit verdict.
+
+### Rendered results and acceptance limits
+
+All six profiles now have a passing eight-client run. The final LAN, moderate
+and extreme runs use the build with the release-pump fix; poor, severe and mixed
+passed on the earlier build. Their separate assembly hashes are retained below
+in the JSON evidence. Initial failures and unresolved observation differences
+remain documented rather than being erased by reruns.
+
+| Run | Seconds | Reports passed | Mean step ms | Dropped ticks | Queue high / drops |
+|---|---:|---:|---:|---:|---|
+| geometry-shadow/lan | 300 | 8/8 | 0.44 | 3.0 | 35 / 0 |
+| final/extreme | 300 | 7/8 | 0.33 | 5.0 | 57 / 0 |
+| final/lan | 300 | 6/8 | 0.32 | 5.0 | 43 / 0 |
+| final/mixed | 300 | 8/8 | 0.35 | 0.0 | 26 / 0 |
+| final/moderate | 300 | 7/8 | 0.34 | 1.0 | 49 / 0 |
+| final/poor | 300 | 8/8 | 0.36 | 0.0 | 41 / 0 |
+| final/severe | 300 | 8/8 | 0.33 | 0.0 | 79 / 0 |
+| repeat/extreme | 300 | 8/8 | 0.32 | 2.0 | 13 / 0 |
+| repeat/lan | 600 | 7/8 | 0.33 | 2.0 | 59 / 0 |
+| repeat/moderate | 300 | 8/8 | 0.37 | 6.0 | 27 / 0 |
+| release/lan | 300 | 8/8 | 0.29 | 1.0 | 14 / 0 |
+
+`tools/nettest/baselines/rendered-v18.json` preserves per-run profiles, assembly
+hashes, failures, step/queue/catch-up measurements and cross-observer edge counts.
+The initial LAN bomb-coverage failure, moderate form mismatch and extreme startup
+position failure remain visible. The ten-minute LAN run reproduced the startup
+race; a bootstrap followed by a newer spawn in one loading pump updated received
+state before the first draw could apply it. The release pump now applies that
+newer state without simulation, and an asset-backed regression covers the order.
+The original feature assertions were not weakened.
+
+The original moderate run's 124-frame form mismatch has no established cause.
+A subsequent passing run is evidence for that run, not proof that an intermittent
+mismatch cannot recur. Initial LAN bomb coverage was four frames at the source
+and four/five at observers against a five-frame threshold; longer LAN coverage
+passed that check. In the ten-minute LAN run, all 1,227 alt-attack presses were
+counted identically by every observer. The original poor/mixed arms had up to
+two/four fewer alt-attack observations for one source respectively. These tour
+counts include lifecycle boundaries; their cause is not established, so they are
+not presented as proof of loss-free action delivery throughout those arms. The
+focused sequence suite establishes exact-once recovery within its tested loss
+window, while per-life reset deliberately discards stale actions.
+
+All measured production runs kept fast datagrams at 903 bytes and recorded zero
+claim-capacity refusals, unmatched-ledger overwrites, input overflows, simulation
+failures, server stalls and receive-queue drops. Mean server step times stayed
+below the corresponding protocol-17 baseline plus 10%; wall-clock overruns and
+dropped ticks remain in the table rather than being treated as zero. The extreme
+arm reached the 45-step catch-up bound without truncation.
+
+The shadow LAN run passed all eight clients for 300 seconds before production
+geometry was enabled. SANCTORUS has no dynamic obstacles; its shadow availability
+is not evidence of historical-door correctness. The separate `UNIT1_RM1` asset
+fixtures provide that evidence. The automated matrix runs eight hidden OpenGL
+clients and a real authority on one macOS host with locally injected impairments.
+It does not replace geographically separate WAN/mobile/VPN testing or human
+assessment of game feel. No merge into main is performed by this task.
+
+## Historical protocol 16/17 modernization report
+
+The remainder records the earlier work and its original measurements. References
+to protocol 16/17, the full 60 Hz snapshot and loading-only barriers below describe
+that historical architecture, not the current protocol-18 implementation.
+
+
 Baseline: main 427199c, protocol 16, .NET 10.0.401 on macOS arm64.
 The supplied plan's reviewed commit was c4cbf9b; main now also includes the
 replay/map migration. The implementation branch was subsequently rebased onto

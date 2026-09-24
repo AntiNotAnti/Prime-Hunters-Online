@@ -1,0 +1,2903 @@
+{
+  "date": "2026-09-24",
+  "scope": "Eight real hidden OpenGL clients and a dedicated authority on one macOS arm64 host, with local injected impairment. Proprietary assets are external. Results retain failures and assembly hashes. Human feel and geographic WAN validation remain external.",
+  "profileFields": [
+    "RTT milliseconds",
+    "jitter milliseconds",
+    "loss percent",
+    "reorder percent",
+    "duplicate percent"
+  ],
+  "runs": [
+    {
+      "scenario": "lan",
+      "seconds": 300,
+      "elapsedSeconds": 332.337098041,
+      "profiles": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "results": [
+        {
+          "peer": 0,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 1,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 2,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 3,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 4,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 5,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 6,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 7,
+          "exit": 0,
+          "timedOut": false
+        }
+      ],
+      "host": "macOS-27.0-arm64-arm-64bit",
+      "assemblySha256": "be69c958c8a13dcd9a79ca5a93cecf58639c55a823d51a374696ccae21382c30",
+      "observations": {
+        "maximumFastDatagram": null,
+        "claimCapacityRefusals": 0,
+        "unusedLedgerOverwrites": 0,
+        "inputEdgeOverflow": 0,
+        "altAttackCrossReports": [
+          {
+            "source": "CHECK0",
+            "sent": 111,
+            "observed": {
+              "CHECK0": 111,
+              "CHECK1": 111,
+              "CHECK3": 111,
+              "CHECK2": 111,
+              "CHECK6": 111,
+              "CHECK7": 111,
+              "CHECK5": 111,
+              "CHECK4": 111
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK1",
+            "sent": 156,
+            "observed": {
+              "CHECK0": 156,
+              "CHECK1": 156,
+              "CHECK3": 156,
+              "CHECK2": 156,
+              "CHECK6": 156,
+              "CHECK7": 156,
+              "CHECK5": 156,
+              "CHECK4": 156
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK2",
+            "sent": 102,
+            "observed": {
+              "CHECK0": 102,
+              "CHECK1": 102,
+              "CHECK3": 102,
+              "CHECK2": 102,
+              "CHECK6": 102,
+              "CHECK7": 102,
+              "CHECK5": 102,
+              "CHECK4": 102
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK3",
+            "sent": 155,
+            "observed": {
+              "CHECK0": 155,
+              "CHECK1": 155,
+              "CHECK3": 155,
+              "CHECK2": 155,
+              "CHECK6": 155,
+              "CHECK7": 155,
+              "CHECK5": 155,
+              "CHECK4": 155
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK4",
+            "sent": 96,
+            "observed": {
+              "CHECK0": 96,
+              "CHECK1": 96,
+              "CHECK3": 96,
+              "CHECK2": 96,
+              "CHECK6": 96,
+              "CHECK7": 96,
+              "CHECK5": 96,
+              "CHECK4": 96
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK5",
+            "sent": 157,
+            "observed": {
+              "CHECK0": 157,
+              "CHECK1": 157,
+              "CHECK3": 157,
+              "CHECK2": 157,
+              "CHECK6": 157,
+              "CHECK7": 157,
+              "CHECK5": 157,
+              "CHECK4": 157
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK6",
+            "sent": 86,
+            "observed": {
+              "CHECK0": 86,
+              "CHECK1": 86,
+              "CHECK3": 86,
+              "CHECK2": 86,
+              "CHECK6": 86,
+              "CHECK7": 86,
+              "CHECK5": 86,
+              "CHECK4": 86
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK7",
+            "sent": 139,
+            "observed": {
+              "CHECK0": 139,
+              "CHECK1": 139,
+              "CHECK3": 139,
+              "CHECK2": 139,
+              "CHECK6": 139,
+              "CHECK7": 139,
+              "CHECK5": 139,
+              "CHECK4": 139
+            },
+            "maximumDifference": 0
+          }
+        ],
+        "lastServerSample": {
+          "steps": 19797.0,
+          "meanMilliseconds": 0.44,
+          "worstMilliseconds": 148.6,
+          "overruns": 5.0,
+          "droppedTicks": 3.0,
+          "stalls": 0.0
+        },
+        "serverQueueHighWater": 35,
+        "serverQueueDrops": 0,
+        "simulationFailureLogged": false,
+        "peerReportsPassed": 8,
+        "lastShadowSample": {
+          "wouldClamp": 780.0,
+          "timedShots": 4399.0,
+          "refusedFrames": 1683.2,
+          "geometryUnavailable": 4307.0,
+          "shots": 4399.0,
+          "maximumCatchUpSteps": 22.0,
+          "catchUpTruncations": 0.0
+        }
+      },
+      "run": "net-v18-geometry-shadow/lan",
+      "failureDetails": [],
+      "notes": "Shadow mode, before production geometry enabled. SANCTORUS has no dynamic blockers; UNIT1_RM1 asset tests supply dynamic-geometry evidence.",
+      "diagnosticLogsRetained": 0
+    },
+    {
+      "scenario": "extreme",
+      "seconds": 300,
+      "elapsedSeconds": 337.5037197910001,
+      "profiles": [
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ]
+      ],
+      "results": [
+        {
+          "peer": 0,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 1,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 2,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 3,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 4,
+          "exit": 1,
+          "timedOut": false
+        },
+        {
+          "peer": 5,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 6,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 7,
+          "exit": 0,
+          "timedOut": false
+        }
+      ],
+      "host": "macOS-27.0-arm64-arm-64bit",
+      "assemblySha256": "7bfe57c86786b0bb19114977fee7785fe1aa730d1d5c6a8c44b3e867e249124a",
+      "observations": {
+        "maximumFastDatagram": 903,
+        "claimCapacityRefusals": 0,
+        "unusedLedgerOverwrites": 0,
+        "inputEdgeOverflow": 0,
+        "altAttackCrossReports": [
+          {
+            "source": "CHECK0",
+            "sent": 87,
+            "observed": {
+              "CHECK0": 87,
+              "CHECK1": 87,
+              "CHECK3": 87,
+              "CHECK2": 87,
+              "CHECK6": 87,
+              "CHECK7": 87,
+              "CHECK5": 87,
+              "CHECK4": 87
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK1",
+            "sent": 115,
+            "observed": {
+              "CHECK0": 115,
+              "CHECK1": 115,
+              "CHECK3": 115,
+              "CHECK2": 115,
+              "CHECK6": 115,
+              "CHECK7": 115,
+              "CHECK5": 115,
+              "CHECK4": 115
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK2",
+            "sent": 128,
+            "observed": {
+              "CHECK0": 128,
+              "CHECK1": 128,
+              "CHECK3": 128,
+              "CHECK2": 128,
+              "CHECK6": 128,
+              "CHECK7": 128,
+              "CHECK5": 128,
+              "CHECK4": 128
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK3",
+            "sent": 144,
+            "observed": {
+              "CHECK0": 144,
+              "CHECK1": 144,
+              "CHECK3": 144,
+              "CHECK2": 144,
+              "CHECK6": 144,
+              "CHECK7": 144,
+              "CHECK5": 144,
+              "CHECK4": 144
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK4",
+            "sent": 110,
+            "observed": {
+              "CHECK0": 110,
+              "CHECK1": 110,
+              "CHECK3": 110,
+              "CHECK2": 110,
+              "CHECK6": 110,
+              "CHECK7": 110,
+              "CHECK5": 110,
+              "CHECK4": 110
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK5",
+            "sent": 150,
+            "observed": {
+              "CHECK0": 150,
+              "CHECK1": 150,
+              "CHECK3": 150,
+              "CHECK2": 150,
+              "CHECK6": 150,
+              "CHECK7": 150,
+              "CHECK5": 150,
+              "CHECK4": 150
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK6",
+            "sent": 132,
+            "observed": {
+              "CHECK0": 132,
+              "CHECK1": 132,
+              "CHECK3": 132,
+              "CHECK2": 132,
+              "CHECK6": 132,
+              "CHECK7": 132,
+              "CHECK5": 132,
+              "CHECK4": 132
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK7",
+            "sent": 110,
+            "observed": {
+              "CHECK0": 110,
+              "CHECK1": 110,
+              "CHECK3": 110,
+              "CHECK2": 110,
+              "CHECK6": 110,
+              "CHECK7": 110,
+              "CHECK5": 110,
+              "CHECK4": 110
+            },
+            "maximumDifference": 0
+          }
+        ],
+        "lastServerSample": {
+          "steps": 19795.0,
+          "meanMilliseconds": 0.33,
+          "worstMilliseconds": 101.0,
+          "overruns": 3.0,
+          "droppedTicks": 5.0,
+          "stalls": 0.0
+        },
+        "serverQueueHighWater": 57,
+        "serverQueueDrops": 0,
+        "simulationFailureLogged": false,
+        "peerReportsPassed": 7,
+        "lastShadowSample": {
+          "wouldClamp": 2439.0,
+          "timedShots": 4032.0,
+          "refusedFrames": 3790.8,
+          "geometryUnavailable": 3928.0,
+          "shots": 4032.0,
+          "maximumCatchUpSteps": 45.0,
+          "catchUpTruncations": 0.0
+        }
+      },
+      "run": "net-v18-final-render/extreme",
+      "failureDetails": [
+        {
+          "peer": "peer-4",
+          "lines": [
+            "[netcheck] position gap 37.07 slot=5 frame=24 phase=Idle localFlags=Initial, Active, SlotActive, Spawned hp=99 local=(7.6088867, 4.0336995, -28.360107) recorded=(-26.104736, 2.7374268, -12.9938965) gen/life=1/2 current=1/2",
+            "CHECK0: form disagreed on 5 frame(s) (longest run 4), worst position gap 0.00 units",
+            "CHECK1: form disagreed on 44 frame(s) (longest run 18), worst position gap 0.15 units",
+            "CHECK2: form disagreed on 7 frame(s) (longest run 3), worst position gap 0.75 units",
+            "CHECK3: form disagreed on 42 frame(s) (longest run 19), worst position gap 0.00 units",
+            "CHECK5: form disagreed on 45 frame(s) (longest run 20), worst position gap 37.07 units",
+            "FAIL: their position drifted far from the authority's",
+            "CHECK6: form disagreed on 5 frame(s) (longest run 2), worst position gap 0.40 units",
+            "CHECK7: form disagreed on 44 frame(s) (longest run 19), worst position gap 0.00 units"
+          ]
+        }
+      ],
+      "notes": "One peer recorded a 37.07-unit startup position gap at local frame 24. The same release-pump ordering was reproduced on the longer LAN run and fixed with an asset-backed regression.",
+      "diagnosticLogsRetained": 0
+    },
+    {
+      "scenario": "lan",
+      "seconds": 300,
+      "elapsedSeconds": 329.996834708,
+      "profiles": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "results": [
+        {
+          "peer": 0,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 1,
+          "exit": 1,
+          "timedOut": false
+        },
+        {
+          "peer": 2,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 3,
+          "exit": 1,
+          "timedOut": false
+        },
+        {
+          "peer": 4,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 5,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 6,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 7,
+          "exit": 0,
+          "timedOut": false
+        }
+      ],
+      "host": "macOS-27.0-arm64-arm-64bit",
+      "assemblySha256": "7bfe57c86786b0bb19114977fee7785fe1aa730d1d5c6a8c44b3e867e249124a",
+      "observations": {
+        "maximumFastDatagram": 903,
+        "claimCapacityRefusals": 0,
+        "unusedLedgerOverwrites": 0,
+        "inputEdgeOverflow": 0,
+        "altAttackCrossReports": [
+          {
+            "source": "CHECK0",
+            "sent": 12,
+            "observed": {
+              "CHECK0": 12,
+              "CHECK1": 12,
+              "CHECK3": 12,
+              "CHECK2": 12,
+              "CHECK6": 12,
+              "CHECK7": 12,
+              "CHECK5": 12,
+              "CHECK4": 12
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK1",
+            "sent": 150,
+            "observed": {
+              "CHECK0": 150,
+              "CHECK1": 150,
+              "CHECK3": 150,
+              "CHECK2": 150,
+              "CHECK6": 150,
+              "CHECK7": 150,
+              "CHECK5": 150,
+              "CHECK4": 150
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK2",
+            "sent": 92,
+            "observed": {
+              "CHECK0": 92,
+              "CHECK1": 92,
+              "CHECK3": 92,
+              "CHECK2": 92,
+              "CHECK6": 92,
+              "CHECK7": 92,
+              "CHECK5": 92,
+              "CHECK4": 92
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK3",
+            "sent": 146,
+            "observed": {
+              "CHECK0": 146,
+              "CHECK1": 146,
+              "CHECK3": 146,
+              "CHECK2": 146,
+              "CHECK6": 146,
+              "CHECK7": 146,
+              "CHECK5": 146,
+              "CHECK4": 146
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK4",
+            "sent": 138,
+            "observed": {
+              "CHECK0": 138,
+              "CHECK1": 138,
+              "CHECK3": 138,
+              "CHECK2": 138,
+              "CHECK6": 138,
+              "CHECK7": 138,
+              "CHECK5": 138,
+              "CHECK4": 138
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK5",
+            "sent": 162,
+            "observed": {
+              "CHECK0": 162,
+              "CHECK1": 162,
+              "CHECK3": 162,
+              "CHECK2": 162,
+              "CHECK6": 162,
+              "CHECK7": 162,
+              "CHECK5": 162,
+              "CHECK4": 162
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK6",
+            "sent": 133,
+            "observed": {
+              "CHECK0": 133,
+              "CHECK1": 133,
+              "CHECK3": 133,
+              "CHECK2": 133,
+              "CHECK6": 133,
+              "CHECK7": 133,
+              "CHECK5": 133,
+              "CHECK4": 133
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK7",
+            "sent": 36,
+            "observed": {
+              "CHECK0": 36,
+              "CHECK1": 36,
+              "CHECK3": 36,
+              "CHECK2": 36,
+              "CHECK6": 36,
+              "CHECK7": 36,
+              "CHECK5": 36,
+              "CHECK4": 36
+            },
+            "maximumDifference": 0
+          }
+        ],
+        "lastServerSample": {
+          "steps": 17995.0,
+          "meanMilliseconds": 0.32,
+          "worstMilliseconds": 175.9,
+          "overruns": 4.0,
+          "droppedTicks": 5.0,
+          "stalls": 0.0
+        },
+        "serverQueueHighWater": 43,
+        "serverQueueDrops": 0,
+        "simulationFailureLogged": false,
+        "peerReportsPassed": 6,
+        "lastShadowSample": {
+          "wouldClamp": 492.0,
+          "timedShots": 3475.0,
+          "refusedFrames": 1567.6,
+          "geometryUnavailable": 3413.0,
+          "shots": 3475.0,
+          "maximumCatchUpSteps": 21.0,
+          "catchUpTruncations": 0.0
+        }
+      },
+      "run": "net-v18-final-render/lan",
+      "failureDetails": [],
+      "notes": "Two peers failed bomb coverage. CHECK0 produced only four bomb frames and observers reported four/five; the unchanged threshold is five. Not evidence by itself of a dropped bomb.",
+      "diagnosticLogsRetained": 0
+    },
+    {
+      "scenario": "mixed",
+      "seconds": 300,
+      "elapsedSeconds": 333.932593666,
+      "profiles": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          80,
+          20,
+          1,
+          0,
+          0
+        ],
+        [
+          80,
+          20,
+          1,
+          0,
+          0
+        ],
+        [
+          150,
+          20,
+          1,
+          0,
+          0
+        ],
+        [
+          150,
+          20,
+          1,
+          0,
+          0
+        ],
+        [
+          250,
+          40,
+          2,
+          0,
+          0
+        ],
+        [
+          320,
+          80,
+          2,
+          1,
+          0
+        ]
+      ],
+      "results": [
+        {
+          "peer": 0,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 1,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 2,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 3,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 4,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 5,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 6,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 7,
+          "exit": 0,
+          "timedOut": false
+        }
+      ],
+      "host": "macOS-27.0-arm64-arm-64bit",
+      "assemblySha256": "7bfe57c86786b0bb19114977fee7785fe1aa730d1d5c6a8c44b3e867e249124a",
+      "observations": {
+        "maximumFastDatagram": 903,
+        "claimCapacityRefusals": 0,
+        "unusedLedgerOverwrites": 0,
+        "inputEdgeOverflow": 0,
+        "altAttackCrossReports": [
+          {
+            "source": "CHECK0",
+            "sent": 126,
+            "observed": {
+              "CHECK0": 126,
+              "CHECK1": 126,
+              "CHECK3": 126,
+              "CHECK2": 126,
+              "CHECK6": 126,
+              "CHECK7": 126,
+              "CHECK5": 126,
+              "CHECK4": 126
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK1",
+            "sent": 144,
+            "observed": {
+              "CHECK0": 144,
+              "CHECK1": 144,
+              "CHECK3": 144,
+              "CHECK2": 144,
+              "CHECK6": 144,
+              "CHECK7": 144,
+              "CHECK5": 144,
+              "CHECK4": 144
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK2",
+            "sent": 18,
+            "observed": {
+              "CHECK0": 18,
+              "CHECK1": 18,
+              "CHECK3": 18,
+              "CHECK2": 18,
+              "CHECK6": 18,
+              "CHECK7": 18,
+              "CHECK5": 18,
+              "CHECK4": 18
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK3",
+            "sent": 156,
+            "observed": {
+              "CHECK0": 156,
+              "CHECK1": 156,
+              "CHECK3": 156,
+              "CHECK2": 156,
+              "CHECK6": 156,
+              "CHECK7": 156,
+              "CHECK5": 156,
+              "CHECK4": 156
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK4",
+            "sent": 138,
+            "observed": {
+              "CHECK0": 138,
+              "CHECK1": 138,
+              "CHECK3": 138,
+              "CHECK2": 138,
+              "CHECK6": 138,
+              "CHECK7": 138,
+              "CHECK5": 138,
+              "CHECK4": 138
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK5",
+            "sent": 146,
+            "observed": {
+              "CHECK0": 146,
+              "CHECK1": 146,
+              "CHECK3": 146,
+              "CHECK2": 146,
+              "CHECK6": 146,
+              "CHECK7": 146,
+              "CHECK5": 146,
+              "CHECK4": 146
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK6",
+            "sent": 126,
+            "observed": {
+              "CHECK0": 126,
+              "CHECK1": 126,
+              "CHECK3": 126,
+              "CHECK2": 126,
+              "CHECK6": 126,
+              "CHECK7": 126,
+              "CHECK5": 122,
+              "CHECK4": 126
+            },
+            "maximumDifference": 4
+          },
+          {
+            "source": "CHECK7",
+            "sent": 147,
+            "observed": {
+              "CHECK0": 147,
+              "CHECK1": 147,
+              "CHECK3": 147,
+              "CHECK2": 147,
+              "CHECK6": 147,
+              "CHECK7": 147,
+              "CHECK5": 147,
+              "CHECK4": 147
+            },
+            "maximumDifference": 0
+          }
+        ],
+        "lastServerSample": {
+          "steps": 19800.0,
+          "meanMilliseconds": 0.35,
+          "worstMilliseconds": 48.5,
+          "overruns": 4.0,
+          "droppedTicks": 0.0,
+          "stalls": 0.0
+        },
+        "serverQueueHighWater": 26,
+        "serverQueueDrops": 0,
+        "simulationFailureLogged": false,
+        "peerReportsPassed": 8,
+        "lastShadowSample": {
+          "wouldClamp": 1944.0,
+          "timedShots": 4175.0,
+          "refusedFrames": 2441.2,
+          "geometryUnavailable": 4082.0,
+          "shots": 4175.0,
+          "maximumCatchUpSteps": 40.0,
+          "catchUpTruncations": 0.0
+        }
+      },
+      "run": "net-v18-final-render/mixed",
+      "failureDetails": [],
+      "diagnosticLogsRetained": 9
+    },
+    {
+      "scenario": "moderate",
+      "seconds": 300,
+      "elapsedSeconds": 331.53552566599996,
+      "profiles": [
+        [
+          100,
+          20,
+          1,
+          0,
+          0
+        ],
+        [
+          100,
+          20,
+          1,
+          0,
+          0
+        ],
+        [
+          100,
+          20,
+          1,
+          0,
+          0
+        ],
+        [
+          100,
+          20,
+          1,
+          0,
+          0
+        ],
+        [
+          100,
+          20,
+          1,
+          0,
+          0
+        ],
+        [
+          100,
+          20,
+          1,
+          0,
+          0
+        ],
+        [
+          100,
+          20,
+          1,
+          0,
+          0
+        ],
+        [
+          100,
+          20,
+          1,
+          0,
+          0
+        ]
+      ],
+      "results": [
+        {
+          "peer": 0,
+          "exit": 1,
+          "timedOut": false
+        },
+        {
+          "peer": 1,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 2,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 3,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 4,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 5,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 6,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 7,
+          "exit": 0,
+          "timedOut": false
+        }
+      ],
+      "host": "macOS-27.0-arm64-arm-64bit",
+      "assemblySha256": "7bfe57c86786b0bb19114977fee7785fe1aa730d1d5c6a8c44b3e867e249124a",
+      "observations": {
+        "maximumFastDatagram": 903,
+        "claimCapacityRefusals": 0,
+        "unusedLedgerOverwrites": 0,
+        "inputEdgeOverflow": 0,
+        "altAttackCrossReports": [
+          {
+            "source": "CHECK0",
+            "sent": 124,
+            "observed": {
+              "CHECK0": 124,
+              "CHECK1": 124,
+              "CHECK3": 124,
+              "CHECK2": 124,
+              "CHECK6": 124,
+              "CHECK7": 124,
+              "CHECK5": 124,
+              "CHECK4": 124
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK1",
+            "sent": 156,
+            "observed": {
+              "CHECK0": 156,
+              "CHECK1": 156,
+              "CHECK3": 156,
+              "CHECK2": 156,
+              "CHECK6": 156,
+              "CHECK7": 156,
+              "CHECK5": 156,
+              "CHECK4": 156
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK2",
+            "sent": 139,
+            "observed": {
+              "CHECK0": 139,
+              "CHECK1": 139,
+              "CHECK3": 139,
+              "CHECK2": 139,
+              "CHECK6": 139,
+              "CHECK7": 139,
+              "CHECK5": 139,
+              "CHECK4": 139
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK3",
+            "sent": 128,
+            "observed": {
+              "CHECK0": 128,
+              "CHECK1": 128,
+              "CHECK3": 128,
+              "CHECK2": 128,
+              "CHECK6": 128,
+              "CHECK7": 128,
+              "CHECK5": 128,
+              "CHECK4": 128
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK4",
+            "sent": 144,
+            "observed": {
+              "CHECK0": 144,
+              "CHECK1": 144,
+              "CHECK3": 144,
+              "CHECK2": 144,
+              "CHECK6": 144,
+              "CHECK7": 144,
+              "CHECK5": 144,
+              "CHECK4": 144
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK5",
+            "sent": 114,
+            "observed": {
+              "CHECK0": 114,
+              "CHECK1": 114,
+              "CHECK3": 114,
+              "CHECK2": 114,
+              "CHECK6": 114,
+              "CHECK7": 114,
+              "CHECK5": 114,
+              "CHECK4": 114
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK6",
+            "sent": 130,
+            "observed": {
+              "CHECK0": 130,
+              "CHECK1": 130,
+              "CHECK3": 130,
+              "CHECK2": 130,
+              "CHECK6": 130,
+              "CHECK7": 130,
+              "CHECK5": 130,
+              "CHECK4": 130
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK7",
+            "sent": 156,
+            "observed": {
+              "CHECK0": 156,
+              "CHECK1": 156,
+              "CHECK3": 156,
+              "CHECK2": 156,
+              "CHECK6": 156,
+              "CHECK7": 156,
+              "CHECK5": 156,
+              "CHECK4": 156
+            },
+            "maximumDifference": 0
+          }
+        ],
+        "lastServerSample": {
+          "steps": 19799.0,
+          "meanMilliseconds": 0.34,
+          "worstMilliseconds": 59.0,
+          "overruns": 7.0,
+          "droppedTicks": 1.0,
+          "stalls": 0.0
+        },
+        "serverQueueHighWater": 49,
+        "serverQueueDrops": 0,
+        "simulationFailureLogged": false,
+        "peerReportsPassed": 7,
+        "lastShadowSample": {
+          "wouldClamp": 1478.0,
+          "timedShots": 4224.0,
+          "refusedFrames": 2332.0,
+          "geometryUnavailable": 4117.0,
+          "shots": 4224.0,
+          "maximumCatchUpSteps": 26.0,
+          "catchUpTruncations": 0.0
+        }
+      },
+      "run": "net-v18-final-render/moderate",
+      "failureDetails": [
+        {
+          "peer": "peer-0",
+          "lines": [
+            "CHECK1: form disagreed on 20 frame(s) (longest run 10), worst position gap 0.15 units",
+            "CHECK2: form disagreed on 18 frame(s) (longest run 14), worst position gap 0.75 units",
+            "CHECK3: form disagreed on 13 frame(s) (longest run 9), worst position gap 0.00 units",
+            "CHECK4: form disagreed on 27 frame(s) (longest run 24), worst position gap 0.50 units",
+            "CHECK5: form disagreed on 19 frame(s) (longest run 9), worst position gap 0.00 units",
+            "CHECK6: form disagreed on 141 frame(s) (longest run 124), worst position gap 0.40 units",
+            "FAIL: their form stayed wrong for 124 frames in a row -- phase AltAttackB, authority wanted alt, puppet biped+morphing/Morph, hp 50",
+            "CHECK7: form disagreed on 16 frame(s) (longest run 10), worst position gap 0.00 units"
+          ]
+        }
+      ],
+      "notes": "One peer recorded a 124-frame Weavel form mismatch. No diagnostic log was retained for this arm. A later pass cannot establish its cause or prove it cannot recur.",
+      "diagnosticLogsRetained": 0
+    },
+    {
+      "scenario": "poor",
+      "seconds": 300,
+      "elapsedSeconds": 329.906351333,
+      "profiles": [
+        [
+          250,
+          40,
+          2,
+          0,
+          0
+        ],
+        [
+          250,
+          40,
+          2,
+          0,
+          0
+        ],
+        [
+          250,
+          40,
+          2,
+          0,
+          0
+        ],
+        [
+          250,
+          40,
+          2,
+          0,
+          0
+        ],
+        [
+          250,
+          40,
+          2,
+          0,
+          0
+        ],
+        [
+          250,
+          40,
+          2,
+          0,
+          0
+        ],
+        [
+          250,
+          40,
+          2,
+          0,
+          0
+        ],
+        [
+          250,
+          40,
+          2,
+          0,
+          0
+        ]
+      ],
+      "results": [
+        {
+          "peer": 0,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 1,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 2,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 3,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 4,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 5,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 6,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 7,
+          "exit": 0,
+          "timedOut": false
+        }
+      ],
+      "host": "macOS-27.0-arm64-arm-64bit",
+      "assemblySha256": "7bfe57c86786b0bb19114977fee7785fe1aa730d1d5c6a8c44b3e867e249124a",
+      "observations": {
+        "maximumFastDatagram": 903,
+        "claimCapacityRefusals": 0,
+        "unusedLedgerOverwrites": 0,
+        "inputEdgeOverflow": 0,
+        "altAttackCrossReports": [
+          {
+            "source": "CHECK0",
+            "sent": 120,
+            "observed": {
+              "CHECK0": 120,
+              "CHECK1": 120,
+              "CHECK3": 120,
+              "CHECK2": 120,
+              "CHECK6": 120,
+              "CHECK7": 120,
+              "CHECK5": 120,
+              "CHECK4": 120
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK1",
+            "sent": 162,
+            "observed": {
+              "CHECK0": 162,
+              "CHECK1": 162,
+              "CHECK3": 162,
+              "CHECK2": 162,
+              "CHECK6": 162,
+              "CHECK7": 162,
+              "CHECK5": 162,
+              "CHECK4": 162
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK2",
+            "sent": 129,
+            "observed": {
+              "CHECK0": 129,
+              "CHECK1": 129,
+              "CHECK3": 129,
+              "CHECK2": 129,
+              "CHECK6": 129,
+              "CHECK7": 129,
+              "CHECK5": 129,
+              "CHECK4": 129
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK3",
+            "sent": 137,
+            "observed": {
+              "CHECK0": 137,
+              "CHECK1": 137,
+              "CHECK3": 137,
+              "CHECK2": 137,
+              "CHECK6": 137,
+              "CHECK7": 137,
+              "CHECK5": 137,
+              "CHECK4": 137
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK4",
+            "sent": 138,
+            "observed": {
+              "CHECK0": 138,
+              "CHECK1": 138,
+              "CHECK3": 138,
+              "CHECK2": 138,
+              "CHECK6": 138,
+              "CHECK7": 138,
+              "CHECK5": 138,
+              "CHECK4": 138
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK5",
+            "sent": 160,
+            "observed": {
+              "CHECK0": 160,
+              "CHECK1": 160,
+              "CHECK3": 160,
+              "CHECK2": 160,
+              "CHECK6": 160,
+              "CHECK7": 160,
+              "CHECK5": 160,
+              "CHECK4": 160
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK6",
+            "sent": 90,
+            "observed": {
+              "CHECK0": 90,
+              "CHECK1": 90,
+              "CHECK3": 90,
+              "CHECK2": 90,
+              "CHECK6": 90,
+              "CHECK7": 90,
+              "CHECK5": 90,
+              "CHECK4": 90
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK7",
+            "sent": 99,
+            "observed": {
+              "CHECK0": 98,
+              "CHECK1": 97,
+              "CHECK3": 98,
+              "CHECK2": 98,
+              "CHECK6": 97,
+              "CHECK7": 99,
+              "CHECK5": 98,
+              "CHECK4": 98
+            },
+            "maximumDifference": 2
+          }
+        ],
+        "lastServerSample": {
+          "steps": 18000.0,
+          "meanMilliseconds": 0.36,
+          "worstMilliseconds": 59.1,
+          "overruns": 6.0,
+          "droppedTicks": 0.0,
+          "stalls": 0.0
+        },
+        "serverQueueHighWater": 41,
+        "serverQueueDrops": 0,
+        "simulationFailureLogged": false,
+        "peerReportsPassed": 8,
+        "lastShadowSample": {
+          "wouldClamp": 1521.0,
+          "timedShots": 3804.0,
+          "refusedFrames": 2162.8,
+          "geometryUnavailable": 3721.0,
+          "shots": 3804.0,
+          "maximumCatchUpSteps": 31.0,
+          "catchUpTruncations": 0.0
+        }
+      },
+      "run": "net-v18-final-render/poor",
+      "failureDetails": [],
+      "diagnosticLogsRetained": 0
+    },
+    {
+      "scenario": "severe",
+      "seconds": 300,
+      "elapsedSeconds": 335.98609999999985,
+      "profiles": [
+        [
+          320,
+          80,
+          2,
+          1,
+          0
+        ],
+        [
+          320,
+          80,
+          2,
+          1,
+          0
+        ],
+        [
+          320,
+          80,
+          2,
+          1,
+          0
+        ],
+        [
+          320,
+          80,
+          2,
+          1,
+          0
+        ],
+        [
+          320,
+          80,
+          2,
+          1,
+          0
+        ],
+        [
+          320,
+          80,
+          2,
+          1,
+          0
+        ],
+        [
+          320,
+          80,
+          2,
+          1,
+          0
+        ],
+        [
+          320,
+          80,
+          2,
+          1,
+          0
+        ]
+      ],
+      "results": [
+        {
+          "peer": 0,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 1,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 2,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 3,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 4,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 5,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 6,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 7,
+          "exit": 0,
+          "timedOut": false
+        }
+      ],
+      "host": "macOS-27.0-arm64-arm-64bit",
+      "assemblySha256": "7bfe57c86786b0bb19114977fee7785fe1aa730d1d5c6a8c44b3e867e249124a",
+      "observations": {
+        "maximumFastDatagram": 903,
+        "claimCapacityRefusals": 0,
+        "unusedLedgerOverwrites": 0,
+        "inputEdgeOverflow": 0,
+        "altAttackCrossReports": [
+          {
+            "source": "CHECK0",
+            "sent": 125,
+            "observed": {
+              "CHECK0": 125,
+              "CHECK1": 125,
+              "CHECK3": 125,
+              "CHECK2": 125,
+              "CHECK6": 125,
+              "CHECK7": 125,
+              "CHECK5": 125,
+              "CHECK4": 125
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK1",
+            "sent": 155,
+            "observed": {
+              "CHECK0": 155,
+              "CHECK1": 155,
+              "CHECK3": 155,
+              "CHECK2": 155,
+              "CHECK6": 155,
+              "CHECK7": 155,
+              "CHECK5": 155,
+              "CHECK4": 155
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK2",
+            "sent": 129,
+            "observed": {
+              "CHECK0": 129,
+              "CHECK1": 129,
+              "CHECK3": 129,
+              "CHECK2": 129,
+              "CHECK6": 129,
+              "CHECK7": 129,
+              "CHECK5": 129,
+              "CHECK4": 129
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK3",
+            "sent": 164,
+            "observed": {
+              "CHECK0": 164,
+              "CHECK1": 164,
+              "CHECK3": 164,
+              "CHECK2": 164,
+              "CHECK6": 164,
+              "CHECK7": 164,
+              "CHECK5": 164,
+              "CHECK4": 164
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK4",
+            "sent": 122,
+            "observed": {
+              "CHECK0": 122,
+              "CHECK1": 122,
+              "CHECK3": 122,
+              "CHECK2": 122,
+              "CHECK6": 122,
+              "CHECK7": 122,
+              "CHECK5": 122,
+              "CHECK4": 122
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK5",
+            "sent": 149,
+            "observed": {
+              "CHECK0": 149,
+              "CHECK1": 149,
+              "CHECK3": 149,
+              "CHECK2": 149,
+              "CHECK6": 149,
+              "CHECK7": 149,
+              "CHECK5": 149,
+              "CHECK4": 149
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK6",
+            "sent": 126,
+            "observed": {
+              "CHECK0": 126,
+              "CHECK1": 126,
+              "CHECK3": 126,
+              "CHECK2": 126,
+              "CHECK6": 126,
+              "CHECK7": 126,
+              "CHECK5": 126,
+              "CHECK4": 126
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK7",
+            "sent": 136,
+            "observed": {
+              "CHECK0": 136,
+              "CHECK1": 136,
+              "CHECK3": 136,
+              "CHECK2": 136,
+              "CHECK6": 136,
+              "CHECK7": 136,
+              "CHECK5": 136,
+              "CHECK4": 136
+            },
+            "maximumDifference": 0
+          }
+        ],
+        "lastServerSample": {
+          "steps": 19800.0,
+          "meanMilliseconds": 0.33,
+          "worstMilliseconds": 36.7,
+          "overruns": 3.0,
+          "droppedTicks": 0.0,
+          "stalls": 0.0
+        },
+        "serverQueueHighWater": 79,
+        "serverQueueDrops": 0,
+        "simulationFailureLogged": false,
+        "peerReportsPassed": 8,
+        "lastShadowSample": {
+          "wouldClamp": 2915.0,
+          "timedShots": 4872.0,
+          "refusedFrames": 5081.0,
+          "geometryUnavailable": 4768.0,
+          "shots": 4872.0,
+          "maximumCatchUpSteps": 42.0,
+          "catchUpTruncations": 0.0
+        }
+      },
+      "run": "net-v18-final-render/severe",
+      "failureDetails": [],
+      "diagnosticLogsRetained": 9
+    },
+    {
+      "scenario": "extreme",
+      "seconds": 300,
+      "elapsedSeconds": 329.213662666,
+      "profiles": [
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ],
+        [
+          400,
+          80,
+          5,
+          3,
+          1
+        ]
+      ],
+      "results": [
+        {
+          "peer": 0,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 1,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 2,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 3,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 4,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 5,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 6,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 7,
+          "exit": 0,
+          "timedOut": false
+        }
+      ],
+      "host": "macOS-27.0-arm64-arm-64bit",
+      "assemblySha256": "2977e82924a2d0dbec326ec51b3bd6772f83fa6d251637f9c56652735db209c2",
+      "observations": {
+        "maximumFastDatagram": 903,
+        "claimCapacityRefusals": 0,
+        "unusedLedgerOverwrites": 0,
+        "inputEdgeOverflow": 0,
+        "altAttackCrossReports": [
+          {
+            "source": "CHECK0",
+            "sent": 90,
+            "observed": {
+              "CHECK0": 90,
+              "CHECK1": 90,
+              "CHECK3": 90,
+              "CHECK2": 90,
+              "CHECK6": 90,
+              "CHECK7": 90,
+              "CHECK5": 90,
+              "CHECK4": 90
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK1",
+            "sent": 129,
+            "observed": {
+              "CHECK0": 129,
+              "CHECK1": 129,
+              "CHECK3": 129,
+              "CHECK2": 129,
+              "CHECK6": 129,
+              "CHECK7": 129,
+              "CHECK5": 129,
+              "CHECK4": 129
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK2",
+            "sent": 144,
+            "observed": {
+              "CHECK0": 144,
+              "CHECK1": 144,
+              "CHECK3": 144,
+              "CHECK2": 144,
+              "CHECK6": 144,
+              "CHECK7": 144,
+              "CHECK5": 144,
+              "CHECK4": 144
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK3",
+            "sent": 125,
+            "observed": {
+              "CHECK0": 125,
+              "CHECK1": 125,
+              "CHECK3": 125,
+              "CHECK2": 125,
+              "CHECK6": 125,
+              "CHECK7": 125,
+              "CHECK5": 125,
+              "CHECK4": 125
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK4",
+            "sent": 133,
+            "observed": {
+              "CHECK0": 133,
+              "CHECK1": 133,
+              "CHECK3": 133,
+              "CHECK2": 133,
+              "CHECK6": 133,
+              "CHECK7": 133,
+              "CHECK5": 133,
+              "CHECK4": 133
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK5",
+            "sent": 169,
+            "observed": {
+              "CHECK0": 169,
+              "CHECK1": 169,
+              "CHECK3": 169,
+              "CHECK2": 169,
+              "CHECK6": 169,
+              "CHECK7": 169,
+              "CHECK5": 169,
+              "CHECK4": 169
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK6",
+            "sent": 138,
+            "observed": {
+              "CHECK0": 138,
+              "CHECK1": 138,
+              "CHECK3": 138,
+              "CHECK2": 138,
+              "CHECK6": 138,
+              "CHECK7": 138,
+              "CHECK5": 138,
+              "CHECK4": 138
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK7",
+            "sent": 100,
+            "observed": {
+              "CHECK0": 100,
+              "CHECK1": 100,
+              "CHECK3": 100,
+              "CHECK2": 100,
+              "CHECK6": 100,
+              "CHECK7": 100,
+              "CHECK5": 100,
+              "CHECK4": 100
+            },
+            "maximumDifference": 0
+          }
+        ],
+        "lastServerSample": {
+          "steps": 17998.0,
+          "meanMilliseconds": 0.32,
+          "worstMilliseconds": 127.1,
+          "overruns": 3.0,
+          "droppedTicks": 2.0,
+          "stalls": 0.0
+        },
+        "serverQueueHighWater": 13,
+        "serverQueueDrops": 0,
+        "simulationFailureLogged": false,
+        "peerReportsPassed": 8,
+        "lastShadowSample": {
+          "wouldClamp": 1897.0,
+          "timedShots": 3809.0,
+          "refusedFrames": 2774.8,
+          "geometryUnavailable": 3733.0,
+          "shots": 3809.0,
+          "maximumCatchUpSteps": 45.0,
+          "catchUpTruncations": 0.0
+        }
+      },
+      "run": "net-v18-repeat-render/extreme",
+      "failureDetails": [],
+      "diagnosticLogsRetained": 9
+    },
+    {
+      "scenario": "lan",
+      "seconds": 600,
+      "elapsedSeconds": 641.1001384169999,
+      "profiles": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "results": [
+        {
+          "peer": 0,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 1,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 2,
+          "exit": 1,
+          "timedOut": false
+        },
+        {
+          "peer": 3,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 4,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 5,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 6,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 7,
+          "exit": 0,
+          "timedOut": false
+        }
+      ],
+      "host": "macOS-27.0-arm64-arm-64bit",
+      "assemblySha256": "573a838d68f4f3efae4d16cefda9842fb506c624dd9c70902f1c421931fecd4e",
+      "observations": {
+        "maximumFastDatagram": 903,
+        "claimCapacityRefusals": 0,
+        "unusedLedgerOverwrites": 0,
+        "inputEdgeOverflow": 0,
+        "altAttackCrossReports": [
+          {
+            "source": "CHECK0",
+            "sent": 54,
+            "observed": {
+              "CHECK0": 54,
+              "CHECK1": 54,
+              "CHECK3": 54,
+              "CHECK2": 54,
+              "CHECK6": 54,
+              "CHECK7": 54,
+              "CHECK5": 54,
+              "CHECK4": 54
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK1",
+            "sent": 306,
+            "observed": {
+              "CHECK0": 306,
+              "CHECK1": 306,
+              "CHECK3": 306,
+              "CHECK2": 306,
+              "CHECK6": 306,
+              "CHECK7": 306,
+              "CHECK5": 306,
+              "CHECK4": 306
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK2",
+            "sent": 235,
+            "observed": {
+              "CHECK0": 235,
+              "CHECK1": 235,
+              "CHECK3": 235,
+              "CHECK2": 235,
+              "CHECK6": 235,
+              "CHECK7": 235,
+              "CHECK5": 235,
+              "CHECK4": 235
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK3",
+            "sent": 258,
+            "observed": {
+              "CHECK0": 258,
+              "CHECK1": 258,
+              "CHECK3": 258,
+              "CHECK2": 258,
+              "CHECK6": 258,
+              "CHECK7": 258,
+              "CHECK5": 258,
+              "CHECK4": 258
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK4",
+            "sent": 254,
+            "observed": {
+              "CHECK0": 254,
+              "CHECK1": 254,
+              "CHECK3": 254,
+              "CHECK2": 254,
+              "CHECK6": 254,
+              "CHECK7": 254,
+              "CHECK5": 254,
+              "CHECK4": 254
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK5",
+            "sent": 36,
+            "observed": {
+              "CHECK0": 36,
+              "CHECK1": 36,
+              "CHECK3": 36,
+              "CHECK2": 36,
+              "CHECK6": 36,
+              "CHECK7": 36,
+              "CHECK5": 36,
+              "CHECK4": 36
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK6",
+            "sent": 12,
+            "observed": {
+              "CHECK0": 12,
+              "CHECK1": 12,
+              "CHECK3": 12,
+              "CHECK2": 12,
+              "CHECK6": 12,
+              "CHECK7": 12,
+              "CHECK5": 12,
+              "CHECK4": 12
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK7",
+            "sent": 72,
+            "observed": {
+              "CHECK0": 72,
+              "CHECK1": 72,
+              "CHECK3": 72,
+              "CHECK2": 72,
+              "CHECK6": 72,
+              "CHECK7": 72,
+              "CHECK5": 72,
+              "CHECK4": 72
+            },
+            "maximumDifference": 0
+          }
+        ],
+        "lastServerSample": {
+          "steps": 37798.0,
+          "meanMilliseconds": 0.33,
+          "worstMilliseconds": 112.9,
+          "overruns": 5.0,
+          "droppedTicks": 2.0,
+          "stalls": 0.0
+        },
+        "serverQueueHighWater": 59,
+        "serverQueueDrops": 0,
+        "simulationFailureLogged": false,
+        "peerReportsPassed": 7,
+        "lastShadowSample": {
+          "wouldClamp": 2356.0,
+          "timedShots": 6269.0,
+          "refusedFrames": 2069.7,
+          "geometryUnavailable": 6222.0,
+          "shots": 6269.0,
+          "maximumCatchUpSteps": 22.0,
+          "catchUpTruncations": 0.0
+        }
+      },
+      "run": "net-v18-repeat-render/lan",
+      "failureDetails": [
+        {
+          "peer": "peer-2",
+          "lines": [
+            "[netcheck] position gap 32.32 slot=6 frame=1 phase=Idle localFlags=Initial, Active, SlotActive, Spawned hp=99 local=(16.666016, 1, 4.556885) recorded=(-15.651367, 0.8684082, 4.3911133) gen/life=1/2 current=1/2",
+            "CHECK0: form disagreed on 73 frame(s) (longest run 45), worst position gap 0.00 units",
+            "CHECK1: form disagreed on 25 frame(s) (longest run 7), worst position gap 0.15 units",
+            "CHECK3: form disagreed on 21 frame(s) (longest run 7), worst position gap 0.00 units",
+            "CHECK4: form disagreed on 75 frame(s) (longest run 48), worst position gap 0.50 units",
+            "CHECK5: form disagreed on 11 frame(s) (longest run 7), worst position gap 0.00 units",
+            "CHECK6: form disagreed on 65 frame(s) (longest run 41), worst position gap 32.32 units",
+            "FAIL: their position drifted far from the authority's",
+            "CHECK7: form disagreed on 68 frame(s) (longest run 41), worst position gap 0.00 units"
+          ]
+        }
+      ],
+      "notes": "Pre-fix binary: seven peers passed; one recorded a 32.32-unit position gap on local frame 1. Logs show a new life received after bootstrap application in the same loading pump. The release pump now applies the newer state before drawing, without advancing simulation. Bomb and form checks passed.",
+      "diagnosticLogsRetained": 9
+    },
+    {
+      "scenario": "moderate",
+      "seconds": 300,
+      "elapsedSeconds": 332.479406334,
+      "profiles": [
+        [
+          100,
+          20,
+          1,
+          0,
+          0
+        ],
+        [
+          100,
+          20,
+          1,
+          0,
+          0
+        ],
+        [
+          100,
+          20,
+          1,
+          0,
+          0
+        ],
+        [
+          100,
+          20,
+          1,
+          0,
+          0
+        ],
+        [
+          100,
+          20,
+          1,
+          0,
+          0
+        ],
+        [
+          100,
+          20,
+          1,
+          0,
+          0
+        ],
+        [
+          100,
+          20,
+          1,
+          0,
+          0
+        ],
+        [
+          100,
+          20,
+          1,
+          0,
+          0
+        ]
+      ],
+      "results": [
+        {
+          "peer": 0,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 1,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 2,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 3,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 4,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 5,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 6,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 7,
+          "exit": 0,
+          "timedOut": false
+        }
+      ],
+      "host": "macOS-27.0-arm64-arm-64bit",
+      "assemblySha256": "2977e82924a2d0dbec326ec51b3bd6772f83fa6d251637f9c56652735db209c2",
+      "observations": {
+        "maximumFastDatagram": 903,
+        "claimCapacityRefusals": 0,
+        "unusedLedgerOverwrites": 0,
+        "inputEdgeOverflow": 0,
+        "altAttackCrossReports": [
+          {
+            "source": "CHECK0",
+            "sent": 123,
+            "observed": {
+              "CHECK0": 123,
+              "CHECK1": 123,
+              "CHECK3": 123,
+              "CHECK2": 123,
+              "CHECK6": 123,
+              "CHECK7": 123,
+              "CHECK5": 123,
+              "CHECK4": 123
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK1",
+            "sent": 143,
+            "observed": {
+              "CHECK0": 143,
+              "CHECK1": 143,
+              "CHECK3": 143,
+              "CHECK2": 143,
+              "CHECK6": 143,
+              "CHECK7": 143,
+              "CHECK5": 143,
+              "CHECK4": 143
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK2",
+            "sent": 139,
+            "observed": {
+              "CHECK0": 139,
+              "CHECK1": 139,
+              "CHECK3": 139,
+              "CHECK2": 139,
+              "CHECK6": 139,
+              "CHECK7": 139,
+              "CHECK5": 139,
+              "CHECK4": 139
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK3",
+            "sent": 123,
+            "observed": {
+              "CHECK0": 123,
+              "CHECK1": 123,
+              "CHECK3": 123,
+              "CHECK2": 123,
+              "CHECK6": 123,
+              "CHECK7": 123,
+              "CHECK5": 123,
+              "CHECK4": 123
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK4",
+            "sent": 55,
+            "observed": {
+              "CHECK0": 55,
+              "CHECK1": 55,
+              "CHECK3": 55,
+              "CHECK2": 55,
+              "CHECK6": 55,
+              "CHECK7": 55,
+              "CHECK5": 55,
+              "CHECK4": 55
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK5",
+            "sent": 144,
+            "observed": {
+              "CHECK0": 144,
+              "CHECK1": 144,
+              "CHECK3": 144,
+              "CHECK2": 144,
+              "CHECK6": 144,
+              "CHECK7": 144,
+              "CHECK5": 144,
+              "CHECK4": 144
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK6",
+            "sent": 139,
+            "observed": {
+              "CHECK0": 139,
+              "CHECK1": 139,
+              "CHECK3": 139,
+              "CHECK2": 139,
+              "CHECK6": 139,
+              "CHECK7": 139,
+              "CHECK5": 139,
+              "CHECK4": 139
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK7",
+            "sent": 90,
+            "observed": {
+              "CHECK0": 90,
+              "CHECK1": 90,
+              "CHECK3": 90,
+              "CHECK2": 90,
+              "CHECK6": 90,
+              "CHECK7": 90,
+              "CHECK5": 90,
+              "CHECK4": 90
+            },
+            "maximumDifference": 0
+          }
+        ],
+        "lastServerSample": {
+          "steps": 19794.0,
+          "meanMilliseconds": 0.37,
+          "worstMilliseconds": 183.7,
+          "overruns": 6.0,
+          "droppedTicks": 6.0,
+          "stalls": 0.0
+        },
+        "serverQueueHighWater": 27,
+        "serverQueueDrops": 0,
+        "simulationFailureLogged": false,
+        "peerReportsPassed": 8,
+        "lastShadowSample": {
+          "wouldClamp": 1279.0,
+          "timedShots": 4107.0,
+          "refusedFrames": 2063.5,
+          "geometryUnavailable": 4007.0,
+          "shots": 4107.0,
+          "maximumCatchUpSteps": 26.0,
+          "catchUpTruncations": 0.0
+        }
+      },
+      "run": "net-v18-repeat-render/moderate",
+      "failureDetails": [],
+      "diagnosticLogsRetained": 9
+    },
+    {
+      "scenario": "lan",
+      "seconds": 300,
+      "elapsedSeconds": 329.17677687500003,
+      "profiles": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "results": [
+        {
+          "peer": 0,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 1,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 2,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 3,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 4,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 5,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 6,
+          "exit": 0,
+          "timedOut": false
+        },
+        {
+          "peer": 7,
+          "exit": 0,
+          "timedOut": false
+        }
+      ],
+      "host": "macOS-27.0-arm64-arm-64bit",
+      "assemblySha256": "2977e82924a2d0dbec326ec51b3bd6772f83fa6d251637f9c56652735db209c2",
+      "observations": {
+        "maximumFastDatagram": 903,
+        "claimCapacityRefusals": 0,
+        "unusedLedgerOverwrites": 0,
+        "inputEdgeOverflow": 0,
+        "altAttackCrossReports": [
+          {
+            "source": "CHECK0",
+            "sent": 90,
+            "observed": {
+              "CHECK0": 90,
+              "CHECK1": 90,
+              "CHECK3": 90,
+              "CHECK2": 90,
+              "CHECK6": 90,
+              "CHECK7": 90,
+              "CHECK5": 90,
+              "CHECK4": 90
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK1",
+            "sent": 120,
+            "observed": {
+              "CHECK0": 120,
+              "CHECK1": 120,
+              "CHECK3": 120,
+              "CHECK2": 120,
+              "CHECK6": 120,
+              "CHECK7": 120,
+              "CHECK5": 120,
+              "CHECK4": 120
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK2",
+            "sent": 131,
+            "observed": {
+              "CHECK0": 131,
+              "CHECK1": 131,
+              "CHECK3": 131,
+              "CHECK2": 131,
+              "CHECK6": 131,
+              "CHECK7": 131,
+              "CHECK5": 131,
+              "CHECK4": 131
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK3",
+            "sent": 114,
+            "observed": {
+              "CHECK0": 114,
+              "CHECK1": 114,
+              "CHECK3": 114,
+              "CHECK2": 114,
+              "CHECK6": 114,
+              "CHECK7": 114,
+              "CHECK5": 114,
+              "CHECK4": 114
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK4",
+            "sent": 132,
+            "observed": {
+              "CHECK0": 132,
+              "CHECK1": 132,
+              "CHECK3": 132,
+              "CHECK2": 132,
+              "CHECK6": 132,
+              "CHECK7": 132,
+              "CHECK5": 132,
+              "CHECK4": 132
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK5",
+            "sent": 136,
+            "observed": {
+              "CHECK0": 136,
+              "CHECK1": 136,
+              "CHECK3": 136,
+              "CHECK2": 136,
+              "CHECK6": 136,
+              "CHECK7": 136,
+              "CHECK5": 136,
+              "CHECK4": 136
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK6",
+            "sent": 60,
+            "observed": {
+              "CHECK0": 60,
+              "CHECK1": 60,
+              "CHECK3": 60,
+              "CHECK2": 60,
+              "CHECK6": 60,
+              "CHECK7": 60,
+              "CHECK5": 60,
+              "CHECK4": 60
+            },
+            "maximumDifference": 0
+          },
+          {
+            "source": "CHECK7",
+            "sent": 156,
+            "observed": {
+              "CHECK0": 156,
+              "CHECK1": 156,
+              "CHECK3": 156,
+              "CHECK2": 156,
+              "CHECK6": 156,
+              "CHECK7": 156,
+              "CHECK5": 156,
+              "CHECK4": 156
+            },
+            "maximumDifference": 0
+          }
+        ],
+        "lastServerSample": {
+          "steps": 17999.0,
+          "meanMilliseconds": 0.29,
+          "worstMilliseconds": 115.3,
+          "overruns": 2.0,
+          "droppedTicks": 1.0,
+          "stalls": 0.0
+        },
+        "serverQueueHighWater": 14,
+        "serverQueueDrops": 0,
+        "simulationFailureLogged": false,
+        "peerReportsPassed": 8,
+        "lastShadowSample": {
+          "wouldClamp": 574.0,
+          "timedShots": 3628.0,
+          "refusedFrames": 1493.2,
+          "geometryUnavailable": 3554.0,
+          "shots": 3628.0,
+          "maximumCatchUpSteps": 22.0,
+          "catchUpTruncations": 0.0
+        }
+      },
+      "run": "net-v18-release-render/lan",
+      "failureDetails": [],
+      "diagnosticLogsRetained": 9
+    }
+  ]
+}

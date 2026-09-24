@@ -1,6 +1,40 @@
 # Hit claims, and who decides a kill
 
-Code: `Mods/Network/NetHitClaims.cs`. Hit claims were introduced in protocol 7; the current protocol is defined by `NetConfig.ProtocolVersion` (16 at this audit). The third piece of the same
+## Protocol 18 arbitration
+
+Pending storage is partitioned into **64 claims per shooter**, 512 total. Park
+first drains due work; a still-full shooter partition receives terminal
+`ClaimCapacity` (12), and the corresponding prediction is denied. Another
+shooter cannot consume its partition. The client outbox is bounded at 128 and
+explicitly settles an evicted prediction.
+
+The resolved ledger has **64 entries per attacker/victim pair**. Each entry
+stores the shooter's `ShotKey`, victim generation/life, authority frame, damage
+and consumed state. Expired, invalid-lifecycle or consumed entries are reusable;
+unmatched entries within the 72-frame grace are never overwritten. If all 64
+are still matchable, preserve them and refuse rescue for that pair until the
+unrecorded hit is outside grace. Capacity refusal is visible, never silent.
+
+Matching first consumes one entry with the exact launch identity. A direct hit
+and splash retain separate entries. The time/ACK fallback is allowed only when
+at least one launch stamp is unavailable; differing nonzero launches never
+match. Imperialist body/headshot correction remains in place. The rescued-flight
+ledger holds 512 identities per pair for its longer flight lifetime and fails
+closed before applying damage if retention is unavailable.
+
+Diagnostics include pending/current high water, resolved/current high water,
+expired unused entries, zero unmatched overwrites, capacity refusals, launch
+versus fallback matches, and rescued-flight occupancy. `--claim-stress` covers
+retention through the full grace, multiplicity and independent shooter capacity.
+`--claim-load-scene` exercises 43,200 claims across eight real player entities
+through actual damage/arbitration at 0/50/150/250/320/400 ms RTT, with up to
+80 ms jitter, 5% loss, 3% reordering, 1% duplication and 400 ms queued stalls.
+Every claim terminates, physical/rescued damage pays exactly once, and ordinary
+load has zero capacity refusals or unmatched overwrites. Its collision placement
+is controlled; the rendered tour separately exercises aiming and flight.
+Historical measurements below describe their original builds.
+
+Code: `Mods/Network/NetHitClaims.cs`. Hit claims were introduced in protocol 7; the current protocol is defined by `NetConfig.ProtocolVersion` (18). The third piece of the same
 machine as [lag compensation](NETWORK-UNLAGGED.md) and
 [instant hit registration](NETWORK-PREDICTION.md), and the one that answers the
 complaint those two leave standing.
