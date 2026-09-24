@@ -146,6 +146,16 @@ namespace MphRead.Mods.Input
         {
             dirX = 0;
             dirY = 0;
+            // A lower frame number means a new Scene/timeline. The recognizer is
+            // static because input plumbing outlives an individual PlayerEntity,
+            // but Scene.FrameCount restarts from zero on bot rematches and on a
+            // newly loaded online round. An absolute cooldown from the old scene
+            // would otherwise reject every flick until the new scene caught up.
+            if (frame < _lastFrame)
+            {
+                _cooldownUntil = 0;
+            }
+
             // A gap means the player was not a ball a moment ago (or was
             // frozen, or paused): the samples on the other side of it belong
             // to a different gesture, and the first delta after one is quite
