@@ -937,9 +937,8 @@ namespace MphRead.Entities
             }
             else if (_scene.GameState.Multiplayer)
             {
-                bool spawnProtection = !Mods.Network.NetSession.Active
-                    || Mods.Network.NetSession.ActiveMatchDefinition?.SpawnProtection != false;
-                _spawnInvulnTimer = spawnProtection ? MatchSpawnProtectionFrames : (ushort)0;
+                _spawnInvulnTimer = _scene.GameState.SpawnProtection
+                    ? MatchSpawnProtectionFrames : (ushort)0;
             }
             else
             {
