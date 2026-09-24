@@ -22,7 +22,8 @@ namespace MphRead.Mods.Platform
 
         // Other desktop platforms keep their existing portable layout. Android
         // sets GameFiles.Root and LauncherPrefs.Directory from its activity.
-        public static string UserDataDirectory => OperatingSystem.IsMacOS()
+        public static string UserDataDirectory => Environment.GetEnvironmentVariable("PROJECT_PRIME_USER_DATA") is { Length: > 0 } directory
+            ? Path.GetFullPath(directory) : OperatingSystem.IsMacOS()
             ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 "Library", "Application Support", Branding.Name)
             : ExecutableDirectory;

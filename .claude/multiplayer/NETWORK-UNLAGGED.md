@@ -1,5 +1,45 @@
 # Lag compensation
 
+## Protocol 18 dynamic collision
+
+`NetDynamicGeometryHistory` records 128 frames at the same publication point as
+player history. Supported collision inventory:
+
+| Entity | Collision data | Sampling |
+|---|---|---|
+| Door | Open bit and connector-active flag | Discrete source frame |
+| Force field | Active flag | Discrete source frame |
+| Platform/Object collision components | Transform, both cached inverses, broadphase center, active flag | Rotation/translation/scale interpolation while both samples are active |
+
+These are exactly the dynamic classes visited by projectile collision and the
+mesh broadphase. Static room collision is already constant; decorative animation,
+particles and audio are excluded. IDs use room entity-list position and collision
+component, and room teardown replaces the history. Storage is bounded at 512
+components. Future dynamically inserted collision classes require an explicit
+adapter/inventory update.
+
+Every compensated spawn and projectile catch-up step uses the same authority
+frame for players and geometry. Missing geometry history uses present geometry
+and increments HistoryMiss. Continuous samples interpolate between N and N+1;
+discrete transitions retain N. Rewind stores exact present transforms and flags,
+and restores them through try/finally even on spawn/catch-up exceptions. Door
+ShotOpen effects are preserved independently of the temporarily sampled Open bit.
+No scripts, animation, sounds or entire room simulation are rewound.
+
+Production rewind is enabled. `-netgeometryshadow` instead performs read-only
+first-segment obstruction comparisons and leaves production collision current.
+Shadow counters distinguish same obstruction, historical-only blockage,
+current-only blockage, different obstruction and unavailable history. The initial
+five-minute eight-client SANCTORUS shadow run passed, but that map had no dynamic
+objects. The separate real-asset UNIT1_RM1 fixture exercises 12 doors and 11 force
+fields with historical/current trace differences and exact restore, plus nine
+real mesh components with interpolation and exception restoration. Deterministic
+adapter fixtures cover moving mesh interpolation, frame-by-frame catch-up,
+exception restoration, ring overwrite and zero warmed rewind allocations.
+
+The existing 60 Hz simulation, 45-frame production ceiling and 128-frame player
+history remain unchanged.
+
 Ported from [Q-Zandronum](https://github.com/IgeNiaI/Q-Zandronum)'s
 `unlagged.cpp` — itself Spleen's Skulltag work, with Q-Zandronum's own
 addition on top. Code: `Mods/Network/NetUnlagged.cs`.
@@ -148,9 +188,8 @@ the `Spawn` call: the pool is picked from by exactly that test
 ## What is deliberately not ported
 
 - **Sectors and polyobjects.** Zandronum reconciles them because a Doom map's
-  floor is a moving hitbox. Nothing in an MPH room moves that a shot is stopped
-  by in the same way, and rewinding room geometry would mean unwinding the
-  collision structures the whole engine indexes against.
+  floor is a moving hitbox. Protocol 18 uses MPH-specific door, field and
+  Platform/Object collision adapters instead; it does not port Doom room structures.
 - **`cl_ping_unlagged`.** See above.
 - **`wasJustUnlagged`.** Q-Zandronum sets it so the actor skips its next
   `Tick()`, having already been ticked during catch-up. Not carried: it costs

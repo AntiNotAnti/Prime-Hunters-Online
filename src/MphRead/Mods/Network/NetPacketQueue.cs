@@ -31,11 +31,11 @@ public sealed class NetPacketQueue
     public bool CanAcceptCritical { get { lock (_lock) return _count < _capacity; } }
     public static NetPacketPriority Priority(PacketType type) => type switch
     {
-        PacketType.Intent or PacketType.SlotIntent or PacketType.Snapshot or PacketType.HitClaim or PacketType.HitVerdict
+        PacketType.Intent or PacketType.SlotIntent or PacketType.Snapshot or PacketType.SnapshotFast or PacketType.PlayerSlowState or PacketType.WorldState or PacketType.HitClaim or PacketType.HitVerdict
             or PacketType.ReplayWorld or PacketType.MatchStartCommit => NetPacketPriority.Realtime,
         PacketType.Hello or PacketType.Welcome or PacketType.Bye or PacketType.Refused or PacketType.SessionState
             or PacketType.Roster or PacketType.MatchState or PacketType.MapChange or PacketType.Authority
-            or PacketType.MatchLoaded or PacketType.MatchLoadFailed or PacketType.MatchEnd
+            or PacketType.WorldReady or PacketType.WorldBootstrap or PacketType.MatchLoaded or PacketType.MatchLoadFailed or PacketType.MatchEnd
             or PacketType.LobbyCommand or PacketType.LobbyCommandResult => NetPacketPriority.Critical,
         _ => NetPacketPriority.Background
     };

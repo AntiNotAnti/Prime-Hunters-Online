@@ -38,7 +38,7 @@ namespace MphRead.Mods.Network
         // Loading stays frozen, but the countdown is a commitment made ahead of
         // time. Release against that local deadline instead of waiting for the
         // InMatch datagram to reach every client at a different instant.
-        public static bool FreezeGameplay => IsInLobby || (IsStarting && !StartReleaseReached);
+        public static bool FreezeGameplay => IsInLobby || !WorldIsReady || (IsStarting && !StartReleaseReached);
         public static bool ShouldLoadMatch => ServerSession is { } session
             && (session.Phase == SessionPhase.InMatch || (session.Phase == SessionPhase.Starting
                 && LocalSlot >= 0 && (session.ExpectedParticipants & (1 << LocalSlot)) != 0));
@@ -52,6 +52,8 @@ namespace MphRead.Mods.Network
         private static uint _nextCommandId;
         private static ushort? _loadedMatch;
         private static MatchStartIdentity? _loadedStart;
+        private static int _loadedSlot = -1;
+        private static ushort _loadedSlotGeneration;
         private static (ushort MatchId, ulong AuthorityEpoch)? _pendingLoadedScene;
         private static ushort _rosterSessionRevision;
         private static MatchLoadStage _loadStage;
@@ -70,7 +72,19 @@ namespace MphRead.Mods.Network
 
         public static void Pump(double time = 0) => Update(time);
 
-        internal static void PumpLoading() => Update(Clock, advanceFrame: false);
+        internal static void PumpLoading()
+        {
+            Update(Clock, advanceFrame: false);
+            // A bootstrap/countdown release can be followed by a newer fast
+            // snapshot in this same receive batch. The renderer draws after
+            // this pump without taking a simulation step: apply any newer
+            // life/spawn now so that first picture cannot show the old body.
+            if (!FreezeGameplay && IsClient && !IsAuthority)
+            {
+                NetSlotManager.Sync();
+                NetHooks.ApplyRemoteStates();
+            }
+        }
 
         // Called once per rendered frame by both platform hosts. Frozen time
         // never becomes gameplay debt, including the frame crossing release.
@@ -191,6 +205,7 @@ namespace MphRead.Mods.Network
             // stage on every SessionState while a scene was still loading.
             if (newMatch || returningToLobby || _loadProgressIdentity != startIdentity)
             {
+                _appliedBootstrap = null;
                 _loadedMatch = null;
                 _loadedStart = null;
                 _loadProgressIdentity = state.Phase is SessionPhase.Starting or SessionPhase.InMatch
@@ -327,7 +342,10 @@ namespace MphRead.Mods.Network
             var state = ServerSession.Value;
             if (state.Phase is not (SessionPhase.Starting or SessionPhase.InMatch)) return;
             var identity = new MatchStartIdentity(state.MatchId, state.AuthorityEpoch, state.StartGeneration);
-            if (_loadedStart == identity) return;
+            ushort generation = NetPlayerLifecycle.Generation(LocalSlot);
+            if (_loadedStart == identity && _loadedSlot == LocalSlot && _loadedSlotGeneration == generation) return;
+            _appliedBootstrap = _receivingBootstrap = null; _bootstrapMask = 0;
+            _loadedSlot = LocalSlot; _loadedSlotGeneration = generation;
             _loadedStart = identity; _loadedMatch = state.MatchId;
             _lastLoadAck = Clock;
             new MatchLoadedPacket(state.MatchId, state.AuthorityEpoch, state.StartGeneration).Write(_scratch);
@@ -344,6 +362,7 @@ namespace MphRead.Mods.Network
         // The socket, local slot, identity, authoritative roster and lobby state survive this reset.
         public static void ResetMatchState(bool preserveRoomChange = false)
         {
+            _appliedBootstrap = null;
             _pendingLoadedScene = null;
             NetTelemetry.NewMatch();
             NetHealthSync.BeginRoom();
@@ -362,7 +381,11 @@ namespace MphRead.Mods.Network
 
         private static void ResetLobbySession()
         {
+            _appliedBootstrap = _receivingBootstrap = null;
+            _bootstrapMask = 0;
+            _laneReceiver.Reset(0, 0);
             ServerSession = null; _pendingLobby.Clear(); _loadedMatch = null; _loadedStart = null;
+            _loadedSlot = -1; _loadedSlotGeneration = 0;
             _pendingLoadedScene = null;
             _rosterRevision = 0; _hasRoster = false; _ownerToken = Guid.Empty;
             _rosterSessionRevision = 0;

@@ -28,6 +28,7 @@ namespace MphRead.Entities
         public float Height => _height;
 
         public new bool Active => _active;
+        internal void ModSetNetworkCollisionActive(bool active) => _active = active;
         public Enemy49Entity? Lock => _lock;
 
         private static readonly IReadOnlyList<int> _scanIds = new int[10]

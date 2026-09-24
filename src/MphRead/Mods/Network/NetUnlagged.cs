@@ -353,6 +353,7 @@ namespace MphRead.Mods.Network
 
         public static void Reset()
         {
+            NetDynamicGeometryHistory.ResetRoom();
             LagCompensationPolicy.Reset();
             CatchUpShots = CatchUpTruncations = 0; MaximumCatchUpSteps = 0;
             Array.Clear(_stamp);
@@ -409,6 +410,7 @@ namespace MphRead.Mods.Network
             // call, once a frame, and a no-op on all but the pathological one.
             Restore();
             _inProgress = false;
+            NetDynamicGeometryHistory.RecordWorld(frame);
             int index = (int)(frame % HistoryFrames);
             _stamp[index] = frame;
             _newest = frame;
@@ -631,6 +633,8 @@ namespace MphRead.Mods.Network
             // The exact point the shooter's screen was at, fraction and all.
             double target = NetSession.NetFrame - rewind;
             _shotTargetFrame = target;
+            NetDynamicGeometryHistory.CompareShadow(shooter.OwningScene, origin, direction, target,
+                shooter.EquipInfo.Weapon.UnchargedSpeed / 8192f);
             if (!Reconcile(slot, target))
             {
                 HistoryMisses++;
@@ -812,6 +816,8 @@ namespace MphRead.Mods.Network
                 player.ModPlaceAt(NetPlayerBridge.InFormFor(player, was, _altForm[i, index]));
             }
             _reconciled = true;
+            try { NetDynamicGeometryHistory.ReconcileWorld(targetFrame); }
+            catch { Restore(); throw; }
             return true;
         }
 
@@ -821,6 +827,7 @@ namespace MphRead.Mods.Network
         /// </summary>
         public static void Restore()
         {
+            NetDynamicGeometryHistory.RestoreWorld();
             if (!_reconciled)
             {
                 return;
@@ -874,7 +881,14 @@ namespace MphRead.Mods.Network
         public static long CatchUpTruncations { get; private set; }
         public static int MaximumCatchUpSteps { get; private set; }
 
+        public static void AbortShot()
+        { Restore(); _shooter = null; _rewind = 0; _inProgress = false; }
         public static void EndShot(PlayerEntity shooter)
+        {
+            try { EndShotCore(shooter); }
+            finally { AbortShot(); }
+        }
+        private static void EndShotCore(PlayerEntity shooter)
         {
             if (shooter.SceneServices.IsReplica) return;
             if (_shooter != shooter || _rewind <= 0)

@@ -74,6 +74,28 @@ namespace MphRead.Entities
         public Mods.Network.HealthSpawnState ModHealthState => new(
             Item != null && Item.DespawnTimer != 0, Active, _spawnCooldown, _spawnCount, _lastPickerSlot);
 
+        internal void ModApplyNetworkHealthState(in Mods.Network.HealthSpawnState state, bool feedback)
+        {
+            Active = state.Active;
+            _spawnCooldown = state.Cooldown;
+            _spawnCount = state.SpawnCount;
+            if (!state.Available && Item != null)
+            {
+                int localSlot = _scene.Services.PlayerReplication.LocalSlot;
+                if (feedback && Item.DespawnTimer != 0 && state.PickerSlot == localSlot
+                    && localSlot >= 0 && localSlot < _scene.Players.Items.Count)
+                {
+                    _scene.Players.Items[localSlot].PlayHealthPickupSfx(Item.ItemType);
+                }
+                Item.DespawnTimer = 0;
+            }
+            else if (state.Available && Item == null)
+            {
+                Item = SpawnItem(_data.ItemType, Position.AddY(0.65f), NodeRef, _scene);
+                if (Item != null) { Item.Owner = this; Item.ParentId = _data.ParentId; }
+            }
+        }
+
         public override bool Process()
         {
             if (!_linkDone && _data.ParentId != -1)
@@ -97,24 +119,7 @@ namespace MphRead.Entities
             {
                 if (_scene.Services.TryGetHealthSpawn((short)Id, out var state))
                 {
-                    Active = state.Active;
-                    _spawnCooldown = state.Cooldown;
-                    _spawnCount = state.SpawnCount;
-                    if (!state.Available && Item != null)
-                    {
-                        int localSlot = _scene.Services.PlayerReplication.LocalSlot;
-                        if (Item.DespawnTimer != 0 && state.PickerSlot == localSlot
-                            && localSlot >= 0 && localSlot < _scene.Players.Items.Count)
-                        {
-                            _scene.Players.Items[localSlot].PlayHealthPickupSfx(Item.ItemType);
-                        }
-                        Item.DespawnTimer = 0;
-                    }
-                    else if (state.Available && Item == null)
-                    {
-                        Item = SpawnItem(_data.ItemType, Position.AddY(0.65f), NodeRef, _scene);
-                        if (Item != null) { Item.Owner = this; Item.ParentId = _data.ParentId; }
-                    }
+                    ModApplyNetworkHealthState(state, feedback: true);
                 }
                 return base.Process();
             }

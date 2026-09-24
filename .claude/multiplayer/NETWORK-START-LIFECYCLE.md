@@ -2,11 +2,11 @@
 
 Each start freezes MatchId, AuthorityEpoch, a nonzero uint StartGeneration, match
 configuration and the eligible participant mask. Internal stages are Preparing,
-Loading, Countdown and InMatch; the public session remains Starting until the
+Loading, Synchronizing, Countdown and InMatch; the public session remains Starting until the
 last stage. The authority marks itself ready only after synchronous room creation.
 A 15-second boundary now marks/logs a slow loader without removing it; the hard
 stuck-loader deadline is 60 seconds and starts after authority creation. The
-1.5-second countdown starts only after every remaining expected participant is loaded.
+1.5-second countdown starts only after every remaining expected participant has applied its authoritative world baseline.
 
 SessionState carries the start generation/stage and reliable match definition.
 MatchLoaded and MatchLoadFailed include all three identity fields and use the
@@ -58,7 +58,7 @@ removes that participant immediately. Existing team-validity rules may
 cancel a start if removals leave an invalid match. Owner removal transfers lobby
 ownership normally. A new arrival never enlarges an active barrier. After InMatch,
 an individual late join loads and sends its own identity-fenced ready event before
-the authority accepts its gameplay intent. It receives the current full snapshot.
+the authority accepts its gameplay intent. It receives a frozen full baseline through the same three-lane bootstrap.
 Continuous rotations use the same barrier as persistent lobby rematches.
 
 Persistent lobby room prewarm is single-flight with the actual load: Start joins
@@ -80,6 +80,48 @@ The suite also covers a lost first start notice with immediate wire copies,
 exactly-once burst delivery, delayed countdown draining and release latching,
 frozen scene/RNG/network clocks, and lazy prewarm reuse across authority restarts.
 
-Authoritative world bootstrap/WorldReady remains a separate architectural change:
-the current barrier acknowledges scene construction, and it does not yet prove
-that every replica has applied an authoritative spawn snapshot before release.
+## Protocol 18 world readiness
+
+`MatchLoaded` means scene construction finished. It sets SceneLoaded/Loaded,
+never MatchReady. The authority constructs initial player lives/spawns without
+advancing the simulation and sends three reliable `WorldBootstrap` envelopes:
+fast player state, player slow state and full world state. Each envelope carries
+MatchId, AuthorityEpoch, StartGeneration, BootstrapRevision, recipient slot
+generation, AuthorityFrame, SlowRevision and WorldRevision. Each peer retains a
+stable baseline until it acknowledges it; retries run every 250 ms in addition
+to transport reliability.
+
+A client buffers all three matching lanes while frozen, checks roster/lifecycle,
+applies owner and remote spawn/health/form/weapon/score, applies pickup state,
+and initializes its applied frame and live lane caches. Only then does it echo
+that exact identity in reliable `WorldReady`. Missing lanes, stale generations,
+malformed duplicates and conflicting revisions cannot ready a client. Repeated
+valid baselines are idempotent and re-ACKed. Room/session teardown clears both
+pending and applied baseline state.
+
+Synchronizing separates the Loaded mask from the WorldReady mask. Only the
+latter releases countdown. Client FreezeGameplay additionally requires the
+local applied baseline even if a start commitment arrived early; the authority
+rejects intent and claims from unready peers. A late join follows this same
+application/acknowledgement path without enlarging the original participant
+barrier. The UI distinguishes Loading world, Synchronizing world and Ready;
+server diagnostics identify the slot, stage and loaded/ready masks.
+
+`--bootstrap-scene <game-data>` exercises eight real asset-backed player
+entities through the production baseline decoder while simulation stays frozen:
+missing/reordered/duplicate/malformed lanes, roster gating, exact owner spawn,
+health/weapon/score, all hunter types, settled alt form/halfturret, random state,
+initial nonzero ACK and
+stale rematch rejection. `--load-lifecycle` covers the UDP control plane;
+its asset-free scene-application stand-in is not a render/first-frame test.
+
+The loading pump also applies any newer fast snapshot received after release in
+the same drain, before the renderer draws without a simulation step. This closes
+the observed first-picture old-spawn race during late join. The asset bootstrap
+check covers that packet ordering and asserts that simulation time stays frozen.
+
+MatchLoaded deduplication includes the local slot and its generation as well as
+the match/start identity. Re-admission with a new occupant can reuse the loaded
+scene but sends MatchLoaded again and waits for a fresh WorldReady baseline. A
+duplicate Welcome for the same occupant leaves readiness intact. The asset
+bootstrap regression covers both paths without advancing the scene.

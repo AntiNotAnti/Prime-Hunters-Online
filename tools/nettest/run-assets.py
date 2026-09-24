@@ -24,6 +24,8 @@ PROFILES = {
     "mixed": [(0, 0, 0, 0)] * 2 + [(80, 20, 1, 0)] * 2
         + [(150, 20, 1, 0)] * 2 + [(250, 40, 2, 0), (320, 80, 2, 1)],
 }
+PROFILES = {name: [(*profile, 0) for profile in profiles] for name, profiles in PROFILES.items()}
+PROFILES["extreme"] = [(400, 80, 5, 3, 1)] * 8
 HUNTERS = ["Samus", "Kanden", "Trace", "Sylux", "Noxus", "Spire", "Weavel", "Samus"]
 
 
@@ -34,7 +36,21 @@ def observations(out):
     queue = re.findall(r"queue=\d+/(\d+) drops=(\d+)", server)
     shadow = re.findall(r"shadow Shadow: (\d+)/(\d+) timed shots would clamp, ([\d.]+) frames refused, "
         r"geometry unavailable (\d+)/(\d+); catch-up maximum (\d+), truncations (\d+)", server)
+    edge_counts = {}
+    for path in out.glob("peer-*.log"):
+        for owner, relation, source, count in re.findall(r"netcheck (CHECK\d+) (mine|saw) (CHECK\d+) alt-attack (\d+)", path.read_text(errors="replace")):
+            edge_counts.setdefault(source, {})[owner] = int(count)
+    edges = [{"source": source, "sent": counts.get(source), "observed": counts,
+        "maximumDifference": max((abs(value - counts[source]) for value in counts.values()), default=0) if source in counts else None}
+        for source, counts in sorted(edge_counts.items())]
+    def maximum(pattern):
+        return max((int(value) for value in re.findall(pattern, server)), default=None)
     return {
+        "maximumFastDatagram": maximum(r"\[netstats\] fast=.*?max=(\d+)B"),
+        "claimCapacityRefusals": maximum(r"claim-cap=(\d+)"),
+        "unusedLedgerOverwrites": maximum(r"overwritten=(\d+)"),
+        "inputEdgeOverflow": maximum(r"overflow=(\d+)"),
+        "altAttackCrossReports": edges,
         "lastServerSample": dict(zip(["steps", "meanMilliseconds", "worstMilliseconds", "overruns", "droppedTicks", "stalls"],
             map(float, samples[-1]))) if samples else None,
         "serverQueueHighWater": max((int(q[0]) for q in queue), default=None),
@@ -50,8 +66,8 @@ def run_arm(args, stage, name):
     out = args.out / name
     out.mkdir(parents=True, exist_ok=True)
     seconds = args.seconds or (300 if name == "lan" else 120)
-    command = [args.dotnet, str(stage / "ProjectPrime.dll")]
-    environment = dict(os.environ, ALSOFT_DRIVERS="null")
+    command = [args.dotnet, str(stage / "ProjectPrime.dll"), "-mapdir", str(stage / "empty-maps")]
+    environment = dict(os.environ, ALSOFT_DRIVERS="null", PROJECT_PRIME_USER_DATA=str(stage))
     handles, clients = [], []
     server = None
     started = time.monotonic()
@@ -72,13 +88,13 @@ def run_arm(args, stage, name):
         else:
             raise RuntimeError(f"{name}: server startup exceeded 60 seconds")
         time.sleep(2)
-        for slot, (rtt, jitter, loss, reorder) in enumerate(PROFILES[name]):
+        for slot, (rtt, jitter, loss, reorder, duplicate) in enumerate(PROFILES[name]):
             log = open(out / f"peer-{slot}.log", "w", encoding="utf-8")
             handles.append(log)
             clients.append(subprocess.Popen(command + ["-netcheck", "127.0.0.1", "-port", str(args.port),
                 "-name", f"CHECK{slot}", "-hunter", HUNTERS[slot], "-seconds", str(seconds), "-size", "320x180",
                 "-noupdate", "-noautoupdate", "-netlag", f"{rtt}:{jitter}", "-netloss", f"{loss}%",
-                "-netreorder", f"{reorder}%", "-netseed", str(8128 + slot)],
+                "-netreorder", f"{reorder}%", "-netduplicate", f"{duplicate}%", "-netseed", str(8128 + slot)],
                 cwd=stage, env=environment, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT))
             time.sleep(.25)
         deadline = time.monotonic() + seconds + 90
@@ -104,6 +120,11 @@ def run_arm(args, stage, name):
         return (all(r["exit"] == 0 and not r["timedOut"] for r in results)
             and not summary["observations"]["simulationFailureLogged"]
             and summary["observations"]["peerReportsPassed"] == 8
+            and summary["observations"]["maximumFastDatagram"] is not None
+            and summary["observations"]["maximumFastDatagram"] <= 1200
+            and summary["observations"]["claimCapacityRefusals"] == 0
+            and summary["observations"]["unusedLedgerOverwrites"] == 0
+            and summary["observations"]["inputEdgeOverflow"] == 0
             and server.poll() is None)
     finally:
         for process in clients:
@@ -123,6 +144,10 @@ def run_arm(args, stage, name):
                 server.wait()
         for handle in handles:
             handle.close()
+        for diagnostic in stage.glob("netlog-*.txt"):
+            shutil.copy2(diagnostic, out / diagnostic.name)
+        if (stage / "logs").exists():
+            shutil.copytree(stage / "logs", out / "native-logs", dirs_exist_ok=True)
 
 
 def main():
@@ -144,6 +169,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="prime-network-assets-") as temporary:
         stage = Path(temporary)
         shutil.copytree(args.build, stage, dirs_exist_ok=True)
+        (stage / "empty-maps").mkdir()
         entries = []
         for line in (args.game_data / "paths.txt").read_text().splitlines():
             if "=" in line:

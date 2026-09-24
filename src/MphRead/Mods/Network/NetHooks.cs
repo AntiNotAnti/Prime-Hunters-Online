@@ -580,7 +580,7 @@ namespace MphRead.Mods.Network
         /// Facing is the exception -- aim has to follow the mouse now, not
         /// after a round trip -- so only position, speed and health are taken.
         /// </summary>
-        private static void ApplyRemoteStates()
+        internal static void ApplyRemoteStates()
         {
             if (!NetRoomChange.GameplayReady) return;
             for (int i = 0; i < PlayerEntity.Players.Count; i++)

@@ -234,7 +234,7 @@ namespace MphRead.Mods.Network
                         SlotGeneration = NetPlayerLifecycle.Generation(slot),
                         LifeId = NetPlayerLifecycle.Get(slot),
                         Buttons = buttons,
-                        Presses = new PressHistoryBuffer(),
+                        Presses = new InputEdgeHistory(),
                         Aim = aim,
                         Position = _at[slot],
                         WeaponSelect = 0xFF,

@@ -152,10 +152,14 @@ namespace MphRead.Mods.Network
         }
 
         /// <summary>
-        /// Rising edges from the last few frames, newest first, so a
+        /// Sequenced rising edges from the last eight frames, oldest first, so a
         /// one-frame press survives a lost packet. See IntentPacket.Presses.
         /// </summary>
-        private PressHistoryBuffer _pressHistory;
+        private InputEdgeHistory _pressHistory;
+        private readonly NetInputEdgeSender _edgeSender = new();
+        private readonly NetInputEdgeReceiver[] _edgeReceivers = CreateEdgeReceivers();
+        private static NetInputEdgeReceiver[] CreateEdgeReceivers()
+        { var result = new NetInputEdgeReceiver[PlayerEntity.SlotCapacity]; for (int i = 0; i < result.Length; i++) result[i] = new(); return result; }
 
         /// <summary>
         /// Record this frame's rising edges, whether or not a packet goes out
@@ -172,7 +176,7 @@ namespace MphRead.Mods.Network
         {
             if (!player.ModIsInPlay)
             {
-                _pressHistory = default;
+                _pressHistory = default; _edgeSender.Reset();
                 _hasLatch = false;
                 return;
             }
@@ -195,11 +199,7 @@ namespace MphRead.Mods.Network
             if (c.RollRight.IsPressed) pressed |= IntentButtons.RollRight;
             if (c.RollUp.IsPressed) pressed |= IntentButtons.RollUp;
             if (c.RollDown.IsPressed) pressed |= IntentButtons.RollDown;
-            for (int i = _pressHistory.Length - 1; i > 0; i--)
-            {
-                _pressHistory[i] = _pressHistory[i - 1];
-            }
-            _pressHistory[0] = (uint)pressed;
+            _pressHistory = _edgeSender.Record(_host.Frame, pressed);
             // The charge that will be spent by the shot this frame fires, and
             // the ram that will be spent by the boost it releases.
             //
@@ -574,6 +574,7 @@ namespace MphRead.Mods.Network
                 return;
             }
             _pressSeen[slot] = false;
+            _edgeReceivers[slot].Reset();
             ShootPressAge[slot] = 0;
             SpawnFrame[slot] = _host.Frame;
             _aimHeld[slot] = true;
@@ -613,44 +614,9 @@ namespace MphRead.Mods.Network
             out int shootAge)
         {
             shootAge = 0;
-            if (slot < 0 || slot >= _lastPressFrame.Length)
-            {
-                return IntentButtons.None;
-            }
-            if (!_pressSeen[slot])
-            {
-                // First packet from this peer: note where their frame counter
-                // stands and replay nothing. The history reaches back several
-                // frames, and applying all of it would open with a burst of
-                // presses from before this client was listening.
-                _pressSeen[slot] = true;
-                _lastPressFrame[slot] = intent.Frame;
-                return IntentButtons.None;
-            }
-            IntentButtons missed = IntentButtons.None;
-            for (int i = intent.Presses.Length - 1; i >= 0; i--)
-            {
-                uint frame = unchecked(intent.Frame - (uint)i);
-                if (!NetLifecycleTracker.Newer(frame, _lastPressFrame[slot]))
-                {
-                    continue;
-                }
-                missed |= (IntentButtons)intent.Presses[i];
-                // The oldest trigger pull in this packet, because that is the
-                // one whose world is furthest from the one the packet's ack
-                // names. The loop runs oldest-first, so the first Shoot it
-                // finds is it, and `i` is its age in frames.
-                if (shootAge == 0
-                    && ((IntentButtons)intent.Presses[i]).HasFlag(IntentButtons.Shoot))
-                {
-                    shootAge = i;
-                }
-            }
-            // Every frame up to this packet is now accounted for, whether or
-            // not it carried a press. Leaving gaps here let the same frame be
-            // consumed again by a later packet.
-            if (NetLifecycleTracker.Newer(intent.Frame, _lastPressFrame[slot])) _lastPressFrame[slot] = intent.Frame;
-            return missed;
+            if ((uint)slot >= _edgeReceivers.Length) return IntentButtons.None;
+            _edgeReceivers[slot].Receive(intent.Presses, intent.Frame);
+            return _edgeReceivers[slot].Consume(intent.Frame, out shootAge);
         }
 
         /// <summary>
@@ -843,11 +809,12 @@ namespace MphRead.Mods.Network
             Array.Clear(_formSaid);
             Array.Clear(_lastPressFrame);
             Array.Clear(_pressSeen);
+            foreach (var receiver in _edgeReceivers) receiver.Reset();
             Array.Clear(_respawnRequested);
             Array.Clear(_aimHeld);
             Array.Clear(SpawnFrame);
             Array.Clear(ShootPressAge);
-            _pressHistory = default;
+            _pressHistory = default; _edgeSender.Reset();
             _hasLatch = false;
             Array.Clear(_lastReportPosition);
             Array.Clear(_lastReportFrame);
@@ -889,13 +856,14 @@ namespace MphRead.Mods.Network
             _appliedLifeId[slot] = 0;
             _lastPressFrame[slot] = 0;
             _pressSeen[slot] = false;
+            _edgeReceivers[slot].Reset();
             _aimHeld[slot] = false;
             SpawnFrame[slot] = 0;
             ShootPressAge[slot] = 0;
             _respawnRequested[slot] = false;
             if (slot == _host.LocalSlot)
             {
-                _pressHistory = default;
+                _pressHistory = default; _edgeSender.Reset();
                 _hasLatch = false;
                 _latchedCharge = _latchedBoostDamage = 0;
             }

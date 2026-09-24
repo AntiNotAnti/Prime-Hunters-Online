@@ -42,6 +42,8 @@ namespace MphRead.Mods.Network
             }
         }
 
+        private static long _fastPackets, _fastBytes, _slowPackets, _slowBytes, _worldPackets, _worldBytes;
+
         public static void Report(double time)
         {
             if (!Enabled || !NetSession.Active)
@@ -52,11 +54,16 @@ namespace MphRead.Mods.Network
             {
                 return;
             }
+            double interval = _lastReport > 0 && time > _lastReport ? time - _lastReport : 1;
             _lastReport = time;
             Console.WriteLine(ReplayPerfTelemetry.Summary(ReplayCapture.Recorder.Timeline));
 
             var stats = NetSession.CaptureTelemetry();
             Console.WriteLine($"[netstats] rx={stats.Transport?.PacketsReceived} tx={stats.Transport?.PacketsSent} queue={stats.Transport?.QueueCurrent}/{stats.Transport?.QueueHighWater} drop={stats.Transport?.QueueDrops} delay={stats.Presentation.Delay:F2}f jitter={stats.Presentation.JitterFrames:F2}f rewind={stats.LagComp.MeanApplied:F2}f p95={stats.LagComp.RequestedP95} shadowWouldClamp={stats.Shadow.WouldClamp} shadowTimed={stats.Shadow.TimedShots}/{stats.Shadow.Shots}");
+            Console.WriteLine($"[netstats] fast={(NetReplicationLanes.FastPackets - _fastPackets) / interval:F1}pps/{(NetReplicationLanes.FastBytes - _fastBytes) / interval:F0}Bps avg={(NetReplicationLanes.FastPackets > 0 ? NetReplicationLanes.FastBytes / NetReplicationLanes.FastPackets : 0)}B max={NetReplicationLanes.FastMaximum}B slow={(NetReplicationLanes.SlowPackets - _slowPackets) / interval:F1}pps/{(NetReplicationLanes.SlowBytes - _slowBytes) / interval:F0}Bps world={(NetReplicationLanes.WorldPackets - _worldPackets) / interval:F1}pps/{(NetReplicationLanes.WorldBytes - _worldBytes) / interval:F0}Bps claims={NetHitClaims.ClaimsPendingCurrent}/{NetHitClaims.ClaimsPendingHighWater} ledger={NetHitClaims.ResolvedLedgerCurrent}/{NetHitClaims.ResolvedLedgerHighWater} claim-cap={NetHitClaims.ClaimsCapacityRefused} overwritten={NetHitClaims.ResolvedLedgerOverwrittenUnused} edges={NetInputEdgeTelemetry.Sent} recovered={NetInputEdgeTelemetry.Recovered} dup={NetInputEdgeTelemetry.Duplicate} old={NetInputEdgeTelemetry.TooOld} overflow={NetInputEdgeTelemetry.Overflow} geom={NetDynamicGeometryHistory.ObjectsRewound} miss={NetDynamicGeometryHistory.HistoryMiss} geomShadow={NetDynamicGeometryHistory.ShadowSame}/{NetDynamicGeometryHistory.ShadowHistoricalBlocked}/{NetDynamicGeometryHistory.ShadowCurrentBlocked}/{NetDynamicGeometryHistory.ShadowDifferent}/{NetDynamicGeometryHistory.ShadowUnavailable} bootstrap loaded={NetSession.ServerSession?.LoadedParticipants:X2} world={NetSession.ServerSession?.WorldReadyParticipants:X2}");
+            _fastPackets = NetReplicationLanes.FastPackets; _fastBytes = NetReplicationLanes.FastBytes;
+            _slowPackets = NetReplicationLanes.SlowPackets; _slowBytes = NetReplicationLanes.SlowBytes;
+            _worldPackets = NetReplicationLanes.WorldPackets; _worldBytes = NetReplicationLanes.WorldBytes;
             var line = new StringBuilder();
             line.Append(NetPlayerLifecycle.Describe()).Append(" | ");
             line.Append("[netdbg] role=").Append(NetSession.Role);

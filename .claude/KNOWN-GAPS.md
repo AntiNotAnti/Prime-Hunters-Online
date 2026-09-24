@@ -1,5 +1,32 @@
 # Known gaps — claims not yet verified
 
+## Protocol 18 validation boundaries (2026-09-24)
+
+The five netcode changes and their reproducible evidence are described in
+[modernization.md](../docs/network/modernization.md) and the protocol-18 baseline
+JSON files under `tools/nettest/baselines`. Controlled tests now cover full claim
+capacity/retention, exact damage arbitration, frozen world readiness, repeated
+input edges and historical collision restoration.
+
+- The seeded WAN profiles run on one macOS host. They do not establish behavior
+  on every geographic route, VPN, mobile radio or Android device, or replace a
+  human gameplay-feel assessment.
+- Dynamic history supports doors, force fields and the two collision components
+  on Platform/Object entities, up to 512 components per room. New runtime-inserted
+  collision classes need explicit adapters and inventory coverage. The rendered
+  SANCTORUS matrix has no dynamic obstacles; separate real-asset UNIT1_RM1 tests
+  cover 12 doors, 11 fields and nine moving mesh components. Synthetic fixtures
+  additionally exercise rotation, ring wrap and exceptions.
+- Cross-observer alt-attack totals were exact in LAN, moderate, severe and
+  extreme runs, but the original poor/mixed arms showed up to two/four fewer
+  observations for one source. Their lifecycle/transport cause is not established.
+  The deterministic sequence tests prove recovery within their tested window;
+  whole-tour counters do not establish loss-free delivery across all boundaries.
+- Initial rendered failures are retained with subsequent runs. A later passing
+  run does not prove an intermittent form mismatch cannot recur; consult the
+  per-run failure notes rather than treating a rerun as erasing earlier evidence.
+
+
 What's below is unproven or partially proven, not broken. Say so rather than
 claiming coverage that isn't there.
 
@@ -68,21 +95,20 @@ claiming coverage that isn't there.
   that small sub-frame move is intentional because collision is restored to the
   exact world the previous picture showed. A new long remote A/B is still
   required before claiming a population-level improvement.
-- **The strict-earlier-world refusal branch of kill arbitration is still
-  weakly exercised.** Hit claims have now run on a real intercontinental line
-  (the Japan measurements in `NETWORK-HITCLAIMS.md` include claim/arbitration
-  traffic), so "claims have never met a real line" is no longer true. What
-  remains unresolved is the rare `ResultDeadShooter` refusal case and whether
-  the **current dynamic grace window (RTT + margin, bounded 24–72 frames)**
-  remains well tuned under real jitter/loss rather than synthetic shaping.
-- **The geometric gate on a claim has never refused anything, so its tolerance
-  is untested from the wrong side.** `ClaimRadius` is 2.0 units and every run
-  so far reads `0 refused`. That is the right outcome and it is also no
-  evidence about where the gate actually sits: nothing has yet produced a claim
-  the authority disagrees with, so it is not known whether 2.0 is generous, mean
-  or irrelevant. A run with `-relayedpuppets` on one client and the default on
-  another -- two clients deliberately holding different copies of the same
-  puppet -- is the experiment.
+- **Real-line tuning of kill arbitration still needs broader evidence.**
+  Protocol 18's asset-backed combat check exercises equal-world trades and
+  strict-earlier-world refusal in both arrival orders and at 0/1/8-frame gaps.
+  The eight-player claim-load fixture also covers 43,200 claims at 0–400 ms RTT,
+  jitter/loss/reordering/duplication and queued stalls with exact damage totals.
+  These are controlled tests. Historical intercontinental measurements do not
+  establish that the unchanged RTT + margin, bounded 24–72-frame grace is ideal
+  for every real route or human encounter.
+- **The claim radius's field error rate is not measured.** The asset combat
+  suite now accepts offsets through 2.0 units and rejects 2.5/4.0-unit offsets;
+  headless checks include the exact boundary and nonfinite points. This verifies
+  the implementation of `ClaimRadius`, not its gameplay fairness. Deliberately
+  divergent puppet representations and broader human play are still useful
+  experiments before drawing conclusions about tolerance quality.
 - **The duel stages crossing lethal shots, but the strict refusal outcome is
   still rare.** `HitRig.Duel` deliberately keys both shooters to the server
   clock so lethal Imperialist shots cross in flight. Trades have therefore been

@@ -8,14 +8,14 @@ namespace MphRead.Mods.Network
     public struct SessionStatePacket
     {
         private const int LegacySize = 35 + HostRequestPacket.MaxRoomBytes;
-        public const int Size = LegacySize + 5;
+        public const int Size = LegacySize + 6;
         public uint StartGeneration;
         public StartStage StartStage;
         public ulong AuthorityEpoch;
         public SessionPhase Phase;
         public ServerSessionPolicy Policy;
         public ushort Revision, MatchId;
-        public byte OwnerSlot, MaxPlayers, ExpectedParticipants, LoadedParticipants;
+        public byte OwnerSlot, MaxPlayers, ExpectedParticipants, LoadedParticipants, WorldReadyParticipants;
         public ushort StartCountdownMilliseconds;
         public SessionRules RuleFlags;
         public MatchDefinition Match;
@@ -29,6 +29,7 @@ namespace MphRead.Mods.Network
             dest[..Size].Clear();
             BinaryPrimitives.WriteUInt32LittleEndian(dest[LegacySize..], StartGeneration);
             dest[LegacySize + 4] = (byte)StartStage;
+            dest[LegacySize + 5] = WorldReadyParticipants;
             dest[0] = (byte)Phase; dest[1] = (byte)Policy;
             BinaryPrimitives.WriteUInt16LittleEndian(dest[2..], Revision);
             BinaryPrimitives.WriteUInt16LittleEndian(dest[4..], MatchId);
@@ -61,6 +62,7 @@ namespace MphRead.Mods.Network
             {
                 StartGeneration = BinaryPrimitives.ReadUInt32LittleEndian(src[LegacySize..]),
                 StartStage = (StartStage)src[LegacySize + 4],
+                WorldReadyParticipants = src[LegacySize + 5],
                 Phase = (SessionPhase)src[0], Policy = (ServerSessionPolicy)src[1],
                 Revision = BinaryPrimitives.ReadUInt16LittleEndian(src[2..]),
                 MatchId = BinaryPrimitives.ReadUInt16LittleEndian(src[4..]),

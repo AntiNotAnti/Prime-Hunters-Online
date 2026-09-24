@@ -14,6 +14,7 @@ internal static class ReliableTests
     {
         try
         {
+            FullStateStartupBurst();
             var endpoint = new IPEndPoint(IPAddress.Loopback, 42);
             NetConnection sender = new NetConnection(endpoint, 12), receiver = new NetConnection(endpoint, 12);
             var queue = new NetFaultQueue<Wire>(42, 160, 80, .05, .03, .01);
@@ -75,5 +76,37 @@ internal static class ReliableTests
             Console.WriteLine("PASS: reliability under 5% loss / 80ms jitter / 3% reorder / 1% duplicate; capacity, dedup span and expiry"); return 0;
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
+    }
+
+    private static void FullStateStartupBurst()
+    {
+        var channel = new NetReliableChannel();
+        var receiver = new NetReliableChannel();
+        channel.TryQueue(PacketType.Roster, new byte[] { 1 }, 0, out uint oldId, supersedeState: true);
+        receiver.Receive(oldId);
+        channel.TryQueue(PacketType.Roster, new byte[] { 2 }, 1, out uint newId, supersedeState: true);
+        channel.Acknowledge(oldId);
+        NetArchitectureTests.Check(newId != oldId && receiver.Receive(newId)
+            && channel.Capture(1).Pending == 1, "superseding full state has a new dedup identity and survives an old ACK");
+        NetArchitectureTests.Check(channel.TrySend(1, out var latest) && latest.Payload.Span[0] == 2,
+            "only latest full state retries");
+
+        // Several join/identity/loaded/ready updates can queue while a peer is
+        // constructing its scene and has not ACKed anything yet. Exercise the
+        // production Send path, including three distinct bootstrap lanes.
+        using var transport = new NetTransport(0);
+        using var blackhole = new UdpClient(0);
+        var address = new IPEndPoint(IPAddress.Loopback, ((IPEndPoint)blackhole.Client.LocalEndPoint!).Port);
+        transport.Send(address, PacketType.Welcome, new byte[17]);
+        for (int revision = 0; revision < 96; revision++)
+        {
+            transport.Send(address, PacketType.Roster, BitConverter.GetBytes(revision));
+            transport.Send(address, PacketType.SessionState, BitConverter.GetBytes(revision));
+        }
+        for (byte lane = 0; lane < 3; lane++)
+            transport.Send(address, PacketType.WorldBootstrap, new byte[] { lane });
+        var stats = transport.ReliableStats(address)!.Value;
+        NetArchitectureTests.Check(!stats.Failed && stats.Refused == 0 && stats.Pending == 6,
+            "slow-loader state burst retains welcome, latest roster/session and every bootstrap lane without exhaustion");
     }
 }

@@ -28,6 +28,10 @@ namespace MphRead.NetTest
 
         private static int Main(string[] args)
         {
+            if (args.Length > 0 && args[0] == "--dynamic-geometry") return DynamicGeometryTests.Run();
+            if (args.Length > 0 && args[0] == "--input-edges") return InputEdgeTests.Run();
+            if (args.Length > 0 && args[0] == "--protocol18") return Protocol18Tests.Run();
+            if (args.Length > 0 && args[0] == "--claim-stress") return ClaimStressTests.Run();
             if (args.Length > 0 && args[0] == "--health-shots") return HealthShotTests.Run();
             if (args.Length > 0 && args[0] == "--lifecycle") return LifecycleTests.Run();
             if (args.Length > 0 && args[0] == "--architecture") return NetArchitectureTests.Run();
@@ -41,6 +45,24 @@ namespace MphRead.NetTest
             if (args.Length > 0 && args[0] == "--lagcomp-shadow") return LagCompensationTests.Run();
             if (args.Length > 0 && args[0] == "--weapon-policy") return WeaponPolicyTests.Run();
             if (args.Length > 0 && args[0] == "--transport-stress") return TransportStressTests.Run();
+            if (args.Length > 1 && args[0] == "--claim-load-scene")
+            {
+                System.IO.Directory.SetCurrentDirectory(System.IO.Path.GetFullPath(args[1]));
+                Paths.UpdatePaths(); Paths.ChooseMphPath();
+                return NetClaimLoadCheck.Run(args.Length > 2 ? args[2] : "MP1 SANCTORUS");
+            }
+            if (args.Length > 1 && args[0] == "--geometry-scene")
+            {
+                System.IO.Directory.SetCurrentDirectory(System.IO.Path.GetFullPath(args[1]));
+                Paths.UpdatePaths(); Paths.ChooseMphPath();
+                return NetGeometrySceneCheck.Run(args.Length > 2 ? args[2] : "UNIT1_RM1");
+            }
+            if (args.Length > 1 && args[0] == "--bootstrap-scene")
+            {
+                System.IO.Directory.SetCurrentDirectory(System.IO.Path.GetFullPath(args[1]));
+                Paths.UpdatePaths(); Paths.ChooseMphPath();
+                return NetBootstrapCheck.Run(args.Length > 2 ? args[2] : "MP1 SANCTORUS");
+            }
             if (args.Length > 1 && args[0] == "--combat-scene")
             {
                 System.IO.Directory.SetCurrentDirectory(System.IO.Path.GetFullPath(args[1]));

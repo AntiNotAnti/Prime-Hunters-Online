@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -13,7 +14,7 @@ namespace MphRead.NetTest;
 internal static class NetworkBenchmark
 {
     internal record Scenario(int Players, int Rtt, int Jitter, double Loss, double Reorder, double Duplicate);
-    private readonly record struct Datagram(int Peer, bool Snapshot, uint Frame);
+    private readonly record struct Datagram(int Peer, int Kind, uint Frame);
     internal static IEnumerable<Scenario> Matrix(bool extended)
     {
         int[] rtts = { 0, 50, 100, 150, 250, 320, 400 };
@@ -38,13 +39,29 @@ internal static class NetworkBenchmark
     {
         const int ticks = 600;
         var queue = new NetFaultQueue<Datagram>(8128, s.Rtt / 2.0, s.Jitter, s.Loss, s.Reorder, s.Duplicate);
-        uint[,] newest = new uint[2, s.Players];
-        bool[,] seen = new bool[2, s.Players];
-        long[] gaps = new long[2], duplicate = new long[2], reorder = new long[2];
+        uint[,] newest = new uint[4, s.Players];
+        bool[,] seen = new bool[4, s.Players];
+        long[] gaps = new long[4], duplicate = new long[4], reorder = new long[4];
         long sent = 0, received = 0, bytesSent = 0, bytesReceived = 0;
         int high = 0, maxPacket = 0;
         var timings = new List<double>(ticks * s.Players * 3);
         byte[] buffer = new byte[NetConfig.MaxPacketSize];
+        byte[] canonical = new byte[NetConfig.MaxPacketSize];
+        var lanes = new NetReplicationLanes();
+        var receivers = Enumerable.Range(0, s.Players).Select(_ => new NetReplicationReceiver()).ToArray();
+        int Canonical(uint frame)
+        {
+            new SnapshotHeader { Frame = frame, MatchId = 1, AuthorityEpoch = 1, PlayerCount = (byte)s.Players }.Write(canonical);
+            for (int slot = 0; slot < s.Players; slot++) new PlayerState { SlotIndex = (byte)slot, SlotGeneration = 9, LifeId = 2,
+                Position = new Vector3(1, 2, 3), Facing = Vector3.UnitZ }.Write(canonical.AsSpan(SnapshotHeader.Size + slot * PlayerState.Size));
+            int at = SnapshotHeader.Size + s.Players * PlayerState.Size;
+            canonical.AsSpan(at, 64 + NetHealthSync.HeaderSize).Clear();
+            BinaryPrimitives.WriteUInt16LittleEndian(canonical.AsSpan(at + 64), 1);
+            return at + 64 + NetHealthSync.HeaderSize;
+        }
+        lanes.Prepare(canonical.AsSpan(0, Canonical(1)));
+        int PacketLength(int kind) => NetHeader.Size + (kind == 0 ? IntentPacket.FullSize : kind == 1
+            ? SnapshotHeader.Size + s.Players * SnapshotFast.PlayerSize : kind == 2 ? lanes.SlowLength : lanes.WorldLength);
         var intent = IntentPacket.Read(NetArchitectureTests.IntentFixture());
         var state = new PlayerState { SlotGeneration = 9, LifeId = 2, Position = new Vector3(1, 2, 3), Facing = Vector3.UnitZ };
         // Warm the exact codecs before allocation measurement.
@@ -58,11 +75,12 @@ internal static class NetworkBenchmark
             double now = frame * 1000.0 / 60;
             if (frame <= ticks)
                 for (int peer = 0; peer < s.Players; peer++)
-                    for (int kind = 0; kind < 2; kind++)
+                    for (int kind = 0; kind < 4; kind++)
                     {
-                        var packet = new Datagram(peer, kind == 1, frame);
+                        if (kind == 2 && frame % 6 != 0 || kind == 3 && frame % 15 != 0) continue;
+                        var packet = new Datagram(peer, kind, frame);
                         queue.Enqueue(now, packet);
-                        int length = kind == 0 ? IntentPacket.FullSize + NetHeader.Size : SnapshotHeader.Size + s.Players * PlayerState.Size + NetHeader.Size;
+                        int length = PacketLength(kind);
                         telemetry.Sent(length);
                         sent++; bytesSent += length; maxPacket = Math.Max(maxPacket, length);
                     }
@@ -71,7 +89,7 @@ internal static class NetworkBenchmark
             while (queue.TryDequeue(now, out Datagram packet))
             {
                 long start = Stopwatch.GetTimestamp();
-                int kind = packet.Snapshot ? 1 : 0;
+                int kind = packet.Kind;
                 if (kind == 0)
                 {
                     intent.Frame = packet.Frame; intent.Write(buffer);
@@ -79,16 +97,26 @@ internal static class NetworkBenchmark
                     NetArchitectureTests.Check(decoded.Position == intent.Position && decoded.Frame == packet.Frame, "benchmark intent mismatch");
                     bytesReceived += IntentPacket.FullSize + NetHeader.Size;
                 }
-                else
+                else if (kind == 1)
                 {
-                    new SnapshotHeader { Frame = packet.Frame, PlayerCount = (byte)s.Players }.Write(buffer);
+                    int size = Canonical(packet.Frame);
+                    int fast = SnapshotFast.Write(canonical.AsSpan(0, size), buffer);
+                    int assembled = receivers[packet.Peer].Assemble(buffer.AsSpan(0, fast), canonical, 1, 1);
+                    NetArchitectureTests.Check(assembled > 0, "independent fast decode");
                     for (int slot = 0; slot < s.Players; slot++)
                     {
-                        state.SlotIndex = (byte)slot; state.Write(buffer.AsSpan(SnapshotHeader.Size + slot * PlayerState.Size));
-                        var decoded = PlayerState.Read(buffer.AsSpan(SnapshotHeader.Size + slot * PlayerState.Size));
+                        var decoded = PlayerState.Read(canonical.AsSpan(SnapshotHeader.Size + slot * PlayerState.Size));
                         NetArchitectureTests.Check(decoded.SlotIndex == slot && decoded.Position == state.Position, "benchmark snapshot mismatch");
                     }
-                    bytesReceived += SnapshotHeader.Size + s.Players * PlayerState.Size + NetHeader.Size;
+                    bytesReceived += PacketLength(kind);
+                }
+                else
+                {
+                    byte[] data = kind == 2 ? lanes.Slow : lanes.World;
+                    int size = kind == 2 ? lanes.SlowLength : lanes.WorldLength;
+                    BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(10), packet.Frame);
+                    receivers[packet.Peer].Receive(kind == 2 ? PacketType.PlayerSlowState : PacketType.WorldState, data.AsSpan(0, size), 1, 1);
+                    bytesReceived += PacketLength(kind);
                 }
                 uint previous = newest[kind, packet.Peer];
                 if (seen[kind, packet.Peer])
@@ -99,7 +127,7 @@ internal static class NetworkBenchmark
                 }
                 if (!seen[kind, packet.Peer] || NetLifecycleTracker.Newer(packet.Frame, previous)) newest[kind, packet.Peer] = packet.Frame;
                 seen[kind, packet.Peer] = true;
-                telemetry.Received(kind == 0 ? IntentPacket.FullSize + NetHeader.Size : SnapshotHeader.Size + s.Players * PlayerState.Size + NetHeader.Size);
+                telemetry.Received(PacketLength(kind));
                 telemetry.Processed(Stopwatch.GetTimestamp() - start);
                 received++; processed++;
                 timings.Add(Stopwatch.GetElapsedTime(start).TotalMicroseconds);
@@ -108,9 +136,9 @@ internal static class NetworkBenchmark
         }
         long allocationBytes = GC.GetAllocatedBytesForCurrentThread() - allocated;
         clock.Stop(); timings.Sort();
-        NetArchitectureTests.Check(queue.Count == 0 && maxPacket <= NetConfig.MaxPacketSize, "drained queue and packet budget");
+        NetArchitectureTests.Check(queue.Count == 0 && maxPacket <= 1200, "drained queue and packet budget");
         return new { telemetry = telemetry.Capture(), scenario = s, durationSeconds = 10, packetsSent = sent, packetsReceived = received, bytesSent, bytesReceived,
-            intentPackets = ticks * s.Players, snapshotPackets = ticks * s.Players, controlPackets = 0,
+            intentPackets = ticks * s.Players, snapshotPackets = ticks * s.Players, slowPackets = ticks / 6 * s.Players, worldPackets = ticks / 15 * s.Players, controlPackets = 0,
             transportQueueHighWater = high, injectedDrops = queue.Dropped, transportDrops = 0, coalescedPackets = 0,
             meanProcessingMicroseconds = timings.Average(), p95ProcessingMicroseconds = timings[(int)(timings.Count * .95)],
             p99ProcessingMicroseconds = timings[(int)(timings.Count * .99)],

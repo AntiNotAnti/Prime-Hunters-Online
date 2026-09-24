@@ -1,0 +1,300 @@
+{
+  "date": "2026-09-24",
+  "sourceCommit": "4326703bcb0b12e392fe6ac3dcd567b51d596416",
+  "assemblySha256": "2977e82924a2d0dbec326ec51b3bd6772f83fa6d251637f9c56652735db209c2",
+  "suites": [
+    {
+      "suite": "architecture",
+      "exit": 0,
+      "seconds": 0.12,
+      "summary": [
+        "[net] server map:  (None, 0 s left)",
+        "PASS: architecture, owner position, full snapshots and v16 byte fixture"
+      ]
+    },
+    {
+      "suite": "lifecycle",
+      "exit": 0,
+      "seconds": 0.37,
+      "summary": [
+        "[net] server map:  (None, 0 s left)",
+        "[net] server map:  (None, 0 s left)",
+        "[net] server map:  (None, 0 s left)",
+        "[net] server map:  (None, 0 s left)",
+        "[net] server map:  (None, 0 s left)",
+        "[net] server map:  (None, 0 s left)",
+        "[net] server map:  (None, 0 s left)",
+        "PASS: 3680 lifecycle assertions (production code, deterministic seed 8128)"
+      ]
+    },
+    {
+      "suite": "health-shots",
+      "exit": 0,
+      "seconds": 4.79,
+      "summary": [
+        "[net] server map:  (None, 0 s left)",
+        "[net] server map:  (None, 0 s left)",
+        "[net] server map:  (None, 0 s left)",
+        "[net] server map:  (None, 0 s left)",
+        "[net] server map:  (None, 0 s left)",
+        "[net] server map:  (None, 0 s left)",
+        "Ghost input matrix: 7776 weapon/profiles, 2 delivery streams, dropped=18360 duplicated=8424 reordered=14256",
+        "PASS: 3338728 health/shot assertions"
+      ]
+    },
+    {
+      "suite": "claim-stress",
+      "exit": 0,
+      "seconds": 0.07,
+      "summary": [
+        "[net] server map:  (None, 0 s left)",
+        "PASS: claim retention, multiplicity, exact matching, shooter isolation and capacity refusal"
+      ]
+    },
+    {
+      "suite": "protocol17",
+      "exit": 0,
+      "seconds": 0.15,
+      "summary": [
+        "PASS: protocol 18 transport sequences, ACK bits, wrap, identity and UDP integration"
+      ]
+    },
+    {
+      "suite": "protocol18",
+      "exit": 0,
+      "seconds": 0.04,
+      "summary": [
+        "PASS: protocol 18 lane round-trip, revision fencing, 0 decode allocations, 903B worst-case fast datagram"
+      ]
+    },
+    {
+      "suite": "input-edges",
+      "exit": 0,
+      "seconds": 0.04,
+      "summary": [
+        "PASS: input sequence wrap, lifecycle reset, rapid identical actions, 0-3 lost packets, duplication, reorder and ages 0-7"
+      ]
+    },
+    {
+      "suite": "dynamic-geometry",
+      "exit": 0,
+      "seconds": 0.04,
+      "summary": [
+        "PASS: doors, force fields, moving collision, fractional sampling, catch-up, exception restoration, misses and 0 rewind allocations"
+      ]
+    },
+    {
+      "suite": "allocations",
+      "exit": 0,
+      "seconds": 0.61,
+      "summary": [
+        "Health.ComposeEmpty: 0.00 B/op",
+        "IntentPacket.Read: 0.00 B/op",
+        "IntentPacket.Write: 0.00 B/op",
+        "PlayerState.Read: 0.00 B/op",
+        "PlayerState.Write: 0.00 B/op",
+        "Snapshot.Compose: 0.00 B/op",
+        "Snapshot.Decode: 0.00 B/op",
+        "NetTransport.Send UDP: 0.00 B/op (receive/fault/replay ownership excluded)"
+      ]
+    },
+    {
+      "suite": "reliable",
+      "exit": 0,
+      "seconds": 0.1,
+      "summary": [
+        "[net] reliable control failed for 127.0.0.1:64458; disconnecting",
+        "PASS: reliability under 5% loss / 80ms jitter / 3% reorder / 1% duplicate; capacity, dedup span and expiry"
+      ]
+    },
+    {
+      "suite": "queue-budget",
+      "exit": 0,
+      "seconds": 0.03,
+      "summary": [
+        "PASS: flood capacity, critical reserve, per-peer rate limits and pump budgets"
+      ]
+    },
+    {
+      "suite": "lagcomp-shadow",
+      "exit": 0,
+      "seconds": 0.03,
+      "summary": [
+        "PASS: 2352 shadow timing profiles, fractional equivalence, pure geometry and outcome categories"
+      ]
+    },
+    {
+      "suite": "weapon-policy",
+      "exit": 0,
+      "seconds": 0.08,
+      "summary": [
+        "Magmaul charged=False: ProjectileCatchUp, cap=45, homing=0/0/0",
+        "Magmaul charged=True: ProjectileCatchUp, cap=45, homing=0/0/0",
+        "ShockCoil charged=False: Continuous, cap=45, homing=409/409/409",
+        "ShockCoil charged=True: Continuous, cap=45, homing=409/409/409",
+        "OmegaCannon charged=False: ProjectileCatchUp, cap=45, homing=0/102/102",
+        "OmegaCannon charged=True: ProjectileCatchUp, cap=45, homing=0/102/102",
+        "[net] server map:  (None, 0 s left)",
+        "PASS: 1620 weapon timing profiles, all MP variants, bounded catch-up equivalence"
+      ]
+    },
+    {
+      "suite": "transport-stress",
+      "exit": 0,
+      "seconds": 9.14,
+      "summary": [
+        "peer 1: configured RTT=50, snapshots=205, queueHigh=15, ACK RTT=63.7",
+        "peer 2: configured RTT=100, snapshots=205, queueHigh=9, ACK RTT=156.7",
+        "peer 3: configured RTT=150, snapshots=206, queueHigh=9, ACK RTT=200.5",
+        "peer 4: configured RTT=250, snapshots=206, queueHigh=9, ACK RTT=324.7",
+        "peer 5: configured RTT=320, snapshots=206, queueHigh=9, ACK RTT=442.7",
+        "peer 6: configured RTT=400, snapshots=207, queueHigh=9, ACK RTT=475.1",
+        "peer 7: configured RTT=150, snapshots=206, queueHigh=21, ACK RTT=212.4",
+        "PASS: eight mixed-quality UDP peers, 1744 intents, 128 exact-once controls, 400ms client pump stall"
+      ]
+    },
+    {
+      "suite": "load-lifecycle",
+      "exit": 0,
+      "seconds": 94.36,
+      "summary": [
+        "[11:07:11] [server] shutting down",
+        "[netlobbytest] PASS: 2962 assertions; protocol, UDP lifecycle, direct post-match lobby return, abandoned-session cleanup, hosted ownership, teams, rebind and continuous rotation."
+      ],
+      "postReleaseFixRecheck": true
+    },
+    {
+      "suite": "bootstrap-scene",
+      "exit": 0,
+      "seconds": 0.7,
+      "summary": [
+        "[net] slot 7 activated (BOOT7) -- 8 player(s) in scene",
+        "BOOTSTRAP PASS: eight real players, frozen spawn, lane loss/reorder/duplicate, valid first ACK and rematch fence"
+      ],
+      "postReleaseFixRecheck": true
+    },
+    {
+      "suite": "combat-scene",
+      "exit": 0,
+      "seconds": 0.81,
+      "summary": [
+        "COMBAT projectile Judicator lifespan=8.50s survivesSpawn=True valid=True",
+        "COMBAT PASS ProjectileLifecycleAcrossShooterRespawn/Judicator",
+        "COMBAT PASS rescued flight cannot pay twice after respawn/Judicator",
+        "COMBAT PASS old launch still damages target/Judicator",
+        "COMBAT PASS forged launch life rejected",
+        "COMBAT PASS ricochet child keeps original fire event/Judicator",
+        "COMBAT PASS no simulation failures",
+        "COMBAT PASS 98 assertions"
+      ]
+    },
+    {
+      "suite": "geometry-scene",
+      "exit": 0,
+      "seconds": 0.74,
+      "summary": [
+        "[map] mk_blockfort.json FP-MAP-005: Imported level could not be resolved.",
+        "[map] mk_blockfort.json FP-MAP-006: Texture pack is missing and cannot be baked from this source.",
+        "[net] player slots built, main player = slot 0",
+        "GEOMETRY room=UNIT1_RM1 doors=12 fields=11 meshes=9",
+        "GEOMETRY PASS: real asset traces, historical blocked=12, current blocked=23, exact restoration"
+      ]
+    },
+    {
+      "suite": "claim-load-scene",
+      "exit": 0,
+      "seconds": 1.77,
+      "summary": [
+        "[net] slot 6 activated (LOAD6) -- 7 player(s) in scene",
+        "[net] slot 7 activated (LOAD7) -- 8 player(s) in scene",
+        "CLAIM LOAD PASS rtt=0 claims=7200 rescued=1424 suppressed=1424 pendingHigh=104 ledgerHigh=512",
+        "CLAIM LOAD PASS rtt=50 claims=7200 rescued=1417 suppressed=1417 pendingHigh=104 ledgerHigh=512",
+        "CLAIM LOAD PASS rtt=150 claims=7200 rescued=1408 suppressed=1408 pendingHigh=106 ledgerHigh=512",
+        "CLAIM LOAD PASS rtt=250 claims=7200 rescued=0 suppressed=0 pendingHigh=106 ledgerHigh=512",
+        "CLAIM LOAD PASS rtt=320 claims=7200 rescued=0 suppressed=0 pendingHigh=109 ledgerHigh=512",
+        "CLAIM LOAD PASS rtt=400 claims=7200 rescued=0 suppressed=0 pendingHigh=106 ledgerHigh=512"
+      ]
+    }
+  ],
+  "scope": "One macOS arm64 host; production headless/asset fixtures. Rendered runs and codec benchmark have separate manifests.",
+  "additionalChecks": [
+    {
+      "suite": "replay-world",
+      "exit": 0,
+      "summary": [
+        "[replayseek] frozen clip: 250 bounded warmup steps, frames 1150\u20131200, backward seek, source timeline reset",
+        "[replayseek] PASS: 61 file/clip comparisons, 7 checkpoints, 4862830 retained bytes, frozen EOF.",
+        "[replayreplica] PASS: 1801 gameplay/presentation hashes and decoder restores, 13753 animation restores, 7 detached worlds and 1650 continuation frames, 1572 frames with projectiles; interleaved scenes and teardown preserve foreground state.",
+        "[replayworld] PASS: all 12 multiplayer modes with detached restore, continuation and file/frozen-clip seeks."
+      ]
+    },
+    {
+      "suite": "replay-format",
+      "exit": 0,
+      "summary": [
+        "[replay] Recording interrupted; recover completed chunks from its .part file. Replay storage queue exceeded its byte budget.",
+        "[net] server map: MP1 SANCTORUS (Battle, 300 s left)",
+        "[net] server map: MP1 SANCTORUS (Battle, 0 s left)",
+        "[replayformat] PASS 2710 checks (v2/v3/v4, order, metadata, CRC, recovery, extraction, malformed files)"
+      ],
+      "finalBinaryRecheck": true
+    },
+    {
+      "suite": "replay-control",
+      "exit": 0,
+      "summary": [
+        "[replaycheck] studio: analytics and highlight derivation passed",
+        "[replaycheck] kill cam: eligibility and weapon labels passed",
+        "[replaycheck] input: replay controller context isolation passed",
+        "[replaycheck] studio: annotation sidecar round-trip passed"
+      ],
+      "finalBinaryRecheck": true
+    },
+    {
+      "suite": "replay-timeline",
+      "exit": 0,
+      "summary": [
+        "Replay timeline: 36 checks passed.",
+        "PASS: 40 timeline checks including allocation regression",
+        "PASS: 43 checks including pooled lifetime"
+      ]
+    },
+    {
+      "suite": "form",
+      "exit": 0,
+      "summary": [
+        "form reconciliation: 699 checks passed"
+      ]
+    },
+    {
+      "suite": "continuous-phase",
+      "exit": 0,
+      "summary": [
+        "[PASS] room/session reset forgets every phase",
+        "[PASS] offline and invalid intent paths retain scene timing",
+        "[PASS] held phase advances monotonically through intent frame rollover",
+        "[PASS] long-run dither visits every 30 Hz position once per 64 steps"
+      ]
+    },
+    {
+      "suite": "platform",
+      "exit": 0,
+      "summary": [
+        "Platform map path regressions passed (4 cases)."
+      ]
+    }
+  ],
+  "build": {
+    "configuration": "Release",
+    "errors": 0,
+    "warnings": 16,
+    "warningScope": "Existing Avalonia obsolete-API warnings"
+  },
+  "provenance": "The 19-suite pass preceded the release-pump repair. Bootstrap and UDP loading/lifecycle were repeated after that repair, and the 12-mode replay world suite was also repeated. The final source adds only a frame number to feature-check diagnostics after those rechecks.",
+  "benchmark": {
+    "scenarios": 2016,
+    "exit": 0,
+    "file": "network-v18.json",
+    "sourceCommit": "4326703bcb0b12e392fe6ac3dcd567b51d596416"
+  }
+}

@@ -808,6 +808,12 @@ namespace MphRead.Mods.Network
                 case PacketType.SessionState when Role == NetRole.Client:
                     if (SessionStatePacket.TryRead(packet.Payload, out var session)) ApplySessionState(session);
                     break;
+                case PacketType.SnapshotFast:
+                case PacketType.PlayerSlowState:
+                case PacketType.WorldState:
+                    HandleLane(packet); break;
+                case PacketType.WorldBootstrap when Role == NetRole.Client:
+                    HandleWorldBootstrap(packet); break;
                 case PacketType.MatchStartCommit when Role == NetRole.Client:
                     if (MatchStartCommitPacket.TryRead(packet.Payload, out var commit))
                         ApplyStartCommit(commit, _playback ? null : packet.ArrivedAt / (double)Stopwatch.Frequency);
@@ -883,6 +889,11 @@ namespace MphRead.Mods.Network
                         LocalSlot = assigned;
                         Console.WriteLine($"[net] joined as slot {LocalSlot}");
                         NetLog.Event($"server assigned slot {LocalSlot}");
+                        // A re-admitted connection can reuse the already loaded
+                        // scene, but its new occupant must bootstrap again.
+                        // MarkMatchLoaded fences both start and slot generation;
+                        // duplicate Welcomes for the same occupant are no-ops.
+                        if (_loadedStart.HasValue) MarkMatchLoaded();
                     }
                     break;
                 case PacketType.Intent when Role == NetRole.Host:
@@ -1601,9 +1612,9 @@ namespace MphRead.Mods.Network
 
         public static long SnapshotsOutOfOrder { get; private set; }
 
-        private static void HandleSnapshot(ReceivedPacket packet)
+        private static void HandleSnapshot(ReceivedPacket packet, bool bootstrap = false)
         {
-            if (FreezeGameplay) return;
+            if (FreezeGameplay && !bootstrap) return;
             ReadOnlySpan<byte> payload = packet.Payload;
             if (payload.Length < SnapshotHeader.Size)
             {
@@ -1628,7 +1639,7 @@ namespace MphRead.Mods.Network
                 if (slot >= RemoteStates.Length || (occupied & (1 << slot)) != 0) return;
                 occupied |= 1 << slot;
             }
-            if (_hasSnapshot && !NetLifecycleTracker.Newer(header.Frame, _lastSnapshotFrame))
+            if (!bootstrap && _hasSnapshot && !NetLifecycleTracker.Newer(header.Frame, _lastSnapshotFrame))
             {
                 SnapshotsOutOfOrder++;
                 return;
@@ -1916,7 +1927,7 @@ namespace MphRead.Mods.Network
             {
                 MatchId = CurrentMatchId,
                 AuthorityEpoch = AuthorityEpoch,
-                Frame = NetFrame,
+                Frame = Math.Max(NetFrame, 1),
                 Rng1 = Rng.Rng1,
                 Rng2 = Rng.Rng2,
                 PlayerCount = (byte)count
@@ -1946,15 +1957,16 @@ namespace MphRead.Mods.Network
             // asAuthority both require one. Said with a local rather than a
             // `!` at each use, because the reason is the same both times.
             NetTransport transport = _transport!;
+            _hostLanes.Prepare(_scratch.AsSpan(0, offset));
             if (asAuthority)
             {
                 // One send to the server, which relays to every other peer.
-                transport.Send(_hostEndPoint!, PacketType.Snapshot, _scratch.AsSpan(0, offset));
+                SendHostLanes(_hostEndPoint!);
                 return;
             }
             for (int i = 0; i < _peers.Count; i++)
             {
-                transport.Send(_peers[i].EndPoint, PacketType.Snapshot, _scratch.AsSpan(0, offset));
+                SendHostLanes(_peers[i].EndPoint);
             }
         }
     }

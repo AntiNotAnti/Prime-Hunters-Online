@@ -74,7 +74,7 @@ namespace MphRead.Mods.Network
                 | (AllowJoinInProgress ? SessionRules.AllowJoinInProgress : 0)
                 | (LockTeams ? SessionRules.LockTeams : 0),
             ExpectedParticipants = _start.Expected, LoadedParticipants = _start.Loaded,
-            StartGeneration = _start.Identity.StartGeneration, StartStage = _start.Stage,
+            StartGeneration = _start.Identity.StartGeneration, StartStage = _start.Stage, WorldReadyParticipants = _start.WorldReady,
             StartCountdownMilliseconds = _start.RemainingMilliseconds(_now)
         };
 
@@ -269,7 +269,8 @@ namespace MphRead.Mods.Network
             foreach (Peer participant in _peers)
             {
                 participants |= (byte)(1 << participant.SlotIndex);
-                participant.MatchReady = false;
+                participant.MatchReady = participant.SceneLoaded = false;
+                participant.BootstrapLength = 0;
                 participant.MatchLoadStage = MatchLoadStage.None;
                 participant.MatchLoadProgressAt = 0;
                 participant.SlowLoadLogged = false;
@@ -399,19 +400,11 @@ namespace MphRead.Mods.Network
         {
             Peer? peer = Find(packet.Sender);
             if (peer == null || !MatchLoadedPacket.TryRead(packet.Payload, out var loaded)
-                || loaded.Identity != CurrentStartIdentity) return;
-            peer.LastSeen = now;
-            if (_phase == SessionPhase.InMatch)
-            {
-                // Individual late join readiness never changes the global barrier.
-                peer.MatchReady = true;
-                if (_lastSnapshotLength != 0) _transport?.Send(peer.EndPoint, PacketType.Snapshot,
-                    _lastSnapshot.AsSpan(0, _lastSnapshotLength));
-                return;
-            }
-            if (_phase != SessionPhase.Starting || !_start.MarkLoaded(peer.SlotIndex, loaded.Identity)) return;
-            peer.MatchReady = true;
-            TouchLobbyRevision($"slot {peer.SlotIndex} loaded match {_matchId}");
+                || loaded.Identity != CurrentStartIdentity || _phase is not (SessionPhase.Starting or SessionPhase.InMatch)) return;
+            peer.LastSeen = now; peer.SceneLoaded = true;
+            if (_phase == SessionPhase.Starting) _start.MarkLoaded(peer.SlotIndex, loaded.Identity);
+            SendBootstrap(peer, now);
+            TouchLobbyRevision($"slot {peer.SlotIndex} synchronizing");
             CheckLoadBarrier(now);
         }
 
@@ -444,6 +437,7 @@ namespace MphRead.Mods.Network
 
         private void CheckLoadBarrier(double now)
         {
+            PumpBootstraps(now);
             if (_phase != SessionPhase.Starting || _checkingLoadBarrier) return;
             _checkingLoadBarrier = true;
             try
@@ -456,7 +450,7 @@ namespace MphRead.Mods.Network
                     peer.SlowLoadLogged = true;
                     string stage = peer.MatchLoadStage == MatchLoadStage.None
                         ? "no progress reported" : peer.MatchLoadStage.ToString();
-                    Log($"[lobby] slot {peer.SlotIndex} is still loading after "
+                    Log($"[lobby] slot {peer.SlotIndex} is waiting at {_start.Stage} (scene={peer.SceneLoaded}, world={peer.MatchReady}) after "
                         + $"{NetMatchStart.SlowLoadSeconds:0}s ({stage}); keeping the client in the barrier");
                 }
 
@@ -473,6 +467,8 @@ namespace MphRead.Mods.Network
 
                 if (_phase != SessionPhase.Starting) return;
                 bool advanced = _start.Advance(now);
+                if (advanced && _start.Stage == StartStage.Synchronizing)
+                { TouchLobbyRevision($"synchronizing authoritative world expected={_start.Expected:X2} loaded={_start.Loaded:X2} ready={_start.WorldReady:X2}"); advanced = _start.Advance(now); }
                 if (_start.Stage == StartStage.Countdown)
                 {
                     if (advanced) TouchLobbyRevision("all participants ready; countdown started");

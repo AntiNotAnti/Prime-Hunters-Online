@@ -159,7 +159,7 @@ namespace MphRead.Mods.Network
             }
             lock (_stateLock)
             {
-                if (packet.Type == PacketType.Snapshot)
+                if (packet.Type is PacketType.Snapshot or PacketType.SnapshotFast)
                 {
                     if (_latestSnapshot.HasValue)
                     {
@@ -532,7 +532,8 @@ namespace MphRead.Mods.Network
                         // command/result must surface through the same disconnect
                         // path as critical exhaustion, rather than silently diverge.
                         if (!connection.Reliable.TryQueue(type, payload, NowMilliseconds, out uint eventId,
-                            expedite: immediateCopies > 1))
+                            expedite: immediateCopies > 1,
+                            supersedeState: type is PacketType.SessionState or PacketType.Roster))
                             connection.Reliable.Fail();
                         FlushReliable(connection, NowMilliseconds, eventId, immediateCopies);
                         return;

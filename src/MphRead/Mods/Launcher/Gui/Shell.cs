@@ -753,10 +753,21 @@ namespace MphRead.Mods.Launcher.Gui
                 Wait(12);
             },
             w => { Shot(w, "shell-startup-transition"); Wait(25); },
+            _ =>
+            {
+                // Asset-free CI opens setup after the startup gate. Dismiss
+                // that sheet separately so the next two Escapes exercise
+                // opening and closing quit confirmation in either environment.
+                if (_front?.Prime.Overlays.GetVisualDescendants().OfType<SetupScreen>().Any() == true)
+                    Escape();
+                Wait(10);
+            },
             w =>
             {
                 if (_front?.Prime is not { IsVisible: true, IsEnabled: true })
                 { ShotMisses++; Console.WriteLine("[shellshot] startup did not reveal the shell"); }
+                if (_front?.Prime.Overlays.IsOpen == true)
+                { ShotMisses++; Console.WriteLine("[shellshot] startup overlay still blocks the shell"); }
                 Shot(w, "shell-start"); Escape(); Wait(15);
             },
             // Escape on the front screen is the quit prompt, so a second
@@ -1004,8 +1015,7 @@ namespace MphRead.Mods.Launcher.Gui
             _shotWait = frames;
         }
 
-        // The initial Escape dismisses the setup sheet when assets are absent.
-        // Settings remains available in the persistent header in either case.
+        // Setup and quit confirmation are dismissed before targeting the header.
         private static void ClickSettings() => Click(c => FrontAction(c, "SETTINGS"));
         private static void HoverFront() => Hover(c => FrontAction(c, "SETTINGS"));
 
