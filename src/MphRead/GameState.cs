@@ -267,7 +267,11 @@ namespace MphRead
                     }
                 }
             }
-            ModeState = null!;
+            // Adventure is the default state machine. Multiplayer modes
+            // replace it below. The per-scene state migration briefly set
+            // this to null, which left SinglePlayer with no handler and made
+            // the first gameplay frame crash at ModeState(scene).
+            ModeState = ModeStateAdventure;
             if (Mode == GameMode.Battle || Mode == GameMode.BattleTeams)
             {
                 PointGoal = 7;
