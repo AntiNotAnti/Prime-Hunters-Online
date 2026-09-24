@@ -51,7 +51,8 @@ namespace MphRead
                 Mode = Mode, Teams = Teams, TeamCount = TeamCount,
                 FriendlyFire = FriendlyFire, PointGoal = PointGoal, TimeGoal = TimeGoal,
                 OctolithReset = OctolithReset, RadarPlayers = RadarPlayers,
-                AffinityWeapons = AffinityWeapons, ShadowFreeze = ShadowFreeze
+                AffinityWeapons = AffinityWeapons, ShadowFreeze = ShadowFreeze,
+                SpawnProtection = SpawnProtection
             };
             Nicknames.CopyTo(state.Nicknames, 0);
             return state;
@@ -138,6 +139,12 @@ namespace MphRead
         public bool OctolithReset { get; set; } = false;
         public bool RadarPlayers { get; set; } = false;
         public bool AffinityWeapons { get; set; } = false;
+        /// <summary>
+        /// Whether a multiplayer spawn is protected from normal combat damage
+        /// for the first three seconds of the life. Firing a real shot clears
+        /// the player's timer immediately; see PlayerEntity.TryFireWeapon.
+        /// </summary>
+        public bool SpawnProtection { get; set; } = true;
 
         /// <summary>
         /// Whether the Judicator's ice wave keeps the cartridge's own reach.
