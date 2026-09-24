@@ -908,6 +908,9 @@ namespace MphRead.Mods
                 // file. The damage level is not an option: it is pinned to
                 // medium everywhere. See GameState.DamageLevel.
                 AffinityWeapons = HasFlag(args, "affinityweapons"),
+                // Spawn protection is the default match rule; the negative
+                // flag is useful for fixed competitive servers that opt out.
+                SpawnProtection = !HasFlag(args, "nospawnprotection"),
                 // Players may change the map by voting unless the admin says
                 // otherwise. See DedicatedServer.AllowMapVotes.
                 AllowMapVotes = !HasFlag(args, "novote"),
