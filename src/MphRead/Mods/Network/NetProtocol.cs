@@ -2073,7 +2073,7 @@ namespace MphRead.Mods.Network
         /// directional momentum as the collision that produced the claim.
         /// Mixed v15/v16 peers must be refused because claim entry size changed.
         /// </summary>
-        public const int ProtocolVersion = 18;
+        public const int ProtocolVersion = 19;
         /// <summary>
         /// Frames between intent packets. One, so every frame.
         ///
