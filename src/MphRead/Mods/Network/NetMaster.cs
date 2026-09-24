@@ -147,8 +147,8 @@ namespace MphRead.Mods.Network
         /// fifty seconds of missing heartbeats, so a server somebody stopped
         /// on purpose stays on everyone's list for the best part of a minute
         /// -- offered, unreachable, and looking exactly like a broken one.
-        /// One datagram, sent once, and never retried: if it goes missing the
-        /// silence handles it.
+        /// A small idempotent burst is sent without waiting for an acknowledgement;
+        /// if all copies go missing, the normal silence expiry still handles it.
         /// </summary>
         public void Farewell(ushort port)
         {
