@@ -22,8 +22,10 @@ Values are sourced from Weapons.WeaponsMP and the Spawn charge rules. The cap is
 in 60 Hz frames, defaults to 45 and follows the existing explicit `-maxrewind`
 diagnostic override (maximum 120, below the 128-frame history). No stale input can
 cause work beyond that ceiling. Instant area modes have ProjectileCatchUp=false.
-Alt-form melee, contact damage and independently launched bombs remain on their
-existing live timeline (`CurrentVolume`), outside BeginShot.
+Alt-form player contact uses the separate read-only `NetContactLagComp` path,
+with ACK-timed victim geometry and accepted attacker movement sweeps. It remains
+outside `BeginShot`. Kanden/Sylux bombs and detached turret contact retain their
+entity/live paths; there is no new Kanden or Sylux body-contact attack.
 
 Imperialist is implemented as a fast **projectile**, even though its mode is
 HistoricalTrace. Setting its cap to zero would change current gameplay. Shock
@@ -32,11 +34,12 @@ work, and a new continuous beam stops processing once aged. The category's cap
 is an upper bound, not a request to simulate every beam for 45 frames. Early
 collision/lifespan termination and missing-history stops remain in place.
 
-Historical geometry consists of player bodies and current room geometry.
-`UsesHistoricalDynamicGeometry=false`: doors, platforms and force fields do not
-have a new rewind history in this migration. Existing non-biped form conversion
-remains in NetUnlagged. Shadow comparisons have the narrower coverage described
-in NETWORK-LAGCOMP-POLICY.md.
+Historical geometry includes player bodies and Protocol 18's supported door,
+force-field and platform/object collision history, plus constant static room
+geometry. Player rewind restores historical collision form, canonical volumes
+and Kanden segments without gameplay form transitions. Read-only shadow traces
+also support alt bodies, but still decline scenes with unmodeled secondary bodies
+or occluders; they do not silently treat unavailable geometry as a miss.
 
 Homing uses existing selector eligibility and per-frame mechanics acceleration.
 The production Process rejects a target behind its velocity (negative dot

@@ -1,0 +1,448 @@
+{
+  "date": "2026-09-24",
+  "environment": "macOS arm64; .NET 10.0.401; Release; Protocol 18",
+  "duration_seconds_per_client": 40,
+  "room": "MP1 SANCTORUS",
+  "rendered": false,
+  "notes": [
+    "One virtual presentation per simulation tick advances the same ACK clock as rendering.",
+    "Contact counters count geometry queries, not unique damage events; client and authority query cadence differs.",
+    "Server console diagnostics are periodic samples; server contact counts are the last debug-log sample.",
+    "Initial harness attempts are excluded: wrong Samus key, stationary-peer assertion, stale headless ACK clock, and custom-map generation lock."
+  ],
+  "deterministic_scene": [
+    "ALT MATRIX LAN rtt=0 jitter=0 loss=0% reorder=0% attempts=239 visible=119 authority=119 beamDisagreeBefore=0 beamDisagreeAfter=0 contactVisible=119 contactHistorical=119 contactLive=0 historicalOnly=119 liveOnly=0 historyMisses=0 meanRewind=0.00 sweepDistance=4",
+    "ALT MATRIX moderate rtt=100 jitter=20 loss=1% reorder=1% attempts=232 visible=113 authority=113 beamDisagreeBefore=7 beamDisagreeAfter=0 contactVisible=113 contactHistorical=113 contactLive=21 historicalOnly=92 liveOnly=0 historyMisses=0 meanRewind=8.38 sweepDistance=4",
+    "ALT MATRIX severe rtt=250 jitter=40 loss=2% reorder=1% attempts=222 visible=110 authority=110 beamDisagreeBefore=20 beamDisagreeAfter=0 contactVisible=110 contactHistorical=110 contactLive=5 historicalOnly=105 liveOnly=0 historyMisses=0 meanRewind=18.36 sweepDistance=4",
+    "ALT MATRIX extreme rtt=320 jitter=80 loss=5% reorder=3% attempts=209 visible=106 authority=106 beamDisagreeBefore=24 beamDisagreeAfter=0 contactVisible=106 contactHistorical=106 contactLive=5 historicalOnly=101 liveOnly=0 historyMisses=0 meanRewind=25.20 sweepDistance=4",
+    "ALT SCENE PASS 984 checks; history+contact 0.0033 ms/frame, 0 bytes; alt contact: attempts 1, visible checks 0, visible overlaps 0, checks 7728, historical 2, live 0, historical-only 2, live-only 0, unavailable 1, sweep-only 1, rewind total 58.50, sweep distance 28.00"
+  ],
+  "runs": [
+    {
+      "mode": "alt-contact",
+      "hunter": "Samus",
+      "profile": "LAN",
+      "latency": "0",
+      "loss": "0%",
+      "reorder": "0%",
+      "client_exit_codes": [
+        0,
+        0
+      ],
+      "authority_contact": "alt contact: attempts 26, visible checks 0, visible overlaps 0, checks 36, historical 1, live 1, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 152.27, sweep distance 3.08",
+      "server_samples": [
+        "sim: MP1 SANCTORUS (Battle), 1799 step(s), 0.24 ms mean, 112.3 ms worst, 3 overrun, 1 dropped, 0 stall(s)",
+        "sim: lag compensation: on, nothing to compensate (history misses 0); alt contact: attempts 19, visible checks 0, visible overlaps 0, checks 29, historical 1, live 1, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 129.47, sweep distance 3.08",
+        "sim: rewind depths asked: none",
+        "sim: shots spawned here: none",
+        "sim: predicted vs resolved damage: nothing paired"
+      ],
+      "simulation_failures": 0,
+      "clients": {
+        "attacker": {
+          "simulation": "[netchecksim] steps=2400 remoteFrames=2399 movingPeers=1 clips=0 clipsPassed=True recordingError=none captureError=none",
+          "scenario": "[netchecksim] altScenarioExercised=True stationaryTarget=True",
+          "rig": "hit rig: AltContact as sniper, 26 triggers, 0 frames on target, mean range 0.0 units",
+          "contact": "alt contact: attempts 26, visible checks 68, visible overlaps 3, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00"
+        },
+        "victim": {
+          "simulation": "[netchecksim] steps=2400 remoteFrames=2368 movingPeers=1 clips=0 clipsPassed=True recordingError=none captureError=none",
+          "scenario": "[netchecksim] altScenarioExercised=True stationaryTarget=False",
+          "rig": "hit rig: AltContact as runner, 0 frames airborne, mean |vertical speed| 0.000 units/frame, worst 0.000",
+          "contact": "alt contact: attempts 0, visible checks 0, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00"
+        }
+      }
+    },
+    {
+      "mode": "alt-morph",
+      "hunter": "Samus",
+      "profile": "LAN",
+      "latency": "0",
+      "loss": "0%",
+      "reorder": "0%",
+      "client_exit_codes": [
+        0,
+        0
+      ],
+      "authority_contact": "alt contact: attempts 0, visible checks 0, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00",
+      "server_samples": [
+        "sim: MP1 SANCTORUS (Battle), 1800 step(s), 0.18 ms mean, 39.3 ms worst, 1 overrun, 0 dropped, 0 stall(s)",
+        "sim: lag compensation: 12 shots rewound, mean 3.8 frames (64 ms), worst 6, catch-up 12 steps / 12 hits, history misses 0; ceiling 45 frames (750 ms), clamped 0, worst asked 6; stale presses 0; shadow Shadow: 0/12 timed shots would clamp, 0.0 frames refused, geometry unavailable 0/12; catch-up maximum 1, truncations 0; form rewinds 24, mismatches 2, Kanden checks 0/hits 0; alt contact: attempts 0, visible checks 0, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00",
+        "sim: rewind depths asked (frames: shots): 3:6 4:3 5:2 6:1",
+        "sim: hit claims (as authority): 6 received, 0 applied (0 damage, 0 kills, 0 headshots rescued, 0 duplicate headshots corrected), 3 already resolved, 0 from a shooter already dead, 3 on a victim already down, 0 refused, 0 too old, 0 repeats (matched 3 by shot, 0 by window, 0 of its own refused as already rescued)",
+        "sim: shots spawned here (slot: beams): 0:12",
+        "sim: predicted vs resolved damage:",
+        "sim:   Imperialist       3 paired,     3 agreed (100%),     0 differed -- 216 claimed against 216 resolved"
+      ],
+      "simulation_failures": 0,
+      "clients": {
+        "attacker": {
+          "simulation": "[netchecksim] steps=2400 remoteFrames=2399 movingPeers=1 clips=0 clipsPassed=True recordingError=none captureError=none",
+          "scenario": "[netchecksim] altScenarioExercised=True stationaryTarget=False",
+          "rig": "hit rig: AltMorph as sniper, 32 triggers, 1843 frames on target, mean range 12.9 units",
+          "contact": "alt contact: attempts 0, visible checks 0, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00"
+        },
+        "victim": {
+          "simulation": "[netchecksim] steps=2400 remoteFrames=2380 movingPeers=1 clips=0 clipsPassed=True recordingError=none captureError=none",
+          "scenario": "[netchecksim] altScenarioExercised=True stationaryTarget=False",
+          "rig": "hit rig: AltMorph as runner, 0 frames airborne, mean |vertical speed| 0.000 units/frame, worst 0.000",
+          "contact": "alt contact: attempts 0, visible checks 0, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00"
+        }
+      }
+    },
+    {
+      "mode": "alt-crossing",
+      "hunter": "Samus",
+      "profile": "LAN",
+      "latency": "0",
+      "loss": "0%",
+      "reorder": "0%",
+      "client_exit_codes": [
+        0,
+        0
+      ],
+      "authority_contact": "alt contact: attempts 52, visible checks 0, visible overlaps 0, checks 92, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 742.82, sweep distance 13.23",
+      "server_samples": [
+        "sim: MP1 SANCTORUS (Battle), 1800 step(s), 0.23 ms mean, 40.4 ms worst, 1 overrun, 0 dropped, 0 stall(s)",
+        "sim: lag compensation: on, nothing to compensate (history misses 0); alt contact: attempts 37, visible checks 0, visible overlaps 0, checks 78, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 671.83, sweep distance 13.23",
+        "sim: rewind depths asked: none",
+        "sim: shots spawned here: none",
+        "sim: predicted vs resolved damage: nothing paired"
+      ],
+      "simulation_failures": 0,
+      "clients": {
+        "attacker": {
+          "simulation": "[netchecksim] steps=2400 remoteFrames=2399 movingPeers=1 clips=0 clipsPassed=True recordingError=none captureError=none",
+          "scenario": "[netchecksim] altScenarioExercised=True stationaryTarget=False",
+          "rig": "hit rig: AltCrossing as sniper, 26 triggers, 0 frames on target, mean range 0.0 units",
+          "contact": "alt contact: attempts 26, visible checks 103, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00"
+        },
+        "victim": {
+          "simulation": "[netchecksim] steps=2400 remoteFrames=2376 movingPeers=1 clips=0 clipsPassed=True recordingError=none captureError=none",
+          "scenario": "[netchecksim] altScenarioExercised=True stationaryTarget=False",
+          "rig": "hit rig: AltCrossing as runner, 0 frames airborne, mean |vertical speed| 0.000 units/frame, worst 0.000",
+          "contact": "alt contact: attempts 26, visible checks 97, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00"
+        }
+      }
+    },
+    {
+      "mode": "alt-contact",
+      "hunter": "Samus",
+      "profile": "moderate",
+      "latency": "100:20",
+      "loss": "1%",
+      "reorder": "1%",
+      "client_exit_codes": [
+        0,
+        0
+      ],
+      "authority_contact": "alt contact: attempts 26, visible checks 0, visible overlaps 0, checks 29, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 479.90, sweep distance 1.82",
+      "server_samples": [
+        "sim: MP1 SANCTORUS (Battle), 1799 step(s), 0.23 ms mean, 115.9 ms worst, 3 overrun, 1 dropped, 0 stall(s)",
+        "sim: lag compensation: on, nothing to compensate (history misses 0); alt contact: attempts 18, visible checks 0, visible overlaps 0, checks 21, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 343.45, sweep distance 1.61",
+        "sim: rewind depths asked: none",
+        "sim: shots spawned here: none",
+        "sim: predicted vs resolved damage: nothing paired"
+      ],
+      "simulation_failures": 0,
+      "clients": {
+        "attacker": {
+          "simulation": "[netchecksim] steps=2400 remoteFrames=2392 movingPeers=0 clips=0 clipsPassed=True recordingError=none captureError=none",
+          "scenario": "[netchecksim] altScenarioExercised=True stationaryTarget=True",
+          "rig": "hit rig: AltContact as sniper, 26 triggers, 0 frames on target, mean range 0.0 units",
+          "contact": "alt contact: attempts 26, visible checks 45, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00"
+        },
+        "victim": {
+          "simulation": "[netchecksim] steps=2400 remoteFrames=2376 movingPeers=1 clips=0 clipsPassed=True recordingError=none captureError=none",
+          "scenario": "[netchecksim] altScenarioExercised=True stationaryTarget=False",
+          "rig": "hit rig: AltContact as runner, 0 frames airborne, mean |vertical speed| 0.000 units/frame, worst 0.000",
+          "contact": "alt contact: attempts 0, visible checks 0, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00"
+        }
+      }
+    },
+    {
+      "mode": "alt-morph",
+      "hunter": "Samus",
+      "profile": "moderate",
+      "latency": "100:20",
+      "loss": "1%",
+      "reorder": "1%",
+      "client_exit_codes": [
+        0,
+        0
+      ],
+      "authority_contact": "alt contact: attempts 0, visible checks 0, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00",
+      "server_samples": [
+        "sim: MP1 SANCTORUS (Battle), 1800 step(s), 0.17 ms mean, 37.3 ms worst, 3 overrun, 0 dropped, 0 stall(s)",
+        "sim: lag compensation: 12 shots rewound, mean 16.8 frames (279 ms), worst 18, catch-up 12 steps / 12 hits, history misses 0; ceiling 45 frames (750 ms), clamped 0, worst asked 18; stale presses 3 (+1.0 frames each); shadow Shadow: 1/12 timed shots would clamp, 0.9 frames refused, geometry unavailable 0/12; catch-up maximum 1, truncations 0; form rewinds 24, mismatches 6, Kanden checks 0/hits 0; alt contact: attempts 0, visible checks 0, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00",
+        "sim: rewind depths asked (frames: shots): 12:1 17:9 18:2",
+        "sim: hit claims (as authority): 5 received, 0 applied (0 damage, 0 kills, 0 headshots rescued, 0 duplicate headshots corrected), 3 already resolved, 0 from a shooter already dead, 2 on a victim already down, 0 refused, 0 too old, 0 repeats (matched 3 by shot, 0 by window, 0 of its own refused as already rescued)",
+        "sim: shots spawned here (slot: beams): 0:12",
+        "sim: predicted vs resolved damage:",
+        "sim:   Imperialist       3 paired,     3 agreed (100%),     0 differed -- 216 claimed against 216 resolved"
+      ],
+      "simulation_failures": 0,
+      "clients": {
+        "attacker": {
+          "simulation": "[netchecksim] steps=2400 remoteFrames=2392 movingPeers=1 clips=0 clipsPassed=True recordingError=none captureError=none",
+          "scenario": "[netchecksim] altScenarioExercised=True stationaryTarget=False",
+          "rig": "hit rig: AltMorph as sniper, 28 triggers, 1779 frames on target, mean range 13.0 units",
+          "contact": "alt contact: attempts 0, visible checks 0, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00"
+        },
+        "victim": {
+          "simulation": "[netchecksim] steps=2400 remoteFrames=2372 movingPeers=1 clips=0 clipsPassed=True recordingError=none captureError=none",
+          "scenario": "[netchecksim] altScenarioExercised=True stationaryTarget=False",
+          "rig": "hit rig: AltMorph as runner, 0 frames airborne, mean |vertical speed| 0.000 units/frame, worst 0.000",
+          "contact": "alt contact: attempts 0, visible checks 0, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00"
+        }
+      }
+    },
+    {
+      "mode": "alt-crossing",
+      "hunter": "Samus",
+      "profile": "moderate",
+      "latency": "100:20",
+      "loss": "1%",
+      "reorder": "1%",
+      "client_exit_codes": [
+        0,
+        0
+      ],
+      "authority_contact": "alt contact: attempts 51, visible checks 0, visible overlaps 0, checks 84, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 1364.39, sweep distance 10.74",
+      "server_samples": [
+        "sim: MP1 SANCTORUS (Battle), 1800 step(s), 0.22 ms mean, 38.8 ms worst, 1 overrun, 0 dropped, 0 stall(s)",
+        "sim: lag compensation: on, nothing to compensate (history misses 0); alt contact: attempts 36, visible checks 0, visible overlaps 0, checks 69, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 1104.65, sweep distance 10.54",
+        "sim: rewind depths asked: none",
+        "sim: shots spawned here: none",
+        "sim: predicted vs resolved damage: nothing paired"
+      ],
+      "simulation_failures": 0,
+      "clients": {
+        "attacker": {
+          "simulation": "[netchecksim] steps=2400 remoteFrames=2392 movingPeers=1 clips=0 clipsPassed=True recordingError=none captureError=none",
+          "scenario": "[netchecksim] altScenarioExercised=True stationaryTarget=False",
+          "rig": "hit rig: AltCrossing as sniper, 26 triggers, 0 frames on target, mean range 0.0 units",
+          "contact": "alt contact: attempts 26, visible checks 103, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00"
+        },
+        "victim": {
+          "simulation": "[netchecksim] steps=2400 remoteFrames=2375 movingPeers=1 clips=0 clipsPassed=True recordingError=none captureError=none",
+          "scenario": "[netchecksim] altScenarioExercised=True stationaryTarget=False",
+          "rig": "hit rig: AltCrossing as runner, 0 frames airborne, mean |vertical speed| 0.000 units/frame, worst 0.000",
+          "contact": "alt contact: attempts 26, visible checks 87, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00"
+        }
+      }
+    },
+    {
+      "mode": "alt-contact",
+      "hunter": "Samus",
+      "profile": "severe",
+      "latency": "250:40",
+      "loss": "2%",
+      "reorder": "1%",
+      "client_exit_codes": [
+        0,
+        0
+      ],
+      "authority_contact": "alt contact: attempts 25, visible checks 0, visible overlaps 0, checks 68, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 1878.31, sweep distance 15.02",
+      "server_samples": [
+        "sim: MP1 SANCTORUS (Battle), 1798 step(s), 0.22 ms mean, 117.8 ms worst, 2 overrun, 2 dropped, 0 stall(s)",
+        "sim: lag compensation: on, nothing to compensate (history misses 0); alt contact: attempts 18, visible checks 0, visible overlaps 0, checks 61, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 1686.70, sweep distance 15.02",
+        "sim: rewind depths asked: none",
+        "sim: shots spawned here: none",
+        "sim: predicted vs resolved damage: nothing paired"
+      ],
+      "simulation_failures": 0,
+      "clients": {
+        "attacker": {
+          "simulation": "[netchecksim] steps=2400 remoteFrames=2380 movingPeers=0 clips=0 clipsPassed=True recordingError=none captureError=none",
+          "scenario": "[netchecksim] altScenarioExercised=True stationaryTarget=True",
+          "rig": "hit rig: AltContact as sniper, 26 triggers, 0 frames on target, mean range 0.0 units",
+          "contact": "alt contact: attempts 25, visible checks 273, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00"
+        },
+        "victim": {
+          "simulation": "[netchecksim] steps=2400 remoteFrames=2377 movingPeers=1 clips=0 clipsPassed=True recordingError=none captureError=none",
+          "scenario": "[netchecksim] altScenarioExercised=True stationaryTarget=False",
+          "rig": "hit rig: AltContact as runner, 0 frames airborne, mean |vertical speed| 0.000 units/frame, worst 0.000",
+          "contact": "alt contact: attempts 0, visible checks 0, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00"
+        }
+      }
+    },
+    {
+      "mode": "alt-morph",
+      "hunter": "Samus",
+      "profile": "severe",
+      "latency": "250:40",
+      "loss": "2%",
+      "reorder": "1%",
+      "client_exit_codes": [
+        0,
+        0
+      ],
+      "authority_contact": "alt contact: attempts 0, visible checks 0, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00",
+      "server_samples": [
+        "sim: MP1 SANCTORUS (Battle), 1800 step(s), 0.17 ms mean, 39.9 ms worst, 3 overrun, 0 dropped, 0 stall(s)",
+        "sim: lag compensation: 10 shots rewound, mean 28.1 frames (468 ms), worst 30, catch-up 10 steps / 10 hits, history misses 0; ceiling 45 frames (750 ms), clamped 0, worst asked 30; stale presses 4 (+1.2 frames each); shadow Shadow: 1/10 timed shots would clamp, 1.8 frames refused, geometry unavailable 0/10; catch-up maximum 1, truncations 0; form rewinds 20, mismatches 6, Kanden checks 0/hits 0; alt contact: attempts 0, visible checks 0, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00",
+        "sim: rewind depths asked (frames: shots): 27:2 28:6 29:1 30:1",
+        "sim: hit claims (as authority): 10 received, 3 applied (126 damage, 2 kills, 0 headshots rescued, 0 duplicate headshots corrected), 0 already resolved, 0 from a shooter already dead, 1 on a victim already down, 0 refused, 0 too old, 6 repeats (matched 0 by shot, 0 by window, 0 of its own refused as already rescued)",
+        "sim: shots spawned here (slot: beams): 0:10",
+        "sim: predicted vs resolved damage: nothing paired"
+      ],
+      "simulation_failures": 0,
+      "clients": {
+        "attacker": {
+          "simulation": "[netchecksim] steps=2400 remoteFrames=2371 movingPeers=1 clips=0 clipsPassed=True recordingError=none captureError=none",
+          "scenario": "[netchecksim] altScenarioExercised=True stationaryTarget=False",
+          "rig": "hit rig: AltMorph as sniper, 26 triggers, 1743 frames on target, mean range 14.0 units",
+          "contact": "alt contact: attempts 0, visible checks 0, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00"
+        },
+        "victim": {
+          "simulation": "[netchecksim] steps=2400 remoteFrames=2377 movingPeers=1 clips=0 clipsPassed=True recordingError=none captureError=none",
+          "scenario": "[netchecksim] altScenarioExercised=True stationaryTarget=False",
+          "rig": "hit rig: AltMorph as runner, 0 frames airborne, mean |vertical speed| 0.000 units/frame, worst 0.000",
+          "contact": "alt contact: attempts 0, visible checks 0, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00"
+        }
+      }
+    },
+    {
+      "mode": "alt-crossing",
+      "hunter": "Samus",
+      "profile": "severe",
+      "latency": "250:40",
+      "loss": "2%",
+      "reorder": "1%",
+      "client_exit_codes": [
+        0,
+        0
+      ],
+      "authority_contact": "alt contact: attempts 50, visible checks 0, visible overlaps 0, checks 190, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 5276.13, sweep distance 49.01",
+      "server_samples": [
+        "sim: MP1 SANCTORUS (Battle), 1800 step(s), 0.24 ms mean, 43.4 ms worst, 1 overrun, 0 dropped, 0 stall(s)",
+        "sim: lag compensation: on, nothing to compensate (history misses 0); alt contact: attempts 36, visible checks 0, visible overlaps 0, checks 139, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 3860.82, sweep distance 35.78",
+        "sim: rewind depths asked: none",
+        "sim: shots spawned here: none",
+        "sim: predicted vs resolved damage: nothing paired"
+      ],
+      "simulation_failures": 0,
+      "clients": {
+        "attacker": {
+          "simulation": "[netchecksim] steps=2400 remoteFrames=2382 movingPeers=1 clips=0 clipsPassed=True recordingError=none captureError=none",
+          "scenario": "[netchecksim] altScenarioExercised=True stationaryTarget=False",
+          "rig": "hit rig: AltCrossing as sniper, 26 triggers, 0 frames on target, mean range 0.0 units",
+          "contact": "alt contact: attempts 24, visible checks 921, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00"
+        },
+        "victim": {
+          "simulation": "[netchecksim] steps=2400 remoteFrames=2371 movingPeers=1 clips=0 clipsPassed=True recordingError=none captureError=none",
+          "scenario": "[netchecksim] altScenarioExercised=True stationaryTarget=False",
+          "rig": "hit rig: AltCrossing as runner, 0 frames airborne, mean |vertical speed| 0.000 units/frame, worst 0.000",
+          "contact": "alt contact: attempts 25, visible checks 694, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00"
+        }
+      }
+    },
+    {
+      "mode": "alt-contact",
+      "hunter": "Samus",
+      "profile": "extreme",
+      "latency": "320:80",
+      "loss": "5%",
+      "reorder": "3%",
+      "client_exit_codes": [
+        0,
+        0
+      ],
+      "authority_contact": "alt contact: attempts 25, visible checks 0, visible overlaps 0, checks 33, historical 1, live 1, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 1155.28, sweep distance 3.43",
+      "server_samples": [
+        "sim: MP1 SANCTORUS (Battle), 1798 step(s), 0.23 ms mean, 117.1 ms worst, 2 overrun, 2 dropped, 0 stall(s)",
+        "sim: lag compensation: on, nothing to compensate (history misses 0); alt contact: attempts 18, visible checks 0, visible overlaps 0, checks 26, historical 1, live 1, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 911.44, sweep distance 3.43",
+        "sim: rewind depths asked: none",
+        "sim: shots spawned here: none",
+        "sim: predicted vs resolved damage: nothing paired"
+      ],
+      "simulation_failures": 0,
+      "clients": {
+        "attacker": {
+          "simulation": "[netchecksim] steps=2400 remoteFrames=2372 movingPeers=1 clips=0 clipsPassed=True recordingError=none captureError=none",
+          "scenario": "[netchecksim] altScenarioExercised=True stationaryTarget=True",
+          "rig": "hit rig: AltContact as sniper, 26 triggers, 0 frames on target, mean range 0.0 units",
+          "contact": "alt contact: attempts 24, visible checks 153, visible overlaps 5, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00"
+        },
+        "victim": {
+          "simulation": "[netchecksim] steps=2400 remoteFrames=2372 movingPeers=1 clips=0 clipsPassed=True recordingError=none captureError=none",
+          "scenario": "[netchecksim] altScenarioExercised=True stationaryTarget=False",
+          "rig": "hit rig: AltContact as runner, 0 frames airborne, mean |vertical speed| 0.000 units/frame, worst 0.000",
+          "contact": "alt contact: attempts 0, visible checks 0, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00"
+        }
+      }
+    },
+    {
+      "mode": "alt-morph",
+      "hunter": "Samus",
+      "profile": "extreme",
+      "latency": "320:80",
+      "loss": "5%",
+      "reorder": "3%",
+      "client_exit_codes": [
+        0,
+        0
+      ],
+      "authority_contact": "alt contact: attempts 0, visible checks 0, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00",
+      "server_samples": [
+        "sim: MP1 SANCTORUS (Battle), 1800 step(s), 0.16 ms mean, 38.5 ms worst, 2 overrun, 0 dropped, 0 stall(s)",
+        "sim: lag compensation: 11 shots rewound, mean 35.5 frames (591 ms), worst 37, catch-up 11 steps / 11 hits, history misses 0; ceiling 45 frames (750 ms), clamped 0, worst asked 37; stale presses 7 (+1.3 frames each); shadow Shadow: 1/11 timed shots would clamp, 0.5 frames refused, geometry unavailable 0/11; catch-up maximum 1, truncations 0; form rewinds 22, mismatches 8, Kanden checks 0/hits 0; alt contact: attempts 0, visible checks 0, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00",
+        "sim: rewind depths asked (frames: shots): 33:1 35:5 36:3 37:2",
+        "sim: hit claims (as authority): 4 received, 2 applied (99 damage, 1 kills, 0 headshots rescued, 0 duplicate headshots corrected), 0 already resolved, 0 from a shooter already dead, 0 on a victim already down, 0 refused, 0 too old, 2 repeats (matched 0 by shot, 0 by window, 0 of its own refused as already rescued)",
+        "sim: shots spawned here (slot: beams): 0:11",
+        "sim: predicted vs resolved damage: nothing paired"
+      ],
+      "simulation_failures": 0,
+      "clients": {
+        "attacker": {
+          "simulation": "[netchecksim] steps=2400 remoteFrames=2347 movingPeers=1 clips=0 clipsPassed=True recordingError=none captureError=none",
+          "scenario": "[netchecksim] altScenarioExercised=True stationaryTarget=False",
+          "rig": "hit rig: AltMorph as sniper, 29 triggers, 1793 frames on target, mean range 12.1 units",
+          "contact": "alt contact: attempts 0, visible checks 0, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00"
+        },
+        "victim": {
+          "simulation": "[netchecksim] steps=2400 remoteFrames=2363 movingPeers=1 clips=0 clipsPassed=True recordingError=none captureError=none",
+          "scenario": "[netchecksim] altScenarioExercised=True stationaryTarget=False",
+          "rig": "hit rig: AltMorph as runner, 0 frames airborne, mean |vertical speed| 0.000 units/frame, worst 0.000",
+          "contact": "alt contact: attempts 0, visible checks 0, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00"
+        }
+      }
+    },
+    {
+      "mode": "alt-crossing",
+      "hunter": "Samus",
+      "profile": "extreme",
+      "latency": "320:80",
+      "loss": "5%",
+      "reorder": "3%",
+      "client_exit_codes": [
+        0,
+        0
+      ],
+      "authority_contact": "alt contact: attempts 50, visible checks 0, visible overlaps 0, checks 132, historical 0, live 1, historical-only 0, live-only 1, unavailable 0, sweep-only 0, rewind total 4722.18, sweep distance 19.69",
+      "server_samples": [
+        "sim: MP1 SANCTORUS (Battle), 1800 step(s), 0.22 ms mean, 37.5 ms worst, 1 overrun, 0 dropped, 0 stall(s)",
+        "sim: lag compensation: on, nothing to compensate (history misses 0); alt contact: attempts 36, visible checks 0, visible overlaps 0, checks 105, historical 0, live 1, historical-only 0, live-only 1, unavailable 0, sweep-only 0, rewind total 3765.57, sweep distance 19.56",
+        "sim: rewind depths asked: none",
+        "sim: shots spawned here: none",
+        "sim: predicted vs resolved damage: nothing paired"
+      ],
+      "simulation_failures": 0,
+      "clients": {
+        "attacker": {
+          "simulation": "[netchecksim] steps=2400 remoteFrames=2364 movingPeers=1 clips=0 clipsPassed=True recordingError=none captureError=none",
+          "scenario": "[netchecksim] altScenarioExercised=True stationaryTarget=False",
+          "rig": "hit rig: AltCrossing as sniper, 26 triggers, 0 frames on target, mean range 0.0 units",
+          "contact": "alt contact: attempts 25, visible checks 243, visible overlaps 0, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00"
+        },
+        "victim": {
+          "simulation": "[netchecksim] steps=2400 remoteFrames=2365 movingPeers=1 clips=0 clipsPassed=True recordingError=none captureError=none",
+          "scenario": "[netchecksim] altScenarioExercised=True stationaryTarget=False",
+          "rig": "hit rig: AltCrossing as runner, 0 frames airborne, mean |vertical speed| 0.000 units/frame, worst 0.000",
+          "contact": "alt contact: attempts 25, visible checks 93, visible overlaps 1, checks 0, historical 0, live 0, historical-only 0, live-only 0, unavailable 0, sweep-only 0, rewind total 0.00, sweep distance 0.00"
+        }
+      }
+    }
+  ]
+}

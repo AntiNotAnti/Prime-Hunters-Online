@@ -1,5 +1,52 @@
 # Lag compensation
 
+## Historical player collision and alt contact
+
+Player history records position, form, life/generation, Kanden's three collision
+segments and collision-critical alt attack state. Rewind applies canonical biped
+or alt volumes without changing gameplay form flags, running form transitions,
+or walking the room graph. `ModCollisionIsAltForm` is the collision-only override.
+Beam collision and shadow traces share the same cylinder/sphere/Kanden-chain
+primitive. Restore reinstates position, previous position, both cached volumes,
+node reference, segment positions and any prior override, including exception
+unwinding through `AbortShot`.
+
+Interpolation keeps the lower complete pose across form/life/generation changes
+or discontinuities. Segment positions interpolate with the body only inside a
+continuous same-form interval. Snapshot recording remains at publication.
+
+`NetContactLagComp` runs after owner position correction and before snapshot
+publication. The attacker's accepted current pose and previous accepted frame
+form the attack sweep. The victim is queried at that attacker's `AckFrame +
+AckSubFrame / 256`, bounded by `MaxRewindFrames`. ACK time describes opponents,
+not the owner's own body; rewinding the attacker to its ACK would use the wrong
+attack. Invalid/absent ACK uses current geometry; a requested historical pose
+missing from the ring fails closed. Local authority actors and bots use current
+victim geometry. Life/generation/form changes, missing prior frames and network
+snap-sized displacement break the sweep.
+
+Samus boosts and Trace/Weavel lunges use segment/sphere distance, Spire uses both
+recorded rock centers, and Noxus retains its original radial and vertical limits.
+Contact preserves the original contact sphere for biped victims; the taller beam
+cylinder is not a new melee hitbox. Knockback and damage use current authoritative
+state and existing damage values. Live physical separation remains in
+`CheckPlayerCollision`. Clients only observe geometry for diagnostics; they do
+not end attacks or apply contact damage/knockback speculatively.
+
+Kanden's Stinglarva and Sylux bombs remain entity/projectile attacks: there is no
+ordinary Kanden body-contact damage to invent. Detached Weavel turret hits retain
+the existing live authority-only path; historical turret geometry is not claimed.
+Owner position corrections also translate Kanden segments and Spire rocks so the
+snapshot history cannot record attachments left at the pre-correction location.
+
+Diagnostics include form mismatch/rewind and Kanden chain counts; contact checks,
+hits, live/historical disagreements, missing history, attempts, presented overlaps,
+sweep-only hits, depth and travel. `-debuglog` disagreement events are throttled to
+one per attacker/victim pair per second. `--alt-hits` runs asset-free regressions;
+`--alt-scene <data-directory>` checks production rewind/restore, authority damage,
+lifecycle fences, allocation cost and seeded network scheduling with real assets.
+See `docs/network/alt-form-validation.md` for evidence and real-client commands.
+
 ## Protocol 18 dynamic collision
 
 `NetDynamicGeometryHistory` records 128 frames at the same publication point as
@@ -272,11 +319,11 @@ of the feature. For what it is worth, two pairs both favoured `on`: 33.9% vs
 - **The hitbox is a cached field.** `_volume` is recomputed once a frame in
   `PlayerProcess`; a rewind applied mid-frame that only assigns `Position`
   moves the model and leaves the hitbox behind, which is a rewind that does
-  nothing at all. `ModPlaceAt` goes through `ModRefreshNodeRef`, which does
-  both.
+  nothing at all. Collision-only rewind restores both cached volumes directly.
 - **Form matters.** A position recorded while its owner was a morph ball and
   applied to a biped is out by the difference between the two collision
-  centres — most of a chest. `NetPlayerBridge.InFormFor` converts.
+  centres — most of a chest. Rewind restores the historical form and volume;
+  converting an old position into the current form is insufficient.
 - **Record from `BroadcastSnapshot` and nowhere else.** The rewind is the claim
   that cell `F` holds the picture the client saw. Recording anywhere else in
   the frame makes that claim off by however much players moved in between,

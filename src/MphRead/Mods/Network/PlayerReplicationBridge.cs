@@ -1113,6 +1113,7 @@ namespace MphRead.Mods.Network
         {
             Vector3 previous = player.Position;
             player.Position = position;
+            player.ModTranslateCollisionAttachments(position - previous);
             // This runs after PlayerProcess has captured PrevPosition. Keep
             // the next collision sweep anchored to the corrected position;
             // otherwise the engine treats the network correction as player
