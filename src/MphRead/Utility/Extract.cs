@@ -69,6 +69,15 @@ namespace MphRead
                 }
             }
             string rootName = $"{header.GameCode.MarshalString()}{header.Version}";
+            if (!isFh)
+            {
+                Console.WriteLine("Validating ROM layout...");
+                if (!ValidateRuntimeProfile(header, bytes, rootName, out string? layoutProblem))
+                {
+                    PrintExit(layoutProblem ?? $"The {rootName} ROM layout is not compatible with this build.");
+                    return;
+                }
+            }
             ExtractRomFs(header, bytes, rootName, hasArchives: !isFh);
             ExtractRomData(rootName);
             string newPath;
@@ -136,6 +145,174 @@ namespace MphRead
             byte[] bytes = File.ReadAllBytes(Paths.Combine("files", rootName, "_bin", data.FontModel.File));
             File.WriteAllBytes(Paths.Combine("files", rootName, @"models\hudfont_Model.bin"),
                 bytes[data.FontModel.Offset..(data.FontModel.Offset + data.FontModel.Size)]);
+        }
+
+        /// <summary>
+        /// The game code/revision selects a fixed runtime-data profile, but a
+        /// rebuilt ROM can keep that header while moving those tables. Measure
+        /// the three decompressed binaries the profile reads before writing any
+        /// extracted files. This accepts padded/trimmed dumps whose layout is
+        /// unchanged and rejects incompatible hacks before they can crash later.
+        /// </summary>
+        private static bool ValidateRuntimeProfile(RomHeader header, byte[] rom,
+            string rootName, out string? problem)
+        {
+            problem = null;
+            if (!_romData.TryGetValue(rootName, out RomData? data))
+            {
+                problem = $"No runtime-data profile exists for {rootName}.";
+                return false;
+            }
+
+            try
+            {
+                IReadOnlyList<(int Start, int End)> files = ReadFileOffsets(header, rom);
+                long arm9Length = MeasureDecompressedLength(
+                    rom, header.ARM9Offset, checked(header.ARM9Offset + header.ARM9Size));
+                long arm9Required = RequiredLength(data.FontModel, data.FontWidths,
+                    data.FontOffsets, data.FontCharData, data.EnemyDamageSfx, data.EnemyDeathSfx);
+                if (arm9Length < arm9Required)
+                {
+                    problem = $"The {rootName} ARM9 layout is incompatible "
+                        + $"(needs at least 0x{arm9Required:X} decompressed bytes, "
+                        + $"found 0x{arm9Length:X}).";
+                    return false;
+                }
+
+                if (!TryOverlayRange(header, rom, files, OverlayId(data.BeamSfx.File),
+                    out (int Start, int End) dataOverlay))
+                {
+                    problem = $"The {rootName} ROM is missing {data.BeamSfx.File}.";
+                    return false;
+                }
+                long dataLength = MeasureDecompressedLength(rom, dataOverlay.Start, dataOverlay.End);
+                long dataRequired = RequiredLength(data.TerrianSfx, data.BeamSfx, data.HunterSfx);
+                if (dataLength < dataRequired)
+                {
+                    problem = $"The {rootName} data-overlay layout is incompatible "
+                        + $"(needs at least 0x{dataRequired:X} decompressed bytes, "
+                        + $"found 0x{dataLength:X}).";
+                    return false;
+                }
+
+                if (!TryOverlayRange(header, rom, files, OverlayId(data.PlatformSfx.File),
+                    out (int Start, int End) platformOverlay))
+                {
+                    problem = $"The {rootName} ROM is missing {data.PlatformSfx.File}.";
+                    return false;
+                }
+                long platformLength = MeasureDecompressedLength(
+                    rom, platformOverlay.Start, platformOverlay.End);
+                long platformRequired = RequiredLength(data.PlatformSfx);
+                if (platformLength < platformRequired)
+                {
+                    problem = $"The {rootName} platform-overlay layout is incompatible "
+                        + $"(needs at least 0x{platformRequired:X} decompressed bytes, "
+                        + $"found 0x{platformLength:X}).";
+                    return false;
+                }
+                return true;
+            }
+            catch (Exception ex) when (ex is InvalidDataException
+                or ProgramException or ArgumentException or OverflowException
+                or EndOfStreamException)
+            {
+                problem = $"The {rootName} executable layout could not be validated: {ex.Message}";
+                return false;
+            }
+        }
+
+        private static IReadOnlyList<(int Start, int End)> ReadFileOffsets(
+            RomHeader header, byte[] rom)
+        {
+            long fatEnd = (long)header.FatOffset + header.FatSize;
+            if (header.FatOffset == 0 || header.FatSize == 0 || header.FatSize % 8 != 0
+                || fatEnd > rom.Length)
+            {
+                throw new InvalidDataException("invalid FAT range");
+            }
+
+            IReadOnlyList<uint> addresses =
+                Read.DoOffsets<uint>(rom, header.FatOffset, header.FatSize / 4);
+            var result = new List<(int Start, int End)>(addresses.Count / 2);
+            for (int i = 0; i < addresses.Count; i += 2)
+            {
+                uint start = addresses[i];
+                uint end = addresses[i + 1];
+                if (end < start || end > rom.Length || start > Int32.MaxValue || end > Int32.MaxValue)
+                {
+                    throw new InvalidDataException($"invalid FAT entry {i / 2}");
+                }
+                result.Add(((int)start, (int)end));
+            }
+            return result;
+        }
+
+        private static bool TryOverlayRange(RomHeader header, byte[] rom,
+            IReadOnlyList<(int Start, int End)> files, int wantedId,
+            out (int Start, int End) range)
+        {
+            range = default;
+            long tableEnd = (long)header.Overlay9Offset + header.Overlay9Size;
+            if (header.Overlay9Offset <= 0 || header.Overlay9Size <= 0
+                || header.Overlay9Size % 32 != 0 || tableEnd > rom.Length)
+            {
+                return false;
+            }
+
+            int count = header.Overlay9Size / 32;
+            for (int i = 0; i < count; i++)
+            {
+                int offset = header.Overlay9Offset + i * 32;
+                int overlayId = BitConverter.ToInt32(rom, offset);
+                if (overlayId != wantedId)
+                {
+                    continue;
+                }
+                int fileId = BitConverter.ToInt32(rom, offset + 24);
+                if (fileId < 0 || fileId >= files.Count)
+                {
+                    return false;
+                }
+                range = files[fileId];
+                return range.End > range.Start;
+            }
+            return false;
+        }
+
+        private static int OverlayId(string file)
+        {
+            const string prefix = "overlay9_";
+            if (!file.StartsWith(prefix, StringComparison.Ordinal)
+                || !Int32.TryParse(file.AsSpan(prefix.Length), out int id))
+            {
+                throw new InvalidDataException($"invalid overlay profile name {file}");
+            }
+            return id;
+        }
+
+        private static long MeasureDecompressedLength(byte[] rom, int start, int end)
+        {
+            if (start < 0 || end <= start || end > rom.Length)
+            {
+                throw new InvalidDataException("compressed executable range is invalid");
+            }
+            using var input = new MemoryStream(rom, start, end - start, writable: false);
+            return LZBackward.Decompress(input, end - start, Stream.Null);
+        }
+
+        private static long RequiredLength(params RomDataValues[] values)
+        {
+            long required = 0;
+            foreach (RomDataValues value in values)
+            {
+                if (value.Offset < 0 || value.Size <= 0)
+                {
+                    throw new InvalidDataException($"invalid runtime-data profile for {value.File}");
+                }
+                required = Math.Max(required, (long)value.Offset + value.Size);
+            }
+            return required;
         }
 
         private static void ExtractRomFs(RomHeader header, byte[] bytes, string rootName, bool hasArchives)
