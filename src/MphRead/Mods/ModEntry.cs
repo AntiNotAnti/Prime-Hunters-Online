@@ -205,6 +205,8 @@ namespace MphRead.Mods
             // ms can be reproduced against the real server rather than only
             // behind a proxy in front of a local one. See Mods/Network/NetLag.
             Network.NetDiagnostics.Enabled = HasFlag(args, "netdebug");
+            Network.NetDynamicGeometryHistory.ShadowEnabled = HasFlag(args, "netgeometryshadow");
+            Network.NetDynamicGeometryHistory.ProductionEnabled = !Network.NetDynamicGeometryHistory.ShadowEnabled;
             string? netLag = ValueAfter(args, "netlag");
             if (netLag != null && !Network.NetLag.Configure(netLag))
             {
