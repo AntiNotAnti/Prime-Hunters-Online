@@ -1,7 +1,7 @@
 # Project Prime
 
 <p align="center">
-  <img src="src/MphRead/Assets/project-prime-mark.png" alt="Project Prime" width="180">
+  <img src="src/MphRead/Assets/project-prime-banner.png" alt="Project Prime" width="100%">
 </p>
 
 <p align="center">
