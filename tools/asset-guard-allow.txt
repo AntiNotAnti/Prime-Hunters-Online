@@ -1,9 +1,9 @@
 # Paths the asset guard may ignore, one glob per line.
 #
-# Only for files that are ours: a logo, a screenshot of the launcher, a
-# diagram. Never a map preview, a model, a sound, or anything else that came
-# out of the cartridge -- those are produced on each player's own machine and
-# do not belong in this repository or in a release.
+# Only for files that are ours: a logo, launcher artwork, an original sound,
+# or a diagram. Never a map preview, extracted model/sound, or anything else
+# that came out of the cartridge -- those are produced on each player's own
+# machine and do not belong in this repository or in a release.
 
 # Project Prime's renderer-owned visual marks. The standard mark is embedded
 # for the game window and is also the source used by macOS packaging; the
