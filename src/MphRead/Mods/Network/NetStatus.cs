@@ -298,6 +298,7 @@ namespace MphRead.Mods.Network
         /// <summary>"BattleTeams" -> "Battle Teams", for a screen rather than a log.</summary>
         public static string ModeName(GameMode mode)
         {
+            if (mode == GameMode.InstaGib) return "Insta-Gib";
             string name = mode.ToString();
             var builder = new System.Text.StringBuilder(name.Length + 4);
             for (int i = 0; i < name.Length; i++)
