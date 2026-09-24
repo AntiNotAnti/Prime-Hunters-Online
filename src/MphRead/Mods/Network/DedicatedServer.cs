@@ -396,7 +396,12 @@ namespace MphRead.Mods.Network
                 // can find is a match nobody joins.
                 ReporterFactory = () => Reporter == null
                     ? null
-                    : new MasterReporter(Reporter.Host, Reporter.Port)
+                    : new MasterReporter(Reporter.Host, Reporter.Port),
+                // A hosted child normally says goodbye itself, but that is one
+                // best-effort UDP datagram from a process that is disappearing.
+                // The parent also owns the host-pool lifecycle, so reinforce the
+                // unlist when it observes that child stop.
+                OnStopped = port => Reporter?.Farewell((ushort)port)
             };
         }
 
