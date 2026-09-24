@@ -26,7 +26,7 @@ namespace MphRead.Mods.Network
             reason = "";
             if (String.IsNullOrWhiteSpace(match.RoomKey) || match.RoomKey.Length > HostRequestPacket.MaxRoomBytes
                 || !Enum.IsDefined(match.Format) || !Enum.IsDefined(match.Mode)
-                || match.Mode is GameMode.SinglePlayer or GameMode.None or GameMode.Unknown15)
+                || match.Mode is GameMode.SinglePlayer or GameMode.None)
                 reason = "Choose a multiplayer map and mode.";
             else if (match.Format != MatchFormat.Auto
                 && GameState.IsTeamMode(match.Mode) != (match.Format != MatchFormat.FreeForAll))
