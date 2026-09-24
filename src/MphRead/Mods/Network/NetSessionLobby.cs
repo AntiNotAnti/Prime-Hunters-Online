@@ -52,6 +52,8 @@ namespace MphRead.Mods.Network
         private static uint _nextCommandId;
         private static ushort? _loadedMatch;
         private static MatchStartIdentity? _loadedStart;
+        private static int _loadedSlot = -1;
+        private static ushort _loadedSlotGeneration;
         private static (ushort MatchId, ulong AuthorityEpoch)? _pendingLoadedScene;
         private static ushort _rosterSessionRevision;
         private static MatchLoadStage _loadStage;
@@ -340,7 +342,10 @@ namespace MphRead.Mods.Network
             var state = ServerSession.Value;
             if (state.Phase is not (SessionPhase.Starting or SessionPhase.InMatch)) return;
             var identity = new MatchStartIdentity(state.MatchId, state.AuthorityEpoch, state.StartGeneration);
-            if (_loadedStart == identity) return;
+            ushort generation = NetPlayerLifecycle.Generation(LocalSlot);
+            if (_loadedStart == identity && _loadedSlot == LocalSlot && _loadedSlotGeneration == generation) return;
+            _appliedBootstrap = _receivingBootstrap = null; _bootstrapMask = 0;
+            _loadedSlot = LocalSlot; _loadedSlotGeneration = generation;
             _loadedStart = identity; _loadedMatch = state.MatchId;
             _lastLoadAck = Clock;
             new MatchLoadedPacket(state.MatchId, state.AuthorityEpoch, state.StartGeneration).Write(_scratch);
@@ -380,6 +385,7 @@ namespace MphRead.Mods.Network
             _bootstrapMask = 0;
             _laneReceiver.Reset(0, 0);
             ServerSession = null; _pendingLobby.Clear(); _loadedMatch = null; _loadedStart = null;
+            _loadedSlot = -1; _loadedSlotGeneration = 0;
             _pendingLoadedScene = null;
             _rosterRevision = 0; _hasRoster = false; _ownerToken = Guid.Empty;
             _rosterSessionRevision = 0;

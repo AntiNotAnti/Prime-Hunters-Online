@@ -15,3 +15,7 @@ src/MphRead/Assets/project-prime-banner.png
 # Supplied Project Prime startup artwork. Keep the exact path; locally
 # extracted game previews are still excluded.
 src/MphRead/Assets/Backgrounds/launcher-bg.png
+
+# Generated production-codec benchmark telemetry for 2,016 seeded scenarios.
+# Contains numerical test results only, no extracted game data; exceeds 2 MiB.
+tools/nettest/baselines/network-v18.json

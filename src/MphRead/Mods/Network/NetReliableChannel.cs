@@ -40,11 +40,13 @@ public sealed class NetReliableChannel
     public static bool IsCritical(PacketType type) => type is not (PacketType.Roster or PacketType.LobbyCommand or PacketType.LobbyCommandResult);
 
     public bool TryQueue(PacketType type, ReadOnlySpan<byte> payload, double nowMs, out uint eventId,
-        bool expedite = false)
+        bool expedite = false, bool supersedeState = false)
     {
         eventId = 0;
         if (!IsReliable(type) || payload.Length > NetConfig.MaxPayloadSize - 4)
             throw new ArgumentException("Not a bounded reliable control payload");
+        if (supersedeState && type is not (PacketType.SessionState or PacketType.Roster))
+            throw new ArgumentException("Only revision-fenced full state can supersede pending state");
         bool critical = IsCritical(type);
         if (Failed) return false;
         // Periodic publication may repeat an identical outstanding state. Keep
@@ -56,6 +58,18 @@ public sealed class NetReliableChannel
                 if (expedite) pending.Due = Math.Min(pending.Due, nowMs);
                 return true;
             }
+        // These publications contain the complete current state and receivers
+        // fence them by revision. Retrying obsolete versions behind a slow
+        // scene load can fill the control queue before its bootstrap fits.
+        // Retire only the old retry; the replacement gets a NEW event ID so
+        // a receiver that already saw the old version still applies this one.
+        if (supersedeState)
+            for (int i = 0; i < _pending.Length; i++)
+                if (_pending[i] is { } old && old.Type == type)
+                {
+                    if (!old.Critical) _ordinary--;
+                    _pending[i] = null; _count--;
+                }
         bool spanFull = false;
         foreach (var pending in _pending)
             if (pending != null && SequenceMath.Distance(_next, pending.Id) >= History) spanFull = true;

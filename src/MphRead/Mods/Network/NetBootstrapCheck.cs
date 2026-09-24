@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.Net;
 using System.Reflection;
 using MphRead.Entities;
@@ -38,6 +39,8 @@ public static class NetBootstrapCheck
             typeof(NetSession).GetProperty(nameof(NetSession.IsAuthority))!.SetValue(null, false);
             typeof(NetSession).GetProperty(nameof(NetSession.LocalSlot))!.SetValue(null, 0);
             typeof(NetSession).GetField("_loadedStart", flags)!.SetValue(null, identity.Start);
+            typeof(NetSession).GetField("_loadedSlot", flags)!.SetValue(null, 0);
+            typeof(NetSession).GetField("_loadedSlotGeneration", flags)!.SetValue(null, (ushort)1);
             typeof(NetSession).GetField("_appliedBootstrap", flags)!.SetValue(null, null);
             uint frameBefore = NetSession.NetFrame;
             var position = PlayerState.Read(canonical.AsSpan(SnapshotHeader.Size)).Position;
@@ -94,6 +97,27 @@ public static class NetBootstrapCheck
             Check(PlayerEntity.Players[2].Position == nextLife.Position && NetSession.NetFrame == frameBefore
                 && NetSession.AppliedSnapshotFrame == nextHeader.Frame,
                 "release pump applies newer spawn before drawing without simulating");
+            var host = new IPEndPoint(IPAddress.Loopback, 1);
+            typeof(NetSession).GetField("_hostEndPoint", flags)!.SetValue(null, host);
+            byte[] welcome = new byte[18]; welcome[0] = (byte)PacketType.Welcome;
+            BinaryPrimitives.WriteUInt32LittleEndian(welcome.AsSpan(2), NetSession.ClientId);
+            BinaryPrimitives.WriteUInt16LittleEndian(welcome.AsSpan(6), 1);
+            BinaryPrimitives.WriteUInt64LittleEndian(welcome.AsSpan(8), 1);
+            BinaryPrimitives.WriteUInt16LittleEndian(welcome.AsSpan(16), 2);
+            void Admit() => typeof(NetSession).GetMethod("Handle", flags)!.Invoke(null,
+                new object[] { new ReceivedPacket(host, welcome, welcome.Length), NetSession.Clock });
+            Admit();
+            Check(!NetSession.WorldIsReady && NetSession.FreezeGameplay
+                && (ushort)typeof(NetSession).GetField("_loadedSlotGeneration", flags)!.GetValue(null)! == 2,
+                "re-admission reports the loaded scene for the new occupant and requires a new bootstrap");
+            var newOwner = PlayerState.Read(canonical.AsSpan(SnapshotHeader.Size)); newOwner.SlotGeneration = 2;
+            newOwner.Write(canonical.AsSpan(SnapshotHeader.Size)); lanes.Prepare(canonical.AsSpan(0, length));
+            var readmitted = identity with { Revision = 2, SlotGeneration = 2, AuthorityFrame = nextHeader.Frame,
+                SlowRevision = lanes.SlowRevision, WorldRevision = lanes.WorldRevision };
+            Deliver(0, readmitted); Deliver(1, readmitted); Deliver(2, readmitted);
+            Check(NetSession.WorldIsReady && !NetSession.FreezeGameplay, "same-match re-admission resumes after its new bootstrap");
+            Admit();
+            Check(NetSession.WorldIsReady, "duplicate same-generation Welcome does not restart bootstrap");
             session.Phase = SessionPhase.Starting;
             session.StartGeneration++; session.Revision++; NetSession.ApplySessionState(session);
             Deliver(0, identity); Deliver(1, identity); Deliver(2, identity);

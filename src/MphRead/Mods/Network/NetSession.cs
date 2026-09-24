@@ -889,6 +889,11 @@ namespace MphRead.Mods.Network
                         LocalSlot = assigned;
                         Console.WriteLine($"[net] joined as slot {LocalSlot}");
                         NetLog.Event($"server assigned slot {LocalSlot}");
+                        // A re-admitted connection can reuse the already loaded
+                        // scene, but its new occupant must bootstrap again.
+                        // MarkMatchLoaded fences both start and slot generation;
+                        // duplicate Welcomes for the same occupant are no-ops.
+                        if (_loadedStart.HasValue) MarkMatchLoaded();
                     }
                     break;
                 case PacketType.Intent when Role == NetRole.Host:

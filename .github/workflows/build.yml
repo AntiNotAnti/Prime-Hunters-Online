@@ -117,6 +117,10 @@ jobs:
           dotnet run --project tools/nettest/nettest.csproj -c Release -- --architecture
           dotnet run --project tools/nettest/nettest.csproj -c Release -- --allocations
           dotnet run --project tools/nettest/nettest.csproj -c Release -- --protocol17
+          dotnet run --project tools/nettest/nettest.csproj -c Release -- --protocol18
+          dotnet run --project tools/nettest/nettest.csproj -c Release -- --claim-stress
+          dotnet run --project tools/nettest/nettest.csproj -c Release -- --input-edges
+          dotnet run --project tools/nettest/nettest.csproj -c Release -- --dynamic-geometry
           dotnet run --project tools/nettest/nettest.csproj -c Release -- --reliable
           dotnet run --project tools/nettest/nettest.csproj -c Release -- --queue-budget
           dotnet run --project tools/nettest/nettest.csproj -c Release -- --load-lifecycle

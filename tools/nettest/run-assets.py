@@ -146,6 +146,8 @@ def run_arm(args, stage, name):
             handle.close()
         for diagnostic in stage.glob("netlog-*.txt"):
             shutil.copy2(diagnostic, out / diagnostic.name)
+        if (stage / "logs").exists():
+            shutil.copytree(stage / "logs", out / "native-logs", dirs_exist_ok=True)
 
 
 def main():
