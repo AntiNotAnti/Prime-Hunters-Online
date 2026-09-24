@@ -29,6 +29,11 @@ namespace MphRead.Mods.Launcher
         /// </summary>
         public static void Launch(MenuSettings settings, LaunchPlan plan)
         {
+            // A standalone match window constructs its Scene immediately.
+            // No save slot may be active during that constructor: Adventure
+            // selects its slot on the owning SceneGameState below, and every
+            // other mode must never inherit a previous story session's slot.
+            Menu.SaveSlot = 0;
             RenderWindow.LogCreatingWindow();
             using var renderer = new RenderWindow();
             if (!Begin(renderer, settings, plan))
@@ -216,18 +221,32 @@ namespace MphRead.Mods.Launcher
         /// </summary>
         private static bool BeginAdventure(RenderWindow window, LaunchPlan plan)
         {
-            string roomKey = AdventureSave.Begin(plan.SaveSlot, plan.NewGame);
+            // The shell has no scene while its menus are up. Do not prepare the
+            // bootstrap GameState and then construct a different SceneGameState:
+            // that discards StartNewSave(), and Scene.Reset may immediately read
+            // the old slot again. It is especially bad for a stale/corrupt slot
+            // that the menu correctly presents as empty: NEW RUN then tried to
+            // deserialize the file the player was asking to replace.
+            //
+            // Clear the slot before Scene construction so Reset cannot read or
+            // commit whichever Adventure slot a previous session left selected.
+            Menu.SaveSlot = 0;
+            EnsureScene(window);
+
+            // Back to the four a DS game had: a previous offline match in
+            // the same session may have raised this to eight, and the
+            // story's own setup counts on the retail number.
+            window.Scene.Players.MaxPlayers = 4;
+
+            string roomKey = AdventureSave.Begin(
+                window.Scene.GameState, plan.SaveSlot, plan.NewGame);
             if (roomKey.Length == 0)
             {
                 Console.WriteLine("[launcher] no adventure room to load");
                 return false;
             }
-            GameState.Mode = GameMode.SinglePlayer;
-            EnsureScene(window);
-            // Back to the four a DS game had: a previous offline match in
-            // the same session may have raised this to eight, and the
-            // story's own setup counts on the retail number.
-            window.Scene.Players.MaxPlayers = 4;
+
+            window.Scene.GameState.Mode = GameMode.SinglePlayer;
             window.AddPlayer(plan.Hunter, recolor: LauncherPrefs.LastColor, team: -1);
             window.AddRoom(roomKey, GameMode.SinglePlayer);
             window.LoadScene();

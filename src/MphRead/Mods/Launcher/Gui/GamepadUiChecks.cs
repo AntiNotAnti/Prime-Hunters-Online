@@ -127,6 +127,11 @@ namespace MphRead.Mods.Launcher.Gui
             GamepadChecks.Check(offlinePlan is { Kind: LaunchKind.Offline, RoomKey: "MP3 PROVING GROUND" },
                 "Offline launches its selected local arena");
 
+            offlinePlan = null;
+            Click(window, ControllerNav.Find(offlineView, "offline.adventure.new")!);
+            GamepadChecks.Check(offlinePlan is { Kind: LaunchKind.Adventure, SaveSlot: 1, NewGame: true },
+                "Adventure NEW RUN launches a fresh selected save slot");
+
             var customMatch = new CreateServerScreen(
                 Array.Empty<string>(), discoverHosts: false);
             int customClosed = 0;

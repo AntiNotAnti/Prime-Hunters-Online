@@ -109,26 +109,47 @@ namespace MphRead.Mods.Launcher
         }
 
         /// <summary>
-        /// Point the engine at a slot and load it, or start it fresh.
+        /// Point the foreground state at a slot and load it, or start it fresh.
         ///
-        /// Setting <see cref="Menu.SaveSlot"/> is the part that makes saving
-        /// work at all; loading is what makes "continue" mean anything.
-        /// Returns the room to open.
+        /// Kept for callers that already own the foreground state. Match startup
+        /// should use the overload that names the scene state explicitly: a new
+        /// live <see cref="Scene"/> gets its own <see cref="SceneGameState"/>,
+        /// and preparing the old bootstrap state before that scene exists loses
+        /// the new-game save when the scene is constructed.
         /// </summary>
         public static string Begin(byte slot, bool newGame)
         {
+            return Begin(GameState.Current, slot, newGame);
+        }
+
+        /// <summary>
+        /// Prepare the exact state the Adventure scene will run.
+        ///
+        /// A new run deliberately does not read the slot first. Besides being
+        /// the meaning of "new game", that lets a slot whose old JSON is stale
+        /// or damaged be replaced instead of crashing while trying to load data
+        /// the player explicitly asked to discard.
+        /// </summary>
+        public static string Begin(SceneGameState state, byte slot, bool newGame)
+        {
+            if (slot < 1 || slot > SlotCount)
+            {
+                throw new ArgumentOutOfRangeException(nameof(slot),
+                    $"Adventure save slots are 1-{SlotCount}.");
+            }
+
             Menu.SaveSlot = slot;
             if (newGame)
             {
                 // A new game must not inherit the slot's old progress, and
                 // must not write over it until the player actually saves.
-                GameState.StartNewSave();
+                state.StartNewSave();
             }
             else
             {
-                GameState.LoadSave();
+                state.LoadSave();
             }
-            return StartRoom(GameState.StorySave);
+            return StartRoom(state.StorySave);
         }
 
         /// <summary>
