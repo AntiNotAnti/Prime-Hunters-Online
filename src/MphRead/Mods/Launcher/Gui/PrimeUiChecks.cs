@@ -270,6 +270,16 @@ namespace MphRead.Mods.Launcher.Gui
                     Check(shell.IsVisible && shell.IsEnabled && ReferenceEquals(header, shell.Header)
                         && !front.GetVisualDescendants().OfType<PrimeStartupScreen>().Any(),
                         "Enter reveals the same mounted shell and removes startup");
+                    shell.Overlays.Clear();
+                    shell.Router.Navigate(PrimeRoute.News);
+                    FocusNavigator.Key(FocusNavigator.Ensure(shell)!, Key.Escape);
+                    Drain(window);
+                    Check(shell.Overlays.GetVisualDescendants().OfType<ConfirmScreen>().Any(),
+                        "Escape on the main screen opens quit confirmation");
+                    FocusNavigator.Key(FocusNavigator.Ensure(shell.Overlays)!, Key.Escape);
+                    Drain(window);
+                    Check(!shell.Overlays.IsOpen && shell.Router.Current == PrimeRoute.News,
+                        "cancelling quit stays on the main screen");
                     startup.Continue(); front.Reset(); Drain(window);
                     Check(shell.IsVisible && !front.GetVisualDescendants().OfType<PrimeStartupScreen>().Any(),
                         "repeat input and match return never reopen startup");

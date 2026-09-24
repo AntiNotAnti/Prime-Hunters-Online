@@ -50,7 +50,15 @@ namespace MphRead.Mods.Launcher.Gui
             _prime.BackRequested = () =>
             {
                 if (_prime.Router.Current == PrimeRoute.Lobby)
-                { _prime.Router.Navigate(PrimeRoute.News); return true; }
+                {
+                    _prime.Router.Navigate(PrimeRoute.News);
+                    return true;
+                }
+                if (_prime.Router.Current == PrimeRoute.News)
+                {
+                    AskToQuit();
+                    return true;
+                }
                 return false;
             };
             _session.IsForeground = () => _prime.Router.Current == PrimeRoute.Lobby;
@@ -308,7 +316,7 @@ namespace MphRead.Mods.Launcher.Gui
 #else
             const string prompt = "Quit Project Prime?";
 #endif
-            var view = new ConfirmScreen(prompt);
+            var view = new ConfirmScreen(prompt, yes: "exit game", no: "cancel");
             view.Answered += (_, yes) =>
             {
                 Pop(); if (!yes) return;
