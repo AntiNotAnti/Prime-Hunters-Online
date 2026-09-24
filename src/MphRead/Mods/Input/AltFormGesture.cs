@@ -39,9 +39,77 @@ namespace MphRead.Mods.Input
         };
 
         /// <summary>
+        /// Convert anchored screen-space displacement to an analogue virtual
+        /// stick. The dead zone stays physically stable while sensitivity
+        /// changes the travel required to reach full deflection.
+        /// </summary>
+        public static (float X, float Y) Drive(float x, float y, float deadZone,
+            float fullScale, float sensitivity)
+        {
+            if (!Single.IsFinite(x) || !Single.IsFinite(y)
+                || !Single.IsFinite(deadZone) || !Single.IsFinite(fullScale))
+            {
+                return (0, 0);
+            }
+            deadZone = MathF.Max(0, deadZone);
+            sensitivity = Single.IsFinite(sensitivity)
+                ? Math.Clamp(sensitivity, 0.25f, 4f) : 1f;
+            fullScale = MathF.Max(deadZone + 0.001f, fullScale / sensitivity);
+
+            float lengthSq = x * x + y * y;
+            if (!Single.IsFinite(lengthSq) || lengthSq <= deadZone * deadZone)
+            {
+                return (0, 0);
+            }
+            float length = MathF.Sqrt(lengthSq);
+            float magnitude = Math.Clamp((length - deadZone) / (fullScale - deadZone), 0, 1);
+            return (x / length * magnitude, y / length * magnitude);
+        }
+
+        /// <summary>
+        /// Direct-control velocity for the normal rolling-speed envelope.
+        /// Boosts and other large impulses deliberately fall outside that
+        /// envelope so precise swipe steering cannot erase them.
+        /// </summary>
+        public static bool TryPrecisionVelocity(float currentX, float currentZ,
+            float driveX, float driveZ, float normalSpeed, out float x, out float z)
+        {
+            x = currentX;
+            z = currentZ;
+            if (!Single.IsFinite(currentX) || !Single.IsFinite(currentZ)
+                || !Single.IsFinite(driveX) || !Single.IsFinite(driveZ)
+                || !Single.IsFinite(normalSpeed) || normalSpeed <= 0)
+            {
+                return false;
+            }
+
+            float currentSq = currentX * currentX + currentZ * currentZ;
+            float controlledLimit = normalSpeed * 1.25f;
+            if (!Single.IsFinite(currentSq) || currentSq > controlledLimit * controlledLimit)
+            {
+                return false;
+            }
+
+            float driveSq = driveX * driveX + driveZ * driveZ;
+            if (!Single.IsFinite(driveSq))
+            {
+                return false;
+            }
+            if (driveSq > 1)
+            {
+                float inv = 1f / MathF.Sqrt(driveSq);
+                driveX *= inv;
+                driveZ *= inv;
+            }
+            x = driveX * normalSpeed;
+            z = driveZ * normalSpeed;
+            return true;
+        }
+
+        /// <summary>
         /// Convert a screen-space drag (X right, Y down) to the engine's
-        /// eight-way digital movement surface. The caller chooses a dead zone
-        /// in its own coordinate system.
+        /// eight-way digital movement surface. Kept for input diagnostics and
+        /// any discrete callers; precision swipe movement uses <see cref="Drive"/>.
         /// </summary>
         public static AltMoveDirection Direction(float x, float y, float deadZone)
         {

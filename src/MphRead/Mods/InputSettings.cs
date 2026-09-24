@@ -65,6 +65,23 @@ namespace MphRead.Mods
         /// </summary>
         public static bool StylusMovementBoost { get; set; } = true;
 
+        public const float MinAltSwipeSensitivity = 0.5f;
+        public const float MaxAltSwipeSensitivity = 2f;
+        private static float _altSwipeSensitivity = 1f;
+
+        /// <summary>
+        /// Response of the aim-side touch/pen drag while a rolling hunter is in
+        /// alternate form. This changes how quickly the virtual stick reaches
+        /// full deflection; the fast-flick boost/attack threshold stays separate.
+        /// </summary>
+        public static float AltSwipeSensitivity
+        {
+            get => _altSwipeSensitivity;
+            set => _altSwipeSensitivity = Single.IsFinite(value)
+                ? Math.Clamp(value, MinAltSwipeSensitivity, MaxAltSwipeSensitivity)
+                : 1f;
+        }
+
         /// <summary>
         /// Whether the wheel cycles every weapon or only the affinity slots.
         ///
@@ -433,6 +450,13 @@ namespace MphRead.Mods
                         StylusMovementBoost = stylusMovementBoost;
                         continue;
                     }
+                    if (key == "alt_swipe_sensitivity"
+                        && Single.TryParse(value, NumberStyles.Float,
+                            CultureInfo.InvariantCulture, out float altSwipeSensitivity))
+                    {
+                        AltSwipeSensitivity = altSwipeSensitivity;
+                        continue;
+                    }
                     if (key == "pointer_jump_guard" && Boolean.TryParse(value, out bool guardJumps))
                     {
                         legacyGuard = guardJumps;
@@ -679,6 +703,7 @@ namespace MphRead.Mods
                     $"invert_x={InvertMouseX.ToString().ToLowerInvariant()}",
                     $"mouse_movement_boost={MouseMovementBoost.ToString().ToLowerInvariant()}",
                     $"stylus_movement_boost={StylusMovementBoost.ToString().ToLowerInvariant()}",
+                    $"alt_swipe_sensitivity={AltSwipeSensitivity.ToString("0.###", CultureInfo.InvariantCulture)}",
                     $"scroll_all_weapons={ScrollAllWeapons.ToString().ToLowerInvariant()}",
                     $"stylus_mode={Input.PointerInput.StylusMode.ToString().ToLowerInvariant()}",
                     $"pointer_jump_guard={Input.PointerInput.GuardJumps.ToString().ToLowerInvariant()}",
@@ -760,6 +785,7 @@ namespace MphRead.Mods
             InvertMouseX = false;
             MouseMovementBoost = true;
             StylusMovementBoost = true;
+            AltSwipeSensitivity = 1f;
             ScrollAllWeapons = true;
             ChatKey = Keys.T;
             ClipKey = Keys.F10;

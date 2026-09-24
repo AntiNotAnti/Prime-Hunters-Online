@@ -98,9 +98,11 @@ namespace MphRead.Entities
             }
             else
             {
-                // A pointer gesture made on foot must never survive into a
-                // later morph and fire an ability the player did not just ask for.
+                // Pointer gestures made on foot must never survive into a
+                // later morph and fire or steer an ability the player did not
+                // just ask for.
                 ModClearAltFlick();
+                ModResetAltSwipeDrive();
                 ProcessBiped();
             }
         }
@@ -1508,7 +1510,6 @@ namespace MphRead.Entities
                 else
                 {
                     // Samus, Kanden, Spire, Noxus
-                    // todo: touch roll
                     float traction = Fixed.ToFloat(Values.RollAltTraction);
                     if (_jumpPadControlLockMin > 0)
                     {
@@ -1525,25 +1526,68 @@ namespace MphRead.Entities
                     {
                         traction = 0;
                     }
-                    if (Controls.RollUp.IsDown)
+
+                    bool explicitRoll = Controls.RollUp.IsDown || Controls.RollDown.IsDown
+                        || Controls.RolltLeft.IsDown || Controls.RollRight.IsDown;
+                    bool swipeRequested = Input.AltSwipeEngaged || Input.AltSwipeStopRequested;
+                    bool preciseSwipe = swipeRequested && !explicitRoll
+                        && IsAltForm && !IsMorphing && !IsUnmorphing
+                        && _boostAimLock == 0
+                        && !Flags1.TestFlag(PlayerFlags1.Boosting)
+                        && _jumpPadControlLockMin == 0 && AttachedEnemy == null;
+                    if (preciseSwipe)
                     {
-                        speedDelta.X += _altRollFbX * traction;
-                        speedDelta.Z += _altRollFbZ * traction;
+                        float screenX = Input.AltSwipeEngaged ? Input.AltSwipeX : 0;
+                        float screenY = Input.AltSwipeEngaged ? Input.AltSwipeY : 0;
+                        float forward = -screenY;
+                        float left = -screenX;
+                        float driveX = _altRollFbX * forward + _altRollLrX * left;
+                        float driveZ = _altRollFbZ * forward + _altRollLrZ * left;
+                        float normalSpeed = Fixed.ToFloat(Values.AltMinHSpeed);
+                        if (Mods.Input.AltFormGesture.TryPrecisionVelocity(
+                            Speed.X, Speed.Z, driveX, driveZ, normalSpeed,
+                            out float preciseX, out float preciseZ))
+                        {
+                            // Normal rolling velocity belongs directly to the
+                            // finger while this source owns movement: returning
+                            // to centre stops now, and crossing the anchor flips
+                            // direction in the same simulation step.
+                            Speed = Speed.WithX(preciseX).WithZ(preciseZ);
+                        }
+                        else if (Input.AltSwipeEngaged)
+                        {
+                            // High-speed external motion (boost/knockback) is
+                            // not disposable input velocity. Above the normal
+                            // envelope, fall back to cartridge-style traction
+                            // so the player can steer it without deleting it.
+                            speedDelta.X += driveX * traction;
+                            speedDelta.Z += driveZ * traction;
+                        }
                     }
-                    else if (Controls.RollDown.IsDown)
+                    Input.AltSwipeStopRequested = false;
+
+                    if (!preciseSwipe)
                     {
-                        speedDelta.X -= _altRollFbX * traction;
-                        speedDelta.Z -= _altRollFbZ * traction;
-                    }
-                    if (Controls.RolltLeft.IsDown)
-                    {
-                        speedDelta.X += _altRollLrX * traction;
-                        speedDelta.Z += _altRollLrZ * traction;
-                    }
-                    else if (Controls.RollRight.IsDown)
-                    {
-                        speedDelta.X -= _altRollLrX * traction;
-                        speedDelta.Z -= _altRollLrZ * traction;
+                        if (Controls.RollUp.IsDown)
+                        {
+                            speedDelta.X += _altRollFbX * traction;
+                            speedDelta.Z += _altRollFbZ * traction;
+                        }
+                        else if (Controls.RollDown.IsDown)
+                        {
+                            speedDelta.X -= _altRollFbX * traction;
+                            speedDelta.Z -= _altRollFbZ * traction;
+                        }
+                        if (Controls.RolltLeft.IsDown)
+                        {
+                            speedDelta.X += _altRollLrX * traction;
+                            speedDelta.Z += _altRollLrZ * traction;
+                        }
+                        else if (Controls.RollRight.IsDown)
+                        {
+                            speedDelta.X -= _altRollLrX * traction;
+                            speedDelta.Z -= _altRollLrZ * traction;
+                        }
                     }
                 }
                 if (!IsMorphing)
@@ -2612,6 +2656,7 @@ namespace MphRead.Entities
                     // press history. Android's swipe request is already queued
                     // by GameView; desktop mouse/pen flicks are detected here.
                     player.ModApplyStylusAltMove();
+                    player.ModMarkAltSwipeInput();
                     player.ModPrepareAltFlick();
                 }
                 player._ignoreClick = false;
@@ -2681,6 +2726,27 @@ namespace MphRead.Entities
             public float PointerY => Mods.Input.PointerDevice.Active
                 ? Mods.Input.PointerDevice.Current.Y : MouseState?.Y ?? 0;
             public long ContextRevision { get; set; } = Mods.Input.GamepadContexts.Revision;
+
+            // Transient local-only precision steering. Movement position is
+            // owner-reported, so none of this belongs in the network protocol
+            // or replay checkpoint schema.
+            public bool AltSwipeEngaged { get; set; }
+            public bool AltSwipeStopRequested { get; set; }
+            public float AltSwipeX { get; set; }
+            public float AltSwipeY { get; set; }
+            public bool StylusAltTracking { get; set; }
+            public float StylusAltOriginX { get; set; }
+            public float StylusAltOriginY { get; set; }
+
+            public void ResetAltSwipe()
+            {
+                AltSwipeEngaged = false;
+                AltSwipeStopRequested = false;
+                AltSwipeX = AltSwipeY = 0;
+                StylusAltTracking = false;
+                StylusAltOriginX = StylusAltOriginY = 0;
+            }
+
             private bool _loggedCapture;
 
             /// <summary>
@@ -2701,6 +2767,7 @@ namespace MphRead.Entities
                 MouseDeltaX = MouseDeltaY = 0;
                 ClickX = ClickY = -1;
                 StylusWeaponMenuDown = false;
+                ResetAltSwipe();
                 HasInput = false;
             }
 
