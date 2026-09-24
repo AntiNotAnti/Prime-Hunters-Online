@@ -1895,7 +1895,7 @@ namespace MphRead.Entities
                 afflictions: beam != null && !ignoreDamage && !flags.TestFlag(DamageFlags.Halfturret)
                     ? beam.Afflictions : Affliction.None);
             if (attacker != this)
-                Mods.Input.AimAssist.AimAssistTelemetry.Hit(attacker, beam?.Beam ?? BeamType.None, damage);
+                Mods.Input.AimAssist.AimAssistTelemetry.Hit(attacker, beam?.Beam ?? BeamType.None, damage, flags);
             bool dead = false;
             if (IsBot && _scene.GameState.SinglePlayer && AiData.Flags1 && _health <= AiData.HealthThreshold)
             {

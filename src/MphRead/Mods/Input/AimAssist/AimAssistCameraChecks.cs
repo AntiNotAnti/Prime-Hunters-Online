@@ -39,6 +39,19 @@ namespace MphRead.Mods.Input.AimAssist
                     return MathHelper.RadiansToDegrees(MathF.Atan2(direction.X, direction.Z));
                 }
 
+                Reset();
+                float height = Fixed.ToFloat(player.Values.MaxPickupHeight);
+                player.CameraInfo.Position = player.Position + new Vector3(0, height - .15f, -10);
+                MethodInfo project = typeof(PlayerEntity).GetMethod("AssistRegion", flags)!;
+                var headRegion = (AimAssistRegion)project.Invoke(player, new object[] { player, height - .3f, height, .5f })!;
+                GamepadChecks.Check(AimAssistMath.InsideRegion(headRegion), "aim camera: projected head center is valid");
+                Near(headRegion.MaxYaw, MathHelper.RadiansToDegrees(MathF.Asin(.5f / 10)),
+                    "head width derives from collision radius");
+                Near(headRegion.MinPitch, -MathHelper.RadiansToDegrees(MathF.Atan2(.15f, 9.5f)),
+                    "lower head bound projects mechanical band");
+                Near(headRegion.MaxPitch, MathHelper.RadiansToDegrees(MathF.Atan2(.15f, 9.5f)),
+                    "upper head bound projects mechanical band");
+
                 player.EquipInfo.Zoomed = true;
                 player.CameraInfo.Fov = Fixed.ToFloat(player.Values.NormalFov) * 2 * .25f;
                 Reset();

@@ -117,26 +117,21 @@ namespace MphRead.Mods.Input
         /// is where console shooters have sat since they settled the question.
         /// </summary>
         private const float TurnRate = 3.5f;
-        private const float TurnAccelerationThreshold = .85f;
-        private const int TurnAccelerationDelayFrames = 9;
-        private const int TurnAccelerationRampFrames = 12;
+        private static System.Numerics.Vector2 _filteredAimStick;
         private const float TurnAccelerationMax = 1.5f;
-        private static int _outerAimFrames;
         private static float _turnRateScale = 1;
 
         private static void ResetAimRamp()
         {
-            _outerAimFrames = 0;
+            _filteredAimStick = default;
             _turnRateScale = 1;
         }
 
         private static void UpdateAimRamp(float magnitude)
         {
-            if (magnitude > TurnAccelerationThreshold) _outerAimFrames++;
-            else _outerAimFrames = 0;
-            float ramp = Math.Clamp((_outerAimFrames - TurnAccelerationDelayFrames)
-                / (float)TurnAccelerationRampFrames, 0, 1);
-            _turnRateScale = 1 + (TurnAccelerationMax - 1) * ramp;
+            float outer = Math.Clamp((magnitude - .8f) / .2f, 0, 1);
+            float desired = 1 + (TurnAccelerationMax - 1) * outer * outer;
+            _turnRateScale += (desired - _turnRateScale) * (1 - MathF.Exp(-8f / 60));
         }
 
         /// <summary>
@@ -228,6 +223,8 @@ namespace MphRead.Mods.Input
             var (x, y) = AimStick;
             float magnitude = MathF.Sqrt(x * x + y * y);
             UpdateAimRamp(magnitude);
+            _filteredAimStick = GamepadAnalog.FilterAim(_filteredAimStick, new(x, y), 1f / 60);
+            (x, y) = (_filteredAimStick.X, _filteredAimStick.Y);
             (x, y) = GamepadAnalog.ApplyRadialResponseCurve(x, y, GamepadOptions.Curve);
             AimDeltaX = -x * TurnRate * _turnRateScale * GamepadOptions.LookX
                 * (GamepadOptions.InvertX ? -1 : 1);

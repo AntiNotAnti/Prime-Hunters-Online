@@ -29,6 +29,45 @@ namespace MphRead.Entities
                 - MathF.Atan2(_gunVec1.Y, MathF.Sqrt(_gunVec1.X * _gunVec1.X + _gunVec1.Z * _gunVec1.Z));
             return new(MathHelper.RadiansToDegrees(yaw), MathHelper.RadiansToDegrees(pitch));
         }
+        // Project the full cylinder silhouette. Destination rays are checked against
+        // its real vertical band so rectangular projection corners cannot create headshots.
+        private AimAssistRegion AssistRegion(PlayerEntity target, float lower, float upper, float radius)
+        {
+            Vector3 offset = target.Position - CameraInfo.Position;
+            float horizontal = MathF.Sqrt(offset.X * offset.X + offset.Z * offset.Z);
+            float near = Math.Max(.001f, horizontal - radius), far = horizontal + radius;
+            float yaw = AssistAngles(target.Position).X;
+            float half = MathHelper.RadiansToDegrees(MathF.Asin(Math.Clamp(radius / Math.Max(radius, horizontal), 0, 1)));
+            float cameraPitch = MathF.Atan2(_gunVec1.Y, MathF.Sqrt(_gunVec1.X * _gunVec1.X + _gunVec1.Z * _gunVec1.Z));
+            float low = offset.Y + lower, high = offset.Y + upper;
+            float min = Math.Min(MathF.Atan2(low, near), MathF.Atan2(low, far));
+            float max = Math.Max(MathF.Atan2(high, near), MathF.Atan2(high, far));
+            return new(yaw - half, yaw + half, MathHelper.RadiansToDegrees(min - cameraPitch),
+                MathHelper.RadiansToDegrees(max - cameraPitch));
+        }
+
+        private bool AssistRegionVisible(PlayerEntity target, AimAssistRegion region, float lower, float upper)
+        {
+            // Check the actual nearest/inset destination as well as the center. A
+            // visible center alone must not permit a finishing flick around cover.
+            var error = AimAssistMath.InsideRegion(region) ? System.Numerics.Vector2.Zero
+                : AimAssistMath.RegionError(region.Inset(.15f));
+            float yaw = MathF.Atan2(_gunVec1.X, _gunVec1.Z) + MathHelper.DegreesToRadians(error.X);
+            float pitch = MathF.Atan2(_gunVec1.Y, MathF.Sqrt(_gunVec1.X * _gunVec1.X + _gunVec1.Z * _gunVec1.Z))
+                + MathHelper.DegreesToRadians(error.Y);
+            Vector3 direction = new(MathF.Sin(yaw) * MathF.Cos(pitch), MathF.Sin(pitch), MathF.Cos(yaw) * MathF.Cos(pitch));
+            Vector3 offset = CameraInfo.Position - target.Position;
+            float a = direction.X * direction.X + direction.Z * direction.Z;
+            float b = offset.X * direction.X + offset.Z * direction.Z;
+            float c = offset.X * offset.X + offset.Z * offset.Z - target.Volume.SphereRadius * target.Volume.SphereRadius;
+            float discriminant = b * b - a * c;
+            if (a <= .000001f || discriminant < 0) return false;
+            float distance = (-b - MathF.Sqrt(discriminant)) / a;
+            Vector3 impact = CameraInfo.Position + direction * distance;
+            float impactHeight = impact.Y - target.Position.Y;
+            return distance > 0 && impactHeight >= lower && impactHeight <= upper && AssistVisible(impact);
+        }
+
         private bool AssistVisible(Vector3 point)
         {
             CollisionResult result = default;
@@ -86,13 +125,17 @@ namespace MphRead.Entities
                 Vector3 chest = target.IsAltForm ? center
                     : Vector3.Lerp(center, target.Position + new Vector3(0, height - .3f, 0), .65f);
                 Vector3 head = target.Position + new Vector3(0, height - .15f, 0);
-                float distance = (chest - CameraInfo.Position).Length;
+                float distance = (head - CameraInfo.Position).Length;
+                float radius = target.Volume.SphereRadius;
+                var bodyRegion = AssistRegion(target, target.IsAltForm ? volume.SpherePosition.Y - radius
+                    : Fixed.ToFloat(target.Values.MinPickupHeight), target.IsAltForm ? volume.SpherePosition.Y + radius : height, radius);
+                var headRegion = AssistRegion(target, height - .3f, height, radius);
                 var bodyError = AssistAngles(chest);
                 var headError = AssistAngles(head);
                 if (!AimAssistMath.Finite(bodyError) || !float.IsFinite(distance) || distance > 60
-                    || (bodyError.Length() > profile.ReleaseCone
+                    || (AimAssistMath.RegionDistance(bodyRegion) > profile.ReleaseCone
                         && (!profile.Head || target.IsAltForm || !AimAssistMath.Finite(headError)
-                            || headError.Length() > profile.ReleaseCone))) continue;
+                            || AimAssistMath.RegionDistance(headRegion) > profile.ReleaseCone))) continue;
 
                 long targetLife = NetSession.Active
                     ? ((long)NetPlayerLifecycle.Generation(target.SlotIndex) << 16)
@@ -100,17 +143,20 @@ namespace MphRead.Entities
                     : 0;
                 bool retained = target.SlotIndex == _controllerAssist.TargetSlot
                     && targetLife == _controllerAssist.TargetLife;
-                bool visible = AssistVisible(chest);
+                bool visible = AssistVisible(chest) && (target.IsAltForm || AssistRegionVisible(target, bodyRegion, Fixed.ToFloat(target.Values.MinPickupHeight), height));
                 bool headVisible = !target.IsAltForm && profile.Head
                     && AimAssistMath.Finite(headError)
-                    && headError.Length() <= profile.ReleaseCone
-                    && AssistVisible(head);
+                    && AimAssistMath.RegionDistance(headRegion) <= profile.ReleaseCone
+                    && headRegion.MaxPitch > headRegion.MinPitch
+                    && AimAssistMath.CanHeadshotAtDistance(CurrentWeapon, distance) && AssistVisible(head)
+                    && AssistRegionVisible(target, headRegion, height - .3f, height);
                 if (!visible && !headVisible && !retained) continue;
                 candidates[count++] = new(target.SlotIndex, targetLife, bodyError, headError, distance,
                     visible, headVisible,
                     BodyPointType: target.IsAltForm ? AimAssistPointType.CenterMass : AimAssistPointType.UpperChest,
                     // Half the 0.3-unit headshot band used by BeamProjectileEntity.
-                    HeadRadiusDegrees: MathHelper.RadiansToDegrees(MathF.Atan2(.15f, (head - CameraInfo.Position).Length)));
+                    HeadRadiusDegrees: MathHelper.RadiansToDegrees(MathF.Atan2(.15f, (head - CameraInfo.Position).Length)),
+                    BodyRegion: bodyRegion, HeadRegion: headRegion);
                 if (count == candidates.Length) break;
             }
             var pad = snapshot.State;
@@ -119,8 +165,9 @@ namespace MphRead.Entities
                 : GamepadAnalog.ApplyRadialDeadZone(pad.LeftX, pad.LeftY, GamepadOptions.LeftInner, GamepadOptions.LeftOuter);
             float move = MathF.Sqrt(movement.X * movement.X + movement.Y * movement.Y);
             // The engine's input/simulation step is fixed at 60 Hz; render rate does not change this interval.
-            var result = AimAssist.Apply(_controllerAssist, candidates[..count], new(x, y), MathF.Sqrt(aim.X * aim.X + aim.Y * aim.Y),
-                move, 1f / 60, eligible, profile);
+            var result = AimAssist.Apply(_controllerAssist, candidates[..count], new(x, y), new System.Numerics.Vector2(-aim.X * (GamepadOptions.InvertX != Controls.InvertAimX ? -1 : 1),
+                    aim.Y * (GamepadOptions.InvertY != Controls.InvertAimY ? -1 : 1)),
+                move, 1f / 60, eligible, profile, Controls.Shoot.IsDown);
             AimAssistTarget chosen = default;
             foreach (ref readonly var candidate in candidates[..count]) if (candidate.Slot == result.TargetSlot) chosen = candidate;
             if (AimAssistDebug.UnassistedArm)
@@ -128,7 +175,9 @@ namespace MphRead.Entities
                 result = result with
                 {
                     X = x, Y = y, Friction = 1, RotationStrength = 0, HeadBlend = 0,
-                    PointType = chosen.BodyPointType, HeadPrediction = 0, Occluded = false, Saturated = false
+                    PointType = chosen.BodyPointType, HeadPrediction = 0, Occluded = false, Saturated = false,
+                    PositionCorrection = default, TrackingCorrection = default, StrafeTracking = false,
+                    TrackingState = result.TargetSlot < 0 ? AimAssistTrackingState.None : AimAssistTrackingState.TrackingBody
                 };
                 _controllerAssist.PreviousOutput = new(x, y);
             }

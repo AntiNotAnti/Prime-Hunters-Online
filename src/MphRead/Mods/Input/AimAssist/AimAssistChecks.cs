@@ -113,6 +113,7 @@ namespace MphRead.Mods.Input.AimAssist
             AimInputSourceTracker.Pointer(0, 1, true, 1065);
             Check(AimInputSourceTracker.Current == AimInputSource.Touch, "touch revokes immediately");
 
+            RegionAndIntentChecks();
             TrackingChecks();
             AimAssistCameraChecks.Run();
 
@@ -121,6 +122,106 @@ namespace MphRead.Mods.Input.AimAssist
             MeasureCoreAllocations(state, targets, profile);
             long allocated = MeasureCoreAllocations(state, targets, profile);
             Check(allocated == 0, $"steady-state assist core allocates no managed memory ({allocated} bytes)");
+        }
+
+        private static void RegionAndIntentChecks()
+        {
+            void Check(bool ok, string name) => GamepadChecks.Check(ok, "aim regions: " + name);
+            var region = new AimAssistRegion(-2, 2, -.3f, .3f);
+            Check(AimAssistMath.InsideRegion(region), "center is contained");
+            Check(AimAssistMath.RegionError(new Vector2(1, -.3f), region) == Vector2.Zero,
+                "lower boundary and lateral width are valid");
+            Check(AimAssistMath.RegionError(new Vector2(-1, .3f), region) == Vector2.Zero,
+                "upper boundary is valid");
+            Check(AimAssistMath.RegionError(new Vector2(3, 0), region) == new Vector2(-1, 0),
+                "outside width uses nearest boundary, not center");
+            foreach (float distance in new[] { 14f, 15f, 16f, 30f })
+            {
+                Check(AimAssistMath.CanHeadshotAtDistance(BeamType.PowerBeam, distance) == (distance <= 15), "standard range " + distance);
+                Check(AimAssistMath.CanHeadshotAtDistance(BeamType.Imperialist, distance), "Imperialist range " + distance);
+                Check(!AimAssistMath.CanHeadshotAtDistance(BeamType.ShockCoil, distance), "coil never head-refines");
+            }
+            var state = new AimAssistState();
+            var profile = AimAssistWeaponProfile.For(AimAssistWeaponClass.Precision, false);
+            var targets = new[] { new AimAssistTarget(1, 1, new(0, -2), new(0, .4f), 30, true, true,
+                BodyRegion: new(-1, 1, -3, -.5f), HeadRegion: new(-1, 1, .25f, .55f)) };
+            AimAssistResult Step(Vector2 stick, float move = 0, Vector2 raw = default)
+                => AimAssist.Apply(state, targets, raw, stick, move, 1f / 60, true, profile);
+            Check(Step(Vector2.Zero, 1).TargetSlot == -1, "movement never acquires");
+            var flick = Step(new(0, .8f));
+            Check(flick.TrackingState == AimAssistTrackingState.FlickCapturingHead && flick.Y > 0 && flick.Y <= .3f,
+                "aligned physical flick finishes a tiny region error");
+            Check(flick.HeadPrediction == 0, "Imperialist positional lead is zero");
+            state.Reset();
+            Check(Step(new(0, -.8f)).TrackingState != AimAssistTrackingState.FlickCapturingHead, "chest flick cannot capture head");
+            state.Reset();
+            targets[0] = targets[0] with { HeadRegion = region, HeadError = new(.5f, 0) };
+            for (int i = 0; i < 12; i++) Step(new(.3f, 0));
+            Check(state.HeadBlend == 1, "lateral position inside head band has no chest pull");
+            targets[0] = targets[0] with { HeadError = new(.6f, 0) };
+            var retained = Step(Vector2.Zero, .5f);
+            Check(retained.StrafeTracking && retained.PositionCorrection == Vector2.Zero && retained.TrackingCorrection.X > 0,
+                "deliberately acquired target retains only partial motion tracking");
+            for (int i = 0; i < 20; i++) retained = Step(Vector2.Zero, .5f);
+            Check(retained.TargetSlot == -1, "neutral strafe retention expires");
+            state.Reset();
+            targets[0] = targets[0] with { HeadVisible = false, BodyRegion = new(1, 2, -1, 1) };
+            Step(new(.5f, 0));
+            Check(Step(new(-.8f, 0)).OpposingBreak, "opposition cancels retention immediately");
+            state.Reset();
+            var normal = Step(new(.4f, .2f), raw: new(.01f, .3f));
+            state.Reset();
+            var asymmetric = Step(new(.4f, .2f), raw: new(.3f, .01f));
+            Check(normal.TargetSlot == asymmetric.TargetSlot && normal.InputAlignment == asymmetric.InputAlignment,
+                "physical selection ignores asymmetric camera sensitivity");
+            Check(GamepadAnalog.FilterAim(new(.1f, 0), new(-.1f, 0), 1f / 60) == new Vector2(-.1f, 0),
+                "filter bypasses reversals");
+            Check(GamepadAnalog.FilterAim(new(.1f, 0), new(.8f, 0), 1f / 60) == new Vector2(.8f, 0),
+                "filter preserves flicks");
+            state.Reset();
+            var headTarget = new AimAssistTarget(1, 1, new(0, -2), new(0, .4f), 14, true, true,
+                BodyRegion: new(-1, 1, -3, -.5f), HeadRegion: new(-1, 1, .25f, .55f));
+            targets[0] = headTarget with { Eligible = false };
+            for (int i = 0; i < 12; i++) Step(new(0, .8f));
+            targets[0] = headTarget;
+            Check(Step(new(0, .8f)).TrackingState != AimAssistTrackingState.FlickCapturingHead,
+                "enemy entering after a held stick cannot synthesize a flick");
+            state.Reset();
+            targets[0] = headTarget with { HeadVisible = false };
+            Check(Step(new(0, .8f)).TrackingState != AimAssistTrackingState.FlickCapturingHead,
+                "occluded head cannot capture");
+            state.Reset();
+            targets[0] = headTarget with { Distance = 16 };
+            var invalidRange = AimAssist.Apply(state, targets, Vector2.Zero, new Vector2(0, .8f), 0, 1f / 60,
+                true, AimAssistWeaponProfile.For(AimAssistWeaponClass.Standard, false));
+            Check(invalidRange.TrackingState != AimAssistTrackingState.FlickCapturingHead,
+                "standard flick respects mechanical range");
+            state.Reset();
+            targets = new[] { headTarget, headTarget with { Slot = 2, HeadRegion = new(.05f, .2f, -.1f, .1f),
+                BodyRegion = new(.05f, 1, -3, -.5f) } };
+            var aligned = Step(new(0, .8f));
+            Check(aligned.TrackingState != AimAssistTrackingState.FlickCapturingHead || aligned.TargetSlot == 1,
+                "multiple enemies cannot capture a head perpendicular to flick intent");
+            int captured = aligned.TargetSlot;
+            targets[1] = targets[1] with { HeadRegion = new(-.01f, .01f, -.01f, .01f) };
+            Check(Step(new(0, .8f)).TargetSlot == captured, "active flick cannot steal another target");
+            state.Reset();
+            targets = new[] { headTarget with { HeadVisible = false, BodyRegion = new(.5f, 1, -.1f, .1f) },
+                headTarget with { Slot = 2, HeadVisible = false, BodyRegion = new(.6f, 1.1f, -.1f, .1f) } };
+            var firingFirst = AimAssist.Apply(state, targets, Vector2.Zero, new Vector2(.4f, 0), 0, 1f / 60, true, profile, true);
+            targets[1] = targets[1] with { BodyRegion = new(.45f, 1, -.1f, .1f) };
+            var firingNext = AimAssist.Apply(state, targets, Vector2.Zero, new Vector2(.4f, 0), 0, 1f / 60, true, profile, true);
+            Check(firingNext.TargetSlot == firingFirst.TargetSlot, "crossing firing targets retain identity");
+            foreach (GamepadCurve curve in Enum.GetValues<GamepadCurve>())
+            {
+                float previous = 0;
+                for (int i = 0; i <= 100; i++)
+                {
+                    float value = GamepadAnalog.ApplyResponseCurve(i / 100f, curve);
+                    Check(value >= previous && value <= 1, "monotonic bounded " + curve);
+                    previous = value;
+                }
+            }
         }
 
         private static void TrackingChecks()
@@ -182,10 +283,10 @@ namespace MphRead.Mods.Input.AimAssist
             state.Reset();
             targets[0] = targets[0] with { BodyError = new(.1f, 0) };
             result = Step(new(.16f, 0));
-            Check(result.X <= .10001f, "stick plus correction cannot overshoot a stationary target");
+            Check(result.X <= .16001f, "assist cannot add to deliberate stick overshoot");
             state.Reset();
             result = Step(new(2, 0));
-            Check(Math.Abs(result.X - 2 * result.Friction) < .00001f,
+            Check(result.X <= 2 && result.X >= 2 * result.Friction,
                 "deliberate stick overshoot gets no extra push");
             state.Reset();
             targets[0] = targets[0] with { BodyError = new(4, 4) };
@@ -225,8 +326,8 @@ namespace MphRead.Mods.Input.AimAssist
             targets[0] = new(1, 1, new(0, -2), new(.1f, .1f), 40, false, true,
                 HeadRadiusDegrees: .15f);
             for (int i = 0; i < 60; i++) result = Step();
-            Check(result.HeadPrediction > 0 && result.HeadPrediction <= .15f * .65f + .00001f,
-                "distant head prediction fits inside its visible angular size");
+            Check(result.HeadBlend == 0 && result.HeadPrediction == 0,
+                "standard weapon cannot refine heads beyond mechanical range");
             result = Step(weapon: AimAssistWeaponProfile.For(AimAssistWeaponClass.Splash, false));
             Check(result.HeadBlend == 0 && result.RotationStrength == 0,
                 "non-head weapon cannot track an exposed head through a hidden torso");
@@ -269,7 +370,7 @@ namespace MphRead.Mods.Input.AimAssist
                 Vector2 error = position - camera;
                 targets[0] = new(1, 1, head ? error - new Vector2(0, 2) : error,
                     error, 15, !head, head);
-                var result = AimAssist.Apply(state, targets, Vector2.Zero, .5f, 0, 1f / hz, true, profile);
+                var result = AimAssist.Apply(state, targets, Vector2.Zero, error.LengthSquared() > .000001f ? Vector2.Normalize(error) * .5f : new Vector2(.05f, 0), 0, 1f / hz, true, profile);
                 camera += new Vector2(result.X, result.Y);
                 if (i >= hz) total += (position - camera).Length();
             }

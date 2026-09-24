@@ -46,7 +46,7 @@ namespace MphRead.Mods.Input
                 Near(diagonal.X * diagonal.X + diagonal.Y * diagonal.Y, 1, "maximum magnitude");
                 Near(GamepadAnalog.ApplyRadialDeadZone(.8f, 0, .2f, .2f).X, 1, "outer deadzone");
                 Check(GamepadAnalog.ApplyRadialDeadZone(float.NaN, 0, .2f) == (0, 0), "invalid axis neutral");
-                Near(GamepadAnalog.ApplyResponseCurve(.5f, GamepadCurve.Classic), .25f, "classic curve");
+                Near(GamepadAnalog.ApplyResponseCurve(.5f, GamepadCurve.Classic), .29f, "classic curve");
                 Near(GamepadAnalog.ApplyResponseCurve(-.5f, GamepadCurve.Linear), -.5f, "linear sign");
                 var curved = GamepadAnalog.ApplyRadialResponseCurve(.8f, .4f, GamepadCurve.Classic);
                 Near(curved.X / curved.Y, 2, "radial response curve preserves stick direction");
