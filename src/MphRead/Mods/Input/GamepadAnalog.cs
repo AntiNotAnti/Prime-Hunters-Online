@@ -26,14 +26,14 @@ namespace MphRead.Mods.Input
 
         public static float ApplyResponseCurve(float value, GamepadCurve curve)
         {
-            float exponent = curve switch
-            {
-                GamepadCurve.Linear => 1,
-                GamepadCurve.Precision => 2.4f,
-                GamepadCurve.Dynamic => 1.5f,
-                _ => 2
-            };
-            return MathF.CopySign(MathF.Pow(MathF.Abs(Finite(value)), exponent), value);
+            float x = MathF.Abs(Finite(value));
+            if (curve == GamepadCurve.Linear) return Finite(value);
+            float micro = curve == GamepadCurve.Precision ? .07f : curve == GamepadCurve.Dynamic ? .16f : .11f;
+            float tracking = curve == GamepadCurve.Precision ? .58f : curve == GamepadCurve.Dynamic ? .72f : .65f;
+            float result = x <= .35f ? micro * (x / .35f) * (x / .35f)
+                : x <= .8f ? micro + (tracking - micro) * (x - .35f) / .45f
+                : tracking + (1 - tracking) * (x - .8f) / .2f;
+            return MathF.CopySign(result, value);
         }
 
         public static (float X, float Y) ApplyRadialResponseCurve(float x, float y, GamepadCurve curve)
@@ -46,6 +46,16 @@ namespace MphRead.Mods.Input
             float curved = ApplyResponseCurve(magnitude, curve);
             float scale = curved / length;
             return (x * scale, y * scale);
+        }
+
+        public static System.Numerics.Vector2 FilterAim(System.Numerics.Vector2 previous,
+            System.Numerics.Vector2 sample, float dt)
+        {
+            if (sample == System.Numerics.Vector2.Zero || System.Numerics.Vector2.Dot(previous, sample) < 0
+                || sample.Length() >= .65f) return sample;
+            float velocity = (sample - previous).Length() / Math.Max(dt, .0001f);
+            float rate = 35 + 165 * Math.Clamp(velocity / 8, 0, 1);
+            return System.Numerics.Vector2.Lerp(previous, sample, 1 - MathF.Exp(-rate * dt));
         }
 
         private static float TriggerRelease(float press)

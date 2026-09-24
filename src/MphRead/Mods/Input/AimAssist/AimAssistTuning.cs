@@ -3,6 +3,9 @@ namespace MphRead.Mods.Input.AimAssist
     // Deliberately not player preferences. Changes require regression and balance validation.
     public static class AimAssistTuning
     {
+        public const float HeadFlickCaptureSeconds = .090f, HeadFlickSnapGain = 55f;
+        public const float HeadHorizontalPositionGain = 1f, HeadVerticalPositionGain = 1.7f;
+        public const float HeadHorizontalTrackingGain = 1f, HeadVerticalTrackingGain = 1.2f;
         public const float AcquireCone = 7, ReleaseCone = 9, InnerCone = 2.4f;
         public const float MinimumFriction = .62f;
         public const float HorizontalRotation = .24f, VerticalRotation = .24f, RotationErrorGain = 4f;
@@ -12,7 +15,7 @@ namespace MphRead.Mods.Input.AimAssist
         public const float HeadDelay = .120f, IntentionalHeadDelay = .050f;
         public const float MaxHeadBlend = .80f, IntentionalMaxHeadBlend = 1f;
         public const float HeadAcquireCone = 1.5f, HeadReleaseCone = 2.25f;
-        public const float HeadPredictionSeconds = .050f, MaxHeadPrediction = .60f;
+        public const float HeadPredictionSeconds = 0f, MaxHeadPrediction = .60f;
         public const float OcclusionGrace = .060f;
         public const float VelocityFilterRate = 12f, HeadVelocityFilterRate = 16f;
         public const float HeadBlendRate = 10f, HeadFallbackRate = 18f;
@@ -25,18 +28,26 @@ namespace MphRead.Mods.Input.AimAssist
     public readonly record struct AimAssistWeaponProfile(float Cone, float ReleaseCone, float Inner,
         float Rotation, float MaxSpeed, bool Head)
     {
+        public float FrictionStrength { get; init; } = .38f;
+        public float PositionGain { get; init; } = 1f;
+        public float TrackingGain { get; init; } = 1.05f;
+        public float MaxPositionSpeed { get; init; } = 12;
+        public float MaxTrackingSpeed { get; init; } = 30;
+        public bool Precision { get; init; }
+        public bool Scoped { get; init; }
+        public float HeadRange => Precision ? 60 : 15;
         public static AimAssistWeaponProfile For(AimAssistWeaponClass weapon, bool scoped)
         {
             if (scoped)
             {
                 return new(3.5f, 4.75f, 1.25f, .5f, 8,
-                    weapon is AimAssistWeaponClass.Standard or AimAssistWeaponClass.Precision);
+                    weapon is AimAssistWeaponClass.Standard or AimAssistWeaponClass.Precision) { Precision = weapon == AimAssistWeaponClass.Precision, Scoped = true, MaxPositionSpeed = 4, MaxTrackingSpeed = 18 };
             }
             return weapon switch
             {
                 AimAssistWeaponClass.Tracking => new(AimAssistTuning.AcquireCone, AimAssistTuning.ReleaseCone,
                     AimAssistTuning.InnerCone, 1, 24, false),
-                AimAssistWeaponClass.Precision => new(5, 7, 1.8f, .6f, 12, true),
+                AimAssistWeaponClass.Precision => new(5, 7, 1.8f, .6f, 12, true) { Precision = true, TrackingGain = 1.1f },
                 AimAssistWeaponClass.Splash => new(AimAssistTuning.AcquireCone, AimAssistTuning.ReleaseCone,
                     AimAssistTuning.InnerCone, .45f, 12, false),
                 AimAssistWeaponClass.Projectile => new(AimAssistTuning.AcquireCone, AimAssistTuning.ReleaseCone,

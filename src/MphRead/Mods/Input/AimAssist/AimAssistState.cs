@@ -4,6 +4,11 @@ namespace MphRead.Mods.Input.AimAssist
 {
     public sealed class AimAssistState
     {
+        public AimAssistTrackingState TrackingState;
+        public Vector2 PreviousStick, FlickDirection;
+        public float FlickPeak, FlickAge, SecondsSinceLookIntent;
+        public bool FlickActive, FlickConsumed;
+        public int FlickTarget = -1;
         public int TargetSlot = -1;
         public long TargetLife;
         public float RetainedSeconds, HeadBlend, OccludedSeconds, HeadCandidateSeconds, PreviousDeltaTime;
@@ -13,6 +18,11 @@ namespace MphRead.Mods.Input.AimAssist
 
         public void Reset()
         {
+            TrackingState = AimAssistTrackingState.None;
+            PreviousStick = FlickDirection = default;
+            FlickPeak = FlickAge = SecondsSinceLookIntent = 0;
+            FlickActive = FlickConsumed = false;
+            FlickTarget = -1;
             TargetSlot = -1;
             TargetLife = 0;
             RetainedSeconds = HeadBlend = OccludedSeconds = HeadCandidateSeconds = PreviousDeltaTime = 0;
