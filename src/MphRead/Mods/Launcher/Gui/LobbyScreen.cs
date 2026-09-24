@@ -23,6 +23,7 @@ namespace MphRead.Mods.Launcher.Gui
         private static readonly (string Label, GameMode Free, GameMode Team, bool TeamOnly, bool FfaOnly)[] _gameTypes =
         {
             ("Battle", GameMode.Battle, GameMode.BattleTeams, false, false),
+            ("Insta-Gib", GameMode.InstaGib, GameMode.InstaGib, false, true),
             ("Survival", GameMode.Survival, GameMode.SurvivalTeams, false, false),
             ("Bounty", GameMode.Bounty, GameMode.BountyTeams, false, false),
             ("Defender", GameMode.Defender, GameMode.DefenderTeams, false, false),
@@ -64,7 +65,7 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly ChoiceRow _target;
         private readonly PickRow _map, _customTeams;
         private readonly ButtonToggleRow _fire, _affinity, _freeze, _requireReady, _join;
-        private readonly ButtonToggleRow _lockTeams, _opponentHealth, _disablePowerups;
+        private readonly ButtonToggleRow _lockTeams, _opponentHealth, _disablePowerups, _spawnProtection;
         private readonly Note _layoutSummary = new("");
         private readonly Note _teamSummary = new("", lines: 1);
         private readonly FieldRow _time, _goal;
@@ -145,10 +146,11 @@ namespace MphRead.Mods.Launcher.Gui
             _lockTeams = Toggle("Lock teams");
             _opponentHealth = Toggle("Opponent health");
             _disablePowerups = Toggle("Disable powerups", on: true);
+            _spawnProtection = Toggle("Spawn protection (3s)", on: true);
             foreach (ButtonToggleRow toggle in new[]
             {
                 _fire, _affinity, _freeze, _opponentHealth, _requireReady, _join, _lockTeams,
-                _disablePowerups
+                _disablePowerups, _spawnProtection
             })
                 toggle.Changed += (_, _) => DraftChanged();
             // Three visual regions over the existing authoritative lobby
@@ -180,14 +182,15 @@ namespace MphRead.Mods.Launcher.Gui
             var toggles = new Grid
             {
                 ColumnDefinitions = new ColumnDefinitions("*,*"),
-                RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto"),
+                RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,Auto"),
                 ColumnSpacing = 24,
                 RowSpacing = 10
             };
             Control[] toggleRows =
             {
                 _fire, _affinity, _freeze, _opponentHealth,
-                _requireReady, _join, _lockTeams, _disablePowerups
+                _requireReady, _join, _lockTeams, _disablePowerups,
+                _spawnProtection
             };
             for (int i = 0; i < toggleRows.Length; i++)
             {
@@ -675,6 +678,7 @@ namespace MphRead.Mods.Launcher.Gui
                 _freeze.On = session.Match.ShadowFreeze;
                 _opponentHealth.On = !session.Match.HideOpponentHealth;
                 _disablePowerups.On = session.Match.DisablePowerups;
+                _spawnProtection.On = session.Match.SpawnProtection;
                 _requireReady.On = session.RequireReady;
                 _join.On = session.AllowJoinInProgress;
                 _lockTeams.On = PlayerChoosesTeam(session.Match) && session.LockTeams;
@@ -688,7 +692,7 @@ namespace MphRead.Mods.Launcher.Gui
             }
 
             _ownerControls.IsEnabled = NetSession.CanEditLobby && !NetSession.LobbyCommandPending;
-            foreach (var toggle in new[] { _fire, _affinity, _freeze, _opponentHealth, _requireReady, _join, _lockTeams, _disablePowerups })
+            foreach (var toggle in new[] { _fire, _affinity, _freeze, _opponentHealth, _requireReady, _join, _lockTeams, _disablePowerups, _spawnProtection })
                 toggle.IsEnabled = _ownerControls.IsEnabled;
             _closeLobby.IsEnabled = NetSession.CanEditLobby && !NetSession.LobbyCommandPending;
             TeamLayout activeLayout = LobbyRules.ResolveTeamLayout(session.Match);
@@ -1061,7 +1065,8 @@ namespace MphRead.Mods.Launcher.Gui
                 AffinityWeapons = _affinity.On,
                 ShadowFreeze = _freeze.On,
                 HideOpponentHealth = !_opponentHealth.On,
-                DisablePowerups = _disablePowerups.On
+                DisablePowerups = _disablePowerups.On,
+                SpawnProtection = _spawnProtection.On
             };
             return true;
         }
