@@ -307,6 +307,33 @@ namespace MphRead.Mods.Network
             && NetSession.LocalSlot >= 0;
 
         /// <summary>
+        /// Convert the afflictions caused by one hit into claim flags.
+        ///
+        /// This deliberately takes the hit's affliction mask, not the victim's
+        /// current timers. Reading <c>victim.ModFrozen</c> here made any later
+        /// hit on an already-frozen player look like another Judicator freeze,
+        /// while the first actual freeze could be omitted because Declare runs
+        /// before TakeDamage applies the beam affliction.
+        /// </summary>
+        internal static byte AfflictionClaimFlags(Affliction afflictions)
+        {
+            byte result = 0;
+            if ((afflictions & Affliction.Freeze) != 0)
+            {
+                result |= HitClaimPacket.FlagFrozen;
+            }
+            if ((afflictions & Affliction.Burn) != 0)
+            {
+                result |= HitClaimPacket.FlagBurning;
+            }
+            if ((afflictions & Affliction.Disrupt) != 0)
+            {
+                result |= HitClaimPacket.FlagDisrupted;
+            }
+            return result;
+        }
+
+        /// <summary>
         /// Record a hit this machine has just resolved for its own player, so
         /// that the authority is told about it.
         ///
@@ -324,7 +351,7 @@ namespace MphRead.Mods.Network
         /// </returns>
         public static ushort Declare(PlayerEntity victim, PlayerEntity attacker,
             BeamType beam, uint damage, DamageFlags flags, bool lethal, Vector3 hitPoint,
-            uint launchFrame, Vector3 direction)
+            uint launchFrame, Vector3 direction, Affliction afflictions = Affliction.None)
         {
             if (!Claiming || victim == attacker || damage == 0
                 || NetPlayerLifecycle.Get(victim.SlotIndex) == 0 || NetPlayerLifecycle.Get(attacker.SlotIndex) == 0)
@@ -336,7 +363,7 @@ namespace MphRead.Mods.Network
             {
                 return 0;
             }
-            byte claimFlags = 0;
+            byte claimFlags = AfflictionClaimFlags(afflictions);
             if (flags.TestFlag(DamageFlags.Headshot))
             {
                 claimFlags |= HitClaimPacket.FlagHeadshot;
@@ -344,15 +371,6 @@ namespace MphRead.Mods.Network
             if (lethal)
             {
                 claimFlags |= HitClaimPacket.FlagLethal;
-            }
-            // The three afflictions travel with the claim because they are
-            // produced inside TakeDamage from the beam entity, and a claim
-            // applied on the authority has no beam to produce them from. The
-            // snapshot's flag byte then carries them to everybody else, as it
-            // already does for a hit the authority resolved itself.
-            if (victim.ModFrozen)
-            {
-                claimFlags |= HitClaimPacket.FlagFrozen;
             }
             int index = -1;
             for (int i = 0; i < OutboxCapacity; i++)
@@ -1852,14 +1870,23 @@ namespace MphRead.Mods.Network
                 Answer(shooterSlot, entry.Id, HitVerdictPacket.ResultNoDamage);
                 return;
             }
-            if ((entry.Flags & HitClaimPacket.FlagFrozen) != 0 && victim.Health > 0)
+            if (victim.Health > 0)
             {
-                // The affliction does not survive the trip on its own: it is
-                // produced inside TakeDamage from the beam entity, and there
-                // is no beam here. The snapshot's flag byte carries it onward
-                // to everybody exactly as it does for a hit the authority
-                // resolved itself.
-                victim.ModSetFrozen(true);
+                // A rescued claim has no beam entity, so its afflictions cannot
+                // be recreated by TakeDamage. Re-apply only the afflictions this
+                // exact hit declared; the next snapshot then carries their state.
+                if ((entry.Flags & HitClaimPacket.FlagFrozen) != 0)
+                {
+                    victim.ModSetFrozen(true);
+                }
+                if ((entry.Flags & HitClaimPacket.FlagBurning) != 0)
+                {
+                    victim.ModSetBurning(true);
+                }
+                if ((entry.Flags & HitClaimPacket.FlagDisrupted) != 0)
+                {
+                    victim.ModSetDisrupted(true);
+                }
             }
             AppliedHere++;
             // Remember the shot, so the authority's own copy of it -- which
