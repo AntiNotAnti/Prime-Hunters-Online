@@ -136,12 +136,18 @@ namespace MphRead.Mods.Input
             var sensitiveDrive = AltFormGesture.Drive(0, -57, 18, 96, 2);
             Require(Math.Abs(sensitiveDrive.Y) > Math.Abs(driveY),
                 "higher alt swipe sensitivity reaches stronger deflection with the same travel");
-            var lowRangeDrive = AltFormGesture.Drive(0, -57, 18, 96,
+            // Use a shorter drag here so neither the baseline nor 2x case is
+            // already saturated. That leaves room for the 4x endpoint to prove
+            // that the expanded range still changes response at the top end.
+            var rangeBaseline = AltFormGesture.Drive(0, -30, 18, 96, 1);
+            var rangeSensitive = AltFormGesture.Drive(0, -30, 18, 96, 2);
+            var lowRangeDrive = AltFormGesture.Drive(0, -30, 18, 96,
                 InputSettings.MinAltSwipeSensitivity);
-            var highRangeDrive = AltFormGesture.Drive(0, -57, 18, 96,
+            var highRangeDrive = AltFormGesture.Drive(0, -30, 18, 96,
                 InputSettings.MaxAltSwipeSensitivity);
-            Require(Math.Abs(lowRangeDrive.Y) < Math.Abs(driveY)
-                    && Math.Abs(highRangeDrive.Y) > Math.Abs(sensitiveDrive.Y),
+            Require(Math.Abs(lowRangeDrive.Y) < Math.Abs(rangeBaseline.Y)
+                    && Math.Abs(rangeBaseline.Y) < Math.Abs(rangeSensitive.Y)
+                    && Math.Abs(rangeSensitive.Y) < Math.Abs(highRangeDrive.Y),
                 "expanded alt swipe range remains effective at both endpoints");
 
             Require(AltFormGesture.TryPrecisionVelocity(0.31f, 0, -1, 0, 0.32f,
