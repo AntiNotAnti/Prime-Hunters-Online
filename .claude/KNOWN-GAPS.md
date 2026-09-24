@@ -1,5 +1,15 @@
 # Known gaps — claims not yet verified
 
+## Alt collision validation boundaries (2026-09-24)
+
+- Deterministic pose, contact and real-asset scene tests cover historical player
+  bodies. Detached Weavel turrets retain live collision; diagnostics refuse to
+  claim historical turret geometry.
+- Kanden and Sylux attacks remain projectile/entity based. This change does not
+  add a new direct body-contact damage mechanic for either hunter.
+- Seeded scheduling and headless clients validate geometry and authority paths,
+  not human visual/gameplay feel. See `docs/network/alt-form-validation.md`.
+
 ## Protocol 18 validation boundaries (2026-09-24)
 
 The five netcode changes and their reproducible evidence are described in

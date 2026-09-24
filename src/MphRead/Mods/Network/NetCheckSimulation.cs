@@ -33,6 +33,10 @@ internal static class NetCheckSimulation
             if (now - next > 0.25) next = now;
             next += 1.0 / 60;
             scene.OnSimulationFrame();
+            // A graphical client advances this in OnRenderFrame. Without a
+            // virtual presentation at 60 Hz, ACK stays on the initial snapshot
+            // and every headless shot eventually asks for the rewind ceiling.
+            NetSmoothing.PreparePresentation(1);
             steps++;
             foreach (var player in scene.Players.Items)
             {
@@ -53,8 +57,16 @@ internal static class NetCheckSimulation
         foreach (bool value in moved) if (value) moving++;
         Console.WriteLine($"[netchecksim] steps={steps} remoteFrames={remoteFrames} movingPeers={moving} "
             + $"clips={clips} clipsPassed={clipsPassed} recordingError={DemoRecorder.LastError ?? "none"} captureError={ReplayCapture.WorldCapture.LastError ?? "none"}");
+        Console.WriteLine(HitRig.Describe());
+        Console.WriteLine(NetContactLagComp.Describe());
+        Console.WriteLine(NetUnlagged.Describe());
         Console.WriteLine(ReplayPerfTelemetry.Summary(ReplayCapture.Recorder.Timeline));
-        return steps > 0 && moving > 0 && clipsPassed && DemoRecorder.LastError == null
+        bool stationaryTarget = HitRig.IsSniper && (HitRig.Mode == HitRig.RigMode.AltStatic || HitRig.Mode == HitRig.RigMode.AltContact);
+        bool contactAttacker = HitRig.Mode == HitRig.RigMode.AltCrossing || HitRig.Mode == HitRig.RigMode.AltContact && HitRig.IsSniper;
+        bool scenario = (!contactAttacker || NetContactLagComp.AttacksAttempted > 0)
+            && (!HitRig.Active || !HitRig.IsSniper || HitRig.Triggers > 0);
+        Console.WriteLine($"[netchecksim] altScenarioExercised={scenario} stationaryTarget={stationaryTarget}");
+        return steps > 0 && remoteFrames > 0 && (moving > 0 || stationaryTarget) && scenario && clipsPassed && DemoRecorder.LastError == null
             && ReplayCapture.WorldCapture.LastError == null ? 0 : 1;
     }
 }

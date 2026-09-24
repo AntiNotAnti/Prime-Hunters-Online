@@ -413,3 +413,14 @@ step cost stayed below 1 ms; occasional dropped wall-clock ticks are not hidden.
 Human gameplay-feel acceptance remains before calling the entire release
 acceptance complete. The injected profiles do not establish behavior on every
 geographically separate Internet route.
+
+
+## Historical alt collision follow-up (2026-09-24)
+
+Player rewinds now restore historical collision form and Kanden segments, with
+lossless collision-only restoration. Separate ACK-timed contact queries cover
+Samus, Spire, Noxus, Trace and Weavel while preserving owner movement, live
+physical separation, damage values and Protocol 18. Contact sweeps cross accepted
+movement intervals without rewinding the actual physics world. Kanden/Sylux bombs
+retain their existing entity path. Evidence, boundaries and commands are in
+[alt-form-validation.md](alt-form-validation.md).

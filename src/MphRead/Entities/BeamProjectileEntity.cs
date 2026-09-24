@@ -450,48 +450,15 @@ namespace MphRead.Entities
                 {
                     continue;
                 }
-                bool hitPlayer = false;
-                CollisionResult playerRes = default;
-                float radii = player.Volume.SphereRadius + CylinderRadius;
-                if (player.IsAltForm)
+                // An unavailable old-life target must not remain hittable at
+                // its present position while the rest of the world is rewound.
+                if (!_scene.Services.IsReplica && !NetUnlagged.CollisionTargetAvailable(player)) continue;
+                var body = NetHistoricalTrace.CurrentBody(player);
+                bool hitPlayer = NetHistoricalTrace.Intersect(body, BackPosition, Position, CylinderRadius, out var playerRes);
+                if (player.ModHistoricalCollisionActive && body.Type == HistoricalBodyType.KandenChain)
                 {
-                    if (player.Hunter == Hunter.Kanden)
-                    {
-                        if (CollisionDetection.CheckCylinderOverlapSphere(BackPosition, Position,
-                            player.KandenSegPos[2], 1.6f, ref playerRes))
-                        {
-                            if (CollisionDetection.CheckCylinderOverlapSphere(BackPosition, Position,
-                                player.Volume.SpherePosition, radii, ref playerRes)
-                                || CollisionDetection.CheckCylinderOverlapSphere(BackPosition, Position,
-                                    player.KandenSegPos[1], radii, ref playerRes)
-                                || CollisionDetection.CheckCylinderOverlapSphere(BackPosition, Position,
-                                    player.KandenSegPos[2], radii, ref playerRes)
-                                || CollisionDetection.CheckCylinderOverlapSphere(BackPosition, Position,
-                                    player.KandenSegPos[3], radii, ref playerRes))
-                            {
-                                hitPlayer = true;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        if (CollisionDetection.CheckCylinderOverlapSphere(BackPosition, Position,
-                            player.Volume.SpherePosition, radii, ref playerRes))
-                        {
-                            hitPlayer = true;
-                        }
-                    }
-                }
-                else
-                {
-                    float minY = Fixed.ToFloat(player.Values.MinPickupHeight);
-                    Vector3 playerBottom = player.Position.AddY(minY);
-                    float dot = Fixed.ToFloat(player.Values.MaxPickupHeight) - minY;
-                    if (CollisionDetection.CheckCylindersOverlap(BackPosition, Position, playerBottom, Vector3.UnitY,
-                        dot, radii, ref playerRes))
-                    {
-                        hitPlayer = true;
-                    }
+                    NetUnlagged.KandenHistoricalSegmentChecks++;
+                    if (hitPlayer) NetUnlagged.KandenHistoricalSegmentHits++;
                 }
                 if (hitPlayer && playerRes.Distance < minDist)
                 {
@@ -599,7 +566,7 @@ namespace MphRead.Entities
                             float damage = 0;
                             uint wholeDamage = 0;
                             bool isHeadshot = false;
-                            if (!player.IsAltForm && Beam != BeamType.ShockCoil
+                            if (!player.ModCollisionIsAltForm && Beam != BeamType.ShockCoil
                                 && anyRes.Position.Y - player.Position.Y >= Fixed.ToFloat(player.Values.MaxPickupHeight) - 0.3f)
                             {
                                 if (Beam == BeamType.Imperialist)
@@ -666,7 +633,7 @@ namespace MphRead.Entities
                                         ownerPlayer.Health - before);
                                 }
                             }
-                            if (!player.IsMainPlayer || player.IsAltForm || player.IsMorphing)
+                            if (!player.IsMainPlayer || player.ModCollisionIsAltForm || player.IsMorphing)
                             {
                                 SpawnCollisionEffect(anyRes, noSplat: true);
                             }
@@ -2080,7 +2047,7 @@ namespace MphRead.Entities
                                     if (type == EntityType.Player)
                                     {
                                         var player = (PlayerEntity)entity;
-                                        if (!player.IsAltForm && !player.IsMorphing || div1 >= Fixed.ToFloat(4006))
+                                        if (!player.ModCollisionIsAltForm && !player.IsMorphing || div1 >= Fixed.ToFloat(4006))
                                         {
                                             canTarget = true;
                                         }

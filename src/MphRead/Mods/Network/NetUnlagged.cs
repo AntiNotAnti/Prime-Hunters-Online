@@ -64,7 +64,7 @@ namespace MphRead.Mods.Network
         /// (<see cref="NetSmoothing"/>), and the ceiling below has to sit
         /// comfortably inside it rather than against its edge. Two seconds at
         /// 60, rounded to a power of two so the ring index is a mask. Eight
-        /// slots of position, form and liveness: about twelve kilobytes.
+        /// slots of fixed-size position, form, collision and attack poses.
         /// </summary>
         public const int HistoryFrames = 128;
 
@@ -299,6 +299,7 @@ namespace MphRead.Mods.Network
         public static void ResetSlot(int slot)
         {
             if (slot < 0 || slot >= Slots) return;
+            NetContactLagComp.ResetSlot(slot);
             for (int i = 0; i < HistoryFrames; i++)
             {
                 _inPlay[slot, i] = false;
@@ -309,8 +310,12 @@ namespace MphRead.Mods.Network
         }
 
         private static readonly Vector3[,] _position = new Vector3[Slots, HistoryFrames];
+        private static readonly HistoricalAltAttackState[,] _attackPose = new HistoricalAltAttackState[Slots, HistoryFrames];
+        private static readonly AltCollisionPose[,] _altPose = new AltCollisionPose[Slots, HistoryFrames];
         private static readonly bool[,] _altForm = new bool[Slots, HistoryFrames];
         private static readonly bool[,] _inPlay = new bool[Slots, HistoryFrames];
+        public static long FormRewinds, FormMismatches, KandenHistoricalSegmentChecks, KandenHistoricalSegmentHits;
+        private static readonly uint[] _formLog = new uint[Slots];
         private static readonly uint[] _stamp = new uint[HistoryFrames];
 
         /// <summary>
@@ -326,7 +331,7 @@ namespace MphRead.Mods.Network
         private static uint _newest;
 
         // Where everybody was before the rewind, so Restore can put them back.
-        private static readonly Vector3[] _restore = new Vector3[Slots];
+        private static readonly HistoricalCollisionState[] _restore = new HistoricalCollisionState[Slots];
         private static readonly bool[] _moved = new bool[Slots];
         private static bool _reconciled;
 
@@ -353,6 +358,8 @@ namespace MphRead.Mods.Network
 
         public static void Reset()
         {
+            NetContactLagComp.Reset();
+            FormRewinds = FormMismatches = KandenHistoricalSegmentChecks = KandenHistoricalSegmentHits = 0; Array.Clear(_formLog);
             NetDynamicGeometryHistory.ResetRoom();
             LagCompensationPolicy.Reset();
             CatchUpShots = CatchUpTruncations = 0; MaximumCatchUpSteps = 0;
@@ -422,14 +429,17 @@ namespace MphRead.Mods.Network
                     continue;
                 }
                 PlayerEntity player = PlayerEntity.Players[i];
-                bool active = player.LoadFlags.TestFlag(LoadFlags.Active) && player.ModIsInPlay;
+                bool active = player != null && player.LoadFlags.TestFlag(LoadFlags.Active) && player.ModIsInPlay
+                    && !player.Flags2.TestFlag(PlayerFlags2.Spectating);
                 _life[i, index] = NetPlayerLifecycle.Get(i);
                 _generation[i, index] = NetPlayerLifecycle.Generation(i);
                 _inPlay[i, index] = active;
-                if (active)
+                if (active && player != null)
                 {
                     _position[i, index] = player.Position;
                     _altForm[i, index] = player.IsAltForm;
+                    _altPose[i, index] = player.ModCaptureAltPose();
+                    _attackPose[i, index] = NetContactLagComp.CaptureHistory(player, frame);
                 }
             }
         }
@@ -444,6 +454,44 @@ namespace MphRead.Mods.Network
         /// of impact is nowhere near the body this returns. Read-only -- it
         /// moves nobody, unlike <see cref="Reconcile"/>.
         /// </summary>
+        public static HistoricalPlayerPose InterpolatePose(in HistoricalPlayerPose lower,
+            in HistoricalPlayerPose upper, float fraction)
+        {
+            if (lower.AltForm != upper.AltForm || (upper.Position - lower.Position).LengthSquared > 16f)
+                return lower;
+            return new(Vector3.Lerp(lower.Position, upper.Position, fraction), lower.AltForm,
+                AltCollisionPose.Lerp(lower.AltPose, upper.AltPose, fraction));
+        }
+
+        internal static bool TryHistoricalPose(PlayerEntity player, double target, out HistoricalPlayerPose pose)
+        {
+            pose = default;
+            if (!double.IsFinite(target) || target < 1 || target >= uint.MaxValue) return false;
+            uint frame = (uint)Math.Floor(target); int slot = player.SlotIndex;
+            ushort generation = NetPlayerLifecycle.Generation(slot), life = NetPlayerLifecycle.Get(slot);
+            if (!PositionAt(slot, frame, generation, life, out var position)) return false;
+            int index = (int)(frame % HistoryFrames);
+            pose = new(position, _altForm[slot, index], _altPose[slot, index]);
+            float fraction = (float)(target - frame);
+            if (fraction > .0001f && PositionAt(slot, frame + 1, generation, life, out var nextPosition))
+            {
+                int next = (int)((frame + 1) % HistoryFrames);
+                pose = InterpolatePose(pose, new(nextPosition, _altForm[slot, next], _altPose[slot, next]), fraction);
+            }
+            return true;
+        }
+
+        // Discrete attack state is for diagnostics; ACK time names opponents,
+        // so live contact resolution must not replay this old attacker state.
+        internal static bool TryHistoricalAttack(int slot, uint frame, ushort generation, ushort life,
+            out HistoricalAltAttackState state)
+        {
+            state = default;
+            if (!PositionAt(slot, frame, generation, life, out _)) return false;
+            state = _attackPose[slot, frame % HistoryFrames];
+            return true;
+        }
+
         internal static bool TryHistoricalBiped(PlayerEntity player, double target, out Vector3 position)
         {
             position = default;
@@ -758,18 +806,11 @@ namespace MphRead.Mods.Network
         private static bool Reconcile(int exceptSlot, double targetFrame)
         {
             uint frame = (uint)Math.Floor(targetFrame);
-            float fraction = (float)(targetFrame - frame);
             int index = (int)(frame % HistoryFrames);
             if (_stamp[index] != frame || frame == 0)
             {
                 return false;
             }
-            // The cell on the far side of the read point, if the ring still
-            // holds it. Its absence is ordinary rather than a fault: the
-            // newest cell has nothing after it, and a rewind of nearly zero
-            // lands there.
-            int next = (int)((frame + 1) % HistoryFrames);
-            bool haveNext = fraction > 0.0001f && _stamp[next] == frame + 1;
             Restore();
             for (int i = 0; i < Slots && i < PlayerEntity.Players.Count; i++)
             {
@@ -779,41 +820,26 @@ namespace MphRead.Mods.Network
                     continue;
                 }
                 PlayerEntity player = PlayerEntity.Players[i];
-                if (!player.LoadFlags.TestFlag(LoadFlags.Active) || !player.ModIsInPlay)
+                if (!player.LoadFlags.TestFlag(LoadFlags.Active) || !player.ModIsInPlay
+                    || player.Flags2.TestFlag(PlayerFlags2.Spectating))
                 {
                     continue;
                 }
-                Vector3 was = _position[i, index];
-                if (!Single.IsFinite(was.X) || !Single.IsFinite(was.Y) || !Single.IsFinite(was.Z))
+                if (!TryHistoricalPose(player, targetFrame, out var pose)) continue;
+                FormRewinds++;
+                if (pose.AltForm != player.IsAltForm)
                 {
-                    continue;
-                }
-                // Interpolated to the same point between the same two frames
-                // the shooter was drawing, by the same fraction. Only when
-                // both cells hold this player alive and in the same form, and
-                // only when the two are near enough to be one movement -- a
-                // respawn or a teleporter between them is a jump to blend
-                // across, not a step. NetSmoothing does the same three checks
-                // at the other end, which is what makes the two agree.
-                if (haveNext && _inPlay[i, next] && _altForm[i, next] == _altForm[i, index]
-                    && _life[i, next] == _life[i, index] && _generation[i, next] == _generation[i, index])
-                {
-                    Vector3 then = _position[i, next];
-                    Vector3 travel = then - was;
-                    if (Single.IsFinite(travel.X) && Single.IsFinite(travel.Y)
-                        && Single.IsFinite(travel.Z) && travel.LengthSquared <= 16f)
+                    FormMismatches++;
+                    if (NetLog.Enabled && (_formLog[i] == 0 || NetSession.NetFrame - _formLog[i] >= 60))
                     {
-                        was += travel * fraction;
+                        _formLog[i] = NetSession.NetFrame;
+                        NetLog.Event($"FORM-HIT victim={i} historicalAlt={pose.AltForm} currentAlt={player.IsAltForm}");
                     }
                 }
-                // A position recorded in one form, applied to a body that has
-                // since changed into the other, is the same standing spot in
-                // the wrong reference frame -- and a biped cylinder is tall
-                // enough for that to put a chest shot under the model. The
-                // conversion is NetPlayerBridge's, for exactly this reason.
-                _restore[i] = player.Position;
+                _restore[i] = player.ModCaptureCollisionState();
                 _moved[i] = true;
-                player.ModPlaceAt(NetPlayerBridge.InFormFor(player, was, _altForm[i, index]));
+                _reconciled = true;
+                player.ModApplyHistoricalCollisionPose(pose);
             }
             _reconciled = true;
             try { NetDynamicGeometryHistory.ReconcileWorld(targetFrame); }
@@ -839,7 +865,7 @@ namespace MphRead.Mods.Network
                     continue;
                 }
                 _moved[i] = false;
-                PlayerEntity.Players[i].ModPlaceAt(_restore[i]);
+                PlayerEntity.Players[i].ModRestoreCollisionState(_restore[i]);
             }
             _reconciled = false;
         }
@@ -869,6 +895,9 @@ namespace MphRead.Mods.Network
         /// step instead of twenty-four.
         /// </summary>
         private static double _shotTargetFrame;
+        internal static bool CollisionTargetAvailable(PlayerEntity target) => !_reconciled
+            || target == _shooter || (uint)target.SlotIndex < Slots && _moved[target.SlotIndex];
+
         internal static bool HistoricalTargetAvailable(PlayerEntity target)
         {
             if (!_inProgress || _shooter == null) return true;
@@ -985,12 +1014,12 @@ namespace MphRead.Mods.Network
         {
             if (!Enabled)
             {
-                return "lag compensation: off";
+                return "lag compensation: off; " + NetContactLagComp.Describe();
             }
             if (ShotsCompensated == 0)
             {
                 return "lag compensation: on, nothing to compensate "
-                    + $"(history misses {HistoryMisses})";
+                    + $"(history misses {HistoryMisses}); " + NetContactLagComp.Describe();
             }
             double mean = FramesRewound / (double)ShotsCompensated;
             string text = $"lag compensation: {ShotsCompensated} shots rewound, "
@@ -1042,7 +1071,7 @@ namespace MphRead.Mods.Network
             text += $"; shadow {LagCompensationPolicy.Plausibility}: {shadow.WouldClamp}/{shadow.TimedShots} timed shots would clamp, "
                 + $"{shadow.ShadowRefusedFrames:F1} frames refused, geometry unavailable {shadow.OutcomeCount}/{shadow.Shots}; "
                 + $"catch-up maximum {MaximumCatchUpSteps}, truncations {CatchUpTruncations}";
-            return text;
+            return text + $"; form rewinds {FormRewinds}, mismatches {FormMismatches}, Kanden checks {KandenHistoricalSegmentChecks}/hits {KandenHistoricalSegmentHits}; " + NetContactLagComp.Describe();
         }
 
         /// <summary>

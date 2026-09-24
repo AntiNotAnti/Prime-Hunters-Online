@@ -142,6 +142,7 @@ namespace MphRead.Mods.Network
                 sb.Append($"serverPeers={match.Value.PlayerCount} ");
             }
             Line(sb.ToString());
+            Line(NetContactLagComp.Describe());
             HitReg();
 
             for (int slot = 0; slot < (scene?.Players ?? PlayerEntity.LegacyRegistry).MaxPlayers; slot++)

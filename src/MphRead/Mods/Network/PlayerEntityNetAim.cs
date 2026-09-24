@@ -718,18 +718,53 @@ namespace MphRead.Entities
             return walked;
         }
 
-        /// <summary>
-        /// Put this player at a position, hitbox and room node included.
-        ///
-        /// The same three lines _scene.PlayerReplication.Move does, exposed because
-        /// <see cref="Mods.Network.NetUnlagged"/> needs them in the middle of
-        /// a frame rather than around the edges of one. That timing is the
-        /// whole reason it cannot just assign Position: _volume is a cached
-        /// copy of the collision sphere that PlayerProcess recomputes once a
-        /// frame, so a rewind applied after that has run would move the model
-        /// and leave the hitbox behind -- and a rewind whose hitbox does not
-        /// move is a rewind that does nothing at all.
-        /// </summary>
+        /// <summary>Keep collision attachments in the corrected owner's reference frame.</summary>
+        internal void ModTranslateCollisionAttachments(Vector3 delta)
+        {
+            if (Hunter == Hunter.Kanden)
+                for (int i = 0; i < _kandenSegPos.Length; i++) _kandenSegPos[i] += delta;
+            if (Hunter == Hunter.Spire)
+            {
+                _spireRockPosL += delta;
+                _spireRockPosR += delta;
+            }
+        }
+
+        // Query scratch only; deliberately excluded from replay world checkpoints.
+        private bool? _modHistoricalCollisionForm;
+        internal bool ModHistoricalCollisionActive => _modHistoricalCollisionForm.HasValue;
+        internal bool ModCollisionIsAltForm => _modHistoricalCollisionForm ?? IsAltForm;
+        internal AltCollisionPose ModCaptureAltPose() => Hunter == Hunter.Kanden
+            ? new(_kandenSegPos[1], _kandenSegPos[2], _kandenSegPos[3]) : default;
+        internal HistoricalCollisionState ModCaptureCollisionState() => new(Position, PrevPosition,
+            _volume, _volumeUnxf, NodeRef, _modHistoricalCollisionForm, ModCaptureAltPose());
+        internal void ModApplyHistoricalCollisionPose(in HistoricalPlayerPose pose)
+        {
+            Position = PrevPosition = pose.Position;
+            _modHistoricalCollisionForm = pose.AltForm;
+            _volumeUnxf = PlayerVolumes[(int)Hunter, pose.AltForm ? 2 : 0];
+            _volume = CollisionVolume.Move(_volumeUnxf, Position);
+            if (Hunter == Hunter.Kanden)
+            {
+                _kandenSegPos[1] = pose.AltPose.Seg1;
+                _kandenSegPos[2] = pose.AltPose.Seg2;
+                _kandenSegPos[3] = pose.AltPose.Seg3;
+            }
+        }
+        internal void ModRestoreCollisionState(in HistoricalCollisionState state)
+        {
+            Position = state.Position; PrevPosition = state.Previous;
+            _volume = state.Volume; _volumeUnxf = state.Untransformed; NodeRef = state.Node;
+            _modHistoricalCollisionForm = state.Form;
+            if (Hunter == Hunter.Kanden)
+            {
+                _kandenSegPos[1] = state.Segments.Seg1;
+                _kandenSegPos[2] = state.Segments.Seg2;
+                _kandenSegPos[3] = state.Segments.Seg3;
+            }
+        }
+
+        /// <summary>Place a live player, refreshing its collision volume and node reference.</summary>
         internal void ModPlaceAt(OpenTK.Mathematics.Vector3 position)
         {
             OpenTK.Mathematics.Vector3 previous = Position;
