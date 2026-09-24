@@ -261,10 +261,9 @@ namespace MphRead.Mods.Launcher.Gui
                     // A copy left behind is untidy, not a failure worth saying.
                 }
             }
-            if (ok)
-            {
-                await RenderMissing(progress);
-            }
+            // Game-file setup ends when the cartridge data is valid and ready.
+            // Map previews are cosmetic and can involve separate GL worker processes;
+            // never make a successful extraction wait for them.
             progress.Finish(ok);
             _progress.Set(progress.Fraction, progress.Stage);
             Ready();
