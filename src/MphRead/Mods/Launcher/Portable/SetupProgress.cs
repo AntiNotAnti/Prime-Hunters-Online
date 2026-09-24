@@ -41,22 +41,14 @@ namespace MphRead.Mods.Launcher
             public string Stage { get; }
         }
 
-        // Tuned to the shape of a real extraction: the file tree is by far the
-        // longest phase and prints one line per directory, the archives are a
-        // few dozen, and the decompression is a handful. They stop at 0.72
-        // because rendering the map previews follows and is part of the same
-        // wait -- a bar that filled and then left the player watching a
-        // seemingly idle screen for another minute was the worst of both.
-        private static readonly Band _files = new(0.03, 0.40, 45, "Writing game files");
-        private static readonly Band _archives = new(0.40, 0.57, 25, "Unpacking archives");
-        private static readonly Band _sound = new(0.57, 0.63, 3, "Converting music");
-        private static readonly Band _binaries = new(0.63, 0.72, 6, "Decompressing code");
-
-        /// <summary>
-        /// The one phase whose total *is* known: every preview run counts its
-        /// rooms, so this band is a real fraction rather than a creep.
-        /// </summary>
-        private const double _previewStart = 0.72;
+        // Tuned to the shape of a real extraction. Preview rendering is not
+        // part of setup anymore: a successful ROM extraction reaches 100%
+        // immediately, while cosmetic previews are filled in afterwards.
+        private static readonly Band _validate = new(0.00, 0.03, 2, "Validating ROM");
+        private static readonly Band _files = new(0.03, 0.43, 45, "Writing game files");
+        private static readonly Band _archives = new(0.43, 0.62, 25, "Unpacking archives");
+        private static readonly Band _sound = new(0.62, 0.68, 3, "Converting music");
+        private static readonly Band _binaries = new(0.68, 0.99, 18, "Decompressing code");
 
         private Band _band = new(0, 0.03, 1, "Starting");
         private int _seen;
@@ -79,11 +71,6 @@ namespace MphRead.Mods.Launcher
             if (Done)
             {
                 return false;
-            }
-            if (TryPreviewCount(line, out int done, out int total) && total > 0)
-            {
-                _band = new Band(_previewStart, 1, 1, $"Rendering map previews ({done}/{total})");
-                return Set(_previewStart + (1 - _previewStart) * done / total, _band.Stage);
             }
             Band next = Classify(line);
             if (next.Stage != _band.Stage)
@@ -111,37 +98,13 @@ namespace MphRead.Mods.Launcher
             Stage = ok ? "Ready to play" : "Setup did not finish";
         }
 
-        /// <summary>
-        /// "[thumbnails] 8/33 ...", which every preview run prints whichever
-        /// platform and however many workers produced it.
-        /// </summary>
-        private static bool TryPreviewCount(string line, out int done, out int total)
-        {
-            done = 0;
-            total = 0;
-            const string prefix = "[thumbnails] ";
-            if (!line.StartsWith(prefix, StringComparison.Ordinal))
-            {
-                return false;
-            }
-            ReadOnlySpan<char> rest = line.AsSpan(prefix.Length);
-            int slash = rest.IndexOf('/');
-            if (slash <= 0)
-            {
-                return false;
-            }
-            ReadOnlySpan<char> after = rest[(slash + 1)..];
-            int end = 0;
-            while (end < after.Length && Char.IsAsciiDigit(after[end]))
-            {
-                end++;
-            }
-            return Int32.TryParse(rest[..slash], out done)
-                && end > 0 && Int32.TryParse(after[..end], out total);
-        }
-
         private Band Classify(string line)
         {
+            if (line.StartsWith("Recognised:", StringComparison.Ordinal)
+                || line.StartsWith("Validating ROM", StringComparison.Ordinal))
+            {
+                return _validate;
+            }
             if (line.StartsWith("Writing ", StringComparison.Ordinal))
             {
                 return _files;
