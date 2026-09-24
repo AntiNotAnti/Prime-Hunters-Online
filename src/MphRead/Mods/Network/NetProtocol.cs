@@ -656,10 +656,17 @@ namespace MphRead.Mods.Network
         /// 18 where the plain one deals 12.
         /// </summary>
         public const byte FlagAffinityWeapons = 1 << 6;
+        /// <summary>
+        /// Bit 7: the server explicitly disables the default three-second
+        /// spawn protection. Negative semantics keep a zero/default packet
+        /// aligned with the user-facing default: protection enabled.
+        /// </summary>
+        public const byte FlagNoSpawnProtection = 1 << 7;
 
         public readonly bool Ending => (Flags & FlagEnding) != 0;
         public readonly bool FriendlyFire => (Flags & FlagFriendlyFire) != 0;
         public readonly bool ShadowFreeze => (Flags & FlagNoShadowFreeze) == 0;
+        public readonly bool SpawnProtection => (Flags & FlagNoSpawnProtection) == 0;
 
         /// <summary>
         /// The damage level this server plays at, or -1 when it did not say.
