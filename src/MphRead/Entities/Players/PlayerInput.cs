@@ -411,25 +411,19 @@ namespace MphRead.Entities
             _facingVector = _facingVector.Normalized();
         }
 
-        private void UpdateAimY(float amount)
+        private float AimZoomScale()
         {
-            if (Controls.InvertAimY)
+            float normalFov = Fixed.ToFloat(Values.NormalFov) * 2;
+            return EquipInfo.Zoomed && normalFov != 0 ? CameraInfo.Fov / normalFov : 1;
+        }
+
+        private void UpdateAimY(float amount, bool applyInputSettings = true)
+        {
+            if (applyInputSettings && Controls.InvertAimY)
             {
                 amount *= -1;
             }
-            float sensitivity = 1;
-            if (EquipInfo.Zoomed)
-            {
-                float normalFov = Fixed.ToFloat(Values.NormalFov) * 2;
-                if (normalFov != 0) // zero will occur when the camera info is overridden to normal FOV due to cam seq
-                {
-                    // constant angular speed while zoomed: turn rate scales with the
-                    // FOV reduction, so it tracks the mouse sensitivity setting the
-                    // same way unzoomed aim does, instead of a fixed per-hunter ratio
-                    sensitivity = CameraInfo.Fov / normalFov;
-                }
-            }
-            amount *= sensitivity;
+            if (applyInputSettings) amount *= AimZoomScale();
             // unimpl-controls: these calculations are different when exact aim is not set
             float prevAim = _aimY;
             _aimY += amount;
@@ -457,25 +451,13 @@ namespace MphRead.Entities
             UpdateAimFacing();
         }
 
-        private void UpdateAimX(float amount)
+        private void UpdateAimX(float amount, bool applyInputSettings = true)
         {
-            if (Controls.InvertAimX)
+            if (applyInputSettings && Controls.InvertAimX)
             {
                 amount *= -1;
             }
-            float sensitivity = 1;
-            if (EquipInfo.Zoomed)
-            {
-                float normalFov = Fixed.ToFloat(Values.NormalFov) * 2;
-                if (normalFov != 0) // zero will occur when the camera info is overridden to normal FOV due to cam seq
-                {
-                    // constant angular speed while zoomed: turn rate scales with the
-                    // FOV reduction, so it tracks the mouse sensitivity setting the
-                    // same way unzoomed aim does, instead of a fixed per-hunter ratio
-                    sensitivity = CameraInfo.Fov / normalFov;
-                }
-            }
-            amount *= sensitivity;
+            if (applyInputSettings) amount *= AimZoomScale();
             // unimpl-controls: these calculations are different when exact aim is not set
             float sin;
             float cos;

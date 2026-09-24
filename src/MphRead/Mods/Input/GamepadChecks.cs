@@ -156,6 +156,18 @@ namespace MphRead.Mods.Input
                     && Math.Abs(committedRenderAim.X) > .01f,
                     "render aim updates after the next accepted controller frame");
 
+                GamepadInput.RecordCameraAim(.12f, -.04f);
+                Check(GamepadInput.TryRenderCameraAim(.5, out float cameraX, out float cameraY),
+                    "presentation accepts the applied controller camera turn");
+                Near(cameraX, .06f, "render yaw projects assisted rather than raw stick motion");
+                Near(cameraY, -.02f, "render pitch projects actual clamped camera motion");
+                GamepadContexts.MenuVisible = true;
+                Check(!GamepadInput.TryRenderCameraAim(.5, out _, out _), "menu invalidates assisted render history");
+                GamepadContexts.MenuVisible = false;
+                Check(!GamepadInput.TryRenderCameraAim(.5, out _, out _), "reopened gameplay cannot reuse an old camera turn");
+                GamepadInput.BeginFrame();
+                Check(!GamepadInput.TryRenderCameraAim(.5, out _, out _), "next input frame clears the prior applied turn");
+
                 GamepadContexts.MenuVisible = true; GamepadContexts.MenuVisible = false;
                 GamepadManager.UpdateDevice("mapped", State(GamepadButtons.B), true); GamepadInput.BeginFrame();
                 Check(!GamepadInput.TakePress(GamepadButtons.B), "menu closed between simulation steps cannot leak held accept/back");

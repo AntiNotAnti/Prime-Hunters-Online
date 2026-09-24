@@ -6,7 +6,8 @@ namespace MphRead.Mods.Input.AimAssist
 
     public readonly record struct AimAssistTarget(int Slot, long Life, Vector2 BodyError, Vector2 HeadError,
         float Distance, bool BodyVisible, bool HeadVisible, bool Eligible = true,
-        AimAssistPointType BodyPointType = AimAssistPointType.UpperChest);
+        AimAssistPointType BodyPointType = AimAssistPointType.UpperChest,
+        float HeadRadiusDegrees = .6f);
 
     public readonly record struct AimAssistResult(float X, float Y, int TargetSlot = -1, float Friction = 1,
         float RotationStrength = 0, AimAssistPointType PointType = AimAssistPointType.UpperChest,

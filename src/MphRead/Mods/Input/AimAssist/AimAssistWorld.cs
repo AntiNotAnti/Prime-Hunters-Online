@@ -14,6 +14,8 @@ namespace MphRead.Entities
         private long _assistDeviceRevision = -1, _assistContextRevision = -1;
         private long _aimSourceRevision = -1;
         private object? _assistRoom;
+        private BeamType _assistWeapon;
+        private bool _assistZoomed;
 
         // Position is the locally presented entity, including snapshot playout on clients.
         // Do not substitute authority history, packet positions or projectile convergence here.
@@ -42,14 +44,20 @@ namespace MphRead.Entities
                 return new AimAssistResult(x, y);
             var snapshot = GamepadInput.FrameSnapshot;
             long context = GamepadContexts.Revision;
-            if (_assistDeviceRevision != snapshot.Revision || _assistContextRevision != context
-                || _aimSourceRevision != AimInputSourceTracker.Revision || !ReferenceEquals(_assistRoom, _scene.Room))
-            { _controllerAssist.Reset(); _assistDeviceRevision = snapshot.Revision; _assistContextRevision = context; }
-            _assistRoom = _scene.Room;
+            long now = Environment.TickCount64;
             AimInputSourceTracker.Pointer(Input.MouseDeltaX, Input.MouseDeltaY,
-                PointerDevice.Active && PointerDevice.Current.Device != PointerDeviceType.Mouse, Environment.TickCount64);
+                PointerDevice.Active && PointerDevice.Current.Device != PointerDeviceType.Mouse, now);
             var aim = GamepadInput.AimStick;
-            AimInputSourceTracker.Stick(aim.X, aim.Y, Environment.TickCount64);
+            AimInputSourceTracker.Stick(aim.X, aim.Y, now);
+            if (_assistDeviceRevision != snapshot.Revision || _assistContextRevision != context
+                || _aimSourceRevision != AimInputSourceTracker.Revision || !ReferenceEquals(_assistRoom, _scene.Room)
+                || _assistWeapon != CurrentWeapon || _assistZoomed != EquipInfo.Zoomed)
+                _controllerAssist.Reset();
+            _assistDeviceRevision = snapshot.Revision;
+            _assistContextRevision = context;
+            _assistRoom = _scene.Room;
+            _assistWeapon = CurrentWeapon;
+            _assistZoomed = EquipInfo.Zoomed;
             _aimSourceRevision = AimInputSourceTracker.Revision;
             bool eligible = snapshot.State.Connected && GamepadContexts.Focused && !GamepadContexts.MenuVisible
                 && GamepadContexts.Current == GamepadContext.Gameplay && !GamepadInput.WheelHeld
@@ -80,8 +88,11 @@ namespace MphRead.Entities
                 Vector3 head = target.Position + new Vector3(0, height - .15f, 0);
                 float distance = (chest - CameraInfo.Position).Length;
                 var bodyError = AssistAngles(chest);
+                var headError = AssistAngles(head);
                 if (!AimAssistMath.Finite(bodyError) || !float.IsFinite(distance) || distance > 60
-                    || bodyError.Length() > profile.ReleaseCone) continue;
+                    || (bodyError.Length() > profile.ReleaseCone
+                        && (!profile.Head || target.IsAltForm || !AimAssistMath.Finite(headError)
+                            || headError.Length() > profile.ReleaseCone))) continue;
 
                 long targetLife = NetSession.Active
                     ? ((long)NetPlayerLifecycle.Generation(target.SlotIndex) << 16)
@@ -90,16 +101,16 @@ namespace MphRead.Entities
                 bool retained = target.SlotIndex == _controllerAssist.TargetSlot
                     && targetLife == _controllerAssist.TargetLife;
                 bool visible = AssistVisible(chest);
-                if (!visible && !retained) continue;
-
-                var headError = AssistAngles(head);
-                bool headVisible = visible && !target.IsAltForm && profile.Head
+                bool headVisible = !target.IsAltForm && profile.Head
                     && AimAssistMath.Finite(headError)
-                    && headError.Length() < AimAssistTuning.HeadReleaseCone
+                    && headError.Length() <= profile.ReleaseCone
                     && AssistVisible(head);
+                if (!visible && !headVisible && !retained) continue;
                 candidates[count++] = new(target.SlotIndex, targetLife, bodyError, headError, distance,
                     visible, headVisible,
-                    BodyPointType: target.IsAltForm ? AimAssistPointType.CenterMass : AimAssistPointType.UpperChest);
+                    BodyPointType: target.IsAltForm ? AimAssistPointType.CenterMass : AimAssistPointType.UpperChest,
+                    // Half the 0.3-unit headshot band used by BeamProjectileEntity.
+                    HeadRadiusDegrees: MathHelper.RadiansToDegrees(MathF.Atan2(.15f, (head - CameraInfo.Position).Length)));
                 if (count == candidates.Length) break;
             }
             var pad = snapshot.State;

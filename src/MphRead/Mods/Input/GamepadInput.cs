@@ -87,6 +87,29 @@ namespace MphRead.Mods.Input
         /// </summary>
         public static float AimDeltaX { get; private set; }
         public static float AimDeltaY { get; private set; }
+        private static (float X, float Y)? _appliedCameraAim;
+        private static long _appliedAimContext;
+
+        internal static void RecordCameraAim(float x, float y)
+        {
+            _appliedCameraAim = (x, y);
+            _appliedAimContext = GamepadContexts.Revision;
+        }
+
+        // Presentation projects the accepted camera turn, including assist and pitch
+        // limits. It must not run target selection or advance tracking a second time.
+        internal static bool TryRenderCameraAim(double alpha, out float x, out float y)
+        {
+            x = y = 0;
+            if (_appliedCameraAim is not { } aim || !FrameSnapshot.State.Connected
+                || !GamepadContexts.Focused || GamepadContexts.MenuVisible || WheelHeld
+                || GamepadContexts.Current != GamepadContext.Gameplay
+                || _appliedAimContext != GamepadContexts.Revision || !double.IsFinite(alpha)) return false;
+            float fraction = (float)Math.Clamp(alpha, 0, 1);
+            x = aim.X * fraction;
+            y = aim.Y * fraction;
+            return true;
+        }
 
         /// <summary>
         /// Degrees of turn per frame at full stick deflection, before the
@@ -164,6 +187,7 @@ namespace MphRead.Mods.Input
         /// </summary>
         public static void BeginFrame()
         {
+            _appliedCameraAim = null;
             var snapshot = GamepadManager.Snapshot;
             FrameSnapshot = snapshot;
             GamepadRuntimeConfig.Frame = snapshot.Runtime;

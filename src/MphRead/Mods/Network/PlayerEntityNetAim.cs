@@ -399,6 +399,12 @@ namespace MphRead.Entities
 
             Vector2 pointerAim = ModBoundLateAim(
                 new Vector2(mouseX, mouseY), presentationAlpha);
+            if (Mods.Input.GamepadInput.TryRenderCameraAim(Mods.Render.FrameTiming.Alpha,
+                out float appliedX, out float appliedY))
+            {
+                controllerX = appliedX;
+                controllerY = appliedY;
+            }
             x = pointerAim.X + controllerX;
             y = pointerAim.Y + controllerY;
         }
@@ -2029,17 +2035,25 @@ namespace MphRead.Entities
             }
             float x = Mods.Input.GamepadInput.AimDeltaX * (EquipInfo.Zoomed ? Mods.Input.GamepadOptions.ScopedX : 1);
             float y = Mods.Input.GamepadInput.AimDeltaY * (EquipInfo.Zoomed ? Mods.Input.GamepadOptions.ScopedY : 1);
-            var assisted = ApplyControllerAssist(x, y);
+            var cameraDelta = Mods.Input.AimAssist.AimAssistMath.CameraDelta(new(x, y), AimZoomScale(),
+                Controls.InvertAimX, Controls.InvertAimY);
+            var assisted = ApplyControllerAssist(cameraDelta.X, cameraDelta.Y);
             x = assisted.X; y = assisted.Y;
             if (x == 0 && y == 0)
             {
+                Mods.Input.GamepadInput.RecordCameraAim(0, 0);
                 return;
             }
             ModNoteInput();
             UpdateHudShiftY(y);
             UpdateHudShiftX(x);
-            UpdateAimY(y);
-            UpdateAimX(x);
+            Vector3 previousDirection = _gunVec1;
+            UpdateAimY(y, applyInputSettings: false);
+            UpdateAimX(x, applyInputSettings: false);
+            // Pitch limits can consume less rotation than requested. Motion estimation
+            // must subtract the camera movement that actually happened.
+            _controllerAssist.PreviousOutput = -AssistAngles(CameraInfo.Position + previousDirection);
+            Mods.Input.GamepadInput.RecordCameraAim(_controllerAssist.PreviousOutput.X, _controllerAssist.PreviousOutput.Y);
         }
 
         /// <summary>

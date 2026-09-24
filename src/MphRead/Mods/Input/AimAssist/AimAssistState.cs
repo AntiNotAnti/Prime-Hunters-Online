@@ -6,7 +6,8 @@ namespace MphRead.Mods.Input.AimAssist
     {
         public int TargetSlot = -1;
         public long TargetLife;
-        public float RetainedSeconds, HeadBlend, OccludedSeconds;
+        public float RetainedSeconds, HeadBlend, OccludedSeconds, HeadCandidateSeconds, PreviousDeltaTime;
+        public bool PreviousBodyVisible, PreviousHeadVisible;
         public Vector2 PreviousError, PreviousHeadError, PreviousOutput;
         public Vector2 AngularVelocity, HeadAngularVelocity;
 
@@ -14,7 +15,8 @@ namespace MphRead.Mods.Input.AimAssist
         {
             TargetSlot = -1;
             TargetLife = 0;
-            RetainedSeconds = HeadBlend = OccludedSeconds = 0;
+            RetainedSeconds = HeadBlend = OccludedSeconds = HeadCandidateSeconds = PreviousDeltaTime = 0;
+            PreviousBodyVisible = PreviousHeadVisible = false;
             PreviousError = PreviousHeadError = PreviousOutput = default;
             AngularVelocity = HeadAngularVelocity = default;
         }

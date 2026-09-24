@@ -13,6 +13,32 @@ namespace MphRead.Mods.Input.AimAssist
 
         public static bool Finite(Vector2 v) => float.IsFinite(v.X) && float.IsFinite(v.Y);
 
+        // The assist operates in actual camera degrees, after input preferences and zoom.
+        public static Vector2 CameraDelta(Vector2 input, float zoomScale, bool invertX, bool invertY)
+            => new(input.X * zoomScale * (invertX ? -1 : 1), input.Y * zoomScale * (invertY ? -1 : 1));
+
+        public static Vector2 AngularDelta(Vector2 current, Vector2 previous)
+            => new(MathF.IEEERemainder(current.X - previous.X, 360), current.Y - previous.Y);
+
+        public static bool VisibleHead(in AimAssistTarget target, AimAssistWeaponProfile profile)
+            => profile.Head && target.HeadVisible && Finite(target.HeadError);
+
+        // Measure the visible chest-to-head region, so aiming at the head does not
+        // lose a nearby hunter just because their chest is outside the acquire cone.
+        public static Vector2 SelectionError(in AimAssistTarget target, AimAssistWeaponProfile profile)
+        {
+            if (!VisibleHead(target, profile)) return target.BodyError;
+            if (!target.BodyVisible) return target.HeadError;
+            Vector2 segment = target.HeadError - target.BodyError;
+            float length = segment.LengthSquared();
+            float t = length > .000001f ? Math.Clamp(-Vector2.Dot(target.BodyError, segment) / length, 0, 1) : 0;
+            return target.BodyError + segment * t;
+        }
+
+        // Only the assist is constrained: a deliberate stick overshoot remains the player's.
+        public static float LimitCorrection(float correction, float remaining)
+            => correction * remaining <= 0 ? 0 : MathF.CopySign(Math.Min(Math.Abs(correction), Math.Abs(remaining)), correction);
+
         public static float Opposition(float input, float error)
             => input * error < 0 ? 1 - Smooth(.02f, .8f, Math.Abs(input)) : 1;
 

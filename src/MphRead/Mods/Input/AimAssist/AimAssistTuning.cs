@@ -5,7 +5,8 @@ namespace MphRead.Mods.Input.AimAssist
     {
         public const float AcquireCone = 7, ReleaseCone = 9, InnerCone = 2.4f;
         public const float MinimumFriction = .62f;
-        public const float HorizontalRotation = .24f, VerticalRotation = .15f, RotationErrorGain = 4f;
+        public const float HorizontalRotation = .24f, VerticalRotation = .24f, RotationErrorGain = 4f;
+        public const float MotionTracking = .30f;
         public const float RotationAssistMultiplier = 4f;
         public const float ChallengerRatio = 1.30f, InputAlignmentWeight = .12f;
         public const float HeadDelay = .120f, IntentionalHeadDelay = .050f;
@@ -15,6 +16,8 @@ namespace MphRead.Mods.Input.AimAssist
         public const float OcclusionGrace = .060f;
         public const float VelocityFilterRate = 12f, HeadVelocityFilterRate = 16f;
         public const float HeadBlendRate = 10f, HeadFallbackRate = 18f;
+        public const float IntentStart = .04f, IntentFull = .20f;
+        public const float MaxTrackedSpeed = 120f, MotionDiscontinuity = 12f;
     }
 
     public enum AimAssistWeaponClass { Standard, Tracking, Precision, Projectile, Splash }

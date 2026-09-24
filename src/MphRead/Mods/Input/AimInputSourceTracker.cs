@@ -8,7 +8,7 @@ namespace MphRead.Mods.Input
     {
         public static AimInputSource Current { get; private set; }
         public static long Revision { get; private set; }
-        private static long _claimStart = -1;
+        private static long _claimStart = -1, _lastPointer = -1;
 
         private static void Set(AimInputSource source)
         {
@@ -21,18 +21,19 @@ namespace MphRead.Mods.Input
         {
             if (!float.IsFinite(x) || !float.IsFinite(y) || x * x + y * y < .0001f) return;
             Set(touch ? AimInputSource.Touch : AimInputSource.Mouse);
+            _lastPointer = milliseconds;
             _claimStart = -1;
         }
 
         public static void Stick(float x, float y, long milliseconds)
         {
-            if (!float.IsFinite(x) || !float.IsFinite(y))
+            if (!float.IsFinite(x) || !float.IsFinite(y) || milliseconds == _lastPointer)
             {
                 _claimStart = -1;
                 return;
             }
             float magnitudeSquared = x * x + y * y;
-            if (magnitudeSquared <= .08f * .08f)
+            if (magnitudeSquared <= AimAssist.AimAssistTuning.IntentStart * AimAssist.AimAssistTuning.IntentStart)
             {
                 _claimStart = -1;
                 return;
@@ -53,7 +54,7 @@ namespace MphRead.Mods.Input
                 _claimStart = -1;
                 return;
             }
-            if (_claimStart < 0) _claimStart = milliseconds;
+            if (_claimStart < 0 || milliseconds < _claimStart) _claimStart = milliseconds;
             if (milliseconds - _claimStart >= delay)
             {
                 Set(AimInputSource.Gamepad);
@@ -64,7 +65,7 @@ namespace MphRead.Mods.Input
         public static void Reset()
         {
             Set(AimInputSource.None);
-            _claimStart = -1;
+            _claimStart = _lastPointer = -1;
         }
     }
 }
