@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using OpenTK.Mathematics;
 
 namespace MphRead.Mods.MapGen
@@ -92,11 +93,14 @@ namespace MphRead.Mods.MapGen
             return result;
         }
 
-        public static void Add(BuiltMap map, MapDefinition definition)
+        public static void Add(BuiltMap map, MapDefinition definition, CancellationToken cancellation = default)
         {
             foreach (var geometry in definition.Geometry)
+            {
+                cancellation.ThrowIfCancellationRequested();
                 foreach (var face in Compile(geometry, definition.Materials[geometry.Material].TexScale))
                 { map.Faces.Add(face); if (geometry.Solid) map.Solid.Add(face); }
+            }
         }
     }
 }

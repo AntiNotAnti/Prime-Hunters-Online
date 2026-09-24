@@ -13,6 +13,8 @@ namespace MphRead.Mods.Replay
     /// replay exactly once per captured source frame and the queue starts the
     /// next job only after the current renderer has released ownership.
     /// </summary>
+    internal enum ReplayExportState { Idle, Queued, Seeking, Rendering, Encoding, Completed, Failed, Cancelled }
+
     internal static class ReplayVideoExporter
     {
         private static ReplayVideoExportManifest? _job;
@@ -29,15 +31,24 @@ namespace MphRead.Mods.Replay
         private static bool _previousTrack;
         private static bool _cameraStateSaved;
 
-        public static bool Active => _job != null;
+        private static ReplayEncoderJob? _encoder;
+        private static ReplayVideoExportManifest? _encodingJob;
+        private static ReplayExportState _state;
+        public static ReplayExportState State { get { PollEncoder(); return _state; } }
+        public static bool Active { get { PollEncoder(); return _job != null || _encoder != null; } }
+        public static bool Rendering => _job != null;
+        public static string? LastError { get; private set; }
+        public static float EncodeProgress => _encoder == null ? (_state == ReplayExportState.Completed ? 1 : 0)
+            : Math.Clamp(_encoder.Frames / (float)Math.Max(1, _totalFrames), 0, 1);
+        public static float RenderProgress => _totalFrames <= 0 ? 0 : Math.Clamp(_written / (float)_totalFrames, 0, 1);
         internal static float PresentationAlpha => _job is { Fps: 120 }
             && _segmentIndex < _segments.Length && ReplayController.CurrentFrame > _segments[_segmentIndex].StartFrame
             && ReplayController.CurrentFrame != _lastFrame && !_halfCaptured ? .5f : 1f;
         internal static OpenTK.Mathematics.Vector2i? OutputSize => _job == null ? null : new(_job.Width, _job.Height);
         public static int FramesWritten => _written;
-        public static float Progress => _totalFrames <= 0
-            ? 0 : Math.Clamp(_written / (float)_totalFrames, 0, 1);
-        public static string Status { get; private set; } = "";
+        public static float Progress => State == ReplayExportState.Encoding ? EncodeProgress : RenderProgress;
+        private static string _status = "";
+        public static string Status { get { PollEncoder(); return _encoder != null ? $"Encoding {EncodeProgress:P0}" : _status; } private set => _status = value; }
         public static string? LastOutput { get; private set; }
 
         public static bool Start(ReplayVideoExportManifest job)
@@ -90,17 +101,20 @@ namespace MphRead.Mods.Replay
             {
                 _job = null;
                 _segments = Array.Empty<ReplayVideoSegment>();
+                RestoreCameraState();
                 Status = "The render output directory is invalid.";
                 return false;
             }
 
-            Directory.CreateDirectory(_directory);
+            try { Directory.CreateDirectory(_directory); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+            { Fail(ex.Message); return false; }
             _written = 0;
             _segmentIndex = 0;
             _lastFrame = UInt32.MaxValue;
             _halfCaptured = false;
             _totalFrames = EstimateFrames(job.Fps, _segments);
-            LastOutput = null;
+            LastOutput = null; LastError = null; _state = ReplayExportState.Seeking;
             Status = "Seeking to render start...";
             ApplySegmentCamera(_segments[0], job);
             ReplayController.Seek(_segments[0].StartFrame, resume: false);
@@ -113,11 +127,14 @@ namespace MphRead.Mods.Replay
             _segments = Array.Empty<ReplayVideoSegment>();
             _segmentIndex = 0;
             RestoreCameraState();
+            _encoder?.Cancel();
+            if (_encoder == null) _state = ReplayExportState.Cancelled;
             Status = "Video export cancelled.";
         }
 
         public static void AfterSceneDraw(Scene scene)
         {
+            PollEncoder();
             CaptureReplayThumbnails(scene);
 
             if (_job == null)
@@ -136,6 +153,7 @@ namespace MphRead.Mods.Replay
                 return;
             }
 
+            _state = ReplayExportState.Rendering;
             ReplayVideoSegment segment = _segments[_segmentIndex];
             uint frame = ReplayController.CurrentFrame;
             if (frame < segment.StartFrame)
@@ -163,11 +181,7 @@ namespace MphRead.Mods.Replay
                     : MphRead.Mods.ScreenCapture.SaveWindow(scene, path);
                 if (!saved)
                 {
-                    Status = $"Frame {frame} could not be captured; export stopped.";
-                    _job = null;
-                    _segments = Array.Empty<ReplayVideoSegment>();
-                    RestoreCameraState();
-                    ReplayExportQueue.NoteFinished(Status);
+                    Fail($"Frame {frame} could not be captured; export stopped.");
                     return;
                 }
                 _written++;
@@ -269,32 +283,42 @@ namespace MphRead.Mods.Replay
                 return;
 
             RestoreCameraState();
-            LastOutput = job.SuggestedOutput;
             Status = $"Rendered {_written} frames.";
 #if !ANDROID
-            try
-            {
-                var start = new ProcessStartInfo
-                {
-                    FileName = "ffmpeg",
-                    Arguments = job.FfmpegArguments,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    WorkingDirectory = _directory ?? ""
-                };
-                Process? process = Process.Start(start);
-                if (process != null)
-                    Status += " FFmpeg encoding started.";
-            }
-            catch (Exception ex) when (ex is InvalidOperationException
-                or System.ComponentModel.Win32Exception)
-            {
-                Status += " FFmpeg was not found; PNG sequence and encode.txt were kept.";
-            }
+            _state = ReplayExportState.Encoding;
+            _encodingJob = job;
+            _encoder = new ReplayEncoderJob("ffmpeg", "-progress pipe:1 -nostats " + job.FfmpegArguments, _directory ?? "");
 #else
+            _state = ReplayExportState.Completed;
+            LastOutput = _directory;
             Status += " PNG sequence is ready for desktop encoding.";
-#endif
             ReplayExportQueue.NoteFinished(Status);
+#endif
+        }
+
+        private static void PollEncoder()
+        {
+            if (_encoder?.Completion.IsCompleted != true) return;
+            var result = _encoder.Completion.GetAwaiter().GetResult();
+            if (!result.Cancelled && result.Error == null && !File.Exists(_encodingJob?.SuggestedOutput))
+                result = result with { Error = "FFmpeg exited without producing the requested video." };
+            _encoder.Dispose(); _encoder = null;
+            _state = result.Cancelled ? ReplayExportState.Cancelled
+                : result.Error == null ? ReplayExportState.Completed : ReplayExportState.Failed;
+            LastError = result.Error;
+            if (_state == ReplayExportState.Failed) ReplayExportQueue.NoteFailure(_encodingJob, result.Error!);
+            LastOutput = _state == ReplayExportState.Completed ? _encodingJob?.SuggestedOutput : null;
+            _encodingJob = null;
+            Status = _state == ReplayExportState.Completed ? "Video export complete."
+                : result.Cancelled ? "Video export cancelled." : "Encoding failed. PNG sequence retained. " + result.Error;
+            ReplayExportQueue.NoteFinished(_status);
+        }
+        private static void Fail(string message)
+        {
+            ReplayExportQueue.NoteFailure(_job, message);
+            _job = null; _segments = Array.Empty<ReplayVideoSegment>();
+            RestoreCameraState(); LastError = message; Status = message; _state = ReplayExportState.Failed;
+            ReplayExportQueue.NoteFinished(message);
         }
 
         private static void RestoreCameraState()
@@ -313,6 +337,7 @@ namespace MphRead.Mods.Replay
         // replay never opened still gets the map thumbnail as its immediate fallback.
         private static string? _thumbReplay;
         private static readonly bool[] _thumbDone = new bool[3];
+        private static readonly System.Threading.Tasks.Task<bool>?[] _thumbJobs = new System.Threading.Tasks.Task<bool>?[3];
 
         private static void CaptureReplayThumbnails(Scene scene)
         {
@@ -323,7 +348,7 @@ namespace MphRead.Mods.Replay
             {
                 _thumbReplay = replay;
                 for (int i = 0; i < _thumbDone.Length; i++)
-                    _thumbDone[i] = File.Exists(ThumbnailPath(replay, i));
+                { _thumbJobs[i] = null; _thumbDone[i] = File.Exists(ThumbnailPath(replay, i)); }
             }
 
             uint duration = Math.Max(1u, ReplayController.DurationFrames);
@@ -336,9 +361,10 @@ namespace MphRead.Mods.Replay
             uint frame = ReplayController.CurrentFrame;
             for (int i = 0; i < targets.Length; i++)
             {
-                if (_thumbDone[i] || frame < targets[i])
+                if (_thumbJobs[i]?.IsCompleted == true) { _thumbDone[i] = _thumbJobs[i]!.GetAwaiter().GetResult(); _thumbJobs[i] = null; }
+                if (_thumbJobs[i] != null || _thumbDone[i] || frame < targets[i])
                     continue;
-                _thumbDone[i] = MphRead.Mods.ScreenCapture.Save(scene,
+                _thumbJobs[i] = MphRead.Mods.ScreenCapture.QueueThumbnail(scene,
                     ThumbnailPath(replay, i));
             }
         }

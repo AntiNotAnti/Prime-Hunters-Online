@@ -1054,6 +1054,7 @@ namespace MphRead.Mods.Launcher.Gui
 
         // -------------------------------------------------------------- replays
 
+        private ChoiceRow? _killCameraRow;
         private void BuildReplays(StackPanel page)
         {
             Heading(page, "Instant clips");
@@ -1073,7 +1074,8 @@ namespace MphRead.Mods.Launcher.Gui
                 LauncherPrefs.KillCamEnabled));
             _finalKillCamRow = Add(page, new ToggleRow("Final kill cam",
                 LauncherPrefs.FinalKillCamEnabled));
-            Explain(page, "Kill cams replay buffered presentation history from before the confirmed kill; "
+            _killCameraRow = Add(page, new ChoiceRow("Kill cam camera", new[] { "Chase", "First person", "Cinematic" }, LauncherPrefs.KillCamCamera));
+            Explain(page, "Kill cams show 3.5 seconds before the confirmed kill and 1.5 seconds after it; "
                 + "they never rewind the live network simulation. Release Fire, then press it again "
                 + "to skip your personal kill cam.");
 
@@ -1787,6 +1789,7 @@ namespace MphRead.Mods.Launcher.Gui
                 LauncherPrefs.ReplayDeleteClips = _replayDeleteClipsRow.On;
             if (_killCamRow != null)
                 LauncherPrefs.KillCamEnabled = _killCamRow.On;
+            if (_killCameraRow != null) LauncherPrefs.KillCamCamera = _killCameraRow.Index;
             if (_finalKillCamRow != null)
                 LauncherPrefs.FinalKillCamEnabled = _finalKillCamRow.On;
             GameState.CommitSettings(_settings);

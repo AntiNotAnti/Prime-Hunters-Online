@@ -218,7 +218,7 @@ namespace MphRead.Mods.Network
         public bool Start(string roomKey, GameMode mode, int maxPlayers,
             SnapshotSink sink, Action matchEnded, RosterPacket? roster = null, SessionStatePacket? session = null)
         {
-            Stop();
+            Stop(preserveRoomPrewarm: true);
             Mods.Headless.Enter();
             try
             {
@@ -264,10 +264,10 @@ namespace MphRead.Mods.Network
                 // -- on a machine where nobody will be attaching a debugger.
                 Console.WriteLine($"[sim] could not load \"{roomKey}\": {ex}");
                 NetLog.Event($"server simulation failed to start: {ex}");
-                Stop();
+                Stop(preserveRoomPrewarm: true);
                 // Loading can fail before _scene is assigned. Release the partial
                 // authority session and assets so another lobby start can retry.
-                NetSession.Stop();
+                NetSession.StopMatchRuntime();
                 Read.ClearCache();
                 return false;
             }
@@ -328,15 +328,17 @@ namespace MphRead.Mods.Network
             }
         }
 
-        public void Stop()
+        public void Stop(bool preserveRoomPrewarm = false)
         {
             if (_scene == null)
             {
+                if (!preserveRoomPrewarm) Mods.RoomPrewarm.Clear();
                 return;
             }
             _scene = null;
             _room = "";
-            NetSession.Stop();
+            if (preserveRoomPrewarm) NetSession.StopMatchRuntime();
+            else NetSession.Stop();
             // The room's models, collision and entity lists, which are held in
             // a static cache keyed by path: without this a rotation through
             // twenty maps keeps all twenty.

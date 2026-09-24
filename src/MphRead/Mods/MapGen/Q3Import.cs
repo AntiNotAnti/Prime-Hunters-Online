@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -24,11 +25,11 @@ namespace MphRead.Mods.MapGen
     /// </summary>
     public static class Q3Import
     {
-        public static BuiltMap Build(MapDefinition def, bool verbose = true)
+        public static BuiltMap Build(MapDefinition def, bool verbose = true, CancellationToken cancellation = default)
         {
             MapImport import = def.Import
                 ?? throw new ProgramException($"Map {def.Name} has no import settings.");
-            Q3Bsp bsp = Q3Bsp.Load(import.Resolve() ?? import.Source, import.MapName);
+            Q3Bsp bsp = Q3Bsp.Load(import.Resolve() ?? import.Source, import.MapName, cancellation);
             var map = new BuiltMap(def);
             float unit = import.UnitsPerUnit;
             // With a baked pack the level wears its own textures and a
@@ -39,7 +40,7 @@ namespace MphRead.Mods.MapGen
             MapTexturePack? pack = import.LoadTexturePack();
             if (pack == null)
             {
-                string? baked = BakeTextures(bsp, import, verbose);
+                string? baked = BakeTextures(bsp, import, verbose, cancellation);
                 pack = baked == null ? null : MapTexturePack.Load(baked);
             }
             IReadOnlyList<(int, int)> textureSizes = pack == null
@@ -84,6 +85,7 @@ namespace MphRead.Mods.MapGen
             var drawnMax = new Vector3(Single.MinValue);
             foreach (Q3Face face in bsp.Faces)
             {
+                cancellation.ThrowIfCancellationRequested();
                 if (face.Type != 1 && face.Type != 2 && face.Type != 3)
                 {
                     skipped++;
@@ -122,7 +124,7 @@ namespace MphRead.Mods.MapGen
                     patches++;
                 }
                 foreach (BuiltFace built in patch
-                    ? Tessellate(bsp, face, unit, width, height, material, sky, import.PatchLevel)
+                    ? Tessellate(bsp, face, unit, width, height, material, sky, import.PatchLevel, cancellation)
                     : Triangles(bsp, face, unit, width, height, material, sky))
                 {
                     if (sky)
@@ -422,7 +424,7 @@ namespace MphRead.Mods.MapGen
         /// time and evaluating each 3x3 leaves no seam.
         /// </summary>
         private static IEnumerable<BuiltFace> Tessellate(Q3Bsp bsp, Q3Face face, float unit,
-            int width, int height, int material, bool sky, int level)
+            int width, int height, int material, bool sky, int level, CancellationToken cancellation)
         {
             int w = face.Size[0];
             int h = face.Size[1];
@@ -433,6 +435,7 @@ namespace MphRead.Mods.MapGen
             level = Math.Clamp(level, 1, 8);
             for (int py = 0; py + 2 < h; py += 2)
             {
+                cancellation.ThrowIfCancellationRequested();
                 for (int px = 0; px + 2 < w; px += 2)
                 {
                     var points = new Vector3[level + 1, level + 1];
@@ -600,7 +603,7 @@ namespace MphRead.Mods.MapGen
         /// natives being desktop builds left out of the APK on purpose. There,
         /// this fails and says so, and the pack has to arrive already baked.
         /// </summary>
-        internal static string? BakeTextures(Q3Bsp bsp, MapImport import, bool verbose)
+        internal static string? BakeTextures(Q3Bsp bsp, MapImport import, bool verbose, CancellationToken cancellation = default)
         {
             string? level = import.Resolve();
             if (String.IsNullOrEmpty(import.Textures) || level == null)
@@ -611,7 +614,7 @@ namespace MphRead.Mods.MapGen
                 import.BaseDirectory ?? CustomRooms.MapDirectory, import.Textures);
             try
             {
-                MapTextureBake.Result result = MapTextureBake.Bake(bsp, new[] { level }, target);
+                MapTextureBake.Result result = MapTextureBake.Bake(bsp, new[] { level }, target, cancellation: cancellation);
                 if (result.Baked == 0)
                 {
                     File.Delete(target);
@@ -624,6 +627,7 @@ namespace MphRead.Mods.MapGen
                 }
                 return target;
             }
+            catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
                 Console.WriteLine($"[mapgen] could not bake textures from "

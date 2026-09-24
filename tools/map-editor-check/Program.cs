@@ -123,7 +123,95 @@ try
         Check(Math.Abs((clip.X/clip.W+1)*400-screen.X)<.001&&Math.Abs((1-clip.Y/clip.W)*225-screen.Y)<.001,
             "renderer projection matches overlay coordinates");
     }
+    // Multi-object tools publish one history command and preserve local transforms.
+    var layoutDefinition = new MapDefinition();
+    layoutDefinition.Geometry.Add(new MapBox { Transform = new() { Position = new[] { 0f, 1, 0 } } });
+    layoutDefinition.Geometry.Add(new MapBox { Transform = new() { Position = new[] { 3f, 2, 0 } } });
+    layoutDefinition.Geometry.Add(new MapBox { Transform = new() { Position = new[] { 10f, 4, 0 } } });
+    var layoutDocument = new MapDocument(new(layoutDefinition));
+    var layoutIds = layoutDocument.Project.Definition.Geometry.Select(g => g.Id).ToHashSet();
+    layoutDocument.EditObjects("Align", layoutIds, d => MapLayoutCommands.Align(d, layoutIds, 1, -1));
+    Check(layoutDocument.Project.Definition.Geometry.All(g => g.Transform.Position[1] == 1), "align bounds");
+    layoutDocument.History.Undo();
+    Check(layoutDocument.Project.Definition.Geometry[2].Transform.Position[1] == 4, "align undo restores all objects");
+    layoutDocument.EditObjects("Distribute", layoutIds, d => MapLayoutCommands.Distribute(d, layoutIds, 0));
+    Check(layoutDocument.Project.Definition.Geometry[1].Transform.Position[0] == 5, "distribute centers");
+    layoutDocument.EditObjects("Array", layoutIds, d => MapLayoutCommands.Array(d, layoutIds, 4, new(0,0,3)));
+    Check(layoutDocument.Project.Definition.Geometry.Count == 15 && layoutDocument.Project.Definition.Geometry.Select(g=>g.Id).Distinct().Count() == 15, "array identities");
+    layoutDocument.History.Undo(); Check(layoutDocument.Project.Definition.Geometry.Count == 3, "array undoes as one transaction");
+    layoutDocument.TransformSelection(layoutIds, "Scale", Vector3.Zero, 0, 2, true, scaleAxes: Vector3.UnitX, pivot: Vector3.Zero);
+    Check(layoutDocument.Project.Definition.Geometry[2].Transform.Position[0] == 20 && layoutDocument.Project.Definition.Geometry[0].Transform.Scale.SequenceEqual(new[]{2f,1,1}), "axis scale and world pivot");
+    layoutDocument.History.Undo();
+    layoutDocument.TransformSelection(layoutIds, "Rotate", Vector3.Zero, 90, 1, false, rotationAxis: Vector3.UnitZ, pivot: Vector3.Zero);
+    Check(Math.Abs(layoutDocument.Project.Definition.Geometry[0].Transform.Position[0] + 1) < .001, "Z rotation around world pivot");
+    layoutDocument.History.Undo();
+    var graphCheck = new MapNodePacker.NavigationGraph(System.Array.Empty<byte>(),
+        new[]{OpenTK.Mathematics.Vector3.Zero,OpenTK.Mathematics.Vector3.UnitX,new OpenTK.Mathematics.Vector3(2,0,0),new OpenTK.Mathematics.Vector3(5,0,0)},
+        new[]{new[]{1},new[]{0,2},new[]{1},System.Array.Empty<int>()},new[]{0,0,0,1},2);
+    Check(MapNavigationInspection.Find(graphCheck,0,2).SequenceEqual(new[]{0,1,2}), "navigation path");
+    Check(MapNavigationInspection.Find(graphCheck,0,3).Length == 0, "disconnected navigation path");
+    var floorId = Guid.NewGuid();
+    var floorFaces = new[] { new MapViewportFace(floorId, new[] { new Vector3(-20,0,-20), new Vector3(-20,0,20), new Vector3(20,0,20), new Vector3(20,0,-20) }, 1, 0, true) };
+    Check(MapLayoutCommands.FloorBelow(new(0,5,0), floorFaces) == 0 && MapLayoutCommands.FloorBelow(new(40,5,0), floorFaces) == null, "floor snap intersects the actual surface");
+    layoutDocument.EditObjects("Floor", layoutIds, d => MapLayoutCommands.SnapToFloor(d, layoutIds, floorFaces));
+    Check(layoutDocument.Project.Definition.Geometry.All(g => Math.Abs(g.Transform.Position[1] - .5f) < .001), "floor snap lands selected bounds");
+    layoutDocument.History.Undo();
+    foreach (string tool in new[] { "Move", "Rotate", "Scale" })
+    {
+        var id = layoutIds.First(); var item = MapObjects.Find(layoutDocument.Project.Definition, id)!;
+        var beforeFaces = GeometryCompiler.Compile((MapGeometry)item.Value, 1).SelectMany(f => f.Points).ToArray();
+        var matrix = MapTransformPreview.Matrix(item, tool, new(2,3,4), 35, 1.7f, true, Vector3.UnitZ, Vector3.UnitX, Vector3.Zero);
+        layoutDocument.TransformSelection(new[]{id},tool,new(2,3,4),35,1.7f,true,rotationAxis:Vector3.UnitZ,scaleAxes:Vector3.UnitX,pivot:Vector3.Zero);
+        var afterFaces = GeometryCompiler.Compile((MapGeometry)MapObjects.Find(layoutDocument.Project.Definition,id)!.Value,1).SelectMany(f=>f.Points).ToArray();
+        Check(beforeFaces.Select((point,i) => Vector3.Distance(Vector3.Transform(new(point.X,point.Y,point.Z),matrix),new(afterFaces[i].X,afterFaces[i].Y,afterFaces[i].Z))).All(distance => distance < .001),
+            tool + " preview matches committed geometry");
+        layoutDocument.History.Undo();
+    }
+    string previewOld="preview/old.png", previewNew="preview/new.png";
+    Directory.CreateDirectory(Path.Combine(root,"preview")); File.WriteAllText(Path.Combine(root,previewOld),"old"); File.WriteAllText(Path.Combine(root,previewNew),"new");
+    layoutDocument.RegisterGeneratedAsset(previewOld,root);layoutDocument.RegisterGeneratedAsset(previewNew,root);
+    layoutDocument.Edit("Preview",d=>d.Assets.Add(new(){Path=previewOld,Kind="preview"}));
+    int previewHistory=layoutDocument.History.CommandCount;
+    layoutDocument.Edit("Replace preview",d=>{d.Assets.RemoveAll(a=>a.Kind=="preview");d.Assets.Add(new(){Path=previewNew,Kind="preview"});});
+    Check(layoutDocument.History.CommandCount==previewHistory+1,"preview replacement is one command");
+    layoutDocument.History.Undo(); Check(layoutDocument.Project.Definition.Assets.Single().Path==previewOld,"preview undo");
+    Check(layoutDocument.CleanupGeneratedAssets()==0 && File.Exists(Path.Combine(root,previewNew)),"cleanup preserves undo and redo files");
+    layoutDocument.History.Redo(); Check(layoutDocument.Project.Definition.Assets.Single().Path==previewNew,"preview redo");
+    string orphan="preview/orphan.png";File.WriteAllText(Path.Combine(root,orphan),"orphan");layoutDocument.RegisterGeneratedAsset(orphan,root);
+    Check(layoutDocument.CleanupGeneratedAssets()==1&&!File.Exists(Path.Combine(root,orphan)),"cleanup deletes only registered orphan");
     var original = MapBuildSnapshot.Capture(doc.Project);
+    Check(original.CreateDefinition().Serialize() == doc.Project.Definition.Serialize(), "snapshot preserves all serialized DTO values");
+    Check(ReferenceEquals(doc.CaptureBuildSnapshot(), doc.CaptureBuildSnapshot()), "unchanged snapshot reused");
+    var autosaveState = doc.CurrentStateId;
+    using (var autosave = new MapAutosaveService())
+    {
+        var payload = doc.CaptureAutosave(root);
+        Check(autosave.Queue(payload), "autosave accepts detached payload");
+        await autosave.Completion;
+        Check(autosave.Result?.Error == null && File.Exists(payload.Path), "autosave commits on worker");
+        Check(doc.CurrentStateId == autosaveState, "autosave never mutates document");
+        Check(MapDocument.ReadRecovery(payload.Path).Definition.Serialize() == doc.Project.Definition.Serialize(), "recovery roundtrip");
+        for (int i = 0; i < 12; i++)
+        {
+            doc.TransformSelection(new[] { box.Id }, "Move", new(1, 0, 0), 0, 1, false);
+            autosave.Queue(doc.CaptureAutosave(root));
+        }
+        await autosave.Completion;
+        Check(autosave.Result?.State == doc.CurrentStateId, "latest autosave wins");
+        autosave.Dispose();
+        Check(!autosave.Queue(payload), "closed autosave rejects future work");
+    }
+    using (var cancelled = new CancellationTokenSource())
+    {
+        cancelled.Cancel(); bool stopped = false;
+        try { MapTextureBake.BakeImage(Array.Empty<byte>(), cancelled.Token); }
+        catch (OperationCanceledException) { stopped = true; }
+        Check(stopped, "cancelled texture bake never decodes");
+        stopped = false;
+        try { Q3Bsp.Load("missing.bsp", null, cancelled.Token); }
+        catch (OperationCanceledException) { stopped = true; }
+        Check(stopped, "cancelled BSP load never reads");
+    }
     float snapshotX = original.CreateDefinition().Geometry[0].Transform.Position[0];
     doc.Project.Definition.Geometry[0].Transform.Position[0] += 10;
     Check(original.CreateDefinition().Geometry[0].Transform.Position[0] == snapshotX, "build snapshot detached from editor");
@@ -160,6 +248,26 @@ try
     release.Set();
     var built = await second;
     Check(built.Succeeded && builds == 1, "one caller cancellation preserves shared work");
+    using (var lastWaiter = new CancellationTokenSource())
+    using (var orphanRelease = new ManualResetEventSlim())
+    {
+        var orphanEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var orphanScheduler = new MapBuildScheduler(Path.Combine(root, "cancelled-build"), build: (map, directory) =>
+        {
+            orphanEntered.TrySetResult();
+            if (!orphanRelease.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException();
+            foreach (var file in MapOutputSet.Create(map, directory, directory, directory).Files) File.WriteAllText(file, map.Name);
+            return new();
+        });
+        var abandoned = orphanScheduler.BuildAsync(original, lastWaiter.Token);
+        await orphanEntered.Task.WaitAsync(TimeSpan.FromSeconds(10)); lastWaiter.Cancel();
+        try { await abandoned; throw new Exception("last waiter did not cancel"); } catch (OperationCanceledException) { checks++; }
+        orphanRelease.Set();
+        var cancelledDeadline = DateTime.UtcNow.AddSeconds(10);
+        while (orphanScheduler.PendingCount != 0 && DateTime.UtcNow < cancelledDeadline) await Task.Delay(1);
+        Check(orphanScheduler.PendingCount == 0 && !Directory.EnumerateFiles(Path.Combine(root, "cancelled-build"), "cache.json", SearchOption.AllDirectories).Any(),
+            "last cancelled waiter prevents cache publication and releases queue");
+    }
     var hit = await scheduler.BuildAsync(original);
     Check(hit.CacheHit && builds == 1, "persistent cache hit skips compilation");
     File.WriteAllText(hit.Outputs!.Model, "corruption");
@@ -302,7 +410,15 @@ try
     });
     var changedResult=await changedScheduler.BuildAsync(realSnapshot);
     Check(!changedResult.Succeeded && changedResult.Diagnostics.Any(d=>d.Message.Contains("dependencies changed")),"changing dependency cannot poison cache");
-    Console.WriteLine($"Map editor: {checks} checks passed.");
+    if (args.Contains("--benchmark"))
+    foreach (int objects in new[] { 1000, 5000, 10000 })
+    {
+        var big = new MapDefinition(); for(int i=0;i<objects;i++)big.Geometry.Add(new MapBox());
+        var watch=System.Diagnostics.Stopwatch.StartNew(); var legacy=MapProjectSerializer.Clone(big); watch.Stop();double oldMs=watch.Elapsed.TotalMilliseconds;
+        watch.Restart();var snapshot=MapBuildSnapshot.Capture(big);watch.Stop();
+        Console.WriteLine($"Snapshot {objects}: JSON clone {oldMs:0.00} ms; detached capture {watch.Elapsed.TotalMilliseconds:0.00} ms");
+    }
+Console.WriteLine($"Map editor: {checks} checks passed.");
     if (args.Contains("--benchmark")) Benchmarks.Run();
 }
 finally { Directory.Delete(root, true); }

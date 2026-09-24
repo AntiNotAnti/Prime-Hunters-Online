@@ -7,6 +7,7 @@ namespace MphRead.Mods.Network
     internal sealed class ReplayTransport
     {
         private readonly ReplayPlaybackSession _session;
+        internal bool SeekingEnabled { get; set; } = true;
         public ReplayTransport(ReplayPlaybackSession session) => _session = session;
         public static readonly float[] Rates = { 0.25f, 0.5f, 1, 2, 4 };
         public ReplayState State { get; private set; }
@@ -26,10 +27,13 @@ namespace MphRead.Mods.Network
         private uint? _target;
         private bool _resumeAfterSeek;
         public bool IsSeeking => State == ReplayState.Seeking;
+        internal long SeekGeneration { get; private set; }
+        internal uint? RequestedSeekTarget => SeekTarget;
         internal uint? SeekTarget => _target ?? _rebuild;
         internal bool ResumeAfterSeek => _resumeAfterSeek;
         internal void CopyPreferences(ReplayTransport source)
         {
+            SeekingEnabled = source.SeekingEnabled;
             PlaybackRate = source.PlaybackRate; EventFilter = source.EventFilter;
             ClipIn = source.ClipIn; ClipOut = source.ClipOut; LastInteraction = source.LastInteraction;
         }
@@ -51,12 +55,12 @@ namespace MphRead.Mods.Network
             ClipOut = value;
             NoteInput();
         }
-        public ReplayOpenResult SaveSelection()
+        public System.Threading.Tasks.Task<ReplayOpenResult> SaveSelectionAsync(System.Threading.CancellationToken cancellation = default)
         {
-            if (!ClipIn.HasValue || !ClipOut.HasValue || _session.CurrentPath == null) return ReplayOpenResult.Empty;
-            System.IO.Directory.CreateDirectory(DemoLibrary.Directory);
+            if (!ClipIn.HasValue || !ClipOut.HasValue || _session.CurrentPath == null) return System.Threading.Tasks.Task.FromResult(ReplayOpenResult.Empty);
+            string source = _session.CurrentPath; uint start = ClipIn.Value, end = ClipOut.Value;
             string output = System.IO.Path.Combine(DemoLibrary.Directory, $"clip_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}_{Guid.NewGuid():N}.ppdemo");
-            return ReplayArchive.Extract(_session.CurrentPath, ClipIn.Value, ClipOut.Value, output);
+            return ReplayStorageJobs.Run(() => { System.IO.Directory.CreateDirectory(DemoLibrary.Directory); return ReplayArchive.Extract(source, start, end, output, cancellation); }, cancellation);
         }
         public void NoteInput() => LastInteraction = Environment.TickCount64;
         internal void ClearSelection() { ClipIn = null; ClipOut = null; }
@@ -104,9 +108,11 @@ namespace MphRead.Mods.Network
         }
         public void Seek(uint frame, bool? resume = null)
         {
+            if (!SeekingEnabled) throw new InvalidOperationException("Linear replay playback does not support seeking.");
             if (!_session.IsActive) return;
             uint target = Math.Min(frame, DurationFrames);
-            _resumeAfterSeek = resume ?? State == ReplayState.Playing;
+            _resumeAfterSeek = resume ?? (IsSeeking ? _resumeAfterSeek : State == ReplayState.Playing);
+            SeekGeneration++;
             if (target == CurrentFrame && _session.HasSimulatedFrame)
             {
                 _target = null;

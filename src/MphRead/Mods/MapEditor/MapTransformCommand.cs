@@ -10,11 +10,16 @@ public sealed partial class MapDocument
 {
     /// <summary>Transform history stores only numeric transforms, even for large convex meshes.</summary>
     public void TransformSelection(IEnumerable<Guid> ids, string tool, Vector3 move,
-        float angle, float scale, bool localAxes, object? transaction = null)
+        float angle, float scale, bool localAxes, object? transaction = null, Vector3? rotationAxis = null, Vector3? scaleAxes = null, Vector3? pivot = null)
     {
         if (tool is not ("Move" or "Rotate" or "Scale")) throw new ArgumentException("Unknown transform tool.", nameof(tool));
         if (!float.IsFinite(move.X) || !float.IsFinite(move.Y) || !float.IsFinite(move.Z)
             || !float.IsFinite(angle) || !float.IsFinite(scale) || scale <= 0) throw new ArgumentOutOfRangeException(nameof(move));
+        Vector3 axis = rotationAxis ?? Vector3.UnitY;
+        if (axis.LengthSquared() < .0001f || !float.IsFinite(axis.LengthSquared())) throw new ArgumentOutOfRangeException(nameof(rotationAxis));
+        axis = Vector3.Normalize(axis);
+        Vector3 factors = Vector3.One + (scaleAxes ?? Vector3.One) * (scale - 1);
+        if (factors.X <= 0 || factors.Y <= 0 || factors.Z <= 0 || !float.IsFinite(factors.LengthSquared())) throw new ArgumentOutOfRangeException(nameof(scaleAxes));
         var selected = ids.ToHashSet();
         var objects = selected.Select(id => MapObjects.Find(Project.Definition, id)).OfType<MapObject>()
             .Where(o => o.Value is not MapGeometry { Locked: true }).ToArray();
@@ -43,17 +48,32 @@ public sealed partial class MapDocument
             }
             else if (value is MapGeometry g)
             {
-                if (tool == "Scale") for (int i = 0; i < 3; i++) g.Transform.Scale[i] *= scale;
+                if (tool == "Scale") for (int i = 0; i < 3; i++) g.Transform.Scale[i] *= factors[i];
                 else
                 {
                     var r = g.Transform.Rotation;
                     var current = new Quaternion(r[0], r[1], r[2], r[3]);
-                    var turn = Quaternion.CreateFromAxisAngle(Vector3.UnitY, angle * MathF.PI / 180);
+                    var turn = Quaternion.CreateFromAxisAngle(axis, angle * MathF.PI / 180);
                     var q = Quaternion.Normalize(localAxes ? current * turn : turn * current);
                     g.Transform.Rotation = new[] { q.X, q.Y, q.Z, q.W };
                 }
             }
-            else if (value is MapSpawn spawn && tool == "Rotate") spawn.Yaw += angle;
+            else if (value is MapSpawn spawn && tool == "Rotate" && Math.Abs(axis.Y) > .99f) spawn.Yaw += angle;
+            else if (value is MapBrush brush && tool == "Scale")
+            {
+                var center = copy.Position;
+                for (int i = 0; i < 3; i++) { brush.Min[i] = center[i] + (brush.Min[i] - center[i]) * factors[i]; brush.Max[i] = center[i] + (brush.Max[i] - center[i]) * factors[i]; }
+            }
+            if (pivot is { } origin && tool != "Move")
+            {
+                var position = new Vector3(copy.Position[0], copy.Position[1], copy.Position[2]);
+                Vector3 worldAxis = axis;
+                if (localAxes && o.Value is MapGeometry originalGeometry)
+                { var r = originalGeometry.Transform.Rotation; worldAxis = Vector3.Transform(axis, new Quaternion(r[0], r[1], r[2], r[3])); }
+                Vector3 desired = tool == "Scale" ? origin + (position - origin) * factors
+                    : origin + Vector3.Transform(position - origin, Quaternion.CreateFromAxisAngle(worldAxis, angle * MathF.PI / 180));
+                var delta = desired - position; copy.Move(new[] { delta.X, delta.Y, delta.Z });
+            }
             return TransformValue.Capture(copy);
         }).ToArray();
         var changed = Enumerable.Range(0, before.Length).Where(i => !before[i].Values.SequenceEqual(after[i].Values)).ToArray();
@@ -114,5 +134,32 @@ public sealed partial class MapDocument
                 || !_before.Select(x => x.Id).SequenceEqual(other._before.Select(x => x.Id))) return false;
             _after = other._after; return true;
         }
+    }
+}
+
+/// <summary>The same world-space transform used by CPU and GPU drag previews.</summary>
+public static class MapTransformPreview
+{
+    public static Matrix4x4 Matrix(MapObject item, string tool, Vector3 move, float angle, float scale,
+        bool localAxes, Vector3 axis, Vector3 scaleAxes, Vector3? pivot)
+    {
+        if (item.Value is MapGeometry { Locked: true }) return Matrix4x4.Identity;
+        var center = new Vector3(item.Position[0], item.Position[1], item.Position[2]);
+        var rotation = item.Value is MapGeometry geometry
+            ? new Quaternion(geometry.Transform.Rotation[0], geometry.Transform.Rotation[1], geometry.Transform.Rotation[2], geometry.Transform.Rotation[3])
+            : Quaternion.Identity;
+        var origin = pivot ?? center;
+        if (tool == "Move") return Matrix4x4.CreateTranslation(localAxes ? Vector3.Transform(move, rotation) : move);
+        var factors = Vector3.One + scaleAxes * (scale - 1);
+        var worldAxis = localAxes ? Vector3.Transform(axis, rotation) : axis;
+        var turn = Quaternion.CreateFromAxisAngle(worldAxis, angle * MathF.PI / 180);
+        var destination = pivot == null ? center : tool == "Scale" ? origin + (center - origin) * factors
+            : origin + Vector3.Transform(center - origin, turn);
+        if (tool == "Rotate" && item.Value is MapGeometry)
+            return Matrix4x4.CreateTranslation(-origin) * Matrix4x4.CreateFromQuaternion(turn) * Matrix4x4.CreateTranslation(origin);
+        if (tool == "Scale" && item.Value is MapGeometry or MapBrush)
+            return Matrix4x4.CreateTranslation(-center) * Matrix4x4.CreateFromQuaternion(Quaternion.Inverse(rotation))
+                * Matrix4x4.CreateScale(factors) * Matrix4x4.CreateFromQuaternion(rotation) * Matrix4x4.CreateTranslation(destination);
+        return Matrix4x4.CreateTranslation(destination - center);
     }
 }

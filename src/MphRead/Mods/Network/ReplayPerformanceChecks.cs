@@ -37,7 +37,7 @@ internal static class ReplayPerformanceChecks
     internal static void Run(Action<bool, string> check, ReplayMetadata metadata)
     {
         check(GameState.MatchFinalCameraSeconds == 5 && GameState.MatchEndingSeconds == 10
-            && DedicatedServer.EndSequenceSeconds == 16, "shared final/results/intermission durations");
+            && DedicatedServer.EndSequenceSeconds == 21, "shared final/results/intermission durations");
         check(KillcamController.PersonalReplayFrames == 300 && KillcamController.FinalReplayFrames == 300
             && KillcamController.PlaybackRate == 1, "five-second killcam footage at one times speed");
         var encoded = new ReplayAuthorityCaptureScratch();

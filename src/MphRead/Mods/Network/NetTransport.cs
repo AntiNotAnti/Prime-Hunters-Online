@@ -496,9 +496,15 @@ namespace MphRead.Mods.Network
         /// More simulated line to hold this datagram behind, on top of the
         /// outbound half. Only the automatic Pong uses it; see the call site.
         /// </param>
+        /// <param name="immediateCopies">One to three independent datagrams for
+        /// a reliable event. Extra copies preserve the event's dedup identity
+        /// and are reserved for latency-sensitive startup publication.</param>
         public void Send(IPEndPoint target, PacketType type, ReadOnlySpan<byte> payload,
-            long extraHoldTicks = 0)
+            long extraHoldTicks = 0, int immediateCopies = 1)
         {
+            if (immediateCopies < 1 || immediateCopies > 3
+                || (immediateCopies != 1 && !NetReliableChannel.IsReliable(type)))
+                throw new ArgumentOutOfRangeException(nameof(immediateCopies));
             Span<byte> buffer = stackalloc byte[NetConfig.MaxPacketSize];
             int length;
             lock (_connectionLock)
@@ -525,9 +531,10 @@ namespace MphRead.Mods.Network
                         // Send has no backpressure return value. Losing an ordinary
                         // command/result must surface through the same disconnect
                         // path as critical exhaustion, rather than silently diverge.
-                        if (!connection.Reliable.TryQueue(type, payload, NowMilliseconds, out _))
+                        if (!connection.Reliable.TryQueue(type, payload, NowMilliseconds, out uint eventId,
+                            expedite: immediateCopies > 1))
                             connection.Reliable.Fail();
-                        FlushReliable(connection, NowMilliseconds);
+                        FlushReliable(connection, NowMilliseconds, eventId, immediateCopies);
                         return;
                     }
                     connection.Send(type, NowMilliseconds).Write(buffer);
@@ -623,15 +630,22 @@ namespace MphRead.Mods.Network
             }
         }
 
-        private void FlushReliable(NetConnection connection, double now)
+        private void FlushReliable(NetConnection connection, double now, uint burstEventId = 0, int copies = 1)
         {
             Span<byte> bytes = stackalloc byte[NetConfig.MaxPacketSize];
-            for (int i = 0; i < 4 && connection.Reliable.TrySend(now, out var eventPacket); i++)
+            int budget = copies > 1 ? NetReliableChannel.Capacity : 4;
+            for (int i = 0; i < budget && connection.Reliable.TrySend(now, out var eventPacket); i++)
             {
-                connection.Send(eventPacket.Type, now, NetHeaderFlags.Reliable, eventPacket.EventId).Write(bytes);
-                BinaryPrimitives.WriteUInt32LittleEndian(bytes[NetHeader.Size..], eventPacket.EventId);
-                eventPacket.Payload.Span.CopyTo(bytes[(NetHeader.Size + 4)..]);
-                Dispatch(connection.Endpoint, bytes[..(NetHeader.Size + 4 + eventPacket.Payload.Length)]);
+                // One application event, independent datagram sequences. ACKing
+                // any copy completes delivery; the receiver applies it only once.
+                int transmissions = eventPacket.EventId == burstEventId ? copies : 1;
+                for (int copy = 0; copy < transmissions; copy++)
+                {
+                    connection.Send(eventPacket.Type, now, NetHeaderFlags.Reliable, eventPacket.EventId).Write(bytes);
+                    BinaryPrimitives.WriteUInt32LittleEndian(bytes[NetHeader.Size..], eventPacket.EventId);
+                    eventPacket.Payload.Span.CopyTo(bytes[(NetHeader.Size + 4)..]);
+                    Dispatch(connection.Endpoint, bytes[..(NetHeader.Size + 4 + eventPacket.Payload.Length)]);
+                }
             }
         }
 

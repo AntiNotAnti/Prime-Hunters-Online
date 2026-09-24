@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using System.Threading;
 using OpenTK.Mathematics;
 
 namespace MphRead.Mods.MapGen;
@@ -18,7 +19,7 @@ public sealed class MapAnalysisResult
     public ImmutableArray<MapPreviewFace> CollisionFaces { get; }
     private readonly MapNodePacker.NavigationGraph? _navigation;
     public bool Succeeded => Diagnostics.All(d => d.Severity != MapDiagnosticSeverity.Error);
-    internal MapAnalysisResult(string key, MapCompilation compilation, bool navigation)
+    internal MapAnalysisResult(string key, MapCompilation compilation, bool navigation, CancellationToken cancellation = default)
     {
         Fingerprint = key;
         var validation = new MapValidationResult();
@@ -32,7 +33,7 @@ public sealed class MapAnalysisResult
         {
             try
             {
-                _navigation = MapNodePacker.Analyze(map.Solid, map.Definition.NavigationLinks);
+                _navigation = MapNodePacker.Analyze(map.Solid, map.Definition.NavigationLinks, cancellation);
                 MapBudgetValidator.Add(validation, "Navigation nodes", _navigation.Positions.Length, MapNodePacker.MaxNodes);
                 MapBudgetValidator.Add(validation, "Navigation edges", _navigation.Edges);
                 int regions = _navigation.Components.Distinct().Count();

@@ -7,6 +7,7 @@ namespace MphRead.Mods.MapGen
 {
     public sealed class MapAsset
     {
+        public string? Name { get; set; }
         public string Path { get; set; } = "";
         public string Kind { get; set; } = "texture";
     }

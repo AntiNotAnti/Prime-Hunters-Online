@@ -24,7 +24,7 @@ namespace MphRead.Mods.Network
         public static void MarkOut() => Current.MarkOut();
         public static void SetMarkIn(uint frame) => Current.SetMarkIn(frame);
         public static void SetMarkOut(uint frame) => Current.SetMarkOut(frame);
-        public static ReplayOpenResult SaveSelection() => Current.SaveSelection();
+        public static System.Threading.Tasks.Task<ReplayOpenResult> SaveSelectionAsync(System.Threading.CancellationToken cancellation = default) => Current.SaveSelectionAsync(cancellation);
         public static void NoteInput() => Current.NoteInput();
         public static void Play() => Current.Play();
         public static void Pause() => Current.Pause();

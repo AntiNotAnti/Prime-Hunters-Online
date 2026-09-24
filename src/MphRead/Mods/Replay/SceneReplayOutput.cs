@@ -11,7 +11,7 @@ public partial class Scene
     private int _replayOutputFramebuffer, _replayOutputTexture;
     private Vector2i _replayOutputSize;
     internal Vector2i ReplayPreviewSize { get; set; }
-    private bool ExportingReplay => Mods.Network.DemoPlayback.Owns(this) && Mods.Replay.ReplayVideoExporter.Active;
+    private bool ExportingReplay => Mods.Network.DemoPlayback.Owns(this) && Mods.Replay.ReplayVideoExporter.Rendering;
     private int ReplayOutputFramebuffer()
     {
         if (!ExportingReplay) { ReleaseReplayOutput(); return 0; }

@@ -6,6 +6,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 
 namespace MphRead.Mods.MapGen
 {
@@ -17,8 +18,9 @@ namespace MphRead.Mods.MapGen
 
         // Called only by a scheduler worker after compilation/validation. Keeping
         // this separate avoids recursively scheduling from inside a bounded worker.
-        internal static string WriteValidated(MapDefinition source, string outputPath)
+        internal static string WriteValidated(MapDefinition source, string outputPath, CancellationToken cancellation = default)
         {
+            cancellation.ThrowIfCancellationRequested();
             MapDefinition definition = MapProjectSerializer.Clone(source);
             var entries = new SortedDictionary<string, byte[]>(StringComparer.Ordinal);
             if (definition.FormatVersion == 1)
@@ -51,6 +53,7 @@ namespace MphRead.Mods.MapGen
             }
             foreach(string asset in MapDependencyAnalyzer.PackageAssets(source))
             {
+                cancellation.ThrowIfCancellationRequested();
                 if(!entries.TryAdd(asset,MapAssets.Read(source,asset)))throw new InvalidDataException("Asset conflicts with a generated package entry.");
             }
             entries.Add("project.json", Encoding.UTF8.GetBytes(definition.Serialize()));
@@ -77,13 +80,16 @@ namespace MphRead.Mods.MapGen
                 using (var archive = new ZipArchive(stream, ZipArchiveMode.Create))
                     foreach (var pair in entries)
                     {
+                        cancellation.ThrowIfCancellationRequested();
                         var entry = archive.CreateEntry(pair.Key, CompressionLevel.SmallestSize);
                         entry.LastWriteTime = new DateTimeOffset(1980, 1, 1, 0, 0, 0, TimeSpan.Zero);
                         entry.ExternalAttributes = 0;
                         using var target = entry.Open();
-                        target.Write(pair.Value);
+                        for (int offset = 0; offset < pair.Value.Length; offset += 65536)
+                        { cancellation.ThrowIfCancellationRequested(); target.Write(pair.Value.AsSpan(offset, Math.Min(65536, pair.Value.Length - offset))); }
                     }
                 using (var check = new MapPackageReader(temporary)) { _ = check.ReadProject(); }
+                cancellation.ThrowIfCancellationRequested();
                 File.Move(temporary, full, true);
                 return full;
             }

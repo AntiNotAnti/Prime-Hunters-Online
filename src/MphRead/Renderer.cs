@@ -1777,18 +1777,17 @@ namespace MphRead
 
         private void RunSimulationFrame()
         {
+            if (Mods.Network.NetSession.FreezeGameplay)
+            {
+                Mods.Network.NetSession.PumpLoading();
+                return;
+            }
             // Pointer/button debouncing must advance on the same fixed clock that
             // consumes gameplay input. RenderWindow can draw 120/144/240 pictures
             // per second, but those extra pictures must never make a stylus release
             // mature early or manufacture an additional weapon-selection edge.
             Mods.Input.PointerDevice.AdvanceSimulationStep();
 
-            if (Mods.Network.NetSession.FreezeGameplay)
-            {
-                if (Mods.Network.NetSession.IsStarting) Mods.Network.NetSession.MarkMatchLoaded();
-                Mods.Network.NetSession.Pump();
-                return;
-            }
             // The effect clock, before anything can spawn an effect. See
             // _effectFrame: it has to be the same value for the spawn and for
             // the ProcessEffects call that belongs to this step, and the
@@ -7665,6 +7664,7 @@ namespace MphRead
             _scene.OnLoad();
             _sceneLoaded = true;
             _scene.OnResize();
+            Mods.Network.NetSession.MarkMatchLoaded();
         }
 
         /// <summary>
@@ -7865,6 +7865,7 @@ namespace MphRead
             {
                 _scene.OnLoad();
                 _sceneLoaded = true;
+                Mods.Network.NetSession.MarkMatchLoaded();
             }
             base.OnLoad();
         }
@@ -8002,7 +8003,11 @@ namespace MphRead
             // a step. Everything the game *is* -- input, the network session,
             // the world, the clock -- happens in here and exactly this often.
             int steps;
-            if (Scene.FrameAdvance)
+            if (Mods.Network.NetSession.HoldLoadingFrame())
+            {
+                steps = 0;
+            }
+            else if (Scene.FrameAdvance)
             {
                 // Stepping frames by hand is the one mode that must stay one
                 // step to one picture: the request to advance is consumed

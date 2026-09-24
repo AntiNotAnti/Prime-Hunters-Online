@@ -317,6 +317,19 @@ namespace MphRead.Mods.Network
                     "reconnect/control packets cannot create a local player or end playback");
                 legacySession.Stop(); NetSession.Stop();
                 string extracted = Path.Combine(directory, "extracted.ppdemo");
+                using (var cancelled = new System.Threading.CancellationTokenSource())
+                {
+                    cancelled.Cancel();
+                    string cancelledClip = Path.Combine(directory, "cancelled.ppdemo");
+                    bool stopped = false;
+                    try { ReplayArchive.Extract(clean, 60, 180, cancelledClip, cancelled.Token); }
+                    catch (OperationCanceledException) { stopped = true; }
+                    Require(stopped && !File.Exists(cancelledClip) && !File.Exists(cancelledClip + ".part"), "cancelled clip never publishes a partial file");
+                    stopped = false;
+                    try { ReplayArchive.Recover(clean, out _, out _, cancelled.Token); }
+                    catch (OperationCanceledException) { stopped = true; }
+                    Require(stopped, "recovery observes cancellation before opening source");
+                }
                 Require(ReplayArchive.Extract(clean, 60, 180, extracted) == ReplayOpenResult.Success, "extract clip");
                 using (var reader = DemoReader.Open(extracted))
                 {

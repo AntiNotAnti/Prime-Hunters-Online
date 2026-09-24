@@ -34,24 +34,26 @@ internal static class KillCam
         int local = NetHooks.LocalSlot;
         return new(NetSession.CurrentMatchId, NetSession.AuthorityEpoch, NetSession.NetFrame, local,
             NetPlayerLifecycle.Generation(local), NetPlayerLifecycle.Get(local),
-            scene != null && (uint)local < (uint)scene.Players.Items.Count && scene.Players.Items[local].Health > 0,
+            scene != null && (uint)local < (uint)scene.Players.Items.Count && scene.Players.Items[local] is { Health: > 0 },
             NetSession.Active && !DemoPlayback.IsActive,
             LauncherPrefs.KillCamEnabled && !Headless.Active && !SpectatorMode.IsSpectating,
             LauncherPrefs.FinalKillCamEnabled && !Headless.Active);
     }
     internal static void NoteKill(ReplayMarker marker, uint recordingFrame)
     {
+        var context = Context(_live);
+        if (marker.Kill is not { } identity || !KillcamController.IsValidIdentity(identity, context, _live)) return;
         bool enemy = true;
         if (_live?.GameState.Teams == true && marker.Kill is { } kill)
             enemy = _live.Players.Items[kill.KillerSlot].TeamIndex != _live.Players.Items[kill.VictimSlot].TeamIndex;
-        Controller.NoteKill(marker, recordingFrame, Context(_live), enemy);
+        Controller.NoteKill(marker, recordingFrame, context, enemy);
     }
 
     internal static void AfterSimulation(Scene scene)
     {
         _live = scene;
         if (Interlocked.Exchange(ref _skipRequested, 0) != 0) { Controller.Skip(); _releaseFire = true; }
-        if (_finalRequested)
+        if (_finalRequested && scene.GameState.MatchTime <= 0)
         {
             var context = Context(scene);
             var world = ReplayCapture.LatestAuthorityWorld;
@@ -60,7 +62,7 @@ internal static class KillCam
             {
                 _finalRequested = false;
                 bool causal = world.EndCause == ReplayEndCause.Kill && world.EndingKill == Controller.Candidate?.Kill;
-                Controller.BeginFinal(scene, context, NetSession.NetFrame, world.EndCause == ReplayEndCause.Time, causal);
+                Controller.BeginFinal(scene, context, _finalRequestedFrame, world.EndCause == ReplayEndCause.Time, causal);
             }
             else if (NetSession.NetFrame - _finalRequestedFrame >= 30)
             {
@@ -72,25 +74,30 @@ internal static class KillCam
                 {
                     var game = scene.GameState;
                     bool causal = false;
-                    if (Controller.Candidate?.Kill is { } kill)
+                    if (Controller.Candidate?.Kill is { } kill && KillcamController.IsValidIdentity(kill, context, scene)
+                        && (uint)game.ResultSlots[0] < (uint)scene.Players.Items.Count
+                        && scene.Players.Items[game.ResultSlots[0]] != null)
                     {
                         int team = scene.Players.Items[kill.KillerSlot].TeamIndex;
-                        bool winner = scene.Players.Items[game.ResultSlots[0]].TeamIndex == team;
+                        bool winner = (uint)team < (uint)game.TeamPoints.Length
+                            && scene.Players.Items[game.ResultSlots[0]].TeamIndex == team;
                         causal = winner && (game.Mode is GameMode.Survival or GameMode.SurvivalTeams
                             || game.Mode is GameMode.Battle or GameMode.BattleTeams && game.TeamPoints[team] >= game.PointGoal);
                     }
-                    Controller.BeginFinal(scene, context, NetSession.NetFrame,
+                    Controller.BeginFinal(scene, context, _finalRequestedFrame,
                         !causal && NetSession.ServerMatch is { TimeRemaining: <= 3.1f }, causal);
                 }
             }
         }
-        Controller.Update(scene, Context(scene));
+        Controller.Update(scene, Context(scene) with { PersonalEnabled = Context(scene).PersonalEnabled && !_finalRequested
+            && scene.GameState.MatchState != MatchState.GameOver });
     }
     internal static bool FinalPresentationPending => _finalRequested
         || IsFinal && Controller.State != KillcamState.AwaitCompletion;
     internal static bool BeginFinal(uint frame)
     {
-        _finalRequested = true; _finalRequestedFrame = NetSession.NetFrame; return false;
+        _finalRequested = NetSession.Active && LauncherPrefs.FinalKillCamEnabled;
+        _finalRequestedFrame = NetSession.NetFrame; Controller.CancelPersonal(); return false;
     }
     internal static void EndFinal()
     {

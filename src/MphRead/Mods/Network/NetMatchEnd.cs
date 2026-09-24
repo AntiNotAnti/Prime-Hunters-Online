@@ -164,7 +164,7 @@ namespace MphRead.Mods.Network
         /// than that -- so if this expires the server is not ending anything
         /// and this client is on its own.
         /// </summary>
-        private const uint StrandedFrames = (uint)(60 * (GameState.MatchFinalCameraSeconds + GameState.MatchEndingSeconds + 4));
+        private const uint StrandedFrames = (uint)(60 * (GameState.MatchFinalCameraSeconds + GameState.MatchKillcamSeconds + GameState.MatchEndingSeconds + 4));
 
         /// <summary>
         /// Put a client back into a match the server never stopped running.

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using MphRead.Formats;
 using OpenTK.Mathematics;
 
@@ -76,18 +77,19 @@ namespace MphRead.Mods.MapGen
             public readonly List<int> Neighbours = new List<int>();
         }
 
-        public static (byte[] Bytes, int Nodes, int Edges) Pack(IReadOnlyList<BuiltFace> solid, IReadOnlyList<MapNavigationLink>? links = null)
+        public static (byte[] Bytes, int Nodes, int Edges) Pack(IReadOnlyList<BuiltFace> solid, IReadOnlyList<MapNavigationLink>? links = null, CancellationToken cancellation = default)
         {
-            var graph = Analyze(solid,links);
+            var graph = Analyze(solid,links,cancellation);
             return (graph.Bytes, graph.Positions.Length, graph.Edges);
         }
 
         public sealed record NavigationGraph(byte[] Bytes, Vector3[] Positions, int[][] Neighbours, int[] Components, int Edges);
 
-        public static NavigationGraph Analyze(IReadOnlyList<BuiltFace> solid, IReadOnlyList<MapNavigationLink>? links = null)
+        public static NavigationGraph Analyze(IReadOnlyList<BuiltFace> solid, IReadOnlyList<MapNavigationLink>? links = null, CancellationToken cancellation = default)
         {
-            List<Node> fine = Sample(solid, FineSpacing);
-            Connect(solid, fine, FineSpacing);
+            cancellation.ThrowIfCancellationRequested();
+            List<Node> fine = Sample(solid, FineSpacing, cancellation);
+            Connect(solid, fine, FineSpacing, cancellation);
             if (Environment.GetEnvironmentVariable("FP_NODEDEBUG") != null)
             {
                 Console.WriteLine($"  [nodes] fine {fine.Count} nodes,"
@@ -98,7 +100,7 @@ namespace MphRead.Mods.MapGen
             List<Node> nodes;
             while (true)
             {
-                nodes = Decimate(fine, (int)MathF.Round(spacing / FineSpacing));
+                nodes = Decimate(fine, (int)MathF.Round(spacing / FineSpacing), cancellation);
                 if (nodes.Count <= MaxNodes || spacing > 64)
                 {
                     break;
@@ -142,6 +144,7 @@ namespace MphRead.Mods.MapGen
             int component = 0;
             for (int i = 0; i < nodes.Count; i++)
             {
+                cancellation.ThrowIfCancellationRequested();
                 if (components[i] >= 0) continue;
                 var queue = new Queue<int>(); queue.Enqueue(i); components[i] = component;
                 while (queue.TryDequeue(out int current))
@@ -149,7 +152,7 @@ namespace MphRead.Mods.MapGen
                         if (components[neighbour] < 0) { components[neighbour] = component; queue.Enqueue(neighbour); }
                 component++;
             }
-            return new(Write(nodes, spacing), nodes.Select(n => n.Position).ToArray(),
+            return new(Write(nodes, spacing, cancellation), nodes.Select(n => n.Position).ToArray(),
                 nodes.Select(n => n.Neighbours.ToArray()).ToArray(), components, edges);
         }
 
@@ -198,7 +201,7 @@ namespace MphRead.Mods.MapGen
         /// waypoints are neighbours exactly when some fine step crosses
         /// between them -- which is to say, when you can walk it.
         /// </summary>
-        private static List<Node> Decimate(List<Node> fine, int radius)
+        private static List<Node> Decimate(List<Node> fine, int radius, CancellationToken cancellation)
         {
             radius = Math.Max(1, radius);
             var owner = new int[fine.Count];
@@ -207,6 +210,7 @@ namespace MphRead.Mods.MapGen
             var queue = new Queue<(int Node, int Depth)>();
             for (int i = 0; i < fine.Count; i++)
             {
+                cancellation.ThrowIfCancellationRequested();
                 if (owner[i] != -1)
                 {
                     continue;
@@ -240,6 +244,7 @@ namespace MphRead.Mods.MapGen
             }
             for (int i = 0; i < fine.Count; i++)
             {
+                cancellation.ThrowIfCancellationRequested();
                 foreach (int j in fine[i].Neighbours)
                 {
                     int a = owner[i];
@@ -266,14 +271,15 @@ namespace MphRead.Mods.MapGen
         /// grid over the room, at every height where there is one, with room
         /// above it.
         /// </summary>
-        private static List<Node> Sample(IReadOnlyList<BuiltFace> solid, float spacing)
+        private static List<Node> Sample(IReadOnlyList<BuiltFace> solid, float spacing, CancellationToken cancellation)
         {
             Bounds(solid, out Vector3 min, out Vector3 max);
-            var buckets = Buckets(solid, min, spacing, out int columns, out int rows);
+            var buckets = Buckets(solid, min, spacing, out int columns, out int rows, cancellation);
             var nodes = new List<Node>();
             var heights = new List<float>();
             for (int row = 0; row < rows; row++)
             {
+                cancellation.ThrowIfCancellationRequested();
                 for (int column = 0; column < columns; column++)
                 {
                     float x = min.X + (column + 0.5f) * spacing;
@@ -338,13 +344,14 @@ namespace MphRead.Mods.MapGen
             return false;
         }
 
-        private static void Connect(IReadOnlyList<BuiltFace> solid, List<Node> nodes, float spacing)
+        private static void Connect(IReadOnlyList<BuiltFace> solid, List<Node> nodes, float spacing, CancellationToken cancellation)
         {
             Bounds(solid, out Vector3 min, out Vector3 max);
-            var buckets = Buckets(solid, min, spacing, out int columns, out int rows);
+            var buckets = Buckets(solid, min, spacing, out int columns, out int rows, cancellation);
             var byCell = new Dictionary<int, List<int>>();
             for (int i = 0; i < nodes.Count; i++)
             {
+                cancellation.ThrowIfCancellationRequested();
                 if (!byCell.TryGetValue(nodes[i].Cell, out List<int>? list))
                 {
                     list = new List<int>();
@@ -354,6 +361,7 @@ namespace MphRead.Mods.MapGen
             }
             for (int i = 0; i < nodes.Count; i++)
             {
+                cancellation.ThrowIfCancellationRequested();
                 Node node = nodes[i];
                 int column = node.Cell % columns;
                 int row = node.Cell / columns;
@@ -488,7 +496,7 @@ namespace MphRead.Mods.MapGen
         }
 
         private static List<int>?[] Buckets(IReadOnlyList<BuiltFace> solid, Vector3 min, float spacing,
-            out int columns, out int rows)
+            out int columns, out int rows, CancellationToken cancellation)
         {
             Bounds(solid, out Vector3 low, out Vector3 high);
             columns = Math.Max(1, (int)MathF.Ceiling((high.X - low.X) / spacing) + 1);
@@ -496,6 +504,7 @@ namespace MphRead.Mods.MapGen
             var buckets = new List<int>?[columns * rows];
             for (int i = 0; i < solid.Count; i++)
             {
+                cancellation.ThrowIfCancellationRequested();
                 BuiltFace face = solid[i];
                 float minX = face.Points.Min(p => p.X);
                 float maxX = face.Points.Max(p => p.X);
@@ -559,9 +568,9 @@ namespace MphRead.Mods.MapGen
         /// per node, and then the shared array of 16-bit values both of each
         /// node's lists point into.
         /// </summary>
-        private static byte[] Write(List<Node> nodes, float spacing)
+        private static byte[] Write(List<Node> nodes, float spacing, CancellationToken cancellation)
         {
-            var routes = Routes(nodes);
+            var routes = Routes(nodes, cancellation);
             using var stream = new MemoryStream();
             using var writer = new BinaryWriter(stream);
             const int indexOffset = 14;
@@ -578,6 +587,7 @@ namespace MphRead.Mods.MapGen
             int cursor = valuesOffset;
             for (int i = 0; i < nodes.Count; i++)
             {
+                cancellation.ThrowIfCancellationRequested();
                 routeOffset[i] = cursor;
                 cursor += routes[i].Count * 4;
             }
@@ -599,6 +609,7 @@ namespace MphRead.Mods.MapGen
             writer.Write((ushort)0x5C);
             for (int i = 0; i < nodes.Count; i++)
             {
+                cancellation.ThrowIfCancellationRequested();
                 Node node = nodes[i];
                 writer.Write((ushort)NodeType.Navigation);
                 // the id is the index: the routing table is read as indices
@@ -621,6 +632,7 @@ namespace MphRead.Mods.MapGen
             }
             for (int i = 0; i < nodes.Count; i++)
             {
+                cancellation.ThrowIfCancellationRequested();
                 foreach ((ushort run, ushort hop) in routes[i])
                 {
                     writer.Write(run);
@@ -637,7 +649,7 @@ namespace MphRead.Mods.MapGen
         /// step closer is the answer, and a node with nowhere to go points at
         /// itself so the reader's own loop still advances.
         /// </summary>
-        private static List<(ushort, ushort)>[] Routes(List<Node> nodes)
+        private static List<(ushort, ushort)>[] Routes(List<Node> nodes, CancellationToken cancellation)
         {
             int count = nodes.Count;
             var hop = new ushort[count, count];
@@ -645,6 +657,7 @@ namespace MphRead.Mods.MapGen
             var queue = new Queue<int>();
             for (int destination = 0; destination < count; destination++)
             {
+                cancellation.ThrowIfCancellationRequested();
                 Array.Fill(distance, -1);
                 distance[destination] = 0;
                 queue.Clear();

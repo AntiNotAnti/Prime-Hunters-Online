@@ -39,7 +39,8 @@ public sealed class NetReliableChannel
         or PacketType.Bye or PacketType.MatchEnd;
     public static bool IsCritical(PacketType type) => type is not (PacketType.Roster or PacketType.LobbyCommand or PacketType.LobbyCommandResult);
 
-    public bool TryQueue(PacketType type, ReadOnlySpan<byte> payload, double nowMs, out uint eventId)
+    public bool TryQueue(PacketType type, ReadOnlySpan<byte> payload, double nowMs, out uint eventId,
+        bool expedite = false)
     {
         eventId = 0;
         if (!IsReliable(type) || payload.Length > NetConfig.MaxPayloadSize - 4)
@@ -50,7 +51,11 @@ public sealed class NetReliableChannel
         // its event identity, without replacing or coalescing distinct events.
         foreach (var pending in _pending)
             if (pending != null && pending.Type == type && payload.SequenceEqual(pending.Payload))
-            { eventId = pending.Id; return true; }
+            {
+                eventId = pending.Id;
+                if (expedite) pending.Due = Math.Min(pending.Due, nowMs);
+                return true;
+            }
         bool spanFull = false;
         foreach (var pending in _pending)
             if (pending != null && SequenceMath.Distance(_next, pending.Id) >= History) spanFull = true;

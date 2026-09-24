@@ -25,7 +25,7 @@ public sealed record MapBuildResult(string Fingerprint, MapOutputSet? Outputs,
     }
 }
 
-/// <summary>Bounded single-flight map work. Cancelling one waiter never cancels shared work.</summary>
+/// <summary>Bounded single-flight map work. Cancelling one waiter preserves work still needed by another.</summary>
 public sealed class MapBuildScheduler : IMapBuildScheduler
 {
     private readonly MapWorkQueue _queue;
@@ -62,7 +62,7 @@ public sealed class MapBuildScheduler : IMapBuildScheduler
         try
         {
             return await _queue.Schedule("runtime:" + key,
-                () => Execute(input.Definition, input.Fingerprint), cancellation).ConfigureAwait(false);
+                token => Execute(input.Definition, input.Fingerprint, token), cancellation).ConfigureAwait(false);
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex) { return Failure(key, ex.Message); }
@@ -76,10 +76,10 @@ public sealed class MapBuildScheduler : IMapBuildScheduler
         {
             var input = await Prepare(snapshot, cancellation).ConfigureAwait(false);
             key = input.Fingerprint.ContentKey;
-            return await _queue.Schedule((navigation ? "navigation:" : "analysis:") + key, () =>
+            return await _queue.Schedule((navigation ? "navigation:" : "analysis:") + key, token =>
             {
-                MapCompilation compilation = _compilations.Get(key, input.Definition);
-                var result = new MapAnalysisResult(key, compilation, navigation);
+                MapCompilation compilation = _compilations.Get(key, input.Definition, token);
+                var result = new MapAnalysisResult(key, compilation, navigation, token);
                 RequireUnchanged(input.Definition, input.Fingerprint);
                 return result;
             }, cancellation).ConfigureAwait(false);
@@ -98,15 +98,16 @@ public sealed class MapBuildScheduler : IMapBuildScheduler
     {
         var input = await Prepare(snapshot, cancellation).ConfigureAwait(false);
         string path = Path.GetFullPath(destination), key = input.Fingerprint.ContentKey;
-        return await _queue.Schedule("package:" + key + ":" + path, () =>
+        return await _queue.Schedule("package:" + key + ":" + path, token =>
         {
-            var compilation = _compilations.Get(key, input.Definition);
+            var compilation = _compilations.Get(key, input.Definition, token);
             MapCompiler.ThrowIfInvalid(compilation.Validation);
             string staging = path + "." + Guid.NewGuid().ToString("N") + ".staging";
             try
             {
-                MapPackageBuilder.WriteValidated(input.Definition, staging);
+                MapPackageBuilder.WriteValidated(input.Definition, staging, token);
                 RequireUnchanged(input.Definition, input.Fingerprint);
+                token.ThrowIfCancellationRequested();
                 File.Move(staging, path, overwrite: true);
                 return path;
             }
@@ -128,14 +129,14 @@ public sealed class MapBuildScheduler : IMapBuildScheduler
             // A clean checkout can contain a PK3 and a recipe naming a derived
             // texture pack. Materialize that compiler input before fixing the
             // job's content identity. Real source changes still reject the job.
-            await _queue.Schedule("prepare:" + input.Fingerprint.ContentKey, () =>
+            await _queue.Schedule("prepare:" + input.Fingerprint.ContentKey, token =>
             {
                 lock (MapCompiler.ContentReadLock)
                 {
                     var before = MapDependencyAnalyzer.Analyze(input.Definition)
                         .Where(d => d.Kind != "textures").ToArray();
                     if (import.ResolveTextures() == null)
-                        Q3Import.BakeTextures(Q3Bsp.Load(import.Resolve()!, import.MapName), import, verbose: false);
+                        Q3Import.BakeTextures(Q3Bsp.Load(import.Resolve()!, import.MapName, token), import, verbose: false, cancellation: token);
                     var after = MapDependencyAnalyzer.Analyze(input.Definition).Where(d => d.Kind != "textures");
                     if (!before.SequenceEqual(after))
                         throw new IOException("Map source dependencies changed while preparing textures. Build again.");
@@ -157,14 +158,14 @@ public sealed class MapBuildScheduler : IMapBuildScheduler
         }
     }
 
-    private MapBuildResult Execute(MapDefinition definition, MapBuildFingerprint fingerprint)
+    private MapBuildResult Execute(MapDefinition definition, MapBuildFingerprint fingerprint, CancellationToken cancellation)
     {
         var watch = Stopwatch.StartNew();
         string key = fingerprint.ContentKey, directory = Path.Combine(_cacheRoot, key);
         Directory.CreateDirectory(_cacheRoot);
         // FileShare.None fences cache publication across independent application
         // processes as well as this scheduler's single-flight dictionary.
-        using var lease = AcquireLease(Path.Combine(_cacheRoot, key + ".lock"));
+        using var lease = AcquireLease(Path.Combine(_cacheRoot, key + ".lock"), cancellation);
         var outputs = MapOutputSet.Create(definition, directory, directory, directory);
         string manifest = Path.Combine(directory, "cache.json");
         var cached = ReadCache(manifest, key, outputs);
@@ -174,11 +175,12 @@ public sealed class MapBuildScheduler : IMapBuildScheduler
         Directory.CreateDirectory(staging);
         try
         {
-            var validation = _build?.Invoke(definition, staging) ?? BuildRuntime(definition, staging, key);
+            var validation = _build?.Invoke(definition, staging) ?? BuildRuntime(definition, staging, key, cancellation);
             if (!validation.IsValid) return new(key, null, Array.AsReadOnly(validation.Diagnostics.ToArray()),
                 Array.AsReadOnly(validation.Budgets.ToArray()), false, watch.Elapsed.TotalMilliseconds);
             // External files are not the editor graph. Detect changes during a build
             // rather than publishing output under a fingerprint of different bytes.
+            cancellation.ThrowIfCancellationRequested();
             RequireUnchanged(definition, fingerprint);
             var staged = MapOutputSet.Create(definition, staging, staging, staging);
             if (!staged.Complete) return Failure(key, "Compiler did not produce a complete map output set.");
@@ -214,17 +216,18 @@ public sealed class MapBuildScheduler : IMapBuildScheduler
     private static MapBuildResult Failure(string key, string message) => new(key, null,
         Array.AsReadOnly(new[] { new MapDiagnostic("FP-MAP-BUILD", MapDiagnosticSeverity.Error, message) }),
         Array.Empty<MapBudget>(), false, 0);
-    private MapValidationResult BuildRuntime(MapDefinition definition, string directory, string key)
+    private MapValidationResult BuildRuntime(MapDefinition definition, string directory, string key, CancellationToken cancellation)
     {
-        var compilation = _compilations.Get(key, definition);
-        if (compilation.Map != null) MapPacker.Generate(compilation.Map, directory, directory, directory, verbose: false);
+        var compilation = _compilations.Get(key, definition, cancellation);
+        if (compilation.Map != null) MapPacker.Generate(compilation.Map, directory, directory, directory, verbose: false, cancellation: cancellation);
         return compilation.Validation;
     }
-    private static FileStream AcquireLease(string path)
+    private static FileStream AcquireLease(string path, CancellationToken cancellation = default)
     {
         var timeout = Stopwatch.StartNew();
         while (true)
         {
+            cancellation.ThrowIfCancellationRequested();
             try { return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
             catch (IOException) when (timeout.Elapsed < TimeSpan.FromSeconds(30))
             {

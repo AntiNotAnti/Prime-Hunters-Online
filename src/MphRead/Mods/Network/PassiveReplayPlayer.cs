@@ -10,24 +10,30 @@ namespace MphRead.Mods.Network;
 
 /// <summary>Playback, seek and checkpoint lifetime for one private presentation.
 /// A failed restore never replaces the currently presented world.</summary>
+internal sealed record ReplayPlayerOptions(bool EnableSeeking = true, bool EnableMemoryCheckpoints = true, bool EnableDurableCheckpoints = true)
+{
+    internal static readonly ReplayPlayerOptions Linear = new(false, false, false);
+}
+
 internal sealed class PassiveReplayPlayer : IDisposable
 {
     internal const int MaximumStepsPerUpdate = 120;
     private const int MaximumCheckpoints = 128;
     private const long MaximumCheckpointBytes = 64L * 1024 * 1024;
-    private readonly SortedDictionary<uint, ReplayWorldCheckpoint> _checkpoints = new();
+    private readonly SortedDictionary<uint, ReplayWorldCheckpoint>? _checkpoints;
+    private readonly ReplayPlayerOptions _options;
     private readonly Func<PassiveReplayScene> _open;
     private readonly uint _firstFrame;
     private readonly Stopwatch _seekTime = new();
     private bool _disposed;
-    private readonly HashSet<long> _rejectedDurable = new();
+    private readonly HashSet<long>? _rejectedDurable;
     internal string CheckpointSource { get; private set; } = "initial world";
     public PassiveReplayScene Current { get; private set; }
     public ReplayTransport Transport => Current.Session.Transport;
     internal event Action<Scene>? Stepped;
     internal event Action<Scene, PassiveReplayScene>? Replaced;
     internal long CheckpointBytes { get; private set; }
-    internal int CheckpointCount => _checkpoints.Count;
+    internal int CheckpointCount => _checkpoints?.Count ?? 0;
     internal uint SeekRestoreFrame { get; private set; }
     internal int SeekSimulationSteps { get; private set; }
     internal double SeekMilliseconds { get; private set; }
@@ -35,20 +41,26 @@ internal sealed class PassiveReplayPlayer : IDisposable
     internal string? LastCheckpointError { get; private set; }
     internal bool Ready => !Transport.IsSeeking && !Current.Session.IsWarming;
 
-    public PassiveReplayPlayer(string path, Vector2i size)
+    public PassiveReplayPlayer(string path, Vector2i size, ReplayPlayerOptions? options = null)
     {
-        _open = () => new(path, size); Current = _open();
+        _options = options ?? new();
+        if (_options.EnableMemoryCheckpoints) _checkpoints = new();
+        if (_options.EnableDurableCheckpoints) _rejectedDurable = new();
+        _open = () => new(path, size); Current = _open(); Transport.SeekingEnabled = _options.EnableSeeking;
         // Nested ranges retain original source clocks. A durable baseline before
         // their visible start can skip most of the hidden lead-in immediately.
         if (Current.Session.IsWarming && DurableBefore(0) is { } baseline)
             Rebuild(0, true, null, baseline);
     }
-    public PassiveReplayPlayer(ReplayTimelineClip clip, Vector2i size)
-    { _open = () => new(clip, size); _firstFrame = clip.StartRecordingFrame; Current = _open(); }
+    public PassiveReplayPlayer(ReplayTimelineClip clip, Vector2i size, ReplayPlayerOptions? options = null)
+    { _options = options ?? new();
+        if (_options.EnableMemoryCheckpoints) _checkpoints = new();
+        if (_options.EnableDurableCheckpoints) _rejectedDurable = new(); _open = () => new(clip, size); _firstFrame = clip.StartRecordingFrame; Current = _open(); Transport.SeekingEnabled = _options.EnableSeeking; }
 
     public void Seek(uint frame, bool resume = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!_options.EnableSeeking) throw new InvalidOperationException("Linear replay playback does not support seeking.");
         frame = Math.Clamp(frame, _firstFrame, Current.Session.LastFrame);
         _seekTime.Restart(); SeekSimulationSteps = 0; SeekRestoreFrame = Current.Session.CurrentFrame;
         Transport.Seek(frame, resume);
@@ -68,7 +80,7 @@ internal sealed class PassiveReplayPlayer : IDisposable
         if (rebuild) { target = rebuildTarget; resume = rebuildResume; }
         if (target.HasValue)
         {
-            var checkpoint = _checkpoints.LastOrDefault(p => p.Key <= target.Value);
+            var checkpoint = _checkpoints?.LastOrDefault(p => p.Key <= target.Value) ?? default;
             var durable = DurableBefore(target.Value);
             if (durable is { } disk && checkpoint.Value != null && Current.Session.CheckpointVisibleFrame(disk) <= checkpoint.Key)
                 durable = null;
@@ -97,7 +109,7 @@ internal sealed class PassiveReplayPlayer : IDisposable
             Stepped?.Invoke(Current.Scene);
             uint frame = Current.Session.CurrentFrame;
             if (seeking) SeekSimulationSteps++;
-            if (double.IsPositiveInfinity(maximumMilliseconds) && frame % 300 == 0 && !_checkpoints.ContainsKey(frame))
+            if (_checkpoints != null && double.IsPositiveInfinity(maximumMilliseconds) && frame % 300 == 0 && !_checkpoints.ContainsKey(frame))
             {
                 try { Remember(ReplayWorldCheckpoint.Capture(Current)); }
                 catch (Exception ex) when (ex is InvalidDataException or InvalidOperationException)
@@ -110,6 +122,7 @@ internal sealed class PassiveReplayPlayer : IDisposable
     }
     private ReplayCheckpointIndex? DurableBefore(uint target)
     {
+        if (_rejectedDurable == null) return null;
         foreach (var index in Current.Session.DurableCheckpoints.Reverse())
             if (Current.Session.CheckpointVisibleFrame(index) <= target && !_rejectedDurable.Contains(index.Offset)) return index;
         return null;
@@ -125,7 +138,7 @@ internal sealed class PassiveReplayPlayer : IDisposable
                 try { checkpoint = loaded = Current.Session.LoadCheckpoint(disk); }
                 catch (Exception ex) when (ex is InvalidDataException or IOException or InvalidOperationException or ArgumentException)
                 {
-                    RejectedCheckpoints++; LastCheckpointError = ex.Message; _rejectedDurable.Add(disk.Offset);
+                    RejectedCheckpoints++; LastCheckpointError = ex.Message; _rejectedDurable!.Add(disk.Offset);
                     durable = null; checkpoint = null;
                 }
             }
@@ -137,8 +150,8 @@ internal sealed class PassiveReplayPlayer : IDisposable
                 catch (Exception ex) when (ex is InvalidDataException or IOException or InvalidOperationException or ArgumentException)
                 {
                     RejectedCheckpoints++; LastCheckpointError = ex.Message;
-                    if (durable is { } rejected) _rejectedDurable.Add(rejected.Offset);
-                    else { CheckpointBytes -= checkpoint.Bytes.Length + 128; _checkpoints.Remove(checkpoint.Frame); checkpoint.Dispose(); }
+                    if (durable is { } rejected) _rejectedDurable!.Add(rejected.Offset);
+                    else { CheckpointBytes -= checkpoint.Bytes.Length + 128; _checkpoints!.Remove(checkpoint.Frame); checkpoint.Dispose(); }
                     replacement.Dispose(); replacement = _open(); CheckpointSource = "initial world";
                 }
             }
@@ -153,6 +166,7 @@ internal sealed class PassiveReplayPlayer : IDisposable
     }
     private void Remember(ReplayWorldCheckpoint checkpoint)
     {
+        if (_checkpoints == null) { checkpoint.Dispose(); return; }
         long cost = checkpoint.Bytes.Length + 128;
         if (cost > MaximumCheckpointBytes) { checkpoint.Dispose(); return; }
         while (_checkpoints.Count >= MaximumCheckpoints || CheckpointBytes + cost > MaximumCheckpointBytes)
@@ -164,7 +178,7 @@ internal sealed class PassiveReplayPlayer : IDisposable
     public void Dispose()
     {
         if (_disposed) return;
-        _disposed = true; Current.Dispose(); foreach (var checkpoint in _checkpoints.Values) checkpoint.Dispose();
-        _checkpoints.Clear(); CheckpointBytes = 0;
+        _disposed = true; Current.Dispose(); if (_checkpoints != null) foreach (var checkpoint in _checkpoints.Values) checkpoint.Dispose();
+        _checkpoints?.Clear(); CheckpointBytes = 0;
     }
 }

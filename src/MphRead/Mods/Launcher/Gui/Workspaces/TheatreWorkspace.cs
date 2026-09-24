@@ -5,7 +5,9 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia;
+using Avalonia.VisualTree;
 using Avalonia.Controls;
+using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -25,7 +27,8 @@ namespace MphRead.Mods.Launcher.Gui
     /// </summary>
     internal sealed class TheatreWorkspace : UserControl, IDisposable
     {
-        private readonly UiList _list = new() { AutoSelectFirst = true };
+        private readonly ListBox _list = new() { Background = Brushes.Transparent, BorderThickness = new Thickness(0),
+            ItemsPanel = new FuncTemplate<Panel?>(() => new VirtualizingStackPanel()) };
         private readonly TextBlock _title;
         private readonly TextBlock _metadata;
         private readonly TextBlock _status;
@@ -51,6 +54,8 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly Dictionary<string, ReplayVirtualClipDocument> _virtual =
             new(StringComparer.OrdinalIgnoreCase);
         private readonly List<ReplayLibraryEntry> _entries = new();
+        private readonly DispatcherTimer _searchTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
+        private long _libraryGeneration;
 
         private Bitmap? _bitmap;
         private string[] _previewPaths = Array.Empty<string>();
@@ -108,7 +113,7 @@ namespace MphRead.Mods.Launcher.Gui
             Focusable = true;
             Background = Brushes.Transparent;
 
-            if (manageStorage) ApplyStoragePolicy();
+            if (manageStorage) _ = ReplayStorageJobs.Run(() => { ApplyStoragePolicy(); return true; });
 
             var root = new Grid
             {
@@ -139,23 +144,28 @@ namespace MphRead.Mods.Launcher.Gui
                 VerticalAlignment = VerticalAlignment.Center
             };
 
-            _search.Box.TextChanged += (_, _) => Populate(_selected);
+            _searchTimer.Tick += (_, _) => { _searchTimer.Stop(); Populate(_selected); };
+            _search.Box.TextChanged += (_, _) => { _searchTimer.Stop(); _searchTimer.Start(); };
             _filter.Changed += (_, _) => Populate(_selected);
             _sort.Changed += (_, _) => Populate(_selected);
 
 
-            _list.SelectionChanged += (_, row) =>
+            _list.ItemTemplate = new FuncDataTemplate<ReplayLibraryEntry>((entry, scope) =>
             {
-                if (row is UiListRow line && line.Choice is string path)
-                    Select(path);
+                var row = new UiListRow((entry.Favorite ? "★ " : "") + entry.Title, entry.Detail)
+                    { Choice = entry.Path, Focusable = false };
+                row.Clicked += (_, _) => _list.SelectedItem = entry;
+                row.Activated += (_, _) => { _list.SelectedItem = entry; Select(entry.Path); _ = WatchAsync(); };
+                return row;
+            });
+            _list.SelectionChanged += (_, _) =>
+            {
+                if (_list.SelectedItem is ReplayLibraryEntry entry) Select(entry.Path);
             };
-            _list.Activated += (_, row) =>
+            _list.KeyDown += (_, e) =>
             {
-                if (row is UiListRow line && line.Choice is string path)
-                {
-                    Select(path);
-                    _ = WatchAsync();
-                }
+                if (e.Key is Key.Enter or Key.Space && _list.SelectedItem is ReplayLibraryEntry entry)
+                { Select(entry.Path); _ = WatchAsync(); e.Handled = true; }
             };
 
             var libraryControls = new Grid
@@ -353,12 +363,17 @@ namespace MphRead.Mods.Launcher.Gui
                 // Static preview until an explicit selection changes; no idle slideshow timer.
             };
 
-            Reload();
+            if (manageStorage) Reload();
         }
 
         public void Dispose()
         {
-            _preview.Source = null; _bitmap?.Dispose(); _bitmap = null;
+            _searchTimer.Stop(); _libraryGeneration++; _recoveryCancellation?.Cancel();
+            // A retained launcher view can be measured again on return from
+            // playback. Detach the image before releasing its native bitmap.
+            _preview.Source = null;
+            _bitmap?.Dispose();
+            _bitmap = null;
         }
 
         protected override void OnKeyDown(KeyEventArgs e)
@@ -409,19 +424,54 @@ namespace MphRead.Mods.Launcher.Gui
             }
         }
 
-        private void Reload(string? preserve = null)
+        internal int MaximumRealizedRows { get; private set; }
+        internal int ShownCount => (_list.ItemsSource as ReplayLibraryEntry[])?.Length ?? 0;
+        internal void LoadCheckEntries(int count)
         {
-            _recordings.Clear();
-            _virtual.Clear();
-            _entries.Clear();
+            _libraryGeneration++; _entries.Clear();
+            for (int i = 0; i < count; i++)
+            {
+                string name = $"Replay {i:D5}", path = Path.Combine(Path.GetTempPath(), "prime-library-check-model", name + ".ppdemo");
+                _entries.Add(new(path, name, "Battle · 05:00", DateTime.UnixEpoch.AddMinutes(i), 18000,
+                    false, i % 10 == 0, false, false, false, "Test arena", "Players", name));
+            }
+            _list.LayoutUpdated += (_, _) => MaximumRealizedRows = Math.Max(MaximumRealizedRows,
+                _list.GetVisualDescendants().OfType<UiListRow>().Count());
+            Populate();
+        }
+        internal void SearchCheck(string text) { _search.Value = text; _searchTimer.Stop(); Populate(_selected); }
 
+        private async void Reload(string? preserve = null)
+        {
+            long generation = ++_libraryGeneration;
+            string? selection = preserve ?? _selected;
+            _summary.Text = "SCANNING LIBRARY...";
+            try
+            {
+                var snapshot = await ReplayStorageJobs.Run(ScanLibrary);
+                if (generation != _libraryGeneration) return;
+                _recordings.Clear(); foreach (var pair in snapshot.Recordings) _recordings.Add(pair.Key, pair.Value);
+                _virtual.Clear(); foreach (var pair in snapshot.Clips) _virtual.Add(pair.Key, pair.Value);
+                _entries.Clear(); _entries.AddRange(snapshot.Entries);
+                Populate(preserve ?? _selected ?? selection);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+            { if (generation == _libraryGeneration) Fail("Could not load replay library: " + ex.Message); }
+        }
+        private sealed record LibrarySnapshot(Dictionary<string, DemoRecording> Recordings,
+            Dictionary<string, ReplayVirtualClipDocument> Clips, List<ReplayLibraryEntry> Entries);
+        private static LibrarySnapshot ScanLibrary()
+        {
+            var recordings = new Dictionary<string, DemoRecording>(StringComparer.OrdinalIgnoreCase);
+            var virtualClips = new Dictionary<string, ReplayVirtualClipDocument>(StringComparer.OrdinalIgnoreCase);
+            var entries = new List<ReplayLibraryEntry>();
             IReadOnlyList<DemoRecording> demos = DemoLibrary.List();
             var demoByPath = demos.ToDictionary(demo => demo.Path,
                 StringComparer.OrdinalIgnoreCase);
 
             foreach (DemoRecording demo in demos)
             {
-                _recordings[demo.Path] = demo;
+                recordings[demo.Path] = demo;
                 bool clip = demo.Metadata?.Type == ReplayType.Clip
                     || demo.FileName.Contains("_clip_", StringComparison.OrdinalIgnoreCase);
                 bool recoverable = demo.Path.EndsWith(".part",
@@ -434,7 +484,7 @@ namespace MphRead.Mods.Launcher.Gui
                 string organization = OrganizationSearchText(demo.Path);
                 bool annotated = annotations.Length > 0;
                 bool organized = organization.Length > 0;
-                _entries.Add(new ReplayLibraryEntry(
+                entries.Add(new ReplayLibraryEntry(
                     demo.Path,
                     demo.DisplayName,
                     DemoLibrary.Describe(demo),
@@ -456,7 +506,7 @@ namespace MphRead.Mods.Launcher.Gui
                 if (!ReplayVirtualClips.TryLoad(path,
                         out ReplayVirtualClipDocument? clip) || clip == null)
                     continue;
-                _virtual[path] = clip;
+                virtualClips[path] = clip;
                 demoByPath.TryGetValue(clip.SourceReplay, out DemoRecording source);
                 string room = source.Path != null ? source.Room : "";
                 string people = source.Metadata == null ? ""
@@ -465,7 +515,7 @@ namespace MphRead.Mods.Launcher.Gui
                 uint duration = clip.EndFrame - clip.StartFrame;
                 string annotations = AnnotationSearchText(path);
                 string organization = OrganizationSearchText(path);
-                _entries.Add(new ReplayLibraryEntry(
+                entries.Add(new ReplayLibraryEntry(
                     path,
                     clip.Name,
                     $"virtual clip / {ReplayHud.Time(duration)}",
@@ -482,7 +532,7 @@ namespace MphRead.Mods.Launcher.Gui
                         + $"{annotations} {organization} {Path.GetFileName(clip.SourceReplay)}"));
             }
 
-            Populate(preserve ?? _selected);
+            return new(recordings, virtualClips, entries);
         }
 
         private void Populate(string? preserve = null)
@@ -527,26 +577,13 @@ namespace MphRead.Mods.Launcher.Gui
             };
             ReplayLibraryEntry[] shown = filtered.ToArray();
 
-            _list.Clear();
-            foreach (ReplayLibraryEntry entry in shown)
-            {
-                _list.Add(new UiListRow(
-                    (entry.Favorite ? "★ " : "") + entry.Title,
-                    entry.Detail)
-                {
-                    Choice = entry.Path
-                }, _ => Select(entry.Path));
-            }
+            _list.ItemsSource = shown;
 
             if (shown.Length == 0)
             {
                 _summary.Text = _entries.Count == 0
                     ? "EMPTY LIBRARY"
                     : $"0 OF {_entries.Count} ITEMS";
-                _list.AddNote(_entries.Count == 0
-                    ? "No recordings yet. Record a match or import a replay."
-                    : "No replays match the current search and filters.",
-                    HubTheme.TextDim);
                 Select(null);
                 return;
             }
@@ -557,7 +594,8 @@ namespace MphRead.Mods.Launcher.Gui
                     ? preserve : shown[0].Path;
             _summary.Text = $"{shown.Length} OF {_entries.Count} ITEMS  /  "
                 + $"{shown.Count(entry => entry.Favorite)} FAVORITES";
-            _list.SelectTag(selected);
+            _list.SelectedItem = shown.First(entry => entry.Path == selected);
+            _list.ScrollIntoView(_list.SelectedItem);
             Select(selected);
         }
 
@@ -822,7 +860,7 @@ namespace MphRead.Mods.Launcher.Gui
             if (virtualClip)
             {
                 (string? resolved, ReplayOpenResult openResult) =
-                    await Task.Run(() =>
+                    await ReplayStorageJobs.Run(() =>
                     {
                         string? output = ReplayVirtualClips.ResolveForPlayback(
                             path, out ReplayOpenResult result);
@@ -837,7 +875,7 @@ namespace MphRead.Mods.Launcher.Gui
             }
 
             ReplayOpenResult result =
-                await Task.Run(() => ReplayArchive.Validate(target));
+                await ReplayStorageJobs.Run(() => ReplayArchive.Validate(target));
             if (!virtualClip)
                 DemoLibrary.NoteValidation(path, result);
             _status.Text = $"INTEGRITY  {result}".ToUpperInvariant();
@@ -846,13 +884,27 @@ namespace MphRead.Mods.Launcher.Gui
             Reload(path);
         }
 
-        private void Recover()
+        private bool _recovering;
+        private System.Threading.CancellationTokenSource? _recoveryCancellation;
+        private async void Recover()
         {
             if (_selected is not string path
                 || !path.EndsWith(".part", StringComparison.OrdinalIgnoreCase))
                 return;
-            ReplayArchive.Recover(path, out string? output,
-                out ReplayOpenResult result);
+            if (_recovering) { _recoveryCancellation?.Cancel(); return; }
+            using var cancellation = new System.Threading.CancellationTokenSource();
+            _recoveryCancellation = cancellation; _recover.Label = "CANCEL RECOVERY";
+            _recovering = true; _status.Text = "RECOVERING...";
+            string? output; ReplayOpenResult result;
+            try
+            {
+                (output, result) = await ReplayStorageJobs.Run(() =>
+                { ReplayArchive.Recover(path, out string? recovered, out var status, cancellation.Token); return (recovered, status); }, cancellation.Token);
+            }
+            catch (OperationCanceledException) { _status.Text = "RECOVERY CANCELLED"; return; }
+            catch (Exception ex) { if (_selected == path && TopLevel.GetTopLevel(this) != null) Fail("Recovery failed: " + ex.Message); return; }
+            finally { _recovering = false; _recoveryCancellation = null; _recover.Label = "RECOVER"; }
+            if (_selected != path || TopLevel.GetTopLevel(this) == null) return;
             _status.Text = output == null
                 ? $"RECOVERY FAILED  {result}".ToUpperInvariant()
                 : $"RECOVERED  {Path.GetFileName(output)}".ToUpperInvariant();
@@ -906,7 +958,7 @@ namespace MphRead.Mods.Launcher.Gui
                 _watch.IsEnabled = false;
                 _watch.Label = "PREPARING";
                 (string? resolved, ReplayOpenResult openResult) =
-                    await Task.Run(() =>
+                    await ReplayStorageJobs.Run(() =>
                     {
                         string? output = ReplayVirtualClips.ResolveForPlayback(
                             path, out ReplayOpenResult result);
@@ -924,7 +976,7 @@ namespace MphRead.Mods.Launcher.Gui
 
             _watch.IsEnabled = false;
             _watch.Label = "LOADING";
-            bool joined = await Task.Run(() => DemoPlayback.Join(source));
+            bool joined = await ReplayStorageJobs.Run(() => DemoPlayback.Join(source));
             _watch.Label = "LAUNCH CINEMATIC EDITOR";
             _watch.IsEnabled = true;
             if (!joined)
@@ -952,7 +1004,7 @@ namespace MphRead.Mods.Launcher.Gui
             if (_virtual.ContainsKey(path))
             {
                 (string? resolved, ReplayOpenResult result) =
-                    await Task.Run(() =>
+                    await ReplayStorageJobs.Run(() =>
                     {
                         string? output = ReplayVirtualClips.ResolveForPlayback(
                             path, out ReplayOpenResult open);
@@ -970,11 +1022,10 @@ namespace MphRead.Mods.Launcher.Gui
             try
             {
                 string directory = Path.Combine(DemoLibrary.Directory, "exports");
-                Directory.CreateDirectory(directory);
                 string destination = Path.Combine(directory,
                     Path.GetFileNameWithoutExtension(path)
                     + $"_{Guid.NewGuid():N}{DemoFile.Extension}");
-                File.Copy(source, destination, overwrite: false);
+                await ReplayStorageJobs.Run(() => { Directory.CreateDirectory(directory); File.Copy(source, destination, overwrite: false); return true; });
                 _status.Text = $"EXPORTED  {destination}";
             }
             catch (Exception ex) when (

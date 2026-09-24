@@ -14,6 +14,7 @@ namespace MphRead.Mods.Network
     public static class NetLobbyTest
     {
         private static int _checks;
+        private static int PostMatchWaitMilliseconds => (int)(DedicatedServer.EndSequenceSeconds * 1000) + 2000;
         private static void Check(bool condition, string message)
         {
             if (!condition) throw new InvalidOperationException(message);
@@ -229,6 +230,27 @@ namespace MphRead.Mods.Network
             Check(NetSession.ServerSession?.StartStage == StartStage.Loading
                 && NetSession.StartCountdownRemainingSeconds > 2.5,
                 "fresh start commitment can beat reliable countdown state");
+            NetSession.ApplyStartCommit(new MatchStartCommitPacket(
+                state.MatchId, state.AuthorityEpoch, state.StartGeneration, 3000), NetSession.Clock - 10);
+            NetSession.ApplyStartCommit(new MatchStartCommitPacket(
+                state.MatchId, state.AuthorityEpoch, state.StartGeneration + 1, 0), NetSession.Clock - 10);
+            Check(!NetSession.StartReleaseReached && NetSession.StartCountdownRemainingSeconds > 2.5,
+                "duplicate and wrong-generation commitments cannot release the current barrier");
+            FrozenFrameChecks();
+            NetSession.ApplyStartCommit(new MatchStartCommitPacket(
+                state.MatchId, state.AuthorityEpoch, state.StartGeneration, 1000), NetSession.Clock - 2);
+            Check(NetSession.StartReleaseReached && NetSession.StartCountdownRemainingSeconds == 0,
+                "queued commit uses socket arrival time instead of restarting countdown at drain");
+            NetSession.ApplyStartCommit(new MatchStartCommitPacket(
+                state.MatchId, state.AuthorityEpoch, state.StartGeneration, 900));
+            Check(!NetSession.FreezeGameplay, "late fresh commit cannot refreeze released gameplay");
+            Check(NetSession.HoldLoadingFrame() && Mods.Render.FrameTiming.Alpha == 0,
+                "release discards the frozen render interval");
+            Check(!NetSession.HoldLoadingFrame(), "following render resumes ordinary fixed stepping");
+            state.StartGeneration++; state.Revision++;
+            NetSession.ApplySessionState(state);
+            Check(NetSession.FreezeGameplay && !NetSession.StartReleaseReached,
+                "new start generation resets the release latch");
             state.Revision = ushort.MaxValue; state.Phase = SessionPhase.Lobby; state.MatchId--;
             NetSession.ApplySessionState(state);
             Check(NetSession.IsStarting && NetSession.ServerSession?.MatchId == 5,
@@ -237,6 +259,71 @@ namespace MphRead.Mods.Network
             Check(GameState.MatchTime == -1 && GameState.PointGoal == 0,
                 "unlimited match uses the finite hidden-clock sentinel and no point goal");
             NetSession.Stop();
+            PrewarmLifetimeChecks();
+        }
+
+        private static void FrozenFrameChecks()
+        {
+            var oldState = GameState.Current;
+            var oldPlayers = Entities.PlayerEntity.LegacyRegistry;
+            var oldRandom = Rng.Current;
+            try
+            {
+                var scene = new Scene(new OpenTK.Mathematics.Vector2i(256, 192),
+                    Mods.Input.SyntheticInput.CreateKeyboard(), Mods.Input.SyntheticInput.CreateMouse(),
+                    _ => { }, () => { }, initializeRuntime: false);
+                uint netFrame = NetSession.NetFrame;
+                var random = (scene.Random.Rng1, scene.Random.Rng2);
+                float time = GameState.MatchTime;
+                Mods.Render.FrameTiming.Advance(0.01);
+                Check(NetSession.HoldLoadingFrame() && Mods.Render.FrameTiming.Alpha == 0,
+                    "loading clears partial frame debt while pumping controls");
+                for (int i = 0; i < 300; i++) scene.OnSimulationFrame();
+                Check(scene.FrameCount == 0 && NetSession.NetFrame == netFrame
+                    && GameState.MatchTime == time && random == (scene.Random.Rng1, scene.Random.Rng2),
+                    "fast loader waits without advancing scene, network frame, match clock or RNG");
+                Check(!NetSession.ConnectionLost, "loading pump does not manufacture a connection outage");
+            }
+            finally
+            {
+                GameState.Current = oldState;
+                Entities.PlayerEntity.LegacyRegistry = oldPlayers;
+                Rng.Current = oldRandom;
+            }
+        }
+
+        private static void PrewarmLifetimeChecks()
+        {
+            // Publish an asset-free lazy source through the same cache fields as
+            // the worker. This measures ownership without requiring cartridge data.
+            Mods.RoomPrewarm.Clear();
+            var fields = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
+            var cache = typeof(Mods.RoomPrewarm);
+            string path = Path.GetFullPath("startup-cache-fixture.bin");
+            int reads = 0;
+            byte[] expected = { 1, 2, 3 };
+            var prepared = new System.Threading.Tasks.TaskCompletionSource<bool>();
+            prepared.SetResult(true);
+            cache.GetField("_room", fields)!.SetValue(null, "startup-cache-fixture");
+            cache.GetField("_prepared", fields)!.SetValue(null, prepared);
+            var files = (Dictionary<string, Lazy<byte[]>>)cache.GetField("_files", fields)!.GetValue(null)!;
+            files[path] = new Lazy<byte[]>(() => { reads++; return expected; });
+            try
+            {
+                NetSession.StartServerAuthority(_ => { }, () => { });
+                Check(Mods.RoomPrewarm.JoinForLoad("startup-cache-fixture")
+                    && Mods.RoomPrewarm.TryGetFile(path, out var first) && ReferenceEquals(first, expected),
+                    "authority initialization preserves published lobby prewarm");
+                NetSession.StopMatchRuntime();
+                NetSession.StartServerAuthority(_ => { }, () => { });
+                Check(Mods.RoomPrewarm.TryGetFile(path, out var second)
+                    && ReferenceEquals(second, expected) && reads == 1,
+                    "same-map authority restart reuses the single lazy read");
+                NetSession.Stop();
+                Check(!Mods.RoomPrewarm.JoinForLoad("startup-cache-fixture")
+                    && !Mods.RoomPrewarm.TryGetFile(path, out _), "full session stop releases prewarm");
+            }
+            finally { NetSession.Stop(); }
         }
 
         private sealed class Client : IDisposable
@@ -421,7 +508,7 @@ namespace MphRead.Mods.Network
             Check(a.Match.NextRoomKey.Length == 0,
                 "persistent lobby results do not promise a next map");
             rig.Wait(() => a.State.Value.Phase == SessionPhase.Lobby,
-                "results return directly to lobby without ready/vote input", 18000);
+                "results return directly to lobby without ready/vote input", PostMatchWaitMilliseconds);
             rig.Stable();
             Check(ReferenceEquals(originalA, a.Transport) && ReferenceEquals(originalB, b.Transport)
                 && a.Slot == slotA && b.Slot == slotB, "same UDP transports and slots across rounds");
@@ -641,7 +728,7 @@ namespace MphRead.Mods.Network
             ushort match = client.State.Value.MatchId;
             client.EndMatch();
             rig.Wait(() => client.State.Value.Phase == SessionPhase.PostMatch, "continuous results"); client.ReadyResults();
-            rig.Wait(() => client.State.Value.Phase == SessionPhase.Starting && client.State.Value.MatchId != match, "continuous rotates into load barrier", 18000);
+            rig.Wait(() => client.State.Value.Phase == SessionPhase.Starting && client.State.Value.MatchId != match, "continuous rotates into load barrier", PostMatchWaitMilliseconds);
             client.Loaded();
             rig.Wait(() => client.State.Value.Phase == SessionPhase.InMatch, "continuous starts after load countdown");
         }
@@ -680,14 +767,27 @@ namespace MphRead.Mods.Network
             Check(NetSession.IsStarting && NetSession.ConnectionPort == port,
                 "lobby connection survives the load barrier");
             Check(NetSession.StartCountdownRemainingSeconds == 0, "countdown waits for local readiness");
+            FrozenFrameChecks();
+            var unready = Stopwatch.StartNew();
+            while (unready.ElapsedMilliseconds < 300)
+            {
+                NetSession.HoldLoadingFrame();
+                Check(NetSession.ServerSession!.Value.LoadedParticipants == 0
+                    && NetSession.StartCountdownRemainingSeconds == 0,
+                    "stepping an old frozen scene never acknowledges a newly announced match");
+                Thread.Sleep(10);
+            }
+            uint waitingFrame = NetSession.NetFrame;
             NetSession.MarkMatchLoaded();
-            PumpUntil(() => NetSession.StartCountdownRemainingSeconds > 0, "ready client receives countdown");
+            rig.Wait(() => { NetSession.HoldLoadingFrame(); return NetSession.StartCountdownRemainingSeconds > 0; },
+                "frozen client receives countdown through network-only pump");
+            Check(NetSession.NetFrame == waitingFrame, "network-only loading pump does not advance frame identity");
             PumpUntil(() => NetSession.IsPlaying, "real load ack starts match");
             Check(!NetSession.FreezeGameplay, "gameplay released after barrier");
             NetSession.SendMatchEnd();
             PumpUntil(() => NetSession.IsPostMatch, "real client results");
             PumpUntil(() => NetSession.IsInLobby,
-                "real client returns to lobby without post-match input", 18000);
+                "real client returns to lobby without post-match input", PostMatchWaitMilliseconds);
             NetSession.ResetMatchState();
             Check(NetSession.Active && NetSession.ConnectionPort == port && NetSession.LocalSlot == slot
                 && NetSession.ClientId == clientId && NetSession.LocalIsLobbyOwner, "real client socket/slot/id/owner survive match teardown");

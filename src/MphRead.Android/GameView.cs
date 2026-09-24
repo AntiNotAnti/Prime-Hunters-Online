@@ -917,7 +917,8 @@ namespace MphRead.Droid
                 double elapsed = WaitForTick();
                 ApplySpectatorRequest();
                 GameState.ApplyPause();
-                int steps = FrameTiming.Advance(elapsed);
+                int steps = MphRead.Mods.Network.NetSession.HoldLoadingFrame()
+                    ? 0 : FrameTiming.Advance(elapsed);
                 for (int i = 0; i < steps; i++)
                 {
                     ApplyInput();
@@ -929,13 +930,15 @@ namespace MphRead.Droid
                     {
                         MphRead.Mods.Network.DemoClip.SaveWithFeedback();
                     }
-                    if (MphRead.Mods.Network.NetSession.Refused || MphRead.Mods.Network.NetSession.SessionTimedOut)
-                    { End(scene); return false; }
-                    if (MphRead.Mods.Network.NetSession.PersistentLobby && MphRead.Mods.Network.NetSession.IsInLobby)
-                    {
-                        End(scene, keepSession: true);
-                        return false;
-                    }
+                }
+                // Loading can pump a disconnect or lobby return with zero
+                // gameplay steps. Handle those transitions on every draw.
+                if (MphRead.Mods.Network.NetSession.Refused || MphRead.Mods.Network.NetSession.SessionTimedOut)
+                { End(scene); return false; }
+                if (MphRead.Mods.Network.NetSession.PersistentLobby && MphRead.Mods.Network.NetSession.IsInLobby)
+                {
+                    End(scene, keepSession: true);
+                    return false;
                 }
                 RequestFrameRate();
                 if (Mods.Network.ReplayController.IsSeeking) return true;

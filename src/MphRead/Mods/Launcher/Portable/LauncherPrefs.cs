@@ -181,6 +181,7 @@ namespace MphRead.Mods.Launcher
         /// <summary>Full recordings prune first; clips remain protected unless opted in.</summary>
         public static bool ReplayDeleteClips { get; set; }
         public static bool KillCamEnabled { get; set; } = true;
+        public static int KillCamCamera { get; set; }
         public static bool FinalKillCamEnabled { get; set; } = true;
 
 
@@ -387,6 +388,9 @@ namespace MphRead.Mods.Launcher
                                 KillCamEnabled = killCam;
                             }
                             break;
+                        case "kill_cam_camera":
+                            if (int.TryParse(value, out int camera)) KillCamCamera = Math.Clamp(camera, 0, 2);
+                            break;
                         case "final_kill_cam":
                             if (Boolean.TryParse(value, out bool finalKillCam))
                             {
@@ -469,6 +473,7 @@ namespace MphRead.Mods.Launcher
                     $"replay_delete_clips={ReplayDeleteClips.ToString().ToLowerInvariant()}",
                     $"kill_cam={KillCamEnabled.ToString().ToLowerInvariant()}",
                     $"final_kill_cam={FinalKillCamEnabled.ToString().ToLowerInvariant()}",
+                    $"kill_cam_camera={KillCamCamera}",
                     $"window_mode={(WindowMode == WindowStartMode.BorderlessFullscreen ? "borderless" : "windowed")}",
                     $"window_size={WindowWidth.ToString(CultureInfo.InvariantCulture)}x"
                         + WindowHeight.ToString(CultureInfo.InvariantCulture),

@@ -561,6 +561,13 @@ namespace MphRead.Mods
             // Pictures of the launcher's own screens, rendered without a
             // window. The one part of this program that could not be looked at
             // from a headless box.
+#if MPHREAD_AVALONIA
+            if (ValueAfter(args, "replaylibrarycheck") is string libraryCheck)
+            {
+                Environment.ExitCode = Launcher.Gui.ReplayLibraryCheck.Run(libraryCheck);
+                return true;
+            }
+#endif
             string? uiShot = ValueAfter(args, "uishot");
 #if MPHREAD_SHELL
             if (ValueAfter(args, "mapviewportcheck") is string mapViewportCheck)

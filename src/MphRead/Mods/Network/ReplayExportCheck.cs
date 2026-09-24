@@ -44,9 +44,10 @@ internal static class ReplayExportCheck
                         $"-y -loglevel error -framerate {fps} -i \"{pattern}\" -c:v libx264 -pix_fmt yuv420p \"{movie}\"");
                     ReplayCamera.SetProfile(ReplayPresentationProfile.Presentation); ReplayCamera.SetMode(ReplayCameraMode.Orbit);
                     if (!ReplayVideoExporter.Start(job)) throw new InvalidDataException(ReplayVideoExporter.Status);
-                    int updates = 0;
-                    while (ReplayVideoExporter.Active && updates++ < 1000)
+                    var deadline = DateTime.UtcNow.AddSeconds(30);
+                    while (ReplayVideoExporter.Active && DateTime.UtcNow < deadline)
                     {
+                        if (ReplayVideoExporter.State == ReplayExportState.Encoding) { Thread.Sleep(5); continue; }
                         shell.OnSimulationFrame();
                         if (ReplayController.IsSeeking) continue;
                         Scene scene = DemoPlayback.PresentationScene!;
@@ -56,6 +57,10 @@ internal static class ReplayExportCheck
                         ReplayVideoExporter.AfterSceneDraw(scene);
                         if (pass == 1) Thread.Sleep(3); // intentionally change wall-clock/render cadence
                     }
+                    if (ReplayVideoExporter.State != ReplayExportState.Completed || !File.Exists(movie))
+                        throw new InvalidDataException("Export did not complete: " + ReplayVideoExporter.Status);
+                    if (ReplayCamera.Mode != ReplayCameraMode.Orbit || ReplayCamera.Profile != ReplayPresentationProfile.Presentation)
+                        throw new InvalidDataException("Export did not restore the replay camera.");
                     int expected = fps == 120 ? 13 : fps == 60 ? 7 : 4;
                     if (ReplayVideoExporter.FramesWritten != expected) throw new InvalidDataException("Wrong export sample count.");
                     var files = Directory.GetFiles(directory, "frame_*.png").OrderBy(p => p).ToArray();
@@ -72,22 +77,58 @@ internal static class ReplayExportCheck
                     reference = hashes;
                 }
             }
+            // A queue owns the renderer and encoder through successful process exit.
+            ReplayExportQueue.ClearPending();
+            var queued = new ReplayVideoExportManifest[3];
+            for (int i = 0; i < queued.Length; i++)
+            {
+                string directory = Path.Combine(output, "queue-" + i);
+                string pattern = Path.Combine(directory, "frame_%08d.png"), movie = Path.Combine(directory, "replay.mp4");
+                queued[i] = new(2, Path.GetFullPath(path), start, end, 640, 360, 60, true, false, false, pattern, movie,
+                    $"-y -loglevel error -framerate 60 -i \"{pattern}\" -c:v libx264 -pix_fmt yuv420p \"{movie}\"");
+                if (i == 2) queued[i] = queued[i] with { Segments = new[] {
+                    new ReplayVideoSegment(start, start + 2, "A", ReplaySegmentCamera.Chase),
+                    new ReplayVideoSegment(start + 4, end, "B", ReplaySegmentCamera.FirstPerson) } };
+                ReplayExportQueue.Enqueue(queued[i]);
+            }
+            var queueDeadline = DateTime.UtcNow.AddSeconds(60);
+            bool observedEncoding = false;
+            while ((ReplayVideoExporter.Active || ReplayExportQueue.PendingCount > 0) && DateTime.UtcNow < queueDeadline)
+            {
+                ReplayExportQueue.Pump();
+                if (ReplayVideoExporter.State == ReplayExportState.Encoding)
+                { observedEncoding = true; if (ReplayVideoExporter.Rendering) throw new InvalidDataException("Renderer overlaps encoder."); Thread.Sleep(5); continue; }
+                shell.OnSimulationFrame(); if (ReplayController.IsSeeking) continue;
+                shell.OnDrawFrame(); shell.OnRenderFrame(); ReplayVideoExporter.AfterSceneDraw(DemoPlayback.PresentationScene!);
+            }
+            if (!observedEncoding || queued.Any(job => !File.Exists(job.SuggestedOutput))
+                || ReplayVideoExporter.Active || ReplayExportQueue.PendingCount != 0 || ReplayVideoExporter.FramesWritten != 6)
+                throw new InvalidDataException("Export queue/reel did not drain successfully: " + ReplayVideoExporter.Status);
+            ReplayCamera.SetMode(ReplayCameraMode.Orbit);
+            if (!ReplayVideoExporter.Start(queued[0])) throw new InvalidDataException(ReplayVideoExporter.Status);
+            ReplayVideoExporter.Cancel();
+            if (ReplayVideoExporter.Active || ReplayCamera.Mode != ReplayCameraMode.Orbit
+                || ReplayVideoExporter.State != ReplayExportState.Cancelled) throw new InvalidDataException("Cancelled rendering retained state.");
             // Native 4K composite includes HUD without a 4K window.
             ReplayCamera.SetProfile(ReplayPresentationProfile.Faithful); ReplayCamera.SetMode(ReplayCameraMode.FirstPerson);
             string hudDirectory = Path.Combine(output, "4k-hud");
             var hud = new ReplayVideoExportManifest(2, Path.GetFullPath(path), start, start + 1, 3840, 2160, 60,
-                false, false, false, Path.Combine(hudDirectory, "frame_%08d.png"), Path.Combine(hudDirectory, "replay.mp4"), "-version");
+                false, false, false, Path.Combine(hudDirectory, "frame_%08d.png"), Path.Combine(hudDirectory, "replay.mp4"),
+                $"-y -loglevel error -framerate 60 -i \"{Path.Combine(hudDirectory, "frame_%08d.png")}\" -c:v libx264 -pix_fmt yuv420p \"{Path.Combine(hudDirectory, "replay.mp4")}\"");
             if (!ReplayVideoExporter.Start(hud)) throw new InvalidDataException(ReplayVideoExporter.Status);
-            while (ReplayVideoExporter.Active)
+            var hudDeadline = DateTime.UtcNow.AddSeconds(60);
+            while (ReplayVideoExporter.Active && DateTime.UtcNow < hudDeadline)
             {
+                if (ReplayVideoExporter.State == ReplayExportState.Encoding) { Thread.Sleep(5); continue; }
                 shell.OnSimulationFrame(); if (ReplayController.IsSeeking) continue;
                 shell.OnDrawFrame(); shell.OnRenderFrame(); ReplayVideoExporter.AfterSceneDraw(DemoPlayback.PresentationScene!);
             }
+            if (ReplayVideoExporter.State != ReplayExportState.Completed) throw new InvalidDataException(ReplayVideoExporter.Status);
             byte[] composite = File.ReadAllBytes(Path.Combine(hudDirectory, "frame_00000000.png"));
             if (System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(composite.AsSpan(16)) != 3840
                 || System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(composite.AsSpan(20)) != 2160)
                 throw new InvalidDataException("HUD composite did not use the 4K offscreen target.");
-            Console.WriteLine("[replayexport] PASS: native 720p/4K HUD targets, repeated identical 30/60/120 FPS samples, true half-frames, gameplay invariance and seek/cadence independence.");
+            Console.WriteLine("[replayexport] PASS: native 720p/4K HUD targets, repeated identical 30/60/120 FPS samples, true half-frames, gameplay invariance, seek/cadence independence, serialized three-job queue, multi-segment reel and render cancellation.");
             return 0;
         }
         catch (Exception ex) { Console.WriteLine("[replayexport] FAIL: " + ex); return 1; }

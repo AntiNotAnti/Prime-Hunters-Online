@@ -19,9 +19,9 @@ internal static class ReplayWorldCoverageCheck
         try
         {
             Headless.Enter();
-            string room = "TEST ARENA";
+            string room = source.StartsWith("room:", StringComparison.Ordinal) ? source[5..] : "TEST ARENA";
             Vector3 origin = new(0, 1, 0);
-            if (source != "synthetic")
+            if (source != "synthetic" && !source.StartsWith("room:", StringComparison.Ordinal))
             {
                 using var seed = new PassiveReplayScene(source, new Vector2i(256, 192));
                 bool found = false;

@@ -1,0 +1,7 @@
+Project Prime — local macOS Apple Silicon build
+Source commit: e3373c7 (latest main ed9a997 plus Pro HUD span-scope fix)
+Fix: https://github.com/AntiNotAnti/Prime-Hunters-Online/pull/83
+Target: osx-arm64, self-contained Release, .NET 10
+Signing: ad-hoc
+Validation: Release build, frame-timing regression suite, native architecture/signature/JIT checks, relocated compatibility smoke, launcher window and thumbnail smoke, map and game-asset guards.
+Archive SHA-256: 635c86ff6bc4d89a66c9706894d0df093f3eeb25a9310d92467967a62fe9d501

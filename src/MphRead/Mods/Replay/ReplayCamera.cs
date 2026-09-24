@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using MphRead.Entities;
 using MphRead.Formats;
 using MphRead.Mods.Network;
@@ -58,6 +59,15 @@ namespace MphRead.Mods.Replay
                 && _trackPath != null)
                 Track.Save(_trackPath);
             Chat.ChatBox.System(Track.LastError == null ? "Camera keyframe saved" : "Camera track: " + Track.LastError);
+        }
+        internal static void MoveKeyframe(uint from, uint to)
+        {
+            EnsureTrack();
+            if (Track.Keys.Any(key => key.Frame == to)) return;
+            var key = Track.Keys.FirstOrDefault(key => key.Frame == from);
+            if (!Track.Remove(from)) return;
+            Track.Put(key with { Frame = to });
+            if (_trackPath != null) Track.Save(_trackPath);
         }
         public static void RemoveKeyframe()
         {
@@ -200,7 +210,7 @@ namespace MphRead
                 facing = new Vector3(MathF.Sin(_replayOrbit), 0, MathF.Cos(_replayOrbit));
             }
             Vector3 desired = target - facing * Math.Clamp(Mods.Replay.ReplayCamera.Distance, 1, 20);
-            Vector3 candidate = !Mods.Replay.ReplayVideoExporter.Active && Mods.Replay.ReplayCamera.Profile == Mods.Replay.ReplayPresentationProfile.Presentation && _replayFollowPosition.HasValue ? Vector3.Lerp(_replayFollowPosition.Value, desired, 1 - MathF.Exp(-delta * 10)) : desired;
+            Vector3 candidate = !Mods.Replay.ReplayVideoExporter.Rendering && Mods.Replay.ReplayCamera.Profile == Mods.Replay.ReplayPresentationProfile.Presentation && _replayFollowPosition.HasValue ? Vector3.Lerp(_replayFollowPosition.Value, desired, 1 - MathF.Exp(-delta * 10)) : desired;
             CollisionResult collision = default;
             if (CollisionDetection.CheckBetweenPoints(target, candidate, TestFlags.Players, this, ref collision))
                 candidate = target + (candidate - target) * Math.Max(0, collision.Distance - 0.05f);

@@ -148,6 +148,7 @@ namespace MphRead.Mods.Network
         {
             Scene.Size = ClientSize;
             Scene.OnLoad();
+            NetSession.MarkMatchLoaded();
             base.OnLoad();
             // A window that is never shown or resized never gets OnResize,
             // which is what normally sets the viewport and sizes the

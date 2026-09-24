@@ -237,7 +237,15 @@ namespace MphRead.Mods.Replay
     internal static class ReplayExportQueue
     {
         private static readonly Queue<ReplayVideoExportManifest> Pending = new();
-        private static ReplayVideoExportManifest? _last;
+        private static ReplayVideoExportManifest? _last, _failed;
+        private static readonly List<string> Failures = new();
+        internal static IReadOnlyList<string> RecentFailures => Failures;
+        internal static void NoteFailure(ReplayVideoExportManifest? job, string error)
+        {
+            if (job != null) _failed = job;
+            Failures.Add(DateTime.Now.ToString("HH:mm") + " · " + (error.Length > 180 ? error[..180] + "…" : error));
+            if (Failures.Count > 5) Failures.RemoveAt(0);
+        }
 
         public static int PendingCount => Pending.Count;
         public static string Status { get; private set; } = "Export queue idle.";
@@ -275,12 +283,13 @@ namespace MphRead.Mods.Replay
 
         public static bool RetryLast()
         {
-            if (_last == null)
+            var retry = _failed ?? _last;
+            if (retry == null)
             {
                 Status = "Nothing to retry.";
                 return false;
             }
-            Pending.Enqueue(_last);
+            Pending.Enqueue(retry);
             Status = "Last export queued again.";
             return true;
         }

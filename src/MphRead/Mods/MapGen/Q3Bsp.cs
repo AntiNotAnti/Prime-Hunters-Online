@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -103,9 +104,10 @@ namespace MphRead.Mods.MapGen
         /// case for a map somebody is converting; a bundle is what a converted
         /// map is handed out as.
         /// </summary>
-        public static Q3Bsp Load(string source, string? mapName)
+        public static Q3Bsp Load(string source, string? mapName, CancellationToken cancellation = default)
         {
-            return Parse(ReadLevel(source, mapName));
+            cancellation.ThrowIfCancellationRequested();
+            return Parse(ReadLevel(source, mapName), cancellation);
         }
 
         /// <summary>
@@ -166,7 +168,7 @@ namespace MphRead.Mods.MapGen
                 .ToList();
         }
 
-        private static Q3Bsp Parse(byte[] bytes)
+        private static Q3Bsp Parse(byte[] bytes, CancellationToken cancellation = default)
         {
             using var stream = new MemoryStream(bytes);
             using var reader = new BinaryReader(stream);
@@ -183,26 +185,29 @@ namespace MphRead.Mods.MapGen
                 if(offsets[i].offset<0||offsets[i].length<0||(long)offsets[i].offset+offsets[i].length>bytes.Length)
                     throw new InvalidDataException("Invalid BSP lump bounds.");
             }
+            IReadOnlyList<T> Lump<T>(BinaryReader r, (int offset, int length) l, int size, Func<BinaryReader,T> read)
+                => ReadLump(r, l, size, read, cancellation);
+            cancellation.ThrowIfCancellationRequested();
             var bsp = new Q3Bsp();
             bsp.Entities = ParseEntities(Encoding.ASCII.GetString(bytes, offsets[0].offset, offsets[0].length));
-            bsp.Textures = ReadLump(reader, offsets[1], 72, r =>
+            bsp.Textures = Lump(reader, offsets[1], 72, r =>
             {
                 string name = Encoding.ASCII.GetString(r.ReadBytes(64)).TrimEnd('\0');
                 return new Q3Texture(name, r.ReadInt32(), r.ReadInt32());
             });
-            bsp.Planes = ReadLump(reader, offsets[2], 16, r =>
+            bsp.Planes = Lump(reader, offsets[2], 16, r =>
                 new Q3Plane(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle()));
-            bsp.Models = ReadLump(reader, offsets[7], 40, r =>
+            bsp.Models = Lump(reader, offsets[7], 40, r =>
             {
                 float[] mins = new[] { r.ReadSingle(), r.ReadSingle(), r.ReadSingle() };
                 float[] maxs = new[] { r.ReadSingle(), r.ReadSingle(), r.ReadSingle() };
                 return new Q3Model(mins, maxs, r.ReadInt32(), r.ReadInt32(), r.ReadInt32(), r.ReadInt32());
             });
-            bsp.Brushes = ReadLump(reader, offsets[8], 12, r =>
+            bsp.Brushes = Lump(reader, offsets[8], 12, r =>
                 new Q3Brush(r.ReadInt32(), r.ReadInt32(), r.ReadInt32()));
-            bsp.BrushSides = ReadLump(reader, offsets[9], 8, r =>
+            bsp.BrushSides = Lump(reader, offsets[9], 8, r =>
                 new Q3BrushSide(r.ReadInt32(), r.ReadInt32()));
-            bsp.Vertices = ReadLump(reader, offsets[10], 44, r =>
+            bsp.Vertices = Lump(reader, offsets[10], 44, r =>
             {
                 float[] position = new[] { r.ReadSingle(), r.ReadSingle(), r.ReadSingle() };
                 float[] surface = new[] { r.ReadSingle(), r.ReadSingle() };
@@ -212,8 +217,8 @@ namespace MphRead.Mods.MapGen
                 byte[] color = r.ReadBytes(4);
                 return new Q3Vertex(position, surface, normal, color);
             });
-            bsp.MeshVerts = ReadLump(reader, offsets[11], 4, r => r.ReadInt32());
-            bsp.Faces = ReadLump(reader, offsets[13], 104, r =>
+            bsp.MeshVerts = Lump(reader, offsets[11], 4, r => r.ReadInt32());
+            bsp.Faces = Lump(reader, offsets[13], 104, r =>
             {
                 int texture = r.ReadInt32();
                 int effect = r.ReadInt32();
@@ -252,12 +257,13 @@ namespace MphRead.Mods.MapGen
         }
 
         private static IReadOnlyList<T> ReadLump<T>(BinaryReader reader, (int offset, int length) lump,
-            int size, Func<BinaryReader, T> read)
+            int size, Func<BinaryReader, T> read, CancellationToken cancellation = default)
         {
             if(lump.length%size!=0)throw new InvalidDataException("BSP lump has a partial record.");
             var results = new List<T>(lump.length / size);
             for (int i = 0; i < lump.length / size; i++)
             {
+                if ((i & 255) == 0) cancellation.ThrowIfCancellationRequested();
                 reader.BaseStream.Position = lump.offset + i * size;
                 results.Add(read(reader));
             }
