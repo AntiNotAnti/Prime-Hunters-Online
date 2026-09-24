@@ -619,9 +619,9 @@ namespace MphRead.Mods.Launcher.Gui
         }
 
         // Kept as an asset-loading compatibility hook for legacy design
-        // studies. The player-facing hub no longer draws launcher-bg.jpg.
+        // studies. The player-facing hub no longer draws launcher-bg.png.
         private static readonly Lazy<Bitmap?> _background =
-            new(() => Load("Backgrounds/launcher-bg.jpg"));
+            new(() => Load("Backgrounds/launcher-bg.png"));
 
         private static Bitmap? Load(string asset)
         {

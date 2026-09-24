@@ -70,7 +70,7 @@ namespace MphRead.Mods.Diagnostics
             Check("launcher resources", () =>
             {
                 foreach (string resource in new[] { "project-prime-mark.png",
-                    "Fonts/heyNovember.ttf", "Fonts/Roboto-Bold.ttf", "Backgrounds/launcher-bg.jpg" })
+                    "Fonts/heyNovember.ttf", "Fonts/Roboto-Bold.ttf", "Backgrounds/launcher-bg.png" })
                 {
                     using Stream stream = Avalonia.Platform.AssetLoader.Open(
                         new Uri($"avares://ProjectPrime/Assets/{resource}"));

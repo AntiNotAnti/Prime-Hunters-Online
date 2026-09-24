@@ -167,7 +167,7 @@
          megabyte, which is the price of the question being answered offline. -->
     <AvaloniaResource Include="Assets\Geo\ipcountry.bin.gz" />
     <AvaloniaResource Include="Assets\Fonts\Roboto-Bold.ttf" />
-    <AvaloniaResource Include="Assets\Backgrounds\launcher-bg.jpg" />
+    <AvaloniaResource Include="Assets\Backgrounds\launcher-bg.png" />
   </ItemGroup>
 
   <ItemGroup>
@@ -177,7 +177,7 @@
          LauncherPhoto.cs, which explains why), and that side of the window
          knows nothing about avares://. Not inside the Avalonia group: the
          server build carries no toolkit and still compiles the file. -->
-    <EmbeddedResource Include="Assets\Backgrounds\launcher-bg.jpg" />
+    <EmbeddedResource Include="Assets\Backgrounds\launcher-bg.png" />
   </ItemGroup>
 
   <ItemGroup>

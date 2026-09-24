@@ -10,9 +10,10 @@
 # server variant adds the dedicated-server badge.
 src/MphRead/Assets/project-prime-mark.png
 src/MphRead/Assets/project-prime-mark-server.png
+src/MphRead/Assets/project-prime-banner.png
 
 # The launcher's legacy backdrop fixture. The player-facing modern hub now uses
 # locally generated map art and graded fallbacks, but this exact file remains
 # available to compatibility/design checks. It is exempted by exact path so a
 # second game-derived picture cannot slip through the guard accidentally.
-src/MphRead/Assets/Backgrounds/launcher-bg.jpg
+src/MphRead/Assets/Backgrounds/launcher-bg.png

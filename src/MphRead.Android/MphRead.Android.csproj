@@ -163,7 +163,7 @@
                       Link="Assets\%(Filename)%(Extension)" />
     <AvaloniaResource Include="..\MphRead\Assets\Fonts\*.ttf"
                       Link="Assets\Fonts\%(Filename)%(Extension)" />
-    <AvaloniaResource Include="..\MphRead\Assets\Backgrounds\*.jpg"
+    <AvaloniaResource Include="..\MphRead\Assets\Backgrounds\*.png"
                       Link="Assets\Backgrounds\%(Filename)%(Extension)" />
     <!-- The IP-to-country ranges the server browser puts a flag with. Not a
          font, and a missing one here is only a browser with no flags in it,
