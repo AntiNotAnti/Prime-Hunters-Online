@@ -16,6 +16,10 @@ src/MphRead/Assets/project-prime-banner.png
 # extracted game previews are still excluded.
 src/MphRead/Assets/Backgrounds/launcher-bg.png
 
+# Original Project Prime combat-feedback stingers. These are programmatically
+# synthesized for this project and contain no cartridge audio or third-party samples.
+src/MphRead/Assets/Sounds/Combat/*.wav
+
 # Generated production-codec benchmark telemetry for 2,016 seeded scenarios.
 # Contains numerical test results only, no extracted game data; exceeds 2 MiB.
 tools/nettest/baselines/network-v18.json
