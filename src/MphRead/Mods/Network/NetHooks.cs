@@ -561,10 +561,12 @@ namespace MphRead.Mods.Network
             // alone means no snapshot is ever published.
             if (NetSession.IsHost || NetSession.IsAuthority)
             {
+                NetContactLagComp.ResolveFrame();
                 NetSession.BroadcastSnapshot();
             }
             else if (NetSession.IsClient)
             {
+                NetContactLagComp.ObservePresentation();
                 ApplyRemoteStates();
             }
         }

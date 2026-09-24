@@ -6,10 +6,13 @@ using OpenTK.Mathematics;
 
 namespace MphRead.Mods.Network;
 
-public readonly record struct HistoricalBody(int Slot, Vector3 Position, float Radius, float Bottom, float Top);
+public enum HistoricalBodyType { BipedCylinder, AltSphere, KandenChain }
+public readonly record struct HistoricalBody(int Slot, Vector3 Position, float Radius, float Bottom, float Top,
+    HistoricalBodyType Type = HistoricalBodyType.BipedCylinder, AltCollisionPose Segments = default);
+
 public readonly record struct HistoricalHit(bool Available, int Slot, bool Head);
 
-/// <summary>Read-only historical biped trace diagnostic. This compares geometry,
+/// <summary>Read-only historical player trace diagnostic. This compares geometry,
 /// not damage: invulnerability, projectile travel, splashes and prediction are
 /// deliberately not simulated a second time.</summary>
 public static class NetHistoricalTrace
@@ -20,16 +23,50 @@ public static class NetHistoricalTrace
         int slot = -1; bool head = false; float closest = worldDistance;
         foreach (var body in bodies)
         {
-            CollisionResult result = default;
-            if (CollisionDetection.CheckCylindersOverlap(start, end, body.Position + Vector3.UnitY * body.Bottom,
-                Vector3.UnitY, body.Top - body.Bottom, body.Radius + beamRadius, ref result) && result.Distance < closest)
+            if (Intersect(body, start, end, beamRadius, out var result) && result.Distance < closest)
             {
                 closest = result.Distance; slot = body.Slot;
-                head = result.Position.Y - body.Position.Y >= body.Top - .3f;
+                head = body.Type == HistoricalBodyType.BipedCylinder
+                    && result.Position.Y - body.Position.Y >= body.Top - .3f;
             }
         }
         return new(true, slot, head);
     }
+    public static bool Intersect(in HistoricalBody body, Vector3 start, Vector3 end,
+        float radius, out CollisionResult result)
+    {
+        result = default;
+        float radii = body.Radius + radius;
+        if (body.Type == HistoricalBodyType.BipedCylinder)
+            return CollisionDetection.CheckCylindersOverlap(start, end, body.Position + Vector3.UnitY * body.Bottom,
+                Vector3.UnitY, body.Top - body.Bottom, radii, ref result);
+        if (body.Type == HistoricalBodyType.KandenChain)
+        {
+            if (!CollisionDetection.CheckCylinderOverlapSphere(start, end, body.Segments.Seg2, 1.6f, ref result))
+                return false;
+            return CollisionDetection.CheckCylinderOverlapSphere(start, end, body.Position, radii, ref result)
+                || CollisionDetection.CheckCylinderOverlapSphere(start, end, body.Segments.Seg1, radii, ref result)
+                || CollisionDetection.CheckCylinderOverlapSphere(start, end, body.Segments.Seg2, radii, ref result)
+                || CollisionDetection.CheckCylinderOverlapSphere(start, end, body.Segments.Seg3, radii, ref result);
+        }
+        return CollisionDetection.CheckCylinderOverlapSphere(start, end, body.Position, radii, ref result);
+    }
+
+    internal static HistoricalBody CurrentBody(PlayerEntity player) => new(player.SlotIndex,
+        player.ModCollisionIsAltForm ? player.Volume.SpherePosition : player.Position, player.Volume.SphereRadius,
+        Fixed.ToFloat(player.Values.MinPickupHeight), Fixed.ToFloat(player.Values.MaxPickupHeight),
+        !player.ModCollisionIsAltForm ? HistoricalBodyType.BipedCylinder : player.Hunter == Hunter.Kanden
+            ? HistoricalBodyType.KandenChain : HistoricalBodyType.AltSphere, player.ModCaptureAltPose());
+
+    internal static HistoricalBody Body(PlayerEntity player, in HistoricalPlayerPose pose)
+    {
+        var volume = PlayerEntity.PlayerVolumes[(int)player.Hunter, pose.AltForm ? 2 : 0];
+        return new(player.SlotIndex, pose.Position + (pose.AltForm ? volume.SpherePosition : Vector3.Zero),
+            volume.SphereRadius, Fixed.ToFloat(player.Values.MinPickupHeight), Fixed.ToFloat(player.Values.MaxPickupHeight),
+            !pose.AltForm ? HistoricalBodyType.BipedCylinder : player.Hunter == Hunter.Kanden
+                ? HistoricalBodyType.KandenChain : HistoricalBodyType.AltSphere, pose.AltPose);
+    }
+
     public static ShadowOutcome Compare(in HistoricalHit existing, in HistoricalHit shadow)
     {
         if (!existing.Available || !shadow.Available) return ShadowOutcome.HistoricalDataUnavailable;
@@ -58,14 +95,13 @@ public static class NetHistoricalTrace
         foreach (var player in scene.GetPlayerEntities())
         {
             if (player == shooter || player.Health == 0 || player.Flags2.TestFlag(PlayerFlags2.Spectating)) continue;
-            // Avoid inventing past alt-form volumes and detached turret poses.
-            if (player.IsAltForm || player.Flags2.TestFlag(PlayerFlags2.Halfturret) || count == 8
-                || !NetUnlagged.TryHistoricalBiped(player, NetSession.NetFrame - hard, out Vector3 oldPosition)
-                || !NetUnlagged.TryHistoricalBiped(player, NetSession.NetFrame - allowed, out Vector3 newPosition))
+            // Detached turrets still require an independent historical body.
+            if (player.Flags2.TestFlag(PlayerFlags2.Halfturret) || count == 8
+                || !NetUnlagged.TryHistoricalPose(player, NetSession.NetFrame - hard, out var oldPose)
+                || !NetUnlagged.TryHistoricalPose(player, NetSession.NetFrame - allowed, out var newPose))
                 return ShadowOutcome.HistoricalDataUnavailable;
-            var body = new HistoricalBody(player.SlotIndex, oldPosition, player.Volume.SphereRadius,
-                Fixed.ToFloat(player.Values.MinPickupHeight), Fixed.ToFloat(player.Values.MaxPickupHeight));
-            oldBodies[count] = body; newBodies[count++] = body with { Position = newPosition };
+            oldBodies[count] = Body(player, oldPose);
+            newBodies[count++] = Body(player, newPose);
         }
         var mechanics = shooter.EquipInfo.Weapon;
         Vector3 end = origin + direction.Normalized() * (mechanics.UnchargedSpeed / 8192f);

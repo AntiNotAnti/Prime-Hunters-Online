@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using MphRead.Formats;
+using MphRead.Mods.Network;
 using MphRead.Formats.Collision;
 using OpenTK.Mathematics;
 
@@ -57,7 +58,8 @@ namespace MphRead.Entities
                         other.HandleCollision(turretRes);
                         if (other != this)
                         {
-                            if (other.Flags1.TestFlag(PlayerFlags1.Boosting))
+                            if ((!NetSession.Active || NetSession.IsHost || NetSession.IsAuthority)
+                                && other.Flags1.TestFlag(PlayerFlags1.Boosting))
                             {
                                 TakeDamage(other._boostDamage, DamageFlags.NoDmgInvuln | DamageFlags.Halfturret, other.Speed, other);
                                 other.EndAltAttack();
@@ -103,12 +105,12 @@ namespace MphRead.Entities
                         Acceleration = new Vector3(between.X * kbAccel, 0, between.Z * kbAccel);
                         _accelerationTimer = (ushort)(Values.AltAttackKnockbackTime * 2); // todo: FPS stuff
                     }
-                    if (Flags1.TestFlag(PlayerFlags1.Boosting))
+                    if (!NetSession.Active && Flags1.TestFlag(PlayerFlags1.Boosting))
                     {
                         other.TakeDamage(_boostDamage, DamageFlags.NoDmgInvuln, Speed, this);
                         EndAltAttack();
                     }
-                    if (other.Flags1.TestFlag(PlayerFlags1.Boosting))
+                    if (!NetSession.Active && other.Flags1.TestFlag(PlayerFlags1.Boosting))
                     {
                         TakeDamage(other._boostDamage, DamageFlags.NoDmgInvuln, other.Speed, other);
                         other.EndAltAttack();
@@ -128,9 +130,41 @@ namespace MphRead.Entities
             }
         }
 
-        // todo: more visualization
-        private static void CheckAltAttackHit1(PlayerEntity attacker, PlayerEntity target, bool halfturret)
+        internal HistoricalAltAttackState ModCaptureContactState()
         {
+            bool active = LoadFlags.TestFlag(LoadFlags.Active) && ModIsInPlay && !Flags2.TestFlag(PlayerFlags2.Spectating) && !ModFrozen && !_scene.Services.IsReplica;
+            ContactAttackKind kind = ContactAttackKind.None;
+            if (active && IsAltForm)
+            {
+                if (Hunter == Hunter.Samus && Flags1.TestFlag(PlayerFlags1.Boosting)) kind = ContactAttackKind.Boost;
+                else if (Hunter == Hunter.Noxus && _altAttackTime >= Values.AltAttackStartup * 2) kind = ContactAttackKind.Noxus;
+                else if (Flags2.TestFlag(PlayerFlags2.AltAttack))
+                    kind = Hunter switch { Hunter.Spire => ContactAttackKind.Spire, Hunter.Trace => ContactAttackKind.Trace,
+                        Hunter.Weavel => ContactAttackKind.Weavel, _ => ContactAttackKind.None };
+            }
+            return new(kind, IsAltForm, _volume.SpherePosition, _volume.SpherePosition, _volume.SphereRadius,
+                _spireRockPosL, _spireRockPosR, NetPlayerLifecycle.Get(SlotIndex), NetPlayerLifecycle.Generation(SlotIndex), active);
+        }
+
+        internal void ModApplyContactHit(PlayerEntity target, ContactAttackKind kind)
+        {
+            if (_scene.Services.IsReplica || NetSession.Active && !(NetSession.IsHost || NetSession.IsAuthority)
+                || NetDamage.Suppress(target, this, DamageFlags.NoDmgInvuln)) return;
+            if (kind == ContactAttackKind.Boost)
+            {
+                target.TakeDamage(_boostDamage, DamageFlags.NoDmgInvuln, Speed, this);
+                EndAltAttack();
+            }
+            else if (kind == ContactAttackKind.Spire || kind == ContactAttackKind.Noxus)
+                CheckAltAttackHit1(this, target, false, validated: true);
+            else if (kind == ContactAttackKind.Trace || kind == ContactAttackKind.Weavel)
+                CheckAltAttackHit2(this, target, false, validated: true);
+        }
+
+        // todo: more visualization
+        private static void CheckAltAttackHit1(PlayerEntity attacker, PlayerEntity target, bool halfturret, bool validated = false)
+        {
+            if (NetSession.Active && !validated && (!halfturret || !(NetSession.IsHost || NetSession.IsAuthority))) return;
             // the game assumes the hunter is noxus based on the alt attack timer
             if (attacker.Hunter == Hunter.Spire && attacker.Flags2.TestFlag(PlayerFlags2.AltAttack))
             {
@@ -147,14 +181,14 @@ namespace MphRead.Entities
                     hit = CollisionDetection.CheckSphereOverlapVolume(target.Volume, attacker._spireRockPosL, 0.5f, ref unused)
                         || CollisionDetection.CheckSphereOverlapVolume(target.Volume, attacker._spireRockPosR, 0.5f, ref unused);
                 }
-                if (hit)
+                if (validated || hit)
                 {
                     Vector3 dir = Vector3.Zero;
                     if (!halfturret)
                     {
                         float x = target.Position.X - attacker.Position.X;
                         float z = target.Position.Z - attacker.Position.Z;
-                        float factor = MathF.Sqrt(x * x + z * z) * 4;
+                        float factor = MathF.Max(MathF.Sqrt(x * x + z * z) * 4, .0001f);
                         dir.X = x / factor;
                         dir.Z = z / factor;
                     }
@@ -197,14 +231,14 @@ namespace MphRead.Entities
                     between = target.Volume.SpherePosition - attacker.Volume.SpherePosition;
                 }
                 float radius = target.Volume.SphereRadius;
-                if (between.Y > -radius && between.Y < radius)
+                if (validated || between.Y > -radius && between.Y < radius)
                 {
                     float hMagSqr = between.X * between.X + between.Z * between.Z;
                     float radAddSqr = radius + 1.8f;
                     radAddSqr *= radAddSqr;
-                    if (hMagSqr < radAddSqr)
+                    if (validated || hMagSqr < radAddSqr)
                     {
-                        float factor = MathF.Sqrt(hMagSqr) * 8;
+                        float factor = MathF.Max(MathF.Sqrt(hMagSqr) * 8, .0001f);
                         var dir = new Vector3(between.X / factor, 0, between.Z / factor);
                         target.Acceleration = dir;
                         target._accelerationTimer = 8 * 2; // todo: FPS stuff
@@ -240,8 +274,9 @@ namespace MphRead.Entities
             }
         }
 
-        private static void CheckAltAttackHit2(PlayerEntity attacker, PlayerEntity target, bool halfturret)
+        private static void CheckAltAttackHit2(PlayerEntity attacker, PlayerEntity target, bool halfturret, bool validated = false)
         {
+            if (NetSession.Active && !validated && (!halfturret || !(NetSession.IsHost || NetSession.IsAuthority))) return;
             if (attacker.Hunter != Hunter.Trace && attacker.Hunter != Hunter.Weavel
                 || !attacker.Flags2.TestFlag(PlayerFlags2.AltAttack))
             {

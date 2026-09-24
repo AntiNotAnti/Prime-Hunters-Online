@@ -91,7 +91,7 @@ namespace MphRead.Mods.Network
             /// totals can simply be subtracted. <c>-hitrig missile</c>,
             /// <c>-hitrig magmaul</c>, <c>-hitrig judicator</c>.
             /// </summary>
-            Volley
+            Volley, AltStatic, AltLateral, AltMorph, AltContact, AltCrossing
         }
 
         /// <summary>The weapon a <see cref="RigMode.Volley"/> run empties.</summary>
@@ -109,6 +109,12 @@ namespace MphRead.Mods.Network
         {
             switch (value?.Trim().ToLowerInvariant())
             {
+                case "alt-static": Mode = RigMode.AltStatic; return true;
+                case "alt":
+                case "alt-lateral": Mode = RigMode.AltLateral; return true;
+                case "alt-morph": Mode = RigMode.AltMorph; return true;
+                case "alt-contact": Mode = RigMode.AltContact; return true;
+                case "alt-crossing": Mode = RigMode.AltCrossing; return true;
                 case "jump":
                 case "jumppad":
                     Mode = RigMode.Jump;
@@ -280,13 +286,34 @@ namespace MphRead.Mods.Network
                 return;
             }
             PlayerEntity? other = Opponent(player);
-            if (IsSniper)
+            if (Mode == RigMode.AltContact || Mode == RigMode.AltCrossing)
+            {
+                bool attacking = IsSniper || Mode == RigMode.AltCrossing;
+                AimAt(player, other, headHeight: 0);
+                if (attacking)
+                {
+                    if (!player.IsAltForm && !player.IsMorphing && !player.IsUnmorphing) c.Morph.IsDown = _frame % 20 == 0;
+                    c.MoveUp.IsDown = other != null;
+                    if (player.Hunter == Hunter.Samus)
+                        c.Boost.IsDown = player.IsAltForm && _frame % 90 < 45;
+                    else c.AltAttack.IsDown = player.IsAltForm && _frame % 90 < 6;
+                    if ((c.Boost.IsDown || c.AltAttack.IsDown) && _frame % 90 == 0) Triggers++;
+                }
+            }
+            else if (IsSniper)
             {
                 DriveSniper(player, c, other);
             }
             else
             {
                 DriveRunner(player, c, other);
+            }
+            if (player.IsAltForm && Mode >= RigMode.AltStatic)
+            {
+                c.RollUp.IsDown = c.MoveUp.IsDown;
+                c.RollDown.IsDown = c.MoveDown.IsDown;
+                c.RolltLeft.IsDown = c.MoveLeft.IsDown;
+                c.RollRight.IsDown = c.MoveRight.IsDown;
             }
             FinishControls(player, c);
         }
@@ -302,6 +329,14 @@ namespace MphRead.Mods.Network
         /// </summary>
         private static void DriveRunner(PlayerEntity player, PlayerControls c, PlayerEntity? other)
         {
+            if (Mode == RigMode.AltStatic || Mode == RigMode.AltLateral || Mode == RigMode.AltMorph)
+            {
+                AimAt(player, other, headHeight: 0);
+                bool wantAlt = Mode != RigMode.AltMorph || _frame % 180 < 90;
+                c.Morph.IsDown = wantAlt != player.IsAltForm && !player.IsMorphing && !player.IsUnmorphing && _frame % 12 == 0;
+                if (Mode != RigMode.AltStatic) Square(c, 45);
+                return;
+            }
             // Face the sniper, so the runner is a target rather than a back.
             AimAt(player, other, headHeight: 0);
             bool airborne = !player.Flags1.TestFlag(PlayerFlags1.Standing);
@@ -372,7 +407,7 @@ namespace MphRead.Mods.Network
             {
                 c.Zoom.IsDown = true;
             }
-            bool onTarget = AimAt(player, other, HeadAimHeight);
+            bool onTarget = AimAt(player, other, Mode == RigMode.AltStatic || Mode == RigMode.AltLateral || Mode == RigMode.AltMorph ? 0 : HeadAimHeight);
             if (onTarget)
             {
                 FramesOnTarget++;
@@ -487,7 +522,7 @@ namespace MphRead.Mods.Network
             }
             Vector3 at = headHeight > 0
                 ? target.Position.AddY(headHeight)
-                : target.ModAimTarget;
+                : target.IsAltForm ? target.Volume.SpherePosition : target.ModAimTarget;
             (float turnX, float turnY) = player.ModAimDeltaTowards(at);
             if (!Single.IsFinite(turnX) || !Single.IsFinite(turnY))
             {
