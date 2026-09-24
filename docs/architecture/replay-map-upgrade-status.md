@@ -137,8 +137,8 @@ in [NETWORK-DEMOS.md](../../.claude/multiplayer/NETWORK-DEMOS.md). Map authoring
 contracts are in [MAP-STUDIO.md](../../.claude/mapgen/MAP-STUDIO.md). Runtime fixtures
 are generated from the tester's local assets and are deliberately not committed.
 
-The review stack starts at [#40](https://github.com/AntiNotAnti/Prime-Hunters-Online/pull/40)
-and ends at [#62](https://github.com/AntiNotAnti/Prime-Hunters-Online/pull/62). PR #40
+The review stack starts at [#40](https://github.com/AntiNotAnti/Project-Prime/pull/40)
+and ends at [#62](https://github.com/AntiNotAnti/Project-Prime/pull/62). PR #40
 is in main; #41–54 were merged into their preceding feature branches. The final
 `codex/replay-map-integration` PR therefore targets main with the complete result.
 Use that integration PR to land the upgrade; the smaller PRs retain the review
