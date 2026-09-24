@@ -119,9 +119,10 @@ namespace MphRead.Mods.Launcher
             // through this one entry point. Compatibility is based on the MPH
             // revision and the ROM structures Project Prime actually reads,
             // not an exact whole-file hash.
-            if (!RomCompatibility.TryIdentify(romPath, out string? label, out string? problem))
+            if (!RomCompatibility.TryIdentify(
+                romPath, out string? label, out string? compatibilityProblem))
             {
-                report(problem ?? "That .nds file is not compatible with this build.");
+                report(compatibilityProblem ?? "That .nds file is not compatible with this build.");
                 return false;
             }
             report($"Recognised: Metroid Prime Hunters, {label}");
@@ -198,7 +199,7 @@ namespace MphRead.Mods.Launcher
                 child.WaitForExit();
                 if (child.ExitCode != 0)
                 {
-                    report("The extraction did not finish; existing game files were left unchanged.");
+                    report("The extraction did not finish; the selected ROM was not installed.");
                     return false;
                 }
             }
