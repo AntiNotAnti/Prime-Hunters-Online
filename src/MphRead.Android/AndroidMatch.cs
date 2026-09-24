@@ -126,14 +126,22 @@ namespace MphRead.Droid
         private static Scene BuildAdventure(AndroidInput input, Vector2i size,
             LaunchPlan plan, Action close)
         {
-            string roomKey = AdventureSave.Begin(plan.SaveSlot, plan.NewGame);
+            // Match the desktop ordering: the Adventure save belongs to the
+            // scene that will run it. Preparing GameState before constructing
+            // the scene lets the constructor's reset reload the old slot and
+            // loses a fresh save (or throws on stale/corrupt JSON).
+            Menu.SaveSlot = 0;
+            var scene = new Scene(size, input.Keyboard, input.Mouse, _ => { }, close);
+            scene.Players.MaxPlayers = 4;
+
+            string roomKey = AdventureSave.Begin(
+                scene.GameState, plan.SaveSlot, plan.NewGame);
             if (roomKey.Length == 0)
             {
                 throw new ProgramException("That save slot does not name a room to load.");
             }
-            GameState.Mode = GameMode.SinglePlayer;
-            PlayerEntity.MaxPlayers = 4;
-            var scene = new Scene(size, input.Keyboard, input.Mouse, _ => { }, close);
+
+            scene.GameState.Mode = GameMode.SinglePlayer;
             scene.AddPlayer(plan.Hunter, recolor: 0, team: -1);
             scene.AddRoom(roomKey, GameMode.SinglePlayer);
             Console.WriteLine($"[match] adventure, slot {plan.SaveSlot}, "
