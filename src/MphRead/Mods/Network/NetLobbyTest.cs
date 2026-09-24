@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.IO;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 
 namespace MphRead.Mods.Network
@@ -27,6 +28,7 @@ namespace MphRead.Mods.Network
             {
                 NetHealthSyncTest.Run();
                 ProtocolChecks();
+                MasterFarewellScenario();
                 DemoProtocolCheck();
                 LayoutChecks();
                 ClientStateChecks();
@@ -41,7 +43,7 @@ namespace MphRead.Mods.Network
                 ContinuousScenario();
                 ClientSessionScenario();
                 TeamGameplayTest.Run(Check);
-                Console.WriteLine($"[netlobbytest] PASS: {_checks} assertions; protocol, UDP lifecycle, direct post-match lobby return, abandoned-session cleanup, hosted ownership, teams, rebind and continuous rotation.");
+                Console.WriteLine($"[netlobbytest] PASS: {_checks} assertions; protocol, UDP lifecycle/farewell, direct post-match lobby return, abandoned-session cleanup, hosted ownership, teams, rebind and continuous rotation.");
                 return 0;
             }
             catch (Exception ex)
@@ -128,6 +130,37 @@ namespace MphRead.Mods.Network
             var reply = new HostReplyPacket { Started = true, Port = 123, OwnerToken = Guid.NewGuid() };
             byte[] replyBytes = new byte[HostReplyPacket.Size]; reply.Write(replyBytes);
             Check(HostReplyPacket.Read(replyBytes).OwnerToken == reply.OwnerToken, "owner token round trip");
+        }
+
+        private static void MasterFarewellScenario()
+        {
+            using var listener = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+            listener.Client.ReceiveTimeout = 1000;
+            int directoryPort = ((IPEndPoint)listener.Client.LocalEndPoint!).Port;
+            using var reporter = new MasterReporter("127.0.0.1", directoryPort);
+
+            reporter.Beat(0, "farewell-test", 27888, 0, 8,
+                (byte)GameMode.Battle, "TEST");
+            reporter.Farewell(27888);
+
+            int heartbeats = 0;
+            int farewells = 0;
+            for (int i = 0; i < 4; i++)
+            {
+                var remote = new IPEndPoint(IPAddress.Any, 0);
+                byte[] packet = listener.Receive(ref remote);
+                if (packet.Length > 0 && packet[0] == (byte)PacketType.MasterHeartbeat)
+                {
+                    heartbeats++;
+                }
+                else if (packet.Length == 3 && packet[0] == (byte)PacketType.Bye
+                    && BinaryPrimitives.ReadUInt16LittleEndian(packet.AsSpan(1)) == 27888)
+                {
+                    farewells++;
+                }
+            }
+            Check(heartbeats == 1, "master reporter heartbeat initializes farewell endpoint");
+            Check(farewells == 3, "master reporter repeats idempotent farewell");
         }
 
         private static void DemoProtocolCheck()

@@ -95,8 +95,21 @@ namespace MphRead.Mods.Launcher
                 cancellationToken.ThrowIfCancellationRequested();
                 ServerStatus status = NetStatus.Query(listing.Address, listing.Port,
                     allowJoinProbe: false);
+                if (!status.Online && !cancellationToken.IsCancellationRequested)
+                {
+                    // Directory removal and browser refresh are independent UDP
+                    // exchanges. Confirm a dead row once before hiding it so a
+                    // single lost status reply does not erase a healthy server.
+                    Thread.Sleep(100);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    status = NetStatus.Query(listing.Address, listing.Port,
+                        allowJoinProbe: false, timeoutMs: 350);
+                }
                 var entry = new ServerBrowserEntry(listing, status);
-                if (!cancellationToken.IsCancellationRequested)
+                // A directory row is only a discovery hint. Once the endpoint
+                // itself has twice confirmed that it is gone, do not render a
+                // ghost lobby while the master's expiry/farewell catches up.
+                if (entry.Live && !cancellationToken.IsCancellationRequested)
                     onEntry?.Invoke(entry);
                 return entry;
             }, cancellationToken)).ToArray();
