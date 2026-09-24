@@ -279,10 +279,11 @@ whether a person would have enjoyed the game.
   clients on one box render at about 24 fps, and a 40-second outage was
   reported as 15.9 "seconds" of silence. The netcheck report now prints the
   client's real frame rate and converts.
-- **A hosted game the directory started is torn down if the same address
-  asks for another one while it is still empty** (`StartHosted`: one game per
-  asker, replaced only when empty). A ramp that asks for twenty games has to
-  put a player in each one before asking for the next, or it ends up with
-  one.
+- **A public IP address is not a hosted-game identity.** Home NAT and
+  carrier-grade NAT can put multiple independent players behind the same
+  address, so host requests from one source address no longer replace another
+  empty lobby. Abandoned games are reclaimed by the bounded startup/empty
+  reapers instead. A capacity ramp may request multiple games from one source
+  address; each occupies its own host-pool port until joined or reaped.
 - **A game hosted with mode 0 is `GameMode.None`, not Battle.** `SingleMatch`
   substitutes Battle, but the request should say what it means.
