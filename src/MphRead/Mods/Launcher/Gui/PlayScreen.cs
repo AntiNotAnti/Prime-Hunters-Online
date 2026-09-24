@@ -76,6 +76,7 @@ namespace MphRead.Mods.Launcher.Gui
         private static readonly (string Label, GameMode Mode)[] _modes =
         {
             ("Battle", GameMode.Battle),
+            ("Insta-Gib", GameMode.InstaGib),
             ("Battle teams", GameMode.BattleTeams),
             ("Survival", GameMode.Survival),
             ("Survival teams", GameMode.SurvivalTeams),
