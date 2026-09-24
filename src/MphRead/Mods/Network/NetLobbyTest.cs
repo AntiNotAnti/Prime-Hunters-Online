@@ -56,6 +56,9 @@ namespace MphRead.Mods.Network
 
         private static void ProtocolChecks()
         {
+            Check(new MatchDefinition().SpawnProtection
+                && !(new MatchDefinition { SpawnProtection = false }).SpawnProtection,
+                "spawn protection defaults on and can be disabled");
             Check(NetConfig.ProtocolVersion == 19 && (byte)PacketType.SessionState == 36
                 && (byte)PacketType.MapOffer == 32 && (byte)PacketType.MapDone == 35
                 && (byte)PacketType.MatchStartCommit == 44 && (byte)PacketType.MatchLoadProgress == 45,
