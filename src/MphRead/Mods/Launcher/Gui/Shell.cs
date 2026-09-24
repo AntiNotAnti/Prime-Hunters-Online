@@ -801,16 +801,21 @@ namespace MphRead.Mods.Launcher.Gui
             w =>
             {
                 CheckFullscreen(w, WindowStartMode.Fullscreen);
-                // A minimized fullscreen window still owns its monitor. The
-                // per-frame reconciliation must not turn Alt+Tab into Windowed.
-                unsafe { GLFW.IconifyWindow(w.WindowPtr); }
-                Wait(20);
-            },
-            w =>
-            {
+                // Xvfb supplies an X server but no window manager. Asking GLFW
+                // to iconify a monitor-owned fullscreen window there aborts
+                // inside the native X11 path instead of simulating Alt+Tab.
+                // The state we own is still testable here: switching from
+                // borderless to normal fullscreen must keep the monitor
+                // attached, set AutoIconify, and Sync must not mistake that
+                // attached fullscreen window for an external fullscreen exit.
                 Mods.WindowMode.Sync(w);
-                if (!Mods.WindowMode.HasMonitor(w) || Mods.WindowMode.Current != WindowStartMode.Fullscreen)
-                { ShotMisses++; Console.WriteLine("[shellshot] minimized fullscreen lost its monitor"); }
+                if (!Mods.WindowMode.HasMonitor(w)
+                    || Mods.WindowMode.Current != WindowStartMode.Fullscreen
+                    || !w.AutoIconify)
+                {
+                    ShotMisses++;
+                    Console.WriteLine("[shellshot] fullscreen focus policy lost its monitor/state");
+                }
                 Mods.WindowMode.Leave(w); Wait(25);
             },
             w => { CheckWindowed(w); Wait(5); },
