@@ -801,7 +801,8 @@ namespace MphRead.Mods.Launcher.Gui
             w =>
             {
                 Shot(w, "shell-create-lobby");
-                if (_front?.Prime.Overlays.IsOpen != true || Mods.Render.LauncherHunter.Drawn)
+                // Clean CI machines reach Game Files setup instead of Create Lobby.
+                if (GameFiles.Ready && (_front?.Prime.Overlays.IsOpen != true || Mods.Render.LauncherHunter.Drawn))
                 { ShotMisses++; Console.WriteLine("[shellshot] create lobby must cover the native hunter preview"); }
                 Escape(); Wait(90);
             },
