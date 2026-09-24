@@ -54,7 +54,15 @@ namespace MphRead.Mods.Network
         public bool ShadowFreeze { get; init; }
         public bool HideOpponentHealth { get; init; }
         public bool DisablePowerups { get; init; }
-        public bool SpawnProtection { get; init; }
+        // Store the opt-out rather than the opt-in. MatchDefinition is a value
+        // type, so its zero/default value must still mean the user-facing
+        // default: spawn protection enabled.
+        private readonly bool _disableSpawnProtection;
+        public bool SpawnProtection
+        {
+            get => !_disableSpawnProtection;
+            init => _disableSpawnProtection = !value;
+        }
         public SessionRules Rules => (FriendlyFire ? SessionRules.FriendlyFire : 0)
             | (AffinityWeapons ? SessionRules.AffinityWeapons : 0)
             | (ShadowFreeze ? SessionRules.ShadowFreeze : 0)
