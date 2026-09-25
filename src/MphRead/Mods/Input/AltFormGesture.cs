@@ -52,7 +52,8 @@ namespace MphRead.Mods.Input
         /// </summary>
         public static (float X, float Y) MouseDrive(float deltaX, float deltaY,
             float sensitivity)
-            => Drive(deltaX, deltaY, deadZone: 0, MouseDriveFullScale, sensitivity);
+            => Drive(deltaX, deltaY, deadZone: 0,
+                fullScale: MouseDriveFullScale, sensitivity: sensitivity);
 
         /// <summary>
         /// Convert anchored screen-space displacement to an analogue virtual
