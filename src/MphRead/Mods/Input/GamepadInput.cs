@@ -130,7 +130,8 @@ namespace MphRead.Mods.Input
                 _presentationSample = null;
                 return;
             }
-            GamepadSnapshot snapshot = GamepadManager.Snapshot;
+            GamepadSnapshot snapshot = GamepadManager.PresentationSnapshot
+                ?? GamepadManager.Snapshot;
             if (!snapshot.State.Connected)
             {
                 _presentationSample = null;
