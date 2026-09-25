@@ -85,7 +85,7 @@ namespace MphRead.NetTest
             IntentPacket input = IntentPacket.Read(buffer.AsSpan(0, IntentPacket.FullSize));
             Check(input.MatchId == 51 && input.AuthorityEpoch == 9 && input.SlotGeneration == 22
                 && input.LifeId == 65535 && input.ChargeLevel == 99 && input.HomingTarget == 0x82
-                && input.AckSubFrame == 77, "intent round trip");
+                && input.AckSubFrame == 77 && input.HasAnalogMove && input.MoveX == 48 && input.MoveY == -64, "intent round trip");
             var claim = new HitClaimPacket { MatchId = 51, AuthorityEpoch = 3, ShooterGeneration = 5,
                 ShooterLifeId = 8, VictimGeneration = 10, VictimLifeId = 9, HitPoint = state.Position,
                 ClaimId = 65535, Damage = 127, LaunchFrame = 72,
