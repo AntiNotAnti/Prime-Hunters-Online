@@ -1529,7 +1529,6 @@ namespace MphRead.Entities
                     bool preciseSwipe = swipeRequested && !explicitRoll
                         && IsAltForm && !IsMorphing && !IsUnmorphing
                         && _boostAimLock == 0
-                        && !Flags1.TestFlag(PlayerFlags1.Boosting)
                         && _jumpPadControlLockMin == 0 && AttachedEnemy == null;
                     if (preciseSwipe)
                     {
@@ -2658,7 +2657,7 @@ namespace MphRead.Entities
                     // land on the canonical controls before NetHooks records
                     // press history. Android's swipe request is already queued
                     // by GameView; desktop mouse/pen flicks are detected here.
-                    player.ModApplyStylusAltMove();
+                    player.ModApplyPointerAltMove();
                     player.ModMarkAltSwipeInput();
                     player.ModPrepareAltFlick();
                 }
