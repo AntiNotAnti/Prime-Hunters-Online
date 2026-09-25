@@ -725,10 +725,7 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 player = "Player";
             }
-            int timeLimit = Math.Clamp(LauncherPrefs.LastLobbyTimeLimitSeconds, 0, UInt16.MaxValue);
-            ushort pointGoal = mode == LauncherPrefs.LastLobbyMode
-                ? (ushort)Math.Clamp(LauncherPrefs.LastLobbyGoal, 0, UInt16.MaxValue)
-                : MatchGoalRules.DefaultValue(mode);
+            (int timeLimit, ushort pointGoal) = InitialMatchLimits(mode);
             LauncherPrefs.LastHunter = hunter;
             LauncherPrefs.LastLobbyMode = mode;
             LauncherPrefs.LastLobbyTimeLimitSeconds = timeLimit;
@@ -741,6 +738,15 @@ namespace MphRead.Mods.Launcher.Gui
                 return;
             }
             await StartOnServer(name, player, hunter, mode, maps, timeLimit, pointGoal);
+        }
+
+        internal static (int TimeLimit, ushort PointGoal) InitialMatchLimits(GameMode mode)
+        {
+            int timeLimit = Math.Clamp(LauncherPrefs.LastLobbyTimeLimitSeconds, 0, UInt16.MaxValue);
+            ushort pointGoal = mode == LauncherPrefs.LastLobbyMode
+                ? (ushort)Math.Clamp(LauncherPrefs.LastLobbyGoal, 0, UInt16.MaxValue)
+                : MatchGoalRules.DefaultValue(mode);
+            return (timeLimit, pointGoal);
         }
 
         /// <summary>
