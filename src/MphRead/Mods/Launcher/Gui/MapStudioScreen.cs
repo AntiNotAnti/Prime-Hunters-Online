@@ -25,7 +25,8 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly Grid _root = new() { RowDefinitions=new("Auto,Auto,*,100,Auto"), Margin=new Thickness(16) };
         private readonly Panel _viewportHost = new();
         private readonly List<Control> _editingControls = new();
-        private readonly List<Bitmap> _images=new();
+        private readonly Dictionary<string,Bitmap> _thumbnailCache=new(StringComparer.Ordinal);
+        private readonly Dictionary<string,(Bitmap Bitmap,string Details)> _materialPreviewCache=new(StringComparer.Ordinal);
         private readonly StackPanel _inspector = new() { Spacing=6, Margin=new Thickness(10) };
         private readonly ListBox _hierarchy = new() { SelectionMode=SelectionMode.Multiple };
         private readonly ListBox _problems = new();
@@ -170,15 +171,35 @@ namespace MphRead.Mods.Launcher.Gui
                 if (_autosave.Queue(_document.CaptureAutosave(CustomRooms.MapDirectory))) _autosaved = _document.LastEditUtc;
             };
             AttachedToVisualTree+=(_,_)=>{_detached=false;_autosave=new();LauncherBackdrop.Set(LauncherBackdropScene.MapEditor);_idle.Start();};
-            DetachedFromVisualTree+=(_,_)=>{_detached=true;_editorGeneration++;_idle.Stop();_work?.Cancel();_autosave.Dispose();foreach(var bitmap in _images)bitmap.Dispose();_images.Clear();};
+            DetachedFromVisualTree+=(_,_)=>{_detached=true;_editorGeneration++;_idle.Stop();_work?.Cancel();_autosave.Dispose();DisposePreviewCaches();};
             if (preview) Load(MapTemplates.Create("Studio example", true)); else ShowLibrary();
         }
         public void Dispose()
         {
             _detached=true; _editorGeneration++; _idle.Stop(); _work?.Cancel(); _autosave.Dispose();
             if (_document != null) _document.Changed -= Changed;
-            foreach (var bitmap in _images) bitmap.Dispose();
-            _images.Clear();
+            DisposePreviewCaches();
+        }
+        private void DisposePreviewCaches()
+        {
+            foreach(var bitmap in _thumbnailCache.Values)bitmap.Dispose();
+            foreach(var preview in _materialPreviewCache.Values)preview.Bitmap.Dispose();
+            _thumbnailCache.Clear();_materialPreviewCache.Clear();
+        }
+        private static string PreviewCacheKey(MapDefinition definition,MapMaterial material)
+        {
+            string stamp="";
+            if(material.Texture is {} relative&&definition.BundlePath==null)
+            {
+                try
+                {
+                    string root=definition.BaseDirectory??CustomRooms.MapDirectory;
+                    string file=Path.GetFullPath(Path.Combine(root,relative));
+                    if(File.Exists(file)){var info=new FileInfo(file);stamp=$"|{info.Length}|{info.LastWriteTimeUtc.Ticks}";}
+                }
+                catch(Exception){ }
+            }
+            return $"{definition.SourcePath}|{definition.BundlePath}|{definition.TextureSource}|{material.Texture}|{material.SourceMaterial}|{material.TexScale:R}{stamp}";
         }
         internal void ShowStatus(string message)=>_status.Text=message;
         private static TextBlock Text(string text)=>new(){Text=text,Foreground=GuiTheme.TextBrush,TextWrapping=TextWrapping.Wrap};
@@ -225,6 +246,7 @@ namespace MphRead.Mods.Launcher.Gui
         {
             _editorGeneration++; _work?.Cancel(); _autosave.Dispose(); _autosave=new(); _validatedState=null; _validationSignature=null; _autosaved=DateTime.MinValue;
             _lastBuild = null; _hierarchySignature = "";
+            foreach(var preview in _materialPreviewCache.Values)preview.Bitmap.Dispose();_materialPreviewCache.Clear();
             if(_document!=null)_document.Changed-=Changed;
             _document=new(project,path);_document.Changed+=Changed;_viewport=new(_document);_viewport.SelectionChanged+=()=>{RefreshHierarchy();ShowInspectorPage(_inspectorPage,false);};
             _viewportHost.Children.Clear();_viewportHost.Children.Add(_viewport);_path.Text=path??Path.Combine(CustomRooms.MapDirectory,project.Definition.Name.ToLowerInvariant()+".json");
@@ -280,7 +302,6 @@ namespace MphRead.Mods.Launcher.Gui
         private void ShowLibrary()
         {
             _inspector.Children.Clear();
-            foreach(var bitmap in _images)bitmap.Dispose();_images.Clear();
             Inspect();
             var view=new Grid {RowDefinitions=new("Auto,*,Auto"),MinWidth=650,Height=460};view.Children.Add(Text("MAP LIBRARY"));
             var list=new ListBox();Grid.SetRow(list,1);view.Children.Add(list);
@@ -292,8 +313,18 @@ namespace MphRead.Mods.Launcher.Gui
                     try
                     {
                         var preview=definition.Assets.FirstOrDefault(a=>a.Kind=="preview");
-                        using var stream=preview!=null?new MemoryStream(MapAssets.Read(definition,preview.Path)):File.Exists(ThumbnailGenerator.PathFor(definition.Name))?File.OpenRead(ThumbnailGenerator.PathFor(definition.Name)):(Stream?)null;
-                        if(stream!=null){var bitmap=Bitmap.DecodeToWidth(stream,96);_images.Add(bitmap);card.Children.Add(new Image {Source=bitmap,Width=96,Height=54,Stretch=Stretch.UniformToFill});}
+                        string fallback=ThumbnailGenerator.PathFor(definition.Name);
+                        string sourceKey=row!.Entry.Path+"|"+(preview?.Path??fallback);
+                        if(preview==null&&File.Exists(fallback))
+                        {
+                            var info=new FileInfo(fallback);sourceKey+=$"|{info.Length}|{info.LastWriteTimeUtc.Ticks}";
+                        }
+                        if(!_thumbnailCache.TryGetValue(sourceKey,out var bitmap))
+                        {
+                            using var stream=preview!=null?new MemoryStream(MapAssets.Read(definition,preview.Path)):File.Exists(fallback)?File.OpenRead(fallback):(Stream?)null;
+                            if(stream!=null){bitmap=Bitmap.DecodeToWidth(stream,96);_thumbnailCache[sourceKey]=bitmap;}
+                        }
+                        if(bitmap!=null)card.Children.Add(new Image {Source=bitmap,Width=96,Height=54,Stretch=Stretch.UniformToFill});
                     }
                     catch(Exception ex)when(ex is IOException or InvalidDataException or ArgumentException or UnauthorizedAccessException){ }
                 }
@@ -653,7 +684,7 @@ namespace MphRead.Mods.Launcher.Gui
             for(int i=0;i<_document.Project.Definition.Materials.Count;i++)
             {
                 int index=i;var m=_document.Project.Definition.Materials[i];_inspector.Children.Add(Text($"{i} · {m.Name}"));
-                try{if(m.Texture!=null||GameFiles.Ready){var preview=MapMaterialPreview.Create(_document.Project.Definition,m);_images.Add(preview.Bitmap);_inspector.Children.Add(new Image {Source=preview.Bitmap,Width=64,Height=64,HorizontalAlignment=HorizontalAlignment.Left});_inspector.Children.Add(Text(preview.Details));}}
+                try{if(m.Texture!=null||GameFiles.Ready){string key=PreviewCacheKey(_document.Project.Definition,m);if(!_materialPreviewCache.TryGetValue(key,out var preview)){preview=MapMaterialPreview.Create(_document.Project.Definition,m);_materialPreviewCache[key]=preview;}_inspector.Children.Add(new Image {Source=preview.Bitmap,Width=64,Height=64,HorizontalAlignment=HorizontalAlignment.Left});_inspector.Children.Add(Text(preview.Details));}}
                 catch(Exception ex)when(ex is IOException or InvalidDataException or ProgramException or ArgumentException or InvalidOperationException){_inspector.Children.Add(Text("Preview unavailable: "+ex.Message));}
                 var source=new TextBox{Text=m.SourceMaterial.ToString()};var scale=new TextBox{Text=m.TexScale.ToString(CultureInfo.InvariantCulture)};_inspector.Children.Add(Text("Source material / texels per unit"));_inspector.Children.Add(source);_inspector.Children.Add(scale);
                 AddButton(_inspector,"Apply material",()=>{try{_document.EditMaterial(index,m=>{m.SourceMaterial=int.Parse(source.Text??"",CultureInfo.InvariantCulture);m.TexScale=Number(scale.Text??"");});}catch(Exception ex){Failure(ex);}});
