@@ -157,20 +157,18 @@ namespace MphRead.Mods.Launcher.Gui
                     string oldSpawnProtection = _settings.SpawnProtection;
                     string oldHunterRadar = _settings.HunterRadar;
                     string oldDamageLevel = _settings.DamageLevel;
+                    _settings.PointGoal = score.Value;
+                    _settings.TimeLimit = time.Value;
+                    _settings.TimeGoal = objective.Value;
+                    _settings.FriendlyFire = fire.On ? "on" : "off";
+                    _settings.AffinityWeapons = affinity.On ? "on" : "off";
+                    _settings.ShadowFreeze = freeze.On ? "on" : "off";
+                    _settings.SpawnProtection = spawnProtection.On ? "on" : "off";
+                    _settings.HunterRadar = radar.On ? "on" : "off";
+                    _settings.DamageLevel = damage.Value;
                     try
                     {
-                        _settings.PointGoal = score.Value;
-                        _settings.TimeLimit = time.Value;
-                        _settings.TimeGoal = objective.Value;
-                        _settings.FriendlyFire = fire.On ? "on" : "off";
-                        _settings.AffinityWeapons = affinity.On ? "on" : "off";
-                        _settings.ShadowFreeze = freeze.On ? "on" : "off";
-                        _settings.SpawnProtection = spawnProtection.On ? "on" : "off";
-                        _settings.HunterRadar = radar.On ? "on" : "off";
-                        _settings.DamageLevel = damage.Value;
                         GameState.CommitSettings(_settings);
-                        Mods.GameSettings.Apply(_settings);
-                        _overlays.Close();
                     }
                     catch (Exception ex)
                     {
@@ -187,7 +185,10 @@ namespace MphRead.Mods.Launcher.Gui
                         _settings.HunterRadar = oldHunterRadar;
                         _settings.DamageLevel = oldDamageLevel;
                         error.Text = $"Could not save rules: {ex.Message}";
+                        return;
                     }
+                    Mods.GameSettings.Apply(_settings);
+                    _overlays.Close();
                 }, true)))), PrimeModalSize.Medium);
         }
         private static string RoomName(string key) => Metadata.RoomMetadata.TryGetValue(key, out var meta) ? meta.InGameName ?? key : key;
