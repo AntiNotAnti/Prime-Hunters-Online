@@ -208,6 +208,7 @@ namespace MphRead.Mods.Launcher.Gui
         private ToggleRow _invertY = null!;
         private ToggleRow _invertX = null!;
         private ToggleRow? _mouseMovementBoost;
+        private ToggleRow? _mouseAltFormMovement;
         private ToggleRow? _stylusMovementBoost;
         private ToggleRow _penTablet = null!;
         private ToggleRow _scrollAllWeapons = null!;
@@ -1211,6 +1212,9 @@ namespace MphRead.Mods.Launcher.Gui
             else
             {
                 Heading(page, "Alt-form gestures");
+                _mouseAltFormMovement = Add(page, new ToggleRow(
+                    "Mouse movement controls rolling alt forms",
+                    InputSettings.MouseAltFormMovement));
                 BuildAltSwipeSensitivity(page);
             }
 
@@ -1378,6 +1382,7 @@ namespace MphRead.Mods.Launcher.Gui
                 _invertY.On = InputSettings.InvertMouseY;
                 _invertX.On = InputSettings.InvertMouseX;
                 if (_mouseMovementBoost != null) _mouseMovementBoost.On = InputSettings.MouseMovementBoost;
+                if (_mouseAltFormMovement != null) _mouseAltFormMovement.On = InputSettings.MouseAltFormMovement;
                 if (_stylusMovementBoost != null) _stylusMovementBoost.On = InputSettings.StylusMovementBoost;
                 _penTablet.On = Mods.Input.PointerInput.StylusMode;
                 if (_repositionFilter != null) _repositionFilter.On = Mods.Input.PointerInput.GuardJumps;
@@ -1537,8 +1542,9 @@ namespace MphRead.Mods.Launcher.Gui
                 min: (int)(InputSettings.MinAltSwipeSensitivity * 100),
                 max: (int)(InputSettings.MaxAltSwipeSensitivity * 100), keyStep: 5));
             Explain(page, "Controls alt-form swipe response. Higher values need less travel. "
-                + "Touch/pen rolling movement reaches full deflection sooner, while desktop "
-                + "mouse/pen Samus boost and Spire attack flicks trigger with less travel. "
+                + "Touch/pen rolling movement reaches full deflection sooner; when mouse alt-form "
+                + "movement is enabled, relative mouse steering responds more strongly too. "
+                + "Desktop mouse/pen Samus boost and Spire attack flicks use the same multiplier. "
                 + "Normal mouse aim sensitivity is unchanged.");
         }
 
@@ -1912,6 +1918,8 @@ namespace MphRead.Mods.Launcher.Gui
             InputSettings.InvertMouseX = _invertX.On;
             if (_mouseMovementBoost != null)
                 InputSettings.MouseMovementBoost = _mouseMovementBoost.On;
+            if (_mouseAltFormMovement != null)
+                InputSettings.MouseAltFormMovement = _mouseAltFormMovement.On;
             if (_stylusMovementBoost != null)
                 InputSettings.StylusMovementBoost = _stylusMovementBoost.On;
             Mods.Input.PointerInput.StylusMode = _penTablet.On;
