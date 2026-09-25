@@ -23,8 +23,9 @@ Built-ins:
 - untouchable.wav
 - invincible.wav
 
-Legacy `quadra-kill.wav` and `penta-kill.wav` resources remain embedded so saved
-preferences from older builds continue to resolve during migration.
+Legacy assets retained for compatibility:
+- quadra-kill.wav
+- penta-kill.wav
 
 Players can override any combat-feedback event with WAV, MP3, or FLAC files from the
 user-data `sounds/combat` folder.
