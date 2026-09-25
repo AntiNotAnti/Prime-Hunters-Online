@@ -174,12 +174,14 @@ A bot is an ordinary player whose `Controls` are written by `PlayerAi.ProcessInp
 | Piece | What it does |
 |---|---|
 | `PlayerEntity.IsBot` | marks the slot as AI-driven. `Scene.AddPlayer` sets it on every player after the first, which is right for a local match and wrong for a networked one -- the AI would overwrite relayed input, so a networked session clears it on every slot |
-| `BotLevel` (0-3) | difficulty; clamped and used to index reaction and accuracy tables. 3 is Insane: zero aim deviation, zero extra shot delay, fastest reaction refresh |
+| `BotLevel` (0-3) | difficulty; clamped and resolved through one combat profile controlling turn speed, firing alignment, prediction refresh/strength, intentional aim error, head-height bias, charge preference/release, strafing and evasive jumps |
 | `AiPersonality` | per-hunter behaviour trees loaded from the ROM's own data, one set per hunter and encounter. `AiPersonalityData1` nodes hold conditions and the function ids to run |
 | `AiData.Process()` | run once per frame per bot from `Scene.UpdateScene`, but only while the bot is alive |
 | `UpdateExecutionPath` / `Execute` | walks the tree and dispatches `Func24Id` to the behaviour functions -- move, aim, fire, morph, use the alt attack, pick a weapon |
 | Weapon choice | prefers the hunter's affinity weapon (`Weapons.AffinityWeapons[hunter]`) and zooms when it holds a weapon that can |
 | `AiFlags3` | the spawn/despawn handshake: one bit asks for the spawn effect and sound, another marks the bot as despawned |
+
+Difficulty is deliberately graduated rather than implemented as separate AI personalities. Easy uses slow turns, substantial aim error, 15% predictive lead, low charge preference and slow strafing. Normal uses half-strength prediction and occasional evasive jumps. Hard uses 80% intercept prediction, small aim error, frequent charge use and faster combat movement. Insane uses the target's tracked velocity for a full iterative intercept solution, refreshes that solution every old-frame equivalent, adds no intentional aim error, fires as soon as alignment and the weapon cooldown permit, prefers charged attacks, and changes strafe/jump state aggressively. Imperialist uses this same pipeline; it no longer has the old fixed 0.75-degree turn clamp and fixed sniper delay.
 
 For testing, `NetTestScript` replaces the AI entirely: it writes the same `Controls`, but to a fixed script rather than a behaviour tree, so two machines can be asked to do the same thing at the same moment and compared.
 

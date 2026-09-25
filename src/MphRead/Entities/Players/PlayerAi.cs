@@ -92,6 +92,13 @@ namespace MphRead.Entities
             private int _findWeaponIndex = 0;
             private int _shotDelay = 0;
 
+            // Modern combat layer state. The original DS AI already knows how to navigate
+            // the maps; these only make its close-range combat less static on higher
+            // difficulties without replacing the personality tree.
+            private int _combatStrafeTimer = 0;
+            private bool _combatStrafeRight = false;
+            private int _combatJumpCooldown = 0;
+
             public void Reset()
             {
                 _nodeData = null!;
@@ -142,6 +149,9 @@ namespace MphRead.Entities
                 _weapon1 = 0;
                 _weapon2 = 0;
                 _shotDelay = 0;
+                _combatStrafeTimer = 0;
+                _combatStrafeRight = false;
+                _combatJumpCooldown = 0;
                 for (int i = 0; i < _executionTree.Length; i++)
                 {
                     if (_executionTree[i] == null)
@@ -199,8 +209,6 @@ namespace MphRead.Entities
             // to pick a target.
             private static readonly bool[,] _playerVisibility =
                 new bool[PlayerEntity.SlotCapacity, PlayerEntity.SlotCapacity];
-            private static byte _visIndex1 = 0;
-            private static byte _visIndex2 = 0;
 
             public class AiGlobals
             {
@@ -229,8 +237,6 @@ namespace MphRead.Entities
                         _playerVisibility[i, j] = false;
                     }
                 }
-                _visIndex1 = 1;
-                _visIndex2 = 0;
             }
 
             public static void UpdateVisibilityAndGlobals(Scene scene)
@@ -241,45 +247,47 @@ namespace MphRead.Entities
 
             private static void UpdateVisibility(Scene scene)
             {
-                // sktodo-ai: presumably these are done one player per frame for efficiency,
-                // but we don't really need to worry about that, and we're not being 100% accurate
-                // to the game by doing this once per 60 fps frame anyway, so yeah.
-                // the game's unused counter that disables these updates for a certain number of frames
-                // was probably also added to make them even less frequent, but was ultimately not needed.
-                _playerVisibility[_visIndex1, _visIndex2] = false;
-                _playerVisibility[_visIndex2, _visIndex1] = false;
-                PlayerEntity player1 = scene.Players.Items[_visIndex1];
-                PlayerEntity player2 = scene.Players.Items[_visIndex2];
-                if (player1.Health != 0 && player1.LoadFlags.TestFlag(LoadFlags.Active)
-                    && player2.Health != 0 && player2.LoadFlags.TestFlag(LoadFlags.Active)
-                    && (player1.IsBot || player2.IsBot))
+                // The DS spread this work over frames to save CPU. At eight players that
+                // leaves 28 unordered pairs, so a bot can act on nearly half a second of
+                // stale LOS at 60 FPS. Modern hosts can cheaply resolve every bot-related
+                // pair each frame, which makes acquisition, pursuit, and firing react to
+                // the world the bot is actually seeing now.
+                for (int i = 0; i < PlayerEntity.SlotCapacity; i++)
                 {
-                    Vector3 pos1 = player1.CameraInfo.Position;
-                    Vector3 pos2 = player2.CameraInfo.Position;
-                    if (pos1 == pos2)
+                    for (int j = 0; j < PlayerEntity.SlotCapacity; j++)
                     {
-                        pos1 = player1.Position;
-                        pos2 = player2.Position;
-                    }
-                    CollisionResult discard = default;
-                    if (!CollisionDetection.CheckBetweenPoints(pos1, pos2, TestFlags.None, scene, ref discard))
-                    {
-                        _playerVisibility[_visIndex1, _visIndex2] = true;
-                        _playerVisibility[_visIndex2, _visIndex1] = true;
+                        _playerVisibility[i, j] = false;
                     }
                 }
-                // The same walk over every unordered pair, over however many
-                // slots this match has. Players is always SlotCapacity long,
-                // so visiting a slot nobody is in is safe and is what the
-                // original did with fewer than four players anyway.
+
                 int slots = Math.Clamp(scene.Players.MaxPlayers, 2, PlayerEntity.SlotCapacity);
-                if (++_visIndex1 >= slots)
+                for (int i = 0; i < slots; i++)
                 {
-                    if (++_visIndex2 >= slots - 1)
+                    PlayerEntity player1 = scene.Players.Items[i];
+                    for (int j = i + 1; j < slots; j++)
                     {
-                        _visIndex2 = 0;
+                        PlayerEntity player2 = scene.Players.Items[j];
+                        if (player1.Health == 0 || !player1.LoadFlags.TestFlag(LoadFlags.Active)
+                            || player2.Health == 0 || !player2.LoadFlags.TestFlag(LoadFlags.Active)
+                            || (!player1.IsBot && !player2.IsBot))
+                        {
+                            continue;
+                        }
+
+                        Vector3 pos1 = player1.CameraInfo.Position;
+                        Vector3 pos2 = player2.CameraInfo.Position;
+                        if (pos1 == pos2)
+                        {
+                            pos1 = player1.Position;
+                            pos2 = player2.Position;
+                        }
+                        CollisionResult discard = default;
+                        if (!CollisionDetection.CheckBetweenPoints(pos1, pos2, TestFlags.None, scene, ref discard))
+                        {
+                            _playerVisibility[i, j] = true;
+                            _playerVisibility[j, i] = true;
+                        }
                     }
-                    _visIndex1 = (byte)(_visIndex2 + 1);
                 }
             }
 
@@ -494,6 +502,86 @@ namespace MphRead.Entities
                 _nodeDataSelOff = 0;
                 _nodeDataSelOn = 0;
             }
+
+            private readonly struct BotDifficultyTuning
+            {
+                public float AimDotThreshold { get; }
+                public float MaxTurnDegrees { get; }
+                public float FireAimDotThreshold { get; }
+                public float FireVerticalTolerance { get; }
+                public int PredictionRefreshFrames { get; }
+                public float PredictionStrength { get; }
+                public int PredictionIterations { get; }
+                public float AimMotionErrorScale { get; }
+                public float AimBaseError { get; }
+                public float AimDistanceDivisor { get; }
+                public float BipedAimHeightOffset { get; }
+                public int ShotDelayFrames { get; }
+                public int ChargeChancePercent { get; }
+                public float ChargedReleaseDistance { get; }
+                public float ImperialistTurnDegrees { get; }
+                public int ImperialistFireDelayFrames { get; }
+                public float CombatRange { get; }
+                public int StrafeMinFrames { get; }
+                public int StrafeVarianceFrames { get; }
+                public int JumpCooldownMinFrames { get; }
+                public int JumpCooldownVarianceFrames { get; }
+
+                public BotDifficultyTuning(float aimDotThreshold, float maxTurnDegrees,
+                    float fireAimDotThreshold, float fireVerticalTolerance,
+                    int predictionRefreshFrames, float predictionStrength, int predictionIterations,
+                    float aimMotionErrorScale, float aimBaseError, float aimDistanceDivisor,
+                    float bipedAimHeightOffset, int shotDelayFrames,
+                    int chargeChancePercent, float chargedReleaseDistance,
+                    float imperialistTurnDegrees, int imperialistFireDelayFrames,
+                    float combatRange, int strafeMinFrames, int strafeVarianceFrames,
+                    int jumpCooldownMinFrames, int jumpCooldownVarianceFrames)
+                {
+                    AimDotThreshold = aimDotThreshold;
+                    MaxTurnDegrees = maxTurnDegrees;
+                    FireAimDotThreshold = fireAimDotThreshold;
+                    FireVerticalTolerance = fireVerticalTolerance;
+                    PredictionRefreshFrames = predictionRefreshFrames;
+                    PredictionStrength = predictionStrength;
+                    PredictionIterations = predictionIterations;
+                    AimMotionErrorScale = aimMotionErrorScale;
+                    AimBaseError = aimBaseError;
+                    AimDistanceDivisor = aimDistanceDivisor;
+                    BipedAimHeightOffset = bipedAimHeightOffset;
+                    ShotDelayFrames = shotDelayFrames;
+                    ChargeChancePercent = chargeChancePercent;
+                    ChargedReleaseDistance = chargedReleaseDistance;
+                    ImperialistTurnDegrees = imperialistTurnDegrees;
+                    ImperialistFireDelayFrames = imperialistFireDelayFrames;
+                    CombatRange = combatRange;
+                    StrafeMinFrames = strafeMinFrames;
+                    StrafeVarianceFrames = strafeVarianceFrames;
+                    JumpCooldownMinFrames = jumpCooldownMinFrames;
+                    JumpCooldownVarianceFrames = jumpCooldownVarianceFrames;
+                }
+            }
+
+            // One source of truth for how each difficulty fights. Easy remains intentionally
+            // forgiving, but every tier now uses the same modern aiming/prediction/movement
+            // pipeline instead of weapon-specific code silently falling back to vanilla timing.
+            private static readonly BotDifficultyTuning[] _difficultyTuning =
+            [
+                // Easy
+                new(255 / 256f, 5, 0.970f, 12, 15, 0.15f, 1,
+                    5, 0.25f, 2, 0.20f, 60, 15, 4.5f, 5, 10, 16, 90, 120, 0, 0),
+                // Normal
+                new(3956 / 4096f, 15, 0.985f, 8, 7, 0.50f, 1,
+                    2, 0.10f, 9, 0.35f, 15, 55, 3.5f, 15, 6, 20, 65, 90, 180, 120),
+                // Hard
+                new(3849 / 4096f, 20, 0.995f, 5, 3, 0.80f, 2,
+                    0.2f, 0.01f, 50, 0.50f, 5, 80, 2.75f, 20, 2, 24, 35, 55, 90, 90),
+                // Insane
+                new(-1, 180, 0.999f, 3, 1, 1, 4,
+                    0, 0, 0, 0.50f, 0, 95, 2.0f, 180, 0, 28, 20, 35, 45, 60)
+            ];
+
+            private BotDifficultyTuning Difficulty =>
+                _difficultyTuning[Math.Clamp(_player.BotLevel, 0, _difficultyTuning.Length - 1)];
 
             // duplicated the last value for Guardian
             // Insane (index 3) is the added difficulty tier: near-zero reaction jitter, everything else maxed out below
@@ -758,6 +846,7 @@ namespace MphRead.Entities
                 Func2134594();
                 Func2148ABC();
                 Execute(_executionTree[0]);
+                ApplyCombatEnhancements();
                 Array.Fill(_slotHits, 0);
                 Array.Fill(_slotDamage, 0);
                 DamageFromHalfturret = 0;
@@ -765,6 +854,139 @@ namespace MphRead.Entities
                 Flags2 &= ~AiFlags2.Bit16;
                 Flags2 &= ~AiFlags2.Bit17;
                 Flags2 &= ~AiFlags2.Bit21;
+            }
+
+            private void ApplyCombatEnhancements()
+            {
+                bool instaGib = _scene.GameState.Mode == GameMode.InstaGib;
+                BotDifficultyTuning tuning = Difficulty;
+
+                // Insta-Gib owns the loadout. The stock Battle personality assumes
+                // Power Beam/Missiles are always valid fallbacks, so keep every AI
+                // weapon selector pinned to Imperialist and keep bots in biped form.
+                if (instaGib)
+                {
+                    int imperialist = GetWeaponIndex(BeamType.Imperialist);
+                    _weapon1 = imperialist;
+                    _weapon2 = imperialist;
+                    _findWeaponIndex = imperialist;
+                    Flags4 &= ~AiFlags4.Bit1;
+                    _touchButtons.Morph.IsDown = false;
+                    if (_player.IsAltForm)
+                    {
+                        _touchButtons.Unmorph.IsDown = true;
+                    }
+                }
+
+                if (_combatJumpCooldown > 0)
+                {
+                    _combatJumpCooldown--;
+                }
+
+                PlayerEntity? target = null;
+                if (Flags2.TestFlag(AiFlags2.TargetPlayer) && _targetPlayer != null
+                    && _targetPlayer.Health > 0 && _targetPlayer.ModInPlay
+                    && _targetPlayer.TeamIndex != _player.TeamIndex
+                    && IsPlayerVisible(_player, _targetPlayer))
+                {
+                    target = _targetPlayer;
+                }
+                else if (instaGib)
+                {
+                    // Insta-Gib has no pickup/weapon goals to fall back to. If the
+                    // Battle tree has not chosen somebody yet, immediately use the
+                    // nearest opponent the bot can genuinely see.
+                    float minDist = Single.MaxValue;
+                    foreach (PlayerEntity candidate in _scene.GetPlayerEntities())
+                    {
+                        if (candidate == _player || candidate.Health == 0 || !candidate.ModInPlay
+                            || candidate.TeamIndex == _player.TeamIndex
+                            || !IsPlayerVisible(_player, candidate))
+                        {
+                            continue;
+                        }
+                        if (candidate.CurAlpha < 1
+                            && !candidate.Flags2.TestFlag(PlayerFlags2.RadarReveal)
+                            && !_scene.GameState.RadarPlayers)
+                        {
+                            continue;
+                        }
+                        float dist = Vector3.DistanceSquared(candidate.Position, _player.Position);
+                        if (dist < minDist)
+                        {
+                            minDist = dist;
+                            target = candidate;
+                        }
+                    }
+                    if (target != null)
+                    {
+                        Func21356C0(target);
+                    }
+                }
+
+                if (target == null)
+                {
+                    _combatStrafeTimer = 0;
+                    return;
+                }
+
+                if (instaGib && !_player.IsAltForm && !_player.IsMorphing && !_player.IsUnmorphing)
+                {
+                    if (_player.CurrentWeapon != BeamType.Imperialist)
+                    {
+                        _touchButtons.Imperialist.IsDown = true;
+                    }
+                    Func2144B88();
+                    if (Flags2.TestFlag(AiFlags2.Bit8))
+                    {
+                        Func2143A40();
+                    }
+                }
+
+                if (_player.IsAltForm || _player.IsMorphing || _player.IsUnmorphing)
+                {
+                    return;
+                }
+
+                float distSqr = Vector3.DistanceSquared(target.Position, _player.Position);
+                if (distSqr > tuning.CombatRange * tuning.CombatRange)
+                {
+                    _combatStrafeTimer = 0;
+                    return;
+                }
+
+                // Every tier now uses combat movement; difficulty controls how quickly
+                // it changes direction and how often it adds a jump. Easy is readable
+                // and slow, Normal moves with intent, Hard is evasive, Insane keeps
+                // changing the duel geometry instead of standing still with perfect aim.
+                if (_combatStrafeTimer <= 0)
+                {
+                    _combatStrafeRight = _scene.Random.GetRandomInt2(2) == 0;
+                    _combatStrafeTimer = (tuning.StrafeMinFrames
+                        + (int)_scene.Random.GetRandomInt2(tuning.StrafeVarianceFrames)) * 2;
+                }
+                else
+                {
+                    _combatStrafeTimer--;
+                }
+                if (_combatStrafeRight)
+                {
+                    _buttons.A.IsDown = true;
+                }
+                else
+                {
+                    _buttons.Y.IsDown = true;
+                }
+
+                if (tuning.JumpCooldownMinFrames > 0 && _combatJumpCooldown == 0
+                    && _player.Flags1.TestFlag(PlayerFlags1.Grounded)
+                    && !_player.Flags1.TestFlag(PlayerFlags1.UsedJump)
+                    && _buttons.L.FramesUp > 10 * 2)
+                {
+                    _buttons.L.IsDown = true;
+                    _combatJumpCooldown = (tuning.JumpCooldownMinFrames
+                        + (int)_scene.Random.GetRandomInt2(tuning.JumpCooldownVarianceFrames)) * 2;
+                }
             }
 
             // todo: member name
@@ -793,10 +1015,9 @@ namespace MphRead.Entities
                     float w = Matrix.ProjectPosition(other.Position, _player.CameraInfo.ViewMatrix, perspectiveMatrix, out Vector2 proj);
                     if (w < 0)
                     {
-                        // sktodo-ai: bug? should this be a continue? or is the byte array check only expected to pass for one player?
-                        // but then why do we continue if the screen coordinates are out of range?
-                        //Debugger.Break();
-                        return;
+                        // One opponent being behind the bot must not suppress awareness
+                        // of every later opponent in the roster.
+                        continue;
                     }
                     if (proj.X >= 1 || proj.Y >= 1)
                     {
@@ -830,8 +1051,8 @@ namespace MphRead.Entities
                         }
                         if (_scene.Random.GetRandomInt2((31 - alpha + rand) / div) != 0)
                         {
-                            // sktodo-ai: same as above
-                            return;
+                            // Failed detection applies to this cloaked player only.
+                            continue;
                         }
                         alpha = alpha <= 2 ? 1 : (alpha - 2);
                         AggroFunc214864C(6, 1, 2, null, other, 0, alpha, 10, 3);
@@ -841,9 +1062,7 @@ namespace MphRead.Entities
                     w = Matrix.ProjectPosition(_player.Position, other.CameraInfo.ViewMatrix, otherPerspective, out proj);
                     if (w < 0)
                     {
-                        // sktodo-ai: same as above
-                        //Debugger.Break();
-                        return;
+                        continue;
                     }
                     if (proj.X < 1 && proj.Y < 1)
                     {
@@ -2054,6 +2273,10 @@ namespace MphRead.Entities
             // helper
             private bool CheckBeam(BeamType beam)
             {
+                if (_scene.GameState.Mode == GameMode.InstaGib)
+                {
+                    return beam == BeamType.Imperialist && _player._availableWeapons[beam];
+                }
                 WeaponInfo info = _scene.WeaponRules[(int)beam];
                 return _player._ammo[info.AmmoType] >= info.AmmoCost && _player._availableWeapons[beam];
             }
@@ -2061,6 +2284,10 @@ namespace MphRead.Entities
             // helper
             private bool CheckCharge(BeamType beam)
             {
+                if (_scene.GameState.Mode == GameMode.InstaGib)
+                {
+                    return false;
+                }
                 WeaponInfo info = _scene.WeaponRules[(int)beam];
                 return info.Flags.TestFlag(WeaponFlags.CanCharge)
                     && _player._ammo[info.AmmoType] >= info.ChargeCost && _player._availableCharges[beam];
@@ -2106,6 +2333,11 @@ namespace MphRead.Entities
 
             private void Func1_214A098()
             {
+                if (_scene.GameState.Mode == GameMode.InstaGib)
+                {
+                    _findWeaponIndex = GetWeaponIndex(BeamType.Imperialist);
+                    return;
+                }
                 // check item spawns for missing affinity weapons
                 BeamType affinityWeapon = Weapons.AffinityWeapons[(int)_player.Hunter];
                 int affinityIndex = GetWeaponIndex(affinityWeapon);
@@ -2174,6 +2406,12 @@ namespace MphRead.Entities
 
             private void Func1_2149D3C()
             {
+                if (_scene.GameState.Mode == GameMode.InstaGib)
+                {
+                    _weapon2 = GetWeaponIndex(BeamType.Imperialist);
+                    Flags4 &= ~AiFlags4.Bit1;
+                    return;
+                }
                 // check beams to switch to
                 if (CheckBeam(BeamType.OmegaCannon))
                 {
@@ -2198,9 +2436,13 @@ namespace MphRead.Entities
                 }
                 if (candidateCount == 1)
                 {
-                    candidates[0] = 1; // Missile
-                    candidates[1] = 0; // Power Beam
-                    candidateCount = 2;
+                    // Vanilla discarded the only special weapon here and replaced it
+                    // with Missile/Power Beam. Keep the useful weapon and add fallbacks.
+                    if (CheckBeam(BeamType.Missile))
+                    {
+                        candidates[candidateCount++] = 1;
+                    }
+                    candidates[candidateCount++] = 0;
                 }
                 else if (candidateCount == 0)
                 {
@@ -2214,24 +2456,13 @@ namespace MphRead.Entities
                 }
                 // if the affinity weapon is available, give a 50% chance to switch to that instead of using the random candidates
                 int randIdx = (int)_scene.Random.GetRandomInt2(candidateCount * (affinityIndex != 0 ? 2 : 1));
-                int noChargeChanceOneIn;
-                if (randIdx < candidateCount)
+                bool choseAffinity = randIdx >= candidateCount && affinityIndex != 0;
+                _weapon2 = choseAffinity ? affinityIndex : candidates[randIdx];
+                Flags4 &= ~AiFlags4.Bit1;
+                if (CheckCharge(GetBeamType(_weapon2)))
                 {
-                    _weapon2 = candidates[randIdx];
-                    noChargeChanceOneIn = 2;
-                }
-                else
-                {
-                    _weapon2 = affinityIndex;
-                    noChargeChanceOneIn = 4;
-                }
-                if (CheckCharge(GetBeamType(_weapon2)) && _player.BotLevel > 0)
-                {
-                    if (_scene.Random.GetRandomInt2(noChargeChanceOneIn) == 0)
-                    {
-                        Flags4 &= ~AiFlags4.Bit1;
-                    }
-                    else
+                    int chargeChance = Math.Min(100, Difficulty.ChargeChancePercent + (choseAffinity ? 5 : 0));
+                    if (_scene.Random.GetRandomInt2(100) < chargeChance)
                     {
                         Flags4 |= AiFlags4.Bit1;
                     }
@@ -3839,19 +4070,11 @@ namespace MphRead.Entities
             // todo: member name
             private void Func21449DC()
             {
-                // the game checks flags2 bit2 first, but we only call this helper inside that condition
+                // Imperialist used to bypass the normal bot aim system with a fixed
+                // +/-1 unit jitter, a 0.75-degree turn cap, and a fixed fire delay.
+                // Route it through the shared difficulty-aware solver instead.
                 Debug.Assert(_targetPlayer != null);
-                _targetPlayer.GetPosition(out _field1048);
-                _field1048 = new Vector3(
-                    _field1048.X + (_scene.Random.GetRandomInt2(8192) / 4096f - 1), // -1.0f to 1.0f // todo: accuracy?
-                    _field1048.Y + (_targetPlayer.IsAltForm ? _targetPlayer.Values.AltColYPos : 0.5f),
-                    _field1048.Z + (_scene.Random.GetRandomInt2(8192) / 4096f - 1)
-                );
-                if (!Func213842C())
-                {
-                    _field1048 = _field1048.AddZ(_field1048.Z < 0 ? -1.5f : 1.5f);
-                }
-                Func2145738(_field1048);
+                Func2144B88();
             }
 
             // todo: member name
@@ -3859,13 +4082,15 @@ namespace MphRead.Entities
             {
                 // the game checks flags2 bit2 first, but we only call this helper inside that condition
                 Func21449DC();
-                _buttonAimX = Math.Clamp(_buttonAimX, -0.75f, 0.75f);
-                _buttonAimY = Math.Clamp(_buttonAimY, -0.75f, 0.75f);
-                if (_player.WeaponSelection != BeamType.Imperialist)
+                BotDifficultyTuning tuning = Difficulty;
+                _buttonAimX = Math.Clamp(_buttonAimX, -tuning.ImperialistTurnDegrees, tuning.ImperialistTurnDegrees);
+                _buttonAimY = Math.Clamp(_buttonAimY, -tuning.ImperialistTurnDegrees, tuning.ImperialistTurnDegrees);
+                if (_player.CurrentWeapon != BeamType.Imperialist)
                 {
                     _touchButtons.Imperialist.IsDown = true;
                 }
-                else if (_buttons.R.FramesUp > 10 * 2) // todo: FPs stuff
+                else if (Flags2.TestFlag(AiFlags2.Bit8)
+                    && _buttons.R.FramesUp > tuning.ImperialistFireDelayFrames * 2)
                 {
                     _buttons.R.IsDown = true;
                 }
@@ -6489,12 +6714,6 @@ namespace MphRead.Entities
                 }
             }
 
-            // todo: member name -- dword_214C75C, dword_214C750
-            // Insane (index 3): the dot threshold of -1 means the exact-angle branch is taken on effectively every
-            // frame instead of falling back to a fixed swing, i.e. the bot always turns exactly onto the target
-            private static readonly IReadOnlyList<float> _dotValues = [255 / 256f, 3956 / 4096f, 3849 / 4096f, -1f];
-            private static readonly IReadOnlyList<float> _aimValues = [5, 15, 20, 180];
-
             // todo: member name -- Func2145C14() updates X, Func21447E8() updates X and Y
             private void Func2145C14(Vector3 position)
             {
@@ -6521,13 +6740,13 @@ namespace MphRead.Entities
                 }
                 if (dot < 1)
                 {
-                    if (dot > _dotValues[_player.BotLevel])
+                    if (dot > Difficulty.AimDotThreshold)
                     {
                         _buttonAimX = MathHelper.RadiansToDegrees(MathF.Acos(dot));
                     }
                     else
                     {
-                        _buttonAimX = _aimValues[_player.BotLevel];
+                        _buttonAimX = Difficulty.MaxTurnDegrees;
                     }
                     if (Vector3.Cross(vec1, vec2).Y < 0)
                     {
@@ -6542,10 +6761,10 @@ namespace MphRead.Entities
                 var vec1 = new Vector3(_player.CameraInfo.Field48, 0, _player.CameraInfo.Field4C);
                 Vector3 vec2 = _field1038.X != 0 || _field1038.Z != 0 ? _field1038.WithY(0).Normalized() : vec1;
                 float dot = Vector3.Dot(vec1, vec2);
-                float value = _aimValues[_player.BotLevel];
+                float value = Difficulty.MaxTurnDegrees;
                 if (dot < 1)
                 {
-                    if (dot > _dotValues[_player.BotLevel])
+                    if (dot > Difficulty.AimDotThreshold)
                     {
                         _buttonAimX = MathHelper.RadiansToDegrees(MathF.Acos(dot));
                     }
@@ -6592,47 +6811,35 @@ namespace MphRead.Entities
             // todo: member name
             private void Func2144B88()
             {
-                // update aim, accounting for distance, beam travel, accuracy, etc.
+                // Shared combat aim for every difficulty and weapon. The old code mixed
+                // a noisy two-position velocity estimate with several weapon-specific
+                // aim paths. Use the engine's tracked player velocity for prediction,
+                // then deliberately scale prediction, error, turn speed, and refresh
+                // rate through the difficulty profile.
                 if (!Flags2.TestFlag(AiFlags2.TargetPlayer))
                 {
                     return;
                 }
                 Debug.Assert(_targetPlayer != null);
+                BotDifficultyTuning tuning = Difficulty;
                 Vector3 toTarget = _targetPlayer.Position - _player.Position;
                 float targetDist = toTarget.Length;
-                // field1020 -- deviation
-                // if we haven't set the deviation yet, or we have but the bot is facing away by more than 90 degrees:
+
                 if (_field1020 == 0 || Vector3.Dot(toTarget, _player._facingVector) < 0)
                 {
                     _targetPlayer.GetPosition(out Vector3 targetPos);
-                    int prevField1020 = _field1020;
+                    _field1020 = Math.Max(1, tuning.PredictionRefreshFrames) * 2;
                     if (Flags2.TestFlag(AiFlags2.Bit21))
                     {
-                        _field1020 = 0; // bug? always overwritten
-                    }
-                    if (_player.BotLevel == 0)
-                    {
-                        _field1020 = 15 * 2; // todo: FPS stuff
-                    }
-                    else if (_player.BotLevel == 1)
-                    {
-                        _field1020 = 7 * 2; // todo: FPS stuff
-                    }
-                    else
-                    {
-                        // Insane keeps Hard's interval here: this value doubles as the time base for the
-                        // velocity estimate below (field1020Diff), and shortening it further makes that
-                        // estimate noisy -- a one-frame sample divided by a near-zero time base wildly
-                        // overshoots the target's actual velocity, so shots lead way too far ahead and miss.
-                        // Insane's extra sharpness comes from zero aim deviation and zero shot delay instead.
-                        _field1020 = 3 * 2; // todo: FPS stuff
+                        _field1020 = Math.Max(1, _field1020 / 2);
                     }
                     if (_field1020 < _player._disruptedTimer)
                     {
                         _field1020 += (int)_scene.Random.GetRandomInt2(_player._disruptedTimer - _field1020);
                     }
-                    int field1020Diff = _field1020 - prevField1020;
-                    if (Flags4.TestFlag(AiFlags4.Bit3) && field1020Diff > 0 && _player.BotLevel > 0)
+
+                    Vector3 lead = Vector3.Zero;
+                    if (Flags4.TestFlag(AiFlags4.Bit3) && tuning.PredictionStrength > 0)
                     {
                         EquipInfo equip = _player.EquipInfo;
                         WeaponInfo weapon = equip.Weapon;
@@ -6644,8 +6851,8 @@ namespace MphRead.Entities
                                 && equip.ChargeLevel >= weapon.MinCharge * 2) // todo: FPS stuff
                             {
                                 isCharged = true;
-                                // todo: FPS stuff
-                                chargePct = (equip.ChargeLevel - weapon.MinCharge * 2) / (float)(weapon.FullCharge * 2 - weapon.MinCharge * 2);
+                                chargePct = (equip.ChargeLevel - weapon.MinCharge * 2)
+                                    / (float)(weapon.FullCharge * 2 - weapon.MinCharge * 2);
                             }
                         }
                         else if (equip.ChargeLevel >= weapon.FullCharge * 2) // todo: FPS stuff
@@ -6653,143 +6860,74 @@ namespace MphRead.Entities
                             isCharged = true;
                             chargePct = 1;
                         }
-                        Vector3 vec = (targetPos - _field1054) / (field1020Diff / 2f); // todo: FPS stuff (see below)
+
                         float homing;
-                        float speed;
+                        float initialSpeed;
                         if (isCharged)
                         {
                             homing = (weapon.MinChargeHoming
-                                + ((weapon.ChargedHoming - weapon.MinChargeHoming) * chargePct)) / 4096f / 2; // todo: FPS stuff
-                            speed = (weapon.MinChargeSpeed
-                                + ((weapon.ChargedSpeed - weapon.MinChargeSpeed) * chargePct)) / 4096f / 2; // todo: FPS stuff
+                                + ((weapon.ChargedHoming - weapon.MinChargeHoming) * chargePct)) / 4096f / 2;
+                            initialSpeed = (weapon.MinChargeSpeed
+                                + ((weapon.ChargedSpeed - weapon.MinChargeSpeed) * chargePct)) / 4096f / 2;
                         }
                         else
                         {
-                            homing = weapon.UnchargedHoming / 4096f / 2; // todo: FPS stuff
-                            speed = weapon.UnchargedSpeed / 4096f / 2; // todo: FPS stuff
+                            homing = weapon.UnchargedHoming / 4096f / 2;
+                            initialSpeed = weapon.UnchargedSpeed / 4096f / 2;
                         }
-                        if (homing > 0 || speed <= 0)
+
+                        // Homing corrects itself in flight. Ordinary projectiles get a
+                        // straight-line intercept in the same 60 Hz units the projectile
+                        // mover uses. Lower tiers use only a fraction of the correct lead.
+                        if (homing <= 0 && initialSpeed > 0)
                         {
-                            // note: here and above, the aim deviation is halved because it's otherwise treated like a counter/timer
-                            // and therefore multiplied by 2 and be decremented every frame. halving it applies the correct deviation.
-                            vec *= (_field1020 / 2f) / 2f; // todo: FPS stuff
-                        }
-                        else
-                        {
-                            Vector3 muzzleTarget = targetPos - _player._muzzlePos;
-                            float muzzleDist = muzzleTarget.Length;
-                            vec *= muzzleDist;
-                            // the game checks the third speed decay value, but the result is the same as the second
                             ushort decay = weapon.SpeedDecayTimes[isCharged ? 1 : 0];
-                            float finalSpeed;
+                            float projectileSpeed;
                             if (decay == 0)
                             {
-                                finalSpeed = speed;
+                                projectileSpeed = initialSpeed;
                             }
                             else if (isCharged)
                             {
-                                finalSpeed = (weapon.MinChargeFinalSpeed
-                                    + ((weapon.ChargedFinalSpeed - weapon.MinChargeFinalSpeed) * chargePct)) / 4096f / 2; // todo: FPS stuff
+                                projectileSpeed = (weapon.MinChargeFinalSpeed
+                                    + ((weapon.ChargedFinalSpeed - weapon.MinChargeFinalSpeed) * chargePct)) / 4096f / 2;
                             }
                             else
                             {
-                                finalSpeed = weapon.UnchargedFinalSpeed / 4096f / 2; // todo: FPS stuff
+                                projectileSpeed = weapon.UnchargedFinalSpeed / 4096f / 2;
                             }
-                            vec /= finalSpeed; // sktodo-ai: FPS stuff, by usage --> leading shots (single-iteration estimate)
-                            if (_player.BotLevel >= 3 && finalSpeed > 0)
+
+                            if (projectileSpeed > 0)
                             {
-                                // Insane only. Three separate fixes over the line above:
-                                //
-                                // 1. `targetVel` (== the original `vec`) is a finite difference of two positions
-                                // sampled `field1020Diff` frames apart, and that window is reset early whenever the
-                                // target turns more than 90 degrees relative to this bot -- exactly what "moving"
-                                // does most. A short or uneven sampling window turns a normal strafe into a wildly
-                                // overestimated instantaneous velocity, and that error is what gets multiplied by
-                                // the flight time below. Use the target's actual tracked velocity instead of a
-                                // two-sample guess: `PlayerEntity.Speed` is a real value the engine already keeps,
-                                // so there's nothing to estimate here at all.
-                                //
-                                // 2. `Speed` is in the DS-native "distance per old 30 Hz frame" scale (halved into
-                                // an actual per-tick move at PlayerInput.cs:2155, `Position + Speed / 2`), while
-                                // `finalSpeed` just above is already a few lines' worth of `/4096f/2` conversion
-                                // into "distance per CURRENT 60 Hz tick" -- confirmed against the real projectile
-                                // mover, BeamProjectileEntity.cs, which uses this same finalSpeed unhalved as its
-                                // per-tick `Velocity`. Multiplying a per-old-frame velocity by a per-tick flight
-                                // time (`muzzleDist / finalSpeed`, in ticks) silently doubles the lead distance --
-                                // one old frame is two ticks. This is the actual cause of "aims way ahead of a
-                                // moving target, worse at range": the bias is a flat 2x on the lead term, so it
-                                // grows with the flight time (i.e. with distance) and only shows up at all once the
-                                // target is actually moving. Halving `Speed` here converts it to the same per-tick
-                                // scale as `finalSpeed` before they're combined.
-                                //
-                                // 3. The line above also leads by (this weapon's speed) and the CURRENT distance
-                                // alone, which is only exact if the target's distance to the muzzle doesn't change
-                                // over the flight time -- true for a target moving side-on, false for one closing
-                                // or opening the range, and that error also grows with the flight time, i.e. with
-                                // distance. Re-derive the flight time from the predicted lead point instead of the
-                                // current position, and repeat: this converges on where a straight-line target at
-                                // its real velocity and this weapon's shot, at its real speed, actually meet.
-                                Vector3 realTargetVel = _targetPlayer.Speed / 2f;
-                                Vector3 lead = realTargetVel * (muzzleDist / finalSpeed);
-                                for (int i = 0; i < 4; i++)
+                                Vector3 targetVelocity = _targetPlayer.Speed / 2f;
+                                float muzzleDist = (targetPos - _player._muzzlePos).Length;
+                                lead = targetVelocity * (muzzleDist / projectileSpeed) * tuning.PredictionStrength;
+                                for (int i = 0; i < tuning.PredictionIterations; i++)
                                 {
                                     float dist = (targetPos + lead - _player._muzzlePos).Length;
-                                    lead = realTargetVel * (dist / finalSpeed);
+                                    lead = targetVelocity * (dist / projectileSpeed) * tuning.PredictionStrength;
                                 }
-                                vec = lead;
                             }
                         }
-                        _field1048 = targetPos + vec;
                     }
-                    else
-                    {
-                        _field1048 = targetPos;
-                    }
+
+                    _field1048 = targetPos + lead;
                     _field1054 = targetPos;
                     Flags4 |= AiFlags4.Bit3;
-                    _field1048 = _field1048.AddY(_targetPlayer.IsAltForm ? Fixed.ToFloat(_targetPlayer.Values.AltColYPos) : 0.5f);
-                    // sktodo-ai: FPS stuff, by usage --> speed affecting camera
+                    _field1048 = _field1048.AddY(_targetPlayer.IsAltForm
+                        ? Fixed.ToFloat(_targetPlayer.Values.AltColYPos)
+                        : tuning.BipedAimHeightOffset);
+
                     Vector3 speedDiff = _player.Speed - _targetPlayer.Speed;
                     var camVec = new Vector3(_player.CameraInfo.Field50, 0, _player.CameraInfo.Field54);
                     float dot1 = MathF.Abs(Vector3.Dot(speedDiff, camVec));
                     float dot2 = MathF.Abs(Vector3.Dot(speedDiff, _player.CameraInfo.UpVector));
-                    float v52;
-                    float v66;
-                    if (_player.BotLevel == 0)
+                    float v52 = dot1 * tuning.AimMotionErrorScale + tuning.AimBaseError;
+                    float v66 = dot2 * tuning.AimMotionErrorScale + tuning.AimBaseError;
+                    if (!Flags4.TestFlag(AiFlags4.Bit2) && tuning.AimDistanceDivisor > 0)
                     {
-                        v52 = (dot1 * 5) + 0.25f;
-                        v66 = (dot2 * 5) + 0.25f;
-                        if (!Flags4.TestFlag(AiFlags4.Bit2))
-                        {
-                            v52 += targetDist / 2;
-                            v66 += targetDist / 2;
-                        }
-                    }
-                    else if (_player.BotLevel == 1)
-                    {
-                        v52 = (dot1 * 2) + 0.1f;
-                        v66 = (dot2 * 2) + 0.1f;
-                        if (!Flags4.TestFlag(AiFlags4.Bit2))
-                        {
-                            v52 += targetDist / 9;
-                            v66 += targetDist / 9;
-                        }
-                    }
-                    else if (_player.BotLevel == 2)
-                    {
-                        v52 = (dot1 * 0.2f) + 0.01f;
-                        v66 = (dot2 * 0.2f) + 0.01f;
-                        if (!Flags4.TestFlag(AiFlags4.Bit2))
-                        {
-                            v52 += targetDist / 50;
-                            v66 += targetDist / 50;
-                        }
-                    }
-                    else
-                    {
-                        // Insane: no aim deviation at all -- a perfect, dead-on leading shot every time
-                        v52 = 0;
-                        v66 = 0;
+                        v52 += targetDist / tuning.AimDistanceDivisor;
+                        v66 += targetDist / tuning.AimDistanceDivisor;
                     }
                     if (_player._disruptedTimer > 0)
                     {
@@ -6806,10 +6944,11 @@ namespace MphRead.Entities
                         v52 /= 2;
                         v66 /= 2;
                     }
-                    int v61 = (int)(v52 * 4096);
-                    int v62 = (int)(v66 * 4096);
-                    float rand1 = (_scene.Random.GetRandomInt2(v61 * 2) - v61) / 4096f;
-                    float rand2 = (_scene.Random.GetRandomInt2(v62 * 2) - v62) / 4096f;
+
+                    int v61 = Math.Max(0, (int)(v52 * 4096));
+                    int v62 = Math.Max(0, (int)(v66 * 4096));
+                    float rand1 = v61 == 0 ? 0 : (_scene.Random.GetRandomInt2(v61 * 2) - v61) / 4096f;
+                    float rand2 = v62 == 0 ? 0 : (_scene.Random.GetRandomInt2(v62 * 2) - v62) / 4096f;
                     if (_player._disruptedTimer == 0)
                     {
                         if (rand1 > 6)
@@ -6831,10 +6970,11 @@ namespace MphRead.Entities
                     }
                     _field1048 += camVec * rand1 + _player.CameraInfo.UpVector * rand2;
                 }
+
                 Func2145738(_field1048);
                 if (Flags4.TestFlag(AiFlags4.Bit2))
                 {
-                    float aimValue = _aimValues[_player.BotLevel] / 2;
+                    float aimValue = tuning.MaxTurnDegrees / 2;
                     _buttonAimX = Math.Clamp(_buttonAimX, -aimValue, aimValue);
                     _buttonAimY = Math.Clamp(_buttonAimY, -aimValue, aimValue);
                 }
@@ -6860,11 +7000,12 @@ namespace MphRead.Entities
                 toPos = toPos.WithY(0);
                 toPos = toPos != Vector3.Zero ? toPos.Normalized() : toTarget;
                 float dot = Vector3.Dot(toTarget, toPos);
-                float value = _aimValues[_player.BotLevel];
+                BotDifficultyTuning tuning = Difficulty;
+                float value = tuning.MaxTurnDegrees;
                 if (dot < 1)
                 {
                     // sktodo-ai: add a common function for this
-                    if (dot > _dotValues[_player.BotLevel])
+                    if (dot > tuning.AimDotThreshold)
                     {
                         _buttonAimX = MathHelper.RadiansToDegrees(MathF.Acos(dot));
                     }
@@ -6925,7 +7066,8 @@ namespace MphRead.Entities
                 float angleDiff = angle2 - angle1;
                 _buttonAimY = Math.Clamp(angleDiff, -value, value);
                 Flags2 &= ~AiFlags2.Bit8;
-                if (dot >= 255 / 256f && angleDiff > -5 && angleDiff < 5)
+                if (dot >= tuning.FireAimDotThreshold
+                    && MathF.Abs(angleDiff) <= tuning.FireVerticalTolerance)
                 {
                     Flags2 |= AiFlags2.Bit8;
                 }
@@ -6951,29 +7093,15 @@ namespace MphRead.Entities
             {
                 EquipInfo equip = _player.EquipInfo;
                 WeaponInfo weapon = _player.EquipWeapon;
-                int shotDelay;
-                if (_player.BotLevel == 0)
-                {
-                    shotDelay = 60;
-                }
-                else if (_player.BotLevel == 1)
-                {
-                    shotDelay = 15;
-                }
-                else if (_player.BotLevel == 2)
-                {
-                    shotDelay = 5;
-                }
-                else
-                {
-                    shotDelay = 0; // Insane: fires the instant the weapon's own cooldown allows
-                }
+                int shotDelay = Difficulty.ShotDelayFrames;
                 if (Flags2.TestFlag(AiFlags2.Bit21))
                 {
                     shotDelay /= 2;
                 }
                 shotDelay *= 2; // todo: FPS stuff
-                BeamType beam = GetBeamType(_weapon1);
+                BeamType beam = _scene.GameState.Mode == GameMode.InstaGib
+                    ? BeamType.Imperialist
+                    : GetBeamType(_weapon1);
                 if (beam != BeamType.ShockCoil && !_player.AvailableWeapons[beam])
                 {
                     return;
@@ -7084,6 +7212,7 @@ namespace MphRead.Entities
                     else if (_buttons.R.FramesUp > _shotDelay)
                     {
                         _buttons.R.IsDown = true;
+                        SetRandomDelay();
                     }
                 }
                 else if (beam == BeamType.Judicator)
@@ -7101,12 +7230,13 @@ namespace MphRead.Entities
                             {
                                 Debug.Assert(_targetPlayer != null);
                                 Vector3 toTarget = _targetPlayer.Position - _player.Position;
-                                float distSqr = toTarget.LengthSquared;
-                                if (distSqr > 3 * 3 && _player.BotLevel == 0
-                                    || distSqr > 11 && _player.BotLevel == 1
-                                    || distSqr > 13 && _player.BotLevel == 2
-                                    || distSqr > 400 && _player.BotLevel >= 3)
+                                float releaseDistance = Difficulty.ChargedReleaseDistance;
+                                if (toTarget.LengthSquared > releaseDistance * releaseDistance)
                                 {
+                                    // Release the full charge once the target is outside
+                                    // the self-splash danger zone. Harder tiers tolerate a
+                                    // tighter window and therefore convert charges into shots
+                                    // sooner instead of holding them indefinitely.
                                     SetRandomDelay();
                                 }
                                 else
@@ -7222,7 +7352,9 @@ namespace MphRead.Entities
                 {
                     return;
                 }
-                BeamType beam = GetBeamType(_weapon1);
+                BeamType beam = _scene.GameState.Mode == GameMode.InstaGib
+                    ? BeamType.Imperialist
+                    : GetBeamType(_weapon1);
                 if (_player.CurrentWeapon != beam && _player._availableWeapons[beam])
                 {
                     if (beam == BeamType.PowerBeam)
@@ -7277,12 +7409,7 @@ namespace MphRead.Entities
             {
                 if (Flags2.TestFlag(AiFlags2.TargetPlayer))
                 {
-                    Debug.Assert(_targetPlayer != null);
-                    _targetPlayer.GetPosition(out Vector3 targetPos);
-                    _field1048 = targetPos.AddY(_targetPlayer.IsAltForm
-                        ? Fixed.ToFloat(_targetPlayer.Values.AltColYPos)
-                        : 0.5f);
-                    Func2145738(_field1048);
+                    Func2144B88();
                 }
             }
 
@@ -7352,7 +7479,7 @@ namespace MphRead.Entities
                 if (facingY != 0)
                 {
                     float aimY = MathHelper.RadiansToDegrees(MathF.Acos(facingY)) - 90;
-                    float value = _aimValues[_player.BotLevel];
+                    float value = Difficulty.MaxTurnDegrees;
                     _buttonAimY = Math.Clamp(aimY, -value, value);
                 }
             }
@@ -7769,13 +7896,13 @@ namespace MphRead.Entities
                 // sktodo-ai: common
                 if (dot < 1)
                 {
-                    if (dot > _dotValues[_player.BotLevel])
+                    if (dot > Difficulty.AimDotThreshold)
                     {
                         _buttonAimX = MathHelper.RadiansToDegrees(MathF.Acos(dot));
                     }
                     else
                     {
-                        _buttonAimX = _aimValues[_player.BotLevel];
+                        _buttonAimX = Difficulty.MaxTurnDegrees;
                     }
                     if (Vector3.Cross(altVec, toNode).Y < 0)
                     {

@@ -800,7 +800,9 @@ namespace MphRead.Entities
                 _weaponSlots[0] = BeamType.Imperialist;
                 _weaponSlots[1] = BeamType.None;
                 _weaponSlots[2] = BeamType.None;
-                _ammo[UA] = Int32.MaxValue;
+                // InfiniteAmmo owns the gameplay rule; keep the stored/displayed
+                // value human-sized instead of leaking Int32.MaxValue into HUD/state.
+                _ammo[UA] = 99;
                 _ammo[Missiles] = 0;
             }
             PreviousWeapon = instaGib ? BeamType.Imperialist : BeamType.PowerBeam;
