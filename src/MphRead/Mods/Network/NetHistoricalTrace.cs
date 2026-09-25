@@ -89,19 +89,31 @@ public static class NetHistoricalTrace
             return ShadowOutcome.HistoricalDataUnavailable;
         foreach (var field in scene.GetForceFieldEntities()) if (field.Active) return ShadowOutcome.HistoricalDataUnavailable;
         foreach (var enemy in scene.GetEnemyInstanceEntities()) return ShadowOutcome.HistoricalDataUnavailable;
-        Span<HistoricalBody> oldBodies = stackalloc HistoricalBody[8];
-        Span<HistoricalBody> newBodies = stackalloc HistoricalBody[8];
+        Span<HistoricalBody> oldBodies = stackalloc HistoricalBody[16];
+        Span<HistoricalBody> newBodies = stackalloc HistoricalBody[16];
         int count = 0;
         foreach (var player in scene.GetPlayerEntities())
         {
             if (player == shooter || player.Health == 0 || player.Flags2.TestFlag(PlayerFlags2.Spectating)) continue;
-            // Detached turrets still require an independent historical body.
-            if (player.Flags2.TestFlag(PlayerFlags2.Halfturret) || count == 8
+            if (count >= oldBodies.Length
                 || !NetUnlagged.TryHistoricalPose(player, NetSession.NetFrame - hard, out var oldPose)
                 || !NetUnlagged.TryHistoricalPose(player, NetSession.NetFrame - allowed, out var newPose))
                 return ShadowOutcome.HistoricalDataUnavailable;
             oldBodies[count] = Body(player, oldPose);
             newBodies[count++] = Body(player, newPose);
+            bool oldTurret = NetUnlagged.TryHistoricalHalfturretPosition(player.SlotIndex,
+                NetSession.NetFrame - hard, NetPlayerLifecycle.Generation(player.SlotIndex),
+                NetPlayerLifecycle.Get(player.SlotIndex), out Vector3 oldTurretPosition);
+            bool newTurret = NetUnlagged.TryHistoricalHalfturretPosition(player.SlotIndex,
+                NetSession.NetFrame - allowed, NetPlayerLifecycle.Generation(player.SlotIndex),
+                NetPlayerLifecycle.Get(player.SlotIndex), out Vector3 newTurretPosition);
+            if (oldTurret != newTurret) return ShadowOutcome.HistoricalDataUnavailable;
+            if (oldTurret)
+            {
+                if (count >= oldBodies.Length) return ShadowOutcome.HistoricalDataUnavailable;
+                oldBodies[count] = new(player.SlotIndex, oldTurretPosition, .45f, 0, 0, HistoricalBodyType.AltSphere);
+                newBodies[count++] = new(player.SlotIndex, newTurretPosition, .45f, 0, 0, HistoricalBodyType.AltSphere);
+            }
         }
         var mechanics = shooter.EquipInfo.Weapon;
         Vector3 end = origin + direction.Normalized() * (mechanics.UnchargedSpeed / 8192f);

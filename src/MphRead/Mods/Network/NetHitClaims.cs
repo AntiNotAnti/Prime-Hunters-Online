@@ -1341,10 +1341,17 @@ namespace MphRead.Mods.Network
             // Where the authority itself had the victim, at the frame the
             // shooter was looking at. This is the claim's only evidence and
             // the authority's own record of it.
-            if (!NetUnlagged.PositionAt(victimSlot, claim.AckFrame, claim.VictimGeneration, claim.VictimLifeId, out Vector3 was))
+            bool turretClaim = (claim.Flags & HitClaimPacket.FlagHalfturret) != 0;
+            bool historicalAvailable = turretClaim
+                ? NetUnlagged.TryHistoricalHalfturretPosition(victimSlot, claim.AckFrame,
+                    claim.VictimGeneration, claim.VictimLifeId, out Vector3 was)
+                : NetUnlagged.PositionAt(victimSlot, claim.AckFrame, claim.VictimGeneration,
+                    claim.VictimLifeId, out was);
+            if (!historicalAvailable)
             {
-                // Either the victim was not in play in that world, or the ring
-                // no longer holds it. Both mean there is nothing to check.
+                // Either the victim/turret was not in play in that world, or the
+                // ring no longer holds it. A detached turret claim is never
+                // validated against the owner's body as a substitute.
                 TooOldHere++;
                 return HitVerdictPacket.ResultTooOld;
             }

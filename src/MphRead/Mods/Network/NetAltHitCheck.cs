@@ -66,6 +66,19 @@ public static class NetAltHitCheck
                 for (int i = 1; i < 8; i++)
                     Check(states[i] == PlayerEntity.Players[i].ModCaptureCollisionState(), "exception restores exact collision state");
             }
+            var weavel = PlayerEntity.Players[6];
+            weavel.ModForceForm(true);
+            weavel.ModPlaceAt(new Vector3(30, 5, 10));
+            weavel.Halfturret.Health = 37;
+            Vector3 historicalTurret = weavel.Halfturret.Position;
+            NetUnlagged.Record(205);
+            weavel.Halfturret.Reposition(new Vector3(8, 0, 0), weavel.NodeRef);
+            NetUnlagged.Record(206);
+            Check(NetUnlagged.TryHistoricalHalfturretPosition(weavel.SlotIndex, 205,
+                NetPlayerLifecycle.Generation(weavel.SlotIndex), NetPlayerLifecycle.Get(weavel.SlotIndex), out var oldTurret)
+                && oldTurret == historicalTurret && oldTurret != weavel.Halfturret.Position,
+                "detached Weavel turret uses historical collision position");
+
             var victim = PlayerEntity.Players[1];
             NetUnlagged.Record(210);
             Check(NetUnlagged.TryHistoricalAttack(victim.SlotIndex, 210, NetPlayerLifecycle.Generation(victim.SlotIndex),

@@ -303,6 +303,7 @@ namespace MphRead.Mods.Network
             for (int i = 0; i < HistoryFrames; i++)
             {
                 _inPlay[slot, i] = false;
+                _halfturretActive[slot, i] = false;
                 _life[slot, i] = 0;
                 _generation[slot, i] = 0;
             }
@@ -310,6 +311,8 @@ namespace MphRead.Mods.Network
         }
 
         private static readonly Vector3[,] _position = new Vector3[Slots, HistoryFrames];
+        private static readonly Vector3[,] _halfturretPosition = new Vector3[Slots, HistoryFrames];
+        private static readonly bool[,] _halfturretActive = new bool[Slots, HistoryFrames];
         private static readonly HistoricalAltAttackState[,] _attackPose = new HistoricalAltAttackState[Slots, HistoryFrames];
         private static readonly AltCollisionPose[,] _altPose = new AltCollisionPose[Slots, HistoryFrames];
         private static readonly bool[,] _morphing = new bool[Slots, HistoryFrames];
@@ -437,9 +440,15 @@ namespace MphRead.Mods.Network
                 _life[i, index] = NetPlayerLifecycle.Get(i);
                 _generation[i, index] = NetPlayerLifecycle.Generation(i);
                 _inPlay[i, index] = active;
+                _halfturretActive[i, index] = false;
                 if (active && player != null)
                 {
                     _position[i, index] = player.Position;
+                    bool turretActive = player.Hunter == Hunter.Weavel
+                        && player.Flags2.TestFlag(PlayerFlags2.Halfturret)
+                        && player.Halfturret != null && player.Halfturret.Health > 0;
+                    _halfturretActive[i, index] = turretActive;
+                    if (turretActive) _halfturretPosition[i, index] = player.Halfturret.Position;
                     _altForm[i, index] = player.IsAltForm;
                     _morphing[i, index] = player.IsMorphing;
                     _targetTeam[i, index] = player.TeamIndex;
@@ -484,6 +493,42 @@ namespace MphRead.Mods.Network
                 int next = (int)((frame + 1) % HistoryFrames);
                 pose = InterpolatePose(pose, new(nextPosition, _altForm[slot, next], _altPose[slot, next]), fraction);
             }
+            return true;
+        }
+
+        internal static bool TryHistoricalHalfturretPosition(int slot, double target,
+            ushort expectedGeneration, ushort expectedLife, out Vector3 position)
+        {
+            position = default;
+            if ((uint)slot >= Slots || !double.IsFinite(target) || target < 1 || target >= uint.MaxValue) return false;
+            uint frame = (uint)Math.Floor(target);
+            if (!PositionAt(slot, frame, expectedGeneration, expectedLife, out _)) return false;
+            int index = (int)(frame % HistoryFrames);
+            if (!_halfturretActive[slot, index]) return false;
+            position = _halfturretPosition[slot, index];
+            float fraction = (float)(target - frame);
+            if (fraction > .0001f
+                && PositionAt(slot, frame + 1, expectedGeneration, expectedLife, out _))
+            {
+                int next = (int)((frame + 1) % HistoryFrames);
+                if (_halfturretActive[slot, next]
+                    && (_halfturretPosition[slot, next] - position).LengthSquared <= 16f)
+                    position = Vector3.Lerp(position, _halfturretPosition[slot, next], fraction);
+            }
+            return true;
+        }
+
+        internal static bool TryCollisionHalfturret(PlayerEntity player, out Vector3 position)
+        {
+            position = default;
+            int slot = player.SlotIndex;
+            if (_reconciled && _inProgress)
+                return TryHistoricalHalfturretPosition(slot, _shotTargetFrame,
+                    NetPlayerLifecycle.Generation(slot), NetPlayerLifecycle.Get(slot), out position);
+            if (player.Hunter != Hunter.Weavel || player.Halfturret == null
+                || !player.Flags2.TestFlag(PlayerFlags2.Halfturret) || player.Halfturret.Health <= 0)
+                return false;
+            position = player.Halfturret.Position;
             return true;
         }
 

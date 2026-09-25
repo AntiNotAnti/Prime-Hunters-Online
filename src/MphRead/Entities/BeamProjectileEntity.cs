@@ -445,7 +445,7 @@ namespace MphRead.Entities
                 {
                     if (!_scene.Services.IsReplica) NetDamage.PlayerChecks[player.SlotIndex]++;
                 }
-                bool hasHalfturret = player.Hunter == Hunter.Weavel && player.Flags2.TestFlag(PlayerFlags2.Halfturret);
+                bool hasHalfturret = NetUnlagged.TryCollisionHalfturret(player, out Vector3 halfturretPosition);
                 if ((Owner == player || hasHalfturret && Owner == player.Halfturret)
                     && (!Flags.TestFlag(BeamFlags.SelfDamage) || Age < 1 / 30f * 4))
                 {
@@ -485,7 +485,7 @@ namespace MphRead.Entities
                 {
                     CollisionResult turretRes = default;
                     float radius = CylinderRadius + 0.45f;
-                    if (CollisionDetection.CheckCylinderOverlapSphere(BackPosition, Position, player.Halfturret.Position,
+                    if (CollisionDetection.CheckCylinderOverlapSphere(BackPosition, Position, halfturretPosition,
                         radius, ref turretRes) && turretRes.Distance < minDist)
                     {
                         minDist = turretRes.Distance;
@@ -2154,9 +2154,9 @@ namespace MphRead.Entities
                     continue;
                 }
                 CheckIceWaveCollision(player, player.Position, angleCos, halfturret: false);
-                if (player.Flags2.TestFlag(PlayerFlags2.Halfturret))
+                if (NetUnlagged.TryCollisionHalfturret(player, out Vector3 turretPosition))
                 {
-                    CheckIceWaveCollision(player, player.Halfturret.Position, angleCos, halfturret: true);
+                    CheckIceWaveCollision(player, turretPosition, angleCos, halfturret: true);
                 }
             }
         }
