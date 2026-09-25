@@ -59,6 +59,14 @@ namespace MphRead.Mods
         public static bool MouseMovementBoost { get; set; } = true;
 
         /// <summary>
+        /// Opt-in relative-mouse movement for rolling alternate forms. Mouse
+        /// motion becomes the same analogue drive used by touch/pen swipes for
+        /// Samus, Kanden, Spire and Noxus. Flick boost/attack recognition stays
+        /// independent so either feature can be enabled without the other.
+        /// </summary>
+        public static bool MouseAltFormMovement { get; set; }
+
+        /// <summary>
         /// Stylus counterpart to <see cref="MouseMovementBoost"/>. MelonPrime keeps
         /// stylus/touch movement as a separate input path, so the two preferences are
         /// intentionally independent.
@@ -445,6 +453,12 @@ namespace MphRead.Mods
                         MouseMovementBoost = mouseMovementBoost;
                         continue;
                     }
+                    if (key == "mouse_alt_form_movement"
+                        && Boolean.TryParse(value, out bool mouseAltFormMovement))
+                    {
+                        MouseAltFormMovement = mouseAltFormMovement;
+                        continue;
+                    }
                     if (key == "stylus_movement_boost"
                         && Boolean.TryParse(value, out bool stylusMovementBoost))
                     {
@@ -703,6 +717,7 @@ namespace MphRead.Mods
                     $"invert_y={InvertMouseY.ToString().ToLowerInvariant()}",
                     $"invert_x={InvertMouseX.ToString().ToLowerInvariant()}",
                     $"mouse_movement_boost={MouseMovementBoost.ToString().ToLowerInvariant()}",
+                    $"mouse_alt_form_movement={MouseAltFormMovement.ToString().ToLowerInvariant()}",
                     $"stylus_movement_boost={StylusMovementBoost.ToString().ToLowerInvariant()}",
                     $"alt_swipe_sensitivity={AltSwipeSensitivity.ToString("0.###", CultureInfo.InvariantCulture)}",
                     $"scroll_all_weapons={ScrollAllWeapons.ToString().ToLowerInvariant()}",
@@ -785,6 +800,7 @@ namespace MphRead.Mods
             InvertMouseY = false;
             InvertMouseX = false;
             MouseMovementBoost = true;
+            MouseAltFormMovement = false;
             StylusMovementBoost = true;
             AltSwipeSensitivity = 1f;
             ScrollAllWeapons = true;
