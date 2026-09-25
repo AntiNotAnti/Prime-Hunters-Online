@@ -86,6 +86,66 @@ namespace MphRead.Mods.Input
             }
         }
 
+        /// <summary>
+        /// High-refresh render poll for the already-active pad's stick axes only.
+        /// Device discovery/removal, buttons, triggers, activity ownership and
+        /// haptics stay on the fixed simulation poll.
+        /// </summary>
+        public static void PollAimOnly()
+        {
+            if (OperatingSystem.IsAndroid() || _unavailable)
+            {
+                return;
+            }
+            try
+            {
+                string? active = GamepadManager.ActiveDevice?.DeviceId;
+                if (active == null)
+                {
+                    return;
+                }
+                for (int i = 0; i < Slots.Length; i++)
+                {
+                    Slot slot = Slots[i];
+                    if (slot.Id != active || !GLFW.JoystickPresent(i))
+                    {
+                        continue;
+                    }
+                    if (slot.Mapped)
+                    {
+                        if (!GLFW.JoystickIsGamepad(i)
+                            || !GLFW.GetGamepadState(i, out OpenTK.Windowing.GraphicsLibraryFramework.GamepadState raw))
+                        {
+                            return;
+                        }
+                        GamepadManager.UpdatePresentationAxes(active,
+                            raw.Axes[AxisLeftX], -raw.Axes[AxisLeftY],
+                            raw.Axes[AxisRightX], -raw.Axes[AxisRightY]);
+                    }
+                    else
+                    {
+                        ReadOnlySpan<float> axes = GLFW.GetJoystickAxes(i);
+                        ReadOnlySpan<JoystickInputAction> buttons = GLFW.GetJoystickButtons(i);
+                        if (axes.Length < 2 || buttons.Length < 4)
+                        {
+                            return;
+                        }
+                        float leftFloor = slot.LeftFloor, rightFloor = slot.RightFloor;
+                        GamepadState state = slot.Layout.Read(axes, buttons, GLFW.GetJoystickHats(i),
+                            ref leftFloor, ref rightFloor);
+                        GamepadManager.UpdatePresentationAxes(active,
+                            state.LeftX, state.LeftY, state.RightX, state.RightY);
+                    }
+                    return;
+                }
+            }
+            catch (Exception ex) when (ex is DllNotFoundException
+                || ex is EntryPointNotFoundException || ex is BadImageFormatException)
+            {
+                _unavailable = true;
+            }
+        }
+
         private static void PollUnsafe()
         {
             if (_unavailable) return;
