@@ -43,6 +43,11 @@ internal static class AltContactLagTests
             && NetContactLagComp.TargetFrame(100, 1, 0) == 55
             && NetContactLagComp.TargetFrame(100, 0, 0) == 100
             && NetContactLagComp.TargetFrame(100, 101, 0) == 100, "exact ACK fraction, bounded rewind and unavailable ACK fallback");
+        HistoricalPoseTests.Check(NetContactLagComp.UsesLiveFallback(ContactAttackKind.Noxus, historyFrameAvailable: false)
+            && !NetContactLagComp.UsesLiveFallback(ContactAttackKind.Noxus, historyFrameAvailable: true)
+            && !NetContactLagComp.UsesLiveFallback(ContactAttackKind.Boost, historyFrameAvailable: false)
+            && !NetContactLagComp.UsesLiveFallback(ContactAttackKind.Spire, historyFrameAvailable: false),
+            "only Noxus may use live contact when the acknowledged history frame itself is absent");
         for (int i = 0; i < 10000; i++) NetContactLagComp.Intersects(attack, body, true);
         long before = GC.GetAllocatedBytesForCurrentThread();
         long start = Stopwatch.GetTimestamp(); int hits = 0;
