@@ -516,6 +516,58 @@ namespace MphRead.Mods.Launcher.Gui
             AddButton(_inspector, "Create array", () => Duplicate(false));
             AddButton(_inspector, "Create radial array", () => Duplicate(true));
             AddButton(_inspector, "Duplicate in place", () => EditSelection("Duplicate in place", (d, ids) => MapLayoutCommands.Array(d, ids, 1, System.Numerics.Vector3.Zero)));
+            AddButton(_inspector, "Save selection as prefab", SavePrefab);
+            AddButton(_inspector, "Insert prefab", InsertPrefab);
+        }
+
+        private void SavePrefab()
+        {
+            if(_document==null||_document.Selection.Count==0){_status.Text="Select objects to save as a prefab.";return;}
+            var panel=new StackPanel{Spacing=8};panel.Children.Add(Text("SAVE PREFAB"));
+            var name=new TextBox{Text="My prefab"};panel.Children.Add(name);
+            AddButton(panel,"Save",()=>{
+                try
+                {
+                    string safe=new string((name.Text??"prefab").Trim().Select(ch=>Path.GetInvalidFileNameChars().Contains(ch)?'_':ch).ToArray());
+                    if(String.IsNullOrWhiteSpace(safe))safe="prefab";
+                    string directory=Path.Combine(CustomRooms.MapDirectory,".prefabs");Directory.CreateDirectory(directory);
+                    string target=Path.Combine(directory,safe+".json");
+                    MapPrefabService.Save(_document.Project.Definition,_document.Selection,target);
+                    Dismiss();_status.Text="Prefab saved: "+target;
+                }
+                catch(Exception ex){Failure(ex);}
+            });
+            AddButton(panel,"Cancel",Dismiss);Modal(panel);
+        }
+
+        private void InsertPrefab()
+        {
+            if(_document==null)return;
+            string directory=Path.Combine(CustomRooms.MapDirectory,".prefabs");
+            var panel=new StackPanel{Spacing=8};panel.Children.Add(Text("INSERT PREFAB"));
+            var list=new ListBox{MaxHeight=340};
+            list.ItemsSource=Directory.Exists(directory)?Directory.EnumerateFiles(directory,"*.json")
+                .OrderBy(Path.GetFileName).Select(p=>new BrowserRow(p)).ToArray():Array.Empty<BrowserRow>();
+            panel.Children.Add(list);
+            AddButton(panel,"Insert",()=>{
+                if(list.SelectedItem is not BrowserRow row)return;
+                try
+                {
+                    string root=_document.Project.Definition.BaseDirectory??CustomRooms.MapDirectory;
+                    MapPrefabService.InsertResult? inserted=null;
+                    _document.Edit("Insert prefab",d=>inserted=MapPrefabService.Insert(d,row.Path,root),
+                        MapChangeDomain.Geometry|MapChangeDomain.Entity|MapChangeDomain.Material|MapChangeDomain.Navigation);
+                    if(inserted!=null)
+                    {
+                        foreach(string asset in inserted.GeneratedAssets)_document.RegisterGeneratedAsset(asset,root);
+                        _document.Selection.Clear();foreach(Guid id in inserted.ObjectIds)_document.Selection.Add(id);
+                        _document.SelectionChanged();_viewport?.FrameSelection();
+                    }
+                    Dismiss();_status.Text=$"Inserted {inserted?.ObjectIds.Count??0} prefab objects.";
+                }
+                catch(Exception ex){Failure(ex);}
+            });
+            AddButton(panel,"Cancel",Dismiss);Modal(panel);
         }
         private void NavigationInspector()
         {
