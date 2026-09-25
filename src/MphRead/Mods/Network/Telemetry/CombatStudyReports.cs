@@ -4,16 +4,17 @@ using System.Buffers.Binary;
 namespace MphRead.Mods.Network;
 
 // Anonymous, lossy diagnostics only. Never enters a reliable channel or a
-// gameplay decision. At most one 399-byte batch per client per second.
+// gameplay decision. At most one 431-byte batch per client per second.
 public static class CombatStudyReports
 {
-    public const int Capacity = 32, HeaderSize = 15, EntrySize = 12;
+    public const int Capacity = 32, HeaderSize = 15, EntrySize = 13;
     private static readonly byte[] Pending = new byte[Capacity * EntrySize];
     private static int _count;
     private static ushort _generation, _life;
     private static ulong _epoch;
     private static ushort _match;
-    public static void Record(in CombatAckEntry ack, int ageFrames, int damageCorrection, int healthCorrection, bool headCorrection)
+    public static void Record(in CombatAckEntry ack, int ageFrames, int damageCorrection,
+        int healthCorrection, bool headCorrection, byte weapon)
     {
         int slot = NetSession.LocalSlot;
         if ((uint)slot >= 8 || NetSession.Role != NetRole.Client) return;
@@ -27,6 +28,7 @@ public static class CombatStudyReports
         BinaryPrimitives.WriteInt16LittleEndian(b[6..], (short)Math.Clamp(damageCorrection, short.MinValue, short.MaxValue));
         BinaryPrimitives.WriteInt16LittleEndian(b[8..], (short)Math.Clamp(healthCorrection, short.MinValue, short.MaxValue));
         b[10] = headCorrection ? (byte)1 : (byte)0; b[11] = (byte)ack.Flags;
+        b[12] = weapon;
     }
     public static int Write(Span<byte> b)
     {
@@ -44,13 +46,15 @@ public static class CombatStudyReports
         for (int i = 0; i < b[14]; i++)
         {
             var entry = b.Slice(HeaderSize + i * EntrySize, EntrySize);
-            if (entry[2] >= 8 || entry[3] > (byte)CombatAckResult.Corrected || entry[10] > 1) return false;
+            if (entry[2] >= 8 || entry[3] > (byte)CombatAckResult.Corrected || entry[10] > 1
+                || entry[12] >= NetShotDiagnostics.WeaponCount) return false;
         }
         for (int i = 0; i < b[14]; i++)
         {
             var entry = b.Slice(HeaderSize + i * EntrySize, EntrySize);
             Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.CombatAck, NetSession.NetFrame,
-                Player: (byte)slot, Victim: entry[2], Id: BinaryPrimitives.ReadUInt16LittleEndian(entry), Result: entry[3],
+                Player: (byte)slot, Victim: entry[2], Weapon: entry[12],
+                Id: BinaryPrimitives.ReadUInt16LittleEndian(entry), Result: entry[3],
                 Flags: entry[11] | 128, A: BinaryPrimitives.ReadUInt16LittleEndian(entry[4..]),
                 B: BinaryPrimitives.ReadInt16LittleEndian(entry[6..]), C: BinaryPrimitives.ReadInt16LittleEndian(entry[8..]), D: entry[10]));
         }

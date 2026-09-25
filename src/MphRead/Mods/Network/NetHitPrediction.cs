@@ -1675,12 +1675,14 @@ namespace MphRead.Mods.Network
                 }
                 int healthCorrection = healthBefore > 0 && player != null ? player.Health - healthBefore : 0;
                 if (healthCorrection != 0) HealthCorrections++;
+                byte weapon = _pendingBeam[slot, at];
                 Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.CombatAck, NetSession.NetFrame,
-                    Player: (byte)NetSession.LocalSlot, Victim: ack.VictimSlot, Id: ack.ClaimId, Result: ack.Result, Flags: (int)ack.Flags,
+                    Player: (byte)NetSession.LocalSlot, Victim: ack.VictimSlot, Weapon: weapon,
+                    Id: ack.ClaimId, Result: ack.Result, Flags: (int)ack.Flags,
                     A: latencyFrames * (1000.0 / 60), B: ack.DamageApplied - predicted,
                     C: healthCorrection, D: head == ((ack.Flags & CombatAckFlags.Headshot) != 0) ? 0 : 1));
                 CombatStudyReports.Record(ack, latencyFrames, ack.DamageApplied - predicted,
-                    healthCorrection, head != ((ack.Flags & CombatAckFlags.Headshot) != 0));
+                    healthCorrection, head != ((ack.Flags & CombatAckFlags.Headshot) != 0), weapon);
                 return true;
             }
             return false;

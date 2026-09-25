@@ -478,6 +478,11 @@ namespace MphRead.Mods.Network
                                     C: timing.JitterMilliseconds ?? -1, D: sample.PacketsReceived, E: sample.PacketsSent,
                                     F: sample.QueueDrops, G: sample.QueueCurrent, H: sample.QueueHighWater));
                             }
+                            var contention = _transport.ContentionStats();
+                            Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.TransportContention, NetSession.NetFrame,
+                                A: contention.Acquisitions, B: contention.Contended,
+                                C: contention.TotalWaitMilliseconds, D: contention.MaximumWaitMilliseconds,
+                                E: contention.TotalHoldMilliseconds, F: contention.MaximumHoldMilliseconds));
                         }
                         if (NetDiagnostics.Enabled)
                         {
