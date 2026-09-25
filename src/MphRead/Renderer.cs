@@ -2974,13 +2974,11 @@ namespace MphRead
                     this.Players.Main.DrawPauseMenuForeground();
                 }
             }
-            else if (ScoreboardOverFreeCamera)
+            else if (ScoreboardOverFreeCamera || NameTagsOverFreeCamera)
             {
-                // The scoreboard, and nothing else: none of the helmet and
-                // visor layers above belong to a view that is not out of
-                // anybody's eyes. PlayerHud decides that; this only lets it
-                // be asked, since the HUD is otherwise not drawn at all while
-                // the camera is not a player's.
+                // Free-camera overlays are presentation UI, not a hunter visor.
+                // The scoreboard may add its dim layer above; name tags need only
+                // this object pass and therefore remain independent of the score key.
                 this.Players.Main.DrawHudObjects();
             }
             // Replay controls and timeline belong to the presentation, not to
@@ -6152,6 +6150,12 @@ namespace MphRead
             && Mods.SpectatorMode.ShowScoreboard
             && Players.Main.LoadFlags.TestFlag(LoadFlags.Active);
 
+        private bool NameTagsOverFreeCamera
+            => Mods.Launcher.LauncherPrefs.SpectatorNameTags
+                && Mods.SpectatorMode.FreeCamera
+                && Players.Main.LoadFlags.TestFlag(LoadFlags.Active)
+                && (!Mods.Network.DemoPlayback.IsActive
+                    || Mods.Replay.ReplayCamera.Mode == Mods.Replay.ReplayCameraMode.Free);
 
         /// <summary>
         /// The spectator's own no-clip camera: an independent view of the map
