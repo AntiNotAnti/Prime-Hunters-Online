@@ -15,6 +15,32 @@ namespace MphRead.Mods.Input.AimAssist
         }
         public static bool InsideRegion(AimAssistRegion region) => RegionError(region) == Vector2.Zero;
         public static float RegionDistance(AimAssistRegion region) => RegionError(region).Length();
+
+        public static Vector2 SafeRegionError(AimAssistRegion region, float inset)
+        {
+            inset = Math.Clamp(inset, 0, .49f);
+            return RegionError(region.Inset(inset));
+        }
+
+        // When the crosshair is already inside a target region, slow only the
+        // component that is about to leave through the edge it is travelling
+        // toward. Strong deliberate stick input rapidly releases the guardrail.
+        public static float EdgeFrictionFactor(float cameraInput, float physicalInput,
+            float min, float max, float strength)
+        {
+            if (!float.IsFinite(cameraInput) || !float.IsFinite(physicalInput)
+                || !float.IsFinite(min) || !float.IsFinite(max) || min > 0 || max < 0
+                || cameraInput == 0 || strength <= 0)
+            {
+                return 1;
+            }
+            float distance = cameraInput > 0 ? Math.Max(0, -min) : Math.Max(0, max);
+            float width = Math.Max(.12f, (max - min) * .35f);
+            float edge = 1 - Smooth(0, width, distance);
+            float deliberate = Smooth(.45f, .85f, Math.Abs(physicalInput));
+            float amount = Math.Clamp(strength * edge * (1 - .85f * deliberate), 0, .75f);
+            return 1 - amount;
+        }
         public static Vector2 BodyError(in AimAssistTarget target)
             => target.BodyRegion is { } r ? RegionError(r) : target.BodyError;
         public static Vector2 HeadError(in AimAssistTarget target)
