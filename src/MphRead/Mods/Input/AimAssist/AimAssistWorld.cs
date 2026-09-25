@@ -159,20 +159,33 @@ namespace MphRead.Entities
             // Coverage is then useful as a continuous quality signal instead of
             // turning a one-pixel peek into the same tracking strength as 100% exposure.
             int visible = 0, valid = 0;
-            ReadOnlySpan<float> fractions = stackalloc float[] { .12f, .5f, .88f };
-            for (int x = 0; x < fractions.Length; x++)
+            ReadOnlySpan<float> yawFractions = stackalloc float[] { .12f, .5f, .88f };
+            for (int x = 0; x < yawFractions.Length; x++)
             {
-                float yaw = region.MinYaw + region.Width * fractions[x];
+                float yaw = region.MinYaw + region.Width * yawFractions[x];
                 if (!AssistSurfacePitchRange(target, yaw, lower, upper, radius,
                         out float minPitch, out float maxPitch))
                 {
                     continue;
                 }
-                for (int y = 0; y < fractions.Length; y++)
+                valid++;
+                if (AssistRegionRayVisible(target, new(yaw, (minPitch + maxPitch) * .5f),
+                        lower, upper))
                 {
-                    float pitch = minPitch + (maxPitch - minPitch) * fractions[y];
+                    visible++;
+                }
+            }
+            // Two vertical samples at centre yaw distinguish a thin head/torso
+            // peek from a fully exposed band without paying for a 3x3 trace grid.
+            float centerYaw = region.Center.X;
+            if (AssistSurfacePitchRange(target, centerYaw, lower, upper, radius,
+                    out float centerMin, out float centerMax))
+            {
+                for (int i = 0; i < 2; i++)
+                {
+                    float pitch = centerMin + (centerMax - centerMin) * (i == 0 ? .2f : .8f);
                     valid++;
-                    if (AssistRegionRayVisible(target, new(yaw, pitch), lower, upper))
+                    if (AssistRegionRayVisible(target, new(centerYaw, pitch), lower, upper))
                         visible++;
                 }
             }
@@ -247,7 +260,9 @@ namespace MphRead.Entities
                 var headSurface = AssistSurface(target, headRegion, height - .3f, height, radius);
                 var bodyError = AssistAngles(chest);
                 var headError = AssistAngles(head);
-                if (!AimAssistMath.Finite(bodyError) || !float.IsFinite(distance) || distance > 60
+                if (!AimAssistMath.Finite(bodyError) || !AimAssistMath.Finite(bodySurface.Error)
+                    || !AimAssistMath.Finite(headSurface.Error)
+                    || !float.IsFinite(distance) || distance > 60
                     || (bodySurface.Error.Length() > profile.ReleaseCone
                         && (!profile.Head || target.IsAltForm || !AimAssistMath.Finite(headError)
                             || headSurface.Error.Length() > profile.ReleaseCone))) continue;
