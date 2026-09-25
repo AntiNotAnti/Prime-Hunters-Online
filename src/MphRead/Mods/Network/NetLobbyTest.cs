@@ -593,6 +593,11 @@ namespace MphRead.Mods.Network
             rig.Wait(() => a.State.Value.Phase == SessionPhase.Lobby,
                 "results return directly to lobby without ready/vote input", PostMatchWaitMilliseconds);
             rig.Stable();
+            Check(rig.Clients.All(c => c.State!.Value.Match.TimeLimitSeconds == 600
+                    && c.State.Value.Match.PointGoal == 25),
+                "custom time and point limits survive the match-to-lobby cycle");
+            Check(rig.Clients.All(c => c.State!.Value.Match.HideOpponentHealth),
+                "custom match rules survive the match-to-lobby cycle");
             Check(ReferenceEquals(originalA, a.Transport) && ReferenceEquals(originalB, b.Transport)
                 && a.Slot == slotA && b.Slot == slotB, "same UDP transports and slots across rounds");
             Check(a.Roster.LobbyReady.Take(a.Roster.Count).All(r => !r), "return clears lobby ready");
@@ -601,6 +606,8 @@ namespace MphRead.Mods.Network
             foreach (var client in rig.Clients) client.Loaded();
             rig.Wait(() => a.State.Value.Phase == SessionPhase.InMatch, "second round starts");
             Check(a.State.Value.MatchId != firstMatch, "new match id on same map");
+            Check(a.State.Value.Match.TimeLimitSeconds == 600 && a.State.Value.Match.PointGoal == 25,
+                "second round starts with the persisted custom limits");
             a.Dispose(); rig.Clients.Remove(a);
             rig.Wait(() => b.State!.Value.OwnerSlot == b.Slot, "oldest peer becomes owner");
             b.Rebind(); rig.Stable(); Check(b.Slot == slotB && b.State.Value.OwnerSlot == slotB, "same-endpoint admission refresh keeps identity and slot");
