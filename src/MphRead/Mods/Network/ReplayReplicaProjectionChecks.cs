@@ -39,7 +39,7 @@ internal static class ReplayReplicaProjectionChecks
         }
         recorder.AcceptSnapshot(Snapshot(1, 1), 1, 1);
         var intent = new IntentPacket { MatchId = 7, AuthorityEpoch = 9, SlotGeneration = 2,
-            LifeId = 1, Frame = 2, Buttons = IntentButtons.Shoot };
+            LifeId = 1, Frame = 2, Buttons = IntentButtons.Shoot, MoveX = 64, MoveY = -96 };
         recorder.AcceptIntent(0, intent, 2);
         int records = recorder.Timeline.RecordCount;
         recorder.AcceptIntent(0, intent, 3);
@@ -48,8 +48,8 @@ internal static class ReplayReplicaProjectionChecks
         require(recorder.Timeline.RecordCount == records, "timeline rejects duplicate, old and foreign-match intents");
         require(recorder.Timeline.TryFreeze(1, 2, out var clip)
             && clip!.Records.Any(r => r.Kind == ReplayFactKind.Intent
-                && IntentPacket.Read(r.Payload[2..]).Buttons == IntentButtons.Shoot),
-            "accepted firing intent reaches frozen timeline");
+                && IntentPacket.Read(r.Payload[2..]) is { Buttons: IntentButtons.Shoot, MoveX: 64, MoveY: -96 }),
+            "accepted firing and analog movement intent reaches frozen timeline");
         recorder.AcceptSnapshot(Snapshot(301, 1), 301, 301);
         require(recorder.Timeline.TryGetRestorePoint(301, out var baseline)
             && baseline!.Records.Count(r => r.Kind == ReplayFactKind.Intent) == 1,
@@ -83,7 +83,10 @@ internal static class ReplayReplicaProjectionChecks
         restored.RestoreCheckpoint(checkpoint);
         require(restored.CaptureCheckpoint().Bytes.SequenceEqual(checkpoint.Bytes), "decoder checkpoint roundtrip is exact");
         require(restored.IntentAge(0) == 18 && restored.Occupant(0).Generation == 2
-            && restored.Configuration?.Match.DisablePowerups == true, "decoder restore retains input age, rules and occupant");
+            && restored.Configuration?.Match.DisablePowerups == true
+            && restored.TryGetIntent(0, out var restoredIntent)
+            && restoredIntent.MoveX == 64 && restoredIntent.MoveY == -96,
+            "decoder restore retains input age, rules, occupant and analog movement");
         decoder.Reset();
         require(restored.TryGetPlayer(0, out var restoredPlayer) && restoredPlayer.Health == 99,
             "decoder checkpoint is detached from its source");
