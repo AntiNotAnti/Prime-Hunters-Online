@@ -7850,7 +7850,10 @@ namespace MphRead
         public void QueueMovie(int movieId)
         {
             Sound.Sfx.Load(Scene);
-            GameState.Mode = GameMode.Unknown15; // avoid save prompt from 1P mode
+            // Movie-only playback needs a non-story sentinel so quitting the movie does
+            // not enter the Adventure save path. Mode 15 is now the real Insta-Gib
+            // mode, so use None rather than borrowing a gameplay mode.
+            GameState.Mode = GameMode.None;
             Scene.StartMovie((Movie)movieId, FadeType.FadeOutInBlack, 0, FadeType.FadeOutBlack, 0, afterMovieAction: AfterMovie.EndGame);
         }
 

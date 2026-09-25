@@ -1169,6 +1169,9 @@ namespace MphRead.Entities
             NetShotDiagnostics.Finish(this, ShotAttemptResult.Spawned, shotVec, _gunVec1);
             ModControllerFeedback(EquipWeapon.MinCharge > 0 && EquipInfo.ChargeLevel >= EquipWeapon.MinCharge * 2
                 ? Mods.Input.GamepadFeedback.ChargedShot : Mods.Input.GamepadFeedback.Fire);
+            // A protected player gives up spawn safety as soon as a real shot exists.
+            // Dry fire does not consume the protection window.
+            _spawnInvulnTimer = 0;
             // todo: update license stats
             _timeSinceShot = 0;
             if (IsMainPlayer)

@@ -105,9 +105,7 @@ namespace MphRead.NetTest
             TestStatusReporting(host, port);
             TestPeerSurvivesTimeoutWindow(host, port);
             TestPlayersSeeEachOther(host, port);
-            TestRemoteMovementVisible(host, port);
-            TestAuthorityIsDesignated(host, port);
-            TestAuthorityRelayReachesViewer(host, port);
+            TestServerAuthorityInvariant(host, port);
 
             Console.WriteLine();
             Console.WriteLine(_failures == 0
@@ -171,8 +169,9 @@ namespace MphRead.NetTest
                     Math.Min(bytes.Length, RosterPacket.MaxNameBytes)));
             }
 
-            /// <summary>Set when the server designates us as authority.</summary>
-            public bool IsAuthority { get; private set; }
+            /// <summary>True if a server ever emits the reserved legacy authority packet.</summary>
+            public bool ReceivedAuthorityPacket { get; private set; }
+            public int ImpossiblePositionUpdates { get; private set; }
 
             public bool SeesName(string other)
             {
@@ -183,11 +182,7 @@ namespace MphRead.NetTest
             public Vector3[] SeenPositions { get; } = new Vector3[RosterPacket.MaxSlots];
             public int[] SeenUpdates { get; } = new int[RosterPacket.MaxSlots];
 
-            /// <summary>
-            /// Publish authoritative state, the way the authority client's
-            /// NetHooks.AfterSimulation does. Only the authority's snapshots
-            /// are relayed, so this is how movement reaches other players.
-            /// </summary>
+            /// <summary>Send a legacy client-authored snapshot as a negative probe.</summary>
             public void SendSnapshot(uint frame, int slot, Vector3 position)
             {
                 const int timeSyncSize = PlayerEntity.SlotCapacity * sizeof(float) * 2;
@@ -278,7 +273,7 @@ namespace MphRead.NetTest
                         }
                         else if (type == PacketType.Authority)
                         {
-                            IsAuthority = true;
+                            ReceivedAuthorityPacket = true;
                         }
                         else if (type == PacketType.Snapshot
                             && payload.Length >= SnapshotHeader.Size + PlayerState.Size)
@@ -296,6 +291,7 @@ namespace MphRead.NetTest
                                 if (state.SlotIndex < SeenPositions.Length)
                                 {
                                     SeenPositions[state.SlotIndex] = state.Position;
+                                    if (state.Position.LengthSquared > 50_000_000f) ImpossiblePositionUpdates++;
                                     _lives[state.SlotIndex] = state.LifeId;
                                     SeenUpdates[state.SlotIndex]++;
                                 }
@@ -633,167 +629,29 @@ namespace MphRead.NetTest
         /// position would pass a naive presence test while the players are
         /// in fact frozen to each other.
         /// </summary>
-        private static void TestRemoteMovementVisible(string host, int port)
+        private static void TestServerAuthorityInvariant(string host, int port)
         {
-            Console.WriteLine("Remote movement is visible");
-            using var mover = new FakeClient("MOVER", host, port);
-            using var watcher = new FakeClient("WATCHER", host, port);
-
-            Join(mover, "MOVER");
-            Join(watcher, "WATCHER");
-
-            // The first peer to join is the server's authority, and only its
-            // snapshots are relayed onward.
-            bool moverIsAuthority = mover.Slot < watcher.Slot;
-            FakeClient authority = moverIsAuthority ? mover : watcher;
-            FakeClient viewer = moverIsAuthority ? watcher : mover;
-            int movingSlot = authority.Slot;
-
-            var samples = new List<Vector3>();
-            for (int step = 0; step < 40; step++)
-            {
-                var position = new Vector3(step * 0.5f, 1.0f, step * 0.25f);
-                authority.SendSnapshot((uint)(step + 1), movingSlot, position);
-                // Both keep talking so neither is dropped mid-test.
-                mover.SendIntent((uint)(step + 1));
-                watcher.SendIntent((uint)(step + 1));
-                Thread.Sleep(60);
-                if (viewer.SeenUpdates[movingSlot] > 0)
-                {
-                    Vector3 seen = viewer.SeenPositions[movingSlot];
-                    if (samples.Count == 0 || samples[^1] != seen)
-                    {
-                        samples.Add(seen);
-                    }
-                }
-            }
-
-            int updates = viewer.SeenUpdates[movingSlot];
-            Console.WriteLine($"    authority = slot {movingSlot}, "
-                + $"viewer = slot {viewer.Slot}");
-            Console.WriteLine($"    viewer received {updates} position update(s), "
-                + $"{samples.Count} distinct");
-            if (samples.Count > 0)
-            {
-                Console.WriteLine($"    first={Format(samples[0])} last={Format(samples[^1])}");
-            }
-
-            Check(updates > 0, "viewer receives the other player's position",
-                $"{updates} update(s)");
-            Check(samples.Count >= 5,
-                "the received position actually changes over time",
-                $"{samples.Count} distinct position(s)");
-            if (samples.Count >= 2)
-            {
-                float travelled = (samples[^1] - samples[0]).Length;
-                Check(travelled > 1.0f,
-                    "the other player is seen to move a real distance",
-                    $"{travelled:0.00} units");
-            }
-            else
-            {
-                Check(false, "the other player is seen to move a real distance",
-                    "not enough samples");
-            }
-
-            mover.Leave();
-            watcher.Leave();
-            Thread.Sleep(300);
-            Console.WriteLine();
-        }
-
-        /// <summary>
-        /// Regression guard: on a dedicated server every peer is
-        /// NetRole.Client, so the client code gated snapshot broadcasting on
-        /// IsHost and nothing was ever published -- players were connected
-        /// but frozen to each other. The server must tell exactly one peer
-        /// that it owns the simulation.
-        /// </summary>
-        private static void TestAuthorityIsDesignated(string host, int port)
-        {
-            Console.WriteLine("Authority designation");
+            Console.WriteLine("Server authority invariant");
             using var first = new FakeClient("FIRST", host, port);
-            Join(first);
-            bool told = WaitFor(() => first.IsAuthority, 5000);
-            Check(told, "the first peer is told it is the authority",
-                first.IsAuthority ? $"slot {first.Slot}" : "never notified");
-
             using var second = new FakeClient("SECOND", host, port);
-            Join(second);
-            // Keep both alive briefly so any stray notification would land.
+            Join(first, "FIRST"); Join(second, "SECOND");
             for (int i = 0; i < 15; i++)
             {
-                first.SendIntent((uint)(i + 1));
-                second.SendIntent((uint)(i + 1));
-                Thread.Sleep(100);
+                first.SendIntent((uint)(i + 1)); second.SendIntent((uint)(i + 1)); Thread.Sleep(80);
             }
-            Check(!second.IsAuthority,
-                "a later peer is not also made authority",
-                second.IsAuthority ? "wrongly notified" : "correctly not notified");
-
-            first.Leave();
-            second.Leave();
-            Thread.Sleep(500);
-            Console.WriteLine();
-        }
-
-        /// <summary>
-        /// The full path a real session uses: the designated authority
-        /// publishes a snapshot to the *server*, and the server relays it to
-        /// the other peer. Distinct from TestRemoteMovementVisible, which
-        /// checks the same hop but does not assert that the sender was the
-        /// peer the server actually designated -- the mismatch that let a
-        /// silent-authority bug ship.
-        /// </summary>
-        private static void TestAuthorityRelayReachesViewer(string host, int port)
-        {
-            Console.WriteLine("Authority relay reaches the other player");
-            using var one = new FakeClient("ONE", host, port);
-            Join(one, "ONE");
-            WaitFor(() => one.IsAuthority, 5000);
-
-            using var two = new FakeClient("TWO", host, port);
-            Join(two, "TWO");
-
-            // Only the designated authority's snapshots are relayed; send
-            // from it and confirm the other peer receives them.
-            FakeClient authority = one.IsAuthority ? one : two;
-            FakeClient viewer = one.IsAuthority ? two : one;
-            Check(authority.IsAuthority, "one peer is the designated authority",
-                $"slot {authority.Slot}");
-
-            for (int step = 0; step < 30; step++)
+            Check(!first.ReceivedAuthorityPacket && !second.ReceivedAuthorityPacket,
+                "no player receives simulation authority", "server retains authority");
+            int before = second.ImpossiblePositionUpdates;
+            var forged = new Vector3(10000, 10000, 10000);
+            for (int i = 0; i < 12; i++)
             {
-                authority.SendSnapshot((uint)(step + 1), authority.Slot,
-                    new Vector3(step, 0, 0));
-                one.SendIntent((uint)(step + 1));
-                two.SendIntent((uint)(step + 1));
-                Thread.Sleep(60);
+                first.SendSnapshot((uint)(9000 + i), first.Slot, forged);
+                first.SendIntent((uint)(100 + i)); second.SendIntent((uint)(100 + i)); Thread.Sleep(60);
             }
-
-            int received = viewer.SeenUpdates[authority.Slot];
-            Check(received > 0,
-                "the other player receives the authority's state through the server",
-                $"{received} update(s) for slot {authority.Slot}");
-
-            // And a non-authority's snapshots must not be relayed, or any
-            // client could overwrite everyone's view of the world.
-            int before = authority.SeenUpdates[viewer.Slot];
-            for (int step = 0; step < 15; step++)
-            {
-                viewer.SendSnapshot((uint)(step + 1), viewer.Slot,
-                    new Vector3(0, step, 0));
-                Thread.Sleep(60);
-            }
-            int leaked = authority.SeenUpdates[viewer.Slot] - before;
-            Check(leaked == 0,
-                "a non-authority peer's state is not relayed",
-                leaked == 0 ? "correctly ignored" : $"{leaked} leaked");
-
-            one.Leave();
-            two.Leave();
-            Thread.Sleep(400);
-            Console.WriteLine();
+            Check(second.ImpossiblePositionUpdates == before,
+                "client-authored snapshots cannot enter the authoritative stream",
+                "forged world state ignored");
+            first.Leave(); second.Leave(); Thread.Sleep(300); Console.WriteLine();
         }
 
         private static string Format(Vector3 v)

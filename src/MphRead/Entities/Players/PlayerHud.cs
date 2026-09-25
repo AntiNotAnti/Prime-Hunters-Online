@@ -622,7 +622,7 @@ namespace MphRead.Entities
                 _rulesLengths[i] = (0, 0);
             }
             GameMode mode = _scene.GameState.Mode;
-            if (mode == GameMode.Battle || mode == GameMode.BattleTeams)
+            if (mode == GameMode.Battle || mode == GameMode.BattleTeams || mode == GameMode.InstaGib)
             {
                 _rulesInfo = HudElements.RulesInfo[0];
             }
@@ -1953,7 +1953,7 @@ namespace MphRead.Entities
             }
             string header1 = "";
             string header2 = "";
-            if (mode == GameMode.Battle || mode == GameMode.BattleTeams
+            if (mode == GameMode.Battle || mode == GameMode.BattleTeams || mode == GameMode.InstaGib
                 || mode == GameMode.Nodes || mode == GameMode.NodesTeams)
             {
                 header1 = Strings.GetHudMessage(225); // points
@@ -1966,7 +1966,7 @@ namespace MphRead.Entities
             {
                 header1 = Strings.GetHudMessage(224); // time
             }
-            if (mode == GameMode.Battle || mode == GameMode.BattleTeams
+            if (mode == GameMode.Battle || mode == GameMode.BattleTeams || mode == GameMode.InstaGib
                 || mode == GameMode.Survival || mode == GameMode.SurvivalTeams)
             {
                 header2 = Strings.GetHudMessage(223); // deaths
@@ -1996,7 +1996,7 @@ namespace MphRead.Entities
             string ChooseValue2(int deaths, int kills)
             {
                 if (mode == GameMode.Survival || mode == GameMode.SurvivalTeams
-                    || mode == GameMode.Battle || mode == GameMode.BattleTeams)
+                    || mode == GameMode.Battle || mode == GameMode.BattleTeams || mode == GameMode.InstaGib)
                 {
                     return deaths.ToString();
                 }
@@ -2819,7 +2819,7 @@ namespace MphRead.Entities
             }
             else
             {
-                if (mode == GameMode.Battle || mode == GameMode.BattleTeams)
+                if (mode == GameMode.Battle || mode == GameMode.BattleTeams || mode == GameMode.InstaGib)
                 {
                     DrawHudBattle();
                 }
@@ -2894,7 +2894,7 @@ namespace MphRead.Entities
         private string FormatModeScore(int slot)
         {
             GameMode mode = _scene.GameState.Mode;
-            if (mode == GameMode.Battle || mode == GameMode.BattleTeams || mode == GameMode.Capture || mode == GameMode.Nodes
+            if (mode == GameMode.Battle || mode == GameMode.BattleTeams || mode == GameMode.InstaGib || mode == GameMode.Capture || mode == GameMode.Nodes
                 || mode == GameMode.NodesTeams || mode == GameMode.Bounty || mode == GameMode.BountyTeams)
             {
                 if (_scene.GameState.Teams)

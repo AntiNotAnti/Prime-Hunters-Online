@@ -273,7 +273,7 @@ namespace MphRead.Mods.Network
             MatchFormat format = MatchFormat.Auto, bool requireReady = false,
             bool allowJoinInProgress = true, bool friendlyFire = false,
             bool shadowFreeze = true, bool affinityWeapons = false,
-            bool waitUntilReady = true)
+            bool spawnProtection = true, bool waitUntilReady = true)
         {
             LastError = null;
             OwnerToken = lobby
@@ -374,6 +374,10 @@ namespace MphRead.Mods.Network
             if (affinityWeapons)
             {
                 start.ArgumentList.Add("-affinityweapons");
+            }
+            if (!spawnProtection)
+            {
+                start.ArgumentList.Add("-nospawnprotection");
             }
             start.ArgumentList.Add("-port");
             start.ArgumentList.Add(port.ToString(CultureInfo.InvariantCulture));

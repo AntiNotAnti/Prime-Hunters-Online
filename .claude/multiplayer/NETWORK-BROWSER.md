@@ -120,7 +120,7 @@ both run the same code.
 | `ServerStatusPacket.Flags` bit 0 | "I will open new games". Appended past `Size`, so an older server is read exactly as before and an older launcher never looks — no protocol bump |
 | Silence = **no** here | the opposite of the directory's flag, and right both times: hosting on a server is off unless asked for, so not saying and saying no are the same answer; hosting on a directory is on unless turned off, so not saying means "too old to ask" |
 | `NetMasterClient.Merge` | one row per machine rather than one per port; a host-capable endpoint wins when the same machine appears through multiple services |
-| Hosted matches | each gets an isolated `HostedServerProcess` with `RunsTheMatch=true`; no normal player is promoted to authority |
+| Hosted matches | each gets an isolated `HostedServerProcess`; the child always owns simulation authority and no player can be promoted |
 | `Hosts.Count` counts toward auto-update | hosted child processes are active sessions; the parent must not update/restart while one is in use |
 
 Verified 2026-09-14 on loopback: a `-server ... -hostports 28900-28903` was

@@ -450,6 +450,7 @@ namespace MphRead.Entities
         private int _lostOctolithEnemyIndex = -1;
         private Vector3 _lostOctolithDrawPos;
         private float _lostOctolithSpeed;
+        private const ushort MatchSpawnProtectionFrames = 3 * 60;
         private ushort _damageInvulnTimer = 0;
         private ushort _spawnInvulnTimer = 0;
         private ushort _camSwitchTimer = 0;
@@ -783,14 +784,27 @@ namespace MphRead.Entities
             _availableCharges.ClearAll();
             InitializeWeapon();
             // todo: much of this is the same as what's done in init, so we could use a common method
-            EquipInfo.InfiniteAmmo = false;
+            bool instaGib = _scene.GameState.Mode == GameMode.InstaGib;
+            EquipInfo.InfiniteAmmo = instaGib;
             EquipInfo.ChargeLevel = 0;
             EquipInfo.SmokeLevel = 0;
             _doubleDmgTimer = 0;
             _cloakTimer = 0;
             _deathaltTimer = 0;
-            PreviousWeapon = BeamType.PowerBeam;
-            TryEquipWeapon(BeamType.PowerBeam, silent: true);
+            if (instaGib)
+            {
+                _availableWeapons.ClearAll();
+                _availableCharges.ClearAll();
+                _availableWeapons[BeamType.Imperialist] = true;
+                _availableCharges[BeamType.Imperialist] = true;
+                _weaponSlots[0] = BeamType.Imperialist;
+                _weaponSlots[1] = BeamType.None;
+                _weaponSlots[2] = BeamType.None;
+                _ammo[UA] = Int32.MaxValue;
+                _ammo[Missiles] = 0;
+            }
+            PreviousWeapon = instaGib ? BeamType.Imperialist : BeamType.PowerBeam;
+            TryEquipWeapon(PreviousWeapon, silent: true);
             Metadata.LoadEffectiveness(0x2AAAA, BeamEffectiveness);
             _frozenTimer = 0;
             _timeSinceFrozen = 255;
@@ -922,6 +936,11 @@ namespace MphRead.Entities
             if (IsBot && _scene.GameState.SinglePlayer)
             {
                 _spawnInvulnTimer = 0;
+            }
+            else if (_scene.GameState.Multiplayer)
+            {
+                _spawnInvulnTimer = _scene.GameState.SpawnProtection
+                    ? MatchSpawnProtectionFrames : (ushort)0;
             }
             else
             {
@@ -1392,6 +1411,11 @@ namespace MphRead.Entities
             {
                 return false;
             }
+            if (_scene.GameState.Mode == GameMode.InstaGib
+                && LoadFlags.TestFlag(LoadFlags.Spawned) && beam != BeamType.Imperialist)
+            {
+                return false;
+            }
             WeaponInfo info = _scene.WeaponRules[(int)beam];
             byte ammoType = info.AmmoType;
             if (debug && Cheats.FreeWeaponSelect)
@@ -1721,6 +1745,24 @@ namespace MphRead.Entities
             {
                 return;
             }
+            bool instaGibHit = false;
+            if (_scene.GameState.Mode == GameMode.InstaGib)
+            {
+                BeamType sourceBeam = source?.Type == EntityType.BeamProjectile
+                    ? ((BeamProjectileEntity)source).Beam
+                    : Mods.Network.NetDamage.ApplyingClaim
+                        ? Mods.Network.NetDamage.ClaimedBeam
+                        : Mods.Network.NetDamage.Replaying
+                            ? Mods.Network.NetDamage.ReplayBeam
+                            : BeamType.None;
+                bool playerCombatSource = source != null
+                    && source.Type is EntityType.BeamProjectile or EntityType.Player or EntityType.Bomb;
+                instaGibHit = playerCombatSource && sourceBeam == BeamType.Imperialist;
+                if (playerCombatSource && !instaGibHit)
+                {
+                    return;
+                }
+            }
             if (IsMainPlayer && _scene.CameraSequences.Current?.BlockInput == true)
             {
                 if (!flags.TestFlag(DamageFlags.Death))
@@ -1877,6 +1919,13 @@ namespace MphRead.Entities
             if (IsBot && source != null)
             {
                 AiData.OnTakeDamage((int)damage, source, attacker);
+            }
+            // Hunter-specific damage routing above may split or clamp normal
+            // damage. Insta-Gib deliberately overrides that final amount so
+            // every accepted Imperialist hit is lethal.
+            if (instaGibHit && damage > 0 && !ignoreDamage)
+            {
+                damage = (uint)_health;
             }
             // todo?: something for wifi
             // else...
@@ -2303,7 +2352,7 @@ namespace MphRead.Entities
                         if (attacker == this)
                         {
                             _scene.GameState.Suicides[SlotIndex]++;
-                            if (_scene.GameState.Mode == GameMode.Battle || _scene.GameState.Mode == GameMode.BattleTeams)
+                            if (_scene.GameState.Mode == GameMode.Battle || _scene.GameState.Mode == GameMode.BattleTeams || _scene.GameState.Mode == GameMode.InstaGib)
                             {
                                 _scene.GameState.Points[SlotIndex]--;
                             }
@@ -2387,7 +2436,7 @@ namespace MphRead.Entities
                                         QueueHudMessage(128, 70, 140, 90 / 30f, 2, message.Replace("%s", nickname));
                                     }
                                 }
-                                else if (_scene.GameState.Mode == GameMode.Battle || _scene.GameState.Mode == GameMode.BattleTeams)
+                                else if (_scene.GameState.Mode == GameMode.Battle || _scene.GameState.Mode == GameMode.BattleTeams || _scene.GameState.Mode == GameMode.InstaGib)
                                 {
                                     if (_scene.GameState.Points[attacker.SlotIndex] < 99999)
                                     {
@@ -2409,7 +2458,7 @@ namespace MphRead.Entities
                     else // no attacker
                     {
                         _scene.GameState.Suicides[SlotIndex]++;
-                        if (_scene.GameState.Mode == GameMode.Battle || _scene.GameState.Mode == GameMode.BattleTeams)
+                        if (_scene.GameState.Mode == GameMode.Battle || _scene.GameState.Mode == GameMode.BattleTeams || _scene.GameState.Mode == GameMode.InstaGib)
                         {
                             _scene.GameState.Points[SlotIndex]--;
                         }

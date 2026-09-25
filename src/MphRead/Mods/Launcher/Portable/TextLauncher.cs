@@ -712,7 +712,7 @@ namespace MphRead.Mods.Launcher
             // too -- so this is the list rather than the enum.
             GameMode[] modes =
             {
-                GameMode.Battle, GameMode.BattleTeams, GameMode.Survival,
+                GameMode.Battle, GameMode.InstaGib, GameMode.BattleTeams, GameMode.Survival,
                 GameMode.SurvivalTeams, GameMode.Capture, GameMode.Bounty,
                 GameMode.BountyTeams, GameMode.Defender, GameMode.DefenderTeams,
                 GameMode.Nodes, GameMode.NodesTeams, GameMode.PrimeHunter

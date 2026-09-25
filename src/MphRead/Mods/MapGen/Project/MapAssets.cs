@@ -100,7 +100,7 @@ namespace MphRead.Mods.MapGen
             {
                 if(!Enum.TryParse<GameMode>(mode,true,out var parsed)||!Enum.IsDefined(parsed)){r.Error("FP-MAP-022","Unknown game mode: "+mode);continue;}
                 if(mode.Contains("Teams",StringComparison.OrdinalIgnoreCase)&&(!d.Spawns.Any(s=>s?.Team==0)||!d.Spawns.Any(s=>s?.Team==1)))r.Error("FP-MAP-022","Team modes require spawns for both teams.");
-                if(parsed is not(GameMode.Battle or GameMode.BattleTeams or GameMode.Survival or GameMode.SurvivalTeams or GameMode.Bounty or GameMode.BountyTeams))
+                if(parsed is not(GameMode.Battle or GameMode.BattleTeams or GameMode.InstaGib or GameMode.Survival or GameMode.SurvivalTeams or GameMode.Bounty or GameMode.BountyTeams))
                     r.Error("FP-MAP-022",$"{mode} requires objective entities that this source does not supply.");
             }
         }

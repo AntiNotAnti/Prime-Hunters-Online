@@ -1036,6 +1036,11 @@ namespace MphRead.Mods.Launcher.Gui
                 Heading(page, "Touch gestures");
                 BuildAltSwipeSensitivity(page);
             }
+            else
+            {
+                Heading(page, "Alt-form gestures");
+                BuildAltSwipeSensitivity(page);
+            }
 
             var advanced = new StackPanel { Spacing = 2, IsVisible = false };
             _scrollAllWeapons = Add(advanced, new ToggleRow("Wheel cycles every weapon",
@@ -1162,11 +1167,6 @@ namespace MphRead.Mods.Launcher.Gui
         {
             Heading(page, "Pen tablet");
             _penTablet = Add(page, new ToggleRow("Stylus mode", Mods.Input.PointerInput.StylusMode));
-            if (!OperatingSystem.IsAndroid())
-            {
-                Heading(page, "Alt-form gestures");
-                BuildAltSwipeSensitivity(page);
-            }
             BuildStylusZone(page);
             _penTablet.Changed += (_, _) => ShowStylusRows();
             ShowStylusRows();
@@ -1358,9 +1358,10 @@ namespace MphRead.Mods.Launcher.Gui
                 value => $"{(value / 100f).ToString("0.00", CultureInfo.InvariantCulture)}x",
                 min: (int)(InputSettings.MinAltSwipeSensitivity * 100),
                 max: (int)(InputSettings.MaxAltSwipeSensitivity * 100), keyStep: 5));
-            Explain(page, "Controls how quickly touch/pen alt-form movement reaches full deflection. "
-                + "Higher values need less travel. The fast flick threshold for Samus boost and "
-                + "Spire attack is unchanged.");
+            Explain(page, "Controls alt-form swipe response. Higher values need less travel. "
+                + "Touch/pen rolling movement reaches full deflection sooner, while desktop "
+                + "mouse/pen Samus boost and Spire attack flicks trigger with less travel. "
+                + "Normal mouse aim sensitivity is unchanged.");
         }
 
         // Direct hundredths of the sensitivity itself, not an index over a

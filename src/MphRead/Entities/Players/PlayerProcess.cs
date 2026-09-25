@@ -1503,6 +1503,13 @@ namespace MphRead.Entities
 
         private void PickUpWeapon(ItemType itemType)
         {
+            // Insta-Gib owns the loadout for the whole life. Arena weapon
+            // pickups may still be collected/removed normally, but they never
+            // add a selectable weapon or disturb the Imperialist-only slots.
+            if (_scene.GameState.Mode == GameMode.InstaGib)
+            {
+                return;
+            }
             BeamType weapon;
             if (itemType == ItemType.AffinityWeapon)
             {

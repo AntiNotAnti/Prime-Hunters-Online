@@ -71,6 +71,10 @@ namespace MphRead.Mods.Network
             // switched the glitch off on its own would still be frozen through
             // the floor by a server that had not.
             GameState.ShadowFreeze = state.ShadowFreeze;
+            // Spawn protection is also carried in MatchState so a reordered or
+            // late SessionState cannot leave a client on the wrong rule for
+            // the first life of a round.
+            GameState.SpawnProtection = state.SpawnProtection;
             // And whether weapon pickups are the picking hunter's affinity
             // variant, which is a different row of the damage table -- an
             // affinity Battlehammer deals 18 where the plain one deals 12. The

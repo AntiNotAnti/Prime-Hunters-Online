@@ -204,13 +204,14 @@ namespace MphRead.Mods.Network
             { world.EndCause = previous.EndCause; world.EndingKill = previous.EndingKill; return; }
             world.EndCause = ReplayEndCause.Other;
             if (scene.GameState.ForceEndGame) return;
-            bool combat = scene.GameState.Mode is GameMode.Battle or GameMode.BattleTeams or GameMode.Survival or GameMode.SurvivalTeams;
+            bool combat = scene.GameState.Mode is GameMode.Battle or GameMode.BattleTeams or GameMode.InstaGib
+                or GameMode.Survival or GameMode.SurvivalTeams;
             if (combat && _authorityKill is { } kill && kill.MatchId == world.MatchId && kill.AuthorityEpoch == world.Epoch
                 && world.Tick >= kill.ServerTick && world.Tick - kill.ServerTick <= 1
                 && (!scene.GameState.Teams || scene.Players.Items[kill.KillerSlot].TeamIndex != scene.Players.Items[kill.VictimSlot].TeamIndex)
                 && (scene.GameState.Mode is GameMode.Survival or GameMode.SurvivalTeams
                     && scene.GameState.TeamDeaths[scene.Players.Items[kill.VictimSlot].TeamIndex] > scene.GameState.PointGoal
-                    || scene.GameState.Mode is GameMode.Battle or GameMode.BattleTeams
+                    || scene.GameState.Mode is GameMode.Battle or GameMode.BattleTeams or GameMode.InstaGib
                     && scene.GameState.TeamPoints[scene.Players.Items[kill.KillerSlot].TeamIndex] >= scene.GameState.PointGoal))
             { world.EndCause = ReplayEndCause.Kill; world.EndingKill = kill; }
             else if (LatestAuthorityWorld is { Phase: MatchState.InProgress, MatchTime: > 0 and <= 0.12f })

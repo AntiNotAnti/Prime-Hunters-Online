@@ -43,6 +43,7 @@ namespace MphRead
         public static bool OctolithReset { get => Current.OctolithReset; set => Current.OctolithReset = value; }
         public static bool RadarPlayers { get => Current.RadarPlayers; set => Current.RadarPlayers = value; }
         public static bool AffinityWeapons { get => Current.AffinityWeapons; set => Current.AffinityWeapons = value; }
+        public static bool SpawnProtection { get => Current.SpawnProtection; set => Current.SpawnProtection = value; }
         public static bool ShadowFreeze { get => Current.ShadowFreeze; set => Current.ShadowFreeze = value; }
         public static float MatchTime { get => Current.MatchTime; set => Current.MatchTime = value; }
         public static bool ForceEndGame { get => Current.ForceEndGame; set => Current.ForceEndGame = value; }
