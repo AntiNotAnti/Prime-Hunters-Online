@@ -2424,21 +2424,23 @@ namespace MphRead.Entities
                                             firstBlood);
                                     if (Mods.Launcher.LauncherPrefs.CombatNotificationsVisible)
                                     {
+                                        var medals = new List<string>(3);
                                         if (awards.FirstBlood is Mods.Sound.CombatFeedbackCue firstBloodCue)
                                         {
-                                            attacker.QueueHudMessage(128, 72, 2.25f, 2,
-                                                Mods.Sound.CombatFeedbackAudio.Label(firstBloodCue).ToUpperInvariant());
+                                            medals.Add(Mods.Sound.CombatFeedbackAudio.Label(
+                                                firstBloodCue).ToUpperInvariant());
                                         }
                                         if (awards.MultiKill is Mods.Sound.CombatFeedbackCue multiKill)
                                         {
-                                            attacker.QueueHudMessage(128, 72, 2.25f, 2,
-                                                Mods.Sound.CombatFeedbackAudio.Label(multiKill).ToUpperInvariant());
+                                            medals.Add(Mods.Sound.CombatFeedbackAudio.Label(
+                                                multiKill).ToUpperInvariant());
                                         }
                                         if (awards.LifeStreak is Mods.Sound.CombatFeedbackCue lifeStreak)
                                         {
-                                            attacker.QueueHudMessage(128, 72, 2.25f, 2,
-                                                Mods.Sound.CombatFeedbackAudio.Label(lifeStreak).ToUpperInvariant());
+                                            medals.Add(Mods.Sound.CombatFeedbackAudio.Label(
+                                                lifeStreak).ToUpperInvariant());
                                         }
+                                        attacker.QueueCombatNotifications(medals);
                                     }
                                 }
                                 Mods.Network.CareerMatchStats.NoteKill(attacker);
@@ -2456,18 +2458,27 @@ namespace MphRead.Entities
                                         _soundSource.QueueStream(
                                             VoiceId.VOICE_CONSECUTIVE_KILLS, delay: 1);
                                     }
-                                    string message;
-                                    if (attacker.IsMainPlayer)
+                                    // The Project Prime Killing Spree medal replaces the
+                                    // local vanilla "5 in a row" text when visual combat
+                                    // notifications are enabled. Keeping both was redundant and
+                                    // put two centered messages only a few pixels apart.
+                                    bool showNativeSpreeMessage = !attacker.IsMainPlayer
+                                        || !Mods.Launcher.LauncherPrefs.CombatNotificationsVisible;
+                                    if (showNativeSpreeMessage)
                                     {
-                                        message = Strings.GetHudMessage(254); // YOU KILLED 5 IN A ROW!
+                                        string message;
+                                        if (attacker.IsMainPlayer)
+                                        {
+                                            message = Strings.GetHudMessage(254); // YOU KILLED 5 IN A ROW!
+                                        }
+                                        else
+                                        {
+                                            string nickname = _scene.GameState.Nicknames[attacker.SlotIndex];
+                                            message = Strings.GetHudMessage(255); // %s KILLED 5 IN A ROW!
+                                            message = message.Replace("%s", nickname);
+                                        }
+                                        QueueHudMessage(128, 70, 140, 90 / 30f, 2, message);
                                     }
-                                    else
-                                    {
-                                        string nickname = _scene.GameState.Nicknames[attacker.SlotIndex];
-                                        message = Strings.GetHudMessage(255); // %s KILLED 5 IN A ROW!
-                                        message = message.Replace("%s", nickname);
-                                    }
-                                    QueueHudMessage(128, 70, 140, 90 / 30f, 2, message);
                                 }
                                 if (_scene.GameState.Mode == GameMode.PrimeHunter)
                                 {
