@@ -301,6 +301,8 @@ namespace MphRead.Entities
                 };
                 _controllerAssist.PreviousOutput = new(x, y);
             }
+            GamepadInput.SetAimPrecisionContext(
+                AimAssistDebug.UnassistedArm ? 0 : result.FilterRelease);
             AimAssistDebug.Result = result; AimAssistDebug.Target = chosen;
             AimAssistDebug.Raw = new(x, y); AimAssistDebug.Velocity = _controllerAssist.AngularVelocity;
             var observation = result;
