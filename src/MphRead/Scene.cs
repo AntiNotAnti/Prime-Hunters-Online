@@ -20,6 +20,7 @@ namespace MphRead
         internal Mods.Network.ContinuousWeaponPhase WeaponPhase => Services.IsReplica ? ContinuousPhase : Mods.Network.NetSession.ContinuousPhase;
         public IReadOnlyList<WeaponInfo> WeaponRules => GameState.Multiplayer ? Weapons.WeaponsMP : Weapons.Weapons1P;
         internal IReadOnlyList<PlayerEntity.HudMessage> HudMessages { get; } = PlayerEntity.CreateHudMessages();
+        internal Mods.Combat.KillFeed KillFeed { get; } = new();
         public ISceneServices Services { get; private set; }
         internal bool IsReplayLab { get; private set; }
         internal float ReplayRenderAlpha { get; set; } = 1;
