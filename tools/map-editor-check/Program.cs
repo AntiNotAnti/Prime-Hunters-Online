@@ -358,6 +358,25 @@ try
         texture.Write((ushort)0);texture.Write((ushort)8);texture.Write((ushort)8);texture.Write((ushort)1);texture.Write((ushort)0);
         texture.Write((ushort)32767);texture.Write(new byte[64]);
     }
+    // Editor analysis keeps compiled geometry visible when a runtime
+    // post-compile budget is exceeded, while runtime publication stays blocked.
+    var oversizedDefinition=new MapDefinition{Name="OVERSIZED_PREVIEW_CHECK",ScaleFactor=7};
+    oversizedDefinition.Materials.Add(new(){TexScale=1});
+    oversizedDefinition.Geometry.Add(new MapBox{Transform=new(){Position=new[]{0f,0,0},Scale=new[]{1024f,1,1024f}}});
+    oversizedDefinition.Spawns.Add(new(){Position=new[]{0f,2,0}});
+    var oversizedCompilation=MapCompiler.Compile(oversizedDefinition);
+    Check(oversizedCompilation.Map!=null&&!oversizedCompilation.Validation.IsValid
+        && oversizedCompilation.Validation.Diagnostics.Any(d=>d.Message.Contains("Collision references")),
+        "oversized map retains editor geometry with runtime budget errors");
+
+    var oversizedScheduler=new MapBuildScheduler(Path.Combine(root,"oversized-cache"));
+    var oversizedAnalysis=await oversizedScheduler.AnalyzeAsync(MapBuildSnapshot.Capture(oversizedDefinition));
+    Check(!oversizedAnalysis.Succeeded&&oversizedAnalysis.Faces.Length>0,
+        "oversized analysis exposes preview faces");
+    var oversizedBuild=await oversizedScheduler.BuildAsync(MapBuildSnapshot.Capture(oversizedDefinition));
+    Check(!oversizedBuild.Succeeded&&oversizedBuild.Outputs==null,
+        "oversized runtime build remains blocked");
+
     var realDefinition=new MapDefinition{Name="REAL_BUILD_CHECK",BaseDirectory=root};
     realDefinition.Materials.Add(new(){Texture="test.tex"});realDefinition.Assets.Add(new(){Path="test.tex"});
     realDefinition.Geometry.Add(new MapBox{Transform=new(){Position=new[]{0f,-1,0},Scale=new[]{8f,1,8}}});
