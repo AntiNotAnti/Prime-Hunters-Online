@@ -2408,8 +2408,22 @@ namespace MphRead.Entities
                                 }
                                 if (attacker == _scene.Players.Main)
                                 {
-                                    Mods.Sound.CombatFeedbackAudio.OnConfirmedKill(_scene,
-                                        _scene.GameState.KillStreak[attacker.SlotIndex]);
+                                    Mods.Sound.CombatFeedbackAwards awards =
+                                        Mods.Sound.CombatFeedbackAudio.OnConfirmedKill(_scene,
+                                            _scene.GameState.KillStreak[attacker.SlotIndex]);
+                                    if (Mods.Launcher.LauncherPrefs.CombatNotificationsVisible)
+                                    {
+                                        if (awards.MultiKill is Mods.Sound.CombatFeedbackCue multiKill)
+                                        {
+                                            attacker.QueueHudMessage(128, 72, 2.25f, 2,
+                                                Mods.Sound.CombatFeedbackAudio.Label(multiKill).ToUpperInvariant());
+                                        }
+                                        if (awards.LifeStreak is Mods.Sound.CombatFeedbackCue lifeStreak)
+                                        {
+                                            attacker.QueueHudMessage(128, 72, 2.25f, 2,
+                                                Mods.Sound.CombatFeedbackAudio.Label(lifeStreak).ToUpperInvariant());
+                                        }
+                                    }
                                 }
                                 Mods.Network.CareerMatchStats.NoteKill(attacker);
                                 if (_scene.GameState.KillStreak[attacker.SlotIndex] == 5)
