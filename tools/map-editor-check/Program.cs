@@ -252,6 +252,11 @@ try
         try { MapTextureBake.BakeImage(Array.Empty<byte>(), cancelled.Token); }
         catch (OperationCanceledException) { stopped = true; }
         Check(stopped, "cancelled texture bake never decodes");
+        var grayTga = new byte[18 + 32 * 32];
+        grayTga[2] = 3; // uncompressed grayscale
+        grayTga[12] = 32; grayTga[14] = 32; grayTga[16] = 8; grayTga[17] = 0x20;
+        for (int i = 18; i < grayTga.Length; i++) grayTga[i] = (byte)(i & 255);
+        Check(MapTextureBake.BakeImage(grayTga).Length > 0, "grayscale Q3 texture bake");
         stopped = false;
         try { Q3Bsp.Load("missing.bsp", null, cancelled.Token); }
         catch (OperationCanceledException) { stopped = true; }
