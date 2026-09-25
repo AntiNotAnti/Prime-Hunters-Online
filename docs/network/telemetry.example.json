@@ -1,0 +1,15 @@
+{
+  "enabled": true,
+  "detail": "Aggregate",
+  "localRaw": true,
+  "upload": false,
+  "endpoint": "",
+  "directory": "telemetry",
+  "retentionDays": 14,
+  "queueCapacity": 16384,
+  "maximumRawBytes": 536870912,
+  "maximumPendingUploads": 128,
+  "maximumUploadBytes": 16777216,
+  "uploadTimeoutSeconds": 5,
+  "tokenEnvironmentVariable": "PRIME_TELEMETRY_TOKEN"
+}

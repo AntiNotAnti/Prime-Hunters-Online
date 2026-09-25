@@ -26,12 +26,17 @@ namespace MphRead.Mods.Network
     /// </summary>
     public sealed partial class DedicatedServer
     {
+        // Admission IDs are retained only in memory for the current match, never serialized.
+        private readonly uint[] _studyAdmissions = new uint[32];
+        private int _studyAdmissionHead;
         private sealed class Peer
         {
             public readonly NetPeerTelemetry Telemetry = new();
             public IPEndPoint EndPoint = null!;
             public int SlotIndex = -1;
             public double LastSeen;
+            public double JoinedAt, LoadStartedAt, FirstBootstrapAt;
+            public bool LateJoin, Rejoining, AdmissionReady;
             public uint LastIntentFrame;
             public bool HasIntentFrame;
             public string Name = "";
@@ -379,6 +384,7 @@ namespace MphRead.Mods.Network
 
         public void Run(CancellationToken cancel = default)
         {
+            Telemetry.ProductionTelemetry.Configure(Telemetry.NetTelemetryConfig.Load());
             _transport = new NetTransport(_port);
             _running = true;
             Log($"listening on UDP {_transport.LocalPort}, up to {_maxPlayers} players");
@@ -454,6 +460,25 @@ namespace MphRead.Mods.Network
                     if (now - lastStateBroadcast >= 1.0)
                     {
                         lastStateBroadcast = now;
+                        if (Telemetry.ProductionTelemetry.Enabled)
+                        {
+                            var sample = _transport.Telemetry.Capture();
+                            foreach (var peer in _peers)
+                            {
+                                var timing = LagCompensationPolicy.Timing(peer.SlotIndex);
+                                var connection = _transport.ConnectionStats(peer.EndPoint);
+                                var reliable = _transport.ReliableStats(peer.EndPoint);
+                                Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.ConnectionDetail, NetSession.NetFrame,
+                                    Player: (byte)peer.SlotIndex, Generation: _slotGenerations[peer.SlotIndex],
+                                    A: connection?.RttJitterMilliseconds ?? -1, B: reliable?.Retransmissions ?? 0,
+                                    C: connection?.EstimatedLost ?? 0, D: connection?.Sent ?? 0, E: connection?.Acknowledged ?? 0,
+                                    F: connection?.Duplicates ?? 0, G: connection?.Reordered ?? 0, H: connection?.TooOld ?? 0));
+                                Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.Connection, NetSession.NetFrame,
+                                    Player: (byte)peer.SlotIndex, A: timing.RttMilliseconds ?? -1, B: timing.MinimumRecentRttMilliseconds ?? -1,
+                                    C: timing.JitterMilliseconds ?? -1, D: sample.PacketsReceived, E: sample.PacketsSent,
+                                    F: sample.QueueDrops, G: sample.QueueCurrent, H: sample.QueueHighWater));
+                            }
+                        }
                         if (NetDiagnostics.Enabled)
                         {
                             var stats = _transport.Telemetry.Capture();
@@ -612,6 +637,7 @@ namespace MphRead.Mods.Network
         /// </summary>
         private void Shutdown(ushort listenPort)
         {
+            Telemetry.ProductionTelemetry.Shutdown();
             Log("shutting down");
             Hosts.StopAll("the server is shutting down");
             _running = false;
@@ -638,7 +664,7 @@ namespace MphRead.Mods.Network
             _sim?.Stop();
             _sim = null;
             Mods.RoomPrewarm.Clear();
-            NetHitClaims.VerdictSink = null;
+            NetHitClaims.CombatAckSink = null;
         }
 
         /// <summary>
@@ -789,6 +815,9 @@ namespace MphRead.Mods.Network
                 throw new ProgramException($"the server could not load \"{entry.RoomKey}\"");
             }
             _sim = sim;
+            Telemetry.ProductionTelemetry.Begin(entry.RoomKey, entry.Mode.ToString(), _maxPlayers);
+            Array.Clear(_studyAdmissions); _studyAdmissionHead = 0;
+            foreach (var participant in _peers) _studyAdmissions[_studyAdmissionHead++ % _studyAdmissions.Length] = participant.ClientId;
             NetSession.ReplayWorldSink = payload =>
             {
                 foreach (var peer in _peers) _transport?.Send(peer.EndPoint, PacketType.ReplayWorld, payload);
@@ -798,7 +827,7 @@ namespace MphRead.Mods.Network
             // This server arbitrates its clients' hit claims for as long as it
             // is running the match, so it needs a way to answer them.
             // NetHitClaims.
-            NetHitClaims.VerdictSink = SendVerdicts;
+            NetHitClaims.CombatAckSink = SendVerdicts;
             SyncSimulationState(_now);
         }
 
@@ -907,9 +936,16 @@ namespace MphRead.Mods.Network
 
         private void Handle(ReceivedPacket packet, double now)
         {
+            if (packet.Type is PacketType.Hello or PacketType.MatchLoaded or PacketType.WorldReady)
+            {
+                var samplePeer = Find(packet.Sender);
+                Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.Lifecycle, NetSession.NetFrame,
+                    Player: (byte)(samplePeer?.SlotIndex ?? 255), Result: (int)packet.Type));
+            }
             switch (packet.Type)
             {
                 case PacketType.LobbyCommand: HandleLobbyCommand(packet, now); break;
+                case PacketType.CombatStudy: ReceiveCombatStudy(packet); break;
                 case PacketType.PeerTiming:
                     Peer? timingPeer = Find(packet.Sender);
                     if (timingPeer != null && PeerTimingPacket.TryRead(packet.Payload, out var timing)
@@ -997,7 +1033,7 @@ namespace MphRead.Mods.Network
         /// Answer one client's claims. Hung off
         /// <see cref="NetHitClaims.VerdictSink"/> when the simulation starts.
         /// </summary>
-        private void SendVerdicts(int slot, ReadOnlySpan<(ushort Id, byte Result)> verdicts)
+        private void SendVerdicts(int slot, ReadOnlySpan<CombatAckEntry> verdicts)
         {
             if (verdicts.Length == 0 || _transport == null)
             {
@@ -1011,7 +1047,7 @@ namespace MphRead.Mods.Network
                 }
                 HitVerdictPacket.Write(_scratch, verdicts, NetSession.CurrentMatchId, NetSession.AuthorityEpoch,
                     NetPlayerLifecycle.Generation(slot), NetPlayerLifecycle.Get(slot));
-                _transport.Send(_peers[i].EndPoint, PacketType.HitVerdict,
+                _transport.Send(_peers[i].EndPoint, PacketType.CombatAck,
                     _scratch.AsSpan(0, HitVerdictPacket.HeaderSize + verdicts.Length * HitVerdictPacket.EntrySize));
                 return;
             }
@@ -1862,7 +1898,10 @@ namespace MphRead.Mods.Network
                 if (LobbyRules.TeamCount(CurrentDefinition) > 0 && team < 0)
                 { SendRefusal(packet.Sender, RefusedPacket.ReasonFull); return; }
                 _slotGenerations[slot] = NetLifecycleTracker.Next(_slotGenerations[slot]);
-                peer = new Peer { EndPoint = packet.Sender, SlotIndex = slot, ClientId = clientId, TeamIndex = team };
+                bool rejoining = clientId != 0 && Array.IndexOf(_studyAdmissions, clientId) >= 0;
+                _studyAdmissions[_studyAdmissionHead++ % _studyAdmissions.Length] = clientId;
+                peer = new Peer { EndPoint = packet.Sender, SlotIndex = slot, ClientId = clientId, TeamIndex = team,
+                    JoinedAt = now, LoadStartedAt = now, FirstBootstrapAt = -1, LateJoin = _phase == SessionPhase.InMatch, Rejoining = rejoining };
                 _peers.Add(peer);
                 CareerPeerJoined(peer);
                 EverOccupied = true;
@@ -1880,6 +1919,8 @@ namespace MphRead.Mods.Network
             BinaryPrimitives.WriteUInt64LittleEndian(_scratch.AsSpan(7), _authorityEpoch);
             BinaryPrimitives.WriteUInt16LittleEndian(_scratch.AsSpan(15), _slotGenerations[peer.SlotIndex]);
             _transport?.Send(peer.EndPoint, PacketType.Welcome, _scratch.AsSpan(0, 17));
+            Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.Lifecycle, NetSession.NetFrame,
+                Player: (byte)peer.SlotIndex, Result: (int)PacketType.Welcome));
             // Immediately follow with the running match, so a client that
             // arrives mid-round loads the right map and adopts the server's
             // clock rather than starting a fresh one of its own.
@@ -2077,7 +2118,7 @@ namespace MphRead.Mods.Network
             {
                 return;
             }
-            if (packet.Payload.Length < IntentPacket.Size || packet.Payload.Length > IntentPacket.FullSize) return;
+            if (packet.Payload.Length < IntentPacket.FullSize || packet.Payload.Length > IntentPacket.FullSize) return;
             peer.LastSeen = now;
             if (packet.Payload.Length >= IntentPacket.Size)
             {
@@ -2163,6 +2204,8 @@ namespace MphRead.Mods.Network
 
         private void Remove(Peer peer, string reason)
         {
+            Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.Lifecycle, NetSession.NetFrame,
+                Player: (byte)peer.SlotIndex, Generation: _slotGenerations[peer.SlotIndex], Result: 202));
             CareerPeerLeaving(peer);
             _transport?.RetireConnection(peer.EndPoint);
             _peers.Remove(peer);

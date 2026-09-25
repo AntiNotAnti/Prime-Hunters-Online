@@ -263,6 +263,9 @@ namespace MphRead.Mods.Network
 
         private static void ContinuousPhaseAgreesAcrossPeers()
         {
+            var dedicatedPhase = new ContinuousWeaponPhase(1);
+            Check(dedicatedPhase.Resolve(0, 1, true, false, 9000, true, 100, 1, out _, receivedBeforeStep: true) == 100,
+                "dedicated input arriving before step retains source phase");
             // Independent golden phases preserve the original 30 Hz fractional
             // damage cadence, including the exact-boundary rounding difference.
             foreach (var golden in new[] {

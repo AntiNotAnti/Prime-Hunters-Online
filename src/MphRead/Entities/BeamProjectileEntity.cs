@@ -87,7 +87,8 @@ namespace MphRead.Entities
         internal void ValidateHomingTarget()
         {
             if (_targetLifeBound && Target is PlayerEntity player
-                && !NetPlayerLifecycle.Matches(player.SlotIndex, _targetGeneration, _targetLife)) Target = null;
+                && (!NetPlayerLifecycle.Matches(player.SlotIndex, _targetGeneration, _targetLife)
+                    || Beam == BeamType.ShockCoil && (!player.ModIsInPlay || player.Flags2.TestFlag(PlayerFlags2.Spectating)))) Target = null;
         }
         public EquipInfo? Equip { get; set; }
 
@@ -460,6 +461,7 @@ namespace MphRead.Entities
                     NetUnlagged.KandenHistoricalSegmentChecks++;
                     if (hitPlayer) NetUnlagged.KandenHistoricalSegmentHits++;
                 }
+                NetContinuousTargetDiagnostics.CollisionResult(this, player, hitPlayer);
                 if (hitPlayer && playerRes.Distance < minDist)
                 {
                     if (!_scene.Services.IsReplica) NetDamage.NotePlayerOverlap(Owner, player);
@@ -516,6 +518,7 @@ namespace MphRead.Entities
                     }
                 }
             }
+            NetContinuousTargetDiagnostics.CollisionWinner(this, colWith, minDist);
             if (minDist >= 0 && minDist <= 1)
             {
                 float amt = Fixed.ToFloat(204);
@@ -609,6 +612,7 @@ namespace MphRead.Entities
                                 }
                             }
                             wholeDamage = (uint)Math.Clamp(damage, 0, Int32.MaxValue);
+                            NetContinuousTargetDiagnostics.CollisionResult(this, player, true, wholeDamage);
                             if (wholeDamage != 0)
                             {
                                 player.TakeDamage(wholeDamage, damageFlags, damageDir, this);
@@ -1437,7 +1441,7 @@ namespace MphRead.Entities
             {
                 return chargePct <= 0 ? unchargedAmt : minChargeAmt + ((fullChargeAmt - minChargeAmt) * chargePct);
             }
-            byte syncedHomingTarget = 0;
+            NetTargetIdentity syncedHomingTarget = default;
             if (scene.Services.PlayerReplication.Active && charged && weapon.Beam == BeamType.VoltDriver
                 && weapon.Afflictions[1].TestFlag(Affliction.Disrupt) && owner is PlayerEntity homingOwner)
             {
@@ -1456,7 +1460,8 @@ namespace MphRead.Entities
                 phase = scene.WeaponPhase.Resolve(slot, scene.FrameCount,
                     replication.Active && !firingPlayer.IsBot,
                     replication.LocalSlot >= 0 && slot == replication.LocalSlot,
-                    replication.Frame, hasIntent, intent.Frame, replication.IntentAge(slot), out sharedPhase);
+                    replication.Frame, hasIntent, intent.Frame, replication.IntentAge(slot), out sharedPhase,
+                    receivedBeforeStep: !scene.Services.IsReplica && NetSession.Role == NetRole.Server);
             }
             if (weapon.Flags.TestFlag(WeaponFlags.Continuous))
             {
@@ -1922,15 +1927,15 @@ namespace MphRead.Entities
         }
 
         private static bool ApplySyncedPlayerHomingTarget(BeamProjectileEntity beam, EquipInfo equip,
-            Scene scene, byte encodedTarget)
+            Scene scene, NetTargetIdentity encodedTarget)
         {
-            if ((encodedTarget & IntentPacket.HomingTargetValid) == 0)
+            if (!encodedTarget.IsSupplied)
             {
                 return false;
             }
 
             // A valid marker with no slot means the owner saw no target.
-            int slot = (encodedTarget & IntentPacket.HomingTargetMask) - 1;
+            int slot = encodedTarget.Slot;
             if (slot < 0)
             {
                 beam.Target = null;
@@ -1945,6 +1950,7 @@ namespace MphRead.Entities
             EntityBase? candidate = ModFindNonContinuousHomingTarget(
                 beam.Owner!, equip, beam.Position, beam.Velocity, scene);
             beam.Target = candidate is PlayerEntity player && player.SlotIndex == slot
+                && NetPlayerLifecycle.Matches(slot, encodedTarget.Generation, encodedTarget.LifeId)
                 ? candidate
                 : null;
             return true;
@@ -1959,6 +1965,13 @@ namespace MphRead.Entities
                 return false;
             }
 
+            var trace = new NetContinuousTargetDiagnostics.Evaluation();
+            bool synchronized = NetContinuousTargeting.Resolve(beam, equip, scene, ref trace);
+            if (synchronized && beam.Target is PlayerEntity)
+            {
+                NetContinuousTargeting.Record(beam, equip, scene, true, ref trace);
+                return true;
+            }
             bool result = false;
             WeaponInfo weapon = equip.Weapon;
             Debug.Assert(beam.Owner != null);
@@ -1967,6 +1980,7 @@ namespace MphRead.Entities
             for (int i = 0; i < _homingTargetTypes.Count; i++)
             {
                 EntityType type = _homingTargetTypes[i];
+                if (synchronized && type == EntityType.Player) continue;
                 if (type == EntityType.EnemyInstance
                     && (beam.Owner.Type == EntityType.EnemyInstance || beam.Owner.Type == EntityType.Platform))
                 {
@@ -1976,6 +1990,20 @@ namespace MphRead.Entities
                 {
                     if (entity.Type != type || entity == beam.Owner || !entity.GetTargetable())
                     {
+                        continue;
+                    }
+                    // One predicate for local player selection and historical proposal validation.
+                    if (type == EntityType.Player && beam.Owner is PlayerEntity && beam.Beam == BeamType.ShockCoil)
+                    {
+                        var player = (PlayerEntity)entity;
+                        var candidate = new NetContinuousTargetDiagnostics.Evaluation();
+                        if (NetContinuousTargeting.EvaluatePlayer(beam, equip, player, null,
+                            player.IsMorphing, player.TeamIndex, ref candidate) == ContinuousTargetRejection.None
+                            && (candidate.Dot > curDiv || candidate.Dot == curDiv
+                                && (beam.Target is not PlayerEntity previous || player.SlotIndex < previous.SlotIndex)))
+                        {
+                            curDiv = candidate.Dot; beam.Target = player; result = true;
+                        }
                         continue;
                     }
                     bool tryTarget = false;
@@ -2077,6 +2105,7 @@ namespace MphRead.Entities
                     }
                 }
             }
+            NetContinuousTargeting.Record(beam, equip, scene, synchronized, ref trace);
             return result;
         }
 

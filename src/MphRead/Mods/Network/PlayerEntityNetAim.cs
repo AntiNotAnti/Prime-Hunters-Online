@@ -1258,6 +1258,8 @@ namespace MphRead.Entities
         /// The owner's relayed input normally does this by itself; this is
         /// for the case where the two machines have ended up disagreeing.
         /// </summary>
+        internal void ModRestoreHalfturretFlag() => Flags2 |= PlayerFlags2.Halfturret;
+
         internal void ModStartFormSwitch()
         {
             bool switched = TrySwitchForms(force: true);
@@ -1440,17 +1442,19 @@ namespace MphRead.Entities
         /// The same shape as <see cref="ModSetAmmo"/> and the alt-form state:
         /// whoever is playing a character is the one who knows.
         /// </summary>
-        private byte _modPendingHomingTarget;
+        private NetTargetIdentity _modPendingHomingTarget;
+        internal NetTargetIdentity ModContinuousNetworkTarget;
+        internal ContinuousTargetState ModContinuousTargetState;
 
-        internal void ModSetPendingHomingTarget(byte encodedTarget)
+        internal void ModSetPendingHomingTarget(NetTargetIdentity encodedTarget)
         {
             _modPendingHomingTarget = encodedTarget;
         }
 
-        internal byte ModConsumePendingHomingTarget()
+        internal NetTargetIdentity ModConsumePendingHomingTarget()
         {
-            byte target = _modPendingHomingTarget;
-            _modPendingHomingTarget = 0;
+            NetTargetIdentity target = _modPendingHomingTarget;
+            _modPendingHomingTarget = default;
             return target;
         }
 
@@ -1461,34 +1465,34 @@ namespace MphRead.Entities
         /// different snapshot positions made the visible bolt and authority
         /// resolution bend toward different players.
         /// </summary>
-        internal byte ModPickNetworkHomingTarget()
+        internal NetTargetIdentity ModPickNetworkHomingTarget()
         {
             WeaponInfo weapon = EquipInfo.Weapon;
             if (_scene.Services.IsReplica || !NetSession.Active || weapon.Beam != BeamType.VoltDriver || !ModChargeReady
                 || !weapon.Afflictions[1].TestFlag(Affliction.Disrupt) || _disruptedTimer > 0)
             {
-                return 0;
+                return default;
             }
             Vector3 direction = _aimPosition - _muzzlePos;
             if (!Single.IsFinite(direction.X) || !Single.IsFinite(direction.Y) || !Single.IsFinite(direction.Z)
                 || direction.LengthSquared < 0.000001f)
             {
-                return 0;
+                return default;
             }
             EntityBase? target = BeamProjectileEntity.ModFindNonContinuousHomingTarget(
                 this, EquipInfo, _muzzlePos, direction.Normalized(), _scene);
             if (target == null)
             {
-                return IntentPacket.HomingTargetValid;
+                return NetTargetIdentity.None;
             }
             if (target is PlayerEntity player && player.SlotIndex >= 0
                 && player.SlotIndex < IntentPacket.HomingTargetMask)
             {
-                return (byte)(IntentPacket.HomingTargetValid | (player.SlotIndex + 1));
+                return NetTargetIdentity.ForSlot(player.SlotIndex);
             }
             // The compact field intentionally represents player slots only.
             // Let non-player targets use the engine's normal local selection.
-            return 0;
+            return default;
         }
 
         internal void ModSetShotState(int chargeLevel, int boostDamage, bool doubleDamage)

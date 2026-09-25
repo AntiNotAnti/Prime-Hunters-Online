@@ -11,6 +11,8 @@ public enum ShadowOutcome
 }
 public readonly record struct LagTiming(double? RttMilliseconds, double? JitterMilliseconds,
     double? MinimumRecentRttMilliseconds, double? PresentationDelayFrames);
+public readonly record struct LagCompensationDecision(double RequestedFrame, double RequestedDepth,
+    double GlobalServedDepth, double? PlausibleDepth, bool WouldClamp, double EffectiveFrameShadow, LagDecision Timing);
 public readonly record struct LagDecision(double RequestedFrames, double HardAppliedFrames,
     double? ShadowAllowedFrames, bool WouldClamp, double FramesShadowRefused);
 public readonly record struct LagShadowSnapshot(long Shots, long WouldClamp, double RequestedFrames,
@@ -24,9 +26,7 @@ public static class LagCompensationPolicy
     public static bool Configure(string? value)
     {
         if (!Enum.TryParse(value, true, out LagCompPlausibility mode) || !Enum.IsDefined(mode)) return false;
-#if !DEBUG
         if (mode == LagCompPlausibility.Enforce) return false;
-#endif
         Plausibility = mode; return true;
     }
     public static LagDecision Evaluate(double requested, in LagTiming timing, int pressAge,
@@ -49,6 +49,61 @@ public static class LagCompensationPolicy
         double refused = Math.Max(0, hard - allowed);
         return new(requested, hard, allowed, refused > 0, refused);
     }
+    public static LagCompensationDecision Evaluate(int shooterSlot, uint now, uint ackFrame, byte ackSubFrame, int recoveredPressAge)
+    {
+        double requested = ackFrame == 0 || ackFrame >= now ? 0
+            : Math.Max(0, now - ackFrame - ackSubFrame / 256.0 + Math.Clamp(recoveredPressAge, 0, IntentPacket.PressHistory - 1));
+        var decision = Evaluate(requested, Timing(shooterSlot), recoveredPressAge, ceiling: NetUnlagged.MaxRewindFrames);
+        return new(now - requested, requested, decision.HardAppliedFrames, decision.ShadowAllowedFrames,
+            decision.WouldClamp, now - Math.Min(decision.HardAppliedFrames, decision.ShadowAllowedFrames ?? decision.HardAppliedFrames), decision);
+    }
+
+    public static void Study(int shooter, int victim, int weapon, in LagCompensationDecision decision, int outcome, bool timingSample = false)
+    {
+        if (!Telemetry.ProductionTelemetry.Enabled) return;
+        Telemetry.ProductionTelemetry.Emit(CreateStudyEvent(shooter, victim, weapon, decision, outcome, timingSample));
+    }
+
+    internal static Telemetry.NetTelemetryEvent CreateStudyEvent(int shooter, int victim, int weapon,
+        in LagCompensationDecision decision, int outcome, bool timingSample = false)
+    {
+        var timing = Timing(shooter);
+        double horizontal = -1, vertical = -1, total = -1;
+        if ((uint)victim < 8 && MphRead.Entities.PlayerEntity._players[victim] is { } player
+            && NetUnlagged.TryHistoricalPose(player, decision.RequestedFrame, out var oldPose)
+            && NetUnlagged.TryHistoricalPose(player, decision.EffectiveFrameShadow, out var proposed))
+        {
+            var delta = oldPose.Position - proposed.Position;
+            horizontal = Math.Sqrt(delta.X * delta.X + delta.Z * delta.Z); vertical = Math.Abs(delta.Y); total = delta.Length;
+        }
+        return new(Telemetry.TelemetryEventType.LagStudy, NetSession.NetFrame,
+            Player: (byte)shooter, Victim: (byte)victim, Weapon: (byte)weapon, Result: outcome, Flags: (decision.WouldClamp ? 1 : 0) | (timingSample ? 0 : 2),
+            A: decision.RequestedDepth, B: decision.GlobalServedDepth, C: decision.PlausibleDepth ?? -1,
+            D: total, E: timing.RttMilliseconds ?? -1, F: timing.JitterMilliseconds ?? -1, G: horizontal, H: vertical);
+    }
+
+    private readonly record struct ShotStudy(ShotKey Key, LagCompensationDecision Decision, int Weapon);
+    private static readonly ShotStudy[,] _shotStudies = new ShotStudy[8, 256];
+    private static readonly int[] _studyHead = new int[8];
+    public static void RecordShotContext(int slot, uint launch, in LagCompensationDecision decision, int weapon)
+    {
+        if ((uint)slot >= 8 || !Telemetry.ProductionTelemetry.Enabled) return;
+        _shotStudies[slot, _studyHead[slot]] = new(ShotKey.For(slot, launch), decision, weapon);
+        _studyHead[slot] = (_studyHead[slot] + 1) & 255;
+        Study(slot, 255, weapon, decision, -1, timingSample: true);
+    }
+    public static void RecordImpact(int slot, int victim, uint launch)
+    {
+        if ((uint)slot >= 8 || launch == 0 || !Telemetry.ProductionTelemetry.Enabled) return;
+        var key = ShotKey.For(slot, launch);
+        for (int n = 1; n <= 256; n++)
+        {
+            var sample = _shotStudies[slot, (_studyHead[slot] - n + 256) & 255];
+            if (sample.Key != key) continue;
+            Study(slot, victim, sample.Weapon, sample.Decision, 1); return;
+        }
+    }
+
     public static double Applied(in LagDecision decision) => Plausibility == LagCompPlausibility.Enforce
         && decision.ShadowAllowedFrames.HasValue ? Math.Min(decision.HardAppliedFrames, decision.ShadowAllowedFrames.Value)
         : decision.HardAppliedFrames;
@@ -57,14 +112,14 @@ public static class LagCompensationPolicy
     // refreshed on accepted intent; captures never mutate gameplay or counters.
     private static readonly LagTiming[] _timing = new LagTiming[8];
     private struct Cell { public long Shots, Clamps, Timed; public double Requested, Hard, Refused, Worst, Allowed; }
-    private const int Weapons = NetShotDiagnostics.WeaponCount, Rtts = 7, Jitters = 4, Delays = 4, Outcomes = 7;
+    private const int Weapons = NetShotDiagnostics.WeaponCount, Rtts = 9, Jitters = 6, Delays = 4, Outcomes = 7;
     private static readonly Cell[] _cells = new Cell[8 * Weapons * Rtts * Jitters * Delays];
     private static readonly long[] _outcomes = new long[_cells.Length * Outcomes];
     public static void SetTiming(int slot, in LagTiming timing) { if ((uint)slot < 8) _timing[slot] = timing; }
     public static LagTiming Timing(int slot) => (uint)slot < 8 ? _timing[slot] : default;
-    public static void Reset() { Array.Clear(_timing); Array.Clear(_cells); Array.Clear(_outcomes); }
-    public static int RttBucket(double? rtt) => rtt is null ? 6 : rtt < 50 ? 0 : rtt < 100 ? 1 : rtt < 150 ? 2 : rtt < 250 ? 3 : rtt < 350 ? 4 : 5;
-    public static int JitterBucket(double? jitter) => jitter is null ? 3 : jitter < 20 ? 0 : jitter < 50 ? 1 : 2;
+    public static void Reset() { Array.Clear(_timing); Array.Clear(_cells); Array.Clear(_outcomes); Array.Clear(_shotStudies); Array.Clear(_studyHead); }
+    public static int RttBucket(double? rtt) => rtt is null ? 8 : rtt < 50 ? 0 : rtt < 100 ? 1 : rtt < 150 ? 2 : rtt < 200 ? 3 : rtt < 250 ? 4 : rtt < 300 ? 5 : rtt < 400 ? 6 : 7;
+    public static int JitterBucket(double? jitter) => jitter is null ? 5 : jitter < 10 ? 0 : jitter < 25 ? 1 : jitter < 50 ? 2 : jitter < 80 ? 3 : 4;
     public static int DelayBucket(double? delay) => delay is null ? 3 : delay < 3 ? 0 : delay < 6 ? 1 : 2;
     private static int Index(int slot, int weapon, int rtt, int jitter, int delay)
     {

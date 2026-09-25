@@ -394,6 +394,8 @@ internal static class ReplayWorldSchemas
             "_fpRenderPoseValid",
             "<ModNodeUnresolved>k__BackingField",
             "_modPendingHomingTarget",
+            "ModContinuousNetworkTarget",
+            "ModContinuousTargetState",
             "_modLastGoodFacing",
             "_modLastGoodGunVec",
             "_modLastGoodPosition",

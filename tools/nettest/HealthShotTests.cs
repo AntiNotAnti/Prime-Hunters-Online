@@ -28,6 +28,7 @@ namespace MphRead.NetTest
                 OpponentHudCanHideHealth();
                 AuthoritativeHealRaisesOpponentHud();
                 PredictionReconcileDoesNotFakeHeal();
+                CombatAckCannotOwnRemoteDeath();
                 ClaimAfflictionComesFromCurrentHit();
                 RespawnClearsPredictedHealth();
                 DamageResetUsesNoAttackerSentinel();
@@ -155,6 +156,28 @@ namespace MphRead.NetTest
             Snapshot(2, State()); victim.Health = NetHitPrediction.HealthFor(1, 99);
             Check(NetHudHealth.Sample(victim).Health == 99, nameof(PredictionReconcileDoesNotFakeHeal));
         }
+        private static void CombatAckCannotOwnRemoteDeath()
+        {
+            Session(); var victim = Player(1); Predict(victim);
+            byte[] claims = new byte[2048]; Check(NetHitClaims.Compose(claims) > 0, "ack death fixture declares claim");
+            var claim = HitClaimPacket.Read(claims.AsSpan(1));
+            var ack = new CombatAckEntry { ClaimId = claim.ClaimId, Result = (byte)CombatAckResult.AlreadyResolved,
+                VictimSlot = 1, VictimGeneration = 10, VictimLife = 8, DamageApplied = 99,
+                HealthAfter = 0, DamageSequence = 1, Flags = CombatAckFlags.Lethal | CombatAckFlags.OutcomePresent };
+            byte[] wire = new byte[HitVerdictPacket.HeaderSize + CombatAckEntry.Size];
+            HitVerdictPacket.Write(wire, new[] { ack }, 51, 4, 9, 2);
+            long confirmed = NetHitPrediction.Confirmed;
+            NetHitClaims.ApplyVerdicts(wire);
+            Check(NetHitPrediction.Confirmed == confirmed, "wrong victim life cannot settle CombatAck");
+            ack.VictimLife = 7; HitVerdictPacket.Write(wire, new[] { ack }, 51, 4, 9, 2);
+            NetHitClaims.ApplyVerdicts(wire.AsSpan(0, wire.Length - 1));
+            Check(NetHitPrediction.Confirmed == confirmed, "truncated CombatAck is atomic rejection");
+            NetHitClaims.ApplyVerdicts(wire);
+            Check(NetHitPrediction.HealthFor(1, 99) == 1, "lethal acknowledgement cannot set a living replica to zero health");
+            var dead = State(7, 0); dead.DamageEventId = 1; Snapshot(2, dead);
+            Check(NetHitPrediction.HealthFor(1, 0) == 0, "canonical death snapshot remains authoritative");
+        }
+
         private static void ClaimAfflictionComesFromCurrentHit()
         {
             Session();

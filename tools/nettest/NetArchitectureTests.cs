@@ -12,10 +12,10 @@ internal static class NetArchitectureTests
     internal static void Check(bool ok, string name)
     { if (!ok) throw new InvalidOperationException(name); }
 
-    // Independent v16 fixture: constants deliberately do not come from the codec.
+    // Independent v19 fixture: constants deliberately do not come from the codec.
     internal static byte[] IntentFixture()
     {
-        byte[] bytes = new byte[92];
+        byte[] bytes = new byte[96];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, 0x12345678);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), 5);
         BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(16), 1);
@@ -33,6 +33,7 @@ internal static class NetArchitectureTests
         BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(84), 9);
         BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(86), 2);
         bytes[88] = 17; bytes[89] = 19; bytes[90] = 1; bytes[91] = 0x82;
+        bytes[92] = 9; bytes[94] = 2;
         return bytes;
     }
 
@@ -57,7 +58,7 @@ internal static class NetArchitectureTests
             var intent = IntentPacket.Read(fixture);
             Check(intent.Position == new Vector3(123.25f, -42.5f, 17.75f), "owner position survives wire");
             byte[] output = new byte[IntentPacket.FullSize]; intent.Write(output);
-            Check(output.SequenceEqual(fixture), "v16 intent byte fixture");
+            Check(output.SequenceEqual(fixture), "v19 intent byte fixture");
             Check(intent.AckFrame == 0x87654321 && intent.AckSubFrame == 128 && IntentPacket.PressHistory == 8,
                 "displayed world ACK and eight-frame edge retention");
             string[] forbidden = { "MovementCommand", "MovementAck", "ProcessedMovementFrame", "MovementReconciliation",
@@ -98,7 +99,7 @@ internal static class NetArchitectureTests
             for (int i = 0; i < 180; i++) bridge.ApplyState(player, state, isLocal: true);
             Check(player.Position == position && player.Speed == speed && player.PrevPosition == previous,
                 "same-life snapshots cannot correct owner's physical position or velocity");
-            Console.WriteLine("PASS: architecture, owner position, full snapshots and v16 byte fixture");
+            Console.WriteLine("PASS: architecture, owner position, full snapshots and v19 byte fixture");
             return 0;
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }

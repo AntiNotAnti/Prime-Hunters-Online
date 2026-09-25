@@ -1,5 +1,17 @@
 # Weapon timing policies
 
+## Protocol 19 Shock Coil targeting
+
+Player-owned network Shock Coil consumes a generation/life-fenced owner proposal.
+A shared predicate checks the historical form, team, eligibility and original
+continuous distance-dependent cone. Explicit none/rejection cannot fall back to
+another player. Non-player selection and ordinary projectile homing remain intact;
+charged Volt Driver uses the generalized identity with its existing release flow.
+Dedicated phase seeding removes the enclosing receive-before-step tick; the
+fractional damage/ammo formula and held monotonic clock are unchanged. See
+[implementation and validation](../../docs/network/continuous-targeting.md).
+
+
 `WeaponLagPolicies.Resolve` reads the actual selected `EquipInfo.Weapon`, its
 CanCharge/PartialCharge flags and charge level. It covers both normal and affinity
 multiplayer mechanics. Timing centralization preserves the existing spawn →

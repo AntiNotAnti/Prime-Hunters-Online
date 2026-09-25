@@ -140,7 +140,10 @@ namespace MphRead.Entities
         {
             if (_health == 0 || !Owner.Flags2.TestFlag(PlayerFlags2.Halfturret))
             {
-                return false;
+                // A predicted turret death must remain correctable by a newer
+                // matching snapshot. Keep the inert form-owned replica until
+                // unmorph/death; health replication never creates an entity.
+                return Mods.Network.NetHitPrediction.Predicting && Owner.IsAltForm && Owner.ModIsInPlay;
             }
             if (_burnTimer > 0)
             {
@@ -379,6 +382,7 @@ namespace MphRead.Entities
 
         public override void GetDrawInfo()
         {
+            if (_health <= 0 || !Owner.Flags2.TestFlag(PlayerFlags2.Halfturret)) return;
             if (!IsVisible(NodeRef))
             {
                 return;

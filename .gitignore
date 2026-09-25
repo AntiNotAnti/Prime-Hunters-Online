@@ -377,3 +377,6 @@ maps/**/*.tex
 # and not a source: what belongs in git is the folder it is cooked from.
 maps/**/*.fpmap
 tools/hitrig/bin/
+
+# Anonymous server study output (never source or player data).
+/telemetry/

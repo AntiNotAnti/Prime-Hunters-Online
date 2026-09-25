@@ -126,6 +126,15 @@ public static partial class NetSession
                 if (player.IsAltForm != alt && !player.IsMorphing && !player.IsUnmorphing)
                     player.ModStartFormSwitch();
                 player.ModForceForm(alt);
+                // EnterAltForm splits local health while creating its entity.
+                // Restore both canonical values before acknowledging WorldReady.
+                player.Health = state.Health;
+                if (player.Hunter == Hunter.Weavel && player.Halfturret != null
+                    && player.Flags2.TestFlag(PlayerFlags2.Halfturret))
+                {
+                    player.Halfturret.Health = state.HalfturretActive ? state.HalfturretHealth : 0;
+                    if (!state.HalfturretActive) player.OnHalfturretDied();
+                }
             }
             player.ModPlaceAt(state.Position); player.Speed = state.Speed;
             player.ModSetSpawnFacing(state.Facing);
@@ -183,6 +192,9 @@ public sealed partial class DedicatedServer
                 peer.BootstrapLengths[lane] = WorldBootstrapIdentity.Size + 1 + data.Length;
             }
             peer.BootstrapLength = 1;
+            if (peer.FirstBootstrapAt < 0) peer.FirstBootstrapAt = now;
+            Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.Lifecycle, NetSession.NetFrame,
+                Player: (byte)peer.SlotIndex, Generation: _slotGenerations[peer.SlotIndex], Result: 201));
         }
         peer.BootstrapSentAt = now;
         for (int lane = 0; lane < 3; lane++)
@@ -198,7 +210,13 @@ public sealed partial class DedicatedServer
             || ready.SlotGeneration != _slotGenerations[peer.SlotIndex]) return;
         peer.LastSeen = now;
         if (!peer.MatchReady) Log($"[lobby] slot {peer.SlotIndex} applied world revision {ready.Revision}, frame {ready.AuthorityFrame}");
+        if (!peer.MatchReady) Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.Lifecycle, NetSession.NetFrame,
+            Player: (byte)peer.SlotIndex, Generation: _slotGenerations[peer.SlotIndex], Result: 200,
+            Flags: (peer.LateJoin ? 1 : 0) | (peer.Rejoining ? 2 : 0), A: ready.AuthorityFrame,
+            B: peer.AdmissionReady ? -1 : (now - peer.JoinedAt) * 1000, C: (now - peer.LoadStartedAt) * 1000,
+            D: peer.FirstBootstrapAt < 0 ? -1 : (now - peer.FirstBootstrapAt) * 1000));
         peer.MatchReady = true;
+        peer.AdmissionReady = true;
         if (_phase == SessionPhase.Starting && _start.MarkWorldReady(peer.SlotIndex, ready.Start))
         { TouchLobbyRevision($"slot {peer.SlotIndex} world ready"); CheckLoadBarrier(now); }
     }

@@ -1,5 +1,22 @@
 # Instant hit registration
 
+## Protocol 19 continuous targeting
+
+Shock Coil sends its production selection after evaluation, with that evaluation's
+aim, position and displayed ACK. The authority validates the proposed identity in
+its historical shot world and never substitutes a different player. The post-input
+lifecycle pass restores the existing displayed puppet read point after adopting
+new state, preventing selection ahead of the ACK. No claim policy, damage formula
+or ramp was changed. Accepted target agreement and hit-count agreement are separate
+metrics; impaired hit-count acceptance remains open. See
+[continuous targeting](../../docs/network/continuous-targeting.md).
+
+Shock Coil claims now use their flagged continuous firing tick for resolution
+matching. Historical ACK/launch stamps still own geometry and kill ordering.
+Settled tick records survive grace, so a new claim ID or delayed physical beam
+cannot pay that tick twice. Other weapons retain direct/splash multiplicity.
+
+
 ## Protocol 18 integration
 
 Prediction policy and damage values are unchanged. Capacity refusal now produces

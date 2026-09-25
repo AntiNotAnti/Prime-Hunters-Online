@@ -29,6 +29,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: telemetry collector and report checks
+        run: python3 -m unittest discover -s tools/telemetry -p 'test_*.py'
+
 
       - name: nothing from the game is tracked
         run: tools/check-no-game-assets.sh
@@ -118,6 +121,8 @@ jobs:
           dotnet run --project tools/nettest/nettest.csproj -c Release -- --allocations
           dotnet run --project tools/nettest/nettest.csproj -c Release -- --protocol17
           dotnet run --project tools/nettest/nettest.csproj -c Release -- --protocol18
+          dotnet run --project tools/nettest/nettest.csproj -c Release -- --protocol19
+          dotnet run --project tools/nettest/nettest.csproj -c Release -- --continuous-targets
           dotnet run --project tools/nettest/nettest.csproj -c Release -- --alt-hits
           dotnet run --project tools/nettest/nettest.csproj -c Release -- --claim-stress
           dotnet run --project tools/nettest/nettest.csproj -c Release -- --input-edges

@@ -1,0 +1,4202 @@
+{
+  "schema": 1,
+  "date": "2026-09-24",
+  "protocol": 19,
+  "gameplaySourceCommit": "50a56799d4a9d4461658606e173023c3df7e11ea",
+  "testSourceCommit": "7b2e528",
+  "assemblySha256": "d53c8b7642477f746379e223d2efd5af98413c4ccdca7de6c1338a915505162b",
+  "runtime": ".NET 10.0.12",
+  "build": {
+    "configuration": "Debug",
+    "errors": 0,
+    "existingWarnings": 16
+  },
+  "regressionSuites": [
+    {
+      "suite": "protocol19",
+      "exitCode": 0
+    },
+    {
+      "suite": "continuous-targets",
+      "exitCode": 0
+    },
+    {
+      "suite": "architecture",
+      "exitCode": 0
+    },
+    {
+      "suite": "protocol17",
+      "exitCode": 0
+    },
+    {
+      "suite": "protocol18",
+      "exitCode": 0
+    },
+    {
+      "suite": "allocations",
+      "exitCode": 0
+    },
+    {
+      "suite": "reliable",
+      "exitCode": 0
+    },
+    {
+      "suite": "queue-budget",
+      "exitCode": 0
+    },
+    {
+      "suite": "load-lifecycle",
+      "exitCode": 0
+    },
+    {
+      "suite": "lagcomp-shadow",
+      "exitCode": 0
+    },
+    {
+      "suite": "weapon-policy",
+      "exitCode": 0
+    },
+    {
+      "suite": "transport-stress",
+      "exitCode": 0
+    },
+    {
+      "suite": "lifecycle",
+      "exitCode": 0
+    },
+    {
+      "suite": "health-shots",
+      "exitCode": 0
+    },
+    {
+      "suite": "claim-stress",
+      "exitCode": 0
+    },
+    {
+      "suite": "input-edges",
+      "exitCode": 0
+    },
+    {
+      "suite": "dynamic-geometry",
+      "exitCode": 0
+    },
+    {
+      "suite": "alt-hits",
+      "exitCode": 0
+    },
+    {
+      "suite": "protocol19-scene",
+      "exitCode": 0
+    },
+    {
+      "suite": "continuous-scene",
+      "exitCode": 0
+    },
+    {
+      "suite": "alt-scene",
+      "exitCode": 0
+    },
+    {
+      "suite": "bootstrap-scene",
+      "exitCode": 0
+    },
+    {
+      "suite": "combat-scene",
+      "exitCode": 0
+    },
+    {
+      "suite": "claim-load-scene",
+      "exitCode": 0
+    },
+    {
+      "suite": "geometry-scene",
+      "exitCode": 0
+    }
+  ],
+  "selectedAssertionCounts": {
+    "protocol19": 132,
+    "protocol19Scene": 54,
+    "continuousScene": 61,
+    "healthShots": 3338737,
+    "replayFormat": 2710,
+    "replayWorldMultiplayerModes": 12
+  },
+  "transportBenchmark": {
+    "seed": 8128,
+    "profilesPassed": 2016,
+    "scope": "virtual-time production codec and impairment queue; timings are machine dependent",
+    "exitCode": 0
+  },
+  "collectorIntegration": {
+    "scope": "local synthetic authenticated aggregate requests; no production deployment",
+    "wrongTokenStatus": 401,
+    "disallowedPayloadStatus": 400,
+    "validAggregateStatus": 201,
+    "fileCapacityStatus": 507
+  },
+  "telemetryEmit": {
+    "warmedAllocatedBytes": 0,
+    "attemptsWithBlockedWriter": 20000,
+    "scope": "Protocol19Tests blocked writer and fixed ring overflow test"
+  },
+  "eightPlayerPerformance": {
+    "clientSeconds": 40,
+    "map": "MP1 SANCTORUS",
+    "mode": "shockcoil-all",
+    "rttMs": 320,
+    "jitterMs": 80,
+    "lossPercent": 2,
+    "reorderPercent": 3,
+    "duplicationPercent": 1,
+    "runs": [
+      {
+        "mode": "off",
+        "clientExitCodes": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "lastPeriodicServerWindow": {
+          "steps": 1799,
+          "meanMs": 1.02,
+          "p95Ms": 1.12,
+          "p99Ms": 13.93,
+          "maxMs": 111.9,
+          "allocatedBytes": 325298952,
+          "overruns": 5,
+          "droppedTicks": 1,
+          "stalls": 0
+        }
+      },
+      {
+        "mode": "aggregate",
+        "clientExitCodes": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "lastPeriodicServerWindow": {
+          "steps": 1800,
+          "meanMs": 1.0,
+          "p95Ms": 1.19,
+          "p99Ms": 13.92,
+          "maxMs": 37.1,
+          "allocatedBytes": 345952312,
+          "overruns": 4,
+          "droppedTicks": 0,
+          "stalls": 0
+        },
+        "fullMatchTelemetry": {
+          "header": {
+            "schema": 1,
+            "protocol": 19,
+            "matchSessionId": "dec51234a10349ed8fb96f9c44546669",
+            "buildCommit": "50a56799d4a9d4461658606e173023c3df7e11ea",
+            "serverVersion": "local+50a56799d4a9d4461658606e173023c3df7e11ea",
+            "serverPlatform": "macOS 27.0.0",
+            "matchMode": "Battle",
+            "map": "MP1 SANCTORUS",
+            "playerCount": 8
+          },
+          "durationSeconds": 44.4873434,
+          "counters": {
+            "eventsQueued": 74845,
+            "eventsWritten": 74845,
+            "eventsDropped": 4,
+            "queueHighWater": 86,
+            "writerFailures": 0,
+            "uploadFailures": 0
+          },
+          "combatAckLatency": {
+            "count": 302,
+            "mean": 501.68543046357615,
+            "p50": 466,
+            "p95": 966,
+            "p99": 1000,
+            "maximum": 1000
+          },
+          "formDuration": {
+            "count": 0,
+            "mean": 0,
+            "p50": 0,
+            "p95": 0,
+            "p99": 0,
+            "maximum": 0
+          },
+          "forcedForms": 0,
+          "serverStepMilliseconds": {
+            "count": 2667,
+            "mean": 0.9773560929883756,
+            "p50": 0.74,
+            "p95": 1.12,
+            "p99": 14.07,
+            "maximum": 36.9007
+          },
+          "droppedTicks": 0
+        }
+      },
+      {
+        "mode": "study",
+        "clientExitCodes": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "lastPeriodicServerWindow": {
+          "steps": 1800,
+          "meanMs": 0.96,
+          "p95Ms": 1.02,
+          "p99Ms": 14.34,
+          "maxMs": 37.2,
+          "allocatedBytes": 341841072,
+          "overruns": 4,
+          "droppedTicks": 0,
+          "stalls": 0
+        },
+        "fullMatchTelemetry": {
+          "header": {
+            "schema": 1,
+            "protocol": 19,
+            "matchSessionId": "3ada46f78c884055b613e2cec7272291",
+            "buildCommit": "50a56799d4a9d4461658606e173023c3df7e11ea",
+            "serverVersion": "local+50a56799d4a9d4461658606e173023c3df7e11ea",
+            "serverPlatform": "macOS 27.0.0",
+            "matchMode": "Battle",
+            "map": "MP1 SANCTORUS",
+            "playerCount": 8
+          },
+          "durationSeconds": 44.4660488,
+          "counters": {
+            "eventsQueued": 72472,
+            "eventsWritten": 72472,
+            "eventsDropped": 1,
+            "queueHighWater": 86,
+            "writerFailures": 0,
+            "uploadFailures": 0
+          },
+          "combatAckLatency": {
+            "count": 265,
+            "mean": 503.1132075471698,
+            "p50": 466,
+            "p95": 966,
+            "p99": 1000,
+            "maximum": 1000
+          },
+          "formDuration": {
+            "count": 0,
+            "mean": 0,
+            "p50": 0,
+            "p95": 0,
+            "p99": 0,
+            "maximum": 0
+          },
+          "forcedForms": 0,
+          "serverStepMilliseconds": {
+            "count": 2667,
+            "mean": 0.9330790776152964,
+            "p50": 0.69,
+            "p95": 1.01,
+            "p99": 14.39,
+            "maximum": 37.032000000000004
+          },
+          "droppedTicks": 0
+        }
+      }
+    ],
+    "limitations": [
+      "One sequential run per mode; combat outcomes vary. These are not paired causal overhead measurements.",
+      "Debug runtime, startup, debug logs and continuous traces included. Whole-server allocation totals are not telemetry emission allocations.",
+      "Periodic windows end before the full match; fullMatchTelemetry reports its separate interval."
+    ]
+  },
+  "continuousMatrix": {
+    "clientSeconds": 20,
+    "players": 2,
+    "map": "MP1 SANCTORUS",
+    "mode": "shockcoil",
+    "seed": 431,
+    "runs": [
+      {
+        "profile": "rtt0-loss0",
+        "rttAndJitterMs": "0:0",
+        "loss": "0%",
+        "reorder": "3%",
+        "duplication": "1%",
+        "clientExitCodes": [
+          0,
+          0
+        ],
+        "hits": {
+          "peer0": {
+            "predicted": 125,
+            "confirmed": 125,
+            "denied": 0,
+            "unpredicted": 0,
+            "confirmedShareOfObservedHitsPercent": 100.0
+          },
+          "peer1": null
+        },
+        "pairedTrace": {
+          "pairedEvaluations": 790,
+          "unpairedEvaluations": 4,
+          "acceptedPairedDecisions": 783,
+          "acceptedTargetAgreement": 783,
+          "acceptedTargetAgreementPercent": 100.0,
+          "timerComparisons": 790,
+          "timerAgreement": 759,
+          "pairedDamageCalls": 120,
+          "pairedDamageAmountAgreement": 120,
+          "firstDivergencePerBurst": [
+            {
+              "owner": 0,
+              "sourceFrame": 24,
+              "authorityFrame": 55,
+              "burstFrame": 19,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 59,
+              "authorityFrame": 90,
+              "burstFrame": 36,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 125,
+              "authorityFrame": 156,
+              "burstFrame": 122,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 448,
+              "authorityFrame": 478,
+              "burstFrame": 447,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "UnavailableHistory"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1044,
+              "authorityFrame": 1075,
+              "burstFrame": 1035,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            }
+          ],
+          "categories": {
+            "Agreed": 732,
+            "PhaseDisagreement": 50,
+            "DamageGateDisagreement": 1,
+            "OwnerTarget_Player_AuthorityTarget_None": 7
+          },
+          "rejections": {
+            "None": 783,
+            "Eligibility": 5,
+            "UnavailableHistory": 5,
+            "Angle": 1
+          },
+          "phaseOffsets": {
+            "0": 739,
+            "1": 47,
+            "2": 3,
+            "3": 1
+          }
+        }
+      },
+      {
+        "profile": "rtt0-loss1",
+        "rttAndJitterMs": "0:0",
+        "loss": "1%",
+        "reorder": "3%",
+        "duplication": "1%",
+        "clientExitCodes": [
+          0,
+          0
+        ],
+        "hits": {
+          "peer0": {
+            "predicted": 143,
+            "confirmed": 143,
+            "denied": 0,
+            "unpredicted": 0,
+            "confirmedShareOfObservedHitsPercent": 100.0
+          },
+          "peer1": null
+        },
+        "pairedTrace": {
+          "pairedEvaluations": 1001,
+          "unpairedEvaluations": 4,
+          "acceptedPairedDecisions": 975,
+          "acceptedTargetAgreement": 975,
+          "acceptedTargetAgreementPercent": 100.0,
+          "timerComparisons": 1001,
+          "timerAgreement": 916,
+          "pairedDamageCalls": 136,
+          "pairedDamageAmountAgreement": 136,
+          "firstDivergencePerBurst": [
+            {
+              "owner": 0,
+              "sourceFrame": 43,
+              "authorityFrame": 75,
+              "burstFrame": 6,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 504,
+              "authorityFrame": 535,
+              "burstFrame": 501,
+              "category": "DamageGateDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 528,
+              "authorityFrame": 560,
+              "burstFrame": 517,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 962,
+              "authorityFrame": 994,
+              "burstFrame": 928,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1035,
+              "authorityFrame": 1067,
+              "burstFrame": 1034,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            }
+          ],
+          "categories": {
+            "Agreed": 930,
+            "PhaseDisagreement": 40,
+            "OwnerTarget_Player_AuthorityTarget_None": 26,
+            "DamageGateDisagreement": 5
+          },
+          "rejections": {
+            "None": 975,
+            "Angle": 26,
+            "Eligibility": 4
+          },
+          "phaseOffsets": {
+            "0": 961,
+            "1": 37,
+            "2": 3
+          }
+        }
+      },
+      {
+        "profile": "rtt0-loss2",
+        "rttAndJitterMs": "0:0",
+        "loss": "2%",
+        "reorder": "3%",
+        "duplication": "1%",
+        "clientExitCodes": [
+          0,
+          0
+        ],
+        "hits": {
+          "peer0": {
+            "predicted": 106,
+            "confirmed": 106,
+            "denied": 0,
+            "unpredicted": 0,
+            "confirmedShareOfObservedHitsPercent": 100.0
+          },
+          "peer1": null
+        },
+        "pairedTrace": {
+          "pairedEvaluations": 984,
+          "unpairedEvaluations": 6,
+          "acceptedPairedDecisions": 981,
+          "acceptedTargetAgreement": 981,
+          "acceptedTargetAgreementPercent": 100.0,
+          "timerComparisons": 984,
+          "timerAgreement": 841,
+          "pairedDamageCalls": 99,
+          "pairedDamageAmountAgreement": 99,
+          "firstDivergencePerBurst": [
+            {
+              "owner": 0,
+              "sourceFrame": 29,
+              "authorityFrame": 62,
+              "burstFrame": 6,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 526,
+              "authorityFrame": 559,
+              "burstFrame": 505,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 936,
+              "authorityFrame": 969,
+              "burstFrame": 935,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1023,
+              "authorityFrame": 1056,
+              "burstFrame": 988,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1054,
+              "authorityFrame": 1087,
+              "burstFrame": 1039,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1092,
+              "authorityFrame": 1125,
+              "burstFrame": 1091,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1131,
+              "authorityFrame": 1164,
+              "burstFrame": 1126,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            }
+          ],
+          "categories": {
+            "Agreed": 922,
+            "PhaseDisagreement": 59,
+            "OwnerTarget_Player_AuthorityTarget_None": 3
+          },
+          "rejections": {
+            "None": 981,
+            "Angle": 3,
+            "Eligibility": 6
+          },
+          "phaseOffsets": {
+            "0": 925,
+            "1": 57,
+            "2": 2
+          }
+        }
+      },
+      {
+        "profile": "rtt0-loss5",
+        "rttAndJitterMs": "0:0",
+        "loss": "5%",
+        "reorder": "3%",
+        "duplication": "1%",
+        "clientExitCodes": [
+          0,
+          0
+        ],
+        "hits": {
+          "peer0": {
+            "predicted": 76,
+            "confirmed": 75,
+            "denied": 0,
+            "unpredicted": 24,
+            "confirmedShareOfObservedHitsPercent": 75.758
+          },
+          "peer1": null
+        },
+        "pairedTrace": {
+          "pairedEvaluations": 972,
+          "unpairedEvaluations": 13,
+          "acceptedPairedDecisions": 964,
+          "acceptedTargetAgreement": 964,
+          "acceptedTargetAgreementPercent": 100.0,
+          "timerComparisons": 972,
+          "timerAgreement": 681,
+          "pairedDamageCalls": 33,
+          "pairedDamageAmountAgreement": 32,
+          "firstDivergencePerBurst": [
+            {
+              "owner": 0,
+              "sourceFrame": 8,
+              "authorityFrame": 40,
+              "burstFrame": 6,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 399,
+              "authorityFrame": 431,
+              "burstFrame": 399,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 405,
+              "authorityFrame": 437,
+              "burstFrame": 405,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 441,
+              "authorityFrame": 473,
+              "burstFrame": 441,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 496,
+              "authorityFrame": 528,
+              "burstFrame": 496,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 504,
+              "authorityFrame": 536,
+              "burstFrame": 504,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 511,
+              "authorityFrame": 543,
+              "burstFrame": 511,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 517,
+              "authorityFrame": 550,
+              "burstFrame": 517,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 802,
+              "authorityFrame": 835,
+              "burstFrame": 798,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1043,
+              "authorityFrame": 1076,
+              "burstFrame": 1038,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1085,
+              "authorityFrame": 1118,
+              "burstFrame": 1082,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1096,
+              "authorityFrame": 1129,
+              "burstFrame": 1095,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1113,
+              "authorityFrame": 1146,
+              "burstFrame": 1107,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            }
+          ],
+          "categories": {
+            "Agreed": 456,
+            "PhaseDisagreement": 506,
+            "OwnerTarget_Player_AuthorityTarget_None": 8,
+            "DamageGateDisagreement": 2
+          },
+          "rejections": {
+            "None": 964,
+            "Angle": 8,
+            "Eligibility": 13
+          },
+          "phaseOffsets": {
+            "-1": 469,
+            "0": 458,
+            "1": 39,
+            "2": 5,
+            "3": 1
+          }
+        }
+      },
+      {
+        "profile": "rtt100-loss0",
+        "rttAndJitterMs": "100:20",
+        "loss": "0%",
+        "reorder": "3%",
+        "duplication": "1%",
+        "clientExitCodes": [
+          0,
+          0
+        ],
+        "hits": {
+          "peer0": {
+            "predicted": 103,
+            "confirmed": 101,
+            "denied": 1,
+            "unpredicted": 29,
+            "confirmedShareOfObservedHitsPercent": 77.692
+          },
+          "peer1": null
+        },
+        "pairedTrace": {
+          "pairedEvaluations": 987,
+          "unpairedEvaluations": 7,
+          "acceptedPairedDecisions": 946,
+          "acceptedTargetAgreement": 946,
+          "acceptedTargetAgreementPercent": 100.0,
+          "timerComparisons": 987,
+          "timerAgreement": 769,
+          "pairedDamageCalls": 50,
+          "pairedDamageAmountAgreement": 49,
+          "firstDivergencePerBurst": [
+            {
+              "owner": 0,
+              "sourceFrame": 13,
+              "authorityFrame": 66,
+              "burstFrame": 11,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 410,
+              "authorityFrame": 462,
+              "burstFrame": 410,
+              "category": "DamageGateDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 418,
+              "authorityFrame": 471,
+              "burstFrame": 413,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 521,
+              "authorityFrame": 573,
+              "burstFrame": 515,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 680,
+              "authorityFrame": 732,
+              "burstFrame": 680,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 745,
+              "authorityFrame": 798,
+              "burstFrame": 743,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 790,
+              "authorityFrame": 843,
+              "burstFrame": 788,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 804,
+              "authorityFrame": 857,
+              "burstFrame": 803,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1002,
+              "authorityFrame": 1054,
+              "burstFrame": 1001,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "UnavailableHistory"
+            }
+          ],
+          "categories": {
+            "Agreed": 516,
+            "PhaseDisagreement": 428,
+            "OwnerTarget_Player_AuthorityTarget_None": 41,
+            "DamageGateDisagreement": 2
+          },
+          "rejections": {
+            "None": 946,
+            "Angle": 24,
+            "Eligibility": 15,
+            "UnavailableHistory": 9
+          },
+          "phaseOffsets": {
+            "-1": 125,
+            "0": 549,
+            "1": 300,
+            "2": 12,
+            "3": 1
+          }
+        }
+      },
+      {
+        "profile": "rtt100-loss1",
+        "rttAndJitterMs": "100:20",
+        "loss": "1%",
+        "reorder": "3%",
+        "duplication": "1%",
+        "clientExitCodes": [
+          0,
+          0
+        ],
+        "hits": {
+          "peer0": {
+            "predicted": 86,
+            "confirmed": 86,
+            "denied": 0,
+            "unpredicted": 30,
+            "confirmedShareOfObservedHitsPercent": 74.138
+          },
+          "peer1": null
+        },
+        "pairedTrace": {
+          "pairedEvaluations": 963,
+          "unpairedEvaluations": 9,
+          "acceptedPairedDecisions": 904,
+          "acceptedTargetAgreement": 904,
+          "acceptedTargetAgreementPercent": 100.0,
+          "timerComparisons": 963,
+          "timerAgreement": 723,
+          "pairedDamageCalls": 40,
+          "pairedDamageAmountAgreement": 40,
+          "firstDivergencePerBurst": [
+            {
+              "owner": 0,
+              "sourceFrame": 21,
+              "authorityFrame": 65,
+              "burstFrame": 11,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 401,
+              "authorityFrame": 445,
+              "burstFrame": 401,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 422,
+              "authorityFrame": 466,
+              "burstFrame": 422,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 442,
+              "authorityFrame": 486,
+              "burstFrame": 434,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 505,
+              "authorityFrame": 549,
+              "burstFrame": 504,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 519,
+              "authorityFrame": 563,
+              "burstFrame": 515,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 525,
+              "authorityFrame": 569,
+              "burstFrame": 523,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 528,
+              "authorityFrame": 572,
+              "burstFrame": 527,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 889,
+              "authorityFrame": 933,
+              "burstFrame": 883,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1100,
+              "authorityFrame": 1144,
+              "burstFrame": 1098,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1104,
+              "authorityFrame": 1148,
+              "burstFrame": 1102,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1113,
+              "authorityFrame": 1157,
+              "burstFrame": 1112,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1119,
+              "authorityFrame": 1162,
+              "burstFrame": 1117,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1121,
+              "authorityFrame": 1164,
+              "burstFrame": 1121,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            }
+          ],
+          "categories": {
+            "Agreed": 413,
+            "PhaseDisagreement": 489,
+            "OwnerTarget_Player_AuthorityTarget_None": 59,
+            "DamageGateDisagreement": 2
+          },
+          "rejections": {
+            "None": 904,
+            "Angle": 52,
+            "Eligibility": 16
+          },
+          "phaseOffsets": {
+            "-1": 34,
+            "0": 444,
+            "1": 468,
+            "2": 16,
+            "3": 1
+          }
+        }
+      },
+      {
+        "profile": "rtt100-loss2",
+        "rttAndJitterMs": "100:20",
+        "loss": "2%",
+        "reorder": "3%",
+        "duplication": "1%",
+        "clientExitCodes": [
+          0,
+          0
+        ],
+        "hits": {
+          "peer0": {
+            "predicted": 66,
+            "confirmed": 64,
+            "denied": 2,
+            "unpredicted": 21,
+            "confirmedShareOfObservedHitsPercent": 75.294
+          },
+          "peer1": null
+        },
+        "pairedTrace": {
+          "pairedEvaluations": 985,
+          "unpairedEvaluations": 5,
+          "acceptedPairedDecisions": 965,
+          "acceptedTargetAgreement": 965,
+          "acceptedTargetAgreementPercent": 100.0,
+          "timerComparisons": 985,
+          "timerAgreement": 830,
+          "pairedDamageCalls": 31,
+          "pairedDamageAmountAgreement": 31,
+          "firstDivergencePerBurst": [
+            {
+              "owner": 0,
+              "sourceFrame": 14,
+              "authorityFrame": 66,
+              "burstFrame": 11,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 410,
+              "authorityFrame": 464,
+              "burstFrame": 409,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 414,
+              "authorityFrame": 466,
+              "burstFrame": 414,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 467,
+              "authorityFrame": 520,
+              "burstFrame": 465,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 494,
+              "authorityFrame": 547,
+              "burstFrame": 494,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 497,
+              "authorityFrame": 550,
+              "burstFrame": 497,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 504,
+              "authorityFrame": 557,
+              "burstFrame": 504,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 524,
+              "authorityFrame": 577,
+              "burstFrame": 522,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 912,
+              "authorityFrame": 965,
+              "burstFrame": 912,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            }
+          ],
+          "categories": {
+            "Agreed": 446,
+            "PhaseDisagreement": 519,
+            "OwnerTarget_Player_AuthorityTarget_None": 20
+          },
+          "rejections": {
+            "None": 965,
+            "Angle": 13,
+            "Eligibility": 12
+          },
+          "phaseOffsets": {
+            "-1": 244,
+            "0": 453,
+            "1": 266,
+            "2": 13,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1,
+            "8": 1,
+            "9": 1,
+            "10": 1,
+            "11": 1
+          }
+        }
+      },
+      {
+        "profile": "rtt100-loss5",
+        "rttAndJitterMs": "100:20",
+        "loss": "5%",
+        "reorder": "3%",
+        "duplication": "1%",
+        "clientExitCodes": [
+          0,
+          0
+        ],
+        "hits": {
+          "peer0": {
+            "predicted": 123,
+            "confirmed": 122,
+            "denied": 1,
+            "unpredicted": 27,
+            "confirmedShareOfObservedHitsPercent": 81.879
+          },
+          "peer1": null
+        },
+        "pairedTrace": {
+          "pairedEvaluations": 784,
+          "unpairedEvaluations": 11,
+          "acceptedPairedDecisions": 753,
+          "acceptedTargetAgreement": 753,
+          "acceptedTargetAgreementPercent": 100.0,
+          "timerComparisons": 784,
+          "timerAgreement": 624,
+          "pairedDamageCalls": 69,
+          "pairedDamageAmountAgreement": 69,
+          "firstDivergencePerBurst": [
+            {
+              "owner": 0,
+              "sourceFrame": 27,
+              "authorityFrame": 71,
+              "burstFrame": 24,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 62,
+              "authorityFrame": 106,
+              "burstFrame": 58,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 105,
+              "authorityFrame": 149,
+              "burstFrame": 101,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 118,
+              "authorityFrame": 162,
+              "burstFrame": 115,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 452,
+              "authorityFrame": 496,
+              "burstFrame": 451,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "UnavailableHistory"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 731,
+              "authorityFrame": 776,
+              "burstFrame": 730,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 789,
+              "authorityFrame": 834,
+              "burstFrame": 789,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 796,
+              "authorityFrame": 841,
+              "burstFrame": 795,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 798,
+              "authorityFrame": 843,
+              "burstFrame": 798,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 804,
+              "authorityFrame": 850,
+              "burstFrame": 803,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 828,
+              "authorityFrame": 872,
+              "burstFrame": 827,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1101,
+              "authorityFrame": 1146,
+              "burstFrame": 1101,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            }
+          ],
+          "categories": {
+            "Agreed": 318,
+            "PhaseDisagreement": 435,
+            "OwnerTarget_Player_AuthorityTarget_None": 31
+          },
+          "rejections": {
+            "None": 753,
+            "Eligibility": 24,
+            "UnavailableHistory": 10,
+            "Angle": 8
+          },
+          "phaseOffsets": {
+            "-1": 79,
+            "0": 330,
+            "1": 345,
+            "2": 26,
+            "3": 3,
+            "4": 1
+          }
+        }
+      },
+      {
+        "profile": "rtt250-loss0",
+        "rttAndJitterMs": "250:40",
+        "loss": "0%",
+        "reorder": "3%",
+        "duplication": "1%",
+        "clientExitCodes": [
+          0,
+          0
+        ],
+        "hits": {
+          "peer0": {
+            "predicted": 58,
+            "confirmed": 58,
+            "denied": 0,
+            "unpredicted": 28,
+            "confirmedShareOfObservedHitsPercent": 67.442
+          },
+          "peer1": null
+        },
+        "pairedTrace": {
+          "pairedEvaluations": 966,
+          "unpairedEvaluations": 12,
+          "acceptedPairedDecisions": 927,
+          "acceptedTargetAgreement": 927,
+          "acceptedTargetAgreementPercent": 100.0,
+          "timerComparisons": 966,
+          "timerAgreement": 753,
+          "pairedDamageCalls": 22,
+          "pairedDamageAmountAgreement": 22,
+          "firstDivergencePerBurst": [
+            {
+              "owner": 0,
+              "sourceFrame": 23,
+              "authorityFrame": 89,
+              "burstFrame": 19,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 419,
+              "authorityFrame": 485,
+              "burstFrame": 419,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 428,
+              "authorityFrame": 494,
+              "burstFrame": 427,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 431,
+              "authorityFrame": 495,
+              "burstFrame": 430,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 442,
+              "authorityFrame": 508,
+              "burstFrame": 438,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 446,
+              "authorityFrame": 510,
+              "burstFrame": 446,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 457,
+              "authorityFrame": 522,
+              "burstFrame": 457,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 479,
+              "authorityFrame": 544,
+              "burstFrame": 479,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 520,
+              "authorityFrame": 585,
+              "burstFrame": 519,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 533,
+              "authorityFrame": 598,
+              "burstFrame": 532,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 540,
+              "authorityFrame": 605,
+              "burstFrame": 539,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 759,
+              "authorityFrame": 824,
+              "burstFrame": 759,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 790,
+              "authorityFrame": 855,
+              "burstFrame": 789,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 793,
+              "authorityFrame": 858,
+              "burstFrame": 793,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 998,
+              "authorityFrame": 1063,
+              "burstFrame": 997,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            }
+          ],
+          "categories": {
+            "Agreed": 288,
+            "PhaseDisagreement": 639,
+            "OwnerTarget_Player_AuthorityTarget_None": 39
+          },
+          "rejections": {
+            "None": 927,
+            "Angle": 23,
+            "Eligibility": 28
+          },
+          "phaseOffsets": {
+            "-1": 91,
+            "0": 306,
+            "1": 388,
+            "2": 175,
+            "3": 6
+          }
+        }
+      },
+      {
+        "profile": "rtt250-loss1",
+        "rttAndJitterMs": "250:40",
+        "loss": "1%",
+        "reorder": "3%",
+        "duplication": "1%",
+        "clientExitCodes": [
+          0,
+          0
+        ],
+        "hits": {
+          "peer0": {
+            "predicted": 135,
+            "confirmed": 130,
+            "denied": 5,
+            "unpredicted": 46,
+            "confirmedShareOfObservedHitsPercent": 73.864
+          },
+          "peer1": null
+        },
+        "pairedTrace": {
+          "pairedEvaluations": 749,
+          "unpairedEvaluations": 21,
+          "acceptedPairedDecisions": 711,
+          "acceptedTargetAgreement": 711,
+          "acceptedTargetAgreementPercent": 100.0,
+          "timerComparisons": 749,
+          "timerAgreement": 412,
+          "pairedDamageCalls": 46,
+          "pairedDamageAmountAgreement": 38,
+          "firstDivergencePerBurst": [
+            {
+              "owner": 0,
+              "sourceFrame": 35,
+              "authorityFrame": 99,
+              "burstFrame": 32,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 71,
+              "authorityFrame": 135,
+              "burstFrame": 70,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 134,
+              "authorityFrame": 198,
+              "burstFrame": 131,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 148,
+              "authorityFrame": 212,
+              "burstFrame": 147,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 155,
+              "authorityFrame": 219,
+              "burstFrame": 155,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 231,
+              "authorityFrame": 295,
+              "burstFrame": 225,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 255,
+              "authorityFrame": 319,
+              "burstFrame": 254,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 563,
+              "authorityFrame": 626,
+              "burstFrame": 562,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "UnavailableHistory"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 667,
+              "authorityFrame": 731,
+              "burstFrame": 667,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 762,
+              "authorityFrame": 826,
+              "burstFrame": 762,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 832,
+              "authorityFrame": 895,
+              "burstFrame": 828,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 841,
+              "authorityFrame": 904,
+              "burstFrame": 840,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1143,
+              "authorityFrame": 1207,
+              "burstFrame": 1140,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            }
+          ],
+          "categories": {
+            "Agreed": 209,
+            "PhaseDisagreement": 502,
+            "OwnerTarget_Player_AuthorityTarget_None": 38
+          },
+          "rejections": {
+            "None": 711,
+            "Eligibility": 56,
+            "UnavailableHistory": 3
+          },
+          "phaseOffsets": {
+            "-2": 13,
+            "-1": 62,
+            "0": 223,
+            "1": 317,
+            "2": 130,
+            "3": 3,
+            "4": 1
+          }
+        }
+      },
+      {
+        "profile": "rtt250-loss2",
+        "rttAndJitterMs": "250:40",
+        "loss": "2%",
+        "reorder": "3%",
+        "duplication": "1%",
+        "clientExitCodes": [
+          0,
+          0
+        ],
+        "hits": {
+          "peer0": {
+            "predicted": 63,
+            "confirmed": 63,
+            "denied": 0,
+            "unpredicted": 32,
+            "confirmedShareOfObservedHitsPercent": 66.316
+          },
+          "peer1": null
+        },
+        "pairedTrace": {
+          "pairedEvaluations": 973,
+          "unpairedEvaluations": 16,
+          "acceptedPairedDecisions": 923,
+          "acceptedTargetAgreement": 923,
+          "acceptedTargetAgreementPercent": 100.0,
+          "timerComparisons": 973,
+          "timerAgreement": 719,
+          "pairedDamageCalls": 28,
+          "pairedDamageAmountAgreement": 26,
+          "firstDivergencePerBurst": [
+            {
+              "owner": 0,
+              "sourceFrame": 23,
+              "authorityFrame": 89,
+              "burstFrame": 19,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 360,
+              "authorityFrame": 424,
+              "burstFrame": 359,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 424,
+              "authorityFrame": 488,
+              "burstFrame": 424,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 427,
+              "authorityFrame": 493,
+              "burstFrame": 427,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 431,
+              "authorityFrame": 495,
+              "burstFrame": 431,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 435,
+              "authorityFrame": 501,
+              "burstFrame": 435,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 442,
+              "authorityFrame": 506,
+              "burstFrame": 441,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 462,
+              "authorityFrame": 526,
+              "burstFrame": 462,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 472,
+              "authorityFrame": 536,
+              "burstFrame": 471,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 481,
+              "authorityFrame": 545,
+              "burstFrame": 480,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 512,
+              "authorityFrame": 576,
+              "burstFrame": 512,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 515,
+              "authorityFrame": 579,
+              "burstFrame": 514,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 544,
+              "authorityFrame": 608,
+              "burstFrame": 542,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 701,
+              "authorityFrame": 765,
+              "burstFrame": 701,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 793,
+              "authorityFrame": 858,
+              "burstFrame": 791,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 798,
+              "authorityFrame": 863,
+              "burstFrame": 797,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 985,
+              "authorityFrame": 1049,
+              "burstFrame": 984,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "UnavailableHistory"
+            }
+          ],
+          "categories": {
+            "Agreed": 398,
+            "PhaseDisagreement": 514,
+            "OwnerTarget_Player_AuthorityTarget_None": 50,
+            "DamageGateDisagreement": 11
+          },
+          "rejections": {
+            "None": 923,
+            "Angle": 30,
+            "Eligibility": 27,
+            "UnavailableHistory": 9
+          },
+          "phaseOffsets": {
+            "-1": 219,
+            "0": 430,
+            "1": 266,
+            "2": 56,
+            "3": 2
+          }
+        }
+      },
+      {
+        "profile": "rtt250-loss5",
+        "rttAndJitterMs": "250:40",
+        "loss": "5%",
+        "reorder": "3%",
+        "duplication": "1%",
+        "clientExitCodes": [
+          0,
+          0
+        ],
+        "hits": {
+          "peer0": {
+            "predicted": 51,
+            "confirmed": 51,
+            "denied": 0,
+            "unpredicted": 39,
+            "confirmedShareOfObservedHitsPercent": 56.667
+          },
+          "peer1": null
+        },
+        "pairedTrace": {
+          "pairedEvaluations": 953,
+          "unpairedEvaluations": 13,
+          "acceptedPairedDecisions": 924,
+          "acceptedTargetAgreement": 924,
+          "acceptedTargetAgreementPercent": 100.0,
+          "timerComparisons": 953,
+          "timerAgreement": 761,
+          "pairedDamageCalls": 8,
+          "pairedDamageAmountAgreement": 6,
+          "firstDivergencePerBurst": [
+            {
+              "owner": 0,
+              "sourceFrame": 22,
+              "authorityFrame": 90,
+              "burstFrame": 18,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 339,
+              "authorityFrame": 409,
+              "burstFrame": 339,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 426,
+              "authorityFrame": 495,
+              "burstFrame": 426,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 438,
+              "authorityFrame": 506,
+              "burstFrame": 434,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 472,
+              "authorityFrame": 540,
+              "burstFrame": 472,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 494,
+              "authorityFrame": 564,
+              "burstFrame": 494,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 521,
+              "authorityFrame": 590,
+              "burstFrame": 521,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 726,
+              "authorityFrame": 796,
+              "burstFrame": 725,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1109,
+              "authorityFrame": 1179,
+              "burstFrame": 1107,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1112,
+              "authorityFrame": 1180,
+              "burstFrame": 1112,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1126,
+              "authorityFrame": 1196,
+              "burstFrame": 1125,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            }
+          ],
+          "categories": {
+            "Agreed": 252,
+            "PhaseDisagreement": 671,
+            "OwnerTarget_Player_AuthorityTarget_None": 29,
+            "DamageGateDisagreement": 1
+          },
+          "rejections": {
+            "None": 924,
+            "Angle": 16,
+            "Eligibility": 26
+          },
+          "phaseOffsets": {
+            "-3": 73,
+            "-2": 202,
+            "-1": 215,
+            "0": 269,
+            "1": 171,
+            "2": 20,
+            "3": 3
+          }
+        }
+      },
+      {
+        "profile": "rtt320-loss0",
+        "rttAndJitterMs": "320:80",
+        "loss": "0%",
+        "reorder": "3%",
+        "duplication": "1%",
+        "clientExitCodes": [
+          0,
+          0
+        ],
+        "hits": {
+          "peer0": {
+            "predicted": 101,
+            "confirmed": 101,
+            "denied": 0,
+            "unpredicted": 39,
+            "confirmedShareOfObservedHitsPercent": 72.143
+          },
+          "peer1": null
+        },
+        "pairedTrace": {
+          "pairedEvaluations": 949,
+          "unpairedEvaluations": 19,
+          "acceptedPairedDecisions": 909,
+          "acceptedTargetAgreement": 909,
+          "acceptedTargetAgreementPercent": 100.0,
+          "timerComparisons": 949,
+          "timerAgreement": 488,
+          "pairedDamageCalls": 43,
+          "pairedDamageAmountAgreement": 35,
+          "firstDivergencePerBurst": [
+            {
+              "owner": 0,
+              "sourceFrame": 27,
+              "authorityFrame": 105,
+              "burstFrame": 23,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 241,
+              "authorityFrame": 319,
+              "burstFrame": 240,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 244,
+              "authorityFrame": 320,
+              "burstFrame": 243,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 343,
+              "authorityFrame": 419,
+              "burstFrame": 342,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 433,
+              "authorityFrame": 507,
+              "burstFrame": 433,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 437,
+              "authorityFrame": 513,
+              "burstFrame": 436,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 442,
+              "authorityFrame": 518,
+              "burstFrame": 442,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 455,
+              "authorityFrame": 533,
+              "burstFrame": 455,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 462,
+              "authorityFrame": 537,
+              "burstFrame": 462,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 472,
+              "authorityFrame": 547,
+              "burstFrame": 471,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 475,
+              "authorityFrame": 551,
+              "burstFrame": 474,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 480,
+              "authorityFrame": 557,
+              "burstFrame": 480,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 494,
+              "authorityFrame": 570,
+              "burstFrame": 494,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 497,
+              "authorityFrame": 574,
+              "burstFrame": 497,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 500,
+              "authorityFrame": 577,
+              "burstFrame": 499,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 503,
+              "authorityFrame": 579,
+              "burstFrame": 503,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 685,
+              "authorityFrame": 760,
+              "burstFrame": 684,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "UnavailableHistory"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 779,
+              "authorityFrame": 855,
+              "burstFrame": 778,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 786,
+              "authorityFrame": 862,
+              "burstFrame": 783,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 790,
+              "authorityFrame": 869,
+              "burstFrame": 790,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 814,
+              "authorityFrame": 890,
+              "burstFrame": 813,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 818,
+              "authorityFrame": 893,
+              "burstFrame": 817,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 828,
+              "authorityFrame": 903,
+              "burstFrame": 828,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 836,
+              "authorityFrame": 912,
+              "burstFrame": 836,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 843,
+              "authorityFrame": 918,
+              "burstFrame": 842,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 849,
+              "authorityFrame": 924,
+              "burstFrame": 848,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 853,
+              "authorityFrame": 929,
+              "burstFrame": 851,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 861,
+              "authorityFrame": 937,
+              "burstFrame": 859,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1031,
+              "authorityFrame": 1107,
+              "burstFrame": 1031,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1089,
+              "authorityFrame": 1164,
+              "burstFrame": 1086,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1136,
+              "authorityFrame": 1212,
+              "burstFrame": 1134,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1167,
+              "authorityFrame": 1242,
+              "burstFrame": 1166,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            }
+          ],
+          "categories": {
+            "Agreed": 296,
+            "PhaseDisagreement": 606,
+            "OwnerTarget_Player_AuthorityTarget_None": 40,
+            "DamageGateDisagreement": 7
+          },
+          "rejections": {
+            "None": 909,
+            "Angle": 9,
+            "Eligibility": 39,
+            "UnavailableHistory": 11
+          },
+          "phaseOffsets": {
+            "-3": 14,
+            "-2": 103,
+            "-1": 224,
+            "0": 319,
+            "1": 205,
+            "2": 63,
+            "3": 21
+          }
+        }
+      },
+      {
+        "profile": "rtt320-loss1",
+        "rttAndJitterMs": "320:80",
+        "loss": "1%",
+        "reorder": "3%",
+        "duplication": "1%",
+        "clientExitCodes": [
+          0,
+          0
+        ],
+        "hits": {
+          "peer0": {
+            "predicted": 50,
+            "confirmed": 50,
+            "denied": 0,
+            "unpredicted": 40,
+            "confirmedShareOfObservedHitsPercent": 55.556
+          },
+          "peer1": null
+        },
+        "pairedTrace": {
+          "pairedEvaluations": 909,
+          "unpairedEvaluations": 38,
+          "acceptedPairedDecisions": 874,
+          "acceptedTargetAgreement": 874,
+          "acceptedTargetAgreementPercent": 100.0,
+          "timerComparisons": 909,
+          "timerAgreement": 690,
+          "pairedDamageCalls": 7,
+          "pairedDamageAmountAgreement": 5,
+          "firstDivergencePerBurst": [
+            {
+              "owner": 0,
+              "sourceFrame": 26,
+              "authorityFrame": 104,
+              "burstFrame": 23,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 244,
+              "authorityFrame": 322,
+              "burstFrame": 243,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 247,
+              "authorityFrame": 323,
+              "burstFrame": 247,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 255,
+              "authorityFrame": 330,
+              "burstFrame": 250,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 275,
+              "authorityFrame": 352,
+              "burstFrame": 275,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 347,
+              "authorityFrame": 422,
+              "burstFrame": 345,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 366,
+              "authorityFrame": 443,
+              "burstFrame": 366,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 372,
+              "authorityFrame": 449,
+              "burstFrame": 371,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 437,
+              "authorityFrame": 512,
+              "burstFrame": 436,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 444,
+              "authorityFrame": 520,
+              "burstFrame": 444,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 455,
+              "authorityFrame": 530,
+              "burstFrame": 455,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 465,
+              "authorityFrame": 541,
+              "burstFrame": 465,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 510,
+              "authorityFrame": 585,
+              "burstFrame": 510,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 515,
+              "authorityFrame": 592,
+              "burstFrame": 515,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 531,
+              "authorityFrame": 608,
+              "burstFrame": 531,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 536,
+              "authorityFrame": 613,
+              "burstFrame": 536,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 547,
+              "authorityFrame": 622,
+              "burstFrame": 547,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 752,
+              "authorityFrame": 827,
+              "burstFrame": 751,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 948,
+              "authorityFrame": 1023,
+              "burstFrame": 947,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 952,
+              "authorityFrame": 1029,
+              "burstFrame": 951,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1000,
+              "authorityFrame": 1075,
+              "burstFrame": 999,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1009,
+              "authorityFrame": 1084,
+              "burstFrame": 1008,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1020,
+              "authorityFrame": 1095,
+              "burstFrame": 1020,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1031,
+              "authorityFrame": 1107,
+              "burstFrame": 1029,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1048,
+              "authorityFrame": 1125,
+              "burstFrame": 1048,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1094,
+              "authorityFrame": 1170,
+              "burstFrame": 1094,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1099,
+              "authorityFrame": 1175,
+              "burstFrame": 1099,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1109,
+              "authorityFrame": 1185,
+              "burstFrame": 1108,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1113,
+              "authorityFrame": 1189,
+              "burstFrame": 1113,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1120,
+              "authorityFrame": 1198,
+              "burstFrame": 1119,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1124,
+              "authorityFrame": 1199,
+              "burstFrame": 1123,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1127,
+              "authorityFrame": 1201,
+              "burstFrame": 1126,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1133,
+              "authorityFrame": 1209,
+              "burstFrame": 1133,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1141,
+              "authorityFrame": 1217,
+              "burstFrame": 1138,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1176,
+              "authorityFrame": 1252,
+              "burstFrame": 1175,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1183,
+              "authorityFrame": 1259,
+              "burstFrame": 1183,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            }
+          ],
+          "categories": {
+            "Agreed": 119,
+            "PhaseDisagreement": 753,
+            "OwnerTarget_Player_AuthorityTarget_None": 35,
+            "DamageGateDisagreement": 2
+          },
+          "rejections": {
+            "None": 874,
+            "Angle": 18,
+            "Eligibility": 55
+          },
+          "phaseOffsets": {
+            "-3": 14,
+            "-2": 43,
+            "-1": 78,
+            "0": 125,
+            "1": 175,
+            "2": 201,
+            "3": 183,
+            "4": 87,
+            "5": 3
+          }
+        }
+      },
+      {
+        "profile": "rtt320-loss2",
+        "rttAndJitterMs": "320:80",
+        "loss": "2%",
+        "reorder": "3%",
+        "duplication": "1%",
+        "clientExitCodes": [
+          0,
+          0
+        ],
+        "hits": {
+          "peer0": {
+            "predicted": 50,
+            "confirmed": 49,
+            "denied": 1,
+            "unpredicted": 37,
+            "confirmedShareOfObservedHitsPercent": 56.977
+          },
+          "peer1": null
+        },
+        "pairedTrace": {
+          "pairedEvaluations": 919,
+          "unpairedEvaluations": 29,
+          "acceptedPairedDecisions": 881,
+          "acceptedTargetAgreement": 881,
+          "acceptedTargetAgreementPercent": 100.0,
+          "timerComparisons": 919,
+          "timerAgreement": 665,
+          "pairedDamageCalls": 17,
+          "pairedDamageAmountAgreement": 14,
+          "firstDivergencePerBurst": [
+            {
+              "owner": 0,
+              "sourceFrame": 27,
+              "authorityFrame": 104,
+              "burstFrame": 24,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 364,
+              "authorityFrame": 441,
+              "burstFrame": 364,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 433,
+              "authorityFrame": 509,
+              "burstFrame": 430,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 437,
+              "authorityFrame": 512,
+              "burstFrame": 437,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 444,
+              "authorityFrame": 520,
+              "burstFrame": 444,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 448,
+              "authorityFrame": 523,
+              "burstFrame": 448,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 457,
+              "authorityFrame": 535,
+              "burstFrame": 457,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 463,
+              "authorityFrame": 537,
+              "burstFrame": 463,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 470,
+              "authorityFrame": 546,
+              "burstFrame": 468,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 477,
+              "authorityFrame": 553,
+              "burstFrame": 474,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 483,
+              "authorityFrame": 558,
+              "burstFrame": 479,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 488,
+              "authorityFrame": 566,
+              "burstFrame": 487,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 491,
+              "authorityFrame": 567,
+              "burstFrame": 491,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 496,
+              "authorityFrame": 572,
+              "burstFrame": 495,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 502,
+              "authorityFrame": 578,
+              "burstFrame": 502,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 512,
+              "authorityFrame": 588,
+              "burstFrame": 512,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 517,
+              "authorityFrame": 592,
+              "burstFrame": 517,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 521,
+              "authorityFrame": 596,
+              "burstFrame": 519,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 530,
+              "authorityFrame": 608,
+              "burstFrame": 528,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 536,
+              "authorityFrame": 611,
+              "burstFrame": 534,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 545,
+              "authorityFrame": 621,
+              "burstFrame": 542,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 589,
+              "authorityFrame": 665,
+              "burstFrame": 589,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 725,
+              "authorityFrame": 800,
+              "burstFrame": 724,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 766,
+              "authorityFrame": 842,
+              "burstFrame": 766,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 776,
+              "authorityFrame": 853,
+              "burstFrame": 776,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 784,
+              "authorityFrame": 859,
+              "burstFrame": 784,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 791,
+              "authorityFrame": 868,
+              "burstFrame": 790,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 795,
+              "authorityFrame": 871,
+              "burstFrame": 794,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1008,
+              "authorityFrame": 1085,
+              "burstFrame": 1008,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1071,
+              "authorityFrame": 1148,
+              "burstFrame": 1071,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1137,
+              "authorityFrame": 1212,
+              "burstFrame": 1136,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            }
+          ],
+          "categories": {
+            "Agreed": 259,
+            "PhaseDisagreement": 612,
+            "OwnerTarget_Player_AuthorityTarget_None": 38,
+            "DamageGateDisagreement": 10
+          },
+          "rejections": {
+            "None": 881,
+            "Angle": 20,
+            "Eligibility": 47
+          },
+          "phaseOffsets": {
+            "-3": 13,
+            "-2": 79,
+            "-1": 178,
+            "0": 281,
+            "1": 248,
+            "2": 116,
+            "3": 4
+          }
+        }
+      },
+      {
+        "profile": "rtt320-loss5",
+        "rttAndJitterMs": "320:80",
+        "loss": "5%",
+        "reorder": "3%",
+        "duplication": "1%",
+        "clientExitCodes": [
+          0,
+          0
+        ],
+        "hits": {
+          "peer0": {
+            "predicted": 99,
+            "confirmed": 97,
+            "denied": 1,
+            "unpredicted": 53,
+            "confirmedShareOfObservedHitsPercent": 64.667
+          },
+          "peer1": null
+        },
+        "pairedTrace": {
+          "pairedEvaluations": 945,
+          "unpairedEvaluations": 20,
+          "acceptedPairedDecisions": 908,
+          "acceptedTargetAgreement": 908,
+          "acceptedTargetAgreementPercent": 100.0,
+          "timerComparisons": 945,
+          "timerAgreement": 461,
+          "pairedDamageCalls": 36,
+          "pairedDamageAmountAgreement": 31,
+          "firstDivergencePerBurst": [
+            {
+              "owner": 0,
+              "sourceFrame": 26,
+              "authorityFrame": 103,
+              "burstFrame": 23,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 194,
+              "authorityFrame": 269,
+              "burstFrame": 191,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 252,
+              "authorityFrame": 329,
+              "burstFrame": 252,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 434,
+              "authorityFrame": 510,
+              "burstFrame": 433,
+              "category": "DamageGateDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 445,
+              "authorityFrame": 520,
+              "burstFrame": 445,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 454,
+              "authorityFrame": 532,
+              "burstFrame": 453,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 468,
+              "authorityFrame": 543,
+              "burstFrame": 466,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 476,
+              "authorityFrame": 549,
+              "burstFrame": 476,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 481,
+              "authorityFrame": 557,
+              "burstFrame": 480,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 675,
+              "authorityFrame": 751,
+              "burstFrame": 673,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "UnavailableHistory"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 727,
+              "authorityFrame": 801,
+              "burstFrame": 727,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 779,
+              "authorityFrame": 853,
+              "burstFrame": 777,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 783,
+              "authorityFrame": 858,
+              "burstFrame": 783,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 800,
+              "authorityFrame": 873,
+              "burstFrame": 798,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 816,
+              "authorityFrame": 891,
+              "burstFrame": 813,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 824,
+              "authorityFrame": 899,
+              "burstFrame": 823,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 826,
+              "authorityFrame": 901,
+              "burstFrame": 826,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 832,
+              "authorityFrame": 909,
+              "burstFrame": 831,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 843,
+              "authorityFrame": 917,
+              "burstFrame": 843,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 964,
+              "authorityFrame": 1038,
+              "burstFrame": 962,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 989,
+              "authorityFrame": 1063,
+              "burstFrame": 987,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 999,
+              "authorityFrame": 1074,
+              "burstFrame": 999,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1023,
+              "authorityFrame": 1098,
+              "burstFrame": 1022,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1028,
+              "authorityFrame": 1105,
+              "burstFrame": 1028,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1044,
+              "authorityFrame": 1121,
+              "burstFrame": 1044,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1090,
+              "authorityFrame": 1167,
+              "burstFrame": 1090,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1131,
+              "authorityFrame": 1205,
+              "burstFrame": 1129,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1165,
+              "authorityFrame": 1240,
+              "burstFrame": 1163,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1181,
+              "authorityFrame": 1255,
+              "burstFrame": 1178,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            }
+          ],
+          "categories": {
+            "Agreed": 256,
+            "PhaseDisagreement": 640,
+            "OwnerTarget_Player_AuthorityTarget_None": 37,
+            "DamageGateDisagreement": 12
+          },
+          "rejections": {
+            "None": 908,
+            "Angle": 10,
+            "Eligibility": 44,
+            "UnavailableHistory": 3
+          },
+          "phaseOffsets": {
+            "-4": 1,
+            "-3": 14,
+            "-2": 80,
+            "-1": 192,
+            "0": 277,
+            "1": 260,
+            "2": 109,
+            "3": 12
+          }
+        }
+      },
+      {
+        "profile": "rtt400-loss0",
+        "rttAndJitterMs": "400:80",
+        "loss": "0%",
+        "reorder": "3%",
+        "duplication": "1%",
+        "clientExitCodes": [
+          0,
+          0
+        ],
+        "hits": {
+          "peer0": {
+            "predicted": 112,
+            "confirmed": 112,
+            "denied": 0,
+            "unpredicted": 50,
+            "confirmedShareOfObservedHitsPercent": 69.136
+          },
+          "peer1": null
+        },
+        "pairedTrace": {
+          "pairedEvaluations": 923,
+          "unpairedEvaluations": 15,
+          "acceptedPairedDecisions": 855,
+          "acceptedTargetAgreement": 855,
+          "acceptedTargetAgreementPercent": 100.0,
+          "timerComparisons": 923,
+          "timerAgreement": 574,
+          "pairedDamageCalls": 41,
+          "pairedDamageAmountAgreement": 27,
+          "firstDivergencePerBurst": [
+            {
+              "owner": 0,
+              "sourceFrame": 30,
+              "authorityFrame": 125,
+              "burstFrame": 28,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 446,
+              "authorityFrame": 539,
+              "burstFrame": 445,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 451,
+              "authorityFrame": 544,
+              "burstFrame": 451,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 460,
+              "authorityFrame": 553,
+              "burstFrame": 458,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 465,
+              "authorityFrame": 557,
+              "burstFrame": 463,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 470,
+              "authorityFrame": 562,
+              "burstFrame": 468,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 473,
+              "authorityFrame": 566,
+              "burstFrame": 473,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 477,
+              "authorityFrame": 571,
+              "burstFrame": 475,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 482,
+              "authorityFrame": 574,
+              "burstFrame": 482,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 493,
+              "authorityFrame": 585,
+              "burstFrame": 492,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 499,
+              "authorityFrame": 594,
+              "burstFrame": 499,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 508,
+              "authorityFrame": 603,
+              "burstFrame": 508,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 511,
+              "authorityFrame": 605,
+              "burstFrame": 511,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 516,
+              "authorityFrame": 611,
+              "burstFrame": 516,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 715,
+              "authorityFrame": 808,
+              "burstFrame": 712,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 748,
+              "authorityFrame": 841,
+              "burstFrame": 747,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 829,
+              "authorityFrame": 922,
+              "burstFrame": 828,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1089,
+              "authorityFrame": 1183,
+              "burstFrame": 1088,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1136,
+              "authorityFrame": 1228,
+              "burstFrame": 1136,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            }
+          ],
+          "categories": {
+            "Agreed": 161,
+            "PhaseDisagreement": 694,
+            "OwnerTarget_Player_AuthorityTarget_None": 68
+          },
+          "rejections": {
+            "None": 855,
+            "Angle": 13,
+            "Eligibility": 70
+          },
+          "phaseOffsets": {
+            "-3": 16,
+            "-2": 62,
+            "-1": 131,
+            "0": 179,
+            "1": 206,
+            "2": 190,
+            "3": 124,
+            "4": 14,
+            "5": 1
+          }
+        }
+      },
+      {
+        "profile": "rtt400-loss1",
+        "rttAndJitterMs": "400:80",
+        "loss": "1%",
+        "reorder": "3%",
+        "duplication": "1%",
+        "clientExitCodes": [
+          0,
+          0
+        ],
+        "hits": {
+          "peer0": {
+            "predicted": 56,
+            "confirmed": 56,
+            "denied": 0,
+            "unpredicted": 40,
+            "confirmedShareOfObservedHitsPercent": 58.333
+          },
+          "peer1": null
+        },
+        "pairedTrace": {
+          "pairedEvaluations": 942,
+          "unpairedEvaluations": 23,
+          "acceptedPairedDecisions": 901,
+          "acceptedTargetAgreement": 901,
+          "acceptedTargetAgreementPercent": 100.0,
+          "timerComparisons": 942,
+          "timerAgreement": 627,
+          "pairedDamageCalls": 11,
+          "pairedDamageAmountAgreement": 11,
+          "firstDivergencePerBurst": [
+            {
+              "owner": 0,
+              "sourceFrame": 32,
+              "authorityFrame": 124,
+              "burstFrame": 27,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 219,
+              "authorityFrame": 310,
+              "burstFrame": 218,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 232,
+              "authorityFrame": 324,
+              "burstFrame": 232,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 350,
+              "authorityFrame": 442,
+              "burstFrame": 350,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 423,
+              "authorityFrame": 515,
+              "burstFrame": 423,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 429,
+              "authorityFrame": 520,
+              "burstFrame": 429,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 438,
+              "authorityFrame": 528,
+              "burstFrame": 437,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 443,
+              "authorityFrame": 535,
+              "burstFrame": 441,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 446,
+              "authorityFrame": 538,
+              "burstFrame": 446,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 451,
+              "authorityFrame": 543,
+              "burstFrame": 451,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 545,
+              "authorityFrame": 637,
+              "burstFrame": 544,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 679,
+              "authorityFrame": 772,
+              "burstFrame": 679,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 685,
+              "authorityFrame": 777,
+              "burstFrame": 685,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 770,
+              "authorityFrame": 863,
+              "burstFrame": 769,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 775,
+              "authorityFrame": 866,
+              "burstFrame": 775,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 986,
+              "authorityFrame": 1077,
+              "burstFrame": 985,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "UnavailableHistory"
+            }
+          ],
+          "categories": {
+            "Agreed": 215,
+            "PhaseDisagreement": 684,
+            "OwnerTarget_Player_AuthorityTarget_None": 41,
+            "DamageGateDisagreement": 2
+          },
+          "rejections": {
+            "None": 901,
+            "Angle": 12,
+            "Eligibility": 50,
+            "UnavailableHistory": 2
+          },
+          "phaseOffsets": {
+            "-3": 34,
+            "-2": 79,
+            "-1": 151,
+            "0": 228,
+            "1": 225,
+            "2": 168,
+            "3": 54,
+            "4": 3
+          }
+        }
+      },
+      {
+        "profile": "rtt400-loss2",
+        "rttAndJitterMs": "400:80",
+        "loss": "2%",
+        "reorder": "3%",
+        "duplication": "1%",
+        "clientExitCodes": [
+          0,
+          0
+        ],
+        "hits": {
+          "peer0": {
+            "predicted": 69,
+            "confirmed": 65,
+            "denied": 4,
+            "unpredicted": 27,
+            "confirmedShareOfObservedHitsPercent": 70.652
+          },
+          "peer1": null
+        },
+        "pairedTrace": {
+          "pairedEvaluations": 908,
+          "unpairedEvaluations": 38,
+          "acceptedPairedDecisions": 855,
+          "acceptedTargetAgreement": 855,
+          "acceptedTargetAgreementPercent": 100.0,
+          "timerComparisons": 908,
+          "timerAgreement": 574,
+          "pairedDamageCalls": 25,
+          "pairedDamageAmountAgreement": 25,
+          "firstDivergencePerBurst": [
+            {
+              "owner": 0,
+              "sourceFrame": 30,
+              "authorityFrame": 142,
+              "burstFrame": 26,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 215,
+              "authorityFrame": 327,
+              "burstFrame": 214,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 327,
+              "authorityFrame": 439,
+              "burstFrame": 327,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 400,
+              "authorityFrame": 512,
+              "burstFrame": 400,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 413,
+              "authorityFrame": 523,
+              "burstFrame": 410,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 430,
+              "authorityFrame": 543,
+              "burstFrame": 429,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 436,
+              "authorityFrame": 547,
+              "burstFrame": 434,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 443,
+              "authorityFrame": 553,
+              "burstFrame": 443,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 464,
+              "authorityFrame": 574,
+              "burstFrame": 462,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 471,
+              "authorityFrame": 584,
+              "burstFrame": 471,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 484,
+              "authorityFrame": 595,
+              "burstFrame": 484,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 521,
+              "authorityFrame": 633,
+              "burstFrame": 520,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 534,
+              "authorityFrame": 644,
+              "burstFrame": 533,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 584,
+              "authorityFrame": 696,
+              "burstFrame": 584,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 645,
+              "authorityFrame": 757,
+              "burstFrame": 644,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 661,
+              "authorityFrame": 773,
+              "burstFrame": 660,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 789,
+              "authorityFrame": 900,
+              "burstFrame": 788,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 798,
+              "authorityFrame": 910,
+              "burstFrame": 798,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 813,
+              "authorityFrame": 924,
+              "burstFrame": 812,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 815,
+              "authorityFrame": 926,
+              "burstFrame": 815,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 823,
+              "authorityFrame": 933,
+              "burstFrame": 822,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 826,
+              "authorityFrame": 940,
+              "burstFrame": 826,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 836,
+              "authorityFrame": 948,
+              "burstFrame": 836,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 847,
+              "authorityFrame": 959,
+              "burstFrame": 847,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 852,
+              "authorityFrame": 963,
+              "burstFrame": 852,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 857,
+              "authorityFrame": 968,
+              "burstFrame": 856,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 869,
+              "authorityFrame": 980,
+              "burstFrame": 868,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1062,
+              "authorityFrame": 1174,
+              "burstFrame": 1060,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "UnavailableHistory"
+            }
+          ],
+          "categories": {
+            "Agreed": 235,
+            "PhaseDisagreement": 620,
+            "OwnerTarget_Player_AuthorityTarget_None": 53
+          },
+          "rejections": {
+            "None": 855,
+            "Angle": 24,
+            "Eligibility": 62,
+            "UnavailableHistory": 5
+          },
+          "phaseOffsets": {
+            "-3": 17,
+            "-2": 77,
+            "-1": 168,
+            "0": 248,
+            "1": 214,
+            "2": 135,
+            "3": 47,
+            "4": 2
+          }
+        }
+      },
+      {
+        "profile": "rtt400-loss5",
+        "rttAndJitterMs": "400:80",
+        "loss": "5%",
+        "reorder": "3%",
+        "duplication": "1%",
+        "clientExitCodes": [
+          0,
+          0
+        ],
+        "hits": {
+          "peer0": {
+            "predicted": 87,
+            "confirmed": 86,
+            "denied": 1,
+            "unpredicted": 71,
+            "confirmedShareOfObservedHitsPercent": 54.777
+          },
+          "peer1": null
+        },
+        "pairedTrace": {
+          "pairedEvaluations": 929,
+          "unpairedEvaluations": 23,
+          "acceptedPairedDecisions": 893,
+          "acceptedTargetAgreement": 893,
+          "acceptedTargetAgreementPercent": 100.0,
+          "timerComparisons": 929,
+          "timerAgreement": 488,
+          "pairedDamageCalls": 9,
+          "pairedDamageAmountAgreement": 8,
+          "firstDivergencePerBurst": [
+            {
+              "owner": 0,
+              "sourceFrame": 26,
+              "authorityFrame": 116,
+              "burstFrame": 26,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 190,
+              "authorityFrame": 276,
+              "burstFrame": 189,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 222,
+              "authorityFrame": 309,
+              "burstFrame": 222,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 229,
+              "authorityFrame": 315,
+              "burstFrame": 227,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 244,
+              "authorityFrame": 332,
+              "burstFrame": 244,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 249,
+              "authorityFrame": 333,
+              "burstFrame": 249,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 282,
+              "authorityFrame": 370,
+              "burstFrame": 282,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 354,
+              "authorityFrame": 441,
+              "burstFrame": 354,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 357,
+              "authorityFrame": 444,
+              "burstFrame": 357,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 363,
+              "authorityFrame": 449,
+              "burstFrame": 363,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 374,
+              "authorityFrame": 461,
+              "burstFrame": 373,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 438,
+              "authorityFrame": 524,
+              "burstFrame": 436,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 483,
+              "authorityFrame": 568,
+              "burstFrame": 481,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 520,
+              "authorityFrame": 607,
+              "burstFrame": 519,
+              "category": "OwnerTarget_Player_AuthorityTarget_None",
+              "reason": "Eligibility"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 752,
+              "authorityFrame": 837,
+              "burstFrame": 748,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 821,
+              "authorityFrame": 906,
+              "burstFrame": 820,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1025,
+              "authorityFrame": 1112,
+              "burstFrame": 1025,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1033,
+              "authorityFrame": 1121,
+              "burstFrame": 1033,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1037,
+              "authorityFrame": 1125,
+              "burstFrame": 1036,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1049,
+              "authorityFrame": 1134,
+              "burstFrame": 1047,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1073,
+              "authorityFrame": 1159,
+              "burstFrame": 1071,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1096,
+              "authorityFrame": 1182,
+              "burstFrame": 1094,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1100,
+              "authorityFrame": 1188,
+              "burstFrame": 1100,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1149,
+              "authorityFrame": 1235,
+              "burstFrame": 1148,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1152,
+              "authorityFrame": 1241,
+              "burstFrame": 1151,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            },
+            {
+              "owner": 0,
+              "sourceFrame": 1159,
+              "authorityFrame": 1245,
+              "burstFrame": 1158,
+              "category": "PhaseDisagreement",
+              "reason": "None"
+            }
+          ],
+          "categories": {
+            "Agreed": 101,
+            "PhaseDisagreement": 790,
+            "OwnerTarget_Player_AuthorityTarget_None": 36,
+            "DamageGateDisagreement": 2
+          },
+          "rejections": {
+            "None": 893,
+            "Angle": 9,
+            "Eligibility": 50
+          },
+          "phaseOffsets": {
+            "-5": 1,
+            "-4": 48,
+            "-3": 108,
+            "-2": 153,
+            "-1": 163,
+            "0": 107,
+            "1": 74,
+            "2": 77,
+            "3": 99,
+            "4": 69,
+            "5": 28,
+            "6": 2
+          }
+        }
+      }
+    ],
+    "limitations": [
+      "Scripted local processes with synthetic impairment; not real-player production evidence.",
+      "Trace storage is bounded to 4096 records per process. Pairing uses owner, generation, life and reported source frame.",
+      "Accepted target agreement excludes rejected proposals; reasons and unpaired evaluations are reported separately.",
+      "confirmedShareOfObservedHitsPercent = confirmed / (confirmed + unpredicted). It is a diagnostic coverage ratio, not packet delivery success or proof of matched hit identities.",
+      "Process exit success does not establish the Shock Coil hit-count release gate."
+    ]
+  },
+  "openGates": [
+    "Shock Coil >=95% hit-count agreement under impairment is not achieved; phase/collision/process disagreements remain.",
+    "Full counterfactual ballistic, homing, continuous, turret and dynamic-world outcomes are unavailable; do not infer misses from HistoricalDataUnavailable.",
+    "No production server or collector deployed; no real-player match population collected.",
+    "Cross-platform GitHub CI was still in progress when this record was authored."
+  ]
+}

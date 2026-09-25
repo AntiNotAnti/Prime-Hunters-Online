@@ -143,6 +143,12 @@ namespace MphRead.Mods.Network
             }
             Line(sb.ToString());
             Line(NetContactLagComp.Describe());
+            Line(NetContinuousTargetDiagnostics.Describe() + NetContinuousTargetDiagnostics.FirstDivergences());
+            if (NetSession.Role == NetRole.Server && Environment.GetEnvironmentVariable("PRIME_CONTINUOUS_TRACE") is string tracePath)
+            {
+                using var trace = System.IO.File.CreateText(tracePath);
+                NetContinuousTargetDiagnostics.WriteTraces(trace);
+            }
             HitReg();
 
             for (int slot = 0; slot < (scene?.Players ?? PlayerEntity.LegacyRegistry).MaxPlayers; slot++)

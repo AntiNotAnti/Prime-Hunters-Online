@@ -113,7 +113,7 @@ public static class NetContactLagComp
             if (NetUnlagged.Enabled && !attacker.IsBot && slot != NetSession.LocalSlot && NetSession.RemoteIntentValid[slot])
             {
                 var intent = NetSession.RemoteIntents[slot];
-                target = TargetFrame(now, intent.AckFrame, intent.AckSubFrame);
+                target = Math.Max(1, now - LagCompensationPolicy.Evaluate(slot, now, intent.AckFrame, intent.AckSubFrame, 0).GlobalServedDepth);
             }
             foreach (var victim in PlayerEntity._players)
             {
@@ -132,6 +132,12 @@ public static class NetContactLagComp
                 }
                 bool liveHit = Intersects(attack, live, false);
                 bool hit = Intersects(attack, body, true);
+                if (Telemetry.ProductionTelemetry.Enabled)
+                {
+                    var intent = NetSession.RemoteIntents[slot];
+                    LagCompensationPolicy.Study(slot, victim.SlotIndex, 10,
+                        LagCompensationPolicy.Evaluate(slot, now, intent.AckFrame, intent.AckSubFrame, 0), hit ? 1 : 0);
+                }
                 bool endpoint = Intersects(attack, body, false);
                 SweepChecks++; SweepDistance += (attack.Center - attack.PreviousCenter).Length;
                 RewindDepth += now - target;

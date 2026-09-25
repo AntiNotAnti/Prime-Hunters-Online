@@ -213,3 +213,7 @@ journalctl -u mphread-server -n 80 --no-pager | grep '\[career\]'
 ```
 
 If the first command prints nothing, the installed systemd unit predates career reporting and is not loading `career.env`. Re-run `deploy-server.sh` or add `EnvironmentFile=-/home/<user>/mphread-server/career.env` under `[Service]`, then run `sudo systemctl daemon-reload && sudo systemctl restart mphread-server`.
+
+## Anonymous networking telemetry
+
+Dedicated servers can record anonymous network/combat/performance measurements for multiplayer quality studies. No player names, IP addresses, account IDs or chat are stored by this subsystem. Aggregate recording is enabled by default; uploads are disabled. Use `-notelemetry` to disable, or `PRIME_TELEMETRY_CONFIG` to select a configuration file. See [Protocol 19 combat and telemetry](docs/network/combat-telemetry.md) for retention, study modes and optional aggregate upload.

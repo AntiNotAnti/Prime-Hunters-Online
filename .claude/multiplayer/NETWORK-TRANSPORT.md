@@ -1,10 +1,20 @@
-# Protocol 18 transport
+# Protocol 19 transport
+
+## Protocol 19 target identity
+
+Intent is now 96 payload bytes: the eight-byte shot-state tail ends with encoded
+player slot, ushort generation and ushort life. Explicit `0x80/0/0` means no player;
+malformed or absent decisions cannot enable player fallback. Live ingress requires
+the entire v19 tail and admission refuses older peers. Sequenced edges retain their layout. PlayerState adds three turret bytes; CombatAck adds exact terminal outcomes. See [continuous targeting](../../docs/network/continuous-targeting.md).
+
+
+CombatAck (31) has a 15-byte stream header and up to sixteen 19-byte outcomes (343 bytes including the transport envelope). CombatStudy (51) is bounded background diagnostics, outside reliable control. See [combat telemetry](../../docs/network/combat-telemetry.md).
 
 ## Replication lanes
 
 | Packet | Cadence | Contents | Maximum datagram |
 |---|---|---|---|
-| SnapshotFast (48) | 60 Hz | Frame/RNG/lifecycle, pose, health, weapon/status and four damage events per player | 903 bytes, eight players |
+| SnapshotFast (48) | 60 Hz | Frame/RNG/lifecycle, pose, health, weapon/status and four damage events per player | 927 bytes, eight players |
 | PlayerSlowState (49) | 10 Hz + meaningful changes | Full generation-tagged team/points/kills/deaths and match clock data | 183 bytes |
 | WorldState (50) | 4 Hz + pickup state changes | Full NetHealthSync state | 433 bytes at 56 spawns |
 
@@ -20,7 +30,7 @@ report aggregate sender packets/s, bytes/s, average and maximum fast sizes.
 
 ## Sequenced input edges
 
-Intent keeps its 32-byte edge budget and overall packet size: 16 two-byte events
+Protocol 18 kept its 32-byte edge budget and overall packet size: 16 two-byte events
 replace eight frame masks. Low byte = wrapping event sequence; high byte = three
 age bits (0–7) and five action bits (zero means empty). Nonzero action IDs are the
 one-based IntentButtons bit positions. Sender history is oldest first and keeps

@@ -1,5 +1,23 @@
 # Known gaps — claims not yet verified
 
+## Protocol 19 Shock Coil acceptance
+
+Owner proposals, historical validation and generation/life fencing are implemented.
+Accepted target identities match in paired controlled runs, and the corrected LAN
+arm has no unpredicted hits. Continuous firing-tick claim matching improves pooled
+observed-hit coverage to 95.1% in the latest twenty-profile matrix, but several
+individual impaired profiles remain below 95%. Phase, timer and final collision
+winner differences remain classified. Do not claim full Shock Coil determinism or change its ramp on
+this evidence. See [continuous targeting](../docs/network/continuous-targeting.md)
+for commands, measurements and the next investigation. Automated eight-process
+stock-room load does not replace human eight-player/jump-pad gameplay acceptance.
+
+The isolated VPS study server, collector and report timer are deployed. Scripted
+smokes are archived separately; the human-study report starts at zero matches.
+General alternate-policy ballistic/homing/continuous/turret/dynamic-world outcomes
+remain unknown. See the [follow-up validation](../docs/network/validation/protocol19-study-followup-2026-09-24.md).
+
+
 ## Alt collision validation boundaries (2026-09-24)
 
 - Deterministic pose, contact and real-asset scene tests cover historical player
@@ -347,10 +365,12 @@ claiming coverage that isn't there.
   (bombing, unmorphing) late reports a fraction of what the subject did, and
   time-normalisation can't fix a burst it wasn't there for. Judge against
   clients that were present, not the raw tally.
-- **Alt-attack presses read ~60% on every observer.** Not loss (loss would
-  differ per observer) — two presses inside one intent window arrive as one,
-  since the edge history is ORed into a single mask per packet. The bombs
-  those presses would have laid still land 79-99%.
+- **Whole-tour alt-attack observer totals can still differ at boundaries.**
+  Protocol 18 replaced ORed frame masks with sequenced input edges. Multiple presses
+  remain distinct and are deduplicated by sequence. Controlled tests recover them
+  within the retained window; the earlier poor/mixed whole-tour runs still have
+  unexplained two/four-observation differences. The obsolete ~60% OR-mask explanation
+  does not describe the current implementation.
 - Kanden and Spire show lower fidelity than other hunters on `unmorph` and
   projectile lifetime. Not explained.
 - The scoreboard rows tighten to fit past four players, down to 19 px; beyond

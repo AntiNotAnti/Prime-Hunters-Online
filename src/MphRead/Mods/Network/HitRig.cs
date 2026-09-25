@@ -97,6 +97,8 @@ namespace MphRead.Mods.Network
         /// <summary>The weapon a <see cref="RigMode.Volley"/> run empties.</summary>
         public static BeamType VolleyWeapon { get; private set; } = BeamType.Missile;
 
+        private static int _continuousShooters = -1;
+        private static bool _continuousMorph;
         public static RigMode Mode { get; private set; } = RigMode.Off;
         public static bool Active => Mode != RigMode.Off;
 
@@ -107,6 +109,7 @@ namespace MphRead.Mods.Network
         /// </summary>
         public static bool Configure(string? value)
         {
+            _continuousShooters = -1; _continuousMorph = false;
             switch (value?.Trim().ToLowerInvariant())
             {
                 case "alt-static": Mode = RigMode.AltStatic; return true;
@@ -143,6 +146,12 @@ namespace MphRead.Mods.Network
                     Mode = RigMode.Volley;
                     VolleyWeapon = BeamType.Battlehammer;
                     return true;
+                case "shockcoil-cluster":
+                    _continuousShooters = 1; Mode = RigMode.Volley; VolleyWeapon = BeamType.ShockCoil; return true;
+                case "shockcoil-morph":
+                    _continuousShooters = 1; _continuousMorph = true; Mode = RigMode.Volley; VolleyWeapon = BeamType.ShockCoil; return true;
+                case "shockcoil-all":
+                    _continuousShooters = 8; Mode = RigMode.Volley; VolleyWeapon = BeamType.ShockCoil; return true;
                 case "shockcoil":
                     Mode = RigMode.Volley;
                     VolleyWeapon = BeamType.ShockCoil;
@@ -249,7 +258,7 @@ namespace MphRead.Mods.Network
         /// anybody. Even slots shoot, odd slots run, so a two-client run is
         /// always one of each whichever order they arrive in.
         /// </summary>
-        public static bool IsSniper => Mode == RigMode.Duel
+        public static bool IsSniper => _continuousShooters >= 0 ? NetSession.LocalSlot < _continuousShooters : Mode == RigMode.Duel
             || Math.Max(NetSession.LocalSlot, 0) % 2 == 0;
 
         public static void Drive(PlayerEntity player)
@@ -329,6 +338,13 @@ namespace MphRead.Mods.Network
         /// </summary>
         private static void DriveRunner(PlayerEntity player, PlayerControls c, PlayerEntity? other)
         {
+            if (_continuousMorph)
+            {
+                AimAt(player, other, headHeight: 0);
+                bool wantAlt = _frame % 180 < 90;
+                c.Morph.IsDown = wantAlt != player.IsAltForm && !player.IsMorphing && !player.IsUnmorphing && _frame % 12 == 0;
+                Square(c, 45); return;
+            }
             if (Mode == RigMode.AltStatic || Mode == RigMode.AltLateral || Mode == RigMode.AltMorph)
             {
                 AimAt(player, other, headHeight: 0);

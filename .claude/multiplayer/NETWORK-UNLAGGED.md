@@ -1,5 +1,16 @@
 # Lag compensation
 
+## Protocol 19 continuous target validation
+
+Shock Coil proposals are validated in the exact `BeginShot` historical world,
+including fractional ACK, lifecycle fences and the existing hard ceiling. The
+history ring also records morph eligibility, team and targetable state; player
+selection shares one predicate with the local production selector. A missing pose
+rejects the proposal rather than selecting from live players. The bounded trace
+records both targeting and subsequent collision/gate outcomes. See
+[continuous targeting](../../docs/network/continuous-targeting.md).
+
+
 ## Historical player collision and alt contact
 
 Player history records position, form, life/generation, Kanden's three collision

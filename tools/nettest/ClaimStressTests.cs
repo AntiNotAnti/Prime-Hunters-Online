@@ -32,6 +32,22 @@ internal static class ClaimStressTests
             NetArchitectureTests.Check(!(bool)Call("TakeLedger", splash)!, "no third hit");
             Call("NoteLedger", 0, 1, 72u, 71u, 128, false);
             NetArchitectureTests.Check(!(bool)Call("TakeLedger", splash)!, "conflicting valid launches never fall back");
+            NetHitClaims.Reset(); Frame(100);
+            Call("NoteLedger", 0, 1, 80u, 79u, 3, false);
+            var phases = (uint[,,])typeof(NetHitClaims).GetField("_authorityContinuousPhase", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+            phases[0, 1, 0] = 60;
+            object[] continuous = { 0, 1, 60u, 0 };
+            NetArchitectureTests.Check((bool)Call("TakeContinuousLedger", continuous)! && (int)continuous[3] == 3,
+                "continuous source tick matches independently of displayed-world launch frame");
+            NetArchitectureTests.Check((bool)Call("TakeContinuousLedger", continuous)!, "same tick reuses terminal resolution");
+            NetArchitectureTests.Check(NetHitClaims.ContinuousAlreadyResolved(0, 1, 60)
+                && !NetHitClaims.ContinuousAlreadyResolved(0, 1, 61), "late physical copy suppressed only for exact continuous tick");
+            for (uint launch = 100; launch < 164; launch++) Call("NoteLedger", 0, 1, 100u, launch, 1, false);
+            NetArchitectureTests.Check(NetHitClaims.ContinuousAlreadyResolved(0, 1, 60)
+                && NetHitClaims.ResolvedLedgerCapacityRefused == 1,
+                "settled continuous tick stays protected under ledger pressure until grace expires");
+            Frame(100 + (uint)NetHitClaims.MaxGraceFrames + 1);
+            NetArchitectureTests.Check(!NetHitClaims.ContinuousAlreadyResolved(0, 1, 60), "continuous identity expires with authoritative ledger");
             NetHitClaims.Reset();
             for (int shooter = 0; shooter < 8; shooter++)
                 for (int i = 0; i < NetHitClaims.PendingPerShooter; i++)

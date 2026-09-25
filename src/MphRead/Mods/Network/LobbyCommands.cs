@@ -59,6 +59,7 @@ namespace MphRead.Mods.Network
         {
             Log($"[lobby] phase {_phase} -> {phase}, match {_matchId}");
             _phase = phase;
+            Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.Lifecycle, NetSession.NetFrame, Result: 128 + (int)phase));
             TouchLobbyRevision("phase changed");
         }
 
@@ -268,6 +269,7 @@ namespace MphRead.Mods.Network
             {
                 participants |= (byte)(1 << participant.SlotIndex);
                 participant.MatchReady = participant.SceneLoaded = false;
+                participant.LoadStartedAt = now; participant.FirstBootstrapAt = -1; participant.LateJoin = false;
                 participant.BootstrapLength = 0;
                 participant.MatchLoadStage = MatchLoadStage.None;
                 participant.MatchLoadProgressAt = 0;
