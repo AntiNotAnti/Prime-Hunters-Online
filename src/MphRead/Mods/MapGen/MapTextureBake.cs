@@ -321,13 +321,14 @@ namespace MphRead.Mods.MapGen
             // Loud, deterministic checkerboard: missing art stays visible and
             // geometry never disappears. The hash stripe makes adjacent
             // missing materials distinguishable while authoring.
-            int hash = StringComparer.OrdinalIgnoreCase.GetHashCode(name);
+            uint hash = 2166136261;
+            foreach (char ch in name.ToUpperInvariant()) { hash ^= ch; hash *= 16777619; }
             var rgb = new byte[size * size * 3];
             for (int y = 0; y < size; y++)
                 for (int x = 0; x < size; x++)
                 {
                     bool checker = ((x / 8) + (y / 8)) % 2 == 0;
-                    bool stripe = ((x + y + (hash & 31)) % 17) < 3;
+                    bool stripe = ((x + y + (hash & 31u)) % 17) < 3;
                     int o = (y * size + x) * 3;
                     rgb[o] = (byte)(stripe ? 255 : checker ? 230 : 30);
                     rgb[o + 1] = (byte)(stripe ? 220 : 20);
