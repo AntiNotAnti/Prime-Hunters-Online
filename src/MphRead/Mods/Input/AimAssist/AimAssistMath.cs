@@ -34,7 +34,7 @@ namespace MphRead.Mods.Input.AimAssist
             {
                 return 1;
             }
-            float distance = cameraInput > 0 ? Math.Max(0, -min) : Math.Max(0, max);
+            float distance = cameraInput > 0 ? Math.Max(0, max) : Math.Max(0, -min);
             float width = Math.Max(.12f, (max - min) * .35f);
             float edge = 1 - Smooth(0, width, distance);
             float deliberate = Smooth(.45f, .85f, Math.Abs(physicalInput));
