@@ -383,10 +383,12 @@ namespace MphRead.Sound
             ForceFieldSfxMute = 0;
             TimedSfxMute = 0;
             LongSfxMute = 0;
+            Mods.Sound.CombatFeedbackAudio.Warm();
         }
 
         public static void ShutDown()
         {
+            Mods.Sound.CombatFeedbackAudio.Shutdown();
             if (Instance != null)
             {
                 Instance.ShutDown();

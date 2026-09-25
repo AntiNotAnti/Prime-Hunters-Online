@@ -1856,6 +1856,8 @@ namespace MphRead.Entities
                 // for confirmed predicted hits that otherwise skip replay.
                 int messageId = _scene.GameState.Multiplayer ? 228 : 121; // HEADSHOT!
                 QueueHudMessage(128, 40, 20 / 30f, 0, messageId);
+                BeamType feedbackBeam = beam?.Beam ?? Mods.Network.NetDamage.ReplayBeam;
+                Mods.Sound.CombatFeedbackAudio.OnConfirmedHeadshot(_scene, feedbackBeam);
             }
             if (attacker != null && attacker != this && beam != null)
             {
@@ -2027,6 +2029,7 @@ namespace MphRead.Entities
                 _scene.GameState.KillStreak[SlotIndex] = 0;
                 if (IsMainPlayer)
                 {
+                    Mods.Sound.CombatFeedbackAudio.OnLocalDeath(_scene);
                     // todo: license info
                     HudEndDisrupted();
                     if (_frozenGfxTimer > 0)
@@ -2399,6 +2402,11 @@ namespace MphRead.Entities
                                 if (_scene.GameState.KillStreak[attacker.SlotIndex] < 255)
                                 {
                                     _scene.GameState.KillStreak[attacker.SlotIndex]++;
+                                }
+                                if (attacker == _scene.Players.Main)
+                                {
+                                    Mods.Sound.CombatFeedbackAudio.OnConfirmedKill(_scene,
+                                        _scene.GameState.KillStreak[attacker.SlotIndex]);
                                 }
                                 Mods.Network.CareerMatchStats.NoteKill(attacker);
                                 if (_scene.GameState.KillStreak[attacker.SlotIndex] == 5)

@@ -162,6 +162,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Original Project Prime combat-feedback stingers. Embedded so single-file
+         releases and Android all carry the same defaults without loose assets. -->
+    <EmbeddedResource Include="Assets\Sounds\Combat\*.wav" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- The backdrop again, as a plain embedded resource, for the same reason
          the mark is above: on the desktop the photograph is drawn by GL under
          the screens rather than rasterised into them (Mods/Render/
