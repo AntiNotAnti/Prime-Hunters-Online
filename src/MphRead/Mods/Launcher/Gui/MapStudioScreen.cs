@@ -1068,8 +1068,8 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 Content=view,
                 MaxHeight=520,
-                VerticalScrollBarVisibility=ScrollBarVisibility.Auto,
-                HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled
+                VerticalScrollBarVisibility=Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility=Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled
             };
             Modal(scroll);_=AnalyzeWizard();
         }
