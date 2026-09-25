@@ -84,6 +84,21 @@ namespace MphRead.Mods.Input.AimAssist
             return targetVelocity - direction * supplied;
         }
 
+        public static float FlickLandingHorizon(float flickSpeed)
+        {
+            float t = Smooth(AimAssistTuning.FlickDirectionalSpeed, 45f, flickSpeed);
+            return AimAssistTuning.FlickLandingMaxSeconds
+                + (AimAssistTuning.FlickLandingMinSeconds - AimAssistTuning.FlickLandingMaxSeconds) * t;
+        }
+
+        public static float DynamicFlickRadius(float baseRadius, float flickSpeed, bool scoped)
+        {
+            float t = Smooth(AimAssistTuning.FlickDirectionalSpeed, 45f, flickSpeed);
+            float scale = AimAssistTuning.FlickRadiusMinScale
+                + (AimAssistTuning.FlickRadiusMaxScale - AimAssistTuning.FlickRadiusMinScale) * t;
+            return baseRadius * scale * (scoped ? .65f : 1f);
+        }
+
         public static float TrajectoryRegionScore(AimAssistRegion region, Vector2 travel)
         {
             if (!Finite(region.Center) || !Finite(travel)) return 0;
