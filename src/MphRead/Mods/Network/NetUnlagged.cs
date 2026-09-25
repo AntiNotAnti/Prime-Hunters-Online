@@ -340,6 +340,7 @@ namespace MphRead.Mods.Network
         private static readonly HistoricalCollisionState[] _restore = new HistoricalCollisionState[Slots];
         private static readonly bool[] _moved = new bool[Slots];
         private static bool _reconciled;
+        private static double _reconciledFrame;
 
         // Which of the shooter's beam pool entries were alive before the shot,
         // so the ones it spawned can be told from the ones already in flight.
@@ -373,6 +374,7 @@ namespace MphRead.Mods.Network
             Array.Clear(_moved);
             _newest = 0;
             _reconciled = false;
+            _reconciledFrame = 0;
             _inProgress = false;
             _shooter = null;
             _rewind = 0;
@@ -523,7 +525,7 @@ namespace MphRead.Mods.Network
             position = default;
             int slot = player.SlotIndex;
             if (_reconciled && _inProgress)
-                return TryHistoricalHalfturretPosition(slot, _shotTargetFrame,
+                return TryHistoricalHalfturretPosition(slot, _reconciledFrame,
                     NetPlayerLifecycle.Generation(slot), NetPlayerLifecycle.Get(slot), out position);
             if (player.Hunter != Hunter.Weavel || player.Halfturret == null
                 || !player.Flags2.TestFlag(PlayerFlags2.Halfturret) || player.Halfturret.Health <= 0)
@@ -866,6 +868,7 @@ namespace MphRead.Mods.Network
                 return false;
             }
             Restore();
+            _reconciledFrame = targetFrame;
             for (int i = 0; i < Slots && i < PlayerEntity.Players.Count; i++)
             {
                 if (i == exceptSlot || !_inPlay[i, index]
@@ -922,6 +925,7 @@ namespace MphRead.Mods.Network
                 PlayerEntity.Players[i].ModRestoreCollisionState(_restore[i]);
             }
             _reconciled = false;
+            _reconciledFrame = 0;
         }
 
         /// <summary>
