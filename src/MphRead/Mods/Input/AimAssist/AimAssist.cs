@@ -509,16 +509,11 @@ namespace MphRead.Mods.Input.AimAssist
             // when the player's trajectory was already going to reach the head.
             float flickAlignment = AimAssistMath.Alignment(state.FlickDirection,
                 AimAssistMath.Finite(target.HeadError) ? target.HeadError : headError);
-            float speedT = AimAssistMath.Smooth(AimAssistTuning.FlickDirectionalSpeed,
-                45f, state.FlickSpeed);
-            float captureRadius = target.HeadRegion is { } captureRegion
+            float baseCaptureRadius = target.HeadRegion is { } captureRegion
                 ? Math.Clamp(captureRegion.Height * 1.5f, .35f, .8f) : .5f;
-            captureRadius *= AimAssistTuning.FlickRadiusMinScale
-                + (AimAssistTuning.FlickRadiusMaxScale - AimAssistTuning.FlickRadiusMinScale) * speedT;
-            if (profile.Scoped) captureRadius *= .65f;
-            float flickHorizon = AimAssistTuning.FlickLandingMaxSeconds
-                + (AimAssistTuning.FlickLandingMinSeconds - AimAssistTuning.FlickLandingMaxSeconds)
-                * speedT;
+            float captureRadius = AimAssistMath.DynamicFlickRadius(
+                baseCaptureRadius, state.FlickSpeed, profile.Scoped);
+            float flickHorizon = AimAssistMath.FlickLandingHorizon(state.FlickSpeed);
             Vector2 predictedTurn = cameraVelocity * flickHorizon
                 + cameraAcceleration * (.5f * flickHorizon * flickHorizon);
             Vector2 predictedTargetMotion = state.HeadAngularVelocity * flickHorizon
