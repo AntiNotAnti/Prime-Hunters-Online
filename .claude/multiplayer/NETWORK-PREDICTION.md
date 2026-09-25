@@ -11,6 +11,11 @@ or ramp was changed. Accepted target agreement and hit-count agreement are separ
 metrics; impaired hit-count acceptance remains open. See
 [continuous targeting](../../docs/network/continuous-targeting.md).
 
+Shock Coil claims now use their flagged continuous firing tick for resolution
+matching. Historical ACK/launch stamps still own geometry and kill ordering.
+Settled tick records survive grace, so a new claim ID or delayed physical beam
+cannot pay that tick twice. Other weapons retain direct/splash multiplicity.
+
 
 ## Protocol 18 integration
 

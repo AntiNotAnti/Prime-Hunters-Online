@@ -189,6 +189,9 @@ rescue/retry, stored historical outcomes and immediate prediction correction.
 The [checked-in validation record](validation/protocol19-2026-09-24.md) identifies
 actual builds and completed runs, including the twenty-profile process matrix and
 eight-player Off/Aggregate/Study measurements.
+The [follow-up record](validation/protocol19-study-followup-2026-09-24.md) adds
+continuous-tick matching, corrected configuration defaults, raw-enabled performance
+measurements and verified VPS deployment.
 The prior Shock Coil WAN hit-count gate remains open even when accepted target
 identity agrees. Scripted local processes cannot substitute for thousands of
 real-player matches across maps, weapons, RTT and jitter buckets. Keep this

@@ -38,6 +38,8 @@ Units:
   minute from completed uploaded matches.
 
 State, raw telemetry, collected aggregates and reports are below the study root.
+The stock rotation includes Sanctorus, Harvester and Proving Ground, eight minutes
+per match, so collection can cover different maps without changing configuration.
 Raw telemetry has 14-day retention; local output and uploads have configured
 caps. Collector defaults to at most 10,000 files / 256 MiB. Archive aggregates
 before reaching that cap; a full collector returns backpressure and the game

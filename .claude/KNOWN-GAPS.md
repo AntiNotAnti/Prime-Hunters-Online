@@ -4,12 +4,18 @@
 
 Owner proposals, historical validation and generation/life fencing are implemented.
 Accepted target identities match in paired controlled runs, and the corrected LAN
-arm has no unpredicted hits. Impaired hit-count agreement remains below the requested
-95% threshold; traces identify firing-phase mismatch as the dominant remaining
-paired difference. Do not claim full Shock Coil determinism or change its ramp on
+arm has no unpredicted hits. Continuous firing-tick claim matching improves pooled
+observed-hit coverage to 95.1% in the latest twenty-profile matrix, but several
+individual impaired profiles remain below 95%. Phase, timer and final collision
+winner differences remain classified. Do not claim full Shock Coil determinism or change its ramp on
 this evidence. See [continuous targeting](../docs/network/continuous-targeting.md)
 for commands, measurements and the next investigation. Automated eight-process
 stock-room load does not replace human eight-player/jump-pad gameplay acceptance.
+
+The isolated VPS study server, collector and report timer are deployed. Scripted
+smokes are archived separately; the human-study report starts at zero matches.
+General alternate-policy ballistic/homing/continuous/turret/dynamic-world outcomes
+remain unknown. See the [follow-up validation](../docs/network/validation/protocol19-study-followup-2026-09-24.md).
 
 
 ## Alt collision validation boundaries (2026-09-24)

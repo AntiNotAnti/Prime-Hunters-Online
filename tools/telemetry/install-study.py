@@ -26,7 +26,7 @@ def main():
     subprocess.run(['sudo','-n','true'],check=True)
     for name in ('state','state/empty-maps','telemetry','collected','reports','tools'):(root/name).mkdir(parents=True,exist_ok=True)
     shutil.copyfile(a.paths,root/'state/paths.txt')
-    (root/'state/maprotation.txt').write_text('MP1 SANCTORUS | Battle | 8 | 99\n')
+    (root/'state/maprotation.txt').write_text('MP1 SANCTORUS | Battle | 8 | 99\nMP2 HARVESTER | Battle | 8 | 99\nMP3 PROVING GROUND | Battle | 8 | 99\n')
     for name in ('collector.py','report.py'):shutil.copyfile(Path(__file__).with_name(name),root/'tools'/name)
     env=root/'state/telemetry.env'
     if not env.exists():
