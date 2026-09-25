@@ -943,6 +943,16 @@ namespace MphRead.Droid
                 RequestFrameRate();
                 if (Mods.Network.ReplayController.IsSeeking) return true;
 
+                // Android pad motion events may arrive between 60 Hz simulation
+                // steps. Capture the newest aim axes for the same render-only
+                // preview used on desktop; the next simulation consumes the
+                // exact captured axes.
+                if (FrameTiming.HighRefreshPresentation
+                    && !MphRead.Mods.Network.DemoPlayback.IsActive)
+                {
+                    MphRead.Mods.Input.GamepadInput.CapturePresentationSample();
+                }
+
                 // A 90/120 Hz phone often draws a picture between two 60 Hz
                 // simulation steps. Preserve the touch delta for gameplay, but
                 // preview it in the camera now so dragging the view responds at
