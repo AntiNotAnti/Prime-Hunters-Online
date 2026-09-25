@@ -115,6 +115,9 @@ namespace MphRead
         /// </summary>
         public static bool ProHud { get; set; } = false;
 
+        /// <summary>Shows the match-wide confirmed death feed in the HUD.</summary>
+        public static bool KillFeedEnabled { get; set; } = true;
+
         /// <summary>
         /// How big the weapon list is drawn under <see cref="ProHud"/>.
         /// Large enough to read without looking straight at it, which is the
@@ -237,6 +240,10 @@ namespace MphRead
             {
                 ProHudFixedWeapon = boolean;
             }
+            if (values.TryGetValue(nameof(KillFeedEnabled), out value) && Boolean.TryParse(value, out boolean))
+            {
+                KillFeedEnabled = boolean;
+            }
             // Pro mode's crosshair: which shape, and how big. Both persist,
             // because a crosshair is a thing a player picks once and then does
             // not want to think about again.
@@ -285,6 +292,7 @@ namespace MphRead
                 new(nameof(ReticleOpacity), ReticleOpacity.ToString(CultureInfo.InvariantCulture)),
                 new(nameof(ProHud), ProHud.ToString().ToLower()),
                 new(nameof(ProHudFixedWeapon), ProHudFixedWeapon.ToString().ToLower()),
+                new(nameof(KillFeedEnabled), KillFeedEnabled.ToString().ToLower()),
                 new("CrosshairStyle", Mods.Render.Crosshair.Style.ToString()),
                 new("CrosshairSize", Mods.Render.Crosshair.Size.ToString()),
                 new("RadarEnabled", Mods.Render.Radar.Enabled.ToString().ToLower()),
