@@ -30,6 +30,60 @@ namespace MphRead.Entities
         private static readonly Vector4 _stylusFill = new Vector4(0.55f, 0.16f, 0.16f, 1);
         private static readonly Vector4 _stylusLit = new Vector4(1f, 0.72f, 0.35f, 1);
 
+        private int _stylusBottomTexture = -1;
+        private int _stylusAltTexture = -1;
+        private int _stylusWeaponSelectTexture = -1;
+
+        /// <summary>
+        /// Decode the original DS lower-screen tilemaps once with the rest of
+        /// the player's HUD resources. These are presentation-only textures:
+        /// the existing StylusZone remains the single source of truth for hit
+        /// testing and input ownership.
+        /// </summary>
+        internal void ModSetUpStylusHud()
+        {
+            if (Mods.Headless.Active || OperatingSystem.IsAndroid())
+            {
+                return;
+            }
+
+            string folder = Hunter switch
+            {
+                Hunter.Kanden => "kanden",
+                Hunter.Trace => "trace",
+                Hunter.Sylux => "sylux",
+                Hunter.Noxus => "nox",
+                Hunter.Spire => "spire",
+                Hunter.Weavel => "weavel",
+                _ => "samus"
+            };
+            _stylusBottomTexture = ModLoadStylusTexture($"hud/{folder}/bg_bottom.bin");
+            _stylusAltTexture = ModLoadStylusTexture($"hud/{folder}/bg_altform.bin");
+            _stylusWeaponSelectTexture = ModLoadStylusTexture($"hud/{folder}/bg_wepsel.bin");
+        }
+
+        private int ModLoadStylusTexture(string path)
+        {
+            try
+            {
+                // DS screens are 256x192. The source tilemaps may contain
+                // unused rows outside the visible LCD, so cut exactly 32x24
+                // tiles rather than stretching the backing map into the zone.
+                (int texture, _) = HudInfo.CharMapToTexture(path,
+                    startX: 0, startY: 0, tilesX: 32, tilesY: 24, _scene);
+                return texture;
+            }
+            catch (Exception ex)
+            {
+                if (Mods.DebugLog.Active)
+                {
+                    Mods.DebugLog.Line("render",
+                        $"native stylus HUD unavailable ({path}): {ex.GetType().Name}");
+                }
+                return -1;
+            }
+        }
+
         internal void ModDrawStylusZone()
         {
             if (!IsMainPlayer)
@@ -59,11 +113,32 @@ namespace MphRead.Entities
                 float height = StylusZone.Height * 192f;
                 if (width > 1 && height > 1)
                 {
+                    int nativeTexture = _hudWeaponMenuOpen
+                        ? _stylusWeaponSelectTexture
+                        : IsAltForm ? _stylusAltTexture : _stylusBottomTexture;
+                    bool nativeAvailable = !StylusZone.Placing && StylusZone.NativeUi
+                        && nativeTexture > 0;
+                    if (nativeAvailable)
+                    {
+                        float alpha = Math.Clamp(StylusZone.NativeUiOpacity, 0, 1);
+                        if (alpha > 0)
+                        {
+                            // Nearest is intentional: this is DS pixel art,
+                            // not a photographic thumbnail.
+                            _scene.DrawHudTexture(left, top, left + width, top + height,
+                                nativeTexture, alpha, smooth: false);
+                        }
+                    }
+
                     // Placement is deliberately visible even if the normal
                     // overlay has been set to 0%; otherwise an invisible
-                    // rectangle could not be positioned.
-                    float outlineAlpha = StylusZone.Placing ? 0.55f : StylusZone.OutlineOpacity;
-                    float buttonAlpha = StylusZone.Placing ? 0.275f : StylusZone.ButtonOpacity;
+                    // rectangle could not be positioned. If native art could
+                    // not be loaded, fall back to the old guide rather than
+                    // leaving a functional but invisible touch surface.
+                    float outlineAlpha = StylusZone.Placing ? 0.55f
+                        : nativeAvailable ? 0 : StylusZone.OutlineOpacity;
+                    float buttonAlpha = StylusZone.Placing ? 0.275f
+                        : nativeAvailable ? 0 : StylusZone.ButtonOpacity;
                     float line = Math.Max(0.5f, height / 96f);
 
                     if (outlineAlpha > 0)

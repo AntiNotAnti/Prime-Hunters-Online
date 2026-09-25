@@ -155,9 +155,20 @@ namespace MphRead.Mods.Input
         /// outline and buttons drawn at half of that. The pointer used to be
         /// the operating system cursor, which was fully opaque.
         /// </summary>
+        public const bool DefaultNativeUi = true;
+        public const float DefaultNativeUiOpacity = 0.35f;
         public const float DefaultOutlineOpacity = 0.22f;
         public const float DefaultButtonOpacity = 0.11f;
         public const float DefaultCursorOpacity = 1f;
+
+        /// <summary>
+        /// Draw the cartridge's real hunter-specific bottom-screen art inside
+        /// the stylus zone instead of the simplified rectangle/button guide.
+        /// </summary>
+        public static bool NativeUi { get; set; } = DefaultNativeUi;
+
+        /// <summary>Opacity of the native bottom-screen art, from invisible to solid.</summary>
+        public static float NativeUiOpacity { get; set; } = DefaultNativeUiOpacity;
 
         /// <summary>Opacity of the DS screen rectangle, from invisible to solid.</summary>
         public static float OutlineOpacity { get; set; } = DefaultOutlineOpacity;
@@ -174,6 +185,8 @@ namespace MphRead.Mods.Input
 
         public static void ResetAppearance()
         {
+            NativeUi = DefaultNativeUi;
+            NativeUiOpacity = DefaultNativeUiOpacity;
             OutlineOpacity = DefaultOutlineOpacity;
             ButtonOpacity = DefaultButtonOpacity;
             CursorOpacity = DefaultCursorOpacity;

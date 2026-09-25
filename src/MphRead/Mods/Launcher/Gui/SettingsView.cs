@@ -1385,6 +1385,10 @@ namespace MphRead.Mods.Launcher.Gui
                 {
                     _stylusZone.On = Mods.Input.StylusZone.Wanted;
                 }
+                if (_stylusNativeUi != null)
+                    _stylusNativeUi.On = Mods.Input.StylusZone.NativeUi;
+                if (_stylusNativeUiOpacity != null)
+                    _stylusNativeUiOpacity.Value = (int)MathF.Round(Mods.Input.StylusZone.NativeUiOpacity * 100);
                 if (_stylusCursorOpacity != null)
                     _stylusCursorOpacity.Value = (int)MathF.Round(Mods.Input.StylusZone.CursorOpacity * 100);
                 if (_stylusOutlineOpacity != null)
@@ -1409,6 +1413,8 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly List<(Mods.Input.TouchControl Control, ToggleRow Row)> _touchRows = new();
 
         private ToggleRow? _stylusZone;
+        private ToggleRow? _stylusNativeUi;
+        private SliderRow? _stylusNativeUiOpacity;
         private SliderRow? _stylusCursorOpacity;
         private SliderRow? _stylusOutlineOpacity;
         private SliderRow? _stylusButtonOpacity;
@@ -1450,21 +1456,25 @@ namespace MphRead.Mods.Launcher.Gui
                 new ToggleRow("Reposition filtering", Mods.Input.PointerInput.GuardJumps));
             _stylusMovementBoost = Add(_stylusAdvanced, new ToggleRow(
                 "Stylus movement can trigger morph boost", InputSettings.StylusMovementBoost));
+            _stylusNativeUi = Add(_stylusAdvanced, new ToggleRow(
+                "Native bottom-screen UI", Mods.Input.StylusZone.NativeUi));
+            _stylusNativeUiOpacity = Add(_stylusAdvanced, new SliderRow("Native UI opacity",
+                (int)MathF.Round(Mods.Input.StylusZone.NativeUiOpacity * 100),
+                v => $"{v}%", min: 0, max: 100, keyStep: 5));
             _stylusCursorOpacity = Add(_stylusAdvanced, new SliderRow("Cursor opacity",
                 (int)MathF.Round(Mods.Input.StylusZone.CursorOpacity * 100),
                 v => $"{v}%", min: 0, max: 100, keyStep: 5));
-            _stylusOutlineOpacity = Add(_stylusAdvanced, new SliderRow("Rectangle opacity",
+            _stylusOutlineOpacity = Add(_stylusAdvanced, new SliderRow("Guide rectangle opacity",
                 (int)MathF.Round(Mods.Input.StylusZone.OutlineOpacity * 100),
                 v => $"{v}%", min: 0, max: 100, keyStep: 5));
-            _stylusButtonOpacity = Add(_stylusAdvanced, new SliderRow("Button opacity",
+            _stylusButtonOpacity = Add(_stylusAdvanced, new SliderRow("Guide button opacity",
                 (int)MathF.Round(Mods.Input.StylusZone.ButtonOpacity * 100),
                 v => $"{v}%", min: 0, max: 100, keyStep: 5));
             _stylusAdvanced.Children.Add(new Note(
-                "Stylus movement boost follows the separate melonPrime-style stylus path. "
-                + "Turn it off to keep pen motion from triggering Samus' boost while leaving "
-                + "button-based boost intact. Reposition filtering ignores tablet jumps after "
-                + "lift/re-contact. Cursor, rectangle, and circular button opacity are independent; "
-                + "0% hides that element during play. Zone placement stays visible while you configure it."));
+                "Native UI draws the hunter's original DS lower screen and automatically swaps "
+                + "to the alt-form and weapon-select artwork. The guide rectangle and circular "
+                + "buttons are used only when native art is off or unavailable; placement always "
+                + "keeps a visible guide. Cursor opacity remains independent."));
             _stylusAdvancedButton = new HubNavButton("ADVANCED", compact: true)
             {
                 Width = 170,
@@ -1921,6 +1931,10 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 Mods.Input.StylusZone.Enabled = _stylusZone.On;
             }
+            if (_stylusNativeUi != null)
+                Mods.Input.StylusZone.NativeUi = _stylusNativeUi.On;
+            if (_stylusNativeUiOpacity != null)
+                Mods.Input.StylusZone.NativeUiOpacity = Math.Clamp(_stylusNativeUiOpacity.Value / 100f, 0, 1);
             if (_stylusCursorOpacity != null)
                 Mods.Input.StylusZone.CursorOpacity = Math.Clamp(_stylusCursorOpacity.Value / 100f, 0, 1);
             if (_stylusOutlineOpacity != null)
