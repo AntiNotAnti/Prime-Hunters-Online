@@ -25,7 +25,8 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly Grid _root = new() { RowDefinitions=new("Auto,Auto,*,100,Auto"), Margin=new Thickness(16) };
         private readonly Panel _viewportHost = new();
         private readonly List<Control> _editingControls = new();
-        private readonly List<Bitmap> _images=new();
+        private readonly Dictionary<string,Bitmap> _thumbnailCache=new(StringComparer.Ordinal);
+        private readonly Dictionary<string,(Bitmap Bitmap,string Details)> _materialPreviewCache=new(StringComparer.Ordinal);
         private readonly StackPanel _inspector = new() { Spacing=6, Margin=new Thickness(10) };
         private readonly ListBox _hierarchy = new() { SelectionMode=SelectionMode.Multiple };
         private readonly ListBox _problems = new();
@@ -41,6 +42,8 @@ namespace MphRead.Mods.Launcher.Gui
         private MapViewport? _viewport;
         private CancellationTokenSource? _work;
         private bool _refreshing;
+        private string _hierarchySignature = "";
+        private string _inspectorPage = "Inspector";
         private long _editorGeneration;
         private bool _detached;
         private MapAutosaveService _autosave = new();
@@ -112,9 +115,11 @@ namespace MphRead.Mods.Launcher.Gui
                 if(name=="Navigation"){_=Navigation();return;}
                 _viewport.Wireframe=name=="Wireframe";_viewport.Collision=name=="Collision";_viewport.KillPlane=name=="Kill plane";_viewport.InvalidateVisual();
             });
-            Choice(new[]{"Inspector","Environment","Materials","Assets & music","Snapping","Arrange","Map health","Navigation path","Statistics"},name=>{if(name=="Materials")MaterialInspector();else if(name=="Assets & music")AssetInspector();else if(name=="Snapping")SnapInspector();else if(name=="Statistics"||name=="Map health")Statistics();else if(name=="Arrange")ArrangeInspector();else if(name=="Navigation path")NavigationInspector();else Inspect();});
+            Choice(new[]{"Inspector","Environment","Materials","Assets & music","Snapping","Arrange","Layers","Map health","Navigation path","Statistics"},ShowInspectorPage);
             AddButton(tools,"Frame all",()=>_viewport?.FrameAll());AddButton(tools,"Focus",()=>_viewport?.FrameSelection());
+            AddButton(tools,"Copy",()=>_document?.CopySelection());AddButton(tools,"Paste",()=>_document?.PasteClipboard());
             AddButton(tools,"Duplicate",()=>EditSelection("Duplicate",MapObjects.Duplicate));AddButton(tools,"Delete",()=>EditSelection("Delete",MapObjects.Delete));
+            AddButton(tools,"Hide",()=>_document?.HideSelection());AddButton(tools,"Show all",()=>_document?.ShowAllGeometry());
             AddButton(tools,"Capture preview",CapturePreview);
             center.Children.Add(tools);Grid.SetRow(_viewportHost,1);center.Children.Add(_viewportHost);Grid.SetColumn(center,1);body.Children.Add(center);
             var inspectorScroll=new ScrollViewer { Content=_inspector };Grid.SetColumn(inspectorScroll,2);body.Children.Add(inspectorScroll);
@@ -122,13 +127,13 @@ namespace MphRead.Mods.Launcher.Gui
             _editingControls.Add(body);_editingControls.Add(_path);
             Grid.SetRow(_problems,3);_root.Children.Add(_problems);Grid.SetRow(_status,4);_root.Children.Add(_status);
             var layer=new Panel();layer.Children.Add(_root);layer.Children.Add(_modal);Content=layer;
-            _search.TextChanged+=(_,_)=>RefreshHierarchy();
+            _search.TextChanged+=(_,_)=>RefreshHierarchy(true);
             _hierarchy.SelectionChanged+=(_,selection)=>
             {
                 if(_refreshing||_document==null)return;
                 _document.Selection.Clear();foreach(var item in _hierarchy.SelectedItems?.OfType<MapObject>()??Enumerable.Empty<MapObject>())_document.Selection.Add(item.Id);
                 if(selection.AddedItems.OfType<MapObject>().LastOrDefault() is { } active)_document.ActiveObjectId=active.Id;
-                _document.SelectionChanged();Inspect();_viewport?.InvalidateVisual();
+                _document.SelectionChanged();ShowInspectorPage(_inspectorPage,false);_viewport?.InvalidateVisual();
             };
             _problems.SelectionChanged+=(_,_)=>
             {
@@ -165,16 +170,44 @@ namespace MphRead.Mods.Launcher.Gui
                 if(_document==null||!_document.IsDirty||_document.LastEditUtc<=_autosaved||DateTime.UtcNow-_document.LastEditUtc<TimeSpan.FromSeconds(3))return;
                 if (_autosave.Queue(_document.CaptureAutosave(CustomRooms.MapDirectory))) _autosaved = _document.LastEditUtc;
             };
-            AttachedToVisualTree+=(_,_)=>{_detached=false;_autosave=new();LauncherBackdrop.Set(LauncherBackdropScene.MapEditor);_idle.Start();};
-            DetachedFromVisualTree+=(_,_)=>{_detached=true;_editorGeneration++;_idle.Stop();_work?.Cancel();_autosave.Dispose();foreach(var bitmap in _images)bitmap.Dispose();_images.Clear();};
+            AttachedToVisualTree+=(_,_)=>{_detached=false;_autosave=new();LauncherBackdrop.Set(LauncherBackdropScene.MapEditor);_idle.Start();
+#if MPHREAD_SHELL
+                Shell.FilesDropped+=OnFilesDropped;
+#endif
+            };
+            DetachedFromVisualTree+=(_,_)=>{
+#if MPHREAD_SHELL
+                Shell.FilesDropped-=OnFilesDropped;
+#endif
+                _detached=true;_editorGeneration++;_idle.Stop();_work?.Cancel();_autosave.Dispose();DisposePreviewCaches();};
             if (preview) Load(MapTemplates.Create("Studio example", true)); else ShowLibrary();
         }
         public void Dispose()
         {
             _detached=true; _editorGeneration++; _idle.Stop(); _work?.Cancel(); _autosave.Dispose();
             if (_document != null) _document.Changed -= Changed;
-            foreach (var bitmap in _images) bitmap.Dispose();
-            _images.Clear();
+            DisposePreviewCaches();
+        }
+        private void DisposePreviewCaches()
+        {
+            foreach(var bitmap in _thumbnailCache.Values)bitmap.Dispose();
+            foreach(var preview in _materialPreviewCache.Values)preview.Bitmap.Dispose();
+            _thumbnailCache.Clear();_materialPreviewCache.Clear();
+        }
+        private static string PreviewCacheKey(MapDefinition definition,MapMaterial material)
+        {
+            string stamp="";
+            if(material.Texture is {} relative&&definition.BundlePath==null)
+            {
+                try
+                {
+                    string root=definition.BaseDirectory??CustomRooms.MapDirectory;
+                    string file=Path.GetFullPath(Path.Combine(root,relative));
+                    if(File.Exists(file)){var info=new FileInfo(file);stamp=$"|{info.Length}|{info.LastWriteTimeUtc.Ticks}";}
+                }
+                catch(Exception){ }
+            }
+            return $"{definition.SourcePath}|{definition.BundlePath}|{definition.TextureSource}|{material.Texture}|{material.SourceMaterial}|{material.TexScale:R}{stamp}";
         }
         internal void ShowStatus(string message)=>_status.Text=message;
         private static TextBlock Text(string text)=>new(){Text=text,Foreground=GuiTheme.TextBrush,TextWrapping=TextWrapping.Wrap};
@@ -220,9 +253,10 @@ namespace MphRead.Mods.Launcher.Gui
         internal void Load(MapProject project,string? path=null)
         {
             _editorGeneration++; _work?.Cancel(); _autosave.Dispose(); _autosave=new(); _validatedState=null; _validationSignature=null; _autosaved=DateTime.MinValue;
-            _lastBuild = null;
+            _lastBuild = null; _hierarchySignature = "";
+            foreach(var preview in _materialPreviewCache.Values)preview.Bitmap.Dispose();_materialPreviewCache.Clear();
             if(_document!=null)_document.Changed-=Changed;
-            _document=new(project,path);_document.Changed+=Changed;_viewport=new(_document);_viewport.SelectionChanged+=()=>{RefreshHierarchy();Inspect();};
+            _document=new(project,path);_document.Changed+=Changed;_viewport=new(_document);_viewport.SelectionChanged+=()=>{RefreshHierarchy();ShowInspectorPage(_inspectorPage,false);};
             _viewportHost.Children.Clear();_viewportHost.Children.Add(_viewport);_path.Text=path??Path.Combine(CustomRooms.MapDirectory,project.Definition.Name.ToLowerInvariant()+".json");
             Dismiss();Changed();_viewport.FrameAll();
             if(_document.HasRecovery(CustomRooms.MapDirectory))Recovery();
@@ -240,12 +274,29 @@ namespace MphRead.Mods.Launcher.Gui
         private void Save(){if(_document!=null)SaveTo(_path.Text??"");}
         private void SaveTo(string path)
         {try{_document?.Save(path);_document?.DiscardRecovery(CustomRooms.MapDirectory);_path.Text=path;_status.Text="Saved "+path;}catch(Exception ex){Failure(ex);}}
-        private void Changed(){RefreshHierarchy();Inspect();_status.Text=(_document?.IsDirty==true?"Unsaved changes · ":"")+"RMB orbit · MMB pan · WASD fly · F focus · drag selection or axis handles";}
-        private void RefreshHierarchy()
+        private void Changed()
+        {
+            RefreshHierarchy();
+            ShowInspectorPage(_inspectorPage, remember:false);
+            _status.Text=(_document?.IsDirty==true?"Unsaved changes · ":"")
+                +"RMB orbit · MMB pan · WASD fly · F focus · box-select empty space · G/R/T tools · Ctrl+C/V/A";
+        }
+        private void RefreshHierarchy(bool force=false)
         {
             if(_document==null)return;_refreshing=true;
-            try{var objects=MapObjects.All(_document.Project.Definition).Where(o=>o.ToString().Contains(_search.Text??"",StringComparison.OrdinalIgnoreCase)).ToArray();_hierarchy.ItemsSource=objects;
-                _hierarchy.SelectedItems?.Clear();foreach(var o in objects.Where(o=>_document.Selection.Contains(o.Id)))_hierarchy.SelectedItems?.Add(o);}
+            try
+            {
+                var objects=MapObjects.All(_document.Project.Definition)
+                    .Where(o=>o.ToString().Contains(_search.Text??"",StringComparison.OrdinalIgnoreCase)).ToArray();
+                string signature=string.Join("|",objects.Select(o=>o.Id+":"+o.ToString()));
+                if(force||signature!=_hierarchySignature)
+                {
+                    _hierarchySignature=signature;
+                    _hierarchy.ItemsSource=objects;
+                }
+                _hierarchy.SelectedItems?.Clear();
+                foreach(var o in objects.Where(o=>_document.Selection.Contains(o.Id)))_hierarchy.SelectedItems?.Add(o);
+            }
             finally{_refreshing=false;}
         }
         private void EditSelection(string label,Action<MapDefinition,ISet<Guid>> edit)
@@ -259,7 +310,6 @@ namespace MphRead.Mods.Launcher.Gui
         private void ShowLibrary()
         {
             _inspector.Children.Clear();
-            foreach(var bitmap in _images)bitmap.Dispose();_images.Clear();
             Inspect();
             var view=new Grid {RowDefinitions=new("Auto,*,Auto"),MinWidth=650,Height=460};view.Children.Add(Text("MAP LIBRARY"));
             var list=new ListBox();Grid.SetRow(list,1);view.Children.Add(list);
@@ -271,8 +321,18 @@ namespace MphRead.Mods.Launcher.Gui
                     try
                     {
                         var preview=definition.Assets.FirstOrDefault(a=>a.Kind=="preview");
-                        using var stream=preview!=null?new MemoryStream(MapAssets.Read(definition,preview.Path)):File.Exists(ThumbnailGenerator.PathFor(definition.Name))?File.OpenRead(ThumbnailGenerator.PathFor(definition.Name)):(Stream?)null;
-                        if(stream!=null){var bitmap=Bitmap.DecodeToWidth(stream,96);_images.Add(bitmap);card.Children.Add(new Image {Source=bitmap,Width=96,Height=54,Stretch=Stretch.UniformToFill});}
+                        string fallback=ThumbnailGenerator.PathFor(definition.Name);
+                        string sourceKey=row!.Entry.Path+"|"+(preview?.Path??fallback);
+                        if(preview==null&&File.Exists(fallback))
+                        {
+                            var info=new FileInfo(fallback);sourceKey+=$"|{info.Length}|{info.LastWriteTimeUtc.Ticks}";
+                        }
+                        if(!_thumbnailCache.TryGetValue(sourceKey,out var bitmap))
+                        {
+                            using var stream=preview!=null?new MemoryStream(MapAssets.Read(definition,preview.Path)):File.Exists(fallback)?File.OpenRead(fallback):(Stream?)null;
+                            if(stream!=null){bitmap=Bitmap.DecodeToWidth(stream,96);_thumbnailCache[sourceKey]=bitmap;}
+                        }
+                        if(bitmap!=null)card.Children.Add(new Image {Source=bitmap,Width=96,Height=54,Stretch=Stretch.UniformToFill});
                     }
                     catch(Exception ex)when(ex is IOException or InvalidDataException or ArgumentException or UnauthorizedAccessException){ }
                 }
@@ -359,6 +419,52 @@ namespace MphRead.Mods.Launcher.Gui
                 }
             });
         }
+        private void ShowInspectorPage(string name, bool remember=true)
+        {
+            if (remember) _inspectorPage=name;
+            switch(name)
+            {
+                case "Environment": EnvironmentInspector(); break;
+                case "Materials": MaterialInspector(); break;
+                case "Assets & music": AssetInspector(); break;
+                case "Snapping": SnapInspector(); break;
+                case "Arrange": ArrangeInspector(); break;
+                case "Layers": LayerInspector(); break;
+                case "Statistics":
+                case "Map health": Statistics(); break;
+                case "Navigation path": NavigationInspector(); break;
+                default: Inspect(); break;
+            }
+        }
+
+        private void LayerInspector()
+        {
+            _inspector.Children.Clear(); if(_document==null)return;
+            _inspector.Children.Add(Text("LAYERS"));
+            var layers=_document.Project.Definition.Geometry.Select(g=>String.IsNullOrWhiteSpace(g.Layer)?"Architecture":g.Layer)
+                .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x=>x,StringComparer.OrdinalIgnoreCase).ToArray();
+            if(layers.Length==0)_inspector.Children.Add(Text("No authored geometry layers yet."));
+            foreach(string layer in layers)
+            {
+                string current=layer;
+                var members=_document.Project.Definition.Geometry.Where(g=>g.Layer.Equals(current,StringComparison.OrdinalIgnoreCase)).ToArray();
+                _inspector.Children.Add(Text($"{current} · {members.Length} objects · {members.Count(g=>g.Hidden)} hidden · {members.Count(g=>g.Locked)} locked"));
+                AddButton(_inspector,"Show "+current,()=>{_document.SetLayerState(current,hidden:false);LayerInspector();});
+                AddButton(_inspector,"Hide "+current,()=>{_document.SetLayerState(current,hidden:true);LayerInspector();});
+                AddButton(_inspector,"Unlock "+current,()=>{_document.SetLayerState(current,locked:false);LayerInspector();});
+                AddButton(_inspector,"Lock "+current,()=>{_document.SetLayerState(current,locked:true);LayerInspector();});
+            }
+            var layerName=new TextBox{Text="Gameplay"};_inspector.Children.Add(Text("Assign selected geometry to layer"));_inspector.Children.Add(layerName);
+            AddButton(_inspector,"Assign layer",()=>{
+                string value=String.IsNullOrWhiteSpace(layerName.Text)?"Architecture":layerName.Text.Trim();
+                var ids=_document.Selection.ToHashSet();
+                _document.EditObjects("Assign layer",ids,d=>{foreach(var g in d.Geometry)g.Layer=value;});
+                LayerInspector();
+            });
+            AddButton(_inspector,"Isolate selection",()=>{_document.IsolateSelection();LayerInspector();});
+            AddButton(_inspector,"Show all geometry",()=>{_document.ShowAllGeometry();LayerInspector();});
+        }
+
         private void Inspect()
         {
             _inspector.Children.Clear();if(_document==null)return;
@@ -449,6 +555,58 @@ namespace MphRead.Mods.Launcher.Gui
             AddButton(_inspector, "Create array", () => Duplicate(false));
             AddButton(_inspector, "Create radial array", () => Duplicate(true));
             AddButton(_inspector, "Duplicate in place", () => EditSelection("Duplicate in place", (d, ids) => MapLayoutCommands.Array(d, ids, 1, System.Numerics.Vector3.Zero)));
+            AddButton(_inspector, "Save selection as prefab", SavePrefab);
+            AddButton(_inspector, "Insert prefab", InsertPrefab);
+        }
+
+        private void SavePrefab()
+        {
+            if(_document==null||_document.Selection.Count==0){_status.Text="Select objects to save as a prefab.";return;}
+            var panel=new StackPanel{Spacing=8};panel.Children.Add(Text("SAVE PREFAB"));
+            var name=new TextBox{Text="My prefab"};panel.Children.Add(name);
+            AddButton(panel,"Save",()=>{
+                try
+                {
+                    string safe=new string((name.Text??"prefab").Trim().Select(ch=>Path.GetInvalidFileNameChars().Contains(ch)?'_':ch).ToArray());
+                    if(String.IsNullOrWhiteSpace(safe))safe="prefab";
+                    string directory=Path.Combine(CustomRooms.MapDirectory,".prefabs");Directory.CreateDirectory(directory);
+                    string target=Path.Combine(directory,safe+".json");
+                    MapPrefabService.Save(_document.Project.Definition,_document.Selection,target);
+                    Dismiss();_status.Text="Prefab saved: "+target;
+                }
+                catch(Exception ex){Failure(ex);}
+            });
+            AddButton(panel,"Cancel",Dismiss);Modal(panel);
+        }
+
+        private void InsertPrefab()
+        {
+            if(_document==null)return;
+            string directory=Path.Combine(CustomRooms.MapDirectory,".prefabs");
+            var panel=new StackPanel{Spacing=8};panel.Children.Add(Text("INSERT PREFAB"));
+            var list=new ListBox{MaxHeight=340};
+            list.ItemsSource=Directory.Exists(directory)?Directory.EnumerateFiles(directory,"*.json")
+                .OrderBy(Path.GetFileName).Select(p=>new BrowserRow(p)).ToArray():Array.Empty<BrowserRow>();
+            panel.Children.Add(list);
+            AddButton(panel,"Insert",()=>{
+                if(list.SelectedItem is not BrowserRow row)return;
+                try
+                {
+                    string root=_document.Project.Definition.BaseDirectory??CustomRooms.MapDirectory;
+                    MapPrefabService.InsertResult? inserted=null;
+                    _document.Edit("Insert prefab",d=>inserted=MapPrefabService.Insert(d,row.Path,root),
+                        MapChangeDomain.Geometry|MapChangeDomain.Entity|MapChangeDomain.Material|MapChangeDomain.Navigation);
+                    if(inserted!=null)
+                    {
+                        foreach(string asset in inserted.GeneratedAssets)_document.RegisterGeneratedAsset(asset,root);
+                        _document.Selection.Clear();foreach(Guid id in inserted.ObjectIds)_document.Selection.Add(id);
+                        _document.SelectionChanged();_viewport?.FrameSelection();
+                    }
+                    Dismiss();_status.Text=$"Inserted {inserted?.ObjectIds.Count??0} prefab objects.";
+                }
+                catch(Exception ex){Failure(ex);}
+            });
+            AddButton(panel,"Cancel",Dismiss);Modal(panel);
         }
         private void NavigationInspector()
         {
@@ -511,10 +669,17 @@ namespace MphRead.Mods.Launcher.Gui
             Field("Fog color (0–31)",string.Join(",",d.FogColor),(m,s)=>m.FogColor=ParseVector(s,3).Select(v=>(int)v).ToArray());
             if(d.Import is {} import)
             {
-                _inspector.Children.Add(Text("IMPORTED ARCHITECTURE (read-only)"));
+                _inspector.Children.Add(Text("IMPORTED ARCHITECTURE + HYBRID AUTHORING"));
                 Field("Q3 units per world unit",import.UnitsPerUnit.ToString(CultureInfo.InvariantCulture),(m,s)=>m.Import!.UnitsPerUnit=Number(s));
                 Field("Patch detail (1–8)",import.PatchLevel.ToString(),(m,s)=>m.Import!.PatchLevel=int.Parse(s,CultureInfo.InvariantCulture));
-                var spawns=new CheckBox {Content="Use imported spawns",IsChecked=import.KeepSpawns};_inspector.Children.Add(spawns);edits.Add(m=>m.Import!.KeepSpawns=spawns.IsChecked==true);
+                foreach(var pair in new[]{("Use source spawns",import.KeepSpawns),("Keep player clips",import.KeepClip),("Keep sky",import.KeepSky),("Keep source pickups",import.KeepItems)})
+                {
+                    var check=new CheckBox{Content=pair.Item1,IsChecked=pair.Item2};_inspector.Children.Add(check);
+                    edits.Add(m=>{switch(pair.Item1){case "Use source spawns":m.Import!.KeepSpawns=check.IsChecked==true;break;case "Keep player clips":m.Import!.KeepClip=check.IsChecked==true;break;case "Keep sky":m.Import!.KeepSky=check.IsChecked==true;break;case "Keep source pickups":m.Import!.KeepItems=check.IsChecked==true;break;}});
+                }
+                _inspector.Children.Add(Text("Imported BSP surfaces stay immutable. Boxes, wedges, prisms and convex brushes can be layered on top."));
+                AddButton(_inspector,"Rebake Q3 textures",()=>_=RebakeImportTextures());
+                AddButton(_inspector,"Reimport Q3 source",()=>_=PickReimportSource());
             }
             var fog=new CheckBox {Content="Fog enabled",IsChecked=d.FogEnabled};_inspector.Children.Add(fog);edits.Add(m=>m.FogEnabled=fog.IsChecked==true);
             AddButton(_inspector,"Apply",()=>{try{_document.Edit("Environment",map=>{foreach(var edit in edits)edit(map);},MapChangeDomain.Environment | MapChangeDomain.Metadata | (d.Import != null ? MapChangeDomain.Import : MapChangeDomain.None));}catch(Exception ex){Failure(ex);}});
@@ -527,7 +692,7 @@ namespace MphRead.Mods.Launcher.Gui
             for(int i=0;i<_document.Project.Definition.Materials.Count;i++)
             {
                 int index=i;var m=_document.Project.Definition.Materials[i];_inspector.Children.Add(Text($"{i} · {m.Name}"));
-                try{if(m.Texture!=null||GameFiles.Ready){var preview=MapMaterialPreview.Create(_document.Project.Definition,m);_images.Add(preview.Bitmap);_inspector.Children.Add(new Image {Source=preview.Bitmap,Width=64,Height=64,HorizontalAlignment=HorizontalAlignment.Left});_inspector.Children.Add(Text(preview.Details));}}
+                try{if(m.Texture!=null||GameFiles.Ready){string key=PreviewCacheKey(_document.Project.Definition,m);if(!_materialPreviewCache.TryGetValue(key,out var preview)){preview=MapMaterialPreview.Create(_document.Project.Definition,m);_materialPreviewCache[key]=preview;}_inspector.Children.Add(new Image {Source=preview.Bitmap,Width=64,Height=64,HorizontalAlignment=HorizontalAlignment.Left});_inspector.Children.Add(Text(preview.Details));}}
                 catch(Exception ex)when(ex is IOException or InvalidDataException or ProgramException or ArgumentException or InvalidOperationException){_inspector.Children.Add(Text("Preview unavailable: "+ex.Message));}
                 var source=new TextBox{Text=m.SourceMaterial.ToString()};var scale=new TextBox{Text=m.TexScale.ToString(CultureInfo.InvariantCulture)};_inspector.Children.Add(Text("Source material / texels per unit"));_inspector.Children.Add(source);_inspector.Children.Add(scale);
                 AddButton(_inspector,"Apply material",()=>{try{_document.EditMaterial(index,m=>{m.SourceMaterial=int.Parse(source.Text??"",CultureInfo.InvariantCulture);m.TexScale=Number(scale.Text??"");});}catch(Exception ex){Failure(ex);}});
@@ -768,32 +933,189 @@ namespace MphRead.Mods.Launcher.Gui
             var result=await MapAuditRunner.Run(p,token);GuardJob(token);_status.Text=result.Passed?"Map audit passed.":"Map audit failed.";
             _problems.ItemsSource=result.Lines;
         });
-        private void Import()=>Browse("Choose a Quake 3 source",false,source=>
+        private void OnFilesDropped(IReadOnlyList<string> files)
         {
-            var view=new StackPanel {Spacing=8};view.Children.Add(Text("IMPORT QUAKE 3"));var maps=new ComboBox();
-            try{maps.ItemsSource=Q3Bsp.ListMaps(source);maps.SelectedIndex=0;}catch(Exception ex){Failure(ex);return;}view.Children.Add(maps);
-            var name=new TextBox {Text=Path.GetFileNameWithoutExtension(source)};view.Children.Add(Text("Runtime name"));view.Children.Add(name);
-            var scale=new TextBox {PlaceholderText="Scale (blank = automatic)"};view.Children.Add(scale);var clip=new CheckBox {Content="Keep player clips",IsChecked=true};view.Children.Add(clip);
+            if(_work!=null||_detached)return;
+            string? path=files.FirstOrDefault(file=>File.Exists(file)&&
+                Path.GetExtension(file).ToLowerInvariant() is ".pk3" or ".bsp" or ".json" or ".ppmap");
+            if(path==null){_status.Text="Drop a .pk3, .bsp, .json or .ppmap file into Map Studio.";return;}
+            string extension=Path.GetExtension(path).ToLowerInvariant();
+            if(extension is ".pk3" or ".bsp")ShowImportWizard(path);
+            else Open(path);
+        }
+
+        private void Import()=>_ = PickImportSource();
+        private async Task PickImportSource()
+        {
+#if !ANDROID
+            if(NativeFilePicker.Available)
+            {
+                string? picked=await NativeFilePicker.OpenFile("Choose a Quake 3 PK3","Quake 3 package","pk3");
+                if(picked!=null){ShowImportWizard(picked);return;}
+            }
+#endif
+            Browse("Choose a Quake 3 source",false,ShowImportWizard,".pk3",".bsp");
+        }
+        private void ShowImportWizard(string source)
+        {
+            var view=new StackPanel {Spacing=8};view.Children.Add(Text("IMPORT QUAKE 3 · "+Path.GetFileName(source)));
+            var maps=new ComboBox();
+            IReadOnlyList<string> mapNames;
+            try{mapNames=Q3Bsp.ListMaps(source);maps.ItemsSource=mapNames;maps.SelectedIndex=0;}
+            catch(Exception ex){Failure(ex);return;}
+            view.Children.Add(Text("Level in archive"));view.Children.Add(maps);
+            var name=new TextBox {Text=mapNames.FirstOrDefault()??Path.GetFileNameWithoutExtension(source)};
+            view.Children.Add(Text("Runtime name"));view.Children.Add(name);
+            var scaleMode=new ComboBox{ItemsSource=new[]{"Auto","Faithful (35 Q3 units)","Custom"},SelectedIndex=0};
+            var customScale=new TextBox{Text="35"};view.Children.Add(Text("Scale"));view.Children.Add(scaleMode);view.Children.Add(customScale);
+            var textureSize=new ComboBox{ItemsSource=new[]{"32","64","128"},SelectedItem="64"};
+            var patch=new ComboBox{ItemsSource=Enumerable.Range(1,8).ToArray(),SelectedItem=3};
+            view.Children.Add(Text("Texture resolution"));view.Children.Add(textureSize);
+            view.Children.Add(Text("Bezier patch detail"));view.Children.Add(patch);
+            var clip=new CheckBox {Content="Keep player clips",IsChecked=true};
+            var items=new CheckBox {Content="Import source pickups",IsChecked=true};
+            var sky=new CheckBox {Content="Keep sky surfaces",IsChecked=true};
+            var spawns=new CheckBox {Content="Use source spawn points",IsChecked=true};
+            view.Children.Add(clip);view.Children.Add(items);view.Children.Add(sky);view.Children.Add(spawns);
+            var dependencies=new List<string>();
+            var report=Text("Preflight has not run yet.");view.Children.Add(report);
+
+            float? SelectedScale()
+            {
+                if(scaleMode.SelectedIndex==0)return null;
+                if(scaleMode.SelectedIndex==1)return 35f;
+                return Number(customScale.Text??"");
+            }
+            async Task AnalyzeWizard()
+            {
+                try
+                {
+                    report.Text="Scanning BSP, shaders and sibling PK3s…";
+                    string? map=maps.SelectedItem as string;
+                    float? scale=SelectedScale();
+                    var analysis=await Task.Run(()=>Q3ImportService.Analyze(source,map,dependencies,scale));
+                    string missing=analysis.Textures.Missing.Count==0?"all resolved":
+                        $"{analysis.Textures.Missing.Count} fallback · "+string.Join(", ",analysis.Textures.Missing.Take(5))
+                        +(analysis.Textures.Missing.Count>5?" …":"");
+                    report.Text=$"{analysis.MapName}\n{analysis.Surfaces:N0} surfaces · {analysis.Patches:N0} patches · {analysis.Brushes:N0} brushes · {analysis.Spawns} starts · {analysis.Pickups} pickups\n"
+                        +$"{analysis.Width:0.#} × {analysis.Height:0.#} × {analysis.Depth:0.#} MPH units · auto scale {analysis.AutoScale:0.#}\n"
+                        +$"Textures {analysis.Textures.Resolved}/{analysis.Textures.Total} · {missing}\n"
+                        +$"Archives: {string.Join(", ",analysis.Textures.Archives.Select(Path.GetFileName))}";
+                }
+                catch(Exception ex){report.Text="Preflight failed: "+ex.Message;}
+            }
+#if !ANDROID
+            async Task AddDependency()
+            {
+                string? dep=NativeFilePicker.Available
+                    ? await NativeFilePicker.OpenFile("Add texture dependency PK3","Quake 3 package","pk3")
+                    : null;
+                if(dep!=null&&!dependencies.Contains(dep,StringComparer.OrdinalIgnoreCase))dependencies.Add(dep);
+                await AnalyzeWizard();
+            }
+            AddButton(view,"Add dependency PK3",()=>_=AddDependency());
+#endif
+            AddButton(view,"Analyze",()=>_=AnalyzeWizard());
             AddButton(view,"Import",()=>
             {
-                string room=name.Text??"";string? map=maps.SelectedItem as string;string size=scale.Text??"";bool keep=clip.IsChecked==true;
+                string room=(name.Text??"").Trim();string? map=maps.SelectedItem as string;
+                float? selectedScale;
+                int texSize,patchLevel;
+                try
+                {
+                    MapValidator.RequireRuntimeName(room);
+                    selectedScale=SelectedScale();
+                    texSize=int.Parse(textureSize.SelectedItem?.ToString()??"64",CultureInfo.InvariantCulture);
+                    patchLevel=Convert.ToInt32(patch.SelectedItem,CultureInfo.InvariantCulture);
+                }
+                catch(Exception ex){Failure(ex);return;}
+                var options=new Q3ImportService.Options(source,map,room,
+                    Path.Combine(CustomRooms.MapDirectory,room.ToLowerInvariant()),
+                    selectedScale,clip.IsChecked==true,items.IsChecked==true,sky.IsChecked==true,spawns.IsChecked==true,
+                    patchLevel,texSize,dependencies.ToArray());
                 WithUnsaved(()=>_=Job("Importing Quake 3 map",async token=>
                 {
-                    try
+                    Dismiss();
+                    var result=await Task.Run(()=>Q3ImportService.Import(options,token),token);
+                    GuardJob(token);
+                    _problems.ItemsSource=result.Diagnostics.Select(d=>$"{d.Severity} · {d.Message}").ToArray();
+                    if(!result.Succeeded||result.ProjectPath==null)
                     {
-                        MapValidator.RequireRuntimeName(room);string directory=Path.Combine(CustomRooms.MapDirectory,room.ToLowerInvariant());
-                        if(Directory.Exists(directory))throw new IOException("A map folder already has this name. Choose a new name.");
-                        Dismiss();_status.Text="Importing Quake 3 map…";
-                        int status=await Task.Run(()=>Q3Convert.Run(source,map,room,directory,!keep,false,string.IsNullOrWhiteSpace(size)?null:Number(size),64,token));
-                        GuardJob(token);
-                        if(status!=0)throw new IOException("Import failed; inspect the build log.");
-                        string path=Directory.EnumerateFiles(directory,"*.json").Single();Load(MapProjectMigrator.Upgrade(MapProjectSerializer.Load(path)),path);
+                        _status.Text=result.Diagnostics.LastOrDefault(d=>d.Severity==Q3ImportService.Severity.Error)?.Message??"Import failed.";
+                        return;
                     }
-                    catch(OperationCanceledException){throw;}
-                    catch(Exception ex){GuardJob(token);Failure(ex);}
+                    string projectPath=result.ProjectPath;
+                    Load(MapProjectMigrator.Upgrade(MapProjectSerializer.Load(projectPath)),projectPath);
+                    if(result.Analysis is {} a)
+                        _status.Text=$"Imported {a.MapName} · {a.Textures.Resolved}/{a.Textures.Total} textures resolved · {a.Width:0.#} × {a.Depth:0.#} units";
                 }));
-            });AddButton(view,"Cancel",Dismiss);Modal(view);
-        },".pk3",".bsp");
+            });
+            AddButton(view,"Cancel",Dismiss);Modal(view);_=AnalyzeWizard();
+        }
+        private Task RebakeImportTextures()=>Job("Rebaking Q3 textures",async token=>
+        {
+            if(_document==null)return;
+            var definition=_document.CaptureBuildSnapshot().CreateDefinition();
+            var import=definition.Import??throw new InvalidOperationException("This project is not imported.");
+            string level=import.Resolve()??throw new IOException("Imported Q3 source could not be resolved.");
+            string textureName=String.IsNullOrWhiteSpace(import.Textures)
+                ? definition.Name.ToLowerInvariant()+".tex" : import.Textures!;
+            string target=Path.Combine(import.BaseDirectory??definition.BaseDirectory??CustomRooms.MapDirectory,textureName);
+            var bsp=await Task.Run(()=>Q3Bsp.Load(level,import.MapName,token),token);
+            var archives=MapTextureBake.DiscoverArchives(level);
+            var result=await Task.Run(()=>MapTextureBake.Bake(bsp,archives,target,MapTextureBake.DefaultSize,cancellation:token),token);
+            GuardJob(token);
+            if(String.IsNullOrWhiteSpace(import.Textures))
+                _document.Edit("Set Q3 texture pack",d=>d.Import!.Textures=textureName,MapChangeDomain.Import);
+            _validatedState=null;
+            _status.Text=$"Rebaked {result.Baked} Q3 textures · {result.Resolved} resolved · {result.Fallbacks} fallback · {result.Archives.Count} archive(s)";
+        });
+
+        private async Task PickReimportSource()
+        {
+            if(_document?.Project.Definition.Import==null)return;
+#if !ANDROID
+            if(NativeFilePicker.Available)
+            {
+                string? picked=await NativeFilePicker.OpenFile("Reimport Quake 3 PK3","Quake 3 package","pk3");
+                if(picked!=null){RunReimport(picked);return;}
+            }
+#endif
+            Browse("Choose replacement Quake 3 source",false,RunReimport,".pk3",".bsp");
+        }
+
+        private void RunReimport(string source)
+        {
+            if(_document?.Project.Definition.Import is not {} import)return;
+            string projectPath=_document.FilePath??_path.Text??"";
+            if(String.IsNullOrWhiteSpace(projectPath)){_status.Text="Save this project before reimporting its source.";return;}
+            var existing=_document.Project.ToDefinition();
+            string? selectedMap=import.MapName;
+            try
+            {
+                var maps=Q3Bsp.ListMaps(source);
+                if(selectedMap==null||!maps.Contains(selectedMap,StringComparer.OrdinalIgnoreCase))selectedMap=maps.FirstOrDefault();
+            }
+            catch(Exception ex){Failure(ex);return;}
+            var options=new Q3ImportService.Options(source,selectedMap,existing.Name,
+                Path.Combine(Path.GetTempPath(),"ProjectPrime-reimport-"+Guid.NewGuid().ToString("N")),
+                import.UnitsPerUnit,import.KeepClip,import.KeepItems,import.KeepSky,import.KeepSpawns,
+                import.PatchLevel,MapTextureBake.DefaultSize);
+            _=Job("Reimporting Q3 source",async token=>
+            {
+                var result=await Task.Run(()=>Q3ImportService.Reimport(existing,options,projectPath,token),token);
+                GuardJob(token);
+                _problems.ItemsSource=result.Diagnostics.Select(d=>$"{d.Severity} · {d.Message}").ToArray();
+                if(!result.Succeeded||result.ProjectPath==null)
+                {
+                    _status.Text=result.Diagnostics.LastOrDefault(d=>d.Severity==Q3ImportService.Severity.Error)?.Message??"Reimport failed.";
+                    return;
+                }
+                Load(MapProjectSerializer.Load(result.ProjectPath),result.ProjectPath);
+                _status.Text="Q3 architecture and textures reimported; authored gameplay and hybrid geometry were preserved.";
+            });
+        }
+
         private void Failure(Exception ex)
         {_status.Text=ex.Message;if(ex is not(IOException or InvalidDataException or ProgramException or FormatException or ArgumentException))DebugLog.Exception("mapeditor",ex);}
         protected override void OnKeyDown(KeyEventArgs e)

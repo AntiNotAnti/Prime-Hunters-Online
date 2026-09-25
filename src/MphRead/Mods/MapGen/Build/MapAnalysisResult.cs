@@ -17,6 +17,8 @@ public sealed class MapAnalysisResult
     public IReadOnlyList<MapBudget> Budgets { get; }
     public ImmutableArray<MapPreviewFace> Faces { get; }
     public ImmutableArray<MapPreviewFace> CollisionFaces { get; }
+    public int ImportedFaceCount { get; }
+    public int ImportedCollisionFaceCount { get; }
     private readonly MapNodePacker.NavigationGraph? _navigation;
     public bool Succeeded => Diagnostics.All(d => d.Severity != MapDiagnosticSeverity.Error);
     internal MapAnalysisResult(string key, MapCompilation compilation, bool navigation, CancellationToken cancellation = default)
@@ -29,6 +31,8 @@ public sealed class MapAnalysisResult
             .ToImmutableArray() ?? ImmutableArray<MapPreviewFace>.Empty;
         CollisionFaces = compilation.Map?.Solid.Select(f => new MapPreviewFace(f.Points.ToImmutableArray(), f.Shade, f.Material))
             .ToImmutableArray() ?? ImmutableArray<MapPreviewFace>.Empty;
+        ImportedFaceCount = compilation.Map?.ImportedFaceCount ?? 0;
+        ImportedCollisionFaceCount = compilation.Map?.ImportedCollisionFaceCount ?? 0;
         if (navigation && compilation.Map is BuiltMap map)
         {
             try

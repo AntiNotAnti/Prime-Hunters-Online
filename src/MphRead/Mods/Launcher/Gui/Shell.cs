@@ -51,6 +51,15 @@ namespace MphRead.Mods.Launcher.Gui
         internal static RenderWindow? Window => _window;
 
         private static RenderWindow? _window;
+        internal static event Action<IReadOnlyList<string>>? FilesDropped;
+
+        private static void OnFilesDropped(FileDropEventArgs e)
+        {
+            // OpenTK's strings are only guaranteed for the duration of the
+            // native callback, so copy before handing them to a screen.
+            string[] files=e.FileNames?.ToArray()??Array.Empty<string>();
+            if(files.Length>0)FilesDropped?.Invoke(files);
+        }
 
         /// <summary>
         /// Hand the game window to whatever needs it as a parent.
@@ -138,6 +147,7 @@ namespace MphRead.Mods.Launcher.Gui
             try
             {
                 window = new RenderWindow(shell: true);
+                window.FileDrop += OnFilesDropped;
                 PublishNativeHandle(window);
                 _window = window;
                 Active = true;
@@ -169,6 +179,7 @@ namespace MphRead.Mods.Launcher.Gui
                 NetHostSession.Stop();
                 if (window != null)
                 {
+                    window.FileDrop -= OnFilesDropped;
                     window.Context.MakeCurrent();
                     UiSurface.Current?.ReleaseMapRenderer();
                 }

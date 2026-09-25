@@ -165,7 +165,8 @@ namespace MphRead.Mods.MapGen
             if (d.Import is { } import)
             {
                 if(string.IsNullOrEmpty(import.Source)||import.ShaderMaterials==null){r.Error("FP-MAP-005","Import source and shader mappings are required.");return r;}
-                if(d.Geometry.Count!=0||d.Brushes.Count!=0)r.Error("FP-MAP-013","Imported architecture is read-only; additional primitives require a native project.");
+                // Imported architecture itself remains read-only, but native
+                // Project Prime primitives may be layered on top as hybrid geometry.
                 if (!float.IsFinite(import.UnitsPerUnit) || import.UnitsPerUnit <= 0 || !float.IsFinite(import.TexScale) || import.TexScale <= 0
                     || import.PatchLevel is < 1 or > 8) r.Error("FP-MAP-017", "Import scale/UV scale must be positive and patch level 1–8.");
                 if (checkSources)

@@ -8,7 +8,7 @@ namespace MphRead.Mods.MapGen
 {
     public static class GeometryCompiler
     {
-        public static IReadOnlyList<BuiltFace> Compile(MapGeometry geometry, float texScale)
+        public static IReadOnlyList<BuiltFace> Compile(MapGeometry geometry, float texScale, int materialOffset = 0)
         {
             var vertices = new List<Vector3>();
             var indices = new List<int[]>();
@@ -87,18 +87,19 @@ namespace MphRead.Mods.MapGen
                     return new Vector2(x*cos-y*sin+uv.Offset[0], x*sin+y*cos+uv.Offset[1]);
                 }).ToArray();
                 if (coords.Any(p => Math.Abs(p.X) >= 2048 || Math.Abs(p.Y) >= 2048)) throw new MapAuthoringException("FP-MAP-001", "UV coordinates exceed the runtime range; lower texture scale.");
-                result.Add(new BuiltFace(points,coords,normal,geometry.Material,geometry.Shade * (.7f+.3f*Math.Max(0,normal.Y)))
+                result.Add(new BuiltFace(points,coords,normal,geometry.Material + materialOffset,geometry.Shade * (.7f+.3f*Math.Max(0,normal.Y)))
                 { Damaging = geometry.Damaging, Terrain = Enum.TryParse<Terrain>(geometry.Terrain, true, out var terrain) ? terrain : Terrain.Metal });
             }
             return result;
         }
 
-        public static void Add(BuiltMap map, MapDefinition definition, CancellationToken cancellation = default)
+        public static void Add(BuiltMap map, MapDefinition definition, CancellationToken cancellation = default,
+            int materialOffset = 0)
         {
             foreach (var geometry in definition.Geometry)
             {
                 cancellation.ThrowIfCancellationRequested();
-                foreach (var face in Compile(geometry, definition.Materials[geometry.Material].TexScale))
+                foreach (var face in Compile(geometry, definition.Materials[geometry.Material].TexScale, materialOffset))
                 { map.Faces.Add(face); if (geometry.Solid) map.Solid.Add(face); }
             }
         }

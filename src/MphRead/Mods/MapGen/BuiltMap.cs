@@ -20,6 +20,10 @@ namespace MphRead.Mods.MapGen
         public List<BuiltFace> Faces { get; } = new List<BuiltFace>();
         public List<BuiltFace> Solid { get; } = new List<BuiltFace>();
         public List<EntityEditorBase> Entities { get; } = new List<EntityEditorBase>();
+        // Imported maps may append authored native geometry. These counts mark
+        // the immutable BSP portion so the editor can cache it separately.
+        public int ImportedFaceCount { get; set; }
+        public int ImportedCollisionFaceCount { get; set; }
 
         public BuiltMap(MapDefinition definition)
         {

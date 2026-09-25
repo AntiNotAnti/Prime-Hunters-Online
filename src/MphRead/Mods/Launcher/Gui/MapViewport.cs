@@ -39,7 +39,8 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly Dictionary<(Guid Id, string Text), FormattedText> _labels = new();
         private readonly List<(Guid Id, Point[] Points, double Depth)> _pick = new();
         private Point _last, _start;
-        private bool _orbit, _pan, _drag;
+        private bool _orbit, _pan, _drag, _boxSelect, _boxAdditive;
+        private Point _boxCurrent;
         private int _axis = -1;
         public string Axes { get; set; } = "Free";
         public string PivotMode { get; set; } = "Individual";
@@ -256,6 +257,12 @@ namespace MphRead.Mods.Launcher.Gui
                     if(projectedPoint!=null)context.DrawEllipse(color,null,projectedPoint.Value.Point,2,2);
                     foreach(int n in Navigation.Neighbours[i]){var q=Navigation.Positions[n];Line(context,a,new(q.X,q.Y,q.Z),color);}
                 }
+            if (_boxSelect)
+            {
+                Rect box = SelectionRectangle(_start, _boxCurrent);
+                context.FillRectangle(new SolidColorBrush(Color.FromArgb(32, 64, 190, 255)), box);
+                context.DrawRectangle(new Pen(Brushes.DeepSkyBlue, 1), box);
+            }
             var selectedObject=ActiveSelection;
             if(selectedObject!=null)
             {
@@ -263,6 +270,19 @@ namespace MphRead.Mods.Launcher.Gui
                 Line(context,center,center+GizmoAxis(selectedObject,0)*3,Brushes.Red,3);Line(context,center,center+GizmoAxis(selectedObject,1)*3,Brushes.Lime,3);Line(context,center,center+GizmoAxis(selectedObject,2)*3,Brushes.DeepSkyBlue,3);
             }
         }
+        private static Rect SelectionRectangle(Point a, Point b)
+        {
+            double x = Math.Min(a.X, b.X), y = Math.Min(a.Y, b.Y);
+            return new Rect(x, y, Math.Abs(a.X - b.X), Math.Abs(a.Y - b.Y));
+        }
+        private static bool Intersects(Rect selection, Point[] polygon)
+        {
+            if (polygon.Length == 0) return false;
+            double minX = polygon.Min(p => p.X), maxX = polygon.Max(p => p.X);
+            double minY = polygon.Min(p => p.Y), maxY = polygon.Max(p => p.Y);
+            return selection.Intersects(new Rect(minX, minY, Math.Max(1, maxX - minX), Math.Max(1, maxY - minY)));
+        }
+
         private static bool Contains(Point[] polygon,Point p)
         {
             bool inside=false;for(int i=0,j=polygon.Length-1;i<polygon.Length;j=i++)
@@ -290,8 +310,10 @@ namespace MphRead.Mods.Launcher.Gui
                     id=_pick.Where(p=>p.Depth==0&&Contains(p.Points,_last)).Select(p=>p.Id).FirstOrDefault();
                     if(id==Guid.Empty)id=MapViewportPicking.Pick(BuildRenderFrame(Layout),_last.X,_last.Y);
                 }
-                if(!e.KeyModifiers.HasFlag(KeyModifiers.Shift)&&!Document.Selection.Contains(id))Document.Selection.Clear();
+                _boxAdditive=e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+                if(!_boxAdditive&&!Document.Selection.Contains(id))Document.Selection.Clear();
                 if(id!=Guid.Empty){Document.Selection.Add(id);Document.ActiveObjectId=id;}
+                else { _boxSelect=true; _boxCurrent=_start; }
                 _drag=id!=Guid.Empty;Document.SelectionChanged();SelectionChanged?.Invoke();InvalidateVisual();
             }
             e.Pointer.Capture(this);e.Handled=true;
@@ -299,6 +321,7 @@ namespace MphRead.Mods.Launcher.Gui
         protected override void OnPointerMoved(PointerEventArgs e)
         {
             base.OnPointerMoved(e);Point p=e.GetPosition(this);var delta=p-_last;_last=p;
+            if (_boxSelect) { _boxCurrent=p; InvalidateVisual(); return; }
             var(right,up,forward)=Basis();float distance=Vector.Distance(CameraPosition,CameraTarget);
             if(_orbit)
             {
@@ -326,7 +349,18 @@ namespace MphRead.Mods.Launcher.Gui
         }
         protected override void OnPointerReleased(PointerReleasedEventArgs e)
         {
-            if(_drag)
+            if (_boxSelect)
+            {
+                Rect selection = SelectionRectangle(_start, _boxCurrent);
+                if (!_boxAdditive) Document.Selection.Clear();
+                foreach (Guid id in _pick.Where(p => p.Id != Guid.Empty && Intersects(selection, p.Points))
+                    .Select(p => p.Id).Distinct())
+                    Document.Selection.Add(id);
+                Document.ActiveObjectId = Document.Selection.FirstOrDefault();
+                _boxSelect = false;
+                Document.SelectionChanged(); SelectionChanged?.Invoke();
+            }
+            else if(_drag)
             {
                 var ids=Document.Selection.ToHashSet();Vector move=_preview;float angle=_rotation,scale=_scale;
                 Document.TransformSelection(ids, Tool, move, angle, scale, LocalAxes, rotationAxis:TurnAxis, scaleAxes:ScaleAxes, pivot:TransformPivot);
@@ -341,11 +375,24 @@ namespace MphRead.Mods.Launcher.Gui
         }
         protected override void OnKeyDown(KeyEventArgs e)
         {
+            bool control=e.KeyModifiers.HasFlag(KeyModifiers.Control);
+            bool shift=e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+            bool alt=e.KeyModifiers.HasFlag(KeyModifiers.Alt);
             if(e.Key==Key.F)FrameSelection();
+            else if(e.Key==Key.Escape&&_boxSelect){_boxSelect=false;InvalidateVisual();}
             else if(e.Key==Key.Delete){var ids=Document.Selection.ToHashSet();Document.EditObjects("Delete selection",ids,d=>MapObjects.Delete(d,ids));}
-            else if(e.KeyModifiers.HasFlag(KeyModifiers.Control)&&e.Key==Key.D){var ids=Document.Selection.ToHashSet();Document.EditObjects("Duplicate selection",ids,d=>MapObjects.Duplicate(d,ids));}
-            else if(e.KeyModifiers.HasFlag(KeyModifiers.Control)&&e.Key==Key.Z)Document.History.Undo();
-            else if(e.KeyModifiers.HasFlag(KeyModifiers.Control)&&e.Key==Key.Y)Document.History.Redo();
+            else if(control&&e.Key==Key.A)Document.SelectAllObjects();
+            else if(control&&e.Key==Key.C)Document.CopySelection();
+            else if(control&&e.Key==Key.V)Document.PasteClipboard();
+            else if(control&&e.Key==Key.D){var ids=Document.Selection.ToHashSet();Document.EditObjects("Duplicate selection",ids,d=>MapObjects.Duplicate(d,ids));}
+            else if(control&&e.Key==Key.Z)Document.History.Undo();
+            else if(control&&e.Key==Key.Y)Document.History.Redo();
+            else if(alt&&e.Key==Key.H)Document.ShowAllGeometry();
+            else if(shift&&e.Key==Key.H)Document.IsolateSelection();
+            else if(e.Key==Key.H)Document.HideSelection();
+            else if(e.Key==Key.G){Tool="Move";}
+            else if(e.Key==Key.R){Tool="Rotate";}
+            else if(e.Key==Key.T){Tool="Scale";}
             else
             {
                 var(right,up,forward)=Basis();Vector move=e.Key switch {Key.W=>forward,Key.S=>-forward,Key.A=>-right,Key.D=>right,Key.Q=>-up,Key.E=>up,_=>Vector.Zero};
