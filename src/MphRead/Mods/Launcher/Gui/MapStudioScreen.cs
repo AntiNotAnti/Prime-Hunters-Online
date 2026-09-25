@@ -887,32 +887,115 @@ namespace MphRead.Mods.Launcher.Gui
             var result=await MapAuditRunner.Run(p,token);GuardJob(token);_status.Text=result.Passed?"Map audit passed.":"Map audit failed.";
             _problems.ItemsSource=result.Lines;
         });
-        private void Import()=>Browse("Choose a Quake 3 source",false,source=>
+        private void Import()=>_ = PickImportSource();
+        private async Task PickImportSource()
         {
-            var view=new StackPanel {Spacing=8};view.Children.Add(Text("IMPORT QUAKE 3"));var maps=new ComboBox();
-            try{maps.ItemsSource=Q3Bsp.ListMaps(source);maps.SelectedIndex=0;}catch(Exception ex){Failure(ex);return;}view.Children.Add(maps);
-            var name=new TextBox {Text=Path.GetFileNameWithoutExtension(source)};view.Children.Add(Text("Runtime name"));view.Children.Add(name);
-            var scale=new TextBox {PlaceholderText="Scale (blank = automatic)"};view.Children.Add(scale);var clip=new CheckBox {Content="Keep player clips",IsChecked=true};view.Children.Add(clip);
+#if !ANDROID
+            if(NativeFilePicker.Available)
+            {
+                string? picked=await NativeFilePicker.OpenFile("Choose a Quake 3 PK3","Quake 3 package","pk3");
+                if(picked!=null){ShowImportWizard(picked);return;}
+            }
+#endif
+            Browse("Choose a Quake 3 source",false,ShowImportWizard,".pk3",".bsp");
+        }
+        private void ShowImportWizard(string source)
+        {
+            var view=new StackPanel {Spacing=8};view.Children.Add(Text("IMPORT QUAKE 3 · "+Path.GetFileName(source)));
+            var maps=new ComboBox();
+            IReadOnlyList<string> mapNames;
+            try{mapNames=Q3Bsp.ListMaps(source);maps.ItemsSource=mapNames;maps.SelectedIndex=0;}
+            catch(Exception ex){Failure(ex);return;}
+            view.Children.Add(Text("Level in archive"));view.Children.Add(maps);
+            var name=new TextBox {Text=mapNames.FirstOrDefault()??Path.GetFileNameWithoutExtension(source)};
+            view.Children.Add(Text("Runtime name"));view.Children.Add(name);
+            var scaleMode=new ComboBox{ItemsSource=new[]{"Auto","Faithful (35 Q3 units)","Custom"},SelectedIndex=0};
+            var customScale=new TextBox{Text="35"};view.Children.Add(Text("Scale"));view.Children.Add(scaleMode);view.Children.Add(customScale);
+            var textureSize=new ComboBox{ItemsSource=new[]{"32","64","128"},SelectedItem="64"};
+            var patch=new ComboBox{ItemsSource=Enumerable.Range(1,8).ToArray(),SelectedItem=3};
+            view.Children.Add(Text("Texture resolution"));view.Children.Add(textureSize);
+            view.Children.Add(Text("Bezier patch detail"));view.Children.Add(patch);
+            var clip=new CheckBox {Content="Keep player clips",IsChecked=true};
+            var items=new CheckBox {Content="Import source pickups",IsChecked=true};
+            var sky=new CheckBox {Content="Keep sky surfaces",IsChecked=true};
+            var spawns=new CheckBox {Content="Use source spawn points",IsChecked=true};
+            view.Children.Add(clip);view.Children.Add(items);view.Children.Add(sky);view.Children.Add(spawns);
+            var dependencies=new List<string>();
+            var report=Text("Preflight has not run yet.");view.Children.Add(report);
+
+            float? SelectedScale()
+            {
+                if(scaleMode.SelectedIndex==0)return null;
+                if(scaleMode.SelectedIndex==1)return 35f;
+                return Number(customScale.Text??"");
+            }
+            async Task AnalyzeWizard()
+            {
+                try
+                {
+                    report.Text="Scanning BSP, shaders and sibling PK3s…";
+                    string? map=maps.SelectedItem as string;
+                    float? scale=SelectedScale();
+                    var analysis=await Task.Run(()=>Q3ImportService.Analyze(source,map,dependencies,scale));
+                    string missing=analysis.Textures.Missing.Count==0?"all resolved":
+                        $"{analysis.Textures.Missing.Count} fallback · "+string.Join(", ",analysis.Textures.Missing.Take(5))
+                        +(analysis.Textures.Missing.Count>5?" …":"");
+                    report.Text=$"{analysis.MapName}\n{analysis.Surfaces:N0} surfaces · {analysis.Patches:N0} patches · {analysis.Brushes:N0} brushes · {analysis.Spawns} starts · {analysis.Pickups} pickups\n"
+                        +$"{analysis.Width:0.#} × {analysis.Height:0.#} × {analysis.Depth:0.#} MPH units · auto scale {analysis.AutoScale:0.#}\n"
+                        +$"Textures {analysis.Textures.Resolved}/{analysis.Textures.Total} · {missing}\n"
+                        +$"Archives: {string.Join(", ",analysis.Textures.Archives.Select(Path.GetFileName))}";
+                }
+                catch(Exception ex){report.Text="Preflight failed: "+ex.Message;}
+            }
+#if !ANDROID
+            AddButton(view,"Add dependency PK3",()=>_=Task.Run(async()=>
+            {
+                string? dep=NativeFilePicker.Available
+                    ? await NativeFilePicker.OpenFile("Add texture dependency PK3","Quake 3 package","pk3")
+                    : null;
+                await Dispatcher.UIThread.InvokeAsync(async()=>{
+                    if(dep!=null&&!dependencies.Contains(dep,StringComparer.OrdinalIgnoreCase))dependencies.Add(dep);
+                    await AnalyzeWizard();
+                });
+            }));
+#endif
+            AddButton(view,"Analyze",()=>_=AnalyzeWizard());
             AddButton(view,"Import",()=>
             {
-                string room=name.Text??"";string? map=maps.SelectedItem as string;string size=scale.Text??"";bool keep=clip.IsChecked==true;
+                string room=(name.Text??"").Trim();string? map=maps.SelectedItem as string;
+                float? selectedScale;
+                int texSize,patchLevel;
+                try
+                {
+                    MapValidator.RequireRuntimeName(room);
+                    selectedScale=SelectedScale();
+                    texSize=int.Parse(textureSize.SelectedItem?.ToString()??"64",CultureInfo.InvariantCulture);
+                    patchLevel=Convert.ToInt32(patch.SelectedItem,CultureInfo.InvariantCulture);
+                }
+                catch(Exception ex){Failure(ex);return;}
+                var options=new Q3ImportService.Options(source,map,room,
+                    Path.Combine(CustomRooms.MapDirectory,room.ToLowerInvariant()),
+                    selectedScale,clip.IsChecked==true,items.IsChecked==true,sky.IsChecked==true,spawns.IsChecked==true,
+                    patchLevel,texSize,dependencies.ToArray());
                 WithUnsaved(()=>_=Job("Importing Quake 3 map",async token=>
                 {
-                    try
+                    Dismiss();
+                    var result=await Task.Run(()=>Q3ImportService.Import(options,token),token);
+                    GuardJob(token);
+                    _problems.ItemsSource=result.Diagnostics.Select(d=>$"{d.Severity} · {d.Message}").ToArray();
+                    if(!result.Succeeded||result.ProjectPath==null)
                     {
-                        MapValidator.RequireRuntimeName(room);string directory=Path.Combine(CustomRooms.MapDirectory,room.ToLowerInvariant());
-                        if(Directory.Exists(directory))throw new IOException("A map folder already has this name. Choose a new name.");
-                        Dismiss();_status.Text="Importing Quake 3 map…";
-                        int status=await Task.Run(()=>Q3Convert.Run(source,map,room,directory,!keep,false,string.IsNullOrWhiteSpace(size)?null:Number(size),64,token));
-                        GuardJob(token);
-                        if(status!=0)throw new IOException("Import failed; inspect the build log.");
-                        string path=Directory.EnumerateFiles(directory,"*.json").Single();Load(MapProjectMigrator.Upgrade(MapProjectSerializer.Load(path)),path);
+                        _status.Text=result.Diagnostics.LastOrDefault(d=>d.Severity==Q3ImportService.Severity.Error)?.Message??"Import failed.";
+                        return;
                     }
-                    catch(OperationCanceledException){throw;}
-                    catch(Exception ex){GuardJob(token);Failure(ex);}
+                    string projectPath=result.ProjectPath;
+                    Load(MapProjectMigrator.Upgrade(MapProjectSerializer.Load(projectPath)),projectPath);
+                    if(result.Analysis is {} a)
+                        _status.Text=$"Imported {a.MapName} · {a.Textures.Resolved}/{a.Textures.Total} textures resolved · {a.Width:0.#} × {a.Depth:0.#} units";
                 }));
-            });AddButton(view,"Cancel",Dismiss);Modal(view);
-        },".pk3",".bsp");
+            });
+            AddButton(view,"Cancel",Dismiss);Modal(view);_=AnalyzeWizard();
+        }
         private void Failure(Exception ex)
         {_status.Text=ex.Message;if(ex is not(IOException or InvalidDataException or ProgramException or FormatException or ArgumentException))DebugLog.Exception("mapeditor",ex);}
         protected override void OnKeyDown(KeyEventArgs e)
