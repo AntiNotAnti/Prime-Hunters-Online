@@ -68,6 +68,51 @@ try
     doc.TransformSelection(new[] { box.Id }, "Move", Vector3.One, 0, 1, false);
     Check(doc.CurrentStateId == state, "locked transform no-op");
     doc.History.Undo(); Check(!doc.Project.Definition.Geometry[0].Locked, "undo lock");
+
+    // QoL commands keep object operations transactional and undoable.
+    doc.Selection.Clear(); doc.Selection.Add(box.Id); doc.SelectionChanged();
+    doc.CopySelection(); int clipboardCount=doc.Project.Definition.Geometry.Count;
+    Check(doc.PasteClipboard() && doc.Project.Definition.Geometry.Count==clipboardCount+1, "clipboard paste duplicates selection");
+    Check(doc.Selection.Count==1 && !doc.Selection.Contains(box.Id), "pasted objects become selection");
+    doc.History.Undo(); Check(doc.Project.Definition.Geometry.Count==clipboardCount, "clipboard paste undo");
+    doc.Selection.Clear(); doc.Selection.Add(box.Id); doc.HideSelection();
+    Check(doc.Project.Definition.Geometry.First(g=>g.Id==box.Id).Hidden, "hide selection");
+    doc.History.Undo(); Check(!doc.Project.Definition.Geometry.First(g=>g.Id==box.Id).Hidden, "hide selection undo");
+    doc.SetLayerState("Architecture",locked:true);
+    Check(doc.Project.Definition.Geometry.Where(g=>g.Layer=="Architecture").All(g=>g.Locked), "layer lock");
+    doc.History.Undo();
+
+    var hybridCheck=new MapDefinition{Name="HYBRID_CHECK",Import=new(){Source="missing.pk3",KeepSpawns=true}};
+    hybridCheck.Materials.Add(new()); hybridCheck.Geometry.Add(new MapBox());
+    var hybridValidation=MapValidator.Validate(hybridCheck,checkSources:false);
+    Check(!hybridValidation.Diagnostics.Any(d=>d.Message.Contains("additional primitives",StringComparison.OrdinalIgnoreCase)),
+        "imported projects allow authored hybrid primitives");
+    Check(GeometryCompiler.Compile(hybridCheck.Geometry[0],16,7).All(face=>face.Material==7),
+        "hybrid geometry material offset");
+
+    string pk3Root=Path.Combine(root,"pk3-discovery");Directory.CreateDirectory(pk3Root);
+    string sourcePk3=Path.Combine(pk3Root,"level.pk3"), dependencyPk3=Path.Combine(pk3Root,"pak-textures.pk3");
+    File.WriteAllBytes(sourcePk3,Array.Empty<byte>());File.WriteAllBytes(dependencyPk3,Array.Empty<byte>());
+    var archives=MapTextureBake.DiscoverArchives(sourcePk3);
+    Check(Path.GetFullPath(archives[0])==Path.GetFullPath(sourcePk3)
+        && archives.Contains(Path.GetFullPath(dependencyPk3),StringComparer.OrdinalIgnoreCase),
+        "PK3 discovery keeps selected source first and finds siblings");
+    string failedImport=Path.Combine(root,"failed-import");
+    var failedResult=Q3ImportService.Import(new("missing.pk3",null,"FAILED_IMPORT",failedImport));
+    Check(!failedResult.Succeeded&&!Directory.Exists(failedImport),"failed import leaves no destination folder");
+
+    var prefabSource=new MapDefinition{Name="PREFAB_SOURCE"};prefabSource.Materials.Add(new(){Name="base"});
+    var prefabBox=new MapBox{Label="Prefab box"};prefabSource.Geometry.Add(prefabBox);
+    var prefabSpawn=new MapSpawn{Id=Guid.NewGuid(),Label="Prefab spawn"};prefabSource.Spawns.Add(prefabSpawn);
+    string prefabPath=Path.Combine(root,"prefabs","fixture.json");
+    MapPrefabService.Save(prefabSource,new System.Collections.Generic.HashSet<Guid>{prefabBox.Id,prefabSpawn.Id},prefabPath);
+    var prefabDestination=new MapDefinition{Name="PREFAB_DEST"};string prefabDestRoot=Path.Combine(root,"prefab-dest");Directory.CreateDirectory(prefabDestRoot);
+    var inserted=MapPrefabService.Insert(prefabDestination,prefabPath,prefabDestRoot);
+    Check(inserted.ObjectIds.Count==2&&prefabDestination.Geometry.Count==1&&prefabDestination.Spawns.Count==1,
+        "prefab selection roundtrip");
+    Check(prefabDestination.Materials.Count==1&&prefabDestination.Geometry[0].Material==0,
+        "prefab material remap");
+
     var history = new MapCommandHistory(2, 1000);
     int value = 0;
     for (int i = 0; i < 10; i++) history.Execute(new Counter(() => value++, () => value--, 100));
