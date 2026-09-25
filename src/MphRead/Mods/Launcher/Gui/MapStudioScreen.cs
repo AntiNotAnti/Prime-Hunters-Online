@@ -1008,17 +1008,16 @@ namespace MphRead.Mods.Launcher.Gui
             var definition=_document.CaptureBuildSnapshot().CreateDefinition();
             var import=definition.Import??throw new InvalidOperationException("This project is not imported.");
             string level=import.Resolve()??throw new IOException("Imported Q3 source could not be resolved.");
-            if(String.IsNullOrWhiteSpace(import.Textures))
-            {
-                import.Textures=definition.Name.ToLowerInvariant()+".tex";
-                _document.Edit("Set Q3 texture pack",d=>d.Import!.Textures=import.Textures,MapChangeDomain.Import);
-                definition=_document.CaptureBuildSnapshot().CreateDefinition();import=definition.Import!;
-            }
-            string target=Path.Combine(import.BaseDirectory??definition.BaseDirectory??CustomRooms.MapDirectory,import.Textures!);
+            string textureName=String.IsNullOrWhiteSpace(import.Textures)
+                ? definition.Name.ToLowerInvariant()+".tex" : import.Textures!;
+            string target=Path.Combine(import.BaseDirectory??definition.BaseDirectory??CustomRooms.MapDirectory,textureName);
             var bsp=await Task.Run(()=>Q3Bsp.Load(level,import.MapName,token),token);
             var archives=MapTextureBake.DiscoverArchives(level);
             var result=await Task.Run(()=>MapTextureBake.Bake(bsp,archives,target,MapTextureBake.DefaultSize,cancellation:token),token);
-            GuardJob(token);_validatedState=null;
+            GuardJob(token);
+            if(String.IsNullOrWhiteSpace(import.Textures))
+                _document.Edit("Set Q3 texture pack",d=>d.Import!.Textures=textureName,MapChangeDomain.Import);
+            _validatedState=null;
             _status.Text=$"Rebaked {result.Baked} Q3 textures · {result.Resolved} resolved · {result.Fallbacks} fallback · {result.Archives.Count} archive(s)";
         });
 
