@@ -75,6 +75,13 @@ namespace MphRead.Mods.Launcher
         public static int BotLevel { get; set; } = 1;
         public static int HostPort { get; set; } = Network.NetConfig.DefaultPort;
 
+        /// <summary>The last lobby mode whose time/goal rules were accepted by the server.</summary>
+        public static GameMode LastLobbyMode { get; set; } = GameMode.Battle;
+        /// <summary>Last accepted lobby clock, in seconds. Zero means unlimited.</summary>
+        public static int LastLobbyTimeLimitSeconds { get; set; } = 7 * 60;
+        /// <summary>Last accepted goal for <see cref="LastLobbyMode"/>. Zero means unlimited where supported.</summary>
+        public static int LastLobbyGoal { get; set; } = 7;
+
         /// <summary>
         /// Whether a hosted game announces itself to the directory.
         ///
@@ -188,6 +195,8 @@ namespace MphRead.Mods.Launcher
         public static bool ReplayAutoPrune { get; set; } = true;
         /// <summary>Full recordings prune first; clips remain protected unless opted in.</summary>
         public static bool ReplayDeleteClips { get; set; }
+        /// <summary>Draw player names above hunters while using a spectator/replay free camera.</summary>
+        public static bool SpectatorNameTags { get; set; }
         public static bool KillCamEnabled { get; set; } = true;
         public static int KillCamCamera { get; set; }
         public static bool FinalKillCamEnabled { get; set; } = true;
@@ -333,6 +342,29 @@ namespace MphRead.Mods.Launcher
                                 HostPort = hostPort;
                             }
                             break;
+                        case "lobby_mode":
+                            if (Enum.TryParse(value, ignoreCase: true, out GameMode lobbyMode)
+                                && Enum.IsDefined(lobbyMode))
+                            {
+                                LastLobbyMode = lobbyMode;
+                            }
+                            break;
+                        case "lobby_time_limit_seconds":
+                            if (Int32.TryParse(value, NumberStyles.Integer,
+                                CultureInfo.InvariantCulture, out int lobbyTime)
+                                && lobbyTime is >= 0 and <= UInt16.MaxValue)
+                            {
+                                LastLobbyTimeLimitSeconds = lobbyTime;
+                            }
+                            break;
+                        case "lobby_goal":
+                            if (Int32.TryParse(value, NumberStyles.Integer,
+                                CultureInfo.InvariantCulture, out int lobbyGoal)
+                                && lobbyGoal is >= 0 and <= UInt16.MaxValue)
+                            {
+                                LastLobbyGoal = lobbyGoal;
+                            }
+                            break;
                         case "window_mode":
                             WindowMode = Mods.WindowMode.Parse(value, WindowMode);
                             break;
@@ -412,6 +444,12 @@ namespace MphRead.Mods.Launcher
                                 ReplayDeleteClips = replayDeleteClips;
                             }
                             break;
+                        case "spectator_name_tags":
+                            if (Boolean.TryParse(value, out bool spectatorNameTags))
+                            {
+                                SpectatorNameTags = spectatorNameTags;
+                            }
+                            break;
                         case "kill_cam":
                             if (Boolean.TryParse(value, out bool killCam))
                             {
@@ -488,6 +526,9 @@ namespace MphRead.Mods.Launcher
                     $"bots={Bots.ToString(CultureInfo.InvariantCulture)}",
                     $"bot_level={BotLevel.ToString(CultureInfo.InvariantCulture)}",
                     $"host_port={HostPort.ToString(CultureInfo.InvariantCulture)}",
+                    $"lobby_mode={LastLobbyMode}",
+                    $"lobby_time_limit_seconds={LastLobbyTimeLimitSeconds.ToString(CultureInfo.InvariantCulture)}",
+                    $"lobby_goal={LastLobbyGoal.ToString(CultureInfo.InvariantCulture)}",
                     $"list_hosted={ListHostedGame.ToString().ToLowerInvariant()}",
                     $"host_on_master={HostOnMaster.ToString().ToLowerInvariant()}",
                     $"last_kind={LastKind.ToString(CultureInfo.InvariantCulture)}",
@@ -507,6 +548,7 @@ namespace MphRead.Mods.Launcher
                     $"replay_storage_gb={ReplayStorageLimitGb.ToString(CultureInfo.InvariantCulture)}",
                     $"replay_auto_prune={ReplayAutoPrune.ToString().ToLowerInvariant()}",
                     $"replay_delete_clips={ReplayDeleteClips.ToString().ToLowerInvariant()}",
+                    $"spectator_name_tags={SpectatorNameTags.ToString().ToLowerInvariant()}",
                     $"kill_cam={KillCamEnabled.ToString().ToLowerInvariant()}",
                     $"final_kill_cam={FinalKillCamEnabled.ToString().ToLowerInvariant()}",
                     $"kill_cam_camera={KillCamCamera}",

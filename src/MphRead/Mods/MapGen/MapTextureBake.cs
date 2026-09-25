@@ -53,56 +53,103 @@ namespace MphRead.Mods.MapGen
         public sealed class Result
         {
             public int Baked { get; init; }
+            public int Resolved { get; init; }
+            public int Fallbacks { get; init; }
             public IReadOnlyList<string> Missing { get; init; } = Array.Empty<string>();
+            public IReadOnlyList<string> Archives { get; init; } = Array.Empty<string>();
             public long Bytes { get; init; }
+        }
+
+        public sealed record Coverage(int Total, int Resolved, IReadOnlyList<string> Missing,
+            IReadOnlyList<string> Archives);
+
+        /// <summary>
+        /// Texture archives for a Q3 source, in deterministic precedence order:
+        /// the selected source first, explicit dependencies next, then sibling
+        /// PK3s.
+        /// </summary>
+        public static IReadOnlyList<string> DiscoverArchives(string source,
+            IEnumerable<string>? dependencies = null)
+        {
+            var result = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            void Add(string? value)
+            {
+                if (String.IsNullOrWhiteSpace(value) || !File.Exists(value)) return;
+                string full = Path.GetFullPath(value);
+                if (seen.Add(full)) result.Add(full);
+            }
+            Add(source);
+            if (dependencies != null)
+                foreach (string dependency in dependencies) Add(dependency);
+            string? directory = Path.GetDirectoryName(Path.GetFullPath(source));
+            if (directory != null && Directory.Exists(directory))
+                foreach (string sibling in Directory.EnumerateFiles(directory, "*.pk3")
+                    .OrderBy(p => Path.GetFileName(p), StringComparer.OrdinalIgnoreCase))
+                    Add(sibling);
+            return result;
+        }
+
+        public static Coverage Analyze(Q3Bsp bsp, IReadOnlyList<string> archivePaths, bool sky = true)
+        {
+            var archives = OpenArchives(archivePaths);
+            try
+            {
+                var files = Index(archives);
+                var aliases = ParseShaderAliases(files);
+                var missing = new List<string>();
+                int resolved = 0, total = 0;
+                foreach ((_, string name) in UsedTextures(bsp, sky))
+                {
+                    total++;
+                    if (FindEntry(files, aliases, name) != null) resolved++;
+                    else missing.Add(name);
+                }
+                return new(total, resolved, missing.AsReadOnly(),
+                    archivePaths.Where(File.Exists).Select(Path.GetFullPath)
+                        .Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+            }
+            finally
+            {
+                foreach (var archive in archives) archive.Dispose();
+            }
         }
 
         /// <summary>
         /// Writes a pack for every shader the level's drawn surfaces use.
-        /// Images are looked for in the archives given, in order; a level's own
-        /// .pk3 first, then whatever else the player has.
+        /// Images are looked for in the archives given, in order. Unresolved
+        /// shaders receive a visible deterministic fallback instead of losing
+        /// their surfaces.
         /// </summary>
         public static Result Bake(Q3Bsp bsp, IReadOnlyList<string> archivePaths, string outputPath,
             int size = DefaultSize, bool sky = true, CancellationToken cancellation = default)
         {
-            var archives = new List<ZipArchive>();
+            if (size is < 8 or > 256)
+                throw new ArgumentOutOfRangeException(nameof(size), "Texture size must be 8-256.");
+            var archives = OpenArchives(archivePaths);
             try
             {
-                foreach (string path in archivePaths)
-                {
-                    if (File.Exists(path) && !Path.GetExtension(path).Equals(".bsp", StringComparison.OrdinalIgnoreCase))
-                    {
-                        archives.Add(ZipFile.OpenRead(path));
-                    }
-                }
-                // A shader name in a .bsp is not the spelling of the file it
-                // came from: the compiler upper-cases some of them, and a level
-                // whose author worked on Windows has "SandTrim.JPG" answering
-                // to "textures/dust2/SANDTRIM". Matching exactly finds nothing
-                // and the level comes out untextured.
-                var files = new Dictionary<string, ZipArchiveEntry>(StringComparer.OrdinalIgnoreCase);
-                foreach (ZipArchive archive in archives)
-                {
-                    foreach (ZipArchiveEntry entry in archive.Entries)
-                    {
-                        if (!files.ContainsKey(entry.FullName))
-                        {
-                            files.Add(entry.FullName, entry);
-                        }
-                    }
-                }
+                var files = Index(archives);
+                var aliases = ParseShaderAliases(files);
                 var entries = new List<(int Index, string Name, ushort[] Palette, byte[] Pixels)>();
                 var missing = new List<string>();
+                int resolved = 0;
                 foreach ((int index, string name) in UsedTextures(bsp, sky))
                 {
                     cancellation.ThrowIfCancellationRequested();
-                    byte[]? raw = Find(files, name);
+                    byte[]? raw = Find(files, aliases, name);
+                    byte[] rgb;
                     if (raw == null)
                     {
                         missing.Add(name);
-                        continue;
+                        rgb = Fallback(size, name);
                     }
-                    (ushort[] palette, byte[] pixels) = Quantize(Decode(raw, size, cancellation), size, cancellation);
+                    else
+                    {
+                        resolved++;
+                        rgb = Decode(raw, size, cancellation);
+                    }
+                    (ushort[] palette, byte[] pixels) = Quantize(rgb, size, cancellation);
                     entries.Add((index, name, palette, pixels));
                 }
                 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputPath))!);
@@ -121,27 +168,150 @@ namespace MphRead.Mods.MapGen
                         writer.Write((ushort)palette.Length);
                         writer.Write((ushort)encoded.Length);
                         writer.Write(encoded);
-                        foreach (ushort colour in palette)
-                        {
-                            writer.Write(colour);
-                        }
+                        foreach (ushort colour in palette) writer.Write(colour);
                         writer.Write(pixels);
                     }
                 }
-                return new Result()
+                return new Result
                 {
                     Baked = entries.Count,
-                    Missing = missing,
+                    Resolved = resolved,
+                    Fallbacks = missing.Count,
+                    Missing = missing.AsReadOnly(),
+                    Archives = archivePaths.Where(File.Exists).Select(Path.GetFullPath)
+                        .Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
                     Bytes = new FileInfo(outputPath).Length
                 };
             }
             finally
             {
-                foreach (ZipArchive archive in archives)
+                foreach (var archive in archives) archive.Dispose();
+            }
+        }
+
+        private static List<ZipArchive> OpenArchives(IReadOnlyList<string> paths)
+        {
+            var archives = new List<ZipArchive>();
+            try
+            {
+                foreach (string path in paths.Distinct(StringComparer.OrdinalIgnoreCase))
+                    if (File.Exists(path)
+                        && !Path.GetExtension(path).Equals(".bsp", StringComparison.OrdinalIgnoreCase))
+                        archives.Add(ZipFile.OpenRead(path));
+                return archives;
+            }
+            catch
+            {
+                foreach (var archive in archives) archive.Dispose();
+                throw;
+            }
+        }
+
+        private static Dictionary<string, ZipArchiveEntry> Index(IEnumerable<ZipArchive> archives)
+        {
+            var files = new Dictionary<string, ZipArchiveEntry>(StringComparer.OrdinalIgnoreCase);
+            foreach (ZipArchive archive in archives)
+                foreach (ZipArchiveEntry entry in archive.Entries)
                 {
-                    archive.Dispose();
+                    string key = entry.FullName.Replace('\\', '/');
+                    if (!files.ContainsKey(key)) files.Add(key, entry);
+                }
+            return files;
+        }
+
+        /// <summary>
+        /// Resolve the common image-bearing parts of Quake 3 shader scripts.
+        /// Full shader simulation is out of scope; the editor only needs a
+        /// representative source image for each surface.
+        /// </summary>
+        private static Dictionary<string, string> ParseShaderAliases(
+            Dictionary<string, ZipArchiveEntry> files)
+        {
+            var aliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var script in files.Where(p =>
+                p.Key.EndsWith(".shader", StringComparison.OrdinalIgnoreCase)))
+            {
+                string text;
+                try
+                {
+                    if (script.Value.Length > 4 * 1024 * 1024) continue;
+                    using var reader = new StreamReader(script.Value.Open(), Encoding.UTF8, true);
+                    text = reader.ReadToEnd();
+                }
+                catch (Exception ex) when (ex is IOException or InvalidDataException)
+                {
+                    continue;
+                }
+                var tokens = TokenizeShader(text);
+                for (int i = 0; i + 1 < tokens.Count;)
+                {
+                    string shader = tokens[i++].Trim('"');
+                    if (shader is "{" or "}") continue;
+                    if (i >= tokens.Count || tokens[i++] != "{") continue;
+                    int depth = 1;
+                    string? candidate = null;
+                    while (i < tokens.Count && depth > 0)
+                    {
+                        string token = tokens[i++];
+                        if (token == "{") { depth++; continue; }
+                        if (token == "}") { depth--; continue; }
+                        if (depth <= 0 || candidate != null) continue;
+                        string key = token.ToLowerInvariant();
+                        if (key is "qer_editorimage" or "map" or "clampmap")
+                        {
+                            if (i < tokens.Count)
+                            {
+                                string value = tokens[i++].Trim('"');
+                                if (!value.StartsWith('$') && value != "-") candidate = value;
+                            }
+                        }
+                        else if (key == "animmap")
+                        {
+                            if (i < tokens.Count) i++; // frequency
+                            if (i < tokens.Count)
+                            {
+                                string value = tokens[i++].Trim('"');
+                                if (!value.StartsWith('$') && value != "-") candidate = value;
+                            }
+                        }
+                        else if (key == "skyparms" && i < tokens.Count)
+                        {
+                            string value = tokens[i++].Trim('"');
+                            if (value != "-") candidate = value;
+                        }
+                    }
+                    if (candidate != null && !aliases.ContainsKey(shader))
+                        aliases.Add(shader, candidate.TrimStart('/'));
                 }
             }
+            return aliases;
+        }
+
+        private static List<string> TokenizeShader(string source)
+        {
+            var tokens = new List<string>();
+            using var reader = new StringReader(source);
+            string? line;
+            while ((line = reader.ReadLine()) != null)
+            {
+                int comment = line.IndexOf("//", StringComparison.Ordinal);
+                if (comment >= 0) line = line[..comment];
+                var word = new StringBuilder();
+                void Flush()
+                {
+                    if (word.Length == 0) return;
+                    tokens.Add(word.ToString());
+                    word.Clear();
+                }
+                foreach (char ch in line)
+                {
+                    if (Char.IsWhiteSpace(ch)) { Flush(); continue; }
+                    if (ch is '{' or '}') { Flush(); tokens.Add(ch.ToString()); continue; }
+                    word.Append(ch);
+                }
+                Flush();
+            }
+            return tokens;
         }
 
         /// <summary>Which shaders the drawn surfaces reference, and their names.</summary>
@@ -174,22 +344,63 @@ namespace MphRead.Mods.MapGen
             return results;
         }
 
-        private static byte[]? Find(Dictionary<string, ZipArchiveEntry> files, string name)
+        private static ZipArchiveEntry? FindEntry(
+            Dictionary<string, ZipArchiveEntry> files,
+            Dictionary<string, string> aliases, string name)
         {
-            foreach (string suffix in _skySuffixes.Prepend(""))
+            IEnumerable<string> candidates = aliases.TryGetValue(name, out string? alias)
+                ? new[] { name, alias! }
+                : new[] { name };
+            foreach (string candidate in candidates)
             {
-                foreach (string extension in _extensions)
-                {
-                    if (files.TryGetValue(name + suffix + extension, out ZipArchiveEntry? entry))
-                    {
-                        using Stream stream = entry.Open();
-                        using var memory = new MemoryStream();
-                        stream.CopyTo(memory);
-                        return memory.ToArray();
-                    }
-                }
+                string normalized = candidate.TrimStart('/').Replace('\\', '/');
+                foreach (string suffix in _skySuffixes.Prepend(""))
+                    foreach (string extension in _extensions)
+                        if (files.TryGetValue(normalized + suffix + extension, out var entry))
+                            return entry;
+                if (files.TryGetValue(normalized, out var exact)) return exact;
             }
             return null;
+        }
+
+        private static byte[]? Find(Dictionary<string, ZipArchiveEntry> files,
+            Dictionary<string, string> aliases, string name)
+        {
+            ZipArchiveEntry? entry = FindEntry(files, aliases, name);
+            if (entry == null) return null;
+            using Stream stream = entry.Open();
+            using var memory = new MemoryStream();
+            byte[] buffer = new byte[65536];
+            int read;
+            while ((read = stream.Read(buffer)) > 0)
+            {
+                if (memory.Length + read > MapPackageReader.MaxEntryBytes)
+                    throw new InvalidDataException("Texture image exceeds the map asset limit.");
+                memory.Write(buffer, 0, read);
+            }
+            return memory.ToArray();
+        }
+
+        private static byte[] Fallback(int size, string name)
+        {
+            uint hash = 2166136261;
+            foreach (char ch in name.ToUpperInvariant())
+            {
+                hash ^= ch;
+                hash *= 16777619;
+            }
+            var rgb = new byte[size * size * 3];
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    bool checker = ((x / 8) + (y / 8)) % 2 == 0;
+                    bool stripe = ((long)x + y + (hash & 31u)) % 17 < 3;
+                    int o = (y * size + x) * 3;
+                    rgb[o] = (byte)(stripe ? 255 : checker ? 230 : 30);
+                    rgb[o + 1] = (byte)(stripe ? 220 : 20);
+                    rgb[o + 2] = (byte)(checker ? 230 : 30);
+                }
+            return rgb;
         }
 
         /// <summary>Decode and box-filter down to the square the hardware wants.</summary>

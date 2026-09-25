@@ -66,11 +66,11 @@ public sealed class MapViewportCache
 
     public void SetImported(BuiltMap map)
     {
-        ImportedFaces = Array.AsReadOnly(map.Faces.Select(face => new MapViewportFace(Guid.Empty,
+        ImportedFaces = Array.AsReadOnly(map.Faces.Take(map.ImportedFaceCount).Select(face => new MapViewportFace(Guid.Empty,
             face.Points.Select(p => new System.Numerics.Vector3(p.X, p.Y, p.Z)).ToArray(),
             face.Shade, face.Material, true)).ToArray());
         ImportedRebuildCount++;
-        ImportedCollisionFaces = Array.AsReadOnly(map.Solid.Select(face => new MapViewportFace(Guid.Empty,
+        ImportedCollisionFaces = Array.AsReadOnly(map.Solid.Take(map.ImportedCollisionFaceCount).Select(face => new MapViewportFace(Guid.Empty,
             face.Points.Select(p => new System.Numerics.Vector3(p.X, p.Y, p.Z)).ToArray(), face.Shade, face.Material, true)).ToArray());
         CollisionRebuildCount++;
         _importedMesh = new(Guid.Empty, ImportedFaces, ImportedCollisionFaces); UpdateMeshes();
@@ -78,11 +78,11 @@ public sealed class MapViewportCache
 
     public void SetImported(MapAnalysisResult analysis)
     {
-        ImportedFaces = Array.AsReadOnly(analysis.Faces.Select(face => new MapViewportFace(Guid.Empty,
+        ImportedFaces = Array.AsReadOnly(analysis.Faces.Take(analysis.ImportedFaceCount).Select(face => new MapViewportFace(Guid.Empty,
             face.Points.Select(p => new System.Numerics.Vector3(p.X, p.Y, p.Z)).ToArray(),
             face.Shade, face.Material, true)).ToArray());
         ImportedRebuildCount++;
-        ImportedCollisionFaces = Array.AsReadOnly(analysis.CollisionFaces.Select(face => new MapViewportFace(Guid.Empty,
+        ImportedCollisionFaces = Array.AsReadOnly(analysis.CollisionFaces.Take(analysis.ImportedCollisionFaceCount).Select(face => new MapViewportFace(Guid.Empty,
             face.Points.Select(p => new System.Numerics.Vector3(p.X, p.Y, p.Z)).ToArray(), face.Shade, face.Material, true)).ToArray());
         CollisionRebuildCount++;
         _importedMesh = new(Guid.Empty, ImportedFaces, ImportedCollisionFaces); UpdateMeshes();

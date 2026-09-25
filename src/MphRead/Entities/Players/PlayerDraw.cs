@@ -9,6 +9,24 @@ namespace MphRead.Entities
 {
     public partial class PlayerEntity
     {
+        /// <summary>
+        /// A living remote network player must never disappear only because
+        /// portal culling disagrees with its replicated/presentation position.
+        ///
+        /// The model can be presented from an older smoothed snapshot while
+        /// NodeRef belongs to the current simulation position. Near a room-part
+        /// boundary those two valid worlds can name different portal parts.
+        /// Culling the model with the newer NodeRef then produces an invisible,
+        /// still-shootable opponent. Dead players, spectators, replay replicas,
+        /// local players and inactive/unspawned slots keep the ordinary rules.
+        /// </summary>
+        internal static bool ModForceNetworkVisibility(bool replica, bool networkActive,
+            int slot, int localSlot, bool active, bool spawned, int health)
+        {
+            return !replica && networkActive && slot >= 0 && slot != localSlot
+                && active && spawned && health > 0;
+        }
+
         // 15 frames at 60 FPS gives a readable 2 Hz white flash without turning the
         // three-second protection window into a high-frequency strobe.
         private const int SpawnProtectionFlashHalfPeriodFrames = 15;
@@ -28,6 +46,11 @@ namespace MphRead.Entities
             bool drawAlive = _health > 0;
             Vector3 drawFacing = _scene.Services.IsReplica
                 ? ReplayDrawTransform.Row2.Xyz.Normalized() : _facingVector;
+            bool forceNetworkVisibility = ModForceNetworkVisibility(
+                _scene.Services.IsReplica, Mods.Network.NetSession.Active,
+                SlotIndex, Mods.Network.NetHooks.LocalSlot,
+                LoadFlags.TestFlag(LoadFlags.Active),
+                LoadFlags.TestFlag(LoadFlags.Spawned), _health);
 
             if (_scene.ReplayPoses?.Sample(SlotIndex, _scene.ReplayRenderAlpha, out _, out Vector3 replicaFacing) == true)
                 drawFacing = replicaFacing;
@@ -46,7 +69,7 @@ namespace MphRead.Entities
             {
                 DrawScanModels();
             }
-            if (Flags2.TestFlag(PlayerFlags2.HideModel))
+            if (Flags2.TestFlag(PlayerFlags2.HideModel) && !forceNetworkVisibility)
             {
                 return;
             }
@@ -75,11 +98,16 @@ namespace MphRead.Entities
             _bipedModel2.SetModel(_bipedModelLods[lod].Model);
             Flags2 &= ~PlayerFlags2.DrawnThirdPerson;
             bool drawBiped = false;
-            // todo: entity visibility check needs to do more than use active room parts
-            // example issue - Kanden visible for one frame before Data Shrine 03 cam seq starts
-            // should be culled because the cam seq frustum info has already been loaded, and is facing away from him,
-            // even though the player's view is still what's on the screen (at least that seems to be what's happening)
-            if (IsMainPlayer || IsVisible(NodeRef) || ModNodeUnresolved)
+            // Portal visibility is safe for ordinary entities because their
+            // position and NodeRef advance together. A remote network player is
+            // different: the body may be drawn from NetSmoothing's presentation
+            // sample while NodeRef tracks the newer simulation placement.
+            //
+            // A valid-but-wrong NodeRef is worse than an unresolved one: the
+            // existing ModNodeUnresolved backstop cannot help because resolution
+            // technically succeeded. Never let that mismatch hide a living remote
+            // opponent. World geometry/depth still occludes the model normally.
+            if (IsMainPlayer || forceNetworkVisibility || ModNodeUnresolved || IsVisible(NodeRef))
             {
                 drawBiped = !IsMainPlayer || CameraType != CameraType.First
                     || _scene.CameraSequences.Current != null

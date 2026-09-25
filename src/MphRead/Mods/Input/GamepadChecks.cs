@@ -56,6 +56,9 @@ namespace MphRead.Mods.Input
                     && analogControls.AnalogMoveY == 0, "control reset clears analog movement");
                 Near(GamepadAnalog.ApplyResponseCurve(.5f, GamepadCurve.Classic), .29f, "classic curve");
                 Near(GamepadAnalog.ApplyResponseCurve(-.5f, GamepadCurve.Linear), -.5f, "linear sign");
+                var spectatorLook = SpectatorInput.CameraLook(-2f, 1.25f);
+                Near(spectatorLook.X, 2f, "spectator right-stick right turns camera right");
+                Near(spectatorLook.Y, 1.25f, "spectator vertical look is not inverted twice");
                 var curved = GamepadAnalog.ApplyRadialResponseCurve(.8f, .4f, GamepadCurve.Classic);
                 Near(curved.X / curved.Y, 2, "radial response curve preserves stick direction");
                 Check(GamepadAnalog.QuantizeMovement(.4f, .4f) == (1, 1), "diagonal movement threshold");

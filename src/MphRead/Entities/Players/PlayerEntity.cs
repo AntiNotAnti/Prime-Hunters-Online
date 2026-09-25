@@ -2007,6 +2007,10 @@ namespace MphRead.Entities
                     // --> also if there's no source and no attacker
                     flags |= DamageFlags.FromAlt;
                 }
+                if (_scene.GameState.Multiplayer)
+                {
+                    _scene.KillFeed.Record(_scene, attacker, this, beamType, flags, fromHalfturret, bomb);
+                }
                 _scene.SendMessage(Message.Destroyed, this, null, 0, 0, delay: 1);
                 if (EnemySpawner != null)
                 {

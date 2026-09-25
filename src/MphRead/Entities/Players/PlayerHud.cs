@@ -1488,6 +1488,7 @@ namespace MphRead.Entities
             // chat, the results screen or the vote prompt.
             ModDrawStylusZone();
             ModDrawChat();
+            ModDrawKillFeed();
             // With the chat, and above the results screen for the reason the
             // comment below gives about that one: a vote is asked during a
             // running match and answered from wherever the player is looking.
@@ -1499,6 +1500,7 @@ namespace MphRead.Entities
             ModDrawEndScreen();
             if (Mods.SpectatorMode.FreeCamera)
             {
+                ModDrawSpectatorNameTags();
                 // Looking at the map, not out of anybody's eyes: there is no
                 // player whose readouts these would be. Following one is the
                 // other case and keeps their HUD -- watching a hunter play

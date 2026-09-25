@@ -49,17 +49,23 @@ namespace MphRead.Mods.MapGen
         public static BuiltMap Build(MapDefinition def, CancellationToken cancellation = default)
         {
             var map = new BuiltMap(def);
-            foreach (MapBrush brush in def.Brushes)
-            {
-                cancellation.ThrowIfCancellationRequested();
-                AddBrush(map, def, brush);
-            }
+            AddAuthoredGeometry(map, def, cancellation);
             AddEntities(map, def);
-            GeometryCompiler.Add(map, def, cancellation);
             return map;
         }
 
-        private static void AddBrush(BuiltMap map, MapDefinition def, MapBrush brush)
+        public static void AddAuthoredGeometry(BuiltMap map, MapDefinition def,
+            CancellationToken cancellation = default, int materialOffset = 0)
+        {
+            foreach (MapBrush brush in def.Brushes)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                AddBrush(map, def, brush, materialOffset);
+            }
+            GeometryCompiler.Add(map, def, cancellation, materialOffset);
+        }
+
+        private static void AddBrush(BuiltMap map, MapDefinition def, MapBrush brush, int materialOffset = 0)
         {
             float x0 = MathF.Min(brush.Min[0], brush.Max[0]);
             float y0 = MathF.Min(brush.Min[1], brush.Max[1]);
@@ -94,7 +100,7 @@ namespace MphRead.Mods.MapGen
                 {
                     texcoords[j] = Project(points[j], normal, origin, texScale);
                 }
-                var face = new BuiltFace(points, texcoords, normal, brush.Material,
+                var face = new BuiltFace(points, texcoords, normal, brush.Material + materialOffset,
                     _faceShades[i] * brush.Shade)
                 {
                     Damaging = brush.Damaging,

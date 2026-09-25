@@ -92,6 +92,10 @@ namespace MphRead.Mods.MapGen
             int replaced = map.Solid.Count;
             map.Solid.Clear();
             map.Solid.AddRange(read.Faces);
+            // Replacement collision becomes the static architecture collision
+            // for an imported map. Keep the viewport boundary accurate after
+            // the source BSP collision has been replaced.
+            map.ImportedCollisionFaceCount = def.Import != null ? map.Solid.Count : 0;
             if (verbose)
             {
                 Console.WriteLine($"  collision from {def.Collision.Source}: {read.Faces.Count} faces"
@@ -245,6 +249,57 @@ namespace MphRead.Mods.MapGen
                 // the tail is the part that identifies it.
                 string name = entry.Name.Length <= 30 ? entry.Name : entry.Name[^30..];
                 materials.Add(RawStructs.MakeMaterial(name, textures.Count - 1, palettes.Count - 1,
+                    RepeatMode.Repeat, RepeatMode.Repeat, lighting: false,
+                    diffuse: new ColorRgb(31, 31, 31), ambient: new ColorRgb(0, 0, 0)));
+            }
+
+            // Imported architecture occupies [0, pack.Count). Authored hybrid
+            // geometry is compiled with an offset and uses these materials
+            // appended after the BSP set.
+            Model? source = def.Materials.Any(m => m.Texture == null)
+                ? Read.GetRoomModelInstance(def.TextureSource).Model : null;
+            Recolor? recolor = source?.Recolors[0];
+            var sourceTextures = new Dictionary<int, int>();
+            var sourcePalettes = new Dictionary<int, int>();
+            foreach (MapMaterial mapMaterial in def.Materials)
+            {
+                if (mapMaterial.Texture != null)
+                {
+                    MapTexturePack own = MapTexturePack.Load(MapAssets.Read(def, mapMaterial.Texture), mapMaterial.Texture);
+                    if (own.Entries.Count != 1)
+                        throw new MapAuthoringException("FP-MAP-001", "A native material texture pack must contain one texture.");
+                    var entry = own.Entries[0];
+                    int textureId = textures.Count, paletteId = palettes.Count;
+                    textures.Add(new Repack.TextureInfo(TextureFormat.Palette8Bit, opaque: true,
+                        entry.Height, entry.Width, entry.Pixels));
+                    palettes.Add(new Repack.PaletteInfo(entry.Palette));
+                    materials.Add(RawStructs.MakeMaterial(mapMaterial.Name, textureId, paletteId,
+                        RepeatMode.Repeat, RepeatMode.Repeat, lighting: false,
+                        diffuse: new ColorRgb(31, 31, 31), ambient: new ColorRgb(0, 0, 0)));
+                    continue;
+                }
+                if (source == null || recolor == null)
+                    throw new MapAuthoringException("FP-MAP-001", "Missing source material.");
+                if (mapMaterial.SourceMaterial < 0 || mapMaterial.SourceMaterial >= source.Materials.Count)
+                    throw new ProgramException($"{def.TextureSource} has no material {mapMaterial.SourceMaterial}.");
+                Material srcMaterial = source.Materials[mapMaterial.SourceMaterial];
+                if (srcMaterial.TextureId < 0 || srcMaterial.PaletteId < 0)
+                    throw new ProgramException($"Material {mapMaterial.SourceMaterial} of {def.TextureSource} has no texture.");
+                if (!sourceTextures.TryGetValue(srcMaterial.TextureId, out int textureId2))
+                {
+                    textureId2 = textures.Count;
+                    textures.Add(Repack.ConvertData(recolor.Textures[srcMaterial.TextureId],
+                        recolor.TextureData[srcMaterial.TextureId]));
+                    sourceTextures.Add(srcMaterial.TextureId, textureId2);
+                }
+                if (!sourcePalettes.TryGetValue(srcMaterial.PaletteId, out int paletteId2))
+                {
+                    paletteId2 = palettes.Count;
+                    palettes.Add(new Repack.PaletteInfo(recolor.PaletteData[srcMaterial.PaletteId]
+                        .Select(d => d.Data).ToList()));
+                    sourcePalettes.Add(srcMaterial.PaletteId, paletteId2);
+                }
+                materials.Add(RawStructs.MakeMaterial(mapMaterial.Name, textureId2, paletteId2,
                     RepeatMode.Repeat, RepeatMode.Repeat, lighting: false,
                     diffuse: new ColorRgb(31, 31, 31), ambient: new ColorRgb(0, 0, 0)));
             }

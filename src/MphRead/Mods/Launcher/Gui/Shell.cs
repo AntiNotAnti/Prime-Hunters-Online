@@ -51,6 +51,15 @@ namespace MphRead.Mods.Launcher.Gui
         internal static RenderWindow? Window => _window;
 
         private static RenderWindow? _window;
+        internal static event Action<IReadOnlyList<string>>? FilesDropped;
+
+        private static void OnFilesDropped(FileDropEventArgs e)
+        {
+            // OpenTK's strings are only guaranteed for the duration of the
+            // native callback, so copy before handing them to a screen.
+            string[] files=e.FileNames?.ToArray()??Array.Empty<string>();
+            if(files.Length>0)FilesDropped?.Invoke(files);
+        }
 
         /// <summary>
         /// Hand the game window to whatever needs it as a parent.
@@ -138,6 +147,7 @@ namespace MphRead.Mods.Launcher.Gui
             try
             {
                 window = new RenderWindow(shell: true);
+                window.FileDrop += OnFilesDropped;
                 PublishNativeHandle(window);
                 _window = window;
                 Active = true;
@@ -169,6 +179,7 @@ namespace MphRead.Mods.Launcher.Gui
                 NetHostSession.Stop();
                 if (window != null)
                 {
+                    window.FileDrop -= OnFilesDropped;
                     window.Context.MakeCurrent();
                     UiSurface.Current?.ReleaseMapRenderer();
                 }
@@ -395,7 +406,7 @@ namespace MphRead.Mods.Launcher.Gui
                 // Android head has always kept one: Reset is what makes it
                 // usable again -- the stack emptied, the hunter rerolled, the
                 // room list and the version line read afresh.
-                _front.Reset();
+                _front.Reset(_settings);
             }
             surface.Show(_front);
             if (OpenStudioOnStart)
@@ -470,8 +481,13 @@ namespace MphRead.Mods.Launcher.Gui
                 }
                 if (!MatchStart.Begin(window, _settings, plan))
                 {
-                    NetSession.ReportMatchLoadFailed("The map could not be loaded.");
+                    string failure = MatchStart.LastError ?? "The map could not be loaded.";
+                    NetSession.ReportMatchLoadFailed(failure);
                     EndMatch(window);
+                    if (plan.Kind == LaunchKind.Demo)
+                    {
+                        _front?.ShowReplayLaunchFailure(failure);
+                    }
                     return;
                 }
 
@@ -510,6 +526,10 @@ namespace MphRead.Mods.Launcher.Gui
                 // map that will not load is a reason to pick another one.
                 NetSession.ReportMatchLoadFailed(ex.Message);
                 EndMatch(window);
+                if (plan.Kind == LaunchKind.Demo)
+                {
+                    _front?.ShowReplayLaunchFailure("Could not open replay: " + ex.Message);
+                }
             }
         }
 

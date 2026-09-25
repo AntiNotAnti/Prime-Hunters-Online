@@ -9,6 +9,76 @@ namespace MphRead.Mods.MapEditor;
 
 public sealed partial class MapDocument
 {
+    private static ObjectValue[]? _objectClipboard;
+
+    public void CopySelection()
+    {
+        var selected = Selection.ToHashSet();
+        _objectClipboard = CaptureObjects(Project.Definition, selected).ToArray();
+    }
+
+    public bool PasteClipboard()
+    {
+        if (_objectClipboard == null || _objectClipboard.Length == 0) return false;
+        var before = MapObjects.All(Project.Definition).Select(o => o.Id).ToHashSet();
+        EditObjects("Paste", Array.Empty<Guid>(), scratch =>
+        {
+            foreach (var value in _objectClipboard) value.Insert(scratch);
+            foreach (var item in MapObjects.All(scratch).ToArray())
+            {
+                item.SetId(Guid.NewGuid());
+                item.Move(new[] { 1f, 0f, 1f });
+            }
+        });
+        var added = MapObjects.All(Project.Definition).Where(o => !before.Contains(o.Id)).Select(o => o.Id).ToArray();
+        Selection.Clear();
+        foreach (Guid id in added) Selection.Add(id);
+        ActiveObjectId = added.FirstOrDefault();
+        SelectionChanged();
+        return added.Length > 0;
+    }
+
+    public void SelectAllObjects()
+    {
+        Selection.Clear();
+        foreach (var item in MapObjects.All(Project.Definition)) Selection.Add(item.Id);
+        ActiveObjectId = Selection.FirstOrDefault();
+        SelectionChanged();
+    }
+
+    public void HideSelection(bool hidden = true)
+    {
+        var ids = Selection.ToHashSet();
+        EditObjects(hidden ? "Hide selection" : "Show selection", ids, d =>
+        {
+            foreach (var geometry in d.Geometry) geometry.Hidden = hidden;
+        });
+    }
+
+    public void ShowAllGeometry() => Edit("Show all geometry", d =>
+    {
+        foreach (var geometry in d.Geometry) geometry.Hidden = false;
+    }, MapChangeDomain.Geometry);
+
+    public void IsolateSelection()
+    {
+        var ids = Selection.ToHashSet();
+        Edit("Isolate selection", d =>
+        {
+            foreach (var geometry in d.Geometry) geometry.Hidden = !ids.Contains(geometry.Id);
+        }, MapChangeDomain.Geometry);
+    }
+
+    public void SetLayerState(string layer, bool? hidden = null, bool? locked = null)
+        => Edit("Layer state", d =>
+        {
+            foreach (var geometry in d.Geometry.Where(g => g.Layer.Equals(layer, StringComparison.OrdinalIgnoreCase)))
+            {
+                if (hidden.HasValue) geometry.Hidden = hidden.Value;
+                if (locked.HasValue) geometry.Locked = locked.Value;
+            }
+        }, MapChangeDomain.Geometry);
+
     // Only selected objects are cloned/compared. Unrelated geometry, materials,
     // imported maps and assets are never serialized by common object operations.
     public void EditObjects(string label, IEnumerable<Guid> ids, Action<MapDefinition> edit, object? transaction = null)

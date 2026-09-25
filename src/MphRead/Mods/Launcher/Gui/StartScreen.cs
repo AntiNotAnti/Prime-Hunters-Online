@@ -14,7 +14,7 @@ namespace MphRead.Mods.Launcher.Gui
     /// <summary>Setup, updates and game handoff around one persistent navigation shell.</summary>
     internal sealed class StartScreen : UserControl, IDisposable
     {
-        private readonly MenuSettings _settings;
+        private MenuSettings _settings;
         private readonly List<string> _rooms;
         private readonly PrimeShell _prime;
         private readonly Panel _layers = new();
@@ -185,6 +185,18 @@ namespace MphRead.Mods.Launcher.Gui
             _prime.Router.Navigate(PrimeRoute.Theatre);
             UpdateReplayBackground();
         }
+
+        internal void ShowReplayLaunchFailure(string message)
+        {
+            _finished = false;
+            _prime.Router.Navigate(PrimeRoute.Theatre);
+            if (_prime.Workspaces.Get(PrimeRoute.Theatre) is TheatreWorkspace theatre)
+            {
+                theatre.CloseEditor();
+                theatre.ShowLaunchFailure(message);
+            }
+            UpdateReplayBackground();
+        }
         private void UpdateReplayBackground()
         {
             bool editor = _prime.Router.Current == PrimeRoute.Theatre
@@ -213,10 +225,20 @@ namespace MphRead.Mods.Launcher.Gui
             return EnsureGameFiles();
         }
         private void LaunchLocal(LaunchPlan plan) { if (CanLaunchLocal()) Finish(plan); }
-        public void Reset()
+        public void Reset(MenuSettings settings)
         {
             if (_prime.Workspaces.TryGet(PrimeRoute.Theatre) is TheatreWorkspace theatre) theatre.CloseEditor();
             _finished = false; Plan = default; ShowGround(true); _prime.Overlays.Clear();
+
+            // Shell reloads settings.json after a match so pause-menu changes and
+            // match-rule persistence are authoritative. Keep this long-lived front
+            // screen on that same object too; otherwise cached workspaces continue
+            // editing the pre-match instance while Shell starts with the fresh one.
+            _settings = settings;
+            bool rebuildCurrent = _prime.Router.Current is PrimeRoute.Settings or PrimeRoute.Offline;
+            _prime.Workspaces.Remove(PrimeRoute.Settings);
+            _prime.Workspaces.Remove(PrimeRoute.Offline);
+            if (rebuildCurrent) _prime.Workspaces.Show(_prime.Router.Current);
             if (_lobby != null && NetSession.Active) { ResumeLobby(); return; }
             if (_lobby != null) { _session.Screen = null; _lobby = null; _prime.Workspaces.Remove(PrimeRoute.Lobby); _prime.Router.Forget(PrimeRoute.Lobby); }
             if (_returnToMapStudio) { _returnToMapStudio = false; RefreshRooms(); }
