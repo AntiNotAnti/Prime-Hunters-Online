@@ -48,6 +48,25 @@ namespace MphRead.Mods
         /// <summary>Multiplier on mouse movement. 1.0 is the original feel.</summary>
         public static float MouseSensitivity { get; set; } = 1;
 
+        public const float MinImperialistZoomSensitivity = 0.1f;
+        public const float MaxImperialistZoomSensitivity = 3f;
+        private static float _imperialistZoomSensitivity = 1f;
+
+        /// <summary>
+        /// Additional mouse multiplier while zoomed with the Imperialist.
+        /// 1.0 preserves the existing scoped feel, including the normal FOV scaling.
+        /// </summary>
+        public static float ImperialistZoomSensitivity
+        {
+            get => _imperialistZoomSensitivity;
+            set => _imperialistZoomSensitivity = Single.IsFinite(value)
+                ? Math.Clamp(value, MinImperialistZoomSensitivity, MaxImperialistZoomSensitivity)
+                : 1f;
+        }
+
+        public static float MouseAimSensitivity(bool imperialistZoomed)
+            => MouseSensitivity * (imperialistZoomed ? ImperialistZoomSensitivity : 1f);
+
         public static bool InvertMouseY { get; set; }
         public static bool InvertMouseX { get; set; }
 
@@ -437,6 +456,15 @@ namespace MphRead.Mods
                         }
                         continue;
                     }
+                    if (key == "imperialist_zoom_sensitivity")
+                    {
+                        if (Single.TryParse(value, NumberStyles.Float,
+                            CultureInfo.InvariantCulture, out float parsed))
+                        {
+                            ImperialistZoomSensitivity = parsed;
+                        }
+                        continue;
+                    }
                     if (key == "invert_y" && Boolean.TryParse(value, out bool invertY))
                     {
                         InvertMouseY = invertY;
@@ -725,6 +753,7 @@ namespace MphRead.Mods
                 {
                     $"# {Branding.Name} controls. Delete a line to go back to the default.",
                     $"sensitivity={MouseSensitivity.ToString("0.###", CultureInfo.InvariantCulture)}",
+                    $"imperialist_zoom_sensitivity={ImperialistZoomSensitivity.ToString("0.###", CultureInfo.InvariantCulture)}",
                     $"invert_y={InvertMouseY.ToString().ToLowerInvariant()}",
                     $"invert_x={InvertMouseX.ToString().ToLowerInvariant()}",
                     $"mouse_movement_boost={MouseMovementBoost.ToString().ToLowerInvariant()}",
@@ -811,6 +840,7 @@ namespace MphRead.Mods
             _current = PlayerControls.GetDefault();
             _creating = false;
             MouseSensitivity = 1;
+            ImperialistZoomSensitivity = 1;
             InvertMouseY = false;
             InvertMouseX = false;
             MouseMovementBoost = true;
