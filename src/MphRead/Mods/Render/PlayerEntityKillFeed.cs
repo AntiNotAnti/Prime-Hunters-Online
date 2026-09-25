@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using MphRead.Hud;
 using MphRead.Mods.Combat;
 using MphRead.Mods.Multiplayer;
