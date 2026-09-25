@@ -98,7 +98,13 @@ namespace MphRead.Mods.Input.AimAssist
                 {
                     if (visibleHead)
                     {
-                        Vector2 flickHead = AimAssistMath.HeadError(t);
+                        // Trajectory selection needs a direction even after the
+                        // reticle has already entered the valid headshot band.
+                        // RegionError is zero there, so score the flick against
+                        // the projected head center and use the region only for
+                        // final capture/correction.
+                        Vector2 flickHead = AimAssistMath.Finite(t.HeadError)
+                            ? t.HeadError : AimAssistMath.HeadError(t);
                         float flickAlignment = AimAssistMath.Alignment(state.FlickDirection, flickHead);
                         if (!keep && flickAlignment < AimAssistTuning.FlickTargetAlignment) continue;
                         float headDistance = flickHead.Length();
