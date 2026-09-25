@@ -630,10 +630,17 @@ namespace MphRead.Mods.Launcher.Gui
             Field("Fog color (0–31)",string.Join(",",d.FogColor),(m,s)=>m.FogColor=ParseVector(s,3).Select(v=>(int)v).ToArray());
             if(d.Import is {} import)
             {
-                _inspector.Children.Add(Text("IMPORTED ARCHITECTURE (read-only)"));
+                _inspector.Children.Add(Text("IMPORTED ARCHITECTURE + HYBRID AUTHORING"));
                 Field("Q3 units per world unit",import.UnitsPerUnit.ToString(CultureInfo.InvariantCulture),(m,s)=>m.Import!.UnitsPerUnit=Number(s));
                 Field("Patch detail (1–8)",import.PatchLevel.ToString(),(m,s)=>m.Import!.PatchLevel=int.Parse(s,CultureInfo.InvariantCulture));
-                var spawns=new CheckBox {Content="Use imported spawns",IsChecked=import.KeepSpawns};_inspector.Children.Add(spawns);edits.Add(m=>m.Import!.KeepSpawns=spawns.IsChecked==true);
+                foreach(var pair in new[]{("Use source spawns",import.KeepSpawns),("Keep player clips",import.KeepClip),("Keep sky",import.KeepSky),("Keep source pickups",import.KeepItems)})
+                {
+                    var check=new CheckBox{Content=pair.Item1,IsChecked=pair.Item2};_inspector.Children.Add(check);
+                    edits.Add(m=>{switch(pair.Item1){case "Use source spawns":m.Import!.KeepSpawns=check.IsChecked==true;break;case "Keep player clips":m.Import!.KeepClip=check.IsChecked==true;break;case "Keep sky":m.Import!.KeepSky=check.IsChecked==true;break;case "Keep source pickups":m.Import!.KeepItems=check.IsChecked==true;break;}});
+                }
+                _inspector.Children.Add(Text("Imported BSP surfaces stay immutable. Boxes, wedges, prisms and convex brushes can be layered on top."));
+                AddButton(_inspector,"Rebake Q3 textures",()=>_=RebakeImportTextures());
+                AddButton(_inspector,"Reimport Q3 source",()=>_=PickReimportSource());
             }
             var fog=new CheckBox {Content="Fog enabled",IsChecked=d.FogEnabled};_inspector.Children.Add(fog);edits.Add(m=>m.FogEnabled=fog.IsChecked==true);
             AddButton(_inspector,"Apply",()=>{try{_document.Edit("Environment",map=>{foreach(var edit in edits)edit(map);},MapChangeDomain.Environment | MapChangeDomain.Metadata | (d.Import != null ? MapChangeDomain.Import : MapChangeDomain.None));}catch(Exception ex){Failure(ex);}});
