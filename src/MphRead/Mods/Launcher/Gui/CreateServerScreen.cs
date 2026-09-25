@@ -160,7 +160,9 @@ namespace MphRead.Mods.Launcher.Gui
             string player = LauncherPrefs.PlayerName.Trim();
             _name = new FieldRow("Lobby name",
                 (player.Length > 0 ? player : "Player") + "'s lobby", boxWidth: 230);
-            _mode = new ChoiceRow("Game type", _modes.Select(m => m.Label).ToArray());
+            int lastMode = Array.FindIndex(_modes, option => option.Mode == LauncherPrefs.LastLobbyMode);
+            _mode = new ChoiceRow("Game type", _modes.Select(m => m.Label).ToArray(),
+                Math.Max(0, lastMode));
             _hunter = new ChoiceRow("Your hunter", _hunters,
                 Math.Max(0, Array.IndexOf(_hunters, LauncherPrefs.LastHunter.ToString())));
             _host = new PickRow("Host on");
@@ -723,30 +725,37 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 player = "Player";
             }
+            int timeLimit = Math.Clamp(LauncherPrefs.LastLobbyTimeLimitSeconds, 0, UInt16.MaxValue);
+            ushort pointGoal = mode == LauncherPrefs.LastLobbyMode
+                ? (ushort)Math.Clamp(LauncherPrefs.LastLobbyGoal, 0, UInt16.MaxValue)
+                : MatchGoalRules.DefaultValue(mode);
             LauncherPrefs.LastHunter = hunter;
+            LauncherPrefs.LastLobbyMode = mode;
+            LauncherPrefs.LastLobbyTimeLimitSeconds = timeLimit;
+            LauncherPrefs.LastLobbyGoal = pointGoal;
             LauncherPrefs.Save();
 
             if (Dedicated)
             {
-                await StartHere(name, player, hunter, maps);
+                await StartHere(name, player, hunter, maps, timeLimit, pointGoal);
                 return;
             }
-            await StartOnServer(name, player, hunter, mode, maps);
+            await StartOnServer(name, player, hunter, mode, maps, timeLimit, pointGoal);
         }
 
         /// <summary>
         /// Start a server on this machine and join it over the loopback.
         /// </summary>
         private async Task StartHere(string name, string player, Hunter hunter,
-            List<(string RoomKey, GameMode Mode)> maps)
+            List<(string RoomKey, GameMode Mode)> maps, int timeLimit, ushort pointGoal)
         {
             Busy(true, "starting");
             Say($"Starting {name} on this machine...", GuiTheme.TextDim);
             var cancel = new CancellationTokenSource();
             _work = cancel;
             int port = await Task.Run(() => LocalServer.Start(name, maps,
-                maxPlayers: PlayerEntity.SlotCapacity, timeLimit: 7 * 60,
-                pointGoal: MatchGoalRules.DefaultValue(maps[0].Mode),
+                maxPlayers: PlayerEntity.SlotCapacity, timeLimit: timeLimit,
+                pointGoal: pointGoal,
                 masterHost: LauncherPrefs.MasterHost, masterPort: LauncherPrefs.MasterPort,
                 listed: LauncherPrefs.ListHostedGame, cancel: cancel.Token, lobby: true,
                 requestedPort: NetConfig.DefaultPort));
@@ -797,7 +806,8 @@ namespace MphRead.Mods.Launcher.Gui
         /// nothing in between to ask.
         /// </summary>
         private async Task StartOnServer(string name, string player, Hunter hunter,
-            GameMode mode, List<(string RoomKey, GameMode Mode)> maps)
+            GameMode mode, List<(string RoomKey, GameMode Mode)> maps,
+            int timeLimit, ushort pointGoal)
         {
             if (_chosen == null)
             {
@@ -814,8 +824,8 @@ namespace MphRead.Mods.Launcher.Gui
             Say($"Asking {host} to open your lobby...",
                 GuiTheme.TextDim);
             HostedGame game = await Task.Run(() => NetMasterClient.RequestGame(host, port,
-                maps[0].RoomKey, mode, timeLimit: 7 * 60,
-                pointGoal: MatchGoalRules.DefaultValue(mode),
+                maps[0].RoomKey, mode, timeLimit: timeLimit,
+                pointGoal: pointGoal,
                 maxPlayers: PlayerEntity.SlotCapacity, serverName: name,
                 rotation: maps, policy: ServerSessionPolicy.Lobby));
             if (!game.Started)
