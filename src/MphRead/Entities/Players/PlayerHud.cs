@@ -1488,6 +1488,7 @@ namespace MphRead.Entities
             // chat, the results screen or the vote prompt.
             ModDrawStylusZone();
             ModDrawChat();
+            ModDrawKillFeed();
             // With the chat, and above the results screen for the reason the
             // comment below gives about that one: a vote is asked during a
             // running match and answered from wherever the player is looking.
