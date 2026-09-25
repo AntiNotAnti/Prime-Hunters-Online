@@ -74,6 +74,26 @@ internal static class NetArchitectureTests
                 "no reverted production protocol structures");
             Check(NetUnlagged.DefaultMaxRewindFrames == 45 && NetUnlagged.HistoryFrames == 128 && NetUnlagged.PressAgeEnabled,
                 "rewind defaults preserved");
+            Check(PlayerEntity.ModForceNetworkVisibility(
+                    replica: false, networkActive: true, slot: 2, localSlot: 1,
+                    active: true, spawned: true, health: 100),
+                "living remote network players bypass portal culling");
+            Check(!PlayerEntity.ModForceNetworkVisibility(
+                    replica: true, networkActive: true, slot: 2, localSlot: 1,
+                    active: true, spawned: true, health: 100)
+                && !PlayerEntity.ModForceNetworkVisibility(
+                    replica: false, networkActive: true, slot: 1, localSlot: 1,
+                    active: true, spawned: true, health: 100)
+                && !PlayerEntity.ModForceNetworkVisibility(
+                    replica: false, networkActive: true, slot: 2, localSlot: 1,
+                    active: true, spawned: true, health: 0)
+                && !PlayerEntity.ModForceNetworkVisibility(
+                    replica: false, networkActive: true, slot: 2, localSlot: 1,
+                    active: false, spawned: true, health: 100)
+                && !PlayerEntity.ModForceNetworkVisibility(
+                    replica: false, networkActive: true, slot: 2, localSlot: 1,
+                    active: true, spawned: false, health: 100),
+                "visibility bypass never revives local, dead, inactive, unspawned or replica players");
             for (int count = 1; count <= PlayerEntity.SlotCapacity; count++)
             {
                 byte[] bytes = new byte[SnapshotHeader.Size + count * PlayerState.Size];
