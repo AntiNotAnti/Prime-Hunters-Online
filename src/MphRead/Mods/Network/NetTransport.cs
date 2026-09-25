@@ -10,6 +10,10 @@ using System.Threading;
 
 namespace MphRead.Mods.Network
 {
+    public readonly record struct NetTransportContentionSnapshot(long Acquisitions, long Contended,
+        double TotalWaitMilliseconds, double MaximumWaitMilliseconds,
+        double TotalHoldMilliseconds, double MaximumHoldMilliseconds);
+
     public readonly struct ReceivedPacket
     {
         public readonly IPEndPoint Sender;
@@ -58,9 +62,50 @@ namespace MphRead.Mods.Network
         // Connection state belongs to this transport. The socket worker and
         // simulation sender serialize access, including sequence allocation.
         private readonly object _connectionLock = new();
+        private long _connectionLockAcquisitions, _connectionLockContended;
+        private long _connectionLockWaitTicks, _connectionLockMaxWaitTicks;
+        private long _connectionLockHoldTicks, _connectionLockMaxHoldTicks;
         private readonly Dictionary<IPEndPoint, NetConnection> _connections = new();
         private readonly Dictionary<IPEndPoint, uint> _pendingConnections = new();
         private readonly HashSet<ulong> _supersededIds = new(); // bounded by 64 reconnects per transport
+
+        private long EnterConnectionLock()
+        {
+            if (Monitor.IsEntered(_connectionLock)) { Monitor.Enter(_connectionLock); return 0; }
+            long started = Stopwatch.GetTimestamp();
+            bool contended = !Monitor.TryEnter(_connectionLock);
+            if (contended) Monitor.Enter(_connectionLock);
+            long acquired = Stopwatch.GetTimestamp();
+            Interlocked.Increment(ref _connectionLockAcquisitions);
+            if (contended) Interlocked.Increment(ref _connectionLockContended);
+            long waited = acquired - started;
+            Interlocked.Add(ref _connectionLockWaitTicks, waited);
+            UpdateMaximum(ref _connectionLockMaxWaitTicks, waited);
+            return acquired;
+        }
+        private void ExitConnectionLock(long acquired)
+        {
+            if (acquired != 0)
+            {
+                long held = Stopwatch.GetTimestamp() - acquired;
+                Interlocked.Add(ref _connectionLockHoldTicks, held);
+                UpdateMaximum(ref _connectionLockMaxHoldTicks, held);
+            }
+            Monitor.Exit(_connectionLock);
+        }
+        private static void UpdateMaximum(ref long target, long value)
+        {
+            long current;
+            while (value > (current = Volatile.Read(ref target))
+                && Interlocked.CompareExchange(ref target, value, current) != current) { }
+        }
+        public NetTransportContentionSnapshot ContentionStats()
+        {
+            double scale = 1000.0 / Stopwatch.Frequency;
+            return new(Interlocked.Read(ref _connectionLockAcquisitions), Interlocked.Read(ref _connectionLockContended),
+                Interlocked.Read(ref _connectionLockWaitTicks) * scale, Interlocked.Read(ref _connectionLockMaxWaitTicks) * scale,
+                Interlocked.Read(ref _connectionLockHoldTicks) * scale, Interlocked.Read(ref _connectionLockMaxHoldTicks) * scale);
+        }
 
         public NetReliableSnapshot? ReliableStats(IPEndPoint endpoint)
         { lock (_connectionLock) return _connections.TryGetValue(endpoint, out var peer) ? peer.Reliable.Capture(NowMilliseconds) : null; }
@@ -507,7 +552,8 @@ namespace MphRead.Mods.Network
                 throw new ArgumentOutOfRangeException(nameof(immediateCopies));
             Span<byte> buffer = stackalloc byte[NetConfig.MaxPacketSize];
             int length;
-            lock (_connectionLock)
+            long lockStamp = EnterConnectionLock();
+            try
             {
                 if (type == PacketType.Hello && payload.Length >= 1 && payload[0] == NetConfig.ProtocolVersion)
                 {
@@ -550,6 +596,7 @@ namespace MphRead.Mods.Network
                     buffer[0] = (byte)type; payload.CopyTo(buffer[1..]); length = payload.Length + 1;
                 }
             }
+            finally { ExitConnectionLock(lockStamp); }
             Dispatch(target, buffer[..length], extraHoldTicks);
         }
 
@@ -570,7 +617,8 @@ namespace MphRead.Mods.Network
 
         private bool Unwrap(IPEndPoint sender, byte[] data, ref int length)
         {
-            lock (_connectionLock)
+            long lockStamp = EnterConnectionLock();
+            try
             {
                 if (data[0] != NetHeader.Marker)
                 {
@@ -629,6 +677,7 @@ namespace MphRead.Mods.Network
                 data[0] = (byte)header.Type; length -= offset - 1;
                 return true;
             }
+            finally { ExitConnectionLock(lockStamp); }
         }
 
         private void FlushReliable(NetConnection connection, double now, uint burstEventId = 0, int copies = 1)
@@ -652,7 +701,8 @@ namespace MphRead.Mods.Network
 
         private void ServiceConnections()
         {
-            lock (_connectionLock)
+            long lockStamp = EnterConnectionLock();
+            try
             {
                 double now = NowMilliseconds;
                 Span<byte> ack = stackalloc byte[NetHeader.Size];
@@ -680,6 +730,7 @@ namespace MphRead.Mods.Network
                 for (int i = 0; i < expiredCount; i++)
                 { _connections.Remove(_expiredConnections[i]!); _expiredConnections[i] = null; }
             }
+            finally { ExitConnectionLock(lockStamp); }
         }
 
         private void SendNow(IPEndPoint target, ReadOnlySpan<byte> datagram)
@@ -688,8 +739,9 @@ namespace MphRead.Mods.Network
             try
             {
                 SocketAddress address;
-                lock (_connectionLock)
-                    address = _connections.TryGetValue(target, out var connection) ? connection.SendAddress : target.Serialize();
+                long lockStamp = EnterConnectionLock();
+                try { address = _connections.TryGetValue(target, out var connection) ? connection.SendAddress : target.Serialize(); }
+                finally { ExitConnectionLock(lockStamp); }
                 _socket.Client.SendTo(datagram, SocketFlags.None, address);
                 Telemetry.Sent(datagram.Length);
                 Interlocked.Increment(ref TotalPacketsSent);

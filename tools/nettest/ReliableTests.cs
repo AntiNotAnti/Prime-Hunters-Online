@@ -56,6 +56,18 @@ internal static class ReliableTests
             }
             NetArchitectureTests.Check(!span.TryQueue(PacketType.Roster, new byte[] { 1 }, 0, out _)
                 && span.Capture(1).SpanRefused == 1, "old pending event protects receiver dedup window");
+            var fastRto = new NetReliableChannel();
+            fastRto.UpdateRto(20, 2);
+            fastRto.TryQueue(PacketType.MatchLoaded, new byte[] { 7 }, 0, out _);
+            NetArchitectureTests.Check(fastRto.TrySend(0, out _) && !fastRto.TrySend(74, out _)
+                && fastRto.TrySend(75, out _) && fastRto.Capture(75).CurrentRtoMilliseconds == 75,
+                "low-latency reliable retry uses bounded RTT-derived RTO");
+            var slowRto = new NetReliableChannel();
+            slowRto.UpdateRto(400, 50);
+            slowRto.TryQueue(PacketType.MatchLoaded, new byte[] { 8 }, 0, out _);
+            NetArchitectureTests.Check(slowRto.TrySend(0, out _) && !slowRto.TrySend(599, out _)
+                && slowRto.TrySend(600, out _) && slowRto.Capture(600).CurrentRtoMilliseconds == 600,
+                "high-latency reliable retry waits for RTT variance");
             var expiry = new NetReliableChannel(); expiry.TryQueue(PacketType.MatchLoaded, new byte[] { 1 }, 0, out _);
             expiry.TrySend(15000, out _);
             NetArchitectureTests.Check(expiry.Failed, "bounded retransmit lifetime");
