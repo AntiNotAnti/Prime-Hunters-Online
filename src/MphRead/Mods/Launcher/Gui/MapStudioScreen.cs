@@ -1037,7 +1037,10 @@ namespace MphRead.Mods.Launcher.Gui
                 WithUnsaved(()=>_=Job("Importing Quake 3 map",async token=>
                 {
                     Dismiss();
-                    var result=await Task.Run(()=>Q3ImportService.Import(options,token),token);
+                    Action<string> progress=message=>Dispatcher.UIThread.Post(()=>{
+                        if(!_detached&&_work!=null)_status.Text=message;
+                    });
+                    var result=await Task.Run(()=>Q3ImportService.Import(options,token,progress),token);
                     GuardJob(token);
                     _problems.ItemsSource=result.Diagnostics.Select(d=>$"{d.Severity} · {d.Message}").ToArray();
                     if(!result.Succeeded||result.ProjectPath==null)
