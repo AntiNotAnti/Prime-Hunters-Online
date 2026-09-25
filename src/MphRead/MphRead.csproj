@@ -71,6 +71,10 @@
     <ApplicationIcon Condition="$(RuntimeIdentifier.StartsWith('win')) and '$(MphReadServer)' != 'true'">Assets\project-prime.ico</ApplicationIcon>
     <ApplicationIcon Condition="$(RuntimeIdentifier.StartsWith('win')) and '$(MphReadServer)' == 'true'">Assets\project-prime-server.ico</ApplicationIcon>
     <PublishSingleFile>true</PublishSingleFile>
+    <!-- Dedicated servers spend their first seconds loading/JITing the exact
+         combat paths every isolated match process will use. Crossgen those
+         packages ahead of time; game/client builds stay unchanged. -->
+    <PublishReadyToRun Condition="'$(MphReadServer)' == 'true'">true</PublishReadyToRun>
     <DebugType>embedded</DebugType>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>

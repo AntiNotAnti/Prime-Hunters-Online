@@ -217,3 +217,23 @@ If the first command prints nothing, the installed systemd unit predates career 
 ## Anonymous networking telemetry
 
 Dedicated servers can record anonymous network/combat/performance measurements for multiplayer quality studies. No player names, IP addresses, account IDs or chat are stored by this subsystem. Aggregate recording is enabled by default; uploads are disabled. Use `-notelemetry` to disable, or `PRIME_TELEMETRY_CONFIG` to select a configuration file. See [Protocol 19 combat and telemetry](docs/network/combat-telemetry.md) for retention, study modes and optional aggregate upload.
+
+## Capacity benchmarking
+
+Dedicated server publishes use ReadyToRun and prewarm the combat/network hot
+paths before the first match. To measure how many isolated authoritative matches
+a specific Linux host can sustain, use the real-process harness:
+
+```sh
+python3 tools/server-capacity-benchmark.py \
+  --binary publish/linux-x64-server/ProjectPrime \
+  --workdir /path/to/configured/server \
+  --instances 1,2,4,8 --seconds 120 \
+  --output capacity-results
+```
+
+Each arm starts that many normal dedicated-server processes on separate ports,
+samples per-process CPU/RSS from `/proc`, and preserves the server logs and a
+JSON summary. Run it on the actual VPS/Pi class being evaluated; CPU percentages
+and ReadyToRun gains are hardware/runtime-specific.
+

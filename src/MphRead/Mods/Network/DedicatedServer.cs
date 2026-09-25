@@ -391,6 +391,8 @@ namespace MphRead.Mods.Network
             if (!_controlPlaneOnlyForTests)
             {
                 Mods.Headless.Enter();
+                double prewarmMs = ServerHotPathPrewarm.Run();
+                Log($"server hot paths prewarmed in {prewarmMs:0.0} ms");
                 ServerReplayRecorder.Configure(ReplayPolicy);
                 CareerReportOutbox.Start();
             }
