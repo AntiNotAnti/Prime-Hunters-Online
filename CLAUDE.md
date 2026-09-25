@@ -643,6 +643,19 @@ being built on purpose, and a gap in the frame numbers (the ball
 just closed, the player was frozen or paused) throws the history away.
 `-debuglog` says so the first time one is read.
 
+**Mouse movement for rolling alt forms is separately opt-in.** The Controls page
+setting `Mouse movement controls rolling alt forms` feeds relative mouse deltas
+into the same analogue precision-drive path used by touch/pen for Samus, Kanden,
+Spire and Noxus. At 1.00x Alt swipe sensitivity, 24 filtered mouse counts in one
+60 Hz simulation step is full deflection; the 0.25x-4.00x slider changes that
+travel without changing ordinary mouse aim sensitivity. No mouse delta means
+centre, so normal-speed rolling stops on the next simulation step and crossing
+direction reverses immediately. At boost/knockback speed the precision path
+falls back to ordinary roll traction so pointer steering bends the motion
+without deleting the high-speed impulse. Keyboard/controller Roll input still
+wins when held. This is independent of `MouseMovementBoost`, so movement and
+flick-to-boost/attack can be enabled in any combination.
+
 **The direction is the whip's own, against the camera's basis** -- an aim,
 not a choice between four things. It *was* snapped to forward/back/left/right,
 the four the roll binds and the DS's d-pad offer, on the report that a
