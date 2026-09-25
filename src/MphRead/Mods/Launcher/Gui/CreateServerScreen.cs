@@ -599,6 +599,14 @@ namespace MphRead.Mods.Launcher.Gui
         private static int HostLatency(HostCandidate host) =>
             host.Latency < 0 ? Int32.MaxValue : host.Latency;
 
+        private static bool TransientHostFailure(string reason) =>
+            reason.Contains("busy", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("already running", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("already in use", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("port is", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("port ", StringComparison.OrdinalIgnoreCase)
+                && reason.Contains("in use", StringComparison.OrdinalIgnoreCase);
+
         /// <summary>The fleet, as a page: which machine runs your match.</summary>
         private void OpenHosts()
         {
@@ -885,6 +893,23 @@ namespace MphRead.Mods.Launcher.Gui
                     timeLimit: timeLimit, pointGoal: pointGoal,
                     maxPlayers: PlayerEntity.SlotCapacity, serverName: name,
                     rotation: maps, policy: ServerSessionPolicy.Lobby));
+
+                // A host can discover that an old child died only after the
+                // first request reaches its loop. If it explicitly reports a
+                // transient port/busy condition, give that same machine one
+                // bounded retry after its reap has had a turn. This is safe
+                // because a negative HostReply means the first request did not
+                // claim a game port.
+                if (!answer.Started && TransientHostFailure(answer.Reason))
+                {
+                    await Task.Delay(250);
+                    answer = await Task.Run(() => NetMasterClient.RequestGame(
+                        candidate.Host, candidate.Port, maps[0].RoomKey, mode,
+                        timeLimit: timeLimit, pointGoal: pointGoal,
+                        maxPlayers: PlayerEntity.SlotCapacity, serverName: name,
+                        rotation: maps, policy: ServerSessionPolicy.Lobby));
+                }
+
                 if (answer.Started)
                 {
                     game = answer;
