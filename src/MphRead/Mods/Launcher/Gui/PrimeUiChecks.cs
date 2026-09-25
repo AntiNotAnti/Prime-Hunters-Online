@@ -344,7 +344,7 @@ namespace MphRead.Mods.Launcher.Gui
                     Drain(window);
                     Check(!shell.Overlays.IsOpen && shell.Router.Current == PrimeRoute.News,
                         "cancelling quit stays on the main screen");
-                    startup.Continue(); front.Reset(); Drain(window);
+                    startup.Continue(); front.Reset(new MenuSettings()); Drain(window);
                     Check(shell.IsVisible && !front.GetVisualDescendants().OfType<PrimeStartupScreen>().Any(),
                         "repeat input and match return never reopen startup");
                 }
