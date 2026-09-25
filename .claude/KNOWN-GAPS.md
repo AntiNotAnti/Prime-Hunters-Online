@@ -1,28 +1,34 @@
 # Known gaps — claims not yet verified
 
-## Protocol 19 Shock Coil acceptance
+## Protocol 21 Shock Coil acceptance
 
 Owner proposals, historical validation and generation/life fencing are implemented.
 Accepted target identities match in paired controlled runs, and the corrected LAN
 arm has no unpredicted hits. Continuous firing-tick claim matching improves pooled
 observed-hit coverage to 95.1% in the latest twenty-profile matrix, but several
-individual impaired profiles remain below 95%. Phase, timer and final collision
-winner differences remain classified. Do not claim full Shock Coil determinism or change its ramp on
-this evidence. See [continuous targeting](../docs/network/continuous-targeting.md)
+individual impaired profiles remain below 95%. Protocol 21 now transmits the
+owner's exact continuous firing tick and suppresses duplicate remote damage/ammo
+evaluation for repeated intents, so packet-arrival phase reconstruction is no
+longer an open mechanism. Final collision/claim correspondence still needs fresh
+impaired validation. Do not claim full Shock Coil determinism or change its ramp
+until that evidence exists. See [continuous targeting](../docs/network/continuous-targeting.md)
 for commands, measurements and the next investigation. Automated eight-process
 stock-room load does not replace human eight-player/jump-pad gameplay acceptance.
 
 The isolated VPS study server, collector and report timer are deployed. Scripted
 smokes are archived separately; the human-study report starts at zero matches.
-General alternate-policy ballistic/homing/continuous/turret/dynamic-world outcomes
-remain unknown. See the [follow-up validation](../docs/network/validation/protocol19-study-followup-2026-09-24.md).
+Alternate-policy coverage now includes deterministic straight projectile catch-up
+with historical players, detached Weavel turret positions and dynamic world
+obstruction. Homing, continuous, area, spread/multi-projectile and ricochet
+counterfactuals remain unknown. See the [follow-up validation](../docs/network/validation/protocol19-study-followup-2026-09-24.md).
 
 
 ## Alt collision validation boundaries (2026-09-24)
 
 - Deterministic pose, contact and real-asset scene tests cover historical player
-  bodies. Detached Weavel turrets retain live collision; diagnostics refuse to
-  claim historical turret geometry.
+  bodies. Detached Weavel turret position is now recorded in the same 128-frame
+  history and queried at the active rewind/catch-up frame; claims use turret
+  history rather than substituting the owner's body.
 - Kanden and Sylux attacks remain projectile/entity based. This change does not
   add a new direct body-contact damage mechanic for either hunter.
 - Seeded scheduling and headless clients validate geometry and authority paths,

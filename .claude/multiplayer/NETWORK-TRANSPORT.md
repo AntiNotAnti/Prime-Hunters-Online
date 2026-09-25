@@ -1,11 +1,14 @@
-# Protocol 20 transport
+# Protocol 21 transport
 
-## Protocol 20 intent tail
+## Protocol 21 intent tail
 
 Protocol 20 preserves the protocol-19 target identity at offsets 88-95 and
-appends signed controller movement axes at offsets 96-97. Intent is therefore
-98 payload bytes. Digital keyboard/touch movement continues to use the existing
-button bits; nonzero movement axes are reserved for analogue sources.
+appends signed controller movement axes at offsets 96-97. Protocol 21 then
+appends a little-endian uint continuous firing tick at offsets 98-101. Intent is
+therefore 102 payload bytes. Digital keyboard/touch movement continues to use
+the existing button bits; nonzero movement axes are reserved for analogue
+sources. The continuous tick is owner-authored and prevents packet arrival
+timing from creating extra Shock Coil damage/ammo evaluations.
 
 ## Protocol 19 target identity
 
@@ -78,7 +81,10 @@ in tools/nettest/baselines; protocol-bound replay compatibility rules are retain
 Each connection keeps a bounded 512-attempt sent ring. ACK samples yield smoothed
 RTT, variance and minimum observed RTT. Overwritten unacknowledged attempts count
 as *estimated* losses, not proof of wire loss. Reporting uses value snapshots and
-never drives gameplay authority. Transport state is protected by one instance lock.
+never drives gameplay authority. Transport state is protected by one instance
+lock. Schema-3 telemetry records lock acquisitions, contended acquisitions,
+cumulative wait/hold time and maximum wait/hold; the lock is not decomposed unless
+those measurements show meaningful contention.
 
 ## Queue and scheduling budgets
 
@@ -101,6 +107,11 @@ Duplicated fault entries hold immutable bytes and obtain separate pooled decode
 buffers. Promotion is bounded to 256 arrivals per pump. Reliable servicing sends
 at most four due attempts per connection/pass and also runs every 50 ms on the
 receive worker, so a synchronous room load cannot stop control retransmission.
+The initial reliable retry timeout is connection-adaptive
+(`clamp(SRTT + 4*RTTVAR, 75ms, 1200ms)`) and each event still backs off
+exponentially to 1200 ms. Clients stage outage recovery: a short RTT-scaled
+silence sends a probe first, then a longer RTT-scaled silence re-announces the
+existing client identity; the server-side slot timeout remains unchanged.
 
 An explicit pending Hello allows a restarted server to supply a new connection
 incarnation on the existing client socket. Superseded connection IDs cannot be

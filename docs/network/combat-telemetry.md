@@ -1,4 +1,4 @@
-# Protocol 19 combat consistency and telemetry
+# Protocol 21 combat consistency and telemetry
 
 Protocol 19 combines continuous Shock Coil target identity, Weavel turret state,
 CombatAck, and anonymous diagnostics. Protocol 18 peers must reconnect with the
@@ -86,14 +86,16 @@ failures. They are diagnostics only. Histograms use fixed memory; timing and
 rewind quantiles are quantized. Samples outside a histogram's finite range fall
 in its last bin; the exact maximum is retained separately.
 
-## Schema 2 records
+## Schema 3 records
 
 All raw events have frame, player/victim sample IDs, weapon, generation/life,
 record ID, result/flags and numeric fields A–H. Absent timing/displacement uses
--1, not an invented zero. Schema 2 adds a monotonic timestamp in milliseconds,
+-1, not an invented zero. Schema 2 added a monotonic timestamp in milliseconds,
 connection distributions, lifecycle durations, correction counts, explicit
-inside/outside counts and unknown shadow outcomes. Readers also accept schema 1
-and show fields it did not record as unknown.
+inside/outside counts and unknown shadow outcomes. Schema 3 adds per-weapon,
+per-result CombatAck latency/correction breakdowns and transport-lock contention
+measurements. Readers continue to accept schema 1 and 2 and show fields those
+versions did not record as unknown.
 
 | Event | Numeric payload |
 |---|---|
@@ -102,15 +104,16 @@ and show fields it did not record as unknown.
 | Shot | requested/served/plausible rewind, recovered press age; result is geometry shadow category |
 | AuthorityResult | actual body damage, body health, turret health; flags include headshot/lethal/afflictions |
 | Claim | body damage and resulting health; explicit terminal reason, including capacity |
-| CombatAck | settlement milliseconds, damage correction, health correction, headshot correction |
+| CombatAck | settlement milliseconds, damage correction, health correction, headshot correction, weapon and terminal result |
 | ContinuousTarget | reported/selected target encoding, phase, cone or collision damage; collision flags |
 | Form | mismatch duration, snapshot/intent frames and ages, transition start/last progress/attempt; episode ID, action and reason |
 | Lifecycle | packet/phase event; 200 is accepted WorldReady with join/load/bootstrap durations and late-join/rejoin flags; 201 bootstrap creation; 202 disconnect |
 | ServerStep | engine step milliseconds, cumulative dropped ticks, allocated bytes, GC generation counts |
 | LagStudy | requested/served/plausible rewind, displacement, RTT/jitter, horizontal/vertical displacement |
+| TransportContention | cumulative connection-lock acquisitions/contentions, total/max wait and total/max hold milliseconds |
 
 A CombatStudy packet (type 51) reports bounded, lossy client correction samples
-once per second: at most 32 samples/399 bytes. It uses background packet priority,
+once per second: at most 32 samples/431 bytes. It uses background packet priority,
 is stream/lifecycle fenced and rate limited at the server. Its records are
 explicitly marked client-reported (flag 128). They never affect gameplay.
 Production counters can therefore include client settlement latency without
@@ -128,12 +131,13 @@ are 0–50, 50–100, 100–150, 150–200, 200–250, 250–300, 300–400 and 
 plus unknown. Jitter buckets are 0–10, 10–25, 25–50, 50–80 and 80+ ms, plus unknown.
 Weapons and alt contact remain separate.
 
-The existing read-only Imperialist geometry comparison reports a counterfactual
-where historical geometry is available. Full counterfactual ballistic, homing,
-continuous damage, turret and dynamic-world outcomes are **not** simulated a
-second time: these remain `HistoricalDataUnavailable`, not inferred misses.
-Actual hit/rescue window membership and historical target displacement can still
-be collected. This limitation must be considered before any enforcement decision.
+The read-only counterfactual path now covers Imperialist historical traces and a
+strict subset of deterministic non-homing, non-ricochet projectile catch-up,
+including historical player forms, detached Weavel turret positions and dynamic
+world obstruction. Homing, continuous, area, spread/multi-projectile and ricochet
+mechanics still remain `HistoricalDataUnavailable` rather than guessed. Actual
+hit/rescue window membership and historical target displacement are also retained.
+No counterfactual result changes gameplay.
 
 Form reconciliation keeps an absolute 90-frame mismatch episode independently
 of animation flag flicker. It starts a new episode only when desired form changes
