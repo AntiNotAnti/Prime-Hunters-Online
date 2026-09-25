@@ -44,7 +44,12 @@ namespace MphRead.Mods.Input
         private static bool _used;
         private static long _revision;
         private static GamepadSnapshot _snapshot = new(null, default, 0);
+        private static GamepadSnapshot? _presentationSnapshot;
         public static GamepadSnapshot Snapshot { get { lock (Gate) return _snapshot; } }
+        internal static GamepadSnapshot? PresentationSnapshot
+        {
+            get { lock (Gate) return _presentationSnapshot; }
+        }
         public static GamepadState ActiveState => Snapshot.State;
         public static GamepadDeviceSnapshot? ActiveDevice { get { lock (Gate) return _active?.Snapshot; } }
         public static string? SelectedDeviceId { get { lock (Gate) return _selected; } }
@@ -88,6 +93,8 @@ namespace MphRead.Mods.Input
             bool activeChanged;
             lock (Gate)
             {
+                // A fixed-step hardware poll supersedes any draw-only axis sample.
+                _presentationSnapshot = null;
                 long oldRevision = _revision;
                 var device = Find(id);
                 bool added = device == null;
@@ -183,13 +190,17 @@ namespace MphRead.Mods.Input
                 GamepadState state = _active.State;
                 state.LeftX = leftX; state.LeftY = leftY;
                 state.RightX = rightX; state.RightY = rightY;
-                _active.State = state;
-                _snapshot = new(_active.DeviceId, _active.State, _revision)
+                _presentationSnapshot = new(_active.DeviceId, state, _revision)
                 {
                     Runtime = _active.Runtime,
                     GameplayButtons = _active.GameplayButtons
                 };
             }
+        }
+
+        internal static void ClearPresentationAxes()
+        {
+            lock (Gate) _presentationSnapshot = null;
         }
 
         internal static void ReplaceRuntime(GamepadRuntimeConfig runtime)
