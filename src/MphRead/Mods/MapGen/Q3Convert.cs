@@ -56,12 +56,19 @@ namespace MphRead.Mods.MapGen
         public const float TargetExtent = 130f;
 
         public static int Run(string source, string? mapName, string? roomName, string? outputDir,
-            bool dropClip, bool dropItems, float? forcedScale, int textureSize, CancellationToken cancellation = default)
+            bool dropClip, bool dropItems, float? forcedScale, int textureSize,
+            CancellationToken cancellation = default, IReadOnlyList<string>? textureArchives = null,
+            Action<string>? log = null)
         {
             cancellation.ThrowIfCancellationRequested();
+            void Log(string message)
+            {
+                if (log != null) log(message);
+                else Log(message);
+            }
             if (!File.Exists(source))
             {
-                Console.WriteLine($"No such file: {source}");
+                Log($"No such file: {source}");
                 return 1;
             }
             Q3Bsp bsp;
@@ -72,7 +79,7 @@ namespace MphRead.Mods.MapGen
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
-                Console.WriteLine(ex.Message);
+                Log(ex.Message);
                 return 1;
             }
             mapName ??= Q3Bsp.ListMaps(source).FirstOrDefault();
@@ -84,7 +91,7 @@ namespace MphRead.Mods.MapGen
             Bounds(bsp, out float[] min, out float[] max, sky: false);
             if (min[0] > max[0])
             {
-                Console.WriteLine($"{mapName} has no drawn surfaces.");
+                Log($"{mapName} has no drawn surfaces.");
                 return 1;
             }
             float widest = Math.Max(max[0] - min[0], Math.Max(max[1] - min[1], max[2] - min[2]));
@@ -109,16 +116,17 @@ namespace MphRead.Mods.MapGen
             }
 
             string texturePath = Path.Combine(directory, $"{prefix}.tex");
-            MapTextureBake.Result baked = MapTextureBake.Bake(bsp, new[] { source }, texturePath, textureSize, cancellation: cancellation);
-            Console.WriteLine($"  {baked.Baked} textures at {textureSize}x{textureSize}"
+            IReadOnlyList<string> archives = textureArchives ?? MapTextureBake.DiscoverArchives(source);
+            MapTextureBake.Result baked = MapTextureBake.Bake(bsp, archives, texturePath, textureSize, cancellation: cancellation);
+            Log($"  {baked.Baked} textures at {textureSize}x{textureSize}"
                 + $" -> {baked.Bytes:N0} B  {Path.GetFileName(texturePath)}");
             if (baked.Missing.Count > 0)
             {
-                Console.WriteLine($"  no image for {baked.Missing.Count}:"
+                Log($"  no image for {baked.Missing.Count}:"
                     + $" {String.Join(", ", baked.Missing.Take(6))}"
                     + (baked.Missing.Count > 6 ? " ..." : ""));
-                Console.WriteLine("  those surfaces are dropped rather than painted with somebody else's"
-                    + " texture; pass another .pk3 in the same folder if it has them");
+                Log("  fallback checker textures were generated for the unresolved shaders;"
+                    + " add or select a dependency .pk3 and rebake to restore their original art");
             }
 
             var definition = new MapDefinition()
@@ -148,46 +156,46 @@ namespace MphRead.Mods.MapGen
             string path = Path.Combine(directory, $"{prefix}.json");
             cancellation.ThrowIfCancellationRequested();
             definition.Save(path);
-            Console.WriteLine($"  {definition.Spawns.Count} spawn points, {unit:0.#} Quake units per unit"
+            Log($"  {definition.Spawns.Count} spawn points, {unit:0.#} Quake units per unit"
                 + $" -> {(max[0] - min[0]) / unit:0} x {(max[2] - min[2]) / unit:0} x {(max[1] - min[1]) / unit:0} units");
-            Console.WriteLine($"  wrote {path}");
+            Log($"  wrote {path}");
             if (definition.Spawns.Count < 4)
             {
-                Console.WriteLine($"  only {definition.Spawns.Count} places to appear: this level was not"
+                Log($"  only {definition.Spawns.Count} places to appear: this level was not"
                     + " built for a deathmatch. Add spawns to the map file before playing it with a full house.");
             }
             if (clipBrushes > 0 && !dropClip)
             {
-                Console.WriteLine($"  {clipBrushes} player-clip brushes kept. They are the level's invisible"
+                Log($"  {clipBrushes} player-clip brushes kept. They are the level's invisible"
                     + " walls; on a race map they fence the route. -noclip converts without them.");
             }
             List<Q3Import.Q3Pickup> pickups = Q3Import.Pickups(bsp, unit).ToList();
             if (dropItems)
             {
-                Console.WriteLine($"  -noitems: the level's {pickups.Count} pickups were left out, and"
+                Log($"  -noitems: the level's {pickups.Count} pickups were left out, and"
                     + " \"keepItems\" turned off so they stay out. Add your own under \"items\", from:");
             }
             else if (definition.Items.Count > 0)
             {
-                Console.WriteLine($"  {definition.Items.Count} of the level's own pickups written under"
+                Log($"  {definition.Items.Count} of the level's own pickups written under"
                     + " \"items\", and \"keepItems\" turned off so the recipe is the only place they"
                     + " live. Move them, drop them, or change what they are, from:");
             }
             else
             {
-                Console.WriteLine("  no pickups: this level holds none this game has an answer for."
+                Log("  no pickups: this level holds none this game has an answer for."
                     + " Where weapons and powerups go decides how the map plays, so none were"
                     + " invented. Add them under \"items\", from:");
             }
-            Console.WriteLine($"  {String.Join(", ", MapBuilder.MultiplayerItems)}");
+            Log($"  {String.Join(", ", MapBuilder.MultiplayerItems)}");
             int scripted = dropItems ? 0 : pickups.Count(p => p.TargetName != null);
             if (scripted > 0)
             {
-                Console.WriteLine($"  {scripted} of them are handed out by the level's own scripts"
+                Log($"  {scripted} of them are handed out by the level's own scripts"
                     + " rather than walked over, and are usually stood in a closet nobody can reach."
                     + $" ProjectPrime -mapitems \"{room}\" says which.");
             }
-            Console.WriteLine($"  then: ProjectPrime -mapgen \"{room}\"");
+            Log($"  then: ProjectPrime -mapgen \"{room}\"");
             return 0;
         }
 
@@ -245,7 +253,7 @@ namespace MphRead.Mods.MapGen
         }
 
         /// <summary>The extent of what is drawn, optionally counting the sky shell.</summary>
-        private static void Bounds(Q3Bsp bsp, out float[] min, out float[] max, bool sky)
+        internal static void Bounds(Q3Bsp bsp, out float[] min, out float[] max, bool sky)
         {
             min = new[] { Single.MaxValue, Single.MaxValue, Single.MaxValue };
             max = new[] { Single.MinValue, Single.MinValue, Single.MinValue };
