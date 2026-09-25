@@ -416,18 +416,24 @@ namespace MphRead.Mods.Input.AimAssist
 
             Vector2 measured = AimAssistMath.ClampLength(motion / previousDt,
                 AimAssistTuning.MaxTrackedSpeed);
-            Vector2 predicted = filtered + acceleration * dt;
-            if (!AimAssistMath.Finite(predicted)) predicted = filtered;
 
+            // Filter measured velocity directly. Feeding the previous acceleration
+            // back into this estimate creates an unstable loop under alternating
+            // frame intervals: a constant-speed target can ring above/below its
+            // real velocity. Acceleration is feed-forward for the camera, not a
+            // state predictor for the velocity estimator itself.
             float xRate = filtered.X * measured.X < 0 ? rate * 2.5f : rate;
             float yRate = filtered.Y * measured.Y < 0 ? rate * 2.5f : rate;
             Vector2 velocity = new(
-                predicted.X + (measured.X - predicted.X) * (1 - MathF.Exp(-xRate * dt)),
-                predicted.Y + (measured.Y - predicted.Y) * (1 - MathF.Exp(-yRate * dt)));
+                filtered.X + (measured.X - filtered.X) * (1 - MathF.Exp(-xRate * dt)),
+                filtered.Y + (measured.Y - filtered.Y) * (1 - MathF.Exp(-yRate * dt)));
             velocity = AimAssistMath.ClampLength(velocity, AimAssistTuning.MaxTrackedSpeed);
 
+            // Estimate target angular acceleration from the velocity estimate's
+            // actual change over this observation. At constant measured speed
+            // this naturally decays to zero even with variable dt.
             Vector2 observedAcceleration = AimAssistMath.ClampLength(
-                (measured - filtered) / Math.Max(previousDt, .001f),
+                (velocity - filtered) / Math.Max(dt, .001f),
                 AimAssistTuning.MaxTrackedAcceleration);
             float accelRate = AimAssistTuning.MotionAccelerationRate;
             if (filtered.X * measured.X < 0 || filtered.Y * measured.Y < 0) accelRate *= 1.75f;
