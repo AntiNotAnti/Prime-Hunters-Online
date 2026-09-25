@@ -31,6 +31,11 @@ class ReportTests(unittest.TestCase):
         x=copy.deepcopy(self.fixture);x['ip']='example';self.assertFalse(valid(x))
         x=copy.deepcopy(self.fixture);x['combatAckLatency']['mean']=float('inf');self.assertFalse(valid(x))
 
+    def test_current_protocol_twenty_is_accepted(self):
+        x=copy.deepcopy(self.fixture);x['header']['protocol']=20
+        self.assertTrue(valid(x))
+        x['header']['protocol']=21;self.assertFalse(valid(x))
+
     def test_schema_two_and_bucket_bounds(self):
         x=copy.deepcopy(self.fixture);x['header']['schema']=2
         d=dict(count=1,mean=10,p50=10,p95=10,p99=10,maximum=10)
