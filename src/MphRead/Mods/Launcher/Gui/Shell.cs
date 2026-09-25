@@ -395,7 +395,7 @@ namespace MphRead.Mods.Launcher.Gui
                 // Android head has always kept one: Reset is what makes it
                 // usable again -- the stack emptied, the hunter rerolled, the
                 // room list and the version line read afresh.
-                _front.Reset();
+                _front.Reset(_settings);
             }
             surface.Show(_front);
             if (OpenStudioOnStart)
