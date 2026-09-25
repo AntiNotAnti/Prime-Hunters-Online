@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using ReFuel.Stb;
 
@@ -406,11 +407,24 @@ namespace MphRead.Mods.MapGen
         /// <summary>Decode and box-filter down to the square the hardware wants.</summary>
         private static byte[] Decode(byte[] raw, int size, CancellationToken cancellation)
         {
+            cancellation.ThrowIfCancellationRequested();
             using var source = new MemoryStream(raw);
             using StbImage image = StbImage.Load(source, StbiImageFormat.Rgb);
-            ReadOnlySpan<byte> pixels = image.AsSpan<byte>();
             int width = image.Width;
             int height = image.Height;
+            long sourceLength = (long)width * height * 3;
+            if (width <= 0 || height <= 0 || image.ImagePointer == IntPtr.Zero
+                || sourceLength <= 0 || sourceLength > Int32.MaxValue)
+                throw new InvalidDataException("Texture image has invalid dimensions.");
+
+            // ReFuel.Stb's AsSpan length describes the file's original channel
+            // count, not the requested output format. A grayscale TGA loaded as
+            // RGB therefore exposes only width*height bytes even though STB
+            // allocated width*height*3. Copy the requested RGB buffer directly
+            // from the native pointer so 1/2/4-channel source art is safe.
+            var sourcePixels = new byte[(int)sourceLength];
+            Marshal.Copy(image.ImagePointer, sourcePixels, 0, sourcePixels.Length);
+            ReadOnlySpan<byte> pixels = sourcePixels;
             var result = new byte[size * size * 3];
             for (int y = 0; y < size; y++)
             {
