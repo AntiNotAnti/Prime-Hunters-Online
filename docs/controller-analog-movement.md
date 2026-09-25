@@ -50,9 +50,11 @@ owner without changing the owner-reported-position architecture.
 
 ## Replay
 
-The replay checkpoint schema includes the three analogue-control fields. Live replay
-intent records use the protocol-20 98-byte intent size, and older protocol recordings
-remain explicitly version-gated.
+Replay timeline records use the protocol-20 98-byte intent size. The detached
+ReplayReplicaState checkpoint already serializes each slot's complete current
+IntentPacket, so MoveX/MoveY survive seeks without adding transient PlayerControls
+fields to the world-object schema or invalidating its generated typed-accessor
+contract. Older protocol recordings remain explicitly version-gated.
 
 ## Validation
 
