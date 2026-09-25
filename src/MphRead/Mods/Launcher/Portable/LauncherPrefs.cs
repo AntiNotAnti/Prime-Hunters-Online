@@ -188,6 +188,8 @@ namespace MphRead.Mods.Launcher
         public static bool ReplayAutoPrune { get; set; } = true;
         /// <summary>Full recordings prune first; clips remain protected unless opted in.</summary>
         public static bool ReplayDeleteClips { get; set; }
+        /// <summary>Draw player names above hunters while using a spectator/replay free camera.</summary>
+        public static bool SpectatorNameTags { get; set; }
         public static bool KillCamEnabled { get; set; } = true;
         public static int KillCamCamera { get; set; }
         public static bool FinalKillCamEnabled { get; set; } = true;
@@ -412,6 +414,12 @@ namespace MphRead.Mods.Launcher
                                 ReplayDeleteClips = replayDeleteClips;
                             }
                             break;
+                        case "spectator_name_tags":
+                            if (Boolean.TryParse(value, out bool spectatorNameTags))
+                            {
+                                SpectatorNameTags = spectatorNameTags;
+                            }
+                            break;
                         case "kill_cam":
                             if (Boolean.TryParse(value, out bool killCam))
                             {
@@ -507,6 +515,7 @@ namespace MphRead.Mods.Launcher
                     $"replay_storage_gb={ReplayStorageLimitGb.ToString(CultureInfo.InvariantCulture)}",
                     $"replay_auto_prune={ReplayAutoPrune.ToString().ToLowerInvariant()}",
                     $"replay_delete_clips={ReplayDeleteClips.ToString().ToLowerInvariant()}",
+                    $"spectator_name_tags={SpectatorNameTags.ToString().ToLowerInvariant()}",
                     $"kill_cam={KillCamEnabled.ToString().ToLowerInvariant()}",
                     $"final_kill_cam={FinalKillCamEnabled.ToString().ToLowerInvariant()}",
                     $"kill_cam_camera={KillCamCamera}",

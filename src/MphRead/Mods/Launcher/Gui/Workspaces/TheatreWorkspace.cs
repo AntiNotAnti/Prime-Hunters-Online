@@ -1185,6 +1185,14 @@ namespace MphRead.Mods.Launcher.Gui
         }
 #endif
 
+        internal void ShowLaunchFailure(string message)
+        {
+            _watch.Label = "LAUNCH CINEMATIC EDITOR";
+            _watch.IsEnabled = _selected != null
+                && !_selected.EndsWith(".part", StringComparison.OrdinalIgnoreCase);
+            Fail(message);
+        }
+
         private void Fail(string message)
         {
             _status.Text = message.ToUpperInvariant();

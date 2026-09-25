@@ -43,6 +43,7 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly DeckButton _director;
         private readonly DeckButton _track;
         private readonly DeckButton _collision;
+        private readonly DeckButton _nameTags;
         private readonly DeckButton _first;
         private readonly ChoiceRow _timelinePlayer;
         private readonly ChoiceRow _timelineEvents;
@@ -329,6 +330,7 @@ namespace MphRead.Mods.Launcher.Gui
                 ReplayCamera.TrackConstantSpeed = !ReplayCamera.TrackConstantSpeed);
             _collision = AddCamera("PATH COLLISION", () =>
                 ReplayCamera.TrackCollisionAvoidance = !ReplayCamera.TrackCollisionAvoidance);
+            _nameTags = AddCamera("PLAYER NAMES", ToggleNameTags);
 
             _cameraStatus = new TextBlock
             {
@@ -861,6 +863,12 @@ namespace MphRead.Mods.Launcher.Gui
             if (ReplayCamera.PlayTrack) ReplayCamera.Director = false;
         }
 
+        private static void ToggleNameTags()
+        {
+            LauncherPrefs.SpectatorNameTags = !LauncherPrefs.SpectatorNameTags;
+            LauncherPrefs.Save();
+        }
+
         private static void CycleInterpolation()
         {
             int count = Enum.GetValues<ReplayCameraInterpolation>().Length;
@@ -1113,6 +1121,8 @@ namespace MphRead.Mods.Launcher.Gui
             _track.Text = ReplayCamera.PlayTrack ? "CAMERA TRACK: ON" : "CAMERA TRACK: OFF";
             _collision.Text = ReplayCamera.TrackCollisionAvoidance
                 ? "PATH COLLISION: ON" : "PATH COLLISION: OFF";
+            _nameTags.Text = LauncherPrefs.SpectatorNameTags
+                ? "PLAYER NAMES: ON" : "PLAYER NAMES: OFF";
 
             string marks = $"IN {Mark(ReplayController.ClipIn)}  ·  OUT {Mark(ReplayController.ClipOut)}";
             string mode = ReplayCamera.Mode.ToString();
@@ -1145,6 +1155,7 @@ namespace MphRead.Mods.Launcher.Gui
                 + $"{ReplayCamera.TrackEase} · {(ReplayCamera.TrackConstantSpeed ? "constant" : "timed")} speed · "
                 + $"FOV {ReplayCamera.FieldOfView:0}° · roll {ReplayCamera.Roll:0}° · "
                 + $"look-at {(ReplayCamera.LookAtSlot < 0 ? "off" : $"P{ReplayCamera.LookAtSlot + 1}")} · "
+                + $"names {(LauncherPrefs.SpectatorNameTags ? "on" : "off")} · "
                 + $"director {ReplayDirector.Reason} ({ReplayDirector.CurrentScore:0}) · "
                 + $"{DemoPlayback.CheckpointCount} world checkpoints";
 

@@ -1758,18 +1758,17 @@ namespace MphRead
                 OnKeyHeld();
                 if (_freeCam && Mods.Input.GamepadInput.Active)
                 {
-                    var pad = Mods.Input.GamepadInput.State;
-                    if (Math.Abs(pad.LeftY) > 0.2f)
-                    {
-                        _cameraPosition += _cameraFacing * pad.LeftY * 0.15f;
-                    }
-                    if (Math.Abs(pad.LeftX) > 0.2f)
-                    {
-                        _cameraPosition += _cameraRight * pad.LeftX * 0.15f;
-                    }
+                    // Replay and live spectating are the same roam camera. Keep
+                    // dead zones, inversion and camera-axis conventions in one
+                    // adapter rather than feeding gameplay-space aim into this
+                    // camera directly.
+                    var spectator = Mods.Input.SpectatorInput.ReadController(replay: true);
+                    _cameraPosition += _cameraFacing * spectator.MoveY * .15f
+                        + _cameraRight * spectator.MoveX * .15f;
+                    _cameraPosition.Y += (spectator.Ascend - spectator.Descend) * .15f;
                     UpdateCameraRotation(
-                        MathHelper.DegreesToRadians(Mods.Input.GamepadInput.AimDeltaX),
-                        MathHelper.DegreesToRadians(Mods.Input.GamepadInput.AimDeltaY));
+                        MathHelper.DegreesToRadians(spectator.LookX),
+                        MathHelper.DegreesToRadians(spectator.LookY));
                 }
             }
 
@@ -2975,13 +2974,11 @@ namespace MphRead
                     this.Players.Main.DrawPauseMenuForeground();
                 }
             }
-            else if (ScoreboardOverFreeCamera)
+            else if (ScoreboardOverFreeCamera || NameTagsOverFreeCamera)
             {
-                // The scoreboard, and nothing else: none of the helmet and
-                // visor layers above belong to a view that is not out of
-                // anybody's eyes. PlayerHud decides that; this only lets it
-                // be asked, since the HUD is otherwise not drawn at all while
-                // the camera is not a player's.
+                // Free-camera overlays are presentation UI, not a hunter visor.
+                // The scoreboard may add its dim layer above; name tags need only
+                // this object pass and therefore remain independent of the score key.
                 this.Players.Main.DrawHudObjects();
             }
             // Replay controls and timeline belong to the presentation, not to
@@ -6153,6 +6150,12 @@ namespace MphRead
             && Mods.SpectatorMode.ShowScoreboard
             && Players.Main.LoadFlags.TestFlag(LoadFlags.Active);
 
+        private bool NameTagsOverFreeCamera
+            => Mods.Launcher.LauncherPrefs.SpectatorNameTags
+                && Mods.SpectatorMode.FreeCamera
+                && Players.Main.LoadFlags.TestFlag(LoadFlags.Active)
+                && (!Mods.Network.DemoPlayback.IsActive
+                    || Mods.Replay.ReplayCamera.Mode == Mods.Replay.ReplayCameraMode.Free);
 
         /// <summary>
         /// The spectator's own no-clip camera: an independent view of the map

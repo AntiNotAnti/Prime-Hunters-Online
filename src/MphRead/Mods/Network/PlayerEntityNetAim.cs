@@ -33,19 +33,55 @@ namespace MphRead.Entities
             view = CameraInfo.ViewMatrix;
             position = CameraInfo.Position;
             fov = CameraInfo.Fov;
-            if (_scene.Services.IsReplica && CameraInfo.ModGetDrawPose(alpha,
-                out Vector3 replicaPosition, out Vector3 replicaTarget, out Vector3 replicaUp, out float replicaFov))
+
+            // A watched player's POV is a first-person camera, not an authored
+            // world-space look-at shot. Interpolating its target point linearly
+            // makes fast turns cross through the camera and mixes that camera
+            // timeline with the replicated body's facing. Use the same angular
+            // interpolation as local first-person presentation instead.
+            if (!_scene.Services.IsReplica && !Mods.SpectatorMode.IsSpectating)
             {
-                if (_scene.ReplayPoses?.Sample(SlotIndex, (float)alpha, out var actorPosition, out var actorFacing) == true)
-                {
-                    replicaPosition += actorPosition - SimulationDrawPosition;
-                    replicaTarget = replicaPosition + actorFacing * Math.Max(.1f, (CameraInfo.Target - CameraInfo.Position).Length);
-                }
-                position = replicaPosition; fov = replicaFov;
-                view = Matrix4.LookAt(replicaPosition, replicaTarget, replicaUp);
-                return true;
+                return false;
             }
-            return false;
+
+            Vector3 replicaPosition;
+            Vector3 replicaTarget;
+            Vector3 replicaUp;
+            float replicaFov;
+            bool sampled;
+            if (CameraType == CameraType.First)
+            {
+                sampled = CameraInfo.ModGetFirstPersonDrawPose(alpha,
+                    out replicaPosition, out replicaTarget,
+                    out replicaUp, out replicaFov);
+            }
+            else
+            {
+                sampled = CameraInfo.ModGetDrawPose(alpha,
+                    out replicaPosition, out replicaTarget,
+                    out replicaUp, out replicaFov);
+            }
+            if (!sampled)
+            {
+                return false;
+            }
+
+            if (_scene.Services.IsReplica
+                && _scene.ReplayPoses?.Sample(SlotIndex, (float)alpha,
+                    out Vector3 actorPosition, out _) == true)
+            {
+                // Pose lookahead corrects where the actor is rendered. Shift the
+                // whole camera pose by the same amount, preserving its authored
+                // pitch/yaw/up instead of replacing it with PlayerState.Facing.
+                Vector3 translation = actorPosition - SimulationDrawPosition;
+                replicaPosition += translation;
+                replicaTarget += translation;
+            }
+
+            position = replicaPosition;
+            fov = replicaFov;
+            view = Matrix4.LookAt(replicaPosition, replicaTarget, replicaUp);
+            return true;
         }
 
         protected override Matrix4 GetModelTransform(ModelInstance inst, int index)

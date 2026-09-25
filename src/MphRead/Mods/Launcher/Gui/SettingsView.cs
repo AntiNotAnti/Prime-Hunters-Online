@@ -90,6 +90,7 @@ namespace MphRead.Mods.Launcher.Gui
         private ChoiceRow? _replayStorageRow;
         private ToggleRow? _replayAutoPruneRow;
         private ToggleRow? _replayDeleteClipsRow;
+        private ToggleRow? _spectatorNameTagsRow;
         private ToggleRow? _killCamRow;
         private ToggleRow? _finalKillCamRow;
         private static readonly int[] _replayStorageStops = { 0, 5, 10, 25, 50 };
@@ -1194,6 +1195,12 @@ namespace MphRead.Mods.Launcher.Gui
                 + "removed first. Favorites are always protected. Clips remain protected unless "
                 + "you explicitly allow them to be pruned.");
 
+            Heading(page, "Spectating");
+            _spectatorNameTagsRow = Add(page, new ToggleRow("Free-camera player names",
+                LauncherPrefs.SpectatorNameTags));
+            Explain(page, "Shows player names above active hunters only while using the free camera. "
+                + "Normal gameplay and player POV cameras are unchanged.");
+
             Heading(page, "Replay keyboard");
             Explain(page, "These keys control replay playback directly while the match is on screen.");
             _keyRows.Add(Add(page, new KeyRow("Play / pause",
@@ -1903,6 +1910,8 @@ namespace MphRead.Mods.Launcher.Gui
                 LauncherPrefs.ReplayAutoPrune = _replayAutoPruneRow.On;
             if (_replayDeleteClipsRow != null)
                 LauncherPrefs.ReplayDeleteClips = _replayDeleteClipsRow.On;
+            if (_spectatorNameTagsRow != null)
+                LauncherPrefs.SpectatorNameTags = _spectatorNameTagsRow.On;
             if (_killCamRow != null)
                 LauncherPrefs.KillCamEnabled = _killCamRow.On;
             if (_killCameraRow != null) LauncherPrefs.KillCamCamera = _killCameraRow.Index;

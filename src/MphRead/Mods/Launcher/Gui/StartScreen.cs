@@ -185,6 +185,18 @@ namespace MphRead.Mods.Launcher.Gui
             _prime.Router.Navigate(PrimeRoute.Theatre);
             UpdateReplayBackground();
         }
+
+        internal void ShowReplayLaunchFailure(string message)
+        {
+            _finished = false;
+            _prime.Router.Navigate(PrimeRoute.Theatre);
+            if (_prime.Workspaces.Get(PrimeRoute.Theatre) is TheatreWorkspace theatre)
+            {
+                theatre.CloseEditor();
+                theatre.ShowLaunchFailure(message);
+            }
+            UpdateReplayBackground();
+        }
         private void UpdateReplayBackground()
         {
             bool editor = _prime.Router.Current == PrimeRoute.Theatre

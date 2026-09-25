@@ -470,8 +470,13 @@ namespace MphRead.Mods.Launcher.Gui
                 }
                 if (!MatchStart.Begin(window, _settings, plan))
                 {
-                    NetSession.ReportMatchLoadFailed("The map could not be loaded.");
+                    string failure = MatchStart.LastError ?? "The map could not be loaded.";
+                    NetSession.ReportMatchLoadFailed(failure);
                     EndMatch(window);
+                    if (plan.Kind == LaunchKind.Demo)
+                    {
+                        _front?.ShowReplayLaunchFailure(failure);
+                    }
                     return;
                 }
 
@@ -510,6 +515,10 @@ namespace MphRead.Mods.Launcher.Gui
                 // map that will not load is a reason to pick another one.
                 NetSession.ReportMatchLoadFailed(ex.Message);
                 EndMatch(window);
+                if (plan.Kind == LaunchKind.Demo)
+                {
+                    _front?.ShowReplayLaunchFailure("Could not open replay: " + ex.Message);
+                }
             }
         }
 

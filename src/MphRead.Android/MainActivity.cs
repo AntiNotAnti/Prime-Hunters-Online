@@ -494,6 +494,11 @@ namespace MphRead.Droid
 #pragma warning disable CA1422
         public override void OnBackPressed()
         {
+            if (_replayEditorOpen)
+            {
+                CloseReplayEditor();
+                return;
+            }
             if (InMatch)
             {
                 if (Mods.KillCam.RequestSkip()) return;
@@ -527,9 +532,11 @@ namespace MphRead.Droid
 
         /// <summary>Load what the plan asks for and hand the screen to it.</summary>
         private bool _spectateOnLoad;
+        private bool _replayEditorOnLoad;
         internal void StartMatch(LaunchPlan plan)
         {
             _spectateOnLoad = plan.Spectate;
+            _replayEditorOnLoad = plan.Kind == LaunchKind.Demo;
             AndroidApp.Home?.SuspendLobby();
             if (_content == null || InMatch)
             {
@@ -896,10 +903,16 @@ namespace MphRead.Droid
         private void MatchLoaded()
         {
             if (_spectateOnLoad) { _spectateOnLoad = false; _gameView?.RequestSpectate(); }
+            bool openReplayEditor = _replayEditorOnLoad;
+            _replayEditorOnLoad = false;
             // The load is over, so a resize is one frame's wait rather than a
             // freeze; the phone can turn end for end again.
             RequestedOrientation = ScreenOrientation.SensorLandscape;
             ReleaseLoadedMatch();
+            if (openReplayEditor)
+            {
+                ShowReplayEditor();
+            }
         }
 
         private void ReleaseLoadedMatch()
@@ -1052,6 +1065,65 @@ namespace MphRead.Droid
         /// ordinary views over the game and would otherwise be pressable
         /// through the menu.
         /// </summary>
+        private bool _replayEditorOpen;
+
+        /// <summary>
+        /// Put the same Replay Studio cinematic editor used on desktop over the
+        /// running replay. Keep the SurfaceView alive off-screen, exactly like
+        /// the pause menu does, so returning to fullscreen never rebuilds GL.
+        /// </summary>
+        private void ShowReplayEditor()
+        {
+            if (_replayEditorOpen || !InMatch || !DemoPlayback.IsActive
+                || _launcherView == null || AndroidApp.Home == null)
+            {
+                return;
+            }
+            _replayEditorOpen = true;
+            _controls.ReleaseEverything();
+            HideEndPanel();
+            if (_overlay != null)
+            {
+                _overlay.Visibility = ViewStates.Gone;
+            }
+            if (_gameView != null)
+            {
+                _gameView.TranslationX = Math.Max(1, _gameView.Width);
+            }
+            _launcherView.Visibility = ViewStates.Visible;
+            _launcherView.BringToFront();
+            MphRead.Mods.Input.GamepadContexts.MenuVisible = true;
+            MphRead.Mods.Launcher.Gui.Deck.Asleep = false;
+            GoImmersive(true);
+            AndroidApp.Home.ShowReplayEditor(EndMatch, CloseReplayEditor);
+        }
+
+        private void CloseReplayEditor()
+        {
+            if (!_replayEditorOpen)
+            {
+                return;
+            }
+            _replayEditorOpen = false;
+            if (_launcherView != null)
+            {
+                _launcherView.Visibility = ViewStates.Gone;
+                MphRead.Mods.Input.GamepadContexts.MenuVisible = false;
+            }
+            MphRead.Mods.Launcher.Gui.Deck.Asleep = true;
+            if (_gameView != null)
+            {
+                _gameView.TranslationX = 0f;
+            }
+            if (_overlay != null)
+            {
+                _overlay.Visibility = ViewStates.Visible;
+                _overlay.BringToFront();
+            }
+            _controls.ReleaseEverything();
+            GoImmersive(true);
+        }
+
         internal void TogglePauseMenu()
         {
             if (Mods.KillCam.RequestSkip()) return;
@@ -1150,6 +1222,8 @@ namespace MphRead.Droid
             OfflineRematch.StartNext = null;
             _pending = null;
             _pauseMenuOpen = false;
+            _replayEditorOnLoad = false;
+            _replayEditorOpen = false;
             HideNotice();
             HideEndPanel();
             _endPanelTick = null;
