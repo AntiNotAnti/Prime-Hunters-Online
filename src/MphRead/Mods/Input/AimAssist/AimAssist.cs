@@ -80,8 +80,8 @@ namespace MphRead.Mods.Input.AimAssist
                     continue;
                 }
 
-                bool visibleHead = AimAssistMath.VisibleHead(t, profile);
-                if (!t.BodyVisible && !visibleHead)
+                bool candidateHeadVisible = AimAssistMath.VisibleHead(t, profile);
+                if (!t.BodyVisible && !candidateHeadVisible)
                 {
                     if (keep) occludedRetained = i;
                     continue;
@@ -96,7 +96,7 @@ namespace MphRead.Mods.Input.AimAssist
 
                 if (flickSelecting)
                 {
-                    if (visibleHead)
+                    if (candidateHeadVisible)
                     {
                         // Trajectory selection needs a direction even after the
                         // reticle has already entered the valid headshot band.
@@ -105,10 +105,10 @@ namespace MphRead.Mods.Input.AimAssist
                         // final capture/correction.
                         Vector2 flickHead = AimAssistMath.Finite(t.HeadError)
                             ? t.HeadError : AimAssistMath.HeadError(t);
-                        float flickAlignment = AimAssistMath.Alignment(state.FlickDirection, flickHead);
-                        if (!keep && flickAlignment < AimAssistTuning.FlickTargetAlignment) continue;
+                        float candidateFlickAlignment = AimAssistMath.Alignment(state.FlickDirection, flickHead);
+                        if (!keep && candidateFlickAlignment < AimAssistTuning.FlickTargetAlignment) continue;
                         float headDistance = flickHead.Length();
-                        score += .65f * flickAlignment
+                        score += .65f * candidateFlickAlignment
                             + .20f * (1 - AimAssistMath.Smooth(0, Math.Max(.25f, Math.Min(2, cone)), headDistance));
                     }
                     else if (!keep)
