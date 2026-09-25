@@ -517,6 +517,8 @@ namespace MphRead.Entities
                 public float AimDistanceDivisor { get; }
                 public float BipedAimHeightOffset { get; }
                 public int ShotDelayFrames { get; }
+                public int ChargeChancePercent { get; }
+                public float ChargedReleaseDistance { get; }
                 public float ImperialistTurnDegrees { get; }
                 public int ImperialistFireDelayFrames { get; }
                 public float CombatRange { get; }
@@ -530,6 +532,7 @@ namespace MphRead.Entities
                     int predictionRefreshFrames, float predictionStrength, int predictionIterations,
                     float aimMotionErrorScale, float aimBaseError, float aimDistanceDivisor,
                     float bipedAimHeightOffset, int shotDelayFrames,
+                    int chargeChancePercent, float chargedReleaseDistance,
                     float imperialistTurnDegrees, int imperialistFireDelayFrames,
                     float combatRange, int strafeMinFrames, int strafeVarianceFrames,
                     int jumpCooldownMinFrames, int jumpCooldownVarianceFrames)
@@ -546,6 +549,8 @@ namespace MphRead.Entities
                     AimDistanceDivisor = aimDistanceDivisor;
                     BipedAimHeightOffset = bipedAimHeightOffset;
                     ShotDelayFrames = shotDelayFrames;
+                    ChargeChancePercent = chargeChancePercent;
+                    ChargedReleaseDistance = chargedReleaseDistance;
                     ImperialistTurnDegrees = imperialistTurnDegrees;
                     ImperialistFireDelayFrames = imperialistFireDelayFrames;
                     CombatRange = combatRange;
@@ -563,16 +568,16 @@ namespace MphRead.Entities
             [
                 // Easy
                 new(255 / 256f, 5, 0.970f, 12, 15, 0.15f, 1,
-                    5, 0.25f, 2, 0.20f, 60, 0.75f, 10, 16, 90, 120, 0, 0),
+                    5, 0.25f, 2, 0.20f, 60, 15, 4.5f, 5, 10, 16, 90, 120, 0, 0),
                 // Normal
                 new(3956 / 4096f, 15, 0.985f, 8, 7, 0.50f, 1,
-                    2, 0.10f, 9, 0.35f, 15, 3, 6, 20, 65, 90, 180, 120),
+                    2, 0.10f, 9, 0.35f, 15, 55, 3.5f, 15, 6, 20, 65, 90, 180, 120),
                 // Hard
                 new(3849 / 4096f, 20, 0.995f, 5, 3, 0.80f, 2,
-                    0.2f, 0.01f, 50, 0.50f, 5, 10, 2, 24, 35, 55, 90, 90),
+                    0.2f, 0.01f, 50, 0.50f, 5, 80, 2.75f, 20, 2, 24, 35, 55, 90, 90),
                 // Insane
                 new(-1, 180, 0.999f, 3, 1, 1, 4,
-                    0, 0, 0, 0.50f, 0, 180, 0, 28, 20, 35, 45, 60)
+                    0, 0, 0, 0.50f, 0, 95, 2.0f, 180, 0, 28, 20, 35, 45, 60)
             ];
 
             private BotDifficultyTuning Difficulty =>
@@ -2431,9 +2436,13 @@ namespace MphRead.Entities
                 }
                 if (candidateCount == 1)
                 {
-                    candidates[0] = 1; // Missile
-                    candidates[1] = 0; // Power Beam
-                    candidateCount = 2;
+                    // Vanilla discarded the only special weapon here and replaced it
+                    // with Missile/Power Beam. Keep the useful weapon and add fallbacks.
+                    if (CheckBeam(BeamType.Missile))
+                    {
+                        candidates[candidateCount++] = 1;
+                    }
+                    candidates[candidateCount++] = 0;
                 }
                 else if (candidateCount == 0)
                 {
@@ -2447,24 +2456,13 @@ namespace MphRead.Entities
                 }
                 // if the affinity weapon is available, give a 50% chance to switch to that instead of using the random candidates
                 int randIdx = (int)_scene.Random.GetRandomInt2(candidateCount * (affinityIndex != 0 ? 2 : 1));
-                int noChargeChanceOneIn;
-                if (randIdx < candidateCount)
+                bool choseAffinity = randIdx >= candidateCount && affinityIndex != 0;
+                _weapon2 = choseAffinity ? affinityIndex : candidates[randIdx];
+                Flags4 &= ~AiFlags4.Bit1;
+                if (CheckCharge(GetBeamType(_weapon2)))
                 {
-                    _weapon2 = candidates[randIdx];
-                    noChargeChanceOneIn = 2;
-                }
-                else
-                {
-                    _weapon2 = affinityIndex;
-                    noChargeChanceOneIn = 4;
-                }
-                if (CheckCharge(GetBeamType(_weapon2)) && _player.BotLevel > 0)
-                {
-                    if (_scene.Random.GetRandomInt2(noChargeChanceOneIn) == 0)
-                    {
-                        Flags4 &= ~AiFlags4.Bit1;
-                    }
-                    else
+                    int chargeChance = Math.Min(100, Difficulty.ChargeChancePercent + (choseAffinity ? 5 : 0));
+                    if (_scene.Random.GetRandomInt2(100) < chargeChance)
                     {
                         Flags4 |= AiFlags4.Bit1;
                     }
@@ -7232,12 +7230,13 @@ namespace MphRead.Entities
                             {
                                 Debug.Assert(_targetPlayer != null);
                                 Vector3 toTarget = _targetPlayer.Position - _player.Position;
-                                float distSqr = toTarget.LengthSquared;
-                                if (distSqr > 3 * 3 && _player.BotLevel == 0
-                                    || distSqr > 11 && _player.BotLevel == 1
-                                    || distSqr > 13 && _player.BotLevel == 2
-                                    || distSqr > 400 && _player.BotLevel >= 3)
+                                float releaseDistance = Difficulty.ChargedReleaseDistance;
+                                if (toTarget.LengthSquared > releaseDistance * releaseDistance)
                                 {
+                                    // Release the full charge once the target is outside
+                                    // the self-splash danger zone. Harder tiers tolerate a
+                                    // tighter window and therefore convert charges into shots
+                                    // sooner instead of holding them indefinitely.
                                     SetRandomDelay();
                                 }
                                 else
