@@ -38,6 +38,23 @@ namespace MphRead.Mods.Input
             _ => AltFlickAction.None
         };
 
+        // At 1x, 24 filtered mouse counts in one fixed step reaches full
+        // deflection. The shared swipe sensitivity expands that to 96 counts at
+        // 0.25x or contracts it to 6 at 4x without involving normal aim
+        // sensitivity.
+        public const float MouseDriveFullScale = 24f;
+
+        /// <summary>
+        /// Relative mouse movement has no anchor to hold away from centre, so
+        /// each simulation step is its own virtual-stick sample. Zero movement
+        /// means centre; stopping the mouse therefore stops normal rolling on
+        /// the next simulation step, matching the precision touch/pen path.
+        /// </summary>
+        public static (float X, float Y) MouseDrive(float deltaX, float deltaY,
+            float sensitivity)
+            => Drive(deltaX, deltaY, deadZone: 0,
+                fullScale: MouseDriveFullScale, sensitivity: sensitivity);
+
         /// <summary>
         /// Convert anchored screen-space displacement to an analogue virtual
         /// stick. The dead zone stays physically stable while sensitivity

@@ -16,7 +16,7 @@ namespace MphRead.Entities
         /// flick. Android performs its own per-finger recognition and queues the
         /// same legacy request fields before this input pass.
         /// </summary>
-        private void ModCheckMouseFlick(bool buttonBoostDown)
+        private void ModCheckMouseFlick(bool dedicatedBoostDown)
         {
             if (!IsMainPlayer || IsBot)
             {
@@ -25,7 +25,7 @@ namespace MphRead.Entities
             bool movementBoostEnabled = Mods.Input.PointerDevice.Active
                 ? Mods.InputSettings.StylusMovementBoost
                 : Mods.InputSettings.MouseMovementBoost;
-            if (!movementBoostEnabled || !Controls.MouseAim || buttonBoostDown
+            if (!movementBoostEnabled || !Controls.MouseAim || dedicatedBoostDown
                 || Flags1.TestFlag(PlayerFlags1.NoAimInput)
                 || Flags1.TestFlag(PlayerFlags1.WeaponMenuOpen)
                 || Mods.SpectatorMode.IsSpectating
@@ -76,11 +76,14 @@ namespace MphRead.Entities
         }
 
         /// <summary>
-        /// Desktop Stylus Mode uses an anchored virtual stick for rolling alt
-        /// forms. Ordinary mouse movement remains aiming and Trace/Sylux/Weavel
-        /// keep their transformed pointer aim.
+        /// Feed rolling alt forms from the active desktop pointer source.
+        ///
+        /// Pen/tablet input keeps its anchored virtual stick. The opt-in mouse
+        /// mode uses each relative mouse sample as a temporary virtual stick:
+        /// move up to roll forward, down to reverse, and left/right to steer.
+        /// Trace, Sylux and Weavel retain their transformed pointer aim.
         /// </summary>
-        private void ModApplyStylusAltMove()
+        private void ModApplyPointerAltMove()
         {
             // Android queues its anchored multi-touch sample in GameView before
             // the shared hardware-input pass.
@@ -92,10 +95,6 @@ namespace MphRead.Entities
             bool valid = IsMainPlayer && !IsBot && IsAltForm
                 && !IsMorphing && !IsUnmorphing
                 && Mods.Input.AltFormGesture.UsesRollMovement(Hunter)
-                && Mods.Input.PointerDevice.Active
-                && Mods.Input.PointerDevice.Current.Device != Mods.Input.PointerDeviceType.Mouse
-                && Mods.Input.PointerDevice.Current.InContact
-                && (!Mods.Input.StylusZone.Enabled || Mods.Input.StylusZone.Aiming)
                 && !Flags1.TestFlag(PlayerFlags1.NoAimInput)
                 && !Flags1.TestFlag(PlayerFlags1.WeaponMenuOpen)
                 && !Mods.SpectatorMode.IsSpectating
@@ -108,22 +107,50 @@ namespace MphRead.Entities
                 return;
             }
 
-            Mods.Input.PointerSample sample = Mods.Input.PointerDevice.Current;
-            if (!Input.StylusAltTracking)
+            bool absolutePointer = Mods.Input.PointerDevice.Active
+                && Mods.Input.PointerDevice.Current.Device != Mods.Input.PointerDeviceType.Mouse;
+            if (absolutePointer)
             {
-                Input.StylusAltTracking = true;
-                Input.StylusAltOriginX = sample.X;
-                Input.StylusAltOriginY = sample.Y;
-                ModSetAltSwipeDrive(true, 0, 0);
+                Mods.Input.PointerSample sample = Mods.Input.PointerDevice.Current;
+                bool stylusValid = sample.InContact
+                    && (!Mods.Input.StylusZone.Enabled || Mods.Input.StylusZone.Aiming);
+                if (!stylusValid)
+                {
+                    Input.StylusAltTracking = false;
+                    ModSetAltSwipeDrive(false, 0, 0);
+                    return;
+                }
+
+                if (!Input.StylusAltTracking)
+                {
+                    Input.StylusAltTracking = true;
+                    Input.StylusAltOriginX = sample.X;
+                    Input.StylusAltOriginY = sample.Y;
+                    ModSetAltSwipeDrive(true, 0, 0);
+                    return;
+                }
+
+                (float X, float Y) stylusDrive = Mods.Input.AltFormGesture.Drive(
+                    sample.X - Input.StylusAltOriginX,
+                    sample.Y - Input.StylusAltOriginY,
+                    deadZone: 6f, fullScale: 96f,
+                    sensitivity: Mods.InputSettings.AltSwipeSensitivity);
+                ModSetAltSwipeDrive(true, stylusDrive.X, stylusDrive.Y);
                 return;
             }
 
-            (float X, float Y) drive = Mods.Input.AltFormGesture.Drive(
-                sample.X - Input.StylusAltOriginX,
-                sample.Y - Input.StylusAltOriginY,
-                deadZone: 6f, fullScale: 96f,
-                sensitivity: Mods.InputSettings.AltSwipeSensitivity);
-            ModSetAltSwipeDrive(true, drive.X, drive.Y);
+            Input.StylusAltTracking = false;
+            if (!Mods.InputSettings.MouseAltFormMovement || !Controls.MouseAim)
+            {
+                ModSetAltSwipeDrive(false, 0, 0);
+                return;
+            }
+
+            (float X, float Y) mouseDrive = Mods.Input.AltFormGesture.MouseDrive(
+                Input.MouseDeltaX, Input.MouseDeltaY,
+                Mods.InputSettings.AltSwipeSensitivity);
+            bool engaged = mouseDrive.X != 0 || mouseDrive.Y != 0;
+            ModSetAltSwipeDrive(engaged, mouseDrive.X, mouseDrive.Y);
         }
 
         /// <summary>
@@ -152,7 +179,7 @@ namespace MphRead.Entities
             if (action == Mods.Input.AltFlickAction.SpireAttack
                 && !global::System.OperatingSystem.IsAndroid())
             {
-                ModCheckMouseFlick(buttonBoostDown: false);
+                ModCheckMouseFlick(dedicatedBoostDown: false);
             }
 
             if (action == Mods.Input.AltFlickAction.SpireAttack && SwipeBoostRequested)
