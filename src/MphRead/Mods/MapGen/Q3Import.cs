@@ -614,7 +614,8 @@ namespace MphRead.Mods.MapGen
                 import.BaseDirectory ?? CustomRooms.MapDirectory, import.Textures);
             try
             {
-                MapTextureBake.Result result = MapTextureBake.Bake(bsp, new[] { level }, target, cancellation: cancellation);
+                IReadOnlyList<string> archives = MapTextureBake.DiscoverArchives(level);
+                MapTextureBake.Result result = MapTextureBake.Bake(bsp, archives, target, cancellation: cancellation);
                 if (result.Baked == 0)
                 {
                     File.Delete(target);
@@ -622,7 +623,8 @@ namespace MphRead.Mods.MapGen
                 }
                 if (verbose)
                 {
-                    Console.WriteLine($"  baked {result.Baked} textures from {Path.GetFileName(level)}"
+                    Console.WriteLine($"  baked {result.Baked} textures from {result.Archives.Count} archive(s)"
+                        + $" ({result.Resolved} resolved, {result.Fallbacks} fallback)"
                         + $" -> {Path.GetFileName(target)}");
                 }
                 return target;
