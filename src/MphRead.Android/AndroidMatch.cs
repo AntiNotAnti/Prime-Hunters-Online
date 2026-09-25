@@ -59,6 +59,10 @@ namespace MphRead.Droid
                 // Capture is a team mode that does not end in "Teams".
                 AddLocalPlayers(scene, plan, GameState.IsTeamMode(plan.Mode));
                 scene.AddRoom(plan.RoomKey, plan.Mode);
+                // Scene setup installs each mode's retail defaults. Apply the
+                // launcher's offline rules afterwards so custom point/time
+                // limits are not replaced by values such as Battle's 7/7:00.
+                MphRead.Mods.GameSettings.ApplyMatchRules(scene.GameState);
             }
             return scene;
         }
