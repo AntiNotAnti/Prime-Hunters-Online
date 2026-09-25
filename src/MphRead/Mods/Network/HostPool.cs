@@ -86,6 +86,10 @@ namespace MphRead.Mods.Network
         /// </summary>
         public HostReplyPacket Start(HostRequestPacket request, IPEndPoint asker, double now)
         {
+            // A child can die between regular server-loop reaps and this
+            // request. Drop those dead reservations before choosing a port so
+            // a retry is not refused by a process that no longer exists.
+            ReapExited(now);
             // Do not treat a public IP address as a player identity. Multiple
             // people behind one NAT legitimately share it, so replacing an
             // empty game merely because the next request came from that IP can
@@ -164,6 +168,18 @@ namespace MphRead.Mods.Network
                 return port;
             }
             return -1;
+        }
+
+        private void ReapExited(double now)
+        {
+            for (int i = _hosted.Count - 1; i >= 0; i--)
+            {
+                Hosted entry = _hosted[i];
+                if (!entry.Process.Running)
+                {
+                    Stop(entry, "server process exited", now);
+                }
+            }
         }
 
         /// <summary>
