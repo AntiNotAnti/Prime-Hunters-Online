@@ -92,6 +92,10 @@ namespace MphRead.Mods.MapGen
             int replaced = map.Solid.Count;
             map.Solid.Clear();
             map.Solid.AddRange(read.Faces);
+            // Replacement collision becomes the static architecture collision
+            // for an imported map. Keep the viewport boundary accurate after
+            // the source BSP collision has been replaced.
+            map.ImportedCollisionFaceCount = def.Import != null ? map.Solid.Count : 0;
             if (verbose)
             {
                 Console.WriteLine($"  collision from {def.Collision.Source}: {read.Faces.Count} faces"
