@@ -200,6 +200,12 @@ because the reviving touch was swallowed. See ANDROID-PORT.md.
   proportionally finer movement. Directional keybinds are still filled for
   animation, jumping and legacy gameplay checks. Keyboard/touch/bot movement
   remains full-strength digital input.
+- **High-refresh aim late-latches axes only.** Above 60 Hz the renderer may
+  sample the already-active pad's calibrated aim-stick axes into a separate
+  presentation snapshot. It cannot discover/switch devices, advance buttons,
+  trigger hysteresis, input-source ownership or aim-assist state. The next 60 Hz
+  input step consumes those exact previewed aim axes before accepting anything
+  newer, so a render-only turn cannot be paid twice.
 
 ## Settings
 
