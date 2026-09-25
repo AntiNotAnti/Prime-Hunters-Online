@@ -93,6 +93,7 @@ namespace MphRead.Mods.Input
         /// </summary>
         public static void PollAimOnly()
         {
+            GamepadManager.ClearPresentationAxes();
             if (OperatingSystem.IsAndroid() || _unavailable)
             {
                 return;
