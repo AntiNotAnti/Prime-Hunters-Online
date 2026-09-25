@@ -822,6 +822,7 @@ namespace MphRead.Mods.Network
                 throw new ProgramException($"the server could not load \"{entry.RoomKey}\"");
             }
             _sim = sim;
+            _transport?.ResetContentionStats();
             Telemetry.ProductionTelemetry.Begin(entry.RoomKey, entry.Mode.ToString(), _maxPlayers);
             Array.Clear(_studyAdmissions); _studyAdmissionHead = 0;
             foreach (var participant in _peers) _studyAdmissions[_studyAdmissionHead++ % _studyAdmissions.Length] = participant.ClientId;

@@ -106,6 +106,15 @@ namespace MphRead.Mods.Network
                 Interlocked.Read(ref _connectionLockWaitTicks) * scale, Interlocked.Read(ref _connectionLockMaxWaitTicks) * scale,
                 Interlocked.Read(ref _connectionLockHoldTicks) * scale, Interlocked.Read(ref _connectionLockMaxHoldTicks) * scale);
         }
+        public void ResetContentionStats()
+        {
+            Interlocked.Exchange(ref _connectionLockAcquisitions, 0);
+            Interlocked.Exchange(ref _connectionLockContended, 0);
+            Interlocked.Exchange(ref _connectionLockWaitTicks, 0);
+            Interlocked.Exchange(ref _connectionLockMaxWaitTicks, 0);
+            Interlocked.Exchange(ref _connectionLockHoldTicks, 0);
+            Interlocked.Exchange(ref _connectionLockMaxHoldTicks, 0);
+        }
 
         public NetReliableSnapshot? ReliableStats(IPEndPoint endpoint)
         {

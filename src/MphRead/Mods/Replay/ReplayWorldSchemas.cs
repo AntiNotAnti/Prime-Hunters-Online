@@ -396,6 +396,7 @@ internal static class ReplayWorldSchemas
             "_modPendingHomingTarget",
             "ModContinuousNetworkTarget",
             "ModContinuousTargetState",
+            "ModContinuousFireTick",
             "_modLastGoodFacing",
             "_modLastGoodGunVec",
             "_modLastGoodPosition",
