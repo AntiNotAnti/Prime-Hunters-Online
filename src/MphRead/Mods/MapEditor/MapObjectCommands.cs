@@ -14,8 +14,7 @@ public sealed partial class MapDocument
     public void CopySelection()
     {
         var selected = Selection.ToHashSet();
-        _objectClipboard = CaptureObjects(Project.Definition, selected)
-            .Select(v => v with { Json = String.Copy(v.Json) }).ToArray();
+        _objectClipboard = CaptureObjects(Project.Definition, selected).ToArray();
     }
 
     public bool PasteClipboard()
