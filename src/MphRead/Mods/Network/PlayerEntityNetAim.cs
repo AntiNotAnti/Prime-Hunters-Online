@@ -44,13 +44,23 @@ namespace MphRead.Entities
                 return false;
             }
 
-            bool sampled = CameraType == CameraType.First
-                ? CameraInfo.ModGetFirstPersonDrawPose(alpha,
-                    out Vector3 replicaPosition, out Vector3 replicaTarget,
-                    out Vector3 replicaUp, out float replicaFov)
-                : CameraInfo.ModGetDrawPose(alpha,
+            Vector3 replicaPosition;
+            Vector3 replicaTarget;
+            Vector3 replicaUp;
+            float replicaFov;
+            bool sampled;
+            if (CameraType == CameraType.First)
+            {
+                sampled = CameraInfo.ModGetFirstPersonDrawPose(alpha,
                     out replicaPosition, out replicaTarget,
                     out replicaUp, out replicaFov);
+            }
+            else
+            {
+                sampled = CameraInfo.ModGetDrawPose(alpha,
+                    out replicaPosition, out replicaTarget,
+                    out replicaUp, out replicaFov);
+            }
             if (!sampled)
             {
                 return false;
