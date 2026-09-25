@@ -258,7 +258,9 @@ namespace MphRead
             var recolors = new List<Recolor>(recolorMeta.Count);
             foreach (RecolorMetadata meta in recolorMeta)
             {
-                ReadOnlySpan<byte> modelBytes = initialBytes;
+                try
+                {
+                    ReadOnlySpan<byte> modelBytes = initialBytes;
                 Header modelHeader = header;
                 if (Paths.Combine(root, meta.ModelPath) != path)
                 {
@@ -446,7 +448,32 @@ namespace MphRead
                         }
                     }
                 }
-                recolors.Add(new Recolor(meta.Name, textures, palettes, textureData, paletteData));
+                    recolors.Add(new Recolor(meta.Name, textures, palettes, textureData, paletteData));
+                }
+                catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+                {
+                    // Supplemental suit/team recolors are presentation data. A stale or
+                    // partially copied extraction must not make an otherwise usable hunter
+                    // unloadable, which is especially easy to hit on Android when a bot or
+                    // remote player is the first one to introduce that hunter to the model
+                    // cache. Preserve the recolor index so callers can still use 0..5, but
+                    // draw the neutral first suit when only this optional asset is absent.
+                    if (recolors.Count > 0)
+                    {
+                        Recolor fallback = recolors[0];
+                        Mods.DebugLog.Line("model", $"missing recolor \"{meta.Name}\" for \"{name}\"; "
+                            + $"using \"{fallback.Name}\": {ex.Message}");
+                        recolors.Add(new Recolor(meta.Name, fallback.Textures, fallback.Palettes,
+                            fallback.TextureData, fallback.PaletteData));
+                        continue;
+                    }
+
+                    // The first recolor is the neutral baseline. If that is absent there is
+                    // no safe model-local substitute, so fail with an actionable message
+                    // instead of surfacing the runtime's platform-specific IO resource key.
+                    throw new ProgramException($"Game files are incomplete while loading {name}. "
+                        + $"A required recolor asset is missing. Re-run Game Files Setup. ({ex.Message})");
+                }
             }
             // note: in RAM, model texture matrices are 4x4, but only the leftmost 4x2 or 4x3 is set,
             // and the rest is garbage data, and ultimately only the upper-left 3x2 is actually used
