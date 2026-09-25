@@ -161,6 +161,33 @@ namespace MphRead.Mods.Input
             if (notification.HasValue) DeviceAdded?.Invoke(notification.Value);
         }
 
+        /// <summary>
+        /// Update only the already-active pad's stick axes for render-time aim
+        /// preview. No lifecycle, activity/source ownership, buttons, trigger
+        /// hysteresis or edge state is touched here.
+        /// </summary>
+        internal static void UpdatePresentationAxes(string id,
+            float leftX, float leftY, float rightX, float rightY)
+        {
+            lock (Gate)
+            {
+                if (_active == null || _active.DeviceId != id)
+                {
+                    return;
+                }
+                var options = _active.Runtime.Options;
+                leftX = GamepadAnalog.Finite(leftX); leftY = GamepadAnalog.Finite(leftY);
+                rightX = GamepadAnalog.Finite(rightX); rightY = GamepadAnalog.Finite(rightY);
+                (leftX, leftY) = options.LeftCalibration.Normalize(leftX, leftY);
+                (rightX, rightY) = options.RightCalibration.Normalize(rightX, rightY);
+                GamepadState state = _active.State;
+                state.LeftX = leftX; state.LeftY = leftY;
+                state.RightX = rightX; state.RightY = rightY;
+                _active.State = state;
+                Publish();
+            }
+        }
+
         internal static void ReplaceRuntime(GamepadRuntimeConfig runtime)
         {
             lock (Gate)
