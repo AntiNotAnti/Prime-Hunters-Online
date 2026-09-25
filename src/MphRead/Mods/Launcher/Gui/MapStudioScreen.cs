@@ -958,7 +958,7 @@ namespace MphRead.Mods.Launcher.Gui
         }
         private void ShowImportWizard(string source)
         {
-            var view=new StackPanel {Spacing=8};view.Children.Add(Text("IMPORT QUAKE 3 · "+Path.GetFileName(source)));
+            var view=new StackPanel {Spacing=6,MinWidth=680};view.Children.Add(Text("IMPORT QUAKE 3 · "+Path.GetFileName(source)));
             var maps=new ComboBox();
             IReadOnlyList<string> mapNames;
             try{mapNames=Q3Bsp.ListMaps(source);maps.ItemsSource=mapNames;maps.SelectedIndex=0;}
@@ -967,7 +967,8 @@ namespace MphRead.Mods.Launcher.Gui
             var name=new TextBox {Text=mapNames.FirstOrDefault()??Path.GetFileNameWithoutExtension(source)};
             view.Children.Add(Text("Runtime name"));view.Children.Add(name);
             var scaleMode=new ComboBox{ItemsSource=new[]{"Auto","Faithful (35 Q3 units)","Custom"},SelectedIndex=0};
-            var customScale=new TextBox{Text="35"};view.Children.Add(Text("Scale"));view.Children.Add(scaleMode);view.Children.Add(customScale);
+            var customScale=new TextBox{Text="35",IsVisible=false};view.Children.Add(Text("Scale"));view.Children.Add(scaleMode);view.Children.Add(customScale);
+            scaleMode.SelectionChanged+=(_,_)=>customScale.IsVisible=scaleMode.SelectedIndex==2;
             var textureSize=new ComboBox{ItemsSource=new[]{"32","64","128"},SelectedItem="64"};
             var patch=new ComboBox{ItemsSource=Enumerable.Range(1,8).ToArray(),SelectedItem=3};
             view.Children.Add(Text("Texture resolution"));view.Children.Add(textureSize);
@@ -978,7 +979,7 @@ namespace MphRead.Mods.Launcher.Gui
             var spawns=new CheckBox {Content="Use source spawn points",IsChecked=true};
             view.Children.Add(clip);view.Children.Add(items);view.Children.Add(sky);view.Children.Add(spawns);
             var dependencies=new List<string>();
-            var report=Text("Preflight has not run yet.");view.Children.Add(report);
+            var report=Text("Preflight has not run yet.");report.MaxHeight=120;view.Children.Add(report);
 
             float? SelectedScale()
             {
@@ -1050,7 +1051,15 @@ namespace MphRead.Mods.Launcher.Gui
                         _status.Text=$"Imported {a.MapName} · {a.Textures.Resolved}/{a.Textures.Total} textures resolved · {a.Width:0.#} × {a.Depth:0.#} units";
                 }));
             });
-            AddButton(view,"Cancel",Dismiss);Modal(view);_=AnalyzeWizard();
+            AddButton(view,"Cancel",Dismiss);
+            var scroll=new ScrollViewer
+            {
+                Content=view,
+                MaxHeight=520,
+                VerticalScrollBarVisibility=ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled
+            };
+            Modal(scroll);_=AnalyzeWizard();
         }
         private Task RebakeImportTextures()=>Job("Rebaking Q3 textures",async token=>
         {
