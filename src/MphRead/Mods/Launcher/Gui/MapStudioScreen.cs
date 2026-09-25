@@ -41,6 +41,8 @@ namespace MphRead.Mods.Launcher.Gui
         private MapViewport? _viewport;
         private CancellationTokenSource? _work;
         private bool _refreshing;
+        private string _hierarchySignature = "";
+        private string _inspectorPage = "Inspector";
         private long _editorGeneration;
         private bool _detached;
         private MapAutosaveService _autosave = new();
@@ -112,9 +114,11 @@ namespace MphRead.Mods.Launcher.Gui
                 if(name=="Navigation"){_=Navigation();return;}
                 _viewport.Wireframe=name=="Wireframe";_viewport.Collision=name=="Collision";_viewport.KillPlane=name=="Kill plane";_viewport.InvalidateVisual();
             });
-            Choice(new[]{"Inspector","Environment","Materials","Assets & music","Snapping","Arrange","Map health","Navigation path","Statistics"},name=>{if(name=="Materials")MaterialInspector();else if(name=="Assets & music")AssetInspector();else if(name=="Snapping")SnapInspector();else if(name=="Statistics"||name=="Map health")Statistics();else if(name=="Arrange")ArrangeInspector();else if(name=="Navigation path")NavigationInspector();else Inspect();});
+            Choice(new[]{"Inspector","Environment","Materials","Assets & music","Snapping","Arrange","Layers","Map health","Navigation path","Statistics"},ShowInspectorPage);
             AddButton(tools,"Frame all",()=>_viewport?.FrameAll());AddButton(tools,"Focus",()=>_viewport?.FrameSelection());
+            AddButton(tools,"Copy",()=>_document?.CopySelection());AddButton(tools,"Paste",()=>_document?.PasteClipboard());
             AddButton(tools,"Duplicate",()=>EditSelection("Duplicate",MapObjects.Duplicate));AddButton(tools,"Delete",()=>EditSelection("Delete",MapObjects.Delete));
+            AddButton(tools,"Hide",()=>_document?.HideSelection());AddButton(tools,"Show all",()=>_document?.ShowAllGeometry());
             AddButton(tools,"Capture preview",CapturePreview);
             center.Children.Add(tools);Grid.SetRow(_viewportHost,1);center.Children.Add(_viewportHost);Grid.SetColumn(center,1);body.Children.Add(center);
             var inspectorScroll=new ScrollViewer { Content=_inspector };Grid.SetColumn(inspectorScroll,2);body.Children.Add(inspectorScroll);
@@ -122,7 +126,7 @@ namespace MphRead.Mods.Launcher.Gui
             _editingControls.Add(body);_editingControls.Add(_path);
             Grid.SetRow(_problems,3);_root.Children.Add(_problems);Grid.SetRow(_status,4);_root.Children.Add(_status);
             var layer=new Panel();layer.Children.Add(_root);layer.Children.Add(_modal);Content=layer;
-            _search.TextChanged+=(_,_)=>RefreshHierarchy();
+            _search.TextChanged+=(_,_)=>RefreshHierarchy(true);
             _hierarchy.SelectionChanged+=(_,selection)=>
             {
                 if(_refreshing||_document==null)return;
@@ -240,12 +244,29 @@ namespace MphRead.Mods.Launcher.Gui
         private void Save(){if(_document!=null)SaveTo(_path.Text??"");}
         private void SaveTo(string path)
         {try{_document?.Save(path);_document?.DiscardRecovery(CustomRooms.MapDirectory);_path.Text=path;_status.Text="Saved "+path;}catch(Exception ex){Failure(ex);}}
-        private void Changed(){RefreshHierarchy();Inspect();_status.Text=(_document?.IsDirty==true?"Unsaved changes · ":"")+"RMB orbit · MMB pan · WASD fly · F focus · drag selection or axis handles";}
-        private void RefreshHierarchy()
+        private void Changed()
+        {
+            RefreshHierarchy();
+            ShowInspectorPage(_inspectorPage, remember:false);
+            _status.Text=(_document?.IsDirty==true?"Unsaved changes · ":"")
+                +"RMB orbit · MMB pan · WASD fly · F focus · box-select empty space · G/R/T tools · Ctrl+C/V/A";
+        }
+        private void RefreshHierarchy(bool force=false)
         {
             if(_document==null)return;_refreshing=true;
-            try{var objects=MapObjects.All(_document.Project.Definition).Where(o=>o.ToString().Contains(_search.Text??"",StringComparison.OrdinalIgnoreCase)).ToArray();_hierarchy.ItemsSource=objects;
-                _hierarchy.SelectedItems?.Clear();foreach(var o in objects.Where(o=>_document.Selection.Contains(o.Id)))_hierarchy.SelectedItems?.Add(o);}
+            try
+            {
+                var objects=MapObjects.All(_document.Project.Definition)
+                    .Where(o=>o.ToString().Contains(_search.Text??"",StringComparison.OrdinalIgnoreCase)).ToArray();
+                string signature=string.Join("|",objects.Select(o=>o.Id+":"+o.ToString()));
+                if(force||signature!=_hierarchySignature)
+                {
+                    _hierarchySignature=signature;
+                    _hierarchy.ItemsSource=objects;
+                }
+                _hierarchy.SelectedItems?.Clear();
+                foreach(var o in objects.Where(o=>_document.Selection.Contains(o.Id)))_hierarchy.SelectedItems?.Add(o);
+            }
             finally{_refreshing=false;}
         }
         private void EditSelection(string label,Action<MapDefinition,ISet<Guid>> edit)
