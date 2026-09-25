@@ -16,7 +16,7 @@ namespace MphRead.Entities
         /// flick. Android performs its own per-finger recognition and queues the
         /// same legacy request fields before this input pass.
         /// </summary>
-        private void ModCheckMouseFlick(bool buttonBoostDown)
+        private void ModCheckMouseFlick(bool dedicatedBoostDown)
         {
             if (!IsMainPlayer || IsBot)
             {
@@ -25,7 +25,7 @@ namespace MphRead.Entities
             bool movementBoostEnabled = Mods.Input.PointerDevice.Active
                 ? Mods.InputSettings.StylusMovementBoost
                 : Mods.InputSettings.MouseMovementBoost;
-            if (!movementBoostEnabled || !Controls.MouseAim || buttonBoostDown
+            if (!movementBoostEnabled || !Controls.MouseAim || dedicatedBoostDown
                 || Flags1.TestFlag(PlayerFlags1.NoAimInput)
                 || Flags1.TestFlag(PlayerFlags1.WeaponMenuOpen)
                 || Mods.SpectatorMode.IsSpectating
@@ -152,7 +152,7 @@ namespace MphRead.Entities
             if (action == Mods.Input.AltFlickAction.SpireAttack
                 && !global::System.OperatingSystem.IsAndroid())
             {
-                ModCheckMouseFlick(buttonBoostDown: false);
+                ModCheckMouseFlick(dedicatedBoostDown: false);
             }
 
             if (action == Mods.Input.AltFlickAction.SpireAttack && SwipeBoostRequested)
