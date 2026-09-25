@@ -64,7 +64,7 @@ namespace MphRead.Mods.MapGen
             void Log(string message)
             {
                 if (log != null) log(message);
-                else Log(message);
+                else Console.WriteLine(message);
             }
             if (!File.Exists(source))
             {
