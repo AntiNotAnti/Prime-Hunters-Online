@@ -123,7 +123,8 @@ namespace MphRead.Mods.MapGen
         /// their surfaces.
         /// </summary>
         public static Result Bake(Q3Bsp bsp, IReadOnlyList<string> archivePaths, string outputPath,
-            int size = DefaultSize, bool sky = true, CancellationToken cancellation = default)
+            int size = DefaultSize, bool sky = true, CancellationToken cancellation = default,
+            Action<int,int,string>? progress = null)
         {
             if (size is < 8 or > 256)
                 throw new ArgumentOutOfRangeException(nameof(size), "Texture size must be 8-256.");
@@ -135,9 +136,12 @@ namespace MphRead.Mods.MapGen
                 var entries = new List<(int Index, string Name, ushort[] Palette, byte[] Pixels)>();
                 var missing = new List<string>();
                 int resolved = 0;
-                foreach ((int index, string name) in UsedTextures(bsp, sky))
+                var usedTextures = UsedTextures(bsp, sky).ToArray();
+                for (int textureNumber = 0; textureNumber < usedTextures.Length; textureNumber++)
                 {
                     cancellation.ThrowIfCancellationRequested();
+                    (int index, string name) = usedTextures[textureNumber];
+                    progress?.Invoke(textureNumber, usedTextures.Length, name);
                     byte[]? raw = Find(files, aliases, name);
                     byte[] rgb;
                     if (raw == null)
@@ -173,6 +177,7 @@ namespace MphRead.Mods.MapGen
                         writer.Write(pixels);
                     }
                 }
+                progress?.Invoke(usedTextures.Length, usedTextures.Length, "Done");
                 return new Result
                 {
                     Baked = entries.Count,
