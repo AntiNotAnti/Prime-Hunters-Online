@@ -1016,6 +1016,10 @@ namespace MphRead.Mods.Launcher.Gui
                 + "Life-streak medals reset on death. Visual medals are local-only and do not "
                 + "change scoring or network state.");
 
+            Heading(page, "Match awards");
+            AddCombatFeedbackCue(page, "First Blood (first match kill)",
+                Mods.Sound.CombatFeedbackCue.FirstBlood);
+
             Heading(page, "Hit confirmation");
             AddCombatFeedbackCue(page, "Imperialist headshot",
                 Mods.Sound.CombatFeedbackCue.ImperialistHeadshot);
