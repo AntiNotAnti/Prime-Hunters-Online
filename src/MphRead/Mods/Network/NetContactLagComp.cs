@@ -20,14 +20,14 @@ public static class NetContactLagComp
     private static readonly HistoricalAltAttackState[] Current = new HistoricalAltAttackState[PlayerEntity.SlotCapacity];
     private static readonly uint[] Stamp = new uint[PlayerEntity.SlotCapacity];
     private static readonly uint[,] LastLog = new uint[PlayerEntity.SlotCapacity, PlayerEntity.SlotCapacity];
-    public static long Checks, HistoricalHits, LiveHits, HistoricalOnlyHits, LiveOnlyHits, HistoryUnavailable;
+    public static long Checks, HistoricalHits, LiveHits, HistoricalOnlyHits, LiveOnlyHits, HistoryUnavailable, HistoryFallbacks;
     public static long SweepChecks, SweepHits, SweepOnlyHits, AttacksAttempted, VisibleChecks, VisibleOverlaps;
     public static double RewindDepth, SweepDistance;
 
     public static void Reset()
     {
         Array.Clear(Previous); Array.Clear(Current); Array.Clear(Stamp); Array.Clear(LastLog);
-        Checks = HistoricalHits = LiveHits = HistoricalOnlyHits = LiveOnlyHits = HistoryUnavailable = 0;
+        Checks = HistoricalHits = LiveHits = HistoricalOnlyHits = LiveOnlyHits = HistoryUnavailable = HistoryFallbacks = 0;
         SweepChecks = SweepHits = SweepOnlyHits = AttacksAttempted = VisibleChecks = VisibleOverlaps = 0; RewindDepth = SweepDistance = 0;
     }
     public static void ResetSlot(int slot)
@@ -123,12 +123,28 @@ public static class NetContactLagComp
                 var body = live;
                 Checks++;
                 bool historical = target < now;
+                bool liveFallback = false;
                 if (historical)
                 {
                     if (!NetUnlagged.TryHistoricalPose(victim, target, out var pose))
-                    { HistoryUnavailable++; continue; }
-                    var volume = PlayerEntity.PlayerVolumes[(int)victim.Hunter, pose.AltForm ? 2 : 0];
-                    body = live with { Position = pose.Position + volume.SpherePosition, Radius = volume.SphereRadius };
+                    {
+                        HistoryUnavailable++;
+                        // Noxus used the live authority volume before contact lag compensation
+                        // existed. If the history ring does not contain this world frame at all,
+                        // preserve that working behavior instead of converting uncertainty into
+                        // an automatic miss. A frame that *does* exist but refuses this victim is
+                        // a lifecycle/in-play fence (death, respawn, spectator, slot reuse) and
+                        // must remain fail-closed.
+                        if (attack.Kind != ContactAttackKind.Noxus || NetUnlagged.HistoryAvailable(target))
+                            continue;
+                        HistoryFallbacks++;
+                        liveFallback = true;
+                    }
+                    else
+                    {
+                        var volume = PlayerEntity.PlayerVolumes[(int)victim.Hunter, pose.AltForm ? 2 : 0];
+                        body = live with { Position = pose.Position + volume.SpherePosition, Radius = volume.SphereRadius };
+                    }
                 }
                 bool liveHit = Intersects(attack, live, false);
                 bool hit = Intersects(attack, body, true);
@@ -147,10 +163,10 @@ public static class NetContactLagComp
                 if (hit && !liveHit) HistoricalOnlyHits++;
                 if (liveHit && !hit) LiveOnlyHits++;
                 int v = victim.SlotIndex;
-                if (NetLog.Enabled && hit != liveHit && (LastLog[slot, v] == 0 || now - LastLog[slot, v] >= 60))
+                if (NetLog.Enabled && (hit != liveHit || liveFallback) && (LastLog[slot, v] == 0 || now - LastLog[slot, v] >= 60))
                 {
                     LastLog[slot, v] = now;
-                    NetLog.Event($"ALT-HIT slot={slot} victim={v} hunter={attacker.Hunter} ack={target:F2} now={now} rewind={now-target:F2} live={liveHit} historical={hit} sweepOnly={hit && !endpoint}");
+                    NetLog.Event($"ALT-HIT slot={slot} victim={v} hunter={attacker.Hunter} ack={target:F2} now={now} rewind={now-target:F2} live={liveHit} historical={hit} fallback={liveFallback} sweepOnly={hit && !endpoint}");
                 }
                 if (hit && attacker.ModCaptureContactState().Kind == attack.Kind)
                     attacker.ModApplyContactHit(victim, attack.Kind);
@@ -184,5 +200,5 @@ public static class NetContactLagComp
         Previous[slot] = sample; Stamp[slot] = now;
     }
 
-    public static string Describe() => $"alt contact: attempts {AttacksAttempted}, visible checks {VisibleChecks}, visible overlaps {VisibleOverlaps}, checks {Checks}, historical {HistoricalHits}, live {LiveHits}, historical-only {HistoricalOnlyHits}, live-only {LiveOnlyHits}, unavailable {HistoryUnavailable}, sweep-only {SweepOnlyHits}, rewind total {RewindDepth:F2}, sweep distance {SweepDistance:F2}";
+    public static string Describe() => $"alt contact: attempts {AttacksAttempted}, visible checks {VisibleChecks}, visible overlaps {VisibleOverlaps}, checks {Checks}, historical {HistoricalHits}, live {LiveHits}, historical-only {HistoricalOnlyHits}, live-only {LiveOnlyHits}, unavailable {HistoryUnavailable}, noxus-live-fallback {HistoryFallbacks}, sweep-only {SweepOnlyHits}, rewind total {RewindDepth:F2}, sweep distance {SweepDistance:F2}";
 }
