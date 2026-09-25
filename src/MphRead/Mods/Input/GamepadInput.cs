@@ -122,7 +122,7 @@ namespace MphRead.Mods.Input
         /// <see cref="BeginFrame"/> so presentation cannot preview one turn and
         /// gameplay later accept a different one.
         /// </summary>
-        internal static void CapturePresentationSample()
+        public static void CapturePresentationSample()
         {
             if (!GamepadContexts.Focused || GamepadContexts.MenuVisible
                 || GamepadContexts.Current != GamepadContext.Gameplay || WheelHeld)
