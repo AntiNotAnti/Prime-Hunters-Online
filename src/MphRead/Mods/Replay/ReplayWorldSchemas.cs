@@ -816,9 +816,6 @@ internal static class ReplayWorldSchemas
         ["MphRead.Entities.PlayerControls"] = [
             "<MouseAim>k__BackingField",
             "<KeyboardAim>k__BackingField",
-            "AnalogMoveActive",
-            "AnalogMoveX",
-            "AnalogMoveY",
             "<MoveLeft>k__BackingField",
             "<MoveRight>k__BackingField",
             "<MoveUp>k__BackingField",
