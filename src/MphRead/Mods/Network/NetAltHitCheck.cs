@@ -172,7 +172,7 @@ public static class NetAltHitCheck
                 "charged Noxus captured by production contact resolver");
             health = victim.Health;
             NetContactLagComp.ResolveFrame();
-            Check(victim.Health < health && (ushort)noxusAttackTime.GetValue(noxus)! == 0,
+            Check(victim.Health < health && Convert.ToUInt16(noxusAttackTime.GetValue(noxus)) == 0,
                 "authority applies Noxus spin damage and consumes attack");
 
             // If the requested ACK frame is absent from the ring entirely, retain the
