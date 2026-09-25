@@ -2157,10 +2157,13 @@ namespace MphRead.Mods.Network
         /// adds three canonical turret-state bytes and exact CombatAck outcomes.
         /// Version 20 appends two signed movement-axis bytes to IntentPacket so
         /// controller magnitude reaches authority, observers and replay instead of
-        /// being reconstructed from digital direction bits. Version 21 appends the
-        /// owner's exact continuous firing tick, removing packet-arrival phase
-        /// reconstruction from Shock Coil damage/ammo cadence. Mixed peers must be
-        /// refused because the realtime intent length changed.
+        /// being reconstructed from digital direction bits. The same protocol train
+        /// also spends SessionState rule bit 9 and resource profile value 3 on the
+        /// optional vanilla Battle 1v1 world. Version 21 appends the owner's exact
+        /// continuous firing tick, removing packet-arrival phase reconstruction from
+        /// Shock Coil damage/ammo cadence. Mixed peers must be refused because the
+        /// realtime intent length changed and older SessionState readers reject the
+        /// newer rule/profile values.
         /// </summary>
         public const int ProtocolVersion = 21;
         /// <summary>

@@ -50,6 +50,7 @@ namespace MphRead.Mods.Multiplayer
         public static IReadOnlyList<Entity> Resolve(RoomMetadata room, ResourceSpawnProfile profile,
             IReadOnlyList<Entity> original)
         {
+            if (profile == ResourceSpawnProfile.Vanilla) return original;
             if (!room.Multiplayer || room.FirstHunt || room.EntityPath == null
                 || !_highHealth.TryGetValue(room.Name, out short[]? ids))
                 return original;
@@ -88,6 +89,7 @@ namespace MphRead.Mods.Multiplayer
         public static ItemSpawnEntityData ResolveData(RoomMetadata room, ResourceSpawnProfile profile,
             ItemSpawnEntityData data)
         {
+            if (profile == ResourceSpawnProfile.Vanilla) return data;
             if (profile != ResourceSpawnProfile.High || !room.Multiplayer || room.FirstHunt
                 || !_highHealth.ContainsKey(room.Name) || !IsHealth(data.ItemType)) return data;
             // High population keeps the original routes but caps health downtime

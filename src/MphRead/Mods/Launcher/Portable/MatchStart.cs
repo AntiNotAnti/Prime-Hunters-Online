@@ -164,6 +164,12 @@ namespace MphRead.Mods.Launcher
             window.AddRoom(roomKey, mode, playerCount: NetSession.Active
                 ? NetLaunch.RoomPlayerCount
                 : 0);
+            // AddRoom/Setup installs the retail mode defaults (Battle is 7
+            // points / 7 minutes, for example). Offline rules from the launcher
+            // must be layered on after that setup or those defaults silently win.
+            // Network matches deliberately skip this: the server is their rule source.
+            if (!NetSession.Active)
+                Mods.GameSettings.ApplyMatchRules(window.Scene.GameState);
             NetSession.ReportMatchLoadProgress(MatchLoadStage.PresentationLoad);
             window.LoadScene();
             NetSession.ReportMatchLoadProgress(MatchLoadStage.SceneReady);

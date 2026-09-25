@@ -83,6 +83,25 @@ namespace MphRead.Mods.Network
                 && read.Revision == state.Revision && read.LoadedParticipants == 3
                 && read.StartCountdownMilliseconds == 3000,
                 "session round trip/max room/revision/countdown");
+            var duelState = new SessionStatePacket
+            {
+                Phase = SessionPhase.Lobby, Policy = ServerSessionPolicy.Lobby,
+                OwnerSlot = 0, MaxPlayers = 2, Revision = 7, MatchId = 20,
+                WorldProfile = new MatchWorldProfile(2, ResourceSpawnProfile.Vanilla),
+                Match = new MatchDefinition
+                {
+                    RoomKey = "MP1 SANCTORUS", Mode = GameMode.BattleTeams,
+                    Format = MatchFormat.OneVsOne, TimeLimitSeconds = 420, PointGoal = 7,
+                    VanillaDuelResources = true, DisablePowerups = true
+                }
+            };
+            byte[] duelBytes = new byte[SessionStatePacket.Size]; duelState.Write(duelBytes);
+            Check(SessionStatePacket.TryRead(duelBytes, out var duelRead)
+                && duelRead.Match.VanillaDuelResources
+                && duelRead.Match.DisablePowerups
+                && duelRead.WorldProfile.Resources == ResourceSpawnProfile.Vanilla,
+                "vanilla duel and disable-powerups rules round trip independently");
+
             Check(MapResourceRules.IsPowerup(ItemType.DoubleDamage)
                 && MapResourceRules.IsPowerup(ItemType.Cloak)
                 && MapResourceRules.IsPowerup(ItemType.Deathalt)
@@ -230,6 +249,31 @@ namespace MphRead.Mods.Network
             Check(LobbyRules.ValidateDefinition(match with { Mode = GameMode.InstaGib, Format = MatchFormat.FreeForAll }, out _) == LobbyResultCode.Ok, "insta-gib accepts FFA");
             Check(LobbyRules.ValidateDefinition(match with { Mode = GameMode.InstaGib, Format = MatchFormat.OneVsOne }, out _) == LobbyResultCode.InvalidConfiguration, "insta-gib stays FFA");
             Check(MatchGoalRules.DefaultValue(GameMode.InstaGib) == 7, "insta-gib uses battle score goal");
+            MatchDefinition vanillaDuel = match with
+            {
+                Format = MatchFormat.OneVsOne,
+                VanillaDuelResources = true,
+                DisablePowerups = false
+            };
+            Check(LobbyRules.ValidateDefinition(vanillaDuel, out _) == LobbyResultCode.Ok,
+                "vanilla resources accept Battle 1v1");
+            Check(LobbyRules.ResolveWorldProfile(vanillaDuel, 8)
+                == new MatchWorldProfile(2, ResourceSpawnProfile.Vanilla),
+                "vanilla duel freezes a two-player vanilla world");
+            Check(SceneSetup.GetMultiplayerEntityLayer(GameMode.BattleTeams, 2,
+                    ResourceSpawnProfile.Vanilla)
+                == Metadata.GetMultiplayerEntityLayer(GameMode.Battle, 2),
+                "vanilla duel uses the cartridge two-player Battle entity layer");
+            Check(LobbyRules.ValidateDefinition(vanillaDuel with { Format = MatchFormat.TwoVsTwo }, out _)
+                == LobbyResultCode.InvalidConfiguration,
+                "vanilla resources reject non-1v1 formats");
+            Check(LobbyRules.ValidateDefinition(vanillaDuel with { Mode = GameMode.SurvivalTeams }, out _)
+                == LobbyResultCode.InvalidConfiguration,
+                "vanilla resources reject non-Battle modes");
+            Check(LobbyRules.ValidateDefinition(vanillaDuel with { DisablePowerups = true }, out _)
+                == LobbyResultCode.Ok,
+                "vanilla resources allow powerups to be disabled independently");
+
             var single = RosterPacket.Create(); single.Count = 1;
             Check(LobbyRules.Validate(match with { Mode = GameMode.Battle, Format = MatchFormat.FreeForAll }, single, false, out _) == LobbyResultCode.NotEnoughPlayers, "explicit FFA minimum two");
 
@@ -593,6 +637,11 @@ namespace MphRead.Mods.Network
             rig.Wait(() => a.State.Value.Phase == SessionPhase.Lobby,
                 "results return directly to lobby without ready/vote input", PostMatchWaitMilliseconds);
             rig.Stable();
+            Check(rig.Clients.All(c => c.State!.Value.Match.TimeLimitSeconds == 600
+                    && c.State.Value.Match.PointGoal == 25),
+                "custom time and point limits survive the match-to-lobby cycle");
+            Check(rig.Clients.All(c => c.State!.Value.Match.HideOpponentHealth),
+                "custom match rules survive the match-to-lobby cycle");
             Check(ReferenceEquals(originalA, a.Transport) && ReferenceEquals(originalB, b.Transport)
                 && a.Slot == slotA && b.Slot == slotB, "same UDP transports and slots across rounds");
             Check(a.Roster.LobbyReady.Take(a.Roster.Count).All(r => !r), "return clears lobby ready");
@@ -601,6 +650,8 @@ namespace MphRead.Mods.Network
             foreach (var client in rig.Clients) client.Loaded();
             rig.Wait(() => a.State.Value.Phase == SessionPhase.InMatch, "second round starts");
             Check(a.State.Value.MatchId != firstMatch, "new match id on same map");
+            Check(a.State.Value.Match.TimeLimitSeconds == 600 && a.State.Value.Match.PointGoal == 25,
+                "second round starts with the persisted custom limits");
             a.Dispose(); rig.Clients.Remove(a);
             rig.Wait(() => b.State!.Value.OwnerSlot == b.Slot, "oldest peer becomes owner");
             b.Rebind(); rig.Stable(); Check(b.Slot == slotB && b.State.Value.OwnerSlot == slotB, "same-endpoint admission refresh keeps identity and slot");

@@ -66,6 +66,7 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly PickRow _map, _customTeams;
         private readonly ButtonToggleRow _fire, _affinity, _freeze, _requireReady, _join;
         private readonly ButtonToggleRow _lockTeams, _opponentHealth, _disablePowerups, _spawnProtection;
+        private readonly ButtonToggleRow _vanillaDuelResources;
         private readonly Note _layoutSummary = new("");
         private readonly Note _teamSummary = new("", lines: 1);
         private readonly FieldRow _time, _goal;
@@ -90,6 +91,8 @@ namespace MphRead.Mods.Launcher.Gui
         private readonly List<byte> _targetSlots = new();
 
         private MatchDefinition? _shownMatch;
+        private MatchDefinition? _submittedMatch;
+        private SessionRules _submittedRules;
         private ushort? _shownRevision;
         private uint? _shownRosterRevision;
         private int _chatRevision = -1, _rosterCount;
@@ -99,6 +102,9 @@ namespace MphRead.Mods.Launcher.Gui
         private string _teamChoiceKey = "";
         private TeamLayout _customLayout = new(2, 2, 2);
         private bool _syncing, _suspended, _closed, _draftDirty, _closingLobby, _startAfterSave, _matchRequestIssued;
+        private bool _saveFailed, _goalCustomized;
+        private GameMode _goalMode = GameMode.Battle;
+        private uint _draftVersion, _submittedDraftVersion;
         private double _draftChangedAt;
         private Bitmap? _bitmap;
 
@@ -147,12 +153,17 @@ namespace MphRead.Mods.Launcher.Gui
             _opponentHealth = Toggle("Opponent health");
             _disablePowerups = Toggle("Disable powerups", on: true);
             _spawnProtection = Toggle("Spawn protection (3s)", on: true);
+            _vanillaDuelResources = Toggle("Vanilla 1v1 spawns/pickups");
             foreach (ButtonToggleRow toggle in new[]
             {
                 _fire, _affinity, _freeze, _opponentHealth, _requireReady, _join, _lockTeams,
                 _disablePowerups, _spawnProtection
             })
                 toggle.Changed += (_, _) => DraftChanged();
+            _vanillaDuelResources.Changed += (_, _) =>
+            {
+                if (!_syncing) DraftChanged();
+            };
             // Three visual regions over the existing authoritative lobby
             // controls: roster, arena, and match/rule administration.
             var arena = new StackPanel { Spacing = 4 };
@@ -190,7 +201,7 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 _fire, _affinity, _freeze, _opponentHealth,
                 _requireReady, _join, _lockTeams, _disablePowerups,
-                _spawnProtection
+                _spawnProtection, _vanillaDuelResources
             };
             for (int i = 0; i < toggleRows.Length; i++)
             {
@@ -600,6 +611,7 @@ namespace MphRead.Mods.Launcher.Gui
         private void Refresh()
         {
             if (NetSession.ServerSession is not { } session) return;
+            AcceptSubmittedRules(session);
             _syncing = true;
             _hunter.Index = (int)NetSession.LocalHunter;
             _suit.Index = NetSession.LocalColor;
@@ -672,6 +684,8 @@ namespace MphRead.Mods.Launcher.Gui
                     _time.Value = DurationDisplay(session.Match.TimeLimitSeconds);
                     _goal.Label = GoalLabel(session.Match.Mode);
                     _goal.Value = GoalDisplay(session.Match.Mode, session.Match.PointGoal);
+                    _goalMode = session.Match.Mode;
+                    _goalCustomized = session.Match.PointGoal != MatchGoalRules.DefaultValue(session.Match.Mode);
                 }
                 _fire.On = session.Match.FriendlyFire;
                 _affinity.On = session.Match.AffinityWeapons;
@@ -679,6 +693,7 @@ namespace MphRead.Mods.Launcher.Gui
                 _opponentHealth.On = !session.Match.HideOpponentHealth;
                 _disablePowerups.On = session.Match.DisablePowerups;
                 _spawnProtection.On = session.Match.SpawnProtection;
+                _vanillaDuelResources.On = session.Match.VanillaDuelResources;
                 _requireReady.On = session.RequireReady;
                 _join.On = session.AllowJoinInProgress;
                 _lockTeams.On = PlayerChoosesTeam(session.Match) && session.LockTeams;
@@ -692,8 +707,11 @@ namespace MphRead.Mods.Launcher.Gui
             }
 
             _ownerControls.IsEnabled = NetSession.CanEditLobby && !NetSession.LobbyCommandPending;
-            foreach (var toggle in new[] { _fire, _affinity, _freeze, _opponentHealth, _requireReady, _join, _lockTeams, _disablePowerups, _spawnProtection })
+            foreach (var toggle in new[] { _fire, _affinity, _freeze, _opponentHealth, _requireReady, _join, _lockTeams, _disablePowerups, _spawnProtection, _vanillaDuelResources })
                 toggle.IsEnabled = _ownerControls.IsEnabled;
+            bool vanillaDuelAvailable = session.Match.Format == MatchFormat.OneVsOne
+                && session.Match.Mode == GameMode.BattleTeams;
+            _vanillaDuelResources.IsVisible = vanillaDuelAvailable;
             _closeLobby.IsEnabled = NetSession.CanEditLobby && !NetSession.LobbyCommandPending;
             TeamLayout activeLayout = LobbyRules.ResolveTeamLayout(session.Match);
             bool chooseTeams = PlayerChoosesTeam(session.Match);
@@ -933,7 +951,12 @@ namespace MphRead.Mods.Launcher.Gui
         private void WireRuleField(FieldRow field)
         {
             field.Box.MaxLength = 8;
-            field.Box.TextChanged += (_, _) => DraftChanged();
+            field.Box.TextChanged += (_, _) =>
+            {
+                if (!_syncing && ReferenceEquals(field, _goal))
+                    _goalCustomized = true;
+                DraftChanged();
+            };
             field.Box.LostFocus += (_, _) => TryAutoApply(force: true);
             field.Box.KeyDown += (_, e) =>
             {
@@ -947,7 +970,16 @@ namespace MphRead.Mods.Launcher.Gui
 
         private void StartMatchRequested()
         {
-            if (!NetSession.CanEditLobby || NetSession.LobbyCommandPending) return;
+            if (!NetSession.CanEditLobby) return;
+            if (NetSession.LobbyCommandPending)
+            {
+                // Clicking Start can move focus out of a rule field, which sends
+                // its save just before this click handler runs. Queue the start
+                // behind that save instead of swallowing the click.
+                if (_submittedMatch != null)
+                    _startAfterSave = true;
+                return;
+            }
             if (_draftDirty)
             {
                 if (!TryBuildMatch(out _, out string reason))
@@ -965,6 +997,8 @@ namespace MphRead.Mods.Launcher.Gui
         private void MatchChoiceChanged(bool resetGoal)
         {
             if (_syncing) return;
+            GameMode previousGoalMode = _goalMode;
+            bool preserveCustomGoal = _goalCustomized;
             _syncing = true;
             (string _, GameMode _, GameMode _, bool teamOnly, bool ffaOnly) = _gameTypes[_mode.Index];
             MatchFormat format = SelectedFormat();
@@ -977,8 +1011,14 @@ namespace MphRead.Mods.Launcher.Gui
             if (target != _format.Index) _format.Index = target;
             MatchDefinition draft = DraftMatch();
             _goal.Label = GoalLabel(draft.Mode);
-            if (resetGoal)
+            bool sameGoalKind = MatchGoalRules.UsesLives(previousGoalMode) == MatchGoalRules.UsesLives(draft.Mode)
+                && MatchGoalRules.UsesTimeTarget(previousGoalMode) == MatchGoalRules.UsesTimeTarget(draft.Mode);
+            if (resetGoal && (!preserveCustomGoal || !sameGoalKind))
+            {
                 _goal.Value = GoalDisplay(draft.Mode, MatchGoalRules.DefaultValue(draft.Mode));
+                _goalCustomized = false;
+            }
+            _goalMode = draft.Mode;
             _syncing = false;
             DraftChanged();
         }
@@ -1004,6 +1044,8 @@ namespace MphRead.Mods.Launcher.Gui
         {
             if (_syncing) return;
             _draftDirty = true;
+            _saveFailed = false;
+            _draftVersion++;
             _draftChangedAt = NetSession.Clock;
             RefreshDraft();
         }
@@ -1017,6 +1059,9 @@ namespace MphRead.Mods.Launcher.Gui
                 ? "1:30"
                 : MatchGoalRules.UsesLives(draft.Mode) ? "3" : "25";
             _customTeams.IsVisible = draft.Format == MatchFormat.Custom;
+            bool vanillaDuelAvailable = draft.Format == MatchFormat.OneVsOne
+                && draft.Mode == GameMode.BattleTeams;
+            _vanillaDuelResources.IsVisible = vanillaDuelAvailable;
             bool chooseTeams = PlayerChoosesTeam(draft);
             _lockTeams.IsVisible = chooseTeams;
             _layoutSummary.IsVisible = draft.Format != MatchFormat.OneVsOne;
@@ -1025,11 +1070,17 @@ namespace MphRead.Mods.Launcher.Gui
 
             _layoutSummary.Text = !valid
                 ? reason
-                : _draftDirty
-                    ? "Changes save when you finish editing."
-                    : layout.TeamCount == 0
-                        ? "Free for all"
-                        : $"Teams: {layout} · up to {layout.TotalPlayers} players · flexible start";
+                : _submittedMatch != null
+                    ? "Saving changes..."
+                    : _saveFailed
+                        ? (NetSession.LobbyMessage.Length > 0
+                            ? NetSession.LobbyMessage
+                            : "The server did not accept the rule changes.")
+                        : _draftDirty
+                            ? "Changes save when you finish editing."
+                            : layout.TeamCount == 0
+                                ? "Free for all"
+                                : $"Teams: {layout} · up to {layout.TotalPlayers} players · flexible start";
             _customTeams.Set(_customLayout.ToString());
             if (!valid) _start.IsEnabled = false;
         }
@@ -1057,6 +1108,8 @@ namespace MphRead.Mods.Launcher.Gui
             if (!TryGoalValue(match.Mode, out ushort goal, out reason))
                 return false;
 
+            bool vanillaDuelResources = match.Format == MatchFormat.OneVsOne
+                && match.Mode == GameMode.BattleTeams && _vanillaDuelResources.On;
             match = match with
             {
                 TimeLimitSeconds = seconds,
@@ -1066,13 +1119,32 @@ namespace MphRead.Mods.Launcher.Gui
                 ShadowFreeze = _freeze.On,
                 HideOpponentHealth = !_opponentHealth.On,
                 DisablePowerups = _disablePowerups.On,
-                SpawnProtection = _spawnProtection.On
+                SpawnProtection = _spawnProtection.On,
+                VanillaDuelResources = vanillaDuelResources
             };
             return true;
         }
 
         private void TryAutoApply(bool force = false)
         {
+            if (_submittedMatch != null)
+            {
+                // The command result and authoritative SessionState are separate
+                // UDP packets. Keep the draft alive until the server publishes
+                // the exact accepted rules, rather than letting an older state
+                // snap the controls back to its defaults while the save is in flight.
+                if (!NetSession.LobbyCommandPending && NetSession.LobbyMessage.Length > 0)
+                {
+                    _submittedMatch = null;
+                    _saveFailed = true;
+                }
+                else
+                {
+                    return;
+                }
+            }
+            if (_saveFailed && !force) return;
+            if (force) _saveFailed = false;
             if (!_draftDirty || NetSession.LobbyCommandPending || !NetSession.CanEditLobby
                 || (!force && (_time.Box.IsFocused || _goal.Box.IsFocused))
                 || (!force && NetSession.Clock - _draftChangedAt < 0.35)
@@ -1091,9 +1163,28 @@ namespace MphRead.Mods.Launcher.Gui
                 | (PlayerChoosesTeam(match) && _lockTeams.On ? SessionRules.LockTeams : 0);
             if (NetSession.SendLobbyCommand(LobbyCommandType.UpdateMatch, configuration: config))
             {
-                _draftDirty = false;
+                _submittedMatch = match;
+                _submittedRules = config.RuleFlags;
+                _submittedDraftVersion = _draftVersion;
                 _layoutSummary.Text = "Saving changes...";
             }
+        }
+
+        private void AcceptSubmittedRules(SessionStatePacket session)
+        {
+            if (_submittedMatch is not { } submitted
+                || session.Match != submitted
+                || session.RuleFlags != _submittedRules)
+                return;
+
+            _submittedMatch = null;
+            _saveFailed = false;
+            // A player can make a newer edit while the previous command is
+            // crossing the network. Only clear dirty for the exact draft that
+            // produced this authoritative state; otherwise the newer edit is
+            // still waiting to be saved.
+            if (_submittedDraftVersion == _draftVersion)
+                _draftDirty = false;
         }
 
         private void OpenMapPicker()

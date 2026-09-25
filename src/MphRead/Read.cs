@@ -262,7 +262,15 @@ namespace MphRead
                 Header modelHeader = header;
                 if (Paths.Combine(root, meta.ModelPath) != path)
                 {
-                    modelBytes = ReadBytes(meta.ModelPath, firstHunt);
+                    if (!TryReadRecolorFile(meta.ModelPath, firstHunt, out byte[] modelFileBytes))
+                    {
+                        if (TryAddRecolorFallback(name, meta, recolors))
+                        {
+                            continue;
+                        }
+                        throw MissingRecolorAsset(name, meta.ModelPath);
+                    }
+                    modelBytes = modelFileBytes;
                     modelHeader = ReadStruct<Header>(modelBytes[0..Sizes.Header]);
                 }
                 IReadOnlyList<Texture> textures = DoOffsets<Texture>(modelBytes, modelHeader.TextureOffset, modelHeader.TextureCount);
@@ -344,12 +352,28 @@ namespace MphRead
                 ReadOnlySpan<byte> textureBytes = modelBytes;
                 if (meta.TexturePath != meta.ModelPath)
                 {
-                    textureBytes = ReadBytes(meta.TexturePath, firstHunt);
+                    if (!TryReadRecolorFile(meta.TexturePath, firstHunt, out byte[] textureFileBytes))
+                    {
+                        if (TryAddRecolorFallback(name, meta, recolors))
+                        {
+                            continue;
+                        }
+                        throw MissingRecolorAsset(name, meta.TexturePath);
+                    }
+                    textureBytes = textureFileBytes;
                 }
                 ReadOnlySpan<byte> paletteBytes = textureBytes;
                 if (meta.PalettePath != meta.TexturePath && meta.ReplaceIds.Count == 0)
                 {
-                    paletteBytes = ReadBytes(meta.PalettePath, firstHunt);
+                    if (!TryReadRecolorFile(meta.PalettePath, firstHunt, out byte[] paletteFileBytes))
+                    {
+                        if (TryAddRecolorFallback(name, meta, recolors))
+                        {
+                            continue;
+                        }
+                        throw MissingRecolorAsset(name, meta.PalettePath);
+                    }
+                    paletteBytes = paletteFileBytes;
                     Header paletteHeader = ReadStruct<Header>(paletteBytes[0..Sizes.Header]);
                     palettes = DoOffsets<Palette>(paletteBytes, paletteHeader.PaletteOffset, paletteHeader.PaletteCount);
                 }
@@ -425,7 +449,15 @@ namespace MphRead
                 string replacePath = meta.ReplacePath ?? meta.PalettePath;
                 if (replacePath != meta.TexturePath && meta.ReplaceIds.Count > 0)
                 {
-                    paletteBytes = ReadBytes(replacePath, firstHunt);
+                    if (!TryReadRecolorFile(replacePath, firstHunt, out byte[] replaceFileBytes))
+                    {
+                        if (TryAddRecolorFallback(name, meta, recolors))
+                        {
+                            continue;
+                        }
+                        throw MissingRecolorAsset(name, replacePath);
+                    }
+                    paletteBytes = replaceFileBytes;
                     Header paletteHeader = ReadStruct<Header>(paletteBytes[0..Sizes.Header]);
                     IReadOnlyList<Palette> replacePalettes
                         = DoOffsets<Palette>(paletteBytes, paletteHeader.PaletteOffset, paletteHeader.PaletteCount);
@@ -682,6 +714,44 @@ namespace MphRead
                 return warmed;
             }
             return File.ReadAllBytes(fullPath);
+        }
+
+        private static bool TryReadRecolorFile(string path, bool firstHunt, out byte[] bytes)
+        {
+            try
+            {
+                bytes = ReadFileBytes(Paths.Combine(
+                    firstHunt ? Paths.FhFileSystem : Paths.FileSystem, path));
+                return true;
+            }
+            catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+            {
+                Mods.DebugLog.Line("model", $"missing recolor file \"{path}\": {ex.Message}");
+                bytes = Array.Empty<byte>();
+                return false;
+            }
+        }
+
+        private static bool TryAddRecolorFallback(string modelName, RecolorMetadata meta,
+            List<Recolor> recolors)
+        {
+            if (recolors.Count == 0)
+            {
+                return false;
+            }
+
+            Recolor fallback = recolors[0];
+            Mods.DebugLog.Line("model", $"missing recolor \"{meta.Name}\" for \"{modelName}\"; "
+                + $"using \"{fallback.Name}\"");
+            recolors.Add(new Recolor(meta.Name, fallback.Textures, fallback.Palettes,
+                fallback.TextureData, fallback.PaletteData));
+            return true;
+        }
+
+        private static ProgramException MissingRecolorAsset(string modelName, string path)
+        {
+            return new ProgramException($"Game files are incomplete while loading {modelName}. "
+                + $"Missing {path}. Re-run Game Files Setup.");
         }
 
         public static ReadOnlySpan<byte> ReadBytes(string path, bool firstHunt)
