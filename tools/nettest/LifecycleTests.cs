@@ -80,7 +80,8 @@ namespace MphRead.NetTest
                 "player and damage event round trip");
             var intent = new IntentPacket { MatchId = 51, AuthorityEpoch = 9, SlotGeneration = 22,
                 LifeId = 65535, Frame = uint.MaxValue, Position = state.Position, Aim = state.Facing,
-                ChargeLevel = 99, ShotFlags = 2, HomingTarget = 0x82, AckSubFrame = 77 };
+                ChargeLevel = 99, ShotFlags = 2, HomingTarget = 0x82, AckSubFrame = 77,
+                MoveX = 48, MoveY = -64 };
             intent.Write(buffer);
             IntentPacket input = IntentPacket.Read(buffer.AsSpan(0, IntentPacket.FullSize));
             Check(input.MatchId == 51 && input.AuthorityEpoch == 9 && input.SlotGeneration == 22
