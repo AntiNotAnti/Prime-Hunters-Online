@@ -136,6 +136,19 @@ namespace MphRead.Mods.Input
             var sensitiveDrive = AltFormGesture.Drive(0, -57, 18, 96, 2);
             Require(Math.Abs(sensitiveDrive.Y) > Math.Abs(driveY),
                 "higher alt swipe sensitivity reaches stronger deflection with the same travel");
+            // Use a shorter drag here so neither the baseline nor 2x case is
+            // already saturated. That leaves room for the 4x endpoint to prove
+            // that the expanded range still changes response at the top end.
+            var rangeBaseline = AltFormGesture.Drive(0, -30, 18, 96, 1);
+            var rangeSensitive = AltFormGesture.Drive(0, -30, 18, 96, 2);
+            var lowRangeDrive = AltFormGesture.Drive(0, -30, 18, 96,
+                InputSettings.MinAltSwipeSensitivity);
+            var highRangeDrive = AltFormGesture.Drive(0, -30, 18, 96,
+                InputSettings.MaxAltSwipeSensitivity);
+            Require(Math.Abs(lowRangeDrive.Y) < Math.Abs(rangeBaseline.Y)
+                    && Math.Abs(rangeBaseline.Y) < Math.Abs(rangeSensitive.Y)
+                    && Math.Abs(rangeSensitive.Y) < Math.Abs(highRangeDrive.Y),
+                "expanded alt swipe range remains effective at both endpoints");
 
             Require(AltFormGesture.TryPrecisionVelocity(0.31f, 0, -1, 0, 0.32f,
                     out float reversedX, out float reversedZ)
@@ -163,6 +176,45 @@ namespace MphRead.Mods.Input
                 && AltFormGesture.FlickAction(global::MphRead.Hunter.Kanden)
                     == AltFlickAction.None,
                 "flick routing is ability-specific");
+
+            float oldMouseSensitivity = InputSettings.MouseSensitivity;
+            float oldAltSwipeSensitivity = InputSettings.AltSwipeSensitivity;
+            try
+            {
+                InputSettings.MouseSensitivity = 1;
+                InputSettings.AltSwipeSensitivity = 1;
+                MouseFlick.Reset();
+                MouseFlick.Check(0, 0, 100000, out _, out _);
+                Require(!MouseFlick.Check(300, 0, 100001, out _, out _),
+                    "default alt swipe sensitivity keeps the desktop flick threshold");
+
+                InputSettings.AltSwipeSensitivity = 2;
+                MouseFlick.Reset();
+                MouseFlick.Check(0, 0, 200000, out _, out _);
+                Require(MouseFlick.Check(300, 0, 200001, out float flickX, out float flickY)
+                        && flickX > 0.99f && Math.Abs(flickY) < 0.001f,
+                    "higher alt swipe sensitivity lowers desktop mouse flick travel");
+
+                // Reproduce a bot/offline rematch: the recognizer is static, but
+                // the replacement Scene starts FrameCount over at zero. The old
+                // absolute cooldown must not strand swipes until the new match
+                // reaches the previous match's frame number.
+                InputSettings.AltSwipeSensitivity = 1;
+                MouseFlick.Reset();
+                MouseFlick.Check(0, 0, 50000, out _, out _);
+                Require(MouseFlick.Check(500, 0, 50001, out _, out _),
+                    "desktop flick fires late in the old match");
+                MouseFlick.Reset();
+                MouseFlick.Check(0, 0, 10, out _, out _);
+                Require(MouseFlick.Check(500, 0, 11, out _, out _),
+                    "new match frame epoch clears stale desktop flick cooldown");
+            }
+            finally
+            {
+                InputSettings.MouseSensitivity = oldMouseSensitivity;
+                InputSettings.AltSwipeSensitivity = oldAltSwipeSensitivity;
+                MouseFlick.Reset();
+            }
         }
 
         private static void CheckCameraBasis()
@@ -725,7 +777,11 @@ namespace MphRead.Mods.Input
                 File.WriteAllText(path, "alt_swipe_sensitivity=99\n");
                 InputSettings.Load();
                 Require(InputSettings.AltSwipeSensitivity == InputSettings.MaxAltSwipeSensitivity,
-                    "alt swipe sensitivity clamps hand-edited values");
+                    "alt swipe sensitivity clamps hand-edited high values");
+                File.WriteAllText(path, "alt_swipe_sensitivity=-99\n");
+                InputSettings.Load();
+                Require(InputSettings.AltSwipeSensitivity == InputSettings.MinAltSwipeSensitivity,
+                    "alt swipe sensitivity clamps hand-edited low values");
 
                 File.WriteAllText(path,
                     "stylus_mode=true\nstylus_zone=true\nstylus_zone_opacity=0.4\n");

@@ -65,14 +65,15 @@ namespace MphRead.Mods
         /// </summary>
         public static bool StylusMovementBoost { get; set; } = true;
 
-        public const float MinAltSwipeSensitivity = 0.5f;
-        public const float MaxAltSwipeSensitivity = 2f;
+        public const float MinAltSwipeSensitivity = 0.25f;
+        public const float MaxAltSwipeSensitivity = 4f;
         private static float _altSwipeSensitivity = 1f;
 
         /// <summary>
-        /// Response of the aim-side touch/pen drag while a rolling hunter is in
-        /// alternate form. This changes how quickly the virtual stick reaches
-        /// full deflection; the fast-flick boost/attack threshold stays separate.
+        /// Response of alt-form swipe gestures. Touch/pen rolling movement uses
+        /// it to change how quickly the virtual stick reaches full deflection.
+        /// Desktop mouse/pen flick detection uses the same multiplier so higher
+        /// values require less travel to trigger Samus boost or Spire attack.
         /// </summary>
         public static float AltSwipeSensitivity
         {
