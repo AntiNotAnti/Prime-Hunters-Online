@@ -42,6 +42,11 @@ namespace MphRead.Entities
             bool drawAlive = _health > 0;
             Vector3 drawFacing = _scene.Services.IsReplica
                 ? ReplayDrawTransform.Row2.Xyz.Normalized() : _facingVector;
+            bool forceNetworkVisibility = ModForceNetworkVisibility(
+                _scene.Services.IsReplica, Mods.Network.NetSession.Active,
+                SlotIndex, Mods.Network.NetHooks.LocalSlot,
+                LoadFlags.TestFlag(LoadFlags.Active),
+                LoadFlags.TestFlag(LoadFlags.Spawned), _health);
 
             if (_scene.ReplayPoses?.Sample(SlotIndex, _scene.ReplayRenderAlpha, out _, out Vector3 replicaFacing) == true)
                 drawFacing = replicaFacing;
@@ -60,7 +65,7 @@ namespace MphRead.Entities
             {
                 DrawScanModels();
             }
-            if (Flags2.TestFlag(PlayerFlags2.HideModel))
+            if (Flags2.TestFlag(PlayerFlags2.HideModel) && !forceNetworkVisibility)
             {
                 return;
             }
@@ -91,11 +96,6 @@ namespace MphRead.Entities
             // existing ModNodeUnresolved backstop cannot help because resolution
             // technically succeeded. Never let that mismatch hide a living remote
             // opponent. World geometry/depth still occludes the model normally.
-            bool forceNetworkVisibility = ModForceNetworkVisibility(
-                _scene.Services.IsReplica, Mods.Network.NetSession.Active,
-                SlotIndex, Mods.Network.NetHooks.LocalSlot,
-                LoadFlags.TestFlag(LoadFlags.Active),
-                LoadFlags.TestFlag(LoadFlags.Spawned), _health);
             if (IsMainPlayer || forceNetworkVisibility || ModNodeUnresolved || IsVisible(NodeRef))
             {
                 drawBiped = !IsMainPlayer || CameraType != CameraType.First
