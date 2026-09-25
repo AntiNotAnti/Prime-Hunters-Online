@@ -184,7 +184,11 @@ namespace MphRead.Mods.Input
                 state.LeftX = leftX; state.LeftY = leftY;
                 state.RightX = rightX; state.RightY = rightY;
                 _active.State = state;
-                Publish();
+                _snapshot = new(_active.DeviceId, _active.State, _revision)
+                {
+                    Runtime = _active.Runtime,
+                    GameplayButtons = _active.GameplayButtons
+                };
             }
         }
 
