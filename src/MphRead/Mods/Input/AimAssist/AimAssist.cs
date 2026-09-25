@@ -277,20 +277,22 @@ namespace MphRead.Mods.Input.AimAssist
             bool hasHistory = same && state.RetainedSeconds > 0;
             state.RetainedSeconds += dt;
 
+            float bodyCoverage = Math.Clamp(target.BodyVisibility, 0, 1);
             float confidenceGoal = 0;
             if (intent > 0)
             {
                 bool alreadyOverTarget = selection.Length() <= profile.Inner;
-                confidenceGoal = alreadyOverTarget ? .9f : Math.Clamp(.25f + .75f * bestAlignment, 0, 1);
-                float rate = confidenceGoal > state.TrackingConfidence
+                confidenceGoal = (alreadyOverTarget ? .9f : Math.Clamp(.25f + .75f * bestAlignment, 0, 1))
+                    * (.70f + .30f * bodyCoverage);
+                float rate = confidenceGoal > state.BodyTrackingConfidence
                     ? AimAssistTuning.TrackingConfidenceRiseRate
                     : AimAssistTuning.TrackingConfidenceDecayRate;
-                state.TrackingConfidence += (confidenceGoal - state.TrackingConfidence)
+                state.BodyTrackingConfidence += (confidenceGoal - state.BodyTrackingConfidence)
                     * (1 - MathF.Exp(-rate * dt));
             }
             else if (strafe)
             {
-                state.TrackingConfidence = Math.Max(0, state.TrackingConfidence
+                state.BodyTrackingConfidence = Math.Max(0, state.BodyTrackingConfidence
                     - AimAssistTuning.TrackingConfidenceStrafeDecayRate * dt);
             }
 
@@ -298,14 +300,14 @@ namespace MphRead.Mods.Input.AimAssist
             Vector2 bodyAcceleration = state.AngularAcceleration;
             state.AngularVelocity = TrackMotion(state.AngularVelocity, bodyAcceleration, target.BodyError,
                 state.PreviousError, state.PreviousOutput, state.PreviousDeltaTime, dt,
-                hasHistory && state.PreviousBodyVisible && target.BodyVisible,
-                AimAssistTuning.VelocityFilterRate, out bodyAcceleration);
+                hasHistory && state.PreviousBodyVisible && target.BodyVisible, wasOccluded,
+                AimAssistTuning.VelocityFilterRate, ref state.MotionDirection, out bodyAcceleration);
             state.AngularAcceleration = bodyAcceleration;
             Vector2 headAcceleration = state.HeadAngularAcceleration;
             state.HeadAngularVelocity = TrackMotion(state.HeadAngularVelocity, headAcceleration, target.HeadError,
                 state.PreviousHeadError, state.PreviousOutput, state.PreviousDeltaTime, dt,
-                hasHistory && state.PreviousHeadVisible && visibleHead,
-                AimAssistTuning.HeadVelocityFilterRate, out headAcceleration);
+                hasHistory && state.PreviousHeadVisible && visibleHead, wasOccluded,
+                AimAssistTuning.HeadVelocityFilterRate, ref state.HeadMotionDirection, out headAcceleration);
             state.HeadAngularAcceleration = headAcceleration;
 
             Vector2 bodyError = AimAssistMath.BodyError(target), headError = AimAssistMath.HeadError(target);
