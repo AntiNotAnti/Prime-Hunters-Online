@@ -197,20 +197,32 @@ namespace MphRead.Mods.Input.AimAssist
                     state.TrackingState = AimAssistTrackingState.OccludedRetention;
                     state.FlickActive = false;
                     state.OccludedSeconds += dt;
-                    state.TrackingConfidence = Math.Max(0, state.TrackingConfidence
+                    state.BodyTrackingConfidence = Math.Max(0, state.BodyTrackingConfidence
                         - AimAssistTuning.TrackingConfidenceDecayRate * dt);
+                    state.HeadTrackingConfidence = Math.Max(0, state.HeadTrackingConfidence
+                        - AimAssistTuning.HeadConfidenceDecayRate * dt);
                     state.HeadBlend = state.HeadCandidateSeconds = 0;
                     state.PreviousBodyVisible = state.PreviousHeadVisible = false;
-                    state.AngularVelocity = state.HeadAngularVelocity = Vector2.Zero;
-                    state.AngularAcceleration = state.HeadAngularAcceleration = Vector2.Zero;
-                    state.PreviousError = hidden.BodyError;
-                    state.PreviousHeadError = hidden.HeadError;
+                    // Remember how the target was moving, but never update that
+                    // estimate from hidden positions and never output correction
+                    // through cover. It simply decays until visibility returns.
+                    float decay = MathF.Exp(-AimAssistTuning.OccludedMotionDecayRate * dt);
+                    state.AngularVelocity *= decay;
+                    state.HeadAngularVelocity *= decay;
+                    state.AngularAcceleration *= decay;
+                    state.HeadAngularAcceleration *= decay;
                     state.PreviousOutput = raw;
                     state.PreviousDeltaTime = dt;
+                    state.MotionPhase = AimAssistMotionPhase.None;
+                    state.PreviousRaw = raw;
+                    state.PreviousCameraVelocity = cameraVelocity;
                     return new(raw.X, raw.Y, hidden.Slot, 1, 0, hidden.BodyPointType, 0, 0,
                         AimAssistMath.Alignment(physicalStick, hidden.BodyError), 0, true, false,
                         state.RetainedSeconds, AimAssistTrackingState.OccludedRetention,
-                        StickIntent: physicalStick, Firing: firing);
+                        StickIntent: physicalStick, Firing: firing,
+                        BodyTrackingConfidence: state.BodyTrackingConfidence,
+                        HeadTrackingConfidence: state.HeadTrackingConfidence,
+                        VisibilityCoverage: 0);
                 }
                 // Target loss may preserve a not-yet-targeted flick for the remainder
                 // of its tiny capture window, but never preserve target history.
@@ -226,6 +238,7 @@ namespace MphRead.Mods.Input.AimAssist
                     FlickAge: pendingAge, Firing: firing);
             }
 
+            bool wasOccluded = state.OccludedSeconds > 0;
             state.OccludedSeconds = 0;
             bool deliberate = stickIntent > .65f && bestAlignment > .85f;
             float challengerRatio = profile.Scoped ? 1.6f : profile.Precision ? 1.45f : AimAssistTuning.ChallengerRatio;
