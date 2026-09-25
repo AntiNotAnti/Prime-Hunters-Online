@@ -7,6 +7,7 @@ Built-ins:
 - headshot-prime.wav
 - headshot-impact.wav
 - headshot-arena.wav
+- first-blood.wav
 - double-kill.wav
 - triple-kill.wav
 - overkill.wav
