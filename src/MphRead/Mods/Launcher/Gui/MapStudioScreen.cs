@@ -260,7 +260,16 @@ namespace MphRead.Mods.Launcher.Gui
             _viewportHost.Children.Clear();_viewportHost.Children.Add(_viewport);_path.Text=path??Path.Combine(CustomRooms.MapDirectory,project.Definition.Name.ToLowerInvariant()+".json");
             Dismiss();Changed();_viewport.FrameAll();
             if(_document.HasRecovery(CustomRooms.MapDirectory))Recovery();
-            if(project.Definition.Import!=null)_=Validate();
+            if(project.Definition.Import!=null)
+            {
+                // Import completion calls Load from inside the active import
+                // Job. Work() deliberately refuses to start while a job is
+                // active, so an immediate Validate() there is silently lost
+                // and the BSP never reaches the viewport. Queue it behind the
+                // current dispatcher turn so Job's finally clears _work first.
+                if(_work==null)_=Validate();
+                else Dispatcher.UIThread.Post(()=>_=Validate());
+            }
         }
         private void Recovery()
         {
