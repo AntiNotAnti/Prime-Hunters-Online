@@ -15,7 +15,7 @@ This file is the short, machine-oriented source of truth for architectural assum
 - Normal online matches are **server authoritative**.
 - A normal player is never the simulation authority. Standalone dedicated servers simulate the match themselves.
 - "Host on this computer", directory-hosted games and regional/overflow hosted games run each match in an **isolated dedicated-server process** so every match gets its own static `NetSession`.
-- `PacketType.Authority`, `RunsTheMatch = false`, `NetSession.StartHost` and client-authority handover code remain only for compatibility/tests/legacy paths. Do not route normal launcher hosting through them.
+- The client-authority fallback is removed. `DedicatedServer` has no `RunsTheMatch=false` mode, no player-authority slot/handover, and clients cannot publish authoritative snapshots or match results. `PacketType.Authority = 12` remains reserved only so wire IDs do not shift; current servers never send it and current clients ignore it.
 - The server is authoritative for combat, health, score, match state and match end. Player movement position is still supplied by the owning client's `IntentPacket.Position`; this is not a fully server-derived movement model.
 - A dedicated game server requires the user's extracted game data and a valid `paths.txt` beside the server binary. It must refuse to start rather than silently fall back to client authority when those files are unavailable.
 - The directory/master server does not simulate a match and does not require game files.

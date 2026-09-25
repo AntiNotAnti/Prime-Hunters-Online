@@ -369,10 +369,10 @@ namespace MphRead.Mods.Network
             public RosterPacket Roster = RosterPacket.Create();
             public MatchStatePacket Match;
             public int OpenMapChoices;
-            public bool Authority, Refused;
+            public bool Refused;
             public readonly List<ChatPacket> Chats = new();
             public readonly Dictionary<uint, LobbyCommandResultPacket> Results = new();
-            private uint _command, _frame;
+            private uint _command;
             public Client(int port, uint id, Guid token = default)
             {
                 Id = id; Server = new IPEndPoint(IPAddress.Loopback, port);
@@ -402,15 +402,6 @@ namespace MphRead.Mods.Network
             { byte[] bytes = new byte[MatchLoadFailedPacket.Size]; new MatchLoadFailedPacket(State!.Value.MatchId,
                 reason, State.Value.AuthorityEpoch, State.Value.StartGeneration).Write(bytes);
                 Send(PacketType.MatchLoadFailed, bytes); }
-            public void ReadyResults()
-            { var intent = new IntentPacket { Frame = ++_frame, Buttons = IntentButtons.ReadyState,
-                MatchId = State!.Value.MatchId, AuthorityEpoch = State.Value.AuthorityEpoch,
-                SlotGeneration = Roster.Generations[Array.IndexOf(Roster.Slots, (byte)Slot)] };
-                byte[] bytes = new byte[IntentPacket.FullSize]; intent.Write(bytes); Send(PacketType.Intent, bytes); }
-            public void EndMatch()
-            { byte[] bytes = new byte[10]; BinaryPrimitives.WriteUInt16LittleEndian(bytes, State!.Value.MatchId);
-                BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(2), State.Value.AuthorityEpoch);
-                Send(PacketType.MatchEnd, bytes); }
             public void Drain()
             {
                 foreach (var packet in Transport.Drain())
@@ -418,7 +409,6 @@ namespace MphRead.Mods.Network
                     if (packet.Type == PacketType.WorldBootstrap && WorldBootstrapIdentity.TryRead(packet.Payload, out var bootstrap))
                     { byte[] ready = new byte[WorldBootstrapIdentity.Size]; bootstrap.Write(ready); Send(PacketType.WorldReady, ready); }
                     if (packet.Type == PacketType.Welcome) Slot = packet.Payload[0];
-                    if (packet.Type == PacketType.Authority) Authority = true;
                     if (packet.Type == PacketType.Refused) Refused = true;
                     if (packet.Type == PacketType.Chat && packet.Payload.Length == ChatPacket.Size) Chats.Add(ChatPacket.Read(packet.Payload));
                     if (packet.Type == PacketType.SessionState && SessionStatePacket.TryRead(packet.Payload, out var state)
@@ -444,7 +434,10 @@ namespace MphRead.Mods.Network
             public Rig(ServerSessionPolicy policy = ServerSessionPolicy.Lobby, Guid token = default)
             {
                 Server = new DedicatedServer(0, 8, MapRotation.SingleMatch(Rooms()[0], GameMode.Battle, 0, 0))
-                    { SessionPolicy = policy, OwnerToken = token, RunsTheMatch = false };
+                    { SessionPolicy = policy, OwnerToken = token };
+                typeof(DedicatedServer).GetField("_controlPlaneOnlyForTests",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                    .SetValue(Server, true);
                 Server.SetSessionOptions(requireReady: true, allowJoinInProgress: true);
                 _thread = new Thread(() => { try { Server.Run(); } catch (Exception ex) { _error = ex; } }) { IsBackground = true };
                 _thread.Start(); Wait(() => Server.Listening, "server listening");
@@ -454,6 +447,15 @@ namespace MphRead.Mods.Network
                 var client = new Client(Server.BoundPort, id, token); Clients.Add(client);
                 Wait(() => client.Slot >= 0 && client.State != null, "client admitted"); client.Identify();
                 Stable(); return client;
+            }
+            public void EndMatchForTest()
+            {
+                const System.Reflection.BindingFlags flags =
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+                double now = (double)typeof(DedicatedServer).GetField("_now", flags)!.GetValue(Server)!;
+                typeof(DedicatedServer).GetMethod("EndMatch", flags, null,
+                    new[] { typeof(double), typeof(string) }, null)!
+                    .Invoke(Server, new object[] { now, "test" });
             }
             public void Stable() => Wait(() => Clients.Count > 0 && Clients.All(c => c.State?.Revision == Clients[0].State?.Revision
                 && c.Roster.SessionRevision == c.State?.Revision && c.Roster.Count == Clients.Count
@@ -571,7 +573,7 @@ namespace MphRead.Mods.Network
             b.Loaded();
             rig.Wait(() => a.State.Value.Phase == SessionPhase.InMatch,
                 "barrier releases after ready countdown");
-            b.EndMatch();
+            rig.EndMatchForTest();
             rig.Wait(() => a.State.Value.Phase == SessionPhase.PostMatch, "results entered");
             Check(rig.Clients.All(c => c.OpenMapChoices == 0),
                 "persistent lobby does not open a post-match map ballot");
@@ -796,8 +798,8 @@ namespace MphRead.Mods.Network
             using var rig = new Rig(ServerSessionPolicy.Continuous); Client client = rig.Add(20);
             Check(client.State!.Value.Phase == SessionPhase.InMatch, "continuous starts in match");
             ushort match = client.State.Value.MatchId;
-            client.EndMatch();
-            rig.Wait(() => client.State.Value.Phase == SessionPhase.PostMatch, "continuous results"); client.ReadyResults();
+            rig.EndMatchForTest();
+            rig.Wait(() => client.State.Value.Phase == SessionPhase.PostMatch, "continuous results");
             rig.Wait(() => client.State.Value.Phase == SessionPhase.Starting && client.State.Value.MatchId != match, "continuous rotates into load barrier", PostMatchWaitMilliseconds);
             client.Loaded();
             rig.Wait(() => client.State.Value.Phase == SessionPhase.InMatch, "continuous starts after load countdown");
@@ -855,7 +857,15 @@ namespace MphRead.Mods.Network
             PumpUntil(() => NetSession.IsPlaying, "real load ack starts match");
             Check(!NetSession.FreezeGameplay, "gameplay released after barrier");
             NetSession.SendMatchEnd();
-            PumpUntil(() => NetSession.IsPostMatch, "real client results");
+            var clientEndAttempt = Stopwatch.StartNew();
+            while (clientEndAttempt.ElapsedMilliseconds < 300)
+            {
+                NetSession.Pump();
+                Thread.Sleep(10);
+            }
+            Check(NetSession.IsPlaying, "real client cannot author match completion");
+            rig.EndMatchForTest();
+            PumpUntil(() => NetSession.IsPostMatch, "authoritative server enters results");
             PumpUntil(() => NetSession.IsInLobby,
                 "real client returns to lobby without post-match input", PostMatchWaitMilliseconds);
             NetSession.ResetMatchState();

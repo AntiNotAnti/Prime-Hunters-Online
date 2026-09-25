@@ -187,7 +187,7 @@ namespace MphRead.Mods.Network
                     { reason = "The layout must fit the connected roster and server player limit."; return LobbyResultCode.InvalidConfiguration; }
                     bool topologyChanged = proposedLayout != LobbyRules.ResolveTeamLayout(_lobbyMatch);
                     _lobbyMatch = proposed with { RoomKey = room };
-                    if (RunsTheMatch) Mods.RoomPrewarm.Begin(_lobbyMatch.RoomKey);
+                    if (!_controlPlaneOnlyForTests) Mods.RoomPrewarm.Begin(_lobbyMatch.RoomKey);
                     RequireReady = command.Configuration.RequireReady;
                     AllowJoinInProgress = command.Configuration.AllowJoinInProgress;
                     LockTeams = command.Configuration.LockTeams;
@@ -260,8 +260,6 @@ namespace MphRead.Mods.Network
             _frozenMatch = match;
             _frozenWorldProfile = LobbyRules.ResolveWorldProfile(_frozenMatch, _maxPlayers);
 
-            _snapshotSeen = false;
-            Array.Clear(_slotLives);
             foreach (Peer connected in _peers)
             { connected.LastIntentFrame = 0; connected.HasIntentFrame = false; }
             _matchEndedAt = -1;
@@ -333,7 +331,7 @@ namespace MphRead.Mods.Network
             StopLobbyMatchRuntime(matchEnded);
             CancelMapVote(_now);
             _lobbyMatch = match;
-            if (RunsTheMatch) Mods.RoomPrewarm.Begin(_lobbyMatch.RoomKey);
+            if (!_controlPlaneOnlyForTests) Mods.RoomPrewarm.Begin(_lobbyMatch.RoomKey);
             _matchEndedAt = -1;
             _start.Reset();
             _lastStartCommitBroadcast = 0;
@@ -371,13 +369,10 @@ namespace MphRead.Mods.Network
             CloseBallot();
             _rotation.ClearPending();
             _peers.Clear();
-            _authority = null;
             _lobbyOwnerClientId = 0;
             _processOwnerClientId = 0;
             _start.Reset();
             _matchEndedAt = -1;
-            _snapshotSeen = false;
-            Array.Clear(_slotLives);
 
             if (stopProcess)
             {
@@ -540,8 +535,6 @@ namespace MphRead.Mods.Network
                     _rotation.ClearPending();
                     _start.Reset();
                     _matchEndedAt = -1;
-                    _snapshotSeen = false;
-                    Array.Clear(_slotLives);
                     _running = false;
                     return;
                 }

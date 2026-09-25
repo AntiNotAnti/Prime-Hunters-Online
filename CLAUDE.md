@@ -122,10 +122,10 @@ export ALSOFT_DRIVERS=null PULSE_SERVER=   # else ALSA retries stall frames
 | `MphRead -debuglog` | write the file the launcher's corner switch writes, for one run. `.claude/DEBUG-LOGS.md` |
 | External `probe-chat.py` (when available) | historical/private harness for spoof/flood chat tests that a real client cannot emit. The packet/server rules live in code and `.claude/multiplayer/NETWORK-CHAT.md` |
 | Multiple direct `-netcheck` clients against a remote current server | the durable form of the remote test. Private `run-remote.sh` wrappers may orchestrate it when available |
-| External `run-demo.sh` harness (when available) | historical harness for comparing recordings. In the normal architecture the dedicated server is authority; client-authority demo behavior is only a legacy compatibility test |
-| External `run-rejoin.sh` harness (when available) | reconnect/slot-reuse scenario. Normal server-authority matches do not hand authority between players; any handover arm is explicitly legacy compatibility coverage. `.claude/multiplayer/NETWORK-DIAGNOSTICS.md` |
+| External `run-demo.sh` harness (when available) | historical harness for comparing recordings. In the normal architecture the dedicated server is authority; client-authority demo behavior is historical only; the executable fallback has been removed |
+| External `run-rejoin.sh` harness (when available) | reconnect/slot-reuse scenario. Normal server-authority matches do not hand authority between players; handover behavior is historical only; current clients cannot be promoted. `.claude/multiplayer/NETWORK-DIAGNOSTICS.md` |
 | External `run-mapvote.sh` (when available) | historical/private wrapper for multi-client post-match map-vote validation. Current behavior must still be checked against the real `-netcheck -mapvote` path |
-| External hard-case batch (when available) | historical/private orchestration for capacity, blackout, latency/loss, spectators, demos and match boundaries. Legacy player-authority cases are compatibility-only; `.claude/testing/TEST-HARD-CASES.md` |
+| External hard-case batch (when available) | historical/private orchestration for capacity, blackout, latency/loss, spectators, demos and match boundaries. Legacy player-authority cases are historical-only; `.claude/testing/TEST-HARD-CASES.md` |
 | `-netlag MS[:JITTER]` / `-netloss PCT` | preferred in-process latency/loss control for current client tests. `tools/udp-lag.py` remains a weaker external relay instrument when a proxy-shaped line is specifically needed |
 | `MphRead -maptest "ROOM" -players 8 -seconds 22` | load one room with a full house, drive every player, and report what the map holds and whether it survived |
 | `MphRead -maptest "ROOM" -players 8 -bots` | the same, but AI bots instead of the scripted tour -- a different code path, the only one that finds what only `PlayerAi` touches |
@@ -1049,10 +1049,10 @@ Shapes worth keeping without opening anything else:
 **The server is the simulation authority in normal online play.** Standalone,
 local-hosted and directory/overflow-hosted matches all run the match in a
 server process. Local/hosted paths use isolated child processes because
-`NetSession` is static and each process can own one simulation. No normal
-player receives `PacketType.Authority`; the old client-authority path remains
-only for compatibility/tests. This removes the historical slot-0/host advantage
-and authority handover. Clients still supply their own movement position, while
+`NetSession` is static and each process can own one simulation. No player
+receives `PacketType.Authority`; the old client-authority path has been removed.
+Wire value 12 remains reserved only to keep packet numbering stable. This removes
+the historical slot-0/host advantage and authority handover. Clients still supply their own movement position, while
 combat/health/score/match state are authoritative on the server. Outgoing-hit
 responsiveness comes from `NetHitPrediction`, not from giving a player
 simulation authority. `.claude/multiplayer/NETWORK-SERVERAUTH.md`.

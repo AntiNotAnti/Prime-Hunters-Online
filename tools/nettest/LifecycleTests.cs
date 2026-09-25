@@ -25,7 +25,7 @@ namespace MphRead.NetTest
                     _ => { }, () => { }, initializeRuntime: false);
                 Wire();
                 PresentationStateSafety();
-                RelaySnapshotValidation();
+                ClientAuthorityPacketsRejected();
                 StateMachine();
                 LoopbackAdmission();
                 TransportCoalescing();
@@ -154,83 +154,60 @@ namespace MphRead.NetTest
         {
             NetSession.Stop();
             using var cancel = new System.Threading.CancellationTokenSource();
-            var server = new DedicatedServer(0) { RunsTheMatch = false };
+            var server = new DedicatedServer(0);
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            typeof(DedicatedServer).GetField("_controlPlaneOnlyForTests", flags)!.SetValue(server, true);
             var running = System.Threading.Tasks.Task.Run(() => server.Run(cancel.Token));
             try
             {
                 Check(System.Threading.SpinWait.SpinUntil(() => server.BoundPort != 0 || running.IsCompleted, 3000)
-                    && !running.IsCompleted, "hosted server starts without assets");
+                    && !running.IsCompleted, "asset-free control-plane server starts");
                 using var socket = new LoopbackPeer();
                 socket.Client.ReceiveTimeout = 2000;
                 var endpoint = new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, server.BoundPort);
                 byte[] hello = new byte[7] { (byte)PacketType.Hello, NetConfig.ProtocolVersion, 255, 42, 0, 0, 0 };
                 socket.Send(hello, hello.Length, endpoint);
-                bool welcome = false, match = false, roster = false, grant = false;
+                bool welcome = false, match = false, roster = false, authorityPacket = false;
                 MatchStatePacket admission = default;
-                for (int i = 0; i < 20 && !(welcome && match && roster && grant); i++)
+                for (int i = 0; i < 24 && !(welcome && match && roster); i++)
                 {
-                    var from = endpoint;
-                    byte[] packet = socket.Receive(ref from);
-                    var body = packet.AsSpan(1);
+                    var from = endpoint; byte[] packet = socket.Receive(ref from); var body = packet.AsSpan(1);
                     switch ((PacketType)packet[0])
                     {
                         case PacketType.Welcome:
                             welcome = body.Length == 17 && BinaryPrimitives.ReadUInt32LittleEndian(body[1..]) == 42
-                                && BinaryPrimitives.ReadUInt64LittleEndian(body[7..]) > uint.MaxValue
-                                && BinaryPrimitives.ReadUInt16LittleEndian(body[15..]) == 1;
-                            break;
+                                && BinaryPrimitives.ReadUInt16LittleEndian(body[15..]) == 1; break;
                         case PacketType.MatchState:
-                            admission = MatchStatePacket.Read(body);
-                            match = admission.AuthorityEpoch > uint.MaxValue; break;
+                            admission = MatchStatePacket.Read(body); match = admission.AuthorityEpoch != 0; break;
                         case PacketType.Roster:
                             var members = RosterPacket.Read(body);
-                            roster = members.AuthorityEpoch > uint.MaxValue && members.Generations[0] == 1; break;
-                        case PacketType.Authority:
-                            grant = body.Length == 13 && BinaryPrimitives.ReadUInt64LittleEndian(body[3..]) > uint.MaxValue
-                                && BinaryPrimitives.ReadUInt16LittleEndian(body[11..]) == 1; break;
+                            roster = members.AuthorityEpoch != 0 && members.Generations[0] == 1; break;
+                        case PacketType.Authority: authorityPacket = true; break;
                     }
                 }
-                Check(welcome && match && roster && grant, "real UDP admission agrees on 64-bit epoch and occupant");
-                hello[1]--;
-                socket.Send(hello, hello.Length, endpoint);
+                Check(welcome && match && roster, "real UDP admission agrees on match and occupant identity");
+                Check(!authorityPacket, "dedicated server never grants a player simulation authority");
+
+                hello[1]--; socket.Send(hello, hello.Length, endpoint);
                 bool refused = false;
                 for (int i = 0; i < 20 && !refused; i++)
-                {
-                    var from = endpoint;
-                    refused = socket.Receive(ref from)[0] == (byte)PacketType.Refused;
-                }
+                { var from = endpoint; refused = socket.Receive(ref from)[0] == (byte)PacketType.Refused; }
                 Check(refused, "old protocol is explicitly refused");
-                // Drain the admission responses, then bracket each end request
-                // with Hello so its response reports the server's resulting state.
+
                 while (socket.Available > 0) { var from = endpoint; socket.Receive(ref from); }
-                MatchStatePacket EndRequest(ushort requestedMatch, ulong requestedEpoch)
+                byte[] end = new byte[11]; end[0] = (byte)PacketType.MatchEnd;
+                BinaryPrimitives.WriteUInt16LittleEndian(end.AsSpan(1), admission.MatchId);
+                BinaryPrimitives.WriteUInt64LittleEndian(end.AsSpan(3), admission.AuthorityEpoch);
+                socket.Send(end, end.Length, endpoint);
+                hello[1] = NetConfig.ProtocolVersion; socket.Send(hello, hello.Length, endpoint);
+                bool stayedOpen = false;
+                for (int i = 0; i < 20 && !stayedOpen; i++)
                 {
-                    byte[] end = new byte[11]; end[0] = (byte)PacketType.MatchEnd;
-                    BinaryPrimitives.WriteUInt16LittleEndian(end.AsSpan(1), requestedMatch);
-                    BinaryPrimitives.WriteUInt64LittleEndian(end.AsSpan(3), requestedEpoch);
-                    socket.Send(end, end.Length, endpoint);
-                    hello[1] = NetConfig.ProtocolVersion;
-                    socket.Send(hello, hello.Length, endpoint);
-                    for (int i = 0; i < 20; i++)
-                    {
-                        var from = endpoint; byte[] reply = socket.Receive(ref from);
-                        if (reply[0] == (byte)PacketType.MatchState)
-                        {
-                            var state = MatchStatePacket.Read(reply.AsSpan(1));
-                            bool expectedEnding = requestedMatch == admission.MatchId && requestedEpoch == admission.AuthorityEpoch;
-                            if (state.Ending == expectedEnding) return state;
-                        }
-                    }
-                    throw new InvalidOperationException("No match state after end request");
+                    var from = endpoint; byte[] reply = socket.Receive(ref from);
+                    if (reply[0] == (byte)PacketType.MatchState)
+                        stayedOpen = !MatchStatePacket.Read(reply.AsSpan(1)).Ending;
                 }
-                Check(!EndRequest((ushort)(admission.MatchId + 1), admission.AuthorityEpoch).Ending,
-                    "stale match-end cannot finish another match");
-                while (socket.Available > 0) { var from = endpoint; socket.Receive(ref from); }
-                Check(!EndRequest(admission.MatchId, admission.AuthorityEpoch - 1).Ending,
-                    "previous authority cannot finish current match");
-                while (socket.Available > 0) { var from = endpoint; socket.Receive(ref from); }
-                Check(EndRequest(admission.MatchId, admission.AuthorityEpoch).Ending,
-                    "current authority can finish its own match");
+                Check(stayedOpen, "client MatchEnd cannot end a server-authoritative match");
             }
             finally
             {
@@ -239,59 +216,35 @@ namespace MphRead.NetTest
             }
         }
 
-        private static void RelaySnapshotValidation()
+        private static void ClientAuthorityPacketsRejected()
         {
-            // Drive the production handler without UDP timing or game assets.
             const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
-            var server = new DedicatedServer(0) { RunsTheMatch = false };
-            var owner = new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, 31001);
-            var other = new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, 31002);
-            T Field<T>(string name) => (T)typeof(DedicatedServer).GetField(name, flags)!.GetValue(server)!;
-            void Send(System.Net.IPEndPoint sender, PacketType type, byte[] body)
+            var server = new DedicatedServer(0);
+            Check(typeof(DedicatedServer).GetProperty("RunsTheMatch") == null,
+                "dedicated server has no client-authority mode switch");
+            Check(typeof(DedicatedServer).GetField("_authority", flags) == null,
+                "dedicated server keeps no player authority slot");
+            Check(typeof(DedicatedServer).GetMethod("NotifyAuthority", flags) == null,
+                "dedicated server has no authority-grant path");
+            Check(typeof(DedicatedServer).GetMethod("HandleSnapshot", flags) == null,
+                "dedicated server has no client snapshot authority handler");
+            var sender = new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, 31001);
+            void Send(PacketType type, byte[] body)
             {
                 byte[] data = new byte[body.Length + 1]; data[0] = (byte)type; body.CopyTo(data, 1);
                 typeof(DedicatedServer).GetMethod("Handle", flags)!.Invoke(server,
                     new object[] { new ReceivedPacket(sender, data, data.Length), 1.0 });
             }
-            void Hello(System.Net.IPEndPoint sender, uint id)
-            {
-                byte[] body = new byte[6]; body[0] = NetConfig.ProtocolVersion; body[1] = 255;
-                BinaryPrimitives.WriteUInt32LittleEndian(body.AsSpan(2), id);
-                Send(sender, PacketType.Hello, body);
-            }
-            byte[] Snapshot(uint frame, params PlayerState[] states)
-            {
-                int playersEnd = SnapshotHeader.Size + states.Length * PlayerState.Size;
-                const int timeSyncSize = PlayerEntity.SlotCapacity * sizeof(float) * 2;
-                byte[] body = new byte[playersEnd + timeSyncSize + NetHealthSync.HeaderSize];
-                ushort matchId = Field<ushort>("_matchId");
-                new SnapshotHeader { MatchId = matchId, AuthorityEpoch = Field<ulong>("_authorityEpoch"),
-                    Frame = frame, PlayerCount = (byte)states.Length }.Write(body);
-                for (int i = 0; i < states.Length; i++)
-                    states[i].Write(body.AsSpan(SnapshotHeader.Size + i * PlayerState.Size));
-                // The relay validates the same snapshot tails production sends.
-                // Zeroed match clocks are valid; an empty health-spawn section
-                // consists of the current match id plus a zero entry count.
-                BinaryPrimitives.WriteUInt16LittleEndian(
-                    body.AsSpan(playersEnd + timeSyncSize), matchId);
-                return body;
-            }
-            Hello(owner, 1); Hello(other, 2);
-            var state = new PlayerState { SlotIndex = 0, SlotGeneration = 1, LifeId = 1, Health = 50,
-                Flags = PlayerState.FlagActive | PlayerState.FlagSpawned, Facing = Vector3.UnitZ };
-            Send(owner, PacketType.Snapshot, Snapshot(1, state));
-            Check(Field<uint>("_snapshotFrame") == 1, "valid authority establishes relay frame");
-            byte[] previous = Field<byte[]>("_lastSnapshot");
-            Send(other, PacketType.Snapshot, Snapshot(500, state));
-            Check(Field<uint>("_snapshotFrame") == 1, "non-authority cannot advance relay frame");
-            state.LifeId = 2;
-            Send(owner, PacketType.Snapshot, Snapshot(100, state, state));
-            Check(Field<uint>("_snapshotFrame") == 1 && Field<ushort[]>("_slotLives")[0] == 1
-                && ReferenceEquals(previous, Field<byte[]>("_lastSnapshot")),
-                "duplicate slots cannot commit frame, life or cached snapshot");
-            state.LifeId = 1;
-            Send(owner, PacketType.Snapshot, Snapshot(2, state));
-            Check(Field<uint>("_snapshotFrame") == 2, "valid lower frame survives malformed higher frame");
+            int beforeSnapshot = (int)typeof(DedicatedServer).GetField("_lastSnapshotLength", flags)!.GetValue(server)!;
+            double beforeEnd = (double)typeof(DedicatedServer).GetField("_matchEndedAt", flags)!.GetValue(server)!;
+            Send(PacketType.Snapshot, new byte[] { 1, 2, 3 });
+            Send(PacketType.SnapshotFast, new byte[] { 4, 5, 6 });
+            Send(PacketType.PlayerSlowState, new byte[] { 7 });
+            Send(PacketType.WorldState, new byte[] { 8 });
+            Send(PacketType.MatchEnd, new byte[10]);
+            Check((int)typeof(DedicatedServer).GetField("_lastSnapshotLength", flags)!.GetValue(server)! == beforeSnapshot
+                && (double)typeof(DedicatedServer).GetField("_matchEndedAt", flags)!.GetValue(server)! == beforeEnd,
+                "legacy client authority packets cannot mutate dedicated-server world state");
         }
 
         private static void ClaimBoundaries()

@@ -459,10 +459,6 @@ namespace MphRead.Mods.Network
             // who they might collide with. See PlayerColors.
             PlayerColors.Resolve();
             NetLog.Snapshot(NetSession.NetFrame / 60.0, scene);
-            if (NetSession.IsAuthority && NetSession.ConsumeAuthorityStateSync())
-            {
-                ApplyRemoteStates();
-            }
             if (NetSession.LocalSlot < 0 || !NetSession.IsClient || !NetRoomChange.GameplayReady)
             {
                 return;
@@ -556,10 +552,7 @@ namespace MphRead.Mods.Network
                     player.ModRepairVectors();
                 }
             }
-            // Also for a client the dedicated server designated as authority:
-            // on such a server nobody is NetRole.Host, so gating on IsHost
-            // alone means no snapshot is ever published.
-            if (NetSession.IsHost || NetSession.IsAuthority)
+            if (NetSession.IsAuthority)
             {
                 NetContactLagComp.ResolveFrame();
                 NetSession.BroadcastSnapshot();

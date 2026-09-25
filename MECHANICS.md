@@ -189,8 +189,8 @@ This is not the DS Wi-Fi protocol and cannot talk to real hardware or an emulato
 
 | Piece | Rule |
 |---|---|
-| Server | a relay with no game files: it assigns slots, keeps the match clock and the map rotation, and forwards packets. It never simulates |
-| Authority | the first client to connect. It resolves damage, deaths and scores for everybody |
+| Server | the authoritative headless simulation: it requires the operator's extracted game files, owns the match clock/rotation, consumes player intent and publishes world snapshots |
+| Authority | the dedicated server process. No player is promoted, no authority handover exists, and a server that cannot build the world fails the match instead of falling back |
 | Position | owned by the player it belongs to. Each client publishes its own position in every intent and everyone else follows it, including the authority. Two simulations of one player fighting over a position is what produced rubber-banding |
 | Input | relayed to every client, not only the authority. Input is what makes a player fire, morph, lay a bomb or swing an alt attack; clients that received only positions drew opponents gliding in silence |
 | Ammo | in the intent, alongside the position and the weapon. Everyone simulates a player's shots and spends the ammo; only the owner walks over the pickups that refill it. A puppet that has run dry makes its owner's shots vanish on the machine that decides what they hit |
@@ -200,7 +200,7 @@ This is not the DS Wi-Fi protocol and cannot talk to real hardware or an emulato
 | Damage | resolved only by the authority; every other client throws away locally-resolved hits. The authority stamps each hit with a counter, and victims replay the *difference* in that counter, so several hits between two snapshots are all accounted for |
 | Score | carried in the snapshot. Counting locally worked only for whoever had been present since the first kill |
 | Remote smoothing | none, deliberately, on the machine that resolves damage: a remote player is placed at the position its owner reported, because the aim in the same packet was computed against exactly that position, and easing towards it leaves the hitbox behind the shot. Beyond 15 units it is a respawn or a teleporter and is counted as a snap. See `.claude/multiplayer/NETWORK-DIAGNOSTICS.md` for why smoothing was removed |
-| Lag compensation | the authority rewinds every other player to the snapshot frame the shooter had acknowledged, spawns the shot into that world, and then walks it forward to the present one frame at a time. Bounded at 24 frames (400 ms) of rewind and 64 frames of history. The authority's own shots are rewound by zero: it already aims at the puppets it resolves against |
+| Lag compensation | the server authority rewinds other players to the snapshot frame the shooter acknowledged, spawns the shot into that world, and walks it forward to the present. The server has no player-owned shots or zero-latency host privilege |
 | Slots | `PlayerEntity.SlotCapacity` (8). Every slot-indexed array is sized from it |
 | Map rotation | the server owns it; clients poll the match state and load the new room, rebuilding every player slot and resetting the scores |
 | Chat | T opens a line, the server stamps it with the sender's real slot and name and relays it to everybody else, and the sender echoes its own. Rate limited at the relay: three back to back, then one every two seconds. Additive on the wire, so an older server simply drops it |
