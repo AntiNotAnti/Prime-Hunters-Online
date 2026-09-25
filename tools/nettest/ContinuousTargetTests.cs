@@ -10,8 +10,8 @@ internal static class ContinuousTargetTests
     {
         try
         {
-            Check(NetConfig.ProtocolVersion == 19 && IntentPacket.FullSize == 96, "protocol 19 layout");
-            Span<byte> bytes = stackalloc byte[96];
+            Check(NetConfig.ProtocolVersion == 20 && IntentPacket.FullSize == 98, "protocol 20 layout");
+            Span<byte> bytes = stackalloc byte[98];
             foreach (byte slot in new byte[] { 0x80, 0x81, 0x88 })
             {
                 var identity = new NetTargetIdentity(slot, slot == 0x80 ? (ushort)0 : ushort.MaxValue, slot == 0x80 ? (ushort)0 : (ushort)42);
