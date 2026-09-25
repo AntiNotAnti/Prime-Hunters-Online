@@ -194,9 +194,18 @@ because the reviving touch was swallowed. See ANDROID-PORT.md.
 - **3.5 degrees per frame at full deflection** — 210 a second, which is where
   console shooters have sat since they settled the question. The sensitivity
   setting runs 0.25x to 3x around it.
-- **Walking is a threshold, not a curve** (half deflection), because the walk
-  keys are on or off. Larger than the aim dead zone: a thumb resting on the
-  stick should not walk you off a ledge.
+- **Movement preserves analogue magnitude.** The left stick is deadzoned
+  radially and its signed X/Y values scale the existing strafe/walk traction.
+  Full deflection is the former digital strength; partial deflection gives
+  proportionally finer movement. Directional keybinds are still filled for
+  animation, jumping and legacy gameplay checks. Keyboard/touch/bot movement
+  remains full-strength digital input.
+- **High-refresh aim late-latches axes only.** Above 60 Hz the renderer may
+  sample the already-active pad's calibrated aim-stick axes into a separate
+  presentation snapshot. It cannot discover/switch devices, advance buttons,
+  trigger hysteresis, input-source ownership or aim-assist state. The next 60 Hz
+  input step consumes those exact previewed aim axes before accepting anything
+  newer, so a render-only turn cannot be paid twice.
 
 ## Settings
 

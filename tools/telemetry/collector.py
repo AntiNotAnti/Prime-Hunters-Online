@@ -22,7 +22,7 @@ def valid(summary):
     if not isinstance(summary, dict) or set(summary) not in (SUMMARY_KEYS, SUMMARY_KEYS | V2_KEYS):
         return False
     header = summary["header"]
-    if not isinstance(header, dict) or set(header) != HEADER_KEYS or header["schema"] not in (1, 2) or header["protocol"] != 19:
+    if not isinstance(header, dict) or set(header) != HEADER_KEYS or header["schema"] not in (1, 2) or header["protocol"] not in (19, 20):
         return False
     if (header["schema"] == 2) != (set(summary) == SUMMARY_KEYS | V2_KEYS):
         return False

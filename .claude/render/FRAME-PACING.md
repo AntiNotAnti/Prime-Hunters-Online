@@ -176,11 +176,14 @@ start of every picture and is never read by `ProcessEffects`, so effect
 spawning, lifetime, particle simulation and collision remain 60 Hz state while
 their camera-attached origin cannot trail a late-latched barrel.
 
-A held controller stick is projected from the exact state accepted by
-`GamepadInput.BeginFrame`; the draw pass never publishes a second hardware
-sample. Android uses the same non-destructive touch accumulator. Button edges,
-aim assist, shooting, networking and authoritative aim still happen only in the
-60 Hz simulation step.
+Controller presentation above 60 Hz may poll one newer hardware sample, but
+only the aim-stick axes are exposed to drawing. The draw pass never advances button
+edges, actions, aim assist, shooting, networking or authoritative aim. It previews
+the raw angular difference from the last accepted sample on top of the already-applied
+assisted camera turn. `GamepadInput` then makes the following simulation step consume
+those exact previewed aim axes even if another hardware poll arrived first, so there is
+no double-turn or presentation/gameplay split. Android uses the same snapshot rule for
+pad motion alongside its non-destructive touch accumulator.
 
 Remote players remain on `NetSmoothing`'s playout clock. Spectator and replay
 cameras remain on captured camera history. Those are separate presentation

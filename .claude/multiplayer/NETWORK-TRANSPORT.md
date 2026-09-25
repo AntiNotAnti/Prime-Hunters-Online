@@ -1,8 +1,15 @@
-# Protocol 19 transport
+# Protocol 20 transport
+
+## Protocol 20 intent tail
+
+Protocol 20 preserves the protocol-19 target identity at offsets 88-95 and
+appends signed controller movement axes at offsets 96-97. Intent is therefore
+98 payload bytes. Digital keyboard/touch movement continues to use the existing
+button bits; nonzero movement axes are reserved for analogue sources.
 
 ## Protocol 19 target identity
 
-Intent is now 96 payload bytes: the eight-byte shot-state tail ends with encoded
+The protocol-19 shot-state block is 96 payload bytes through the encoded
 player slot, ushort generation and ushort life. Explicit `0x80/0/0` means no player;
 malformed or absent decisions cannot enable player fallback. Live ingress requires
 the entire v19 tail and admission refuses older peers. Sequenced edges retain their layout. PlayerState adds three turret bytes; CombatAck adds exact terminal outcomes. See [continuous targeting](../../docs/network/continuous-targeting.md).

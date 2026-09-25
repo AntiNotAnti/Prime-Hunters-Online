@@ -4,6 +4,9 @@ namespace MphRead.Mods.Input.AimAssist
     public static class AimAssistTuning
     {
         public const float HeadFlickCaptureSeconds = .090f, HeadFlickSnapGain = 55f;
+        public const float FlickDirectionalSpeed = 14f, FlickDirectionalMinMagnitude = .45f;
+        public const float FlickTargetAlignment = .62f;
+        public const float HeadSafeInset = .18f, HeadSafePositionScale = .28f;
         public const float HeadHorizontalPositionGain = 1f, HeadVerticalPositionGain = 1.7f;
         public const float HeadHorizontalTrackingGain = 1f, HeadVerticalTrackingGain = 1.2f;
         public const float AcquireCone = 7, ReleaseCone = 9, InnerCone = 2.4f;
@@ -17,7 +20,12 @@ namespace MphRead.Mods.Input.AimAssist
         public const float HeadAcquireCone = 1.5f, HeadReleaseCone = 2.25f;
         public const float HeadPredictionSeconds = 0f, MaxHeadPrediction = .60f;
         public const float OcclusionGrace = .060f;
+        public const float TrackingConfidenceMin = .30f, TrackingConfidenceRiseRate = 8f;
+        public const float TrackingConfidenceDecayRate = 2.5f, TrackingConfidenceStrafeDecayRate = .7f;
+        public const float StrafeTrackingMinimum = .18f, StrafeTrackingMaximum = .35f;
         public const float VelocityFilterRate = 12f, HeadVelocityFilterRate = 16f;
+        public const float MotionAccelerationRate = 18f, MaxTrackedAcceleration = 900f;
+        public const float MotionServoLookahead = .025f;
         public const float HeadBlendRate = 10f, HeadFallbackRate = 18f;
         public const float IntentStart = .04f, IntentFull = .20f;
         public const float MaxTrackedSpeed = 120f, MotionDiscontinuity = 12f;

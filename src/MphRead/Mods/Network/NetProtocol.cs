@@ -1162,8 +1162,10 @@ namespace MphRead.Mods.Network
         public const int Size = 4 + 4 + 12 + 1 + EdgeHistoryBytes + 12 + 2 + 2 + 4 + 1 + 14;
 
         /// <summary>
-        /// Eight bytes appended <b>past</b> <see cref="Size"/>, carrying the
-        /// state that decides what this player's next shot is worth.
+        /// Ten bytes appended <b>past</b> <see cref="Size"/>. The first eight
+        /// carry the state that decides what this player's next shot is worth;
+        /// protocol 20 appends two signed controller movement axes so remote
+        /// simulation and replay preserve analogue movement magnitude.
         ///
         /// <b>Why it is sent at all.</b> Everything else about a shot was
         /// re-derived on the authority from the buttons in this packet, and
@@ -1185,7 +1187,8 @@ namespace MphRead.Mods.Network
         /// four bytes. Live entrypoints require all eight bytes and refuse older
         /// protocol peers; short records are supported only by offline inspection.
         /// </summary>
-        public const int StateSize = 8;
+        public const int ShotStateSize = 8;
+        public const int StateSize = ShotStateSize + 2;
         public const int FullSize = Size + StateSize;
 
         /// <summary>
@@ -1214,6 +1217,29 @@ namespace MphRead.Mods.Network
         /// the shot-state tail by four bytes; explicit none prevents player fallback.
         /// </summary>
         public NetTargetIdentity Target;
+
+        /// <summary>
+        /// Signed controller movement axes, -127..127. Zero/zero means no
+        /// analogue override and preserves the existing full-strength digital
+        /// button behavior. Protocol 20 carries these after the v19 shot-state
+        /// tail, so the earlier offsets do not move.
+        /// </summary>
+        public sbyte MoveX;
+        public sbyte MoveY;
+        public bool HasAnalogMove;
+
+        public static sbyte PackMoveAxis(float value)
+        {
+            if (!float.IsFinite(value)) return 0;
+            value = Math.Clamp(value, -1, 1);
+            int packed = (int)MathF.Round(value * 127);
+            if (packed == 0 && value != 0) packed = Math.Sign(value);
+            return (sbyte)Math.Clamp(packed, -127, 127);
+        }
+
+        public static float UnpackMoveAxis(sbyte value)
+            => Math.Clamp(value / 127f, -1, 1);
+
         // Source compatibility for callers; the wire identity includes generation and life.
         public byte HomingTarget { readonly get => Target.EncodedSlot; set => Target = Target with { EncodedSlot = value }; }
         public const byte HomingTargetValid = 1 << 7;
@@ -1347,7 +1373,7 @@ namespace MphRead.Mods.Network
             BinaryPrimitives.WriteUInt16LittleEndian(dest[(at + 14)..], AmmoMissiles);
             BinaryPrimitives.WriteUInt32LittleEndian(dest[(at + 16)..], AckFrame);
             dest[at + 20] = AckSubFrame;
-            if (dest.Length >= FullSize)
+            if (dest.Length >= Size + ShotStateSize)
             {
                 dest[Size] = ChargeLevel;
                 dest[Size + 1] = BoostDamage;
@@ -1355,6 +1381,11 @@ namespace MphRead.Mods.Network
                 dest[Size + 3] = Target.EncodedSlot;
                 BinaryPrimitives.WriteUInt16LittleEndian(dest[(Size + 4)..], Target.Generation);
                 BinaryPrimitives.WriteUInt16LittleEndian(dest[(Size + 6)..], Target.LifeId);
+            }
+            if (dest.Length >= FullSize)
+            {
+                dest[Size + 8] = unchecked((byte)MoveX);
+                dest[Size + 9] = unchecked((byte)MoveY);
             }
         }
 
@@ -1391,13 +1422,16 @@ namespace MphRead.Mods.Network
                 // block sends Size bytes and nothing more, and reading zeros
                 // out of the end of its datagram would tell the authority that
                 // its charge is nothing and its powerups are gone.
-                HasState = src.Length >= FullSize,
-                ChargeLevel = src.Length >= FullSize ? src[Size] : (byte)0,
-                BoostDamage = src.Length >= FullSize ? src[Size + 1] : (byte)0,
-                ShotFlags = src.Length >= FullSize ? src[Size + 2] : (byte)0,
-                Target = src.Length >= FullSize ? new NetTargetIdentity(src[Size + 3],
+                HasState = src.Length >= Size + ShotStateSize,
+                ChargeLevel = src.Length >= Size + ShotStateSize ? src[Size] : (byte)0,
+                BoostDamage = src.Length >= Size + ShotStateSize ? src[Size + 1] : (byte)0,
+                ShotFlags = src.Length >= Size + ShotStateSize ? src[Size + 2] : (byte)0,
+                Target = src.Length >= Size + ShotStateSize ? new NetTargetIdentity(src[Size + 3],
                     BinaryPrimitives.ReadUInt16LittleEndian(src[(Size + 4)..]),
-                    BinaryPrimitives.ReadUInt16LittleEndian(src[(Size + 6)..])) : default
+                    BinaryPrimitives.ReadUInt16LittleEndian(src[(Size + 6)..])) : default,
+                HasAnalogMove = src.Length >= FullSize,
+                MoveX = src.Length >= FullSize ? unchecked((sbyte)src[Size + 8]) : (sbyte)0,
+                MoveY = src.Length >= FullSize ? unchecked((sbyte)src[Size + 9]) : (sbyte)0
             };
         }
     }
@@ -2102,10 +2136,13 @@ namespace MphRead.Mods.Network
         /// directional momentum as the collision that produced the claim.
         /// Mixed v15/v16 peers must be refused because claim entry size changed.
         /// v19 extends intent shot state to eight bytes for fenced player targeting,
-        /// adds three canonical turret-state bytes and exact CombatAck outcomes;
-        /// older peers must be refused before gameplay decoding.
+        /// adds three canonical turret-state bytes and exact CombatAck outcomes.
+        /// Version 20 appends two signed movement-axis bytes to IntentPacket so
+        /// controller magnitude reaches authority, observers and replay instead of
+        /// being reconstructed from digital direction bits. Mixed v19/v20 peers
+        /// must be refused because the realtime intent length changed.
         /// </summary>
-        public const int ProtocolVersion = 19;
+        public const int ProtocolVersion = 20;
         /// <summary>
         /// Frames between intent packets. One, so every frame.
         ///

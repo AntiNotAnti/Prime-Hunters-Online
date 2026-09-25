@@ -135,6 +135,14 @@ namespace MphRead.Mods.Input.AimAssist
                 "upper boundary is valid");
             Check(AimAssistMath.RegionError(new Vector2(3, 0), region) == new Vector2(-1, 0),
                 "outside width uses nearest boundary, not center");
+            var edgeHead = new AimAssistRegion(-1, 1, -.05f, .35f);
+            Vector2 safeHead = AimAssistMath.SafeRegionError(edgeHead, AimAssistTuning.HeadSafeInset);
+            Check(AimAssistMath.InsideRegion(edgeHead) && safeHead.Y > 0 && safeHead.Y < .1f,
+                "headshot band gets a weak safe-interior correction before the real edge");
+            float edgeGuard = AimAssistMath.EdgeFrictionFactor(.2f, .2f, -.5f, .03f, .5f);
+            float deliberateExit = AimAssistMath.EdgeFrictionFactor(.2f, .95f, -.5f, .03f, .5f);
+            Check(edgeGuard < 1 && deliberateExit > edgeGuard,
+                "edge friction guards accidental overshoot but releases deliberate exit");
             foreach (float distance in new[] { 14f, 15f, 16f, 30f })
             {
                 Check(AimAssistMath.CanHeadshotAtDistance(BeamType.PowerBeam, distance) == (distance <= 15), "standard range " + distance);
@@ -153,17 +161,26 @@ namespace MphRead.Mods.Input.AimAssist
                 "aligned physical flick finishes a tiny region error");
             Check(flick.HeadPrediction == 0, "Imperialist positional lead is zero");
             state.Reset();
+            state.PreviousStick = new(.7f, 0);
+            var directionalFlick = Step(new(.2f, .7f));
+            Check(directionalFlick.FlickActive
+                && directionalFlick.TrackingState == AimAssistTrackingState.FlickCapturingHead,
+                "fast direction-change flick is recognized without a magnitude spike");
+            state.Reset();
             Check(Step(new(0, -.8f)).TrackingState != AimAssistTrackingState.FlickCapturingHead, "chest flick cannot capture head");
             state.Reset();
             targets[0] = targets[0] with { HeadRegion = region, HeadError = new(.5f, 0) };
             for (int i = 0; i < 12; i++) Step(new(.3f, 0));
             Check(state.HeadBlend == 1, "lateral position inside head band has no chest pull");
+            Check(state.TrackingConfidence >= AimAssistTuning.TrackingConfidenceMin,
+                "deliberate tracking builds continuous retention confidence");
             targets[0] = targets[0] with { HeadError = new(.6f, 0) };
             var retained = Step(Vector2.Zero, .5f);
-            Check(retained.StrafeTracking && retained.PositionCorrection == Vector2.Zero && retained.TrackingCorrection.X > 0,
-                "deliberately acquired target retains only partial motion tracking");
-            for (int i = 0; i < 20; i++) retained = Step(Vector2.Zero, .5f);
-            Check(retained.TargetSlot == -1, "neutral strafe retention expires");
+            Check(retained.StrafeTracking && retained.PositionCorrection == Vector2.Zero
+                && retained.TrackingCorrection.X > 0,
+                "confidence retains motion tracking while strafing without position magnetism");
+            for (int i = 0; i < 32; i++) retained = Step(Vector2.Zero, .5f);
+            Check(retained.TargetSlot == -1, "neutral strafe confidence expires smoothly");
             state.Reset();
             targets[0] = targets[0] with { HeadVisible = false, BodyRegion = new(1, 2, -1, 1) };
             Step(new(.5f, 0));
@@ -197,14 +214,23 @@ namespace MphRead.Mods.Input.AimAssist
             Check(invalidRange.TrackingState != AimAssistTrackingState.FlickCapturingHead,
                 "standard flick respects mechanical range");
             state.Reset();
-            targets = new[] { headTarget, headTarget with { Slot = 2, HeadRegion = new(.05f, .2f, -.1f, .1f),
-                BodyRegion = new(.05f, 1, -3, -.5f) } };
-            var aligned = Step(new(0, .8f));
-            Check(aligned.TrackingState != AimAssistTrackingState.FlickCapturingHead || aligned.TargetSlot == 1,
-                "multiple enemies cannot capture a head perpendicular to flick intent");
+            targets = new[] {
+                headTarget with { HeadError = new(-.35f, .35f),
+                    HeadRegion = new(-.5f, -.2f, .2f, .5f),
+                    BodyRegion = new(-.7f, -.1f, -3, -.5f) },
+                headTarget with { Slot = 2, HeadError = new(.35f, .35f),
+                    HeadRegion = new(.2f, .5f, .2f, .5f),
+                    BodyRegion = new(.1f, .7f, -3, -.5f) }
+            };
+            state.TargetSlot = 1; state.TargetLife = 1; state.RetainedSeconds = .25f;
+            state.TrackingConfidence = 1; state.PreviousStick = new(-.7f, 0);
+            var aligned = Step(new(.5f, .5f));
+            Check(aligned.TargetSlot == 2 && state.FlickTarget == 2,
+                "new flick trajectory may deliberately choose a different head");
             int captured = aligned.TargetSlot;
-            targets[1] = targets[1] with { HeadRegion = new(-.01f, .01f, -.01f, .01f) };
-            Check(Step(new(0, .8f)).TargetSlot == captured, "active flick cannot steal another target");
+            targets[0] = targets[0] with { HeadRegion = new(-.01f, .01f, -.01f, .01f) };
+            Check(Step(new(.5f, .5f)).TargetSlot == captured,
+                "active flick locks its selected target for the capture window");
             state.Reset();
             targets = new[] { headTarget with { HeadVisible = false, BodyRegion = new(.5f, 1, -.1f, .1f) },
                 headTarget with { Slot = 2, HeadVisible = false, BodyRegion = new(.6f, 1.1f, -.1f, .1f) } };
@@ -289,10 +315,23 @@ namespace MphRead.Mods.Input.AimAssist
             Check(result.X <= 2 && result.X >= 2 * result.Friction,
                 "deliberate stick overshoot gets no extra push");
             state.Reset();
-            targets[0] = targets[0] with { BodyError = new(4, 4) };
-            result = Step(weapon: profile with { MaxSpeed = 1 });
-            Check(new Vector2(result.X, result.Y).Length() <= 1f / 60 + .00001f,
-                "rotation speed limit includes strength and diagonal movement");
+            targets[0] = targets[0] with { BodyError = new(1, 0), HeadVisible = false };
+            var independentCap = profile with
+            {
+                Head = false, PositionGain = 0, MaxPositionSpeed = .1f,
+                MaxTrackingSpeed = 18, MaxSpeed = .1f
+            };
+            state.TargetSlot = 1; state.TargetLife = 1; state.RetainedSeconds = .25f;
+            state.TrackingConfidence = 1; state.PreviousBodyVisible = true;
+            state.PreviousError = new(.5f, 0); state.PreviousOutput = Vector2.Zero;
+            state.PreviousDeltaTime = 1f / 60;
+            result = Step(weapon: independentCap);
+            Check(result.TrackingCorrection.Length() > independentCap.MaxSpeed / 60
+                && result.TrackingCorrection.Length() <= independentCap.MaxTrackingSpeed / 60 + .00001f,
+                "tracking speed is no longer re-clamped by the legacy combined cap");
+            Check(state.AngularAcceleration.Length() > 0
+                && state.AngularAcceleration.Length() <= AimAssistTuning.MaxTrackedAcceleration + .0001f,
+                "motion servo learns bounded angular acceleration");
 
             // Model a stationary target and a camera already clamped at its pitch limit.
             state.Reset();

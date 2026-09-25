@@ -7,15 +7,17 @@ non-player candidates and the cartridge cone formulas remain in their normal pat
 
 ## Wire and capture
 
-`IntentPacket.Size` remains 88. The state tail is now eight bytes and `FullSize` is
-96 (120 with the transport envelope). Offsets 88–90 carry charge, boost damage and
+IntentPacket.Size remains 88. Protocol 19's shot-state block is still the first
+eight bytes of the tail; protocol 20 appends two signed movement axes, so
+IntentPacket.FullSize is 98 bytes (122 with the transport envelope). Offsets 88–90 carry charge, boost damage and
 shot flags. Offset 91 carries the encoded slot, 92–93 its generation, and 94–95 its
 life, with ushort values little endian. `0x80/0/0` explicitly means no player;
 `0x81` through `0x88` identify slots zero through seven. A player identity requires
 nonzero generation and life. An absent or malformed decision cannot trigger an
-independent player selection. Live ingress requires the complete v19 tail. Earlier
-protocol peers and recordings are refused; the v18 packet format was not extended
-silently. Charged affinity Volt Driver uses the same `NetTargetIdentity` structure
+independent player selection. Live ingress requires the complete current tail. Protocol 20 adds only the
+movement-axis pair after the v19 target identity, so all v19 offsets remain stable.
+Earlier protocol peers and recordings are refused rather than decoding a shorter
+realtime intent silently. Charged affinity Volt Driver uses the same `NetTargetIdentity` structure
 and preserves its one-release selection flow with the added lifecycle fence.
 
 Shock Coil captures the actual result of `CheckHomingTargets`; it does not rerun a

@@ -46,26 +46,51 @@ namespace MphRead.Entities
                 MathHelper.RadiansToDegrees(max - cameraPitch));
         }
 
-        private bool AssistRegionVisible(PlayerEntity target, AimAssistRegion region, float lower, float upper)
+        private bool AssistRegionRayVisible(PlayerEntity target, System.Numerics.Vector2 error,
+            float lower, float upper)
         {
-            // Check the actual nearest/inset destination as well as the center. A
-            // visible center alone must not permit a finishing flick around cover.
-            var error = AimAssistMath.InsideRegion(region) ? System.Numerics.Vector2.Zero
-                : AimAssistMath.RegionError(region.Inset(.15f));
             float yaw = MathF.Atan2(_gunVec1.X, _gunVec1.Z) + MathHelper.DegreesToRadians(error.X);
             float pitch = MathF.Atan2(_gunVec1.Y, MathF.Sqrt(_gunVec1.X * _gunVec1.X + _gunVec1.Z * _gunVec1.Z))
                 + MathHelper.DegreesToRadians(error.Y);
-            Vector3 direction = new(MathF.Sin(yaw) * MathF.Cos(pitch), MathF.Sin(pitch), MathF.Cos(yaw) * MathF.Cos(pitch));
+            Vector3 direction = new(MathF.Sin(yaw) * MathF.Cos(pitch), MathF.Sin(pitch),
+                MathF.Cos(yaw) * MathF.Cos(pitch));
             Vector3 offset = CameraInfo.Position - target.Position;
             float a = direction.X * direction.X + direction.Z * direction.Z;
             float b = offset.X * direction.X + offset.Z * direction.Z;
-            float c = offset.X * offset.X + offset.Z * offset.Z - target.Volume.SphereRadius * target.Volume.SphereRadius;
+            float c = offset.X * offset.X + offset.Z * offset.Z
+                - target.Volume.SphereRadius * target.Volume.SphereRadius;
             float discriminant = b * b - a * c;
             if (a <= .000001f || discriminant < 0) return false;
             float distance = (-b - MathF.Sqrt(discriminant)) / a;
             Vector3 impact = CameraInfo.Position + direction * distance;
             float impactHeight = impact.Y - target.Position.Y;
             return distance > 0 && impactHeight >= lower && impactHeight <= upper && AssistVisible(impact);
+        }
+
+        private bool AssistRegionVisible(PlayerEntity target, AimAssistRegion region, float lower, float upper)
+        {
+            // Visibility belongs to the hittable region, not its center. A hunter
+            // peeking around a pillar or over cover can expose a legitimate slice
+            // while the center ray remains blocked. Sample deterministic inset
+            // points and accept the region only when one real cylinder impact has LOS.
+            AimAssistRegion inset = region.Inset(.12f);
+            float pitch = Math.Clamp(0, inset.MinPitch, inset.MaxPitch);
+            float yaw = Math.Clamp(0, inset.MinYaw, inset.MaxYaw);
+            Span<System.Numerics.Vector2> samples = stackalloc System.Numerics.Vector2[6];
+            samples[0] = AimAssistMath.RegionError(inset);
+            samples[1] = inset.Center;
+            samples[2] = new(inset.MinYaw, pitch);
+            samples[3] = new(inset.MaxYaw, pitch);
+            samples[4] = new(yaw, inset.MinPitch);
+            samples[5] = new(yaw, inset.MaxPitch);
+            for (int i = 0; i < samples.Length; i++)
+            {
+                if (AimAssistRegionRayVisible(target, samples[i], lower, upper))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private bool AssistVisible(Vector3 point)
@@ -143,12 +168,14 @@ namespace MphRead.Entities
                     : 0;
                 bool retained = target.SlotIndex == _controllerAssist.TargetSlot
                     && targetLife == _controllerAssist.TargetLife;
-                bool visible = AssistVisible(chest) && (target.IsAltForm || AssistRegionVisible(target, bodyRegion, Fixed.ToFloat(target.Values.MinPickupHeight), height));
+                bool visible = AssistRegionVisible(target, bodyRegion,
+                    target.IsAltForm ? volume.SpherePosition.Y - radius : Fixed.ToFloat(target.Values.MinPickupHeight),
+                    target.IsAltForm ? volume.SpherePosition.Y + radius : height);
                 bool headVisible = !target.IsAltForm && profile.Head
                     && AimAssistMath.Finite(headError)
                     && AimAssistMath.RegionDistance(headRegion) <= profile.ReleaseCone
                     && headRegion.MaxPitch > headRegion.MinPitch
-                    && AimAssistMath.CanHeadshotAtDistance(CurrentWeapon, distance) && AssistVisible(head)
+                    && AimAssistMath.CanHeadshotAtDistance(CurrentWeapon, distance)
                     && AssistRegionVisible(target, headRegion, height - .3f, height);
                 if (!visible && !headVisible && !retained) continue;
                 candidates[count++] = new(target.SlotIndex, targetLife, bodyError, headError, distance,

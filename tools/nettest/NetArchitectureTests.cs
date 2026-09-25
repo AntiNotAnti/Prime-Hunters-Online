@@ -12,10 +12,10 @@ internal static class NetArchitectureTests
     internal static void Check(bool ok, string name)
     { if (!ok) throw new InvalidOperationException(name); }
 
-    // Independent v19 fixture: constants deliberately do not come from the codec.
+    // Independent v20 fixture: constants deliberately do not come from the codec.
     internal static byte[] IntentFixture()
     {
-        byte[] bytes = new byte[96];
+        byte[] bytes = new byte[98];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, 0x12345678);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), 5);
         BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(16), 1);
@@ -34,6 +34,7 @@ internal static class NetArchitectureTests
         BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(86), 2);
         bytes[88] = 17; bytes[89] = 19; bytes[90] = 1; bytes[91] = 0x82;
         bytes[92] = 9; bytes[94] = 2;
+        bytes[96] = 64; bytes[97] = unchecked((byte)-96);
         return bytes;
     }
 
@@ -58,9 +59,13 @@ internal static class NetArchitectureTests
             var intent = IntentPacket.Read(fixture);
             Check(intent.Position == new Vector3(123.25f, -42.5f, 17.75f), "owner position survives wire");
             byte[] output = new byte[IntentPacket.FullSize]; intent.Write(output);
-            Check(output.SequenceEqual(fixture), "v19 intent byte fixture");
+            Check(output.SequenceEqual(fixture), "v20 intent byte fixture");
             Check(intent.AckFrame == 0x87654321 && intent.AckSubFrame == 128 && IntentPacket.PressHistory == 8,
                 "displayed world ACK and eight-frame edge retention");
+            Check(NetConfig.ProtocolVersion == 20 && IntentPacket.FullSize == 98 && intent.HasAnalogMove
+                && intent.MoveX == 64 && intent.MoveY == -96
+                && Math.Abs(IntentPacket.UnpackMoveAxis(intent.MoveX) - 64 / 127f) < .00001f,
+                "protocol 20 carries signed analog movement axes");
             string[] forbidden = { "MovementCommand", "MovementAck", "ProcessedMovementFrame", "MovementReconciliation",
                 "PredictedMovementState", "IntentBundle", "SnapshotDelta", "SnapshotKeyframe" };
             Check(!typeof(IntentPacket).Assembly.GetTypes().Any(t => forbidden.Any(n => t.Name.Contains(n))),
@@ -99,7 +104,7 @@ internal static class NetArchitectureTests
             for (int i = 0; i < 180; i++) bridge.ApplyState(player, state, isLocal: true);
             Check(player.Position == position && player.Speed == speed && player.PrevPosition == previous,
                 "same-life snapshots cannot correct owner's physical position or velocity");
-            Console.WriteLine("PASS: architecture, owner position, full snapshots and v19 byte fixture");
+            Console.WriteLine("PASS: architecture, owner position, full snapshots and v20 byte fixture");
             return 0;
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }

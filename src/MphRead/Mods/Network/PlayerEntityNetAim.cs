@@ -404,6 +404,26 @@ namespace MphRead.Entities
             {
                 controllerX = appliedX;
                 controllerY = appliedY;
+
+                // Preview only the raw difference between the newest hardware
+                // sample and the stick sample the 60 Hz simulation accepted.
+                // Convert that difference through the same scoped/FOV/inversion
+                // path as ApplyGamepadAim, but never run target selection here.
+                if (Mods.Input.GamepadInput.TryRenderRawAimDelta(
+                    out float lateRawX, out float lateRawY))
+                {
+                    if (EquipInfo.Zoomed)
+                    {
+                        lateRawX *= Mods.Input.GamepadOptions.ScopedX;
+                        lateRawY *= Mods.Input.GamepadOptions.ScopedY;
+                    }
+                    var lateCamera = Mods.Input.AimAssist.AimAssistMath.CameraDelta(
+                        new(lateRawX, lateRawY), AimZoomScale(),
+                        Controls.InvertAimX, Controls.InvertAimY);
+                    float lateFraction = (float)Math.Clamp(presentationAlpha, 0.0, 1.0);
+                    controllerX += lateCamera.X * lateFraction;
+                    controllerY += lateCamera.Y * lateFraction;
+                }
             }
             x = pointerAim.X + controllerX;
             y = pointerAim.Y + controllerY;

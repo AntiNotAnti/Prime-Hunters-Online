@@ -46,6 +46,14 @@ namespace MphRead.Mods.Input
                 Near(diagonal.X * diagonal.X + diagonal.Y * diagonal.Y, 1, "maximum magnitude");
                 Near(GamepadAnalog.ApplyRadialDeadZone(.8f, 0, .2f, .2f).X, 1, "outer deadzone");
                 Check(GamepadAnalog.ApplyRadialDeadZone(float.NaN, 0, .2f) == (0, 0), "invalid axis neutral");
+                var analogControls = Entities.PlayerControls.GetDefault();
+                analogControls.SetAnalogMovement(.25f, -.75f);
+                Near(analogControls.AnalogScaleX(1), .25f, "analog right scales strafe traction");
+                Near(analogControls.AnalogScaleY(-1), .75f, "analog back scales walk traction");
+                Near(analogControls.AnalogScaleX(-1), 0, "opposite analog axis contributes no traction");
+                analogControls.ClearAll();
+                Check(!analogControls.AnalogMoveActive && analogControls.AnalogMoveX == 0
+                    && analogControls.AnalogMoveY == 0, "control reset clears analog movement");
                 Near(GamepadAnalog.ApplyResponseCurve(.5f, GamepadCurve.Classic), .29f, "classic curve");
                 Near(GamepadAnalog.ApplyResponseCurve(-.5f, GamepadCurve.Linear), -.5f, "linear sign");
                 var curved = GamepadAnalog.ApplyRadialResponseCurve(.8f, .4f, GamepadCurve.Classic);
@@ -134,10 +142,10 @@ namespace MphRead.Mods.Input
                 GamepadManager.UpdateDevice("mapped", State(GamepadButtons.A), true); GamepadInput.BeginFrame();
                 Check(GamepadInput.TakePress(GamepadButtons.A), "gameplay press before context transition");
 
-                // High-refresh presentation may project a held stick between simulation
-                // steps, but it must project the state that BeginFrame accepted. A newer
-                // hardware poll belongs to the next simulation step and must not become a
-                // second camera-input stream in the renderer.
+                // High-refresh presentation may preview a newer aim-stick sample
+                // between 60 Hz simulation steps. It must not advance button edges or
+                // aim-assist state, and the following simulation step must consume the
+                // exact axes that were previewed even if hardware changes again first.
                 GamepadContexts.Current = GamepadContext.Gameplay;
                 GamepadContexts.Focused = true;
                 GamepadContexts.MenuVisible = false;
@@ -145,16 +153,34 @@ namespace MphRead.Mods.Input
                     new GamepadState { Connected = true, Name = "test", RightX = .8f }, true);
                 GamepadInput.BeginFrame();
                 var acceptedRenderAim = GamepadInput.RenderAim(.5);
+                GamepadManager.UpdatePresentationAxes("mapped", 0, 0, -.8f, 0);
+                Check(Math.Abs(GamepadManager.ActiveState.RightX - .8f) < .0001f
+                    && GamepadManager.PresentationSnapshot?.State.RightX < -.79f,
+                    "render-only axes do not overwrite simulation device state");
+                GamepadInput.CapturePresentationSample();
+                var lateRenderAim = GamepadInput.RenderAim(.5);
+                Check(Math.Sign(lateRenderAim.X) == -Math.Sign(acceptedRenderAim.X)
+                    && Math.Abs(lateRenderAim.X) > .01f,
+                    "render aim previews a newer high-refresh stick sample");
+                Check(GamepadInput.TryRenderRawAimDelta(out float lateRawX, out _)
+                    && Math.Sign(lateRawX) == Math.Sign(lateRenderAim.X),
+                    "late-latch exposes only the unsimulated raw aim difference");
+                Check(!GamepadInput.TakePress(GamepadButtons.A),
+                    "render-only axis sample cannot advance button edges");
+
+                // A still-newer hardware sample arrives before simulation. The
+                // previewed -0.8 aim axes win for this one BeginFrame, while all
+                // non-aim state comes from the newest fixed-step sample.
                 GamepadManager.UpdateDevice("mapped",
-                    new GamepadState { Connected = true, Name = "test", RightX = -.8f }, true);
-                var uncommittedRenderAim = GamepadInput.RenderAim(.5);
-                Near(uncommittedRenderAim.X, acceptedRenderAim.X,
-                    "render aim cannot consume controller state before BeginFrame");
+                    new GamepadState { Connected = true, Name = "test", RightX = .2f }, true);
                 GamepadInput.BeginFrame();
                 var committedRenderAim = GamepadInput.RenderAim(.5);
-                Check(Math.Sign(committedRenderAim.X) == -Math.Sign(acceptedRenderAim.X)
-                    && Math.Abs(committedRenderAim.X) > .01f,
-                    "render aim updates after the next accepted controller frame");
+                Check(Math.Sign(committedRenderAim.X) == Math.Sign(lateRenderAim.X)
+                    && Math.Sign(GamepadInput.AimDeltaX) == Math.Sign(lateRenderAim.X)
+                    && Math.Abs(GamepadInput.AimDeltaX) > .01f,
+                    "next simulation consumes the exact previewed aim axes");
+                Check(!GamepadInput.TakePress(GamepadButtons.A),
+                    "previewed button state never leaks into simulation");
 
                 GamepadInput.RecordCameraAim(.12f, -.04f);
                 Check(GamepadInput.TryRenderCameraAim(.5, out float cameraX, out float cameraY),

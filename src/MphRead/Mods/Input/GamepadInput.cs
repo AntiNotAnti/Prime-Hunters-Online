@@ -89,6 +89,9 @@ namespace MphRead.Mods.Input
         public static float AimDeltaY { get; private set; }
         private static (float X, float Y)? _appliedCameraAim;
         private static long _appliedAimContext;
+        private static GamepadSnapshot? _presentationSample;
+        private static long _presentationContext;
+        private static float _acceptedAimDeltaX, _acceptedAimDeltaY;
 
         internal static void RecordCameraAim(float x, float y)
         {
@@ -96,8 +99,9 @@ namespace MphRead.Mods.Input
             _appliedAimContext = GamepadContexts.Revision;
         }
 
-        // Presentation projects the accepted camera turn, including assist and pitch
-        // limits. It must not run target selection or advance tracking a second time.
+        // Presentation projects the accepted assisted camera turn. A newer raw
+        // stick sample is exposed separately below so the player can transform it
+        // through the exact scoped/FOV/inversion path used by simulation.
         internal static bool TryRenderCameraAim(double alpha, out float x, out float y)
         {
             x = y = 0;
@@ -109,6 +113,48 @@ namespace MphRead.Mods.Input
             x = aim.X * fraction;
             y = aim.Y * fraction;
             return true;
+        }
+
+        /// <summary>
+        /// Capture the newest hardware axes for render-only preview. This never
+        /// advances button edges, actions, aim-assist state or source ownership.
+        /// The aim axes from this exact sample are consumed by the next
+        /// <see cref="BeginFrame"/> so presentation cannot preview one turn and
+        /// gameplay later accept a different one.
+        /// </summary>
+        public static void CapturePresentationSample()
+        {
+            if (!GamepadContexts.Focused || GamepadContexts.MenuVisible
+                || GamepadContexts.Current != GamepadContext.Gameplay || WheelHeld)
+            {
+                _presentationSample = null;
+                return;
+            }
+            GamepadSnapshot snapshot = GamepadManager.PresentationSnapshot
+                ?? GamepadManager.Snapshot;
+            if (!snapshot.State.Connected)
+            {
+                _presentationSample = null;
+                return;
+            }
+            _presentationSample = snapshot;
+            _presentationContext = GamepadContexts.Revision;
+        }
+
+        internal static bool TryRenderRawAimDelta(out float x, out float y)
+        {
+            x = y = 0;
+            if (_presentationSample is not { } sample
+                || _presentationContext != GamepadContexts.Revision
+                || sample.DeviceId != FrameSnapshot.DeviceId
+                || sample.Revision != FrameSnapshot.Revision)
+            {
+                return false;
+            }
+            (float previewX, float previewY) = PreviewAim(sample);
+            x = previewX - _acceptedAimDeltaX;
+            y = previewY - _acceptedAimDeltaY;
+            return float.IsFinite(x) && float.IsFinite(y);
         }
 
         /// <summary>
@@ -127,11 +173,61 @@ namespace MphRead.Mods.Input
             _turnRateScale = 1;
         }
 
-        private static void UpdateAimRamp(float magnitude)
+        private static float NextTurnRateScale(float magnitude, float current)
         {
             float outer = Math.Clamp((magnitude - .8f) / .2f, 0, 1);
             float desired = 1 + (TurnAccelerationMax - 1) * outer * outer;
-            _turnRateScale += (desired - _turnRateScale) * (1 - MathF.Exp(-8f / 60));
+            return current + (desired - current) * (1 - MathF.Exp(-8f / 60));
+        }
+
+        private static void UpdateAimRamp(float magnitude)
+            => _turnRateScale = NextTurnRateScale(magnitude, _turnRateScale);
+
+        private static (float X, float Y) PreviewAim(GamepadSnapshot snapshot)
+        {
+            GamepadOptionState options = (snapshot.Runtime ?? GamepadRuntimeConfig.Current).Options;
+            GamepadState state = snapshot.State;
+            (float x, float y) = options.Southpaw
+                ? GamepadAnalog.ApplyRadialDeadZone(state.LeftX, state.LeftY,
+                    options.LeftInner, options.LeftOuter)
+                : GamepadAnalog.ApplyRadialDeadZone(state.RightX, state.RightY,
+                    options.RightInner, options.RightOuter);
+            float magnitude = MathF.Sqrt(x * x + y * y);
+            float scale = NextTurnRateScale(magnitude, _turnRateScale);
+            var filtered = GamepadAnalog.FilterAim(_filteredAimStick,
+                new System.Numerics.Vector2(x, y), 1f / 60);
+            (x, y) = GamepadAnalog.ApplyRadialResponseCurve(filtered.X, filtered.Y, options.Curve);
+            return (-x * TurnRate * scale * options.LookX * (options.InvertX ? -1 : 1),
+                y * TurnRate * scale * options.LookY * (options.InvertY ? -1 : 1));
+        }
+
+        private static GamepadSnapshot ConsumePresentationAim(GamepadSnapshot snapshot)
+        {
+            if (_presentationSample is not { } pending)
+            {
+                return snapshot;
+            }
+            _presentationSample = null;
+            if (_presentationContext != GamepadContexts.Revision
+                || pending.DeviceId != snapshot.DeviceId || pending.Revision != snapshot.Revision
+                || !pending.State.Connected)
+            {
+                return snapshot;
+            }
+
+            GamepadOptionState options = (pending.Runtime ?? GamepadRuntimeConfig.Current).Options;
+            GamepadState state = snapshot.State;
+            if (options.Southpaw)
+            {
+                state.LeftX = pending.State.LeftX;
+                state.LeftY = pending.State.LeftY;
+            }
+            else
+            {
+                state.RightX = pending.State.RightX;
+                state.RightY = pending.State.RightY;
+            }
+            return snapshot with { State = state };
         }
 
         /// <summary>
@@ -146,35 +242,15 @@ namespace MphRead.Mods.Input
             {
                 return (0, 0);
             }
-            // Project only the controller sample BeginFrame accepted for this simulation
-            // frame. Reading GamepadManager.ActiveState here creates a second input stream:
-            // the draw pass can observe a newer/stale hardware sample that gameplay never
-            // accepted, leaving presentation turning until the device lifecycle resets.
-            GamepadState state = FrameSnapshot.State;
-            if (!state.Connected) return (0, 0);
-            GamepadOptionState options = (FrameSnapshot.Runtime ?? GamepadRuntimeConfig.Current).Options;
-            (float x, float y) = options.Southpaw
-                ? GamepadAnalog.ApplyRadialDeadZone(state.LeftX, state.LeftY,
-                    options.LeftInner, options.LeftOuter)
-                : GamepadAnalog.ApplyRadialDeadZone(state.RightX, state.RightY,
-                    options.RightInner, options.RightOuter);
-            (x, y) = GamepadAnalog.ApplyRadialResponseCurve(x, y, options.Curve);
+            GamepadSnapshot snapshot = _presentationSample is { } pending
+                && _presentationContext == GamepadContexts.Revision
+                && pending.DeviceId == FrameSnapshot.DeviceId
+                && pending.Revision == FrameSnapshot.Revision ? pending : FrameSnapshot;
+            if (!snapshot.State.Connected) return (0, 0);
+            (float x, float y) = PreviewAim(snapshot);
             float fraction = (float)Math.Clamp(alpha, 0.0, 1.0);
-            return (
-                -x * TurnRate * _turnRateScale
-                    * options.LookX * (options.InvertX ? -1 : 1) * fraction,
-                y * TurnRate * _turnRateScale
-                    * options.LookY * (options.InvertY ? -1 : 1) * fraction
-            );
+            return (x * fraction, y * fraction);
         }
-
-        /// <summary>
-        /// How far a stick has to go before it counts as movement. The walk
-        /// keys are on or off, so this is where a stick becomes a direction.
-        /// Larger than the aim dead zone below it, because a thumb resting on
-        /// the stick should not walk you off a ledge.
-        /// </summary>
-        private const float WalkThreshold = 0.5f;
 
         /// <summary>
         /// Called once a frame, before the pad is read for anything. Works out
@@ -183,7 +259,7 @@ namespace MphRead.Mods.Input
         public static void BeginFrame()
         {
             _appliedCameraAim = null;
-            var snapshot = GamepadManager.Snapshot;
+            var snapshot = ConsumePresentationAim(GamepadManager.Snapshot);
             FrameSnapshot = snapshot;
             GamepadRuntimeConfig.Frame = snapshot.Runtime;
             _frame = snapshot.State;
@@ -204,6 +280,7 @@ namespace MphRead.Mods.Input
             _frame.Buttons &= ~_blocked;
             gameplayButtons &= ~_blocked;
             AimDeltaX = AimDeltaY = 0;
+            _acceptedAimDeltaX = _acceptedAimDeltaY = 0;
             if (context != GamepadContext.Gameplay || !GamepadContexts.Focused || !_frame.Connected
                 || (PlayerEntity.MainPlayerIndex >= 0 && PlayerEntity.MainPlayerIndex < PlayerEntity.Players.Count
                     && PlayerEntity.Players[PlayerEntity.MainPlayerIndex] is { Health: 0 }))
@@ -230,6 +307,8 @@ namespace MphRead.Mods.Input
                 * (GamepadOptions.InvertX ? -1 : 1);
             AimDeltaY = y * TurnRate * _turnRateScale * GamepadOptions.LookY
                 * (GamepadOptions.InvertY ? -1 : 1);
+            _acceptedAimDeltaX = AimDeltaX;
+            _acceptedAimDeltaY = AimDeltaY;
         }
 
         /// <summary>
@@ -301,29 +380,56 @@ namespace MphRead.Mods.Input
         /// </summary>
         public static void Apply(PlayerEntity? player)
         {
-            if (!GamepadContexts.Focused || _context != GamepadContext.Gameplay || player == null || !Active || player.IsBot
+            if (player == null)
+            {
+                return;
+            }
+            PlayerControls controls = player.Controls;
+            // This state belongs to the current controller sample, not the
+            // PlayerControls lifetime. Clear it before every local projection so
+            // disconnects, menus and neutral sticks cannot leave stale magnitude.
+            controls.ClearAnalogMovement();
+            if (!GamepadContexts.Focused || _context != GamepadContext.Gameplay || !Active || player.IsBot
                 || !player.LoadFlags.TestFlag(LoadFlags.Active))
             {
                 return;
             }
             if (player.Health == 0 || player.IsAltForm) Actions.CloseWheel();
-            PlayerControls controls = player.Controls;
             var move = GamepadOptions.Southpaw
                 ? GamepadAnalog.ApplyRadialDeadZone(_frame.RightX, _frame.RightY, GamepadOptions.RightInner, GamepadOptions.RightOuter)
                 : GamepadAnalog.ApplyRadialDeadZone(_frame.LeftX, _frame.LeftY, GamepadOptions.LeftInner, GamepadOptions.LeftOuter);
-            (int moveX, int moveY) = GamepadAnalog.QuantizeMovement(move.X, move.Y);
-            // Both sets, as the touch controls do: walking reads Move and the
-            // morph ball reads Roll, and a player who has bound them to
-            // different keys expects the stick to drive whichever form they
-            // are in.
-            Hold(controls.MoveUp, moveY > WalkThreshold);
-            Hold(controls.RollUp, moveY > WalkThreshold);
-            Hold(controls.MoveDown, moveY < -WalkThreshold);
-            Hold(controls.RollDown, moveY < -WalkThreshold);
-            Hold(controls.MoveLeft, moveX < -WalkThreshold);
-            Hold(controls.RolltLeft, moveX < -WalkThreshold);
-            Hold(controls.MoveRight, moveX > WalkThreshold);
-            Hold(controls.RollRight, moveX > WalkThreshold);
+
+            // Preserve the old additive keyboard/touch + controller behavior.
+            // If a digital direction was already held, it remains full strength;
+            // the other axis can still come from a partial controller deflection.
+            // Right/up keep the same precedence the engine's existing else-if
+            // movement branches have when opposite directions are both held.
+            bool existingRight = controls.MoveRight.IsDown || controls.RollRight.IsDown;
+            bool existingLeft = controls.MoveLeft.IsDown || controls.RolltLeft.IsDown;
+            bool existingUp = controls.MoveUp.IsDown || controls.RollUp.IsDown;
+            bool existingDown = controls.MoveDown.IsDown || controls.RollDown.IsDown;
+            bool padMoving = move.X != 0 || move.Y != 0;
+            if (padMoving)
+            {
+                float x = existingRight ? 1 : move.X > 0 ? move.X
+                    : existingLeft ? -1 : move.X < 0 ? move.X : 0;
+                float y = existingUp ? 1 : move.Y > 0 ? move.Y
+                    : existingDown ? -1 : move.Y < 0 ? move.Y : 0;
+                controls.SetAnalogMovement(x, y);
+            }
+
+            // Directional keybind state is still populated for animation,
+            // jump-direction and legacy gameplay checks. Magnitude is no longer
+            // quantized: the movement step reads AnalogMoveX/Y to scale traction.
+            // The radial deadzone already turns resting-stick noise into exact zero.
+            Hold(controls.MoveUp, move.Y > 0);
+            Hold(controls.RollUp, move.Y > 0);
+            Hold(controls.MoveDown, move.Y < 0);
+            Hold(controls.RollDown, move.Y < 0);
+            Hold(controls.MoveLeft, move.X < 0);
+            Hold(controls.RolltLeft, move.X < 0);
+            Hold(controls.MoveRight, move.X > 0);
+            Hold(controls.RollRight, move.X > 0);
 
             // Which button each of these is on is the player's business now:
             // see PadBindings, which starts as the table that used to be

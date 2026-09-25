@@ -64,7 +64,7 @@ namespace MphRead.Mods.Network
                 { Flags = MatchStatePacket.FlagNoSpawnProtection };
             Check(defaultMatchState.SpawnProtection && !disabledMatchState.SpawnProtection,
                 "match state carries default-on spawn protection without ambiguity");
-            Check(NetConfig.ProtocolVersion == 19 && (byte)PacketType.SessionState == 36
+            Check(NetConfig.ProtocolVersion == 20 && (byte)PacketType.SessionState == 36
                 && (byte)PacketType.MapOffer == 32 && (byte)PacketType.MapDone == 35
                 && (byte)PacketType.MatchStartCommit == 44 && (byte)PacketType.MatchLoadProgress == 45,
                 "combined protocol and non-overlapping map/lobby/start IDs");

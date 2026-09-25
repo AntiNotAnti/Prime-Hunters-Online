@@ -3,20 +3,26 @@
 Aim assistance is intentionally curated internally. There are no user-facing aim-assist strength or snapping settings.
 
 Assistance runs once per fixed 60 Hz simulation step for the local player. Render
-frames project the accepted camera turn; they never advance selection, filtering,
-flick state, or motion history. Mouse/touch, menus, spectating, death, alternate
-form, replay actors and remote players bypass assistance. Device, input source,
-weapon, zoom and context changes clear history.
+frames project the accepted assisted camera turn and, above 60 Hz, may preview only
+the raw difference from a newer aim-stick hardware sample. They never advance
+selection, filtering, flick state, motion history, button edges, firing or telemetry.
+The next simulation step consumes the exact previewed aim axes before accepting a
+newer hardware sample, preventing double-turn or presentation/gameplay disagreement.
+Mouse/touch, menus, spectating, death, alternate form, replay actors and remote
+players bypass assistance. Device, input source, weapon, zoom and context changes
+clear history.
 
 ## Geometry and intent
 
 `AimAssistWorld` projects the presented player's collision cylinder into angular
 body and headshot regions. Biped bounds use MinPickupHeight/MaxPickupHeight and
 the collision radius. The head band is MaxPickupHeight minus 0.3 through
-MaxPickupHeight. The projected rectangle encloses the cylinder silhouette; destination rays
-are checked against the actual vertical impact band and geometry visibility. Region error measures the nearest valid boundary;
-it is zero inside the region, with no horizontal center pull. Visibility gates
-body and head independently. Alt forms never receive head refinement.
+MaxPickupHeight. The projected rectangle encloses the cylinder silhouette. Visibility
+belongs to the hittable region rather than its center: nearest, center and deterministic
+inset-edge rays are tested against the actual cylinder/band and room geometry, so a
+legitimate head/torso slice peeking around cover can remain assistable without allowing
+tracking through solid cover. Region error measures the nearest valid boundary and is
+zero inside the real hit region. Alt forms never receive head refinement.
 
 Power Beam and Volt Driver refine heads only through 15 world units. Imperialist
 allows head refinement throughout the existing 60-unit assist range. Shock Coil,
@@ -37,27 +43,36 @@ proximity and input alignment. A retained firing/charging target receives an
 extra bonus. Challengers must clear both a score ratio and an absolute margin;
 strong aligned input reduces the switching penalty.
 
-Position correction and motion tracking have separate gains and speed limits.
-Tracking is strongest after acquisition; vertical head gains exceed horizontal
-gains. States distinguish acquiring/tracking body, refining/tracking head, flick
-capture and occluded retention. Brief occlusion retains identity for 60 ms but
-applies no friction or rotation and resets velocity history.
+Position correction and motion tracking have separate gains and independent speed
+limits. Their sum is not re-clamped through the old MaxSpeed ceiling, so a precision
+profile can keep conservative positional magnetism while matching a fast retained
+target. Vertical head gains exceed horizontal gains. Target motion uses a bounded
+velocity/acceleration servo: measured angular velocity is filtered, reversals accelerate
+the filter, bounded angular acceleration supplies a tiny camera-tracking lookahead, and
+none of it leads the projectile impact point.
 
-Neutral right stick never acquires. After at least 100 ms of deliberate
-acquisition, movement magnitude of 0.15 or more can retain 28% motion tracking
-for at most 300 ms after the last look input. Positional attraction is disabled
-in this interval. Opposition, release-cone exit and lifecycle resets break it.
+Retention is continuous rather than a timer switch. Deliberate aligned tracking builds
+0..1 confidence; neutral right stick never acquires. While the player strafes, confidence
+decays slowly and scales retained motion tracking from 18% to 35%. Position attraction
+is disabled during neutral-stick strafe tracking. Meaningful opposing input, target loss,
+release-cone/lifecycle changes or prolonged neutrality clear the state immediately or
+decay it to zero. Brief occlusion retains identity for 60 ms but applies no friction or
+rotation and resets motion history.
 
-A quick physical stick rise above 0.65 opens a 90 ms head-capture window. Capture
-requires strong alignment (0.80), visible mechanically eligible head geometry,
-and proximity within 0.35–0.8 degrees scaled by apparent band height. Scoped
-capture uses 65% of that radius. Exponential correction approaches a 15% inset
-and is bounded by remaining error and the profile speed cap. Capture stays with
-its initial target; neutral, opposing and occluded input cancel it.
+Flick detection recognizes both a rapid magnitude rise and a fast change in stick vector,
+so a player already holding substantial horizontal input can flick vertically toward a
+head. At flick start there is one trajectory-weighted head-target selection pass; after
+that the chosen target is locked for the 90 ms capture window. Capture still requires
+visible, mechanically eligible head geometry, strong flick alignment and proximity within
+the 0.35–0.8 degree range scaled by apparent band height. Scoped capture uses 65% of that
+radius. Neutral, opposing and occluded input cancel it.
 
-Vector friction separates radial and tangential camera motion. Approaching the
-region receives light friction; inside the head band vertical precision friction
-helps retain height. Assistance never adds a push beyond the remaining error.
+The real headshot band remains the outer validity region. Inside it, an inset safe region
+adds only a weak positional nudge when the crosshair approaches an edge, leaving the
+middle of the band free of center pull. Friction is also edge-aware: it primarily damps
+the component about to overshoot the edge being approached, while strong deliberate
+stick input rapidly releases the guardrail. Assistance never adds a push beyond the
+remaining valid correction.
 
 ## Stick response
 
@@ -71,10 +86,13 @@ approaches a magnitude-dependent maximum rather than using a hard delay.
 
 Run `dotnet run --project src/MphRead -- -gamepadcheck` and
 `dotnet run --project src/MphRead -- -frametimingcheck`. Checks cover region
-boundaries, mechanical range, physical intent, flicks, strafe retention,
-opposition, camera units, tracking reversals, timing and zero-allocation core
-processing. No damage, hitbox, projectile, lag compensation or protocol changes
-are involved; only the ordinary local camera direction reaches shot processing.
+boundaries, safe head interiors, mechanical range, physical intent, direction-change
+flicks and flick target selection, confidence-based strafe retention, edge-friction
+escape, independent tracking caps, bounded acceleration, opposition, camera units,
+tracking reversals, high-refresh late-latch isolation, timing and zero-allocation core
+processing. The aim changes do not alter damage, hitboxes, projectile behavior, lag
+compensation or server authority; protocol 20 in this branch is solely the analogue
+movement-axis extension.
 
 `-gamepadassistdebug` displays regions, state, physical stick, camera delta,
 position/tracking corrections, flick age/alignment, velocity and strafe retention.
