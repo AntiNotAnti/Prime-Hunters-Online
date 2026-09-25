@@ -22,8 +22,10 @@ This file is the short, machine-oriented source of truth for architectural assum
 
 ## Netcode modernization boundaries
 
-- Movement remains owner-reported through `IntentPacket.Position`; the server
-  validates lifecycle/order and resolves combat/world state at 60 Hz.
+- Movement remains owner-reported through IntentPacket.Position; the server
+  validates lifecycle/order and resolves combat/world state at 60 Hz. Protocol 20
+  additionally relays controller MoveX/MoveY magnitude so puppet simulation,
+  animation, and replay do not reconstruct analogue movement from digital bits.
 - Preserve `AckFrame`, `AckSubFrame`, eight rising-edge frames, MatchId,
   AuthorityEpoch, SlotGeneration and LifeId. Snapshots are independently decodable
   full states; remote presentation continues to use NetSmoothing.
