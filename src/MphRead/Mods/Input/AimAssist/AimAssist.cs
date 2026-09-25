@@ -80,8 +80,8 @@ namespace MphRead.Mods.Input.AimAssist
                     continue;
                 }
 
-                bool visibleHead = AimAssistMath.VisibleHead(t, profile);
-                if (!t.BodyVisible && !visibleHead)
+                bool candidateHeadVisible = AimAssistMath.VisibleHead(t, profile);
+                if (!t.BodyVisible && !candidateHeadVisible)
                 {
                     if (keep) occludedRetained = i;
                     continue;
@@ -96,7 +96,7 @@ namespace MphRead.Mods.Input.AimAssist
 
                 if (flickSelecting)
                 {
-                    if (visibleHead)
+                    if (candidateHeadVisible)
                     {
                         // Trajectory selection needs a direction even after the
                         // reticle has already entered the valid headshot band.
@@ -105,10 +105,10 @@ namespace MphRead.Mods.Input.AimAssist
                         // final capture/correction.
                         Vector2 flickHead = AimAssistMath.Finite(t.HeadError)
                             ? t.HeadError : AimAssistMath.HeadError(t);
-                        float flickAlignment = AimAssistMath.Alignment(state.FlickDirection, flickHead);
-                        if (!keep && flickAlignment < AimAssistTuning.FlickTargetAlignment) continue;
+                        float candidateFlickAlignment = AimAssistMath.Alignment(state.FlickDirection, flickHead);
+                        if (!keep && candidateFlickAlignment < AimAssistTuning.FlickTargetAlignment) continue;
                         float headDistance = flickHead.Length();
-                        score += .65f * flickAlignment
+                        score += .65f * candidateFlickAlignment
                             + .20f * (1 - AimAssistMath.Smooth(0, Math.Max(.25f, Math.Min(2, cone)), headDistance));
                     }
                     else if (!keep)
@@ -416,18 +416,24 @@ namespace MphRead.Mods.Input.AimAssist
 
             Vector2 measured = AimAssistMath.ClampLength(motion / previousDt,
                 AimAssistTuning.MaxTrackedSpeed);
-            Vector2 predicted = filtered + acceleration * dt;
-            if (!AimAssistMath.Finite(predicted)) predicted = filtered;
 
+            // Filter measured velocity directly. Feeding the previous acceleration
+            // back into this estimate creates an unstable loop under alternating
+            // frame intervals: a constant-speed target can ring above/below its
+            // real velocity. Acceleration is feed-forward for the camera, not a
+            // state predictor for the velocity estimator itself.
             float xRate = filtered.X * measured.X < 0 ? rate * 2.5f : rate;
             float yRate = filtered.Y * measured.Y < 0 ? rate * 2.5f : rate;
             Vector2 velocity = new(
-                predicted.X + (measured.X - predicted.X) * (1 - MathF.Exp(-xRate * dt)),
-                predicted.Y + (measured.Y - predicted.Y) * (1 - MathF.Exp(-yRate * dt)));
+                filtered.X + (measured.X - filtered.X) * (1 - MathF.Exp(-xRate * dt)),
+                filtered.Y + (measured.Y - filtered.Y) * (1 - MathF.Exp(-yRate * dt)));
             velocity = AimAssistMath.ClampLength(velocity, AimAssistTuning.MaxTrackedSpeed);
 
+            // Estimate target angular acceleration from the velocity estimate's
+            // actual change over this observation. At constant measured speed
+            // this naturally decays to zero even with variable dt.
             Vector2 observedAcceleration = AimAssistMath.ClampLength(
-                (measured - filtered) / Math.Max(previousDt, .001f),
+                (velocity - filtered) / Math.Max(dt, .001f),
                 AimAssistTuning.MaxTrackedAcceleration);
             float accelRate = AimAssistTuning.MotionAccelerationRate;
             if (filtered.X * measured.X < 0 || filtered.Y * measured.Y < 0) accelRate *= 1.75f;

@@ -598,12 +598,12 @@ namespace MphRead.Mods.Network
                         // answered. Retain that healthy path in the study too.
                         bool headCorrection = ((entry.Flags & HitClaimPacket.FlagHeadshot) != 0)
                             != ((ack.Flags & CombatAckFlags.Headshot) != 0);
-                        byte weapon = (byte)(entry.Beam == HitClaimPacket.NoBeam
+                        byte telemetryWeapon = (byte)(entry.Beam == HitClaimPacket.NoBeam
                             ? NetShotDiagnostics.WeaponCount - 1 : NetShotDiagnostics.Bucket((BeamType)entry.Beam));
                         CombatStudyReports.Record(ack, entry.Age,
-                            ack.DamageApplied - entry.PredictedBodyDamage, 0, headCorrection, weapon);
+                            ack.DamageApplied - entry.PredictedBodyDamage, 0, headCorrection, telemetryWeapon);
                         Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.CombatAck, NetSession.NetFrame,
-                            Player: (byte)NetSession.LocalSlot, Victim: entry.VictimSlot, Weapon: weapon,
+                            Player: (byte)NetSession.LocalSlot, Victim: entry.VictimSlot, Weapon: telemetryWeapon,
                             Id: id, Result: result, A: entry.Age * (1000.0 / 60),
                             B: ack.DamageApplied - entry.PredictedBodyDamage, D: headCorrection ? 1 : 0));
                     }

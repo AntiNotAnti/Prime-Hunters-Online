@@ -91,7 +91,7 @@ namespace MphRead.Mods.Input
         /// Device discovery/removal, buttons, triggers, activity ownership and
         /// haptics stay on the fixed simulation poll.
         /// </summary>
-        public static void PollAimOnly()
+        public static unsafe void PollAimOnly()
         {
             GamepadManager.ClearPresentationAxes();
             if (OperatingSystem.IsAndroid() || _unavailable)
