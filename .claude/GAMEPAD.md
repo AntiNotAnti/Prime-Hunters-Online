@@ -194,9 +194,12 @@ because the reviving touch was swallowed. See ANDROID-PORT.md.
 - **3.5 degrees per frame at full deflection** — 210 a second, which is where
   console shooters have sat since they settled the question. The sensitivity
   setting runs 0.25x to 3x around it.
-- **Walking is a threshold, not a curve** (half deflection), because the walk
-  keys are on or off. Larger than the aim dead zone: a thumb resting on the
-  stick should not walk you off a ledge.
+- **Movement preserves analogue magnitude.** The left stick is deadzoned
+  radially and its signed X/Y values scale the existing strafe/walk traction.
+  Full deflection is the former digital strength; partial deflection gives
+  proportionally finer movement. Directional keybinds are still filled for
+  animation, jumping and legacy gameplay checks. Keyboard/touch/bot movement
+  remains full-strength digital input.
 
 ## Settings
 
