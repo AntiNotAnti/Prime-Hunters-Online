@@ -1499,6 +1499,7 @@ namespace MphRead.Entities
             ModDrawEndScreen();
             if (Mods.SpectatorMode.FreeCamera)
             {
+                ModDrawSpectatorNameTags();
                 // Looking at the map, not out of anybody's eyes: there is no
                 // player whose readouts these would be. Following one is the
                 // other case and keeps their HUD -- watching a hunter play
