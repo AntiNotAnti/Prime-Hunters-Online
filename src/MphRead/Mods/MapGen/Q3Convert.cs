@@ -58,7 +58,7 @@ namespace MphRead.Mods.MapGen
         public static int Run(string source, string? mapName, string? roomName, string? outputDir,
             bool dropClip, bool dropItems, float? forcedScale, int textureSize,
             CancellationToken cancellation = default, IReadOnlyList<string>? textureArchives = null,
-            Action<string>? log = null)
+            Action<string>? log = null, Action<int,int,string>? textureProgress = null)
         {
             cancellation.ThrowIfCancellationRequested();
             void Log(string message)
@@ -117,7 +117,8 @@ namespace MphRead.Mods.MapGen
 
             string texturePath = Path.Combine(directory, $"{prefix}.tex");
             IReadOnlyList<string> archives = textureArchives ?? MapTextureBake.DiscoverArchives(source);
-            MapTextureBake.Result baked = MapTextureBake.Bake(bsp, archives, texturePath, textureSize, cancellation: cancellation);
+            MapTextureBake.Result baked = MapTextureBake.Bake(bsp, archives, texturePath, textureSize,
+                cancellation: cancellation, progress: textureProgress);
             Log($"  {baked.Baked} textures at {textureSize}x{textureSize}"
                 + $" -> {baked.Bytes:N0} B  {Path.GetFileName(texturePath)}");
             if (baked.Missing.Count > 0)
