@@ -113,41 +113,50 @@ namespace MphRead.Mods
         /// says otherwise, rather than a second opinion about a running
         /// match.
         /// </summary>
-        public static void ApplyMatchRules()
+        public static void ApplyMatchRules() => ApplyMatchRules(GameState.Current);
+
+        /// <summary>
+        /// Scene-targeted form used by launch paths after that scene's Setup.
+        /// This avoids depending on which scene currently owns the legacy
+        /// GameState compatibility facade while a shell/server/replay scene may
+        /// also exist in the process.
+        /// </summary>
+        public static void ApplyMatchRules(SceneGameState state)
         {
             MenuSettings? settings = Current;
-            if (settings == null || !GameState.Multiplayer)
-            {
+            if (settings != null)
+                ApplyMatchRules(settings, state);
+        }
+
+        /// <summary>Pure rule application shared by launch code and regressions.</summary>
+        internal static void ApplyMatchRules(MenuSettings settings, SceneGameState state)
+        {
+            if (!state.Multiplayer)
                 return;
-            }
-            if (TryTime(settings.TimeLimit, out float timeLimit) && timeLimit > 0)
-            {
-                GameState.MatchTime = timeLimit;
-            }
+
+            if (TryTime(settings.TimeLimit, out float timeLimit))
+                state.MatchTime = timeLimit > 0 ? timeLimit : -1;
             if (TryTime(settings.TimeGoal, out float timeGoal) && timeGoal > 0)
-            {
-                GameState.TimeGoal = timeGoal;
-            }
+                state.TimeGoal = timeGoal;
             if (Int32.TryParse(settings.PointGoal, NumberStyles.Integer,
-                CultureInfo.InvariantCulture, out int pointGoal) && pointGoal > 0)
-            {
-                GameState.PointGoal = pointGoal;
-            }
+                CultureInfo.InvariantCulture, out int pointGoal) && pointGoal >= 0)
+                state.PointGoal = pointGoal;
+
             // Not the damage level. It is pinned to medium -- see
             // GameState.DamageLevel -- because it scales every weapon's damage
-            // and was the one match rule each machine read out of its own
-            // file. The key stays in settings.json and is ignored.
-            GameState.FriendlyFire = settings.FriendlyFire == "on";
-            GameState.RadarPlayers = settings.HunterRadar == "on";
-            GameState.AffinityWeapons = settings.AffinityWeapons == "on";
+            // and was the one match rule each machine read out of its own file.
+            // The key stays in settings.json and is ignored.
+            state.FriendlyFire = settings.FriendlyFire == "on";
+            state.RadarPlayers = settings.HunterRadar == "on";
+            state.AffinityWeapons = settings.AffinityWeapons == "on";
             // New settings files default this on, and treating anything other
             // than an explicit off as enabled keeps older files on that default.
-            GameState.SpawnProtection = settings.SpawnProtection != "off";
+            state.SpawnProtection = settings.SpawnProtection != "off";
             // Anything but an explicit "off" is the cartridge's behaviour, so
             // a settings file written before this rule existed plays exactly
             // as it did.
-            GameState.ShadowFreeze = settings.ShadowFreeze != "off";
-            GameState.OctolithReset = settings.PointGoal != "off";
+            state.ShadowFreeze = settings.ShadowFreeze != "off";
+            state.OctolithReset = settings.PointGoal != "off";
             // Teams is not set here. GameState.Setup derives it from the mode,
             // and the launcher passes the choice through as the team id it
             // gives each player -- turning it on underneath a free-for-all
