@@ -27,6 +27,10 @@ namespace MphRead.Entities
                 && active && spawned && health > 0;
         }
 
+        // 15 frames at 60 FPS gives a readable 2 Hz white flash without turning the
+        // three-second protection window into a high-frequency strobe.
+        private const int SpawnProtectionFlashHalfPeriodFrames = 15;
+
         public void Draw()
         {
             Vector3 presentedPosition = default;
@@ -75,6 +79,13 @@ namespace MphRead.Entities
             }
             Vector4? brightSkin = BrightSkins.GetColor(this);
             Vector4? outlineColor = BrightSkins.GetOutlineColor(this);
+            if (ShouldFlashSpawnProtection())
+            {
+                // Reuse the player surface-color path so biped and alt forms get the
+                // same cue without adding another material/shader state. Between white
+                // frames the normal suit/team render is untouched.
+                brightSkin = Vector4.One;
+            }
             int lod = 0;
             Flags2 &= ~PlayerFlags2.Lod1;
             if (!IsMainPlayer && !Features.MaxPlayerDetail
@@ -324,6 +335,21 @@ namespace MphRead.Entities
             _altModel.Model.UpdateMatrixStack();
             UpdateMaterials(_altModel, Recolor);
             GetDrawItems(_altModel, _altModel.Model.Nodes[0], _curAlpha, overrideColor: brightSkin, outlineColor: outlineColor);
+        }
+
+        private bool ShouldFlashSpawnProtection()
+        {
+            if (!_scene.GameState.Multiplayer || !_scene.GameState.SpawnProtection
+                || _spawnInvulnTimer == 0 || _health <= 0
+                || Flags2.TestFlag(PlayerFlags2.Cloaking)
+                || BrightSkinStatusOverride || BrightSkinFrozenOverlay)
+            {
+                return false;
+            }
+
+            int remaining = Math.Min(_spawnInvulnTimer, MatchSpawnProtectionFrames);
+            int elapsed = MatchSpawnProtectionFrames - remaining;
+            return (elapsed / SpawnProtectionFlashHalfPeriodFrames & 1) == 0;
         }
 
         private void GetDrawItems(ModelInstance inst, Node node, float alpha, int polygonId = -1, int recolor = -1,
