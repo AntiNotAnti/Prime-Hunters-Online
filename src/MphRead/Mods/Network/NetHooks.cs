@@ -533,6 +533,7 @@ namespace MphRead.Mods.Network
                 Mods.KillCam.FilterInput(scene);
                 NetPlayerBridge.RecordPresses(player);
                 player.ModContinuousNetworkTarget = NetTargetIdentity.None;
+                player.ModContinuousFireTick = 0;
                 if (NetSession.NetFrame % NetConfig.IntentSendInterval == 0)
                 {
                     var intent = NetPlayerBridge.CaptureIntent(player);

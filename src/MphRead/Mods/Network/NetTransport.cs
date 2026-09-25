@@ -108,14 +108,30 @@ namespace MphRead.Mods.Network
         }
 
         public NetReliableSnapshot? ReliableStats(IPEndPoint endpoint)
-        { lock (_connectionLock) return _connections.TryGetValue(endpoint, out var peer) ? peer.Reliable.Capture(NowMilliseconds) : null; }
+        {
+            long stamp = EnterConnectionLock();
+            try { return _connections.TryGetValue(endpoint, out var peer) ? peer.Reliable.Capture(NowMilliseconds) : null; }
+            finally { ExitConnectionLock(stamp); }
+        }
         public NetConnectionSnapshot? ConnectionStats(IPEndPoint endpoint)
-        { lock (_connectionLock) return _connections.TryGetValue(endpoint, out var peer) ? peer.Capture() : null; }
+        {
+            long stamp = EnterConnectionLock();
+            try { return _connections.TryGetValue(endpoint, out var peer) ? peer.Capture() : null; }
+            finally { ExitConnectionLock(stamp); }
+        }
         private readonly IPEndPoint?[] _expiredConnections = new IPEndPoint?[64];
         public void RetireConnection(IPEndPoint endpoint)
-        { lock (_connectionLock) if (_connections.TryGetValue(endpoint, out var peer)) peer.RetiredAt = NowMilliseconds; }
+        {
+            long stamp = EnterConnectionLock();
+            try { if (_connections.TryGetValue(endpoint, out var peer)) peer.RetiredAt = NowMilliseconds; }
+            finally { ExitConnectionLock(stamp); }
+        }
         public void ForgetConnection(IPEndPoint endpoint)
-        { lock (_connectionLock) { _connections.Remove(endpoint); _pendingConnections.Remove(endpoint); } }
+        {
+            long stamp = EnterConnectionLock();
+            try { _connections.Remove(endpoint); _pendingConnections.Remove(endpoint); }
+            finally { ExitConnectionLock(stamp); }
+        }
         private static bool Unsequenced(PacketType type) => type is PacketType.Hello or PacketType.StatusQuery
             or PacketType.StatusReply or PacketType.MasterQuery or PacketType.MasterList or PacketType.MasterHeartbeat
             or PacketType.HostRequest or PacketType.HostReply;
@@ -762,12 +778,14 @@ namespace MphRead.Mods.Network
         public int UnacknowledgedCloseEvents { get; private set; }
         private int PendingCloseEvents()
         {
-            lock (_connectionLock)
+            long stamp = EnterConnectionLock();
+            try
             {
                 int count = 0;
                 foreach (var connection in _connections.Values) if (connection.Reliable.HasPending(PacketType.Bye)) count++;
                 return count;
             }
+            finally { ExitConnectionLock(stamp); }
         }
         public void Dispose()
         {
