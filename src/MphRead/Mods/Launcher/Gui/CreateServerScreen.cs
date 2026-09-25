@@ -129,6 +129,13 @@ namespace MphRead.Mods.Launcher.Gui
         /// <summary>The one picked, or null while nothing is.</summary>
         private HostCandidate? _chosen;
 
+        /// <summary>
+        /// True only after the player picked a host themselves. Automatic host
+        /// selection may follow a better answer as discovery finishes and may
+        /// fail over if that host cannot actually open the child server.
+        /// </summary>
+        private bool _hostExplicitlyChosen;
+
         /// <summary>The host page while it is open, so answers still arriving reach it.</summary>
         private HostPicker? _picker;
 
@@ -506,6 +513,7 @@ namespace MphRead.Mods.Launcher.Gui
             _asking = true;
             _candidates.Clear();
             _chosen = null;
+            _hostExplicitlyChosen = false;
             NetMasterClient.FindHosts(LauncherPrefs.MasterHost, LauncherPrefs.MasterPort,
                 onFound: candidate => Dispatcher.UIThread.Post(() =>
                 {
@@ -545,25 +553,23 @@ namespace MphRead.Mods.Launcher.Gui
                 return;
             }
             NetMasterClient.Merge(_candidates, candidate);
-            // Merge may have replaced a row rather than added one -- the same
-            // machine answering on its other port, with a better answer -- so
-            // the choice is re-read off the list instead of being tracked
-            // alongside it.
-            HostCandidate? best = null;
-            foreach (HostCandidate entry in _candidates)
-            {
-                if (entry.WillHost)
-                {
-                    best = entry;
-                    break;
-                }
-            }
-            if (best != null && (_chosen == null || !_chosen.Value.WillHost))
+            // Discovery is parallel, so arrival order is not a ranking. Unless
+            // the player explicitly chose a host, keep the automatic choice on
+            // the lowest-latency machine that has actually said it can host.
+            // This also prevents the master, which is reported first, from
+            // permanently winning over a healthier regional host that answers
+            // a few milliseconds later.
+            HostCandidate? best = BestAutomaticHost();
+            if (!_hostExplicitlyChosen && best != null
+                && (_chosen == null
+                    || !_chosen.Value.WillHost
+                    || _chosen.Value.Host != best.Value.Host
+                    || _chosen.Value.Port != best.Value.Port))
             {
                 _chosen = best;
                 _host.Set(best.Value.Label);
-                // The tick works from here on, without waiting for the boxes
-                // that are never going to reply.
+                // The screen is usable as soon as one host answers. Later
+                // answers may still improve the automatic choice.
                 _asking = false;
                 Refresh();
             }
@@ -572,6 +578,34 @@ namespace MphRead.Mods.Launcher.Gui
                 _picker.Show(_candidates, _asking);
             }
         }
+
+        private HostCandidate? BestAutomaticHost()
+        {
+            HostCandidate? best = null;
+            foreach (HostCandidate entry in _candidates)
+            {
+                if (!entry.WillHost)
+                {
+                    continue;
+                }
+                if (best == null || HostLatency(entry) < HostLatency(best.Value))
+                {
+                    best = entry;
+                }
+            }
+            return best;
+        }
+
+        private static int HostLatency(HostCandidate host) =>
+            host.Latency < 0 ? Int32.MaxValue : host.Latency;
+
+        private static bool TransientHostFailure(string reason) =>
+            reason.Contains("busy", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("already running", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("already in use", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("port is", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("port ", StringComparison.OrdinalIgnoreCase)
+                && reason.Contains("in use", StringComparison.OrdinalIgnoreCase);
 
         /// <summary>The fleet, as a page: which machine runs your match.</summary>
         private void OpenHosts()
@@ -584,6 +618,7 @@ namespace MphRead.Mods.Launcher.Gui
             picker.Done += (_, host) =>
             {
                 _chosen = host;
+                _hostExplicitlyChosen = true;
                 _host.Set(host.Label);
                 ClosePage();
                 Refresh();
@@ -824,22 +859,89 @@ namespace MphRead.Mods.Launcher.Gui
                         + "somebody else's from the browser.", GuiTheme.Warm);
                 return;
             }
-            string host = _chosen.Value.Host;
-            int port = _chosen.Value.Port;
+
+            // An automatically selected host is a convenience, not a promise
+            // that this one machine must succeed. Android cannot fall back to a
+            // local dedicated process at all, so a stale/busy host used to make
+            // Create Lobby a dead end even when another discovered region was
+            // ready. Respect an explicit player choice, but otherwise try the
+            // remaining confirmed hosts in latency order.
+            var attempts = new List<HostCandidate> { _chosen.Value };
+            if (!_hostExplicitlyChosen)
+            {
+                foreach (HostCandidate candidate in _candidates
+                    .Where(candidate => candidate.WillHost)
+                    .OrderBy(HostLatency))
+                {
+                    if (!attempts.Any(existing =>
+                        existing.Host == candidate.Host && existing.Port == candidate.Port))
+                    {
+                        attempts.Add(candidate);
+                    }
+                }
+            }
+
             Busy(true, "starting");
-            Say($"Asking {host} to open your lobby...",
-                GuiTheme.TextDim);
-            HostedGame game = await Task.Run(() => NetMasterClient.RequestGame(host, port,
-                maps[0].RoomKey, mode, timeLimit: timeLimit,
-                pointGoal: pointGoal,
-                maxPlayers: PlayerEntity.SlotCapacity, serverName: name,
-                rotation: maps, policy: ServerSessionPolicy.Lobby));
+            HostedGame game = default;
+            HostCandidate openedBy = attempts[0];
+            var failures = new List<string>();
+            foreach (HostCandidate candidate in attempts)
+            {
+                Say($"Asking {candidate.Label} to open your lobby...", GuiTheme.TextDim);
+                HostedGame answer = await Task.Run(() => NetMasterClient.RequestGame(
+                    candidate.Host, candidate.Port, maps[0].RoomKey, mode,
+                    timeLimit: timeLimit, pointGoal: pointGoal,
+                    maxPlayers: PlayerEntity.SlotCapacity, serverName: name,
+                    rotation: maps, policy: ServerSessionPolicy.Lobby));
+
+                // A host can discover that an old child died only after the
+                // first request reaches its loop. If it explicitly reports a
+                // transient port/busy condition, give that same machine one
+                // bounded retry after its reap has had a turn. This is safe
+                // because a negative HostReply means the first request did not
+                // claim a game port.
+                if (!answer.Started && TransientHostFailure(answer.Reason))
+                {
+                    await Task.Delay(250);
+                    answer = await Task.Run(() => NetMasterClient.RequestGame(
+                        candidate.Host, candidate.Port, maps[0].RoomKey, mode,
+                        timeLimit: timeLimit, pointGoal: pointGoal,
+                        maxPlayers: PlayerEntity.SlotCapacity, serverName: name,
+                        rotation: maps, policy: ServerSessionPolicy.Lobby));
+                }
+
+                if (answer.Started)
+                {
+                    game = answer;
+                    openedBy = candidate;
+                    _chosen = candidate;
+                    _host.Set(candidate.Label);
+                    break;
+                }
+
+                string why = answer.Reason.Length > 0
+                    ? answer.Reason
+                    : $"{candidate.Host} would not open a game";
+                failures.Add($"{candidate.Label}: {why}");
+                DebugLog.Line("net", $"hosted lobby failed on {candidate.Host}:{candidate.Port}: {why}");
+                if (_hostExplicitlyChosen)
+                {
+                    break;
+                }
+            }
+
             if (!game.Started)
             {
-                Fail(game.Reason.Length > 0 ? game.Reason
-                    : $"{host} would not open a game");
+                string why = failures.Count <= 1
+                    ? (failures.Count == 1 ? failures[0] : "No host would open a game.")
+                    : "No available host could open the lobby. "
+                        + String.Join(" / ", failures.Take(3));
+                Fail(why);
                 return;
             }
+
+            DebugLog.Line("net", $"hosted lobby opened by {openedBy.Host}:{openedBy.Port} "
+                + $"on game port {game.Port}");
             bool joined = await Task.Run(() =>
                 NetLaunch.Connect(game.Host, game.Port, player, hunter, ownerToken: game.OwnerToken));
             if (!joined)
