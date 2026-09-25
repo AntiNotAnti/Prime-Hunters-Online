@@ -151,9 +151,9 @@ namespace MphRead.Mods.Input
         public static float AspectCorrection { get; set; } = 16f / 9f;
 
         /// <summary>
-        /// Defaults preserve the old combined overlay's appearance: a 22%
-        /// outline and buttons drawn at half of that. The pointer used to be
-        /// the operating system cursor, which was fully opaque.
+        /// Native art is the default presentation. The guide values preserve
+        /// the old combined overlay's appearance when native art is disabled:
+        /// a 22% outline, buttons at half of that, and a fully opaque cursor.
         /// </summary>
         public const bool DefaultNativeUi = true;
         public const float DefaultNativeUiOpacity = 0.35f;

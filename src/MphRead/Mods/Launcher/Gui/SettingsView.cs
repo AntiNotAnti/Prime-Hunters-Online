@@ -1474,7 +1474,9 @@ namespace MphRead.Mods.Launcher.Gui
                 "Native UI draws the hunter's original DS lower screen and automatically swaps "
                 + "to the alt-form and weapon-select artwork. The guide rectangle and circular "
                 + "buttons are used only when native art is off or unavailable; placement always "
-                + "keeps a visible guide. Cursor opacity remains independent."));
+                + "keeps a visible guide. Cursor opacity remains independent. Stylus movement "
+                + "boost controls pen-motion morph boosts, while reposition filtering ignores "
+                + "tablet jumps after lift/re-contact."));
             _stylusAdvancedButton = new HubNavButton("ADVANCED", compact: true)
             {
                 Width = 170,
