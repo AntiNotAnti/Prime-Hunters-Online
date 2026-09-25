@@ -8059,6 +8059,17 @@ namespace MphRead
                 return;
             }
 
+            // On a high-refresh display, poll once more after the fixed 60 Hz
+            // input step. Only the aim-stick axes are previewed; GamepadInput
+            // does not advance buttons/actions/assist here, and the next
+            // simulation step consumes these exact previewed axes.
+            if (!Mods.Network.DemoPlayback.IsActive
+                && Mods.Render.FrameTiming.HighRefreshPresentation)
+            {
+                Mods.Input.GamepadDesktop.Poll();
+                Mods.Input.GamepadInput.CapturePresentationSample();
+            }
+
             Scene.OnDrawFrame();
             if (!Scene.OnRenderFrame())
             {
