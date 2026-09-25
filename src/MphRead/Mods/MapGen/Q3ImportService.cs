@@ -79,7 +79,8 @@ public static class Q3ImportService
             bsp.Faces.Count, patches, bsp.Brushes.Count, clips, spawns, pickups, coverage);
     }
 
-    public static Result Import(Options options, CancellationToken cancellation = default)
+    public static Result Import(Options options, CancellationToken cancellation = default,
+        Action<string>? progress = null)
     {
         var diagnostics = new List<Diagnostic>();
         string destination = Path.GetFullPath(options.DestinationDirectory);
@@ -96,6 +97,7 @@ public static class Q3ImportService
             if (options.PatchLevel is < 1 or > 8)
                 throw new ArgumentOutOfRangeException(nameof(options.PatchLevel), "Patch detail must be 1-8.");
 
+            progress?.Invoke("Analyzing Quake 3 source…");
             Analysis analysis = Analyze(options.Source, options.MapName, options.Dependencies,
                 options.UnitsPerUnit, cancellation);
             foreach (string missing in analysis.Textures.Missing)
@@ -104,13 +106,17 @@ public static class Q3ImportService
             Directory.CreateDirectory(staging);
             var lines = new List<string>();
             IReadOnlyList<string> archives = MapTextureBake.DiscoverArchives(options.Source, options.Dependencies);
+            progress?.Invoke("Copying source and preparing textures…");
             int status = Q3Convert.Run(options.Source, analysis.MapName, options.RoomName, staging,
                 dropClip: !options.KeepClip, dropItems: !options.KeepItems,
                 forcedScale: options.UnitsPerUnit, textureSize: options.TextureSize,
-                cancellation: cancellation, textureArchives: archives, log: lines.Add);
+                cancellation: cancellation, textureArchives: archives, log: lines.Add,
+                textureProgress: (done,total,name) =>
+                    progress?.Invoke($"Baking textures {done:N0}/{total:N0} · {name}"));
             foreach (string line in lines) diagnostics.Add(new(Severity.Info, line));
             if (status != 0) throw new IOException("Quake 3 conversion failed.");
 
+            progress?.Invoke("Finalizing imported project…");
             string projectPath = Directory.EnumerateFiles(staging, "*.json").Single();
             var definition = MapDefinition.Load(projectPath);
             definition.FormatVersion = 2;
@@ -129,6 +135,7 @@ public static class Q3ImportService
             definition.Save(projectPath);
             cancellation.ThrowIfCancellationRequested();
 
+            progress?.Invoke("Publishing imported map…");
             Directory.Move(staging, destination);
             string finalProject = Path.Combine(destination, Path.GetFileName(projectPath));
             return new(true, finalProject, analysis, diagnostics.AsReadOnly());
