@@ -792,21 +792,28 @@ namespace MphRead.Mods.Input
 
                 File.WriteAllText(path,
                     "stylus_mode=true\nstylus_zone=true\nstylus_zone_opacity=0.4\n"
+                    + "stylus_native_ui=false\nstylus_native_ui_opacity=0.65\n"
                     + "stylus_cursor_opacity=0\nstylus_zone_outline_opacity=0\n"
                     + "stylus_zone_button_opacity=0.75\n");
                 InputSettings.Load();
-                Require(StylusZone.CursorOpacity == 0 && StylusZone.OutlineOpacity == 0
+                Require(!StylusZone.NativeUi
+                    && Math.Abs(StylusZone.NativeUiOpacity - 0.65f) < 0.0001f
+                    && StylusZone.CursorOpacity == 0 && StylusZone.OutlineOpacity == 0
                     && Math.Abs(StylusZone.ButtonOpacity - 0.75f) < 0.0001f,
-                    "per-element opacity accepts zero and overrides legacy value");
+                    "native UI and per-element opacity settings load");
 
                 InputSettings.Save();
+                StylusZone.NativeUi = true;
+                StylusZone.NativeUiOpacity = 1;
                 StylusZone.CursorOpacity = 1;
                 StylusZone.OutlineOpacity = 1;
                 StylusZone.ButtonOpacity = 1;
                 InputSettings.Load();
-                Require(StylusZone.CursorOpacity == 0 && StylusZone.OutlineOpacity == 0
+                Require(!StylusZone.NativeUi
+                    && Math.Abs(StylusZone.NativeUiOpacity - 0.65f) < 0.0001f
+                    && StylusZone.CursorOpacity == 0 && StylusZone.OutlineOpacity == 0
                     && Math.Abs(StylusZone.ButtonOpacity - 0.75f) < 0.0001f,
-                    "per-element opacity round trip");
+                    "native UI and per-element opacity settings round trip");
 
                 InputSettings.Reset();
                 Require(!PointerInput.StylusMode && PointerInput.GuardJumps && !StylusZone.Enabled,
@@ -815,7 +822,9 @@ namespace MphRead.Mods.Input
                     "reset restores movement-triggered boost defaults");
                 Require(InputSettings.AltSwipeSensitivity == 1,
                     "reset restores alt swipe sensitivity");
-                Require(Math.Abs(StylusZone.CursorOpacity - StylusZone.DefaultCursorOpacity) < 0.0001f
+                Require(StylusZone.NativeUi == StylusZone.DefaultNativeUi
+                    && Math.Abs(StylusZone.NativeUiOpacity - StylusZone.DefaultNativeUiOpacity) < 0.0001f
+                    && Math.Abs(StylusZone.CursorOpacity - StylusZone.DefaultCursorOpacity) < 0.0001f
                     && Math.Abs(StylusZone.OutlineOpacity - StylusZone.DefaultOutlineOpacity) < 0.0001f
                     && Math.Abs(StylusZone.ButtonOpacity - StylusZone.DefaultButtonOpacity) < 0.0001f,
                     "reset restores stylus appearance defaults");

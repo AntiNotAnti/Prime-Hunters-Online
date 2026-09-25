@@ -144,6 +144,7 @@ namespace MphRead.Entities
                 tilesX: 0, tilesY: 32, _scene, visorPal);
             (_pauseBindingId, _) = HudInfo.CharMapToTexture(_hudObjects.ScanVisor, startX: 0, startY: 64,
                 tilesX: 0, tilesY: 32, _scene, visorPal);
+            ModSetUpStylusHud();
             // todo: only load what needs to be loaded for the mode
             _filterModel = _scene.GetModelInstance("filter");
             _scene.LoadModel(_filterModel.Model);
