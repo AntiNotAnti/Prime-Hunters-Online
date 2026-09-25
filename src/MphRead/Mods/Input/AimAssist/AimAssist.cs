@@ -106,6 +106,7 @@ namespace MphRead.Mods.Input.AimAssist
                 bool keep = t.Slot == state.TargetSlot && t.Life == state.TargetLife;
                 if (intent == 0 && !keep) continue;
                 if (state.FlickActive && state.FlickTarget >= 0 && !keep) continue;
+                if (shotCommitted && state.TargetSlot >= 0 && !keep) continue;
                 float rangeScale = 1 - .4f * AimAssistMath.Smooth(25, 60, t.Distance);
                 float cone = (keep ? profile.ReleaseCone : profile.Cone) * rangeScale;
                 Vector2 selectionError = AimAssistMath.SelectionError(t, profile);
@@ -130,22 +131,44 @@ namespace MphRead.Mods.Input.AimAssist
                     + (keep && firing ? .18f : 0)
                     - (!keep && state.TargetSlot >= 0 ? .12f * (1 - alignment) : 0);
 
+                AimAssistRegion? trajectoryRegion = candidateHeadVisible
+                    && t.HeadRegion is { } hr
+                    && AimAssistMath.HeadError(t).LengthSquared() <= AimAssistMath.BodyError(t).LengthSquared()
+                        ? hr : t.BodyRegion;
+                if (trajectoryRegion is { } pathRegion)
+                {
+                    score += AimAssistTuning.TrajectoryScoreWeight
+                        * AimAssistMath.TrajectoryRegionScore(pathRegion, trajectoryTravel);
+                }
+
                 if (flickSelecting)
                 {
                     if (candidateHeadVisible)
                     {
                         // Trajectory selection needs a direction even after the
-                        // reticle has already entered the valid headshot band.
-                        // RegionError is zero there, so score the flick against
-                        // the projected head center and use the region only for
-                        // final capture/correction.
+                        // reticle has entered the valid band, so use the head
+                        // center for direction and the projected region for landing.
                         Vector2 flickHead = AimAssistMath.Finite(t.HeadError)
                             ? t.HeadError : AimAssistMath.HeadError(t);
                         float candidateFlickAlignment = AimAssistMath.Alignment(state.FlickDirection, flickHead);
                         if (!keep && candidateFlickAlignment < AimAssistTuning.FlickTargetAlignment) continue;
                         float headDistance = flickHead.Length();
+                        float speedT = AimAssistMath.Smooth(AimAssistTuning.FlickDirectionalSpeed,
+                            45f, state.FlickSpeed);
+                        float horizon = AimAssistTuning.FlickLandingMaxSeconds
+                            + (AimAssistTuning.FlickLandingMinSeconds - AimAssistTuning.FlickLandingMaxSeconds)
+                            * speedT;
+                        Vector2 predictedTurn = cameraVelocity * horizon
+                            + cameraAcceleration * (.5f * horizon * horizon);
+                        Vector2 targetMotion = keep ? state.HeadAngularVelocity * horizon : Vector2.Zero;
+                        float landing = t.HeadRegion is { } flickRegion
+                            ? AimAssistMath.RegionError(flickRegion.Shift(
+                                targetMotion.X - predictedTurn.X,
+                                targetMotion.Y - predictedTurn.Y)).Length()
+                            : (flickHead + targetMotion - predictedTurn).Length();
                         score += .65f * candidateFlickAlignment
-                            + .20f * (1 - AimAssistMath.Smooth(0, Math.Max(.25f, Math.Min(2, cone)), headDistance));
+                            + .20f * (1 - AimAssistMath.Smooth(0, Math.Max(.25f, Math.Min(2, cone)), headDistance))
+                            + .35f * (1 - AimAssistMath.Smooth(0, 1.25f, landing));
                     }
                     else if (!keep)
                     {
