@@ -30,7 +30,11 @@ namespace MphRead.Mods.MapGen
                 map.SourceDefinition = definition;
                 cancellation.ThrowIfCancellationRequested();
                 MapBudgetValidator.Analyze(map, result);
-                return new(result.IsValid ? map : null, result);
+                // Keep successfully compiled geometry available to editor
+                // analysis even when a runtime budget is exceeded. Build and
+                // package paths still reject the validation below; this only
+                // lets an author see and repair an oversized map.
+                return new(map, result);
             }
             catch (MapAuthoringException ex) { result.Error(ex.Code, ex.Message); }
             catch (ProgramException ex) { result.Error("FP-MAP-019", ex.Message); }

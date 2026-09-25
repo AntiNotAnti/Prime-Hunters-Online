@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using ReFuel.Stb;
 
@@ -122,7 +123,8 @@ namespace MphRead.Mods.MapGen
         /// their surfaces.
         /// </summary>
         public static Result Bake(Q3Bsp bsp, IReadOnlyList<string> archivePaths, string outputPath,
-            int size = DefaultSize, bool sky = true, CancellationToken cancellation = default)
+            int size = DefaultSize, bool sky = true, CancellationToken cancellation = default,
+            Action<int,int,string>? progress = null)
         {
             if (size is < 8 or > 256)
                 throw new ArgumentOutOfRangeException(nameof(size), "Texture size must be 8-256.");
@@ -134,9 +136,12 @@ namespace MphRead.Mods.MapGen
                 var entries = new List<(int Index, string Name, ushort[] Palette, byte[] Pixels)>();
                 var missing = new List<string>();
                 int resolved = 0;
-                foreach ((int index, string name) in UsedTextures(bsp, sky))
+                var usedTextures = UsedTextures(bsp, sky).ToArray();
+                for (int textureNumber = 0; textureNumber < usedTextures.Length; textureNumber++)
                 {
                     cancellation.ThrowIfCancellationRequested();
+                    (int index, string name) = usedTextures[textureNumber];
+                    progress?.Invoke(textureNumber, usedTextures.Length, name);
                     byte[]? raw = Find(files, aliases, name);
                     byte[] rgb;
                     if (raw == null)
@@ -172,6 +177,7 @@ namespace MphRead.Mods.MapGen
                         writer.Write(pixels);
                     }
                 }
+                progress?.Invoke(usedTextures.Length, usedTextures.Length, "Done");
                 return new Result
                 {
                     Baked = entries.Count,
@@ -406,11 +412,23 @@ namespace MphRead.Mods.MapGen
         /// <summary>Decode and box-filter down to the square the hardware wants.</summary>
         private static byte[] Decode(byte[] raw, int size, CancellationToken cancellation)
         {
+            cancellation.ThrowIfCancellationRequested();
             using var source = new MemoryStream(raw);
             using StbImage image = StbImage.Load(source, StbiImageFormat.Rgb);
-            ReadOnlySpan<byte> pixels = image.AsSpan<byte>();
             int width = image.Width;
             int height = image.Height;
+            long sourceLength = (long)width * height * 3;
+            if (width <= 0 || height <= 0 || image.ImagePointer == IntPtr.Zero
+                || sourceLength <= 0 || sourceLength > Int32.MaxValue)
+                throw new InvalidDataException("Texture image has invalid dimensions.");
+
+            // ReFuel.Stb's managed span length uses the file's original channel
+            // count, not the requested output format. Grayscale Q3 art loaded
+            // as RGB therefore exposes too short a span even though STB
+            // allocated a full RGB buffer. Copy the requested buffer directly.
+            var sourcePixels = new byte[(int)sourceLength];
+            Marshal.Copy(image.ImagePointer, sourcePixels, 0, sourcePixels.Length);
+            ReadOnlySpan<byte> pixels = sourcePixels;
             var result = new byte[size * size * 3];
             for (int y = 0; y < size; y++)
             {

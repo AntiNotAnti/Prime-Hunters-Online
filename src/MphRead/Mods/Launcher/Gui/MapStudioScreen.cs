@@ -115,7 +115,7 @@ namespace MphRead.Mods.Launcher.Gui
                 if(name=="Navigation"){_=Navigation();return;}
                 _viewport.Wireframe=name=="Wireframe";_viewport.Collision=name=="Collision";_viewport.KillPlane=name=="Kill plane";_viewport.InvalidateVisual();
             });
-            Choice(new[]{"Inspector","Environment","Materials","Assets & music","Snapping","Arrange","Layers","Map health","Navigation path","Statistics"},ShowInspectorPage);
+            Choice(new[]{"Inspector","Environment","Materials","Assets & music","Snapping","Arrange","Layers","Map health","Navigation path","Statistics"},name=>ShowInspectorPage(name));
             AddButton(tools,"Frame all",()=>_viewport?.FrameAll());AddButton(tools,"Focus",()=>_viewport?.FrameSelection());
             AddButton(tools,"Copy",()=>_document?.CopySelection());AddButton(tools,"Paste",()=>_document?.PasteClipboard());
             AddButton(tools,"Duplicate",()=>EditSelection("Duplicate",MapObjects.Duplicate));AddButton(tools,"Delete",()=>EditSelection("Delete",MapObjects.Delete));
@@ -260,7 +260,15 @@ namespace MphRead.Mods.Launcher.Gui
             _viewportHost.Children.Clear();_viewportHost.Children.Add(_viewport);_path.Text=path??Path.Combine(CustomRooms.MapDirectory,project.Definition.Name.ToLowerInvariant()+".json");
             Dismiss();Changed();_viewport.FrameAll();
             if(_document.HasRecovery(CustomRooms.MapDirectory))Recovery();
-            if(project.Definition.Import!=null)_=Validate();
+            if(project.Definition.Import!=null)
+            {
+                // Import completion calls Load from inside the active import
+                // Job. Queue the visual preview behind that job so the busy
+                // lock is released first. The preview deliberately uses patch
+                // detail 1; full Validate still checks the authored setting.
+                if(_work==null)_=PreviewImport();
+                else Dispatcher.UIThread.Post(()=>_=PreviewImport());
+            }
         }
         private void Recovery()
         {
@@ -863,11 +871,33 @@ namespace MphRead.Mods.Launcher.Gui
             _inspector.Children.Add(Text("Scale step"));_inspector.Children.Add(scale);_inspector.Children.Add(local);
             AddButton(_inspector,"Apply",()=>{try{float g=Number(grid.Text??""),a=Number(angle.Text??""),s=Number(scale.Text??"");if(g<0||g>100||a<1||a>180||s<=0||s>10)throw new FormatException("Use grid spacing 0–100, rotation step 1–180 and scale step above 0 through 10.");_viewport.Snap=g;_viewport.AngleSnap=a;_viewport.ScaleSnap=s;_viewport.LocalAxes=local.IsChecked==true;}catch(Exception ex){Failure(ex);}});
         }
+        private Task PreviewImport()=>Work("Preparing imported map preview",async(p,token)=>
+        {
+            if(p.Definition.Import==null)return;
+            int authoredDetail=p.Definition.Import.PatchLevel;
+            p.Definition.Import.PatchLevel=1;
+            var result=await MapBuildScheduler.Shared.AnalyzeAsync(MapBuildSnapshot.Capture(p),cancellation:token);
+            GuardJob(token);
+            if(result.Faces.Length>0)
+            {
+                _viewport?.SetImported(result);
+                _status.Text=result.Succeeded
+                    ? $"Imported map preview ready · runtime patch detail {authoredDetail}"
+                    : $"Imported map preview ready · runtime limits need attention · press Validate for detail {authoredDetail}";
+            }
+            else
+            {
+                Problems(result.Validation());
+            }
+        });
         private Task Validate()=>Work("Validating",async(p,token)=>
         {
             var result=await MapBuildScheduler.Shared.AnalyzeAsync(MapBuildSnapshot.Capture(p),cancellation:token);
             GuardJob(token);Problems(result.Validation());
-            if(result.Succeeded&&p.Definition.Import!=null)_viewport?.SetImported(result);
+            // Invalid runtime budgets should not make the authoring viewport
+            // disappear. If geometry compiled, show it and keep the errors as
+            // build blockers.
+            if(p.Definition.Import!=null&&result.Faces.Length>0)_viewport?.SetImported(result);
         });
         private Task Navigation()=>Work("Generating navigation",async(p,token)=>
         {
@@ -958,7 +988,7 @@ namespace MphRead.Mods.Launcher.Gui
         }
         private void ShowImportWizard(string source)
         {
-            var view=new StackPanel {Spacing=8};view.Children.Add(Text("IMPORT QUAKE 3 · "+Path.GetFileName(source)));
+            var view=new StackPanel {Spacing=6,MinWidth=680};view.Children.Add(Text("IMPORT QUAKE 3 · "+Path.GetFileName(source)));
             var maps=new ComboBox();
             IReadOnlyList<string> mapNames;
             try{mapNames=Q3Bsp.ListMaps(source);maps.ItemsSource=mapNames;maps.SelectedIndex=0;}
@@ -967,7 +997,8 @@ namespace MphRead.Mods.Launcher.Gui
             var name=new TextBox {Text=mapNames.FirstOrDefault()??Path.GetFileNameWithoutExtension(source)};
             view.Children.Add(Text("Runtime name"));view.Children.Add(name);
             var scaleMode=new ComboBox{ItemsSource=new[]{"Auto","Faithful (35 Q3 units)","Custom"},SelectedIndex=0};
-            var customScale=new TextBox{Text="35"};view.Children.Add(Text("Scale"));view.Children.Add(scaleMode);view.Children.Add(customScale);
+            var customScale=new TextBox{Text="35",IsVisible=false};view.Children.Add(Text("Scale"));view.Children.Add(scaleMode);view.Children.Add(customScale);
+            scaleMode.SelectionChanged+=(_,_)=>customScale.IsVisible=scaleMode.SelectedIndex==2;
             var textureSize=new ComboBox{ItemsSource=new[]{"32","64","128"},SelectedItem="64"};
             var patch=new ComboBox{ItemsSource=Enumerable.Range(1,8).ToArray(),SelectedItem=3};
             view.Children.Add(Text("Texture resolution"));view.Children.Add(textureSize);
@@ -978,7 +1009,7 @@ namespace MphRead.Mods.Launcher.Gui
             var spawns=new CheckBox {Content="Use source spawn points",IsChecked=true};
             view.Children.Add(clip);view.Children.Add(items);view.Children.Add(sky);view.Children.Add(spawns);
             var dependencies=new List<string>();
-            var report=Text("Preflight has not run yet.");view.Children.Add(report);
+            var report=Text("Preflight has not run yet.");report.MaxHeight=120;view.Children.Add(report);
 
             float? SelectedScale()
             {
@@ -1036,7 +1067,10 @@ namespace MphRead.Mods.Launcher.Gui
                 WithUnsaved(()=>_=Job("Importing Quake 3 map",async token=>
                 {
                     Dismiss();
-                    var result=await Task.Run(()=>Q3ImportService.Import(options,token),token);
+                    Action<string> progress=message=>Dispatcher.UIThread.Post(()=>{
+                        if(!_detached&&_work!=null)_status.Text=message;
+                    });
+                    var result=await Task.Run(()=>Q3ImportService.Import(options,token,progress),token);
                     GuardJob(token);
                     _problems.ItemsSource=result.Diagnostics.Select(d=>$"{d.Severity} · {d.Message}").ToArray();
                     if(!result.Succeeded||result.ProjectPath==null)
@@ -1050,7 +1084,15 @@ namespace MphRead.Mods.Launcher.Gui
                         _status.Text=$"Imported {a.MapName} · {a.Textures.Resolved}/{a.Textures.Total} textures resolved · {a.Width:0.#} × {a.Depth:0.#} units";
                 }));
             });
-            AddButton(view,"Cancel",Dismiss);Modal(view);_=AnalyzeWizard();
+            AddButton(view,"Cancel",Dismiss);
+            var scroll=new ScrollViewer
+            {
+                Content=view,
+                MaxHeight=520,
+                VerticalScrollBarVisibility=Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility=Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled
+            };
+            Modal(scroll);_=AnalyzeWizard();
         }
         private Task RebakeImportTextures()=>Job("Rebaking Q3 textures",async token=>
         {

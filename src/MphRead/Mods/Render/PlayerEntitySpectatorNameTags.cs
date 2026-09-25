@@ -1,5 +1,6 @@
 using System;
 using MphRead.Formats;
+using MphRead.Hud;
 using MphRead.Mods.Launcher;
 using MphRead.Mods.Network;
 using MphRead.Mods.Replay;

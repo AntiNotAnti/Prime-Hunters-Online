@@ -219,7 +219,9 @@ public sealed class MapBuildScheduler : IMapBuildScheduler
     private MapValidationResult BuildRuntime(MapDefinition definition, string directory, string key, CancellationToken cancellation)
     {
         var compilation = _compilations.Get(key, definition, cancellation);
-        if (compilation.Map != null) MapPacker.Generate(compilation.Map, directory, directory, directory, verbose: false, cancellation: cancellation);
+        if (compilation.Validation.IsValid && compilation.Map != null)
+            MapPacker.Generate(compilation.Map, directory, directory, directory,
+                verbose: false, cancellation: cancellation);
         return compilation.Validation;
     }
     private static FileStream AcquireLease(string path, CancellationToken cancellation = default)
