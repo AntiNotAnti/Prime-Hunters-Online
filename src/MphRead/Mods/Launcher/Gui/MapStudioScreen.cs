@@ -132,7 +132,7 @@ namespace MphRead.Mods.Launcher.Gui
                 if(_refreshing||_document==null)return;
                 _document.Selection.Clear();foreach(var item in _hierarchy.SelectedItems?.OfType<MapObject>()??Enumerable.Empty<MapObject>())_document.Selection.Add(item.Id);
                 if(selection.AddedItems.OfType<MapObject>().LastOrDefault() is { } active)_document.ActiveObjectId=active.Id;
-                _document.SelectionChanged();Inspect();_viewport?.InvalidateVisual();
+                _document.SelectionChanged();ShowInspectorPage(_inspectorPage,false);_viewport?.InvalidateVisual();
             };
             _problems.SelectionChanged+=(_,_)=>
             {
@@ -226,7 +226,7 @@ namespace MphRead.Mods.Launcher.Gui
             _editorGeneration++; _work?.Cancel(); _autosave.Dispose(); _autosave=new(); _validatedState=null; _validationSignature=null; _autosaved=DateTime.MinValue;
             _lastBuild = null;
             if(_document!=null)_document.Changed-=Changed;
-            _document=new(project,path);_document.Changed+=Changed;_viewport=new(_document);_viewport.SelectionChanged+=()=>{RefreshHierarchy();Inspect();};
+            _document=new(project,path);_document.Changed+=Changed;_viewport=new(_document);_viewport.SelectionChanged+=()=>{RefreshHierarchy();ShowInspectorPage(_inspectorPage,false);};
             _viewportHost.Children.Clear();_viewportHost.Children.Add(_viewport);_path.Text=path??Path.Combine(CustomRooms.MapDirectory,project.Definition.Name.ToLowerInvariant()+".json");
             Dismiss();Changed();_viewport.FrameAll();
             if(_document.HasRecovery(CustomRooms.MapDirectory))Recovery();
@@ -380,6 +380,52 @@ namespace MphRead.Mods.Launcher.Gui
                 }
             });
         }
+        private void ShowInspectorPage(string name, bool remember=true)
+        {
+            if (remember) _inspectorPage=name;
+            switch(name)
+            {
+                case "Environment": EnvironmentInspector(); break;
+                case "Materials": MaterialInspector(); break;
+                case "Assets & music": AssetInspector(); break;
+                case "Snapping": SnapInspector(); break;
+                case "Arrange": ArrangeInspector(); break;
+                case "Layers": LayerInspector(); break;
+                case "Statistics":
+                case "Map health": Statistics(); break;
+                case "Navigation path": NavigationInspector(); break;
+                default: Inspect(); break;
+            }
+        }
+
+        private void LayerInspector()
+        {
+            _inspector.Children.Clear(); if(_document==null)return;
+            _inspector.Children.Add(Text("LAYERS"));
+            var layers=_document.Project.Definition.Geometry.Select(g=>String.IsNullOrWhiteSpace(g.Layer)?"Architecture":g.Layer)
+                .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x=>x,StringComparer.OrdinalIgnoreCase).ToArray();
+            if(layers.Length==0)_inspector.Children.Add(Text("No authored geometry layers yet."));
+            foreach(string layer in layers)
+            {
+                string current=layer;
+                var members=_document.Project.Definition.Geometry.Where(g=>g.Layer.Equals(current,StringComparison.OrdinalIgnoreCase)).ToArray();
+                _inspector.Children.Add(Text($"{current} · {members.Length} objects · {members.Count(g=>g.Hidden)} hidden · {members.Count(g=>g.Locked)} locked"));
+                AddButton(_inspector,"Show "+current,()=>{_document.SetLayerState(current,hidden:false);LayerInspector();});
+                AddButton(_inspector,"Hide "+current,()=>{_document.SetLayerState(current,hidden:true);LayerInspector();});
+                AddButton(_inspector,"Unlock "+current,()=>{_document.SetLayerState(current,locked:false);LayerInspector();});
+                AddButton(_inspector,"Lock "+current,()=>{_document.SetLayerState(current,locked:true);LayerInspector();});
+            }
+            var layerName=new TextBox{Text="Gameplay"};_inspector.Children.Add(Text("Assign selected geometry to layer"));_inspector.Children.Add(layerName);
+            AddButton(_inspector,"Assign layer",()=>{
+                string value=String.IsNullOrWhiteSpace(layerName.Text)?"Architecture":layerName.Text.Trim();
+                var ids=_document.Selection.ToHashSet();
+                _document.EditObjects("Assign layer",ids,d=>{foreach(var g in d.Geometry)g.Layer=value;});
+                LayerInspector();
+            });
+            AddButton(_inspector,"Isolate selection",()=>{_document.IsolateSelection();LayerInspector();});
+            AddButton(_inspector,"Show all geometry",()=>{_document.ShowAllGeometry();LayerInspector();});
+        }
+
         private void Inspect()
         {
             _inspector.Children.Clear();if(_document==null)return;
