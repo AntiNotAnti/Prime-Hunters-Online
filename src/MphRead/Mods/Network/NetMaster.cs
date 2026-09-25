@@ -532,6 +532,10 @@ namespace MphRead.Mods.Network
 
         private HostReplyPacket StartHosted(HostRequestPacket request, IPEndPoint asker, double now)
         {
+            // A child can exit between the periodic reap and this packet. Free
+            // that reservation before looking for a game port so one stale
+            // process record cannot bounce a fresh create request.
+            ReapHostedExited();
             // A public IP is not a player identity. Home NAT and carrier-grade
             // NAT can put unrelated players behind the same address. Never
             // replace an empty hosted game solely because another request came
@@ -610,6 +614,18 @@ namespace MphRead.Mods.Network
                 return port;
             }
             return -1;
+        }
+
+        private void ReapHostedExited()
+        {
+            for (int i = _hosted.Count - 1; i >= 0; i--)
+            {
+                Hosted entry = _hosted[i];
+                if (!entry.Process.Running)
+                {
+                    StopHosted(entry, "server process exited");
+                }
+            }
         }
 
         /// <summary>
