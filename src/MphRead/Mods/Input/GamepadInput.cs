@@ -169,14 +169,6 @@ namespace MphRead.Mods.Input
         }
 
         /// <summary>
-        /// How far a stick has to go before it counts as movement. The walk
-        /// keys are on or off, so this is where a stick becomes a direction.
-        /// Larger than the aim dead zone below it, because a thumb resting on
-        /// the stick should not walk you off a ledge.
-        /// </summary>
-        private const float WalkThreshold = 0.5f;
-
-        /// <summary>
         /// Called once a frame, before the pad is read for anything. Works out
         /// the rising edges and this frame's aim.
         /// </summary>
@@ -301,29 +293,56 @@ namespace MphRead.Mods.Input
         /// </summary>
         public static void Apply(PlayerEntity? player)
         {
-            if (!GamepadContexts.Focused || _context != GamepadContext.Gameplay || player == null || !Active || player.IsBot
+            if (player == null)
+            {
+                return;
+            }
+            PlayerControls controls = player.Controls;
+            // This state belongs to the current controller sample, not the
+            // PlayerControls lifetime. Clear it before every local projection so
+            // disconnects, menus and neutral sticks cannot leave stale magnitude.
+            controls.ClearAnalogMovement();
+            if (!GamepadContexts.Focused || _context != GamepadContext.Gameplay || !Active || player.IsBot
                 || !player.LoadFlags.TestFlag(LoadFlags.Active))
             {
                 return;
             }
             if (player.Health == 0 || player.IsAltForm) Actions.CloseWheel();
-            PlayerControls controls = player.Controls;
             var move = GamepadOptions.Southpaw
                 ? GamepadAnalog.ApplyRadialDeadZone(_frame.RightX, _frame.RightY, GamepadOptions.RightInner, GamepadOptions.RightOuter)
                 : GamepadAnalog.ApplyRadialDeadZone(_frame.LeftX, _frame.LeftY, GamepadOptions.LeftInner, GamepadOptions.LeftOuter);
-            (int moveX, int moveY) = GamepadAnalog.QuantizeMovement(move.X, move.Y);
-            // Both sets, as the touch controls do: walking reads Move and the
-            // morph ball reads Roll, and a player who has bound them to
-            // different keys expects the stick to drive whichever form they
-            // are in.
-            Hold(controls.MoveUp, moveY > WalkThreshold);
-            Hold(controls.RollUp, moveY > WalkThreshold);
-            Hold(controls.MoveDown, moveY < -WalkThreshold);
-            Hold(controls.RollDown, moveY < -WalkThreshold);
-            Hold(controls.MoveLeft, moveX < -WalkThreshold);
-            Hold(controls.RolltLeft, moveX < -WalkThreshold);
-            Hold(controls.MoveRight, moveX > WalkThreshold);
-            Hold(controls.RollRight, moveX > WalkThreshold);
+
+            // Preserve the old additive keyboard/touch + controller behavior.
+            // If a digital direction was already held, it remains full strength;
+            // the other axis can still come from a partial controller deflection.
+            // Right/up keep the same precedence the engine's existing else-if
+            // movement branches have when opposite directions are both held.
+            bool existingRight = controls.MoveRight.IsDown || controls.RollRight.IsDown;
+            bool existingLeft = controls.MoveLeft.IsDown || controls.RolltLeft.IsDown;
+            bool existingUp = controls.MoveUp.IsDown || controls.RollUp.IsDown;
+            bool existingDown = controls.MoveDown.IsDown || controls.RollDown.IsDown;
+            bool padMoving = move.X != 0 || move.Y != 0;
+            if (padMoving)
+            {
+                float x = existingRight ? 1 : move.X > 0 ? move.X
+                    : existingLeft ? -1 : move.X < 0 ? move.X : 0;
+                float y = existingUp ? 1 : move.Y > 0 ? move.Y
+                    : existingDown ? -1 : move.Y < 0 ? move.Y : 0;
+                controls.SetAnalogMovement(x, y);
+            }
+
+            // Directional keybind state is still populated for animation,
+            // jump-direction and legacy gameplay checks. Magnitude is no longer
+            // quantized: the movement step reads AnalogMoveX/Y to scale traction.
+            // The radial deadzone already turns resting-stick noise into exact zero.
+            Hold(controls.MoveUp, move.Y > 0);
+            Hold(controls.RollUp, move.Y > 0);
+            Hold(controls.MoveDown, move.Y < 0);
+            Hold(controls.RollDown, move.Y < 0);
+            Hold(controls.MoveLeft, move.X < 0);
+            Hold(controls.RolltLeft, move.X < 0);
+            Hold(controls.MoveRight, move.X > 0);
+            Hold(controls.RollRight, move.X > 0);
 
             // Which button each of these is on is the player's business now:
             // see PadBindings, which starts as the table that used to be
