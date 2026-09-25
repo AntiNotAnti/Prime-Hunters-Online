@@ -413,9 +413,11 @@ namespace MphRead.Entities
             float pointerX, float pointerY, float controllerX, float controllerY,
             out float x, out float y)
         {
-            float mouseX = -pointerX / 4f * Mods.InputSettings.MouseSensitivity
+            float mouseSensitivity = Mods.InputSettings.MouseAimSensitivity(
+                EquipInfo.Zoomed && CurrentWeapon == BeamType.Imperialist);
+            float mouseX = -pointerX / 4f * mouseSensitivity
                 * (Mods.InputSettings.InvertMouseX ? -1 : 1);
-            float mouseY = -pointerY / 4f * Mods.InputSettings.MouseSensitivity
+            float mouseY = -pointerY / 4f * mouseSensitivity
                 * (Mods.InputSettings.InvertMouseY ? -1 : 1);
             if (EquipInfo.Zoomed)
             {
