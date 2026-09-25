@@ -2408,11 +2408,23 @@ namespace MphRead.Entities
                                 }
                                 if (attacker == _scene.Players.Main)
                                 {
+                                    int matchKills = 0;
+                                    for (int i = 0; i < _scene.GameState.Kills.Length; i++)
+                                    {
+                                        matchKills += _scene.GameState.Kills[i];
+                                    }
+                                    bool firstBlood = matchKills == 1;
                                     Mods.Sound.CombatFeedbackAwards awards =
                                         Mods.Sound.CombatFeedbackAudio.OnConfirmedKill(_scene,
-                                            _scene.GameState.KillStreak[attacker.SlotIndex]);
+                                            _scene.GameState.KillStreak[attacker.SlotIndex],
+                                            firstBlood);
                                     if (Mods.Launcher.LauncherPrefs.CombatNotificationsVisible)
                                     {
+                                        if (awards.FirstBlood is Mods.Sound.CombatFeedbackCue firstBloodCue)
+                                        {
+                                            attacker.QueueHudMessage(128, 72, 2.25f, 2,
+                                                Mods.Sound.CombatFeedbackAudio.Label(firstBloodCue).ToUpperInvariant());
+                                        }
                                         if (awards.MultiKill is Mods.Sound.CombatFeedbackCue multiKill)
                                         {
                                             attacker.QueueHudMessage(128, 72, 2.25f, 2,
