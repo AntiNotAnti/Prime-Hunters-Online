@@ -264,7 +264,8 @@ namespace MphRead.Mods.Network
         private static void ContinuousPhaseAgreesAcrossPeers()
         {
             var dedicatedPhase = new ContinuousWeaponPhase(1);
-            Check(dedicatedPhase.Resolve(0, 1, true, false, 9000, true, 100, 1, out _, receivedBeforeStep: true) == 100,
+            Check(dedicatedPhase.Resolve(0, 1, true, false, 9000, true, 100, 1, 0,
+                out _, out _, receivedBeforeStep: true) == 100,
                 "dedicated input arriving before step retains source phase");
             // Independent golden phases preserve the original 30 Hz fractional
             // damage cadence, including the exact-boundary rounding difference.
@@ -287,13 +288,13 @@ namespace MphRead.Mods.Network
                 for (uint tick = 1; tick <= 192; tick++)
                 {
                     uint logical = 100 + (uint)phaseOffset + tick;
-                    ulong a = owner.Resolve(0, tick, true, true, logical, true, 0, 0, out _);
+                    ulong a = owner.Resolve(0, tick, true, true, logical, true, 0, 0, 0, out _, out _);
                     // Jitter changes the latest packet without re-anchoring a held stream.
                     uint age = tick % 6;
                     ulong b = authority.Resolve(0, tick + 700, true, false, 9000, true,
-                        logical - age, age, out _);
+                        logical - age, age, 0, out _, out _);
                     ulong c = observer.Resolve(0, tick + 1300, true, false, 5000, true,
-                        logical, 0, out _);
+                        logical, 0, 0, out _, out _);
                     agrees &= a == b && b == c && ContinuousWeaponPhase.Amount(damage, a, true) == ContinuousWeaponPhase.Amount(damage, b, true)
                         && ContinuousWeaponPhase.Amount(damage, a, false) == ContinuousWeaponPhase.Amount(damage, c, false);
                 }
