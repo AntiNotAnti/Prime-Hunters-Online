@@ -150,6 +150,17 @@ namespace MphRead.Mods.Input
                     && Math.Abs(rangeSensitive.Y) < Math.Abs(highRangeDrive.Y),
                 "expanded alt swipe range remains effective at both endpoints");
 
+            var mouseHalfDrive = AltFormGesture.MouseDrive(0, -12, 1);
+            var mouseFullDrive = AltFormGesture.MouseDrive(0, -12, 2);
+            var mouseIdleDrive = AltFormGesture.MouseDrive(0, 0, 4);
+            Require(Math.Abs(mouseHalfDrive.X) < 0.0001f
+                    && Math.Abs(mouseHalfDrive.Y + 0.5f) < 0.001f,
+                "relative mouse movement preserves analogue partial deflection");
+            Require(Math.Abs(mouseFullDrive.Y + 1f) < 0.001f,
+                "alt swipe sensitivity scales relative mouse movement");
+            Require(mouseIdleDrive == (0f, 0f),
+                "stopping the mouse returns the virtual alt-form stick to centre");
+
             Require(AltFormGesture.TryPrecisionVelocity(0.31f, 0, -1, 0, 0.32f,
                     out float reversedX, out float reversedZ)
                 && Math.Abs(reversedX + 0.32f) < 0.0001f && Math.Abs(reversedZ) < 0.0001f,
@@ -754,16 +765,20 @@ namespace MphRead.Mods.Input
                 Require(PointerInput.StylusMode && !PointerInput.GuardJumps, "independent settings round trip");
 
                 File.WriteAllText(path,
-                    "mouse_movement_boost=false\nstylus_movement_boost=false\n");
+                    "mouse_movement_boost=false\nmouse_alt_form_movement=true\n"
+                    + "stylus_movement_boost=false\n");
                 InputSettings.Load();
-                Require(!InputSettings.MouseMovementBoost && !InputSettings.StylusMovementBoost,
-                    "mouse and stylus movement boost can be disabled independently of button boost");
+                Require(!InputSettings.MouseMovementBoost && InputSettings.MouseAltFormMovement
+                        && !InputSettings.StylusMovementBoost,
+                    "mouse alt movement is independent of movement-triggered boost");
                 InputSettings.Save();
                 InputSettings.MouseMovementBoost = true;
+                InputSettings.MouseAltFormMovement = false;
                 InputSettings.StylusMovementBoost = true;
                 InputSettings.Load();
-                Require(!InputSettings.MouseMovementBoost && !InputSettings.StylusMovementBoost,
-                    "movement boost settings round trip");
+                Require(!InputSettings.MouseMovementBoost && InputSettings.MouseAltFormMovement
+                        && !InputSettings.StylusMovementBoost,
+                    "movement gesture settings round trip");
 
                 File.WriteAllText(path, "alt_swipe_sensitivity=1.75\n");
                 InputSettings.Load();
@@ -813,6 +828,8 @@ namespace MphRead.Mods.Input
                     "reset restores ordinary mouse defaults");
                 Require(InputSettings.MouseMovementBoost && InputSettings.StylusMovementBoost,
                     "reset restores movement-triggered boost defaults");
+                Require(!InputSettings.MouseAltFormMovement,
+                    "reset keeps optional mouse alt-form movement disabled");
                 Require(InputSettings.AltSwipeSensitivity == 1,
                     "reset restores alt swipe sensitivity");
                 Require(Math.Abs(StylusZone.CursorOpacity - StylusZone.DefaultCursorOpacity) < 0.0001f
