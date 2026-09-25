@@ -21,7 +21,7 @@ internal static class Protocol19Tests
         Directory.CreateDirectory(root);
         try
         {
-            Codecs(); FormEpisodes(); Timing(); Aggregation(); Pipeline(root);
+            Codecs(); FormEpisodes(); Timing(); Aggregation(); ConfigDefaults(root); Pipeline(root); MatchRollover(root);
             Console.WriteLine($"PASS: {_checks} Protocol 19 combat/telemetry checks"); return 0;
         }
         catch (Exception ex) { Console.WriteLine(ex); return 1; }
@@ -149,6 +149,52 @@ internal static class Protocol19Tests
             slow ? "slow HTTP timeout retains retry without simulation work" : "HTTP 500 retains local summary with exponential retry");
     }
     private static TelemetryHeader Header() => new(1, 19, Guid.NewGuid().ToString("N"), "test", "test", "test", "Battle", "test-room", 8);
+    private static void ConfigDefaults(string root)
+    {
+        string? before = Environment.GetEnvironmentVariable("PRIME_TELEMETRY_CONFIG");
+        string file = Path.Combine(root, "partial-config.json");
+        try
+        {
+            File.WriteAllText(file, "{\"detail\":\"Study\",\"upload\":true}");
+            Environment.SetEnvironmentVariable("PRIME_TELEMETRY_CONFIG", file);
+            var loaded = NetTelemetryConfig.Load();
+            Check(loaded == new NetTelemetryConfig { Detail = TelemetryDetail.Study, Upload = true },
+                "partial JSON preserves all defaults including token environment, queue, retention and upload bounds");
+            File.WriteAllText(file, "{\"enabled\":false,\"localRaw\":false,\"queueCapacity\":8192}");
+            loaded = NetTelemetryConfig.Load();
+            Check(!loaded.Enabled && !loaded.LocalRaw && loaded.QueueCapacity == 8192
+                && loaded.TokenEnvironmentVariable == "PRIME_TELEMETRY_TOKEN", "explicit false and capacity overrides survive partial config");
+        }
+        finally { Environment.SetEnvironmentVariable("PRIME_TELEMETRY_CONFIG", before); }
+    }
+    private static void MatchRollover(string root)
+    {
+        using var gate = new ManualResetEventSlim();
+        var config = new NetTelemetryConfig { Directory = Path.Combine(root, "rollover") };
+        var blocked = new NetTelemetryWriter(config, Header(), _ => { gate.Wait(); return Stream.Null; });
+        var second = new NetTelemetryWriter(config, Header(), _ => { gate.Wait(); return Stream.Null; });
+        var retired = (NetTelemetryWriter?[])typeof(ProductionTelemetry).GetField("_retired", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+        try
+        {
+            retired[0] = blocked;
+            ProductionTelemetry.Configure(config);
+            ProductionTelemetry.Begin("test", "Battle", 8);
+            Check(ProductionTelemetry.Enabled, "next match records while previous writer drains");
+            ProductionTelemetry.End();
+            retired[1]?.WaitForExit(3000);
+            retired[1] = second;
+            ProductionTelemetry.Begin("test", "Battle", 8);
+            Check(!ProductionTelemetry.Enabled, "two stalled writers cap match rollover without waiting");
+        }
+        finally
+        {
+            gate.Set(); blocked.Stop(); second.Stop();
+            ProductionTelemetry.Shutdown();
+            blocked.WaitForExit(3000); second.WaitForExit(3000);
+            Array.Clear(retired);
+            ProductionTelemetry.Configure(new NetTelemetryConfig { Enabled = false });
+        }
+    }
     private static void Pipeline(string root)
     {
         var config = new NetTelemetryConfig { Directory = root, Detail = TelemetryDetail.Study, QueueCapacity = 8192 };

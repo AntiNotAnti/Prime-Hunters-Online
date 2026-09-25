@@ -46,7 +46,9 @@ Dedicated servers default to Aggregate telemetry with local storage and no
 upload. Set `PRIME_TELEMETRY_CONFIG` to a JSON file using
 [`telemetry.example.json`](telemetry.example.json). Use `-notelemetry` to disable,
 `-netstudy` for per-event research capture, or `-netstudyverbose` for developer
-capture. Off takes precedence. Malformed configuration disables recording.
+capture. Off takes precedence. Malformed configuration disables recording. Omitted JSON
+properties preserve defaults, including the token environment-variable name,
+queue capacity, retention, timeout and disk/upload caps.
 Verbose currently records the same production events as Study; the independent
 `PRIME_CONTINUOUS_TRACE` developer ring can supply additional target geometry.
 
@@ -61,11 +63,12 @@ Existing opt-in debug logs are separate from this telemetry subsystem.
 Simulation emits a value struct into a preallocated ring (8,192–32,768 entries;
 default 16,384). A failed non-waiting lock attempt or a full ring drops the event.
 The simulation never serializes JSON, opens a telemetry file, waits for a writer,
-or performs an HTTP request. A single background writer owns compression,
+or performs an HTTP request. A background writer per recorded match owns compression,
 aggregation, retention and optional uploads. Ending a match only completes the
 queue; process shutdown gives the worker a bounded 500 ms opportunity to drain.
-An unusually stalled prior writer causes the next recording to be skipped,
-rather than creating an unbounded number of writer threads.
+One previous writer may drain/upload while the next match records. Two unfinished
+writers are the hard limit; a third recording is skipped while both remain
+stalled. Shutdown shares one 500 ms budget across these workers.
 
 The writer streams `telemetry/YYYY-MM-DD/match-<random>.jsonl.gz` and produces a
 `.summary.json`. Every header includes schema, protocol, build metadata,
@@ -117,7 +120,9 @@ Lag timing shares one evaluator across beam launch (including Imperialist and
 historical area mechanics), claim evaluation and historical contact. Requested
 fractional ACK time and recovered press age remain intact. Connection bounds are
 shadow observations only; claim age/grace rules are not replaced by those bounds.
-Timing samples and later impact/rescue observations are distinct, so multiple
+Claim rescue measurements preserve the connection window and historical
+displacement at claim admission, so arbitration grace is not mislabeled as
+requested rewind. Timing samples and later impact/rescue observations are distinct, so multiple
 hits from one projectile do not multiply the shot timing denominator. RTT buckets
 are 0–50, 50–100, 100–150, 150–200, 200–250, 250–300, 300–400 and 400+ ms,
 plus unknown. Jitter buckets are 0–10, 10–25, 25–50, 50–80 and 80+ ms, plus unknown.

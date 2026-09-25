@@ -43,8 +43,8 @@ Description={description}
 After=network.target
 [Service]
 User={user}
-WorkingDirectory={q(runtime)}
-EnvironmentFile={q(env)}
+WorkingDirectory={runtime}
+EnvironmentFile={env}
 Environment=PROJECT_PRIME_USER_DATA={q(root/'state')}
 Environment=PRIME_TELEMETRY_CONFIG={q(root/'state/telemetry.json')}
 ExecStart={command}

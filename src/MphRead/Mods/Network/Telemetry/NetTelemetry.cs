@@ -5,7 +5,8 @@ namespace MphRead.Mods.Network.Telemetry;
 
 public static class ProductionTelemetry
 {
-    private static NetTelemetryWriter? _writer, _retired;
+    private static NetTelemetryWriter? _writer;
+    private static readonly NetTelemetryWriter?[] _retired = new NetTelemetryWriter?[2];
     private static NetTelemetryConfig _config = new() { Enabled = false };
     public static void Configure(NetTelemetryConfig config) => _config = config;
     public static bool Enabled => _writer != null;
@@ -13,7 +14,12 @@ public static class ProductionTelemetry
     public static void Begin(string map, string mode, int players)
     {
         End();
-        if (!_config.Enabled || _config.Detail == TelemetryDetail.Off || _retired is { Finished: false }) return;
+        if (!_config.Enabled || _config.Detail == TelemetryDetail.Off) return;
+        int retiring = 0;
+        foreach (var prior in _retired) if (prior is { Finished: false }) retiring++;
+        // Permit one previous match to drain/upload while the new match records.
+        // Two stalled writers are the hard cap; gameplay never waits for either.
+        if (retiring >= 2) return;
         try
         {
             var assembly = typeof(ProductionTelemetry).Assembly;
@@ -34,7 +40,20 @@ public static class ProductionTelemetry
     public static void End()
     {
         var writer = Interlocked.Exchange(ref _writer, null);
-        if (writer != null) { writer.Stop(); _retired = writer; }
+        if (writer != null)
+        {
+            writer.Stop();
+            for (int i = 0; i < _retired.Length; i++)
+                if (_retired[i] == null || _retired[i]!.Finished) { _retired[i] = writer; break; }
+        }
     }
-    public static void Shutdown() { End(); _retired?.WaitForExit(500); }
+    public static void Shutdown()
+    {
+        End(); long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        foreach (var writer in _retired)
+        {
+            int remaining = Math.Max(0, 500 - (int)System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            if (remaining > 0) writer?.WaitForExit(remaining);
+        }
+    }
 }

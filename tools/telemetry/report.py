@@ -98,7 +98,7 @@ $('timing').innerHTML=table(['Metric (ms, except form frames)','Samples','Mean',
 const weapons=''' + json.dumps(WEAPONS) + ''';
 $('lag').innerHTML=table(['Weapon','RTT','Jitter','Shots','Requested mean; p50/p95/p99 ranges','Plausible mean; p50/p95/p99 ranges','Hits outside/observed (%)','Rescues outside/observed (%)','Displacement mean/max'],s.lagComp.map(v=>[weapons[v.weapon]??v.weapon,rtt[v.rttBucket],jitter[v.jitterBucket],n(v.requested.count),n(v.requested.mean)+'; '+quantiles(v.requested),n(v.plausible.mean)+'; '+quantiles(v.plausible),n(v.hitsOutside)+' / '+n(v.hitsInside===null?null:v.hitsInside+v.hitsOutside)+' ('+rate(v.hitsOutside,v.hitsInside===null?null:v.hitsInside+v.hitsOutside)+')',n(v.rescuesOutside)+' / '+n(v.rescuesInside===null?null:v.rescuesInside+v.rescuesOutside)+' ('+rate(v.rescuesOutside,v.rescuesInside===null?null:v.rescuesInside+v.rescuesOutside)+')',n(v.displacement.mean)+' / '+n(v.displacement.maximum)]));
 $('quality').innerHTML=table(['Measure','Value'],[['Dropped ticks',n(s.droppedTicks)],['Writer failures',n(s.writerFailures)],['Unknown shadow geometry',n(s.shadowOutcomes?.[6])],['Settled reported predictions',n(s.combat?.settledPredictions)],['Damage corrections',n(s.combat?.damageCorrections)],['Health corrections',n(s.combat?.healthCorrections)],['Headshot corrections',n(s.combat?.headshotCorrections)],['Claim rescued',n(s.claims?.[0])],['Claim already resolved',n(s.claims?.[1])],['Claim rescue rate',rate(s.claims?.[0],s.claims?.reduce((a,b)=>a+b,0))],['Claim rejection rate',rate(s.claims?.slice(2,13).reduce((a,b)=>a+b,0),s.claims?.reduce((a,b)=>a+b,0))]]);
-$('sources').textContent='Cohort: '+c.key+'; maps: '+s.maps.join(', ')+'. Excluded invalid files: '+data.rejected.length+'; duplicate uploads: '+data.duplicates+'.';}
+$('sources').textContent='Cohort: '+c.key+'; maps: '+s.maps.join(', ')+'. Excluded invalid files: '+data.rejected.length+'; duplicate uploads: '+data.duplicates+'; empty server sessions excluded: '+(data.excludedEmptyMatches??0)+'.';}
 data.cohorts.forEach((c,i)=>{let o=document.createElement('option');o.value=i;o.textContent=c.key;$('cohort').append(o)});$('cohort').onchange=show;show();if(!data.cohorts.length)$('coverage').textContent='No valid match summaries. No study conclusions are available.';
 </script></html>'''
 
@@ -106,9 +106,11 @@ data.cohorts.forEach((c,i)=>{let o=document.createElement('option');o.value=i;o.
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('directory',type=Path);p.add_argument('--output',type=Path,required=True);p.add_argument('--minimum-matches',type=int,default=1000);p.add_argument('--title',default='Project Prime network study');a=p.parse_args()
     matches,rejected,duplicates=read_matches(a.directory);groups=defaultdict(list)
+    active=[m for m in matches if m['network'][0]>0 or m['combat'][0]>0]
+    excluded_empty=len(matches)-len(active);matches=active
     for m in matches:
         h=m['header'];groups[f"Protocol {h['protocol']} · schema {h['schema']} · {h['buildCommit']}"].append(m)
-    data={'cohorts':[{'key':k,'summary':summarize(v)} for k,v in sorted(groups.items())], 'rejected':rejected,'duplicates':duplicates,'minimumMatches':max(1,a.minimum_matches)}
+    data={'cohorts':[{'key':k,'summary':summarize(v)} for k,v in sorted(groups.items())], 'rejected':rejected,'duplicates':duplicates,'minimumMatches':max(1,a.minimum_matches),'excludedEmptyMatches':excluded_empty}
     a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(render(data,a.title));a.output.with_suffix('.json').write_text(json.dumps(data,indent=2,allow_nan=False)+'\n')
     print(f'{len(matches)} valid matches, {len(groups)} build cohorts, {len(rejected)} rejected files, {duplicates} duplicate uploads; wrote {a.output}')
 

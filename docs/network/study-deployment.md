@@ -22,7 +22,7 @@ passwordless sudo, using an existing lawful game-asset `paths.txt`:
 ```sh
 python3 install-study.py --root /home/ubuntu/projectprime-study \
   --runtime /home/ubuntu/projectprime-study/runtime \
-  --paths /home/ubuntu/fruityprime-server/state/paths.txt --open-firewall
+  --paths /home/ubuntu/fruityprime-server/current/paths.txt --open-firewall
 ```
 
 Defaults: gameplay UDP 27921; collector HTTP 127.0.0.1:8099. The collector is not

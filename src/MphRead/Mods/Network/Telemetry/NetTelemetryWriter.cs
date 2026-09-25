@@ -93,7 +93,13 @@ public sealed class NetTelemetryWriter
                     File.WriteAllText(summaryPath, JsonSerializer.Serialize(summary, TelemetryJsonContext.Default.TelemetrySummary));
                     if (_config.Upload) NetTelemetryUpload.Run(_config, summaryPath, () => Interlocked.Increment(ref _uploadFailures));
                 }
-                catch (Exception) { Interlocked.Increment(ref _failures); }
+                catch (Exception ex)
+                {
+                    Interlocked.Increment(ref _failures);
+                    // Background-only diagnostic. Do not print exception messages,
+                    // configuration, URLs or headers that could contain credentials.
+                    Console.Error.WriteLine($"[telemetry] summary/upload failed: {ex.GetType().Name}\n{ex.StackTrace}");
+                }
             }
         }
         catch (Exception) { Interlocked.Increment(ref _failures); }
