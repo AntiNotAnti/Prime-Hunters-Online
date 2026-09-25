@@ -85,7 +85,7 @@ namespace MphRead.Entities
             samples[5] = new(yaw, inset.MaxPitch);
             for (int i = 0; i < samples.Length; i++)
             {
-                if (AimAssistRegionRayVisible(target, samples[i], lower, upper))
+                if (AssistRegionRayVisible(target, samples[i], lower, upper))
                 {
                     return true;
                 }
