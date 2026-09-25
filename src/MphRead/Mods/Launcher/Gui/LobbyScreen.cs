@@ -1177,6 +1177,14 @@ namespace MphRead.Mods.Launcher.Gui
                 || session.RuleFlags != _submittedRules)
                 return;
 
+            // Persist only after the server publishes the exact submitted match.
+            // This makes a completely new hosted/dedicated lobby start with the
+            // last accepted clock/goal instead of hardcoded 7:00/7 defaults.
+            LauncherPrefs.LastLobbyMode = submitted.Mode;
+            LauncherPrefs.LastLobbyTimeLimitSeconds = submitted.TimeLimitSeconds;
+            LauncherPrefs.LastLobbyGoal = submitted.PointGoal;
+            LauncherPrefs.Save();
+
             _submittedMatch = null;
             _saveFailed = false;
             // A player can make a newer edit while the previous command is

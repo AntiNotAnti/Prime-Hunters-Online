@@ -143,11 +143,52 @@ namespace MphRead.Mods.Launcher.Gui
                         || TimeSpan.TryParseExact(value, @"mm\:ss", null, out _);
                     if (!int.TryParse(score.Value, out int points) || points < 0 || points > 999 || !Duration(time.Value) || !Duration(objective.Value))
                     { error.Text = "Use a point goal from 0–999 and durations as m:ss."; return; }
-                    _settings.PointGoal = score.Value; _settings.TimeLimit = time.Value; _settings.TimeGoal = objective.Value;
-                    _settings.FriendlyFire = fire.On ? "on" : "off"; _settings.AffinityWeapons = affinity.On ? "on" : "off";
-                    _settings.ShadowFreeze = freeze.On ? "on" : "off"; _settings.SpawnProtection = spawnProtection.On ? "on" : "off";
+                    // The shell reloads settings.json after every completed or abandoned
+                    // match. These controls used to change only this MenuSettings instance,
+                    // so the first match saw the edit and the next reload restored 7:00/7.
+                    // Treat APPLY RULES like the main settings screen: persist first, then
+                    // keep the runtime settings facade in sync with the committed values.
+                    string oldPointGoal = _settings.PointGoal;
+                    string oldTimeLimit = _settings.TimeLimit;
+                    string oldTimeGoal = _settings.TimeGoal;
+                    string oldFriendlyFire = _settings.FriendlyFire;
+                    string oldAffinityWeapons = _settings.AffinityWeapons;
+                    string oldShadowFreeze = _settings.ShadowFreeze;
+                    string oldSpawnProtection = _settings.SpawnProtection;
+                    string oldHunterRadar = _settings.HunterRadar;
+                    string oldDamageLevel = _settings.DamageLevel;
+                    _settings.PointGoal = score.Value;
+                    _settings.TimeLimit = time.Value;
+                    _settings.TimeGoal = objective.Value;
+                    _settings.FriendlyFire = fire.On ? "on" : "off";
+                    _settings.AffinityWeapons = affinity.On ? "on" : "off";
+                    _settings.ShadowFreeze = freeze.On ? "on" : "off";
+                    _settings.SpawnProtection = spawnProtection.On ? "on" : "off";
                     _settings.HunterRadar = radar.On ? "on" : "off";
-                    _settings.DamageLevel = damage.Value; _overlays.Close();
+                    _settings.DamageLevel = damage.Value;
+                    try
+                    {
+                        GameState.CommitSettings(_settings);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Do not leave a one-match-only in-memory configuration behind if
+                        // the disk write fails. The error stays in this sheet so the player
+                        // can retry or cancel without silently diverging from settings.json.
+                        _settings.PointGoal = oldPointGoal;
+                        _settings.TimeLimit = oldTimeLimit;
+                        _settings.TimeGoal = oldTimeGoal;
+                        _settings.FriendlyFire = oldFriendlyFire;
+                        _settings.AffinityWeapons = oldAffinityWeapons;
+                        _settings.ShadowFreeze = oldShadowFreeze;
+                        _settings.SpawnProtection = oldSpawnProtection;
+                        _settings.HunterRadar = oldHunterRadar;
+                        _settings.DamageLevel = oldDamageLevel;
+                        error.Text = $"Could not save rules: {ex.Message}";
+                        return;
+                    }
+                    Mods.GameSettings.Apply(_settings);
+                    _overlays.Close();
                 }, true)))), PrimeModalSize.Medium);
         }
         private static string RoomName(string key) => Metadata.RoomMetadata.TryGetValue(key, out var meta) ? meta.InGameName ?? key : key;
