@@ -115,7 +115,7 @@ namespace MphRead.Mods.Launcher.Gui
                 if(name=="Navigation"){_=Navigation();return;}
                 _viewport.Wireframe=name=="Wireframe";_viewport.Collision=name=="Collision";_viewport.KillPlane=name=="Kill plane";_viewport.InvalidateVisual();
             });
-            Choice(new[]{"Inspector","Environment","Materials","Assets & music","Snapping","Arrange","Layers","Map health","Navigation path","Statistics"},ShowInspectorPage);
+            Choice(new[]{"Inspector","Environment","Materials","Assets & music","Snapping","Arrange","Layers","Map health","Navigation path","Statistics"},name=>ShowInspectorPage(name));
             AddButton(tools,"Frame all",()=>_viewport?.FrameAll());AddButton(tools,"Focus",()=>_viewport?.FrameSelection());
             AddButton(tools,"Copy",()=>_document?.CopySelection());AddButton(tools,"Paste",()=>_document?.PasteClipboard());
             AddButton(tools,"Duplicate",()=>EditSelection("Duplicate",MapObjects.Duplicate));AddButton(tools,"Delete",()=>EditSelection("Delete",MapObjects.Delete));
