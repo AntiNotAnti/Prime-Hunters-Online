@@ -1162,10 +1162,11 @@ namespace MphRead.Mods.Network
         public const int Size = 4 + 4 + 12 + 1 + EdgeHistoryBytes + 12 + 2 + 2 + 4 + 1 + 14;
 
         /// <summary>
-        /// Ten bytes appended <b>past</b> <see cref="Size"/>. The first eight
+        /// Fourteen bytes appended <b>past</b> <see cref="Size"/>. The first eight
         /// carry the state that decides what this player's next shot is worth;
-        /// protocol 20 appends two signed controller movement axes so remote
-        /// simulation and replay preserve analogue movement magnitude.
+        /// protocol 20 appends two signed controller movement axes and protocol 21
+        /// appends the owner's exact continuous-weapon firing tick so packet
+        /// arrival timing never has to invent Shock Coil phase.
         ///
         /// <b>Why it is sent at all.</b> Everything else about a shot was
         /// re-derived on the authority from the buttons in this packet, and
@@ -1188,7 +1189,9 @@ namespace MphRead.Mods.Network
         /// protocol peers; short records are supported only by offline inspection.
         /// </summary>
         public const int ShotStateSize = 8;
-        public const int StateSize = ShotStateSize + 2;
+        public const int AnalogStateSize = 2;
+        public const int ContinuousTickSize = 4;
+        public const int StateSize = ShotStateSize + AnalogStateSize + ContinuousTickSize;
         public const int FullSize = Size + StateSize;
 
         /// <summary>
@@ -1227,6 +1230,14 @@ namespace MphRead.Mods.Network
         public sbyte MoveX;
         public sbyte MoveY;
         public bool HasAnalogMove;
+
+        /// <summary>
+        /// Owner-authored logical firing tick for continuous player weapons.
+        /// Zero means no continuous evaluation was authored in this intent.
+        /// Protocol 21 carries this after the protocol-20 analogue axes.
+        /// </summary>
+        public uint ContinuousFireTick;
+        public bool HasContinuousFireTick;
 
         public static sbyte PackMoveAxis(float value)
         {
@@ -1382,10 +1393,14 @@ namespace MphRead.Mods.Network
                 BinaryPrimitives.WriteUInt16LittleEndian(dest[(Size + 4)..], Target.Generation);
                 BinaryPrimitives.WriteUInt16LittleEndian(dest[(Size + 6)..], Target.LifeId);
             }
-            if (dest.Length >= FullSize)
+            if (dest.Length >= Size + ShotStateSize + AnalogStateSize)
             {
                 dest[Size + 8] = unchecked((byte)MoveX);
                 dest[Size + 9] = unchecked((byte)MoveY);
+            }
+            if (dest.Length >= FullSize)
+            {
+                BinaryPrimitives.WriteUInt32LittleEndian(dest[(Size + 10)..], ContinuousFireTick);
             }
         }
 
@@ -1429,9 +1444,12 @@ namespace MphRead.Mods.Network
                 Target = src.Length >= Size + ShotStateSize ? new NetTargetIdentity(src[Size + 3],
                     BinaryPrimitives.ReadUInt16LittleEndian(src[(Size + 4)..]),
                     BinaryPrimitives.ReadUInt16LittleEndian(src[(Size + 6)..])) : default,
-                HasAnalogMove = src.Length >= FullSize,
-                MoveX = src.Length >= FullSize ? unchecked((sbyte)src[Size + 8]) : (sbyte)0,
-                MoveY = src.Length >= FullSize ? unchecked((sbyte)src[Size + 9]) : (sbyte)0
+                HasAnalogMove = src.Length >= Size + ShotStateSize + AnalogStateSize,
+                MoveX = src.Length >= Size + ShotStateSize + AnalogStateSize ? unchecked((sbyte)src[Size + 8]) : (sbyte)0,
+                MoveY = src.Length >= Size + ShotStateSize + AnalogStateSize ? unchecked((sbyte)src[Size + 9]) : (sbyte)0,
+                HasContinuousFireTick = src.Length >= FullSize,
+                ContinuousFireTick = src.Length >= FullSize
+                    ? BinaryPrimitives.ReadUInt32LittleEndian(src[(Size + 10)..]) : 0
             };
         }
     }
@@ -2139,10 +2157,12 @@ namespace MphRead.Mods.Network
         /// adds three canonical turret-state bytes and exact CombatAck outcomes.
         /// Version 20 appends two signed movement-axis bytes to IntentPacket so
         /// controller magnitude reaches authority, observers and replay instead of
-        /// being reconstructed from digital direction bits. Mixed v19/v20 peers
-        /// must be refused because the realtime intent length changed.
+        /// being reconstructed from digital direction bits. Version 21 appends the
+        /// owner's exact continuous firing tick, removing packet-arrival phase
+        /// reconstruction from Shock Coil damage/ammo cadence. Mixed peers must be
+        /// refused because the realtime intent length changed.
         /// </summary>
-        public const int ProtocolVersion = 20;
+        public const int ProtocolVersion = 21;
         /// <summary>
         /// Frames between intent packets. One, so every frame.
         ///

@@ -9,8 +9,8 @@ void Check(bool passed, string name)
 }
 
 var clocks = new ContinuousWeaponPhase(2);
-ulong Remote(ulong scene, uint frame, uint age, int slot = 0)
-    => clocks.Resolve(slot, scene, true, false, 9000, true, frame, age, out _);
+ulong Remote(ulong scene, uint frame, uint age, int slot = 0, uint sourceTick = 0)
+    => clocks.Resolve(slot, scene, true, false, 9000, true, frame, age, sourceTick, out _, out _);
 
 // A late accepted intent re-anchors the old formula: 100,101,102,102.
 // This clock must keep moving through the missing Spawn and packet jitter.
@@ -34,7 +34,7 @@ clocks.Observe(0, 1010, true, true);
 Check(Remote(1010, 300, 0) == 300, "new stream seeds from its first fresh intent");
 clocks.Observe(0, 1011, true, false); // stale intent, even without a Spawn
 ulong stale = clocks.Resolve(0, 1011, true, false, 9000, true, 300,
-    ContinuousWeaponPhase.MaxIntentAge + 1, out bool staleShared);
+    ContinuousWeaponPhase.MaxIntentAge + 1, 0, out bool staleShared, out _);
 clocks.Observe(0, 1012, true, true);
 Check(stale == 1011 && !staleShared && Remote(1012, 310, 0) == 310,
     "stale fallback and freshness recovery start a new stream");
@@ -45,10 +45,10 @@ clocks.Reset();
 Check(Remote(1030, 700, 0) == 700, "room/session reset forgets every phase");
 
 clocks.Observe(0, 1031, false, true);
-ulong offline = clocks.Resolve(0, 91, false, true, 9000, true, 400, 0,
-    out bool offlineShared);
-ulong invalid = clocks.Resolve(0, 92, true, false, 9000, false, 400, 0,
-    out bool invalidShared);
+ulong offline = clocks.Resolve(0, 91, false, true, 9000, true, 400, 0, 0,
+    out bool offlineShared, out _);
+ulong invalid = clocks.Resolve(0, 92, true, false, 9000, false, 400, 0, 0,
+    out bool invalidShared, out _);
 Check(offline == 91 && !offlineShared && invalid == 92 && !invalidShared,
     "offline and invalid intent paths retain scene timing");
 
@@ -61,8 +61,15 @@ Check(nearWrap == uint.MaxValue && pastWrap == (ulong)uint.MaxValue + 2,
     "held phase advances monotonically through intent frame rollover");
 
 clocks.Reset();
-ulong dedicated = clocks.Resolve(0, 2500, true, false, 9000, true, 401, 1, out _, receivedBeforeStep: true);
-Check(dedicated == 401, "dedicated pre-step arrival does not shift source phase by one tick");
+ulong dedicated = clocks.Resolve(0, 2500, true, false, 9000, true, 401, 1, 0, out _, out _, receivedBeforeStep: true);
+Check(dedicated == 401, "dedicated pre-step arrival does not shift legacy source phase by one tick");
+
+clocks.Reset();
+ulong explicitA = clocks.Resolve(0, 2600, true, false, 9000, true, 500, 0, 700, out bool explicitShared, out bool freshA);
+ulong explicitRepeat = clocks.Resolve(0, 2601, true, false, 9000, true, 500, 1, 700, out _, out bool freshRepeat);
+ulong explicitB = clocks.Resolve(0, 2602, true, false, 9000, true, 502, 0, 702, out _, out bool freshB);
+Check(explicitA == 700 && explicitRepeat == 700 && explicitB == 702 && explicitShared && freshA && !freshRepeat && freshB,
+    "protocol 21 source ticks are exact and repeated intents cannot invent damage ticks");
 clocks.Reset();
 int[] positions = new int[32];
 for (uint step = 0; step < 64; step++)

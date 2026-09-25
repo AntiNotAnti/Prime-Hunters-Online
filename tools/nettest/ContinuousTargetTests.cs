@@ -10,16 +10,21 @@ internal static class ContinuousTargetTests
     {
         try
         {
-            Check(NetConfig.ProtocolVersion == 20 && IntentPacket.FullSize == 98, "protocol 20 layout");
-            Span<byte> bytes = stackalloc byte[98];
+            Check(NetConfig.ProtocolVersion == 21 && IntentPacket.FullSize == 102, "protocol 21 layout");
+            Span<byte> bytes = stackalloc byte[102];
             foreach (byte slot in new byte[] { 0x80, 0x81, 0x88 })
             {
                 var identity = new NetTargetIdentity(slot, slot == 0x80 ? (ushort)0 : ushort.MaxValue, slot == 0x80 ? (ushort)0 : (ushort)42);
-                var packet = new IntentPacket { Target = identity, ChargeLevel = 50, BoostDamage = 10, ShotFlags = 3 };
+                var packet = new IntentPacket { Target = identity, ChargeLevel = 50, BoostDamage = 10, ShotFlags = 3,
+                    MoveX = 12, MoveY = -13, ContinuousFireTick = 0x10203040,
+                    HasAnalogMove = true, HasContinuousFireTick = true };
                 packet.Write(bytes);
                 Check(bytes[91] == slot && bytes[92] == (byte)identity.Generation && bytes[94] == (byte)identity.LifeId,
                     "independent wire offsets");
-                Check(IntentPacket.Read(bytes).Target == identity && identity.IsWellFormed, "fenced identity roundtrip");
+                var decoded = IntentPacket.Read(bytes);
+                Check(decoded.Target == identity && identity.IsWellFormed
+                    && decoded.ContinuousFireTick == 0x10203040 && decoded.HasContinuousFireTick,
+                    "fenced identity and firing tick roundtrip");
             }
             Check(!default(NetTargetIdentity).IsSupplied && NetTargetIdentity.None.IsSupplied && !NetTargetIdentity.None.HasPlayer,
                 "missing differs from explicit none");

@@ -22,6 +22,8 @@ namespace MphRead.Mods.Network
             // same pose and ray, not the values captured before this simulation step.
             _continuousIntent.Aim = player.ModGunVector;
             _continuousIntent.Position = player.Position;
+            _continuousIntent.ContinuousFireTick = player.ModContinuousFireTick;
+            _continuousIntent.HasContinuousFireTick = true;
             player.SceneServices.PlayerReplication.StampAcknowledgement(ref _continuousIntent);
         }
 
@@ -576,7 +578,10 @@ namespace MphRead.Mods.Network
                 if (_continuousIntentFrame == NetSession.NetFrame && NetSession.LocalSlot >= 0
                     && NetSession.LocalSlot < PlayerEntity.Players.Count)
                 {
-                    _continuousIntent.Target = PlayerEntity.Players[NetSession.LocalSlot].ModContinuousNetworkTarget;
+                    var owner = PlayerEntity.Players[NetSession.LocalSlot];
+                    _continuousIntent.Target = owner.ModContinuousNetworkTarget;
+                    _continuousIntent.ContinuousFireTick = owner.ModContinuousFireTick;
+                    _continuousIntent.HasContinuousFireTick = true;
                     NetSession.SendIntent(_continuousIntent);
                 }
             }

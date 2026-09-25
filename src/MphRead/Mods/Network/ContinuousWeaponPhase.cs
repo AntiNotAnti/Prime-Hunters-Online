@@ -11,7 +11,9 @@ namespace MphRead.Mods.Network
         {
             public ulong Phase;
             public ulong SceneFrame;
+            public uint SourceTick;
             public bool Valid;
+            public bool Explicit;
         }
 
         private readonly Clock[] _clocks;
@@ -48,7 +50,7 @@ namespace MphRead.Mods.Network
                 ResetSlot(slot);
                 return;
             }
-            if ((uint)slot < (uint)_clocks.Length)
+            if ((uint)slot < (uint)_clocks.Length && !_clocks[slot].Explicit)
             {
                 Advance(ref _clocks[slot], sceneFrame);
             }
@@ -69,9 +71,10 @@ namespace MphRead.Mods.Network
         }
 
         internal ulong Resolve(int slot, ulong sceneFrame, bool networked, bool localOwner,
-            uint netFrame, bool intentValid, uint intentFrame, uint intentAge, out bool shared,
-            bool receivedBeforeStep = false)
+            uint netFrame, bool intentValid, uint intentFrame, uint intentAge, uint continuousFireTick,
+            out bool shared, out bool freshTick, bool receivedBeforeStep = false)
         {
+            freshTick = true;
             if (networked && localOwner && netFrame != 0)
             {
                 shared = true;
@@ -81,19 +84,34 @@ namespace MphRead.Mods.Network
                 && intentValid && intentFrame != 0 && intentAge <= MaxIntentAge)
             {
                 ref Clock clock = ref _clocks[slot];
+                if (continuousFireTick != 0)
+                {
+                    bool newer = !clock.Valid || !clock.Explicit
+                        || SequenceMath.Newer(continuousFireTick, clock.SourceTick);
+                    if (newer)
+                    {
+                        clock.SourceTick = continuousFireTick;
+                        clock.Phase = continuousFireTick;
+                        clock.SceneFrame = sceneFrame;
+                        clock.Valid = true;
+                        clock.Explicit = true;
+                    }
+                    freshTick = newer;
+                    shared = true;
+                    return clock.Phase;
+                }
+
+                clock.Explicit = false;
                 Advance(ref clock, sceneFrame);
                 if (!clock.Valid)
                 {
-                    // Dedicated input is timestamped before NetSession advances its clock.
-                    // That enclosing step is the first consumption of this report, not
-                    // an extra source firing tick. Keep the freshness age unchanged.
+                    // Legacy/offline inspection only. Protocol 21 live peers always
+                    // provide ContinuousFireTick for Shock Coil.
                     uint elapsed = receivedBeforeStep && intentAge > 0 ? intentAge - 1 : intentAge;
                     clock.Phase = (ulong)intentFrame + elapsed;
                     clock.SceneFrame = sceneFrame;
                     clock.Valid = true;
                 }
-                // Never re-anchor to a later packet: its arrival jitter can
-                // repeat or skip a parity even when the trigger never lifted.
                 shared = true;
                 return clock.Phase;
             }

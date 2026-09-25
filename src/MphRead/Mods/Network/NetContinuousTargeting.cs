@@ -119,6 +119,7 @@ public static class NetContinuousTargeting
         if (!synchronized)
         {
             owner.ModContinuousNetworkTarget = trace.Selected;
+            owner.ModContinuousFireTick = unchecked((uint)beam.ModContinuousPhase);
             NetHooks.CaptureContinuousShot(owner);
         }
         NetContinuousTargetDiagnostics.Record(beam, trace);
@@ -128,6 +129,7 @@ public static class NetContinuousTargeting
     {
         player.ModContinuousNetworkTarget = NetTargetIdentity.None;
         player.ModContinuousTargetState = default;
+        player.ModContinuousFireTick = 0;
         NetContinuousTargetDiagnostics.EndBurst(player.SlotIndex);
     }
     internal static void Reset()
