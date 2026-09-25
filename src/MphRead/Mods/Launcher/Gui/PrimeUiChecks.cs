@@ -58,6 +58,34 @@ namespace MphRead.Mods.Launcher.Gui
             }
             return lobby;
         }
+        private static void CheckSavedLobbyLimits()
+        {
+            GameMode previousMode = LauncherPrefs.LastLobbyMode;
+            int previousTime = LauncherPrefs.LastLobbyTimeLimitSeconds;
+            int previousGoal = LauncherPrefs.LastLobbyGoal;
+            try
+            {
+                LauncherPrefs.LastLobbyMode = GameMode.Battle;
+                LauncherPrefs.LastLobbyTimeLimitSeconds = 10 * 60;
+                LauncherPrefs.LastLobbyGoal = 25;
+
+                var saved = CreateServerScreen.InitialMatchLimits(GameMode.Battle);
+                Check(saved.TimeLimit == 10 * 60 && saved.PointGoal == 25,
+                    "new lobby reuses the last accepted time and goal");
+
+                var differentMode = CreateServerScreen.InitialMatchLimits(GameMode.Capture);
+                Check(differentMode.TimeLimit == 10 * 60
+                    && differentMode.PointGoal == MatchGoalRules.DefaultValue(GameMode.Capture),
+                    "new lobby keeps the clock but does not leak an incompatible goal across modes");
+            }
+            finally
+            {
+                LauncherPrefs.LastLobbyMode = previousMode;
+                LauncherPrefs.LastLobbyTimeLimitSeconds = previousTime;
+                LauncherPrefs.LastLobbyGoal = previousGoal;
+            }
+        }
+
         private static void CheckInProgressAdmission()
         {
             // Connect already knows the server is InMatch before creating the
@@ -115,6 +143,7 @@ namespace MphRead.Mods.Launcher.Gui
                     Check(WindowMode.Parse("borderless", WindowStartMode.Windowed) == WindowStartMode.BorderlessFullscreen
                         && WindowMode.Parse("1", WindowStartMode.Windowed) == WindowStartMode.BorderlessFullscreen,
                         "legacy borderless preferences remain valid");
+                    CheckSavedLobbyLimits();
                     CheckInProgressAdmission();
                     var shell = Create();
                     var window = new Window { Width = 1280, Height = 720, Content = shell, ShowInTaskbar = false,
