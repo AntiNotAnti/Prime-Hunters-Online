@@ -4020,6 +4020,94 @@ namespace MphRead.Entities
             return new Vector2(x, y);
         }
 
+        private const byte CombatNotificationCategory = 8;
+        private const float CombatNotificationAnchorY = 60;
+        private const float CombatNotificationLineSpacing = 10;
+        private const float CombatNotificationGlyphHeight = 8;
+        private const float CombatNotificationGap = 4;
+        private const float CombatNotificationLifetime = 2.1f;
+        private const float CombatNotificationFadeSeconds = 0.35f;
+        private long _combatNotificationSerial;
+
+        /// <summary>
+        /// Queue one combat-award block in its own HUD lane.
+        ///
+        /// Awards earned by the same kill are rendered as one block instead
+        /// of competing for the same coordinates. A single-line award keeps
+        /// one older block as compact history; multi-line milestone bursts
+        /// take the lane by themselves so Killionaire + Killing Frenzy, for
+        /// example, can never collide with a stale lower-tier medal.
+        /// </summary>
+        internal void QueueCombatNotifications(IReadOnlyList<string> labels)
+        {
+            string[] visibleLabels = labels
+                .Where(label => !String.IsNullOrWhiteSpace(label))
+                .Take(3)
+                .ToArray();
+            if (visibleLabels.Length == 0)
+            {
+                return;
+            }
+
+            string text = String.Join('\n', visibleLabels);
+            Debug.Assert(text.Length < 256);
+            char[] buffer = new char[512];
+            int lineCount = WrapText(text, 220, buffer);
+
+            // A two-line award is already the complete story for this kill.
+            // Clear older medals rather than growing a tower through the
+            // reticle/headshot/native-message regions.
+            int maxVisible = lineCount > 1 ? 1 : 2;
+            List<HudMessage> active = _hudMessageQueue
+                .Where(message => message.IsCombatNotification && message.Lifetime > 0)
+                .OrderByDescending(message => message.CombatSerial)
+                .ToList();
+            for (int i = maxVisible - 1; i < active.Count; i++)
+            {
+                if (i >= 0)
+                {
+                    active[i].Lifetime = 0;
+                    active[i].IsCombatNotification = false;
+                }
+            }
+
+            HudMessage message = _hudMessageQueue
+                .OrderBy(existing => existing.Lifetime)
+                .First();
+            Array.Fill(message.Text, '\0');
+            Array.Copy(buffer, message.Text, message.Text.Length);
+            message.Position = new Vector2(128, CombatNotificationAnchorY);
+            message.MaxWidth = 220;
+            message.FontSize = CombatNotificationLineSpacing;
+            message.Color = new ColorRgba(0x3FEF);
+            message.Alpha = 1;
+            message.Align = Align.Center;
+            message.Category = CombatNotificationCategory;
+            message.Lifetime = CombatNotificationLifetime;
+            message.DialogHide = true;
+            message.IsCombatNotification = true;
+            message.CombatLines = Math.Max(1, lineCount);
+            message.CombatSerial = ++_combatNotificationSerial;
+
+            // Reflow from newest to oldest. Position is the first line's
+            // baseline, so account for each block's own line count before
+            // placing the next block above it.
+            List<HudMessage> lane = _hudMessageQueue
+                .Where(existing => existing.IsCombatNotification && existing.Lifetime > 0)
+                .OrderByDescending(existing => existing.CombatSerial)
+                .Take(maxVisible)
+                .ToList();
+            float bottom = CombatNotificationAnchorY;
+            for (int i = 0; i < lane.Count; i++)
+            {
+                HudMessage current = lane[i];
+                float top = bottom - (current.CombatLines - 1) * CombatNotificationLineSpacing;
+                current.Position = new Vector2(128, top);
+                current.Alpha = i == 0 ? 1f : 0.68f;
+                bottom = top - CombatNotificationGap - CombatNotificationGlyphHeight;
+            }
+        }
+
         public void QueueHudMessage(float x, float y, float duration,
             byte category, int messageId, bool dialogHide = false)
         {
@@ -4084,6 +4172,9 @@ namespace MphRead.Entities
             message.Position = new Vector2(x, y);
             message.MaxWidth = maxWidth;
             message.FontSize = fontSize;
+            message.IsCombatNotification = false;
+            message.CombatLines = 0;
+            message.CombatSerial = 0;
             message.Color = color;
             message.Alpha = alpha;
             message.Align = align;
@@ -4243,9 +4334,15 @@ namespace MphRead.Entities
                         && ((message.Category & 1) == 0 || (_scene.FrameCount & (7 * 2)) <= 3 * 2) // todo: FPS stuff
                         && (!_scene.GameState.DialogPause || !message.DialogHide))
                     {
-                        // todo: support font size
+                        float alpha = message.Alpha;
+                        if (message.IsCombatNotification
+                            && message.Lifetime < CombatNotificationFadeSeconds)
+                        {
+                            alpha *= Math.Clamp(
+                                message.Lifetime / CombatNotificationFadeSeconds, 0, 1);
+                        }
                         DrawText2D(message.Position.X, message.Position.Y, message.Align, palette: 0,
-                            message.Text, message.Color, message.Alpha, fontSpacing: message.FontSize);
+                            message.Text, message.Color, alpha, fontSpacing: message.FontSize);
                     }
                 }
             }
@@ -4263,6 +4360,9 @@ namespace MphRead.Entities
             public Align Align { get; set; }
             public char[] Text { get; } = new char[256];
             public bool DialogHide { get; set; }
+            public bool IsCombatNotification { get; set; }
+            public int CombatLines { get; set; }
+            public long CombatSerial { get; set; }
         }
 
         private IReadOnlyList<HudMessage> _hudMessageQueue => _scene.HudMessages;
