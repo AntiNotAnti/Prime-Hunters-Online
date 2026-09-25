@@ -151,6 +151,70 @@ public static class NetAltHitCheck
             Check(victim.Health == health && NetContactLagComp.HistoryUnavailable > unavailable,
                 "actual delayed contact cannot cross victim respawn");
             NetSession.RemoteIntentValid[0] = false;
+
+            // Noxus regression: exercise the actual authority resolver, not only the
+            // standalone radial geometry helper. PR #98 moved network player contact
+            // out of CheckAltAttackHit1, so a resolver/history failure otherwise turns
+            // the spin into a silent miss.
+            var noxus = PlayerEntity.Players[4];
+            var noxusAttackTime = typeof(PlayerEntity).GetField("_altAttackTime",
+                BindingFlags.NonPublic | BindingFlags.Instance)!;
+            noxus.ModForceForm(true); victim.ModForceForm(false);
+            noxus.ModPlaceAt(new Vector3(0, 5, 10)); victim.ModPlaceAt(new Vector3(1, 5, 10));
+            noxus.Health = victim.Health = 199;
+            typeof(PlayerEntity).GetField("_spawnInvulnTimer", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(victim, (ushort)0);
+            noxusAttackTime.SetValue(noxus, (ushort)(noxus.Values.AltAttackStartup * 2));
+            typeof(PlayerEntity).GetProperty(nameof(PlayerEntity.Flags2))!.SetValue(noxus,
+                noxus.Flags2 | PlayerFlags2.AltAttack);
+            typeof(NetSession).GetProperty(nameof(NetSession.NetFrame))!.SetValue(null, (uint)330);
+            Check(noxus.ModCaptureContactState().Kind == ContactAttackKind.Noxus,
+                "charged Noxus captured by production contact resolver");
+            health = victim.Health;
+            NetContactLagComp.ResolveFrame();
+            Check(victim.Health < health && (ushort)noxusAttackTime.GetValue(noxus)! == 0,
+                "authority applies Noxus spin damage and consumes attack");
+
+            // If the requested ACK frame is absent from the ring entirely, retain the
+            // pre-lag-comp live-authority behavior instead of manufacturing a miss.
+            noxus.ModPlaceAt(new Vector3(0, 5, 10)); victim.ModPlaceAt(new Vector3(1, 5, 10));
+            noxusAttackTime.SetValue(noxus, (ushort)(noxus.Values.AltAttackStartup * 2));
+            typeof(PlayerEntity).GetProperty(nameof(PlayerEntity.Flags2))!.SetValue(noxus,
+                noxus.Flags2 | PlayerFlags2.AltAttack);
+            typeof(NetSession).GetProperty(nameof(NetSession.NetFrame))!.SetValue(null, (uint)340);
+            NetSession.RemoteIntentValid[noxus.SlotIndex] = true;
+            NetSession.RemoteIntents[noxus.SlotIndex] = new IntentPacket { AckFrame = 335 };
+            long noxusFallbacks = NetContactLagComp.HistoryFallbacks;
+            health = victim.Health;
+            NetContactLagComp.ResolveFrame();
+            Check(victim.Health < health && NetContactLagComp.HistoryFallbacks == noxusFallbacks + 1,
+                "Noxus missing history falls back to original live authority contact");
+
+            // A recorded frame that refuses the current victim is not a missing sample:
+            // it is a lifecycle fence. Never use the live fallback across respawn.
+            victim.ModPlaceAt(new Vector3(1, 5, 10));
+            NetUnlagged.Record(350);
+            victim.Spawn(victim.Position, Vector3.UnitZ, Vector3.UnitY, victim.NodeRef, respawn: true);
+            victim.Health = 199;
+            typeof(PlayerEntity).GetField("_spawnInvulnTimer", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(victim, (ushort)0);
+            noxus.ModPlaceAt(new Vector3(0, 5, 10)); victim.ModPlaceAt(new Vector3(1, 5, 10));
+            noxusAttackTime.SetValue(noxus, (ushort)(noxus.Values.AltAttackStartup * 2));
+            typeof(PlayerEntity).GetProperty(nameof(PlayerEntity.Flags2))!.SetValue(noxus,
+                noxus.Flags2 | PlayerFlags2.AltAttack);
+            typeof(NetSession).GetProperty(nameof(NetSession.NetFrame))!.SetValue(null, (uint)355);
+            NetSession.RemoteIntents[noxus.SlotIndex] = new IntentPacket { AckFrame = 350 };
+            noxusFallbacks = NetContactLagComp.HistoryFallbacks;
+            health = victim.Health;
+            NetContactLagComp.ResolveFrame();
+            Check(victim.Health == health && NetContactLagComp.HistoryFallbacks == noxusFallbacks,
+                "Noxus fallback cannot cross victim respawn");
+            NetSession.RemoteIntentValid[noxus.SlotIndex] = false;
+            noxusAttackTime.SetValue(noxus, (ushort)0);
+            typeof(PlayerEntity).GetProperty(nameof(PlayerEntity.Flags2))!.SetValue(noxus,
+                noxus.Flags2 & ~PlayerFlags2.AltAttack);
+            noxus.ModPlaceAt(new Vector3(100, 5, 10));
+
             ImpairmentMatrix(victim);
             for (uint f = 400; f < 500; f++) NetUnlagged.Record(f);
             shooter.ModPlaceAt(new Vector3(100, 5, 10));
