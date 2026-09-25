@@ -13,6 +13,7 @@ namespace MphRead.Mods.Sound
     internal enum CombatFeedbackCue
     {
         ImperialistHeadshot,
+        FirstBlood,
         DoubleKill,
         TripleKill,
         Overkill,
@@ -33,6 +34,7 @@ namespace MphRead.Mods.Sound
     internal readonly record struct CombatFeedbackOption(string Id, string Label);
 
     internal readonly record struct CombatFeedbackAwards(
+        CombatFeedbackCue? FirstBlood,
         CombatFeedbackCue? MultiKill,
         CombatFeedbackCue? LifeStreak);
 
@@ -64,6 +66,7 @@ namespace MphRead.Mods.Sound
                 ["prime"] = "headshot-prime.wav",
                 ["impact"] = "headshot-impact.wav",
                 ["arena"] = "headshot-arena.wav",
+                ["first-blood"] = "first-blood.wav",
                 ["double"] = "double-kill.wav",
                 ["triple"] = "triple-kill.wav",
                 // Retain legacy IDs so old launcher.txt selections still play.
@@ -90,6 +93,7 @@ namespace MphRead.Mods.Sound
         public static string Label(CombatFeedbackCue cue) => cue switch
         {
             CombatFeedbackCue.ImperialistHeadshot => "Imperialist Headshot",
+            CombatFeedbackCue.FirstBlood => "First Blood",
             CombatFeedbackCue.DoubleKill => "Double Kill",
             CombatFeedbackCue.TripleKill => "Triple Kill",
             CombatFeedbackCue.Overkill => "Overkill",
@@ -111,6 +115,7 @@ namespace MphRead.Mods.Sound
         public static string DefaultSelection(CombatFeedbackCue cue) => cue switch
         {
             CombatFeedbackCue.ImperialistHeadshot => "prime",
+            CombatFeedbackCue.FirstBlood => "first-blood",
             CombatFeedbackCue.DoubleKill => "double",
             CombatFeedbackCue.TripleKill => "triple",
             CombatFeedbackCue.Overkill => "overkill",
@@ -158,6 +163,7 @@ namespace MphRead.Mods.Sound
         public static string GetSelection(CombatFeedbackCue cue) => cue switch
         {
             CombatFeedbackCue.ImperialistHeadshot => LauncherPrefs.ImperialistHeadshotSound,
+            CombatFeedbackCue.FirstBlood => LauncherPrefs.FirstBloodSound,
             CombatFeedbackCue.DoubleKill => LauncherPrefs.DoubleKillSound,
             CombatFeedbackCue.TripleKill => LauncherPrefs.TripleKillSound,
             CombatFeedbackCue.Overkill => LauncherPrefs.OverkillSound,
@@ -182,6 +188,9 @@ namespace MphRead.Mods.Sound
             {
             case CombatFeedbackCue.ImperialistHeadshot:
                 LauncherPrefs.ImperialistHeadshotSound = selection;
+                break;
+            case CombatFeedbackCue.FirstBlood:
+                LauncherPrefs.FirstBloodSound = selection;
                 break;
             case CombatFeedbackCue.DoubleKill:
                 LauncherPrefs.DoubleKillSound = selection;
@@ -274,7 +283,8 @@ namespace MphRead.Mods.Sound
             Play(CombatFeedbackCue.ImperialistHeadshot);
         }
 
-        public static CombatFeedbackAwards OnConfirmedKill(Scene scene, int lifeStreak)
+        public static CombatFeedbackAwards OnConfirmedKill(Scene scene, int lifeStreak,
+            bool firstBlood = false)
         {
             if (!CanPresent(scene))
             {
@@ -300,13 +310,20 @@ namespace MphRead.Mods.Sound
                 multiKill = MultiKillCue(_multiKillCount);
             }
 
+            CombatFeedbackCue? first = firstBlood ? CombatFeedbackCue.FirstBlood : null;
             CombatFeedbackCue? life = LifeStreakCue(lifeStreak);
-            var awards = new CombatFeedbackAwards(multiKill, life);
+            var awards = new CombatFeedbackAwards(first, multiKill, life);
 
+            if (first.HasValue)
+            {
+                // First Blood belongs to the opening kill itself. It replaces
+                // a headshot ping from the same shot just like other medals.
+                Play(first.Value, replaceExisting: true);
+            }
             if (multiKill.HasValue)
             {
                 // Replace the headshot ping from the same shot.
-                Play(multiKill.Value, replaceExisting: true);
+                Play(multiKill.Value, replaceExisting: !first.HasValue);
             }
             if (life.HasValue)
             {
