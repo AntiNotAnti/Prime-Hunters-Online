@@ -333,21 +333,39 @@ namespace MphRead.Mods.Input.AimAssist
             headCone = Math.Min(headCone, profile.Cone);
             float delay = intentionalHead ? AimAssistTuning.IntentionalHeadDelay : AimAssistTuning.HeadDelay;
             bool headOnly = !target.BodyVisible && visibleHead;
+            bool headInside = visibleHead && AimAssistMath.InsideHead(target);
             bool headCandidate = visibleHead && headAngle < headCone && !opposingHead
                 && (headAngle < bodyAngle * .95f || intentionalHead || headOnly
                     || (strafe && state.HeadBlend > .5f));
             state.HeadCandidateSeconds = headCandidate ? state.HeadCandidateSeconds + dt : 0;
             bool head = headCandidate && same && state.HeadCandidateSeconds >= delay;
 
+            float headCoverage = Math.Clamp(target.HeadVisibility, 0, 1);
+            float headConfidenceGoal = headCandidate
+                ? (headInside ? 1f : intentionalHead ? .9f : .65f) * (.65f + .35f * headCoverage)
+                : 0;
+            float headConfidenceRate = headConfidenceGoal > state.HeadTrackingConfidence
+                ? AimAssistTuning.HeadConfidenceRiseRate : AimAssistTuning.HeadConfidenceDecayRate;
+            state.HeadTrackingConfidence += (headConfidenceGoal - state.HeadTrackingConfidence)
+                * (1 - MathF.Exp(-headConfidenceRate * dt));
+            if (!visibleHead)
+                state.HeadTrackingConfidence = Math.Max(0, state.HeadTrackingConfidence
+                    - AimAssistTuning.HeadConfidenceDecayRate * dt);
+
             float predictionAmount = 0;
             // Hitscan precision uses the current region. Motion is applied only as
             // feed-forward camera velocity below, never as an impact-point lead.
             float proximity = 1 - AimAssistMath.Smooth(radius, headCone, headAngle);
             float maxHead = intentionalHead ? AimAssistTuning.IntentionalMaxHeadBlend : AimAssistTuning.MaxHeadBlend;
-            if (headAngle <= radius) maxHead = 1;
-            float desiredHead = head ? maxHead * (.35f + .65f * proximity) : 0;
+            if (headInside) maxHead = 1;
+            float desiredHead = head ? maxHead * (.35f + .65f * proximity)
+                * (.45f + .55f * state.HeadTrackingConfidence) : 0;
             if (!visibleHead) state.HeadBlend = 0;
-            else if (headOnly) state.HeadBlend = 1;
+            else if (headOnly)
+            {
+                state.HeadBlend = 1;
+                state.HeadTrackingConfidence = Math.Max(state.HeadTrackingConfidence, .8f);
+            }
             else
             {
                 float blendRate = head ? AimAssistTuning.HeadBlendRate : AimAssistTuning.HeadFallbackRate;
@@ -355,7 +373,7 @@ namespace MphRead.Mods.Input.AimAssist
                 if (state.HeadBlend < .001f) state.HeadBlend = 0;
             }
 
-            if (visibleHead && headAngle == 0 && !opposingHead) state.HeadBlend = 1;
+            if (headInside && !opposingHead) state.HeadBlend = 1;
 
             // Inside the real headshot band, use a weak interior pocket rather than
             // continuing to pull toward exact head center. The outer band remains the
