@@ -18,6 +18,9 @@ namespace MphRead.Mods.Launcher
     /// </summary>
     public static class MatchStart
     {
+        /// <summary>The last reason a synchronous launch returned false.</summary>
+        public static string? LastError { get; private set; }
+
         /// <summary>
         /// Load what the plan asked for into a window of its own and run until
         /// the match ends.
@@ -61,8 +64,10 @@ namespace MphRead.Mods.Launcher
         /// </summary>
         public static bool Begin(RenderWindow window, MenuSettings settings, LaunchPlan plan)
         {
+            LastError = null;
             if (!GameFiles.Ready)
             {
+                LastError = "Game files are not ready.";
                 Console.WriteLine("[launcher] no game files; nothing to load");
                 return false;
             }
@@ -274,21 +279,25 @@ namespace MphRead.Mods.Launcher
             PlayerEntity.MaxPlayers = PlayerEntity.SlotCapacity;
             if (!DemoPlayback.Join(plan.DemoPath))
             {
-                Console.WriteLine("[demo] could not open replay: "
-                    + (DemoPlayback.LastError ?? DemoPlayback.LastResult.ToString()));
+                LastError = DemoPlayback.LastError
+                    ?? $"The replay could not be opened: {DemoPlayback.LastResult}.";
+                Console.WriteLine("[demo] could not open replay: " + LastError);
                 return false;
             }
             (string RoomKey, GameMode Mode)? room = NetLaunch.ServerRoom();
             if (room == null)
             {
+                LastError = "The replay does not contain match information.";
                 Console.WriteLine("[demo] the demo has no match info");
                 DemoPlayback.Stop();
                 return false;
             }
             Menu.SaveSlot = 0;
             MapGen.CustomRooms.GenerateMissing(room.Value.RoomKey);
-            if (MapGen.CustomRooms.WhyUnplayable(room.Value.RoomKey) != null)
+            string? unplayable = MapGen.CustomRooms.WhyUnplayable(room.Value.RoomKey);
+            if (unplayable != null)
             {
+                LastError = $"The replay map cannot be loaded: {unplayable}";
                 Console.WriteLine($"[demo] {room.Value.RoomKey} is not playable on this installation");
                 DemoPlayback.Stop();
                 return false;
