@@ -288,6 +288,13 @@ namespace MphRead.Mods.Network
             var intent = new IntentPacket
             {
                 Buttons = buttons,
+                // Digital keyboard/touch movement remains represented solely by
+                // Buttons. Only a real analogue source spends these two bytes,
+                // which lets the receiver distinguish full digital diagonals from
+                // a controller's radial .707/.707 diagonal.
+                MoveX = c.AnalogMoveActive ? IntentPacket.PackMoveAxis(c.AnalogMoveX) : (sbyte)0,
+                MoveY = c.AnalogMoveActive ? IntentPacket.PackMoveAxis(c.AnalogMoveY) : (sbyte)0,
+                HasAnalogMove = true,
                 Aim = player.ModGunVector,
                 Position = player.Position,
                 // The owner's own weapon, every frame. The authority never
@@ -458,6 +465,15 @@ namespace MphRead.Mods.Network
             Set(c.RollRight, ((intent.Buttons & IntentButtons.RollRight) == IntentButtons.RollRight), ((missed & IntentButtons.RollRight) == IntentButtons.RollRight));
             Set(c.RollUp, ((intent.Buttons & IntentButtons.RollUp) == IntentButtons.RollUp), ((missed & IntentButtons.RollUp) == IntentButtons.RollUp));
             Set(c.RollDown, ((intent.Buttons & IntentButtons.RollDown) == IntentButtons.RollDown), ((missed & IntentButtons.RollDown) == IntentButtons.RollDown));
+            if (intent.HasAnalogMove && (intent.MoveX != 0 || intent.MoveY != 0))
+            {
+                c.SetAnalogMovement(IntentPacket.UnpackMoveAxis(intent.MoveX),
+                    IntentPacket.UnpackMoveAxis(intent.MoveY));
+            }
+            else
+            {
+                c.ClearAnalogMovement();
+            }
             if (intent.WeaponSelect != 0xFF)
             {
                 player.ModSetWeapon((BeamType)intent.WeaponSelect);
