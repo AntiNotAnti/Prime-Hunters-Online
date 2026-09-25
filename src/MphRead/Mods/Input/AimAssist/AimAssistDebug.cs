@@ -29,14 +29,15 @@ namespace MphRead.Mods.Input.AimAssist
             {
                 _textAt = Environment.TickCount64;
                 _lines = new[] {
-                    $"Inside body {AimAssistMath.BodyError(Target) == Vector2.Zero} head {AimAssistMath.HeadError(Target) == Vector2.Zero}",
+                    $"Surface body {AimAssistMath.InsideBody(Target)} head {AimAssistMath.InsideHead(Target)} exposure {Result.VisibilityCoverage:0.00}",
                     $"Stick {Result.StickIntent} position {Result.PositionCorrection} tracking {Result.TrackingCorrection}",
-                    $"Flick {Result.FlickActive} age {Result.FlickAge:0.000} alignment {Result.FlickAlignment:0.00} strafe {Result.StrafeTracking}",
+                    $"Phase {Result.MotionPhase} bodyConf {Result.BodyTrackingConfidence:0.00} headConf {Result.HeadTrackingConfidence:0.00}",
+                    $"Flick {Result.FlickActive} brake {Result.FlickBraking} land {Result.FlickLandingError:0.00} align {Result.FlickAlignment:0.00}",
+                    $"Commit {Result.ShotCommitted} strafe {Result.StrafeTracking} filterRelease {Result.FilterRelease:0.00}",
                     $"Aim: {AimInputSourceTracker.Current} pad: {GamepadManager.Snapshot.DeviceId}",
                     $"Target {Result.TargetSlot} {Result.TrackingState} score {Result.Score:0.00} distance {Target.Distance:0.0} body {AimAssistMath.BodyError(Target).Length():0.00} head {AimAssistMath.HeadError(Target).Length():0.00}",
-                    $"LOS body {Target.BodyVisible} head {Target.HeadVisible} point {Result.PointType} blend {Result.HeadBlend:0.00}",
+                    $"LOS body {Target.BodyVisibility:0.00} head {Target.HeadVisibility:0.00} point {Result.PointType} blend {Result.HeadBlend:0.00}",
                     $"Friction {Result.Friction:0.00} rotation {Result.RotationStrength:0.00} velocity {Velocity.X:0.0},{Velocity.Y:0.0}",
-                    $"Align {Result.InputAlignment:0.00} prediction {Result.HeadPrediction:0.00} hidden {Result.Occluded} saturated {Result.Saturated}",
                     $"Raw {Raw.X:0.00},{Raw.Y:0.00} final {Result.X:0.00},{Result.Y:0.00} correction {Result.X-Raw.X:0.00},{Result.Y-Raw.Y:0.00}" };
             }
             scene.DrawHudFlatBox(2, 2, 254, 61, new OpenTK.Mathematics.Vector4(0, 0, 0, .8f));

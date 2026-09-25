@@ -28,6 +28,22 @@ namespace MphRead.Mods.Input.AimAssist
             public double BodyRegionErrorSum { get; set; }
             public double TrackingCorrectionSum { get; set; }
             public double PositionCorrectionSum { get; set; }
+            public double VisibilityCoverageSum { get; set; }
+            public double BodyConfidenceSum { get; set; }
+            public double HeadConfidenceSum { get; set; }
+            public double FlickLandingErrorSum { get; set; }
+            public double FilterReleaseSum { get; set; }
+            public int ApproachingSamples { get; set; }
+            public int BrakingSamples { get; set; }
+            public int MatchedSamples { get; set; }
+            public int OvershootSamples { get; set; }
+            public int EscapingSamples { get; set; }
+            public int ShotCommitSamples { get; set; }
+            public double MeanVisibilityCoverage => Samples == 0 ? 0 : VisibilityCoverageSum / Samples;
+            public double MeanBodyConfidence => Samples == 0 ? 0 : BodyConfidenceSum / Samples;
+            public double MeanHeadConfidence => Samples == 0 ? 0 : HeadConfidenceSum / Samples;
+            public double MeanFlickLandingError => FlickAttempts == 0 ? 0 : FlickLandingErrorSum / FlickAttempts;
+            public double MeanFilterRelease => Samples == 0 ? 0 : FilterReleaseSum / Samples;
             public double MeanHeadHorizontalError => HeadRegionSamples == 0 ? 0 : HeadHorizontalErrorSum / HeadRegionSamples;
             public double MeanHeadVerticalError => HeadRegionSamples == 0 ? 0 : HeadVerticalErrorSum / HeadRegionSamples;
             public double MeanBodyRegionError => TargetSamples == 0 ? 0 : BodyRegionErrorSum / TargetSamples;
@@ -124,7 +140,7 @@ namespace MphRead.Mods.Input.AimAssist
             bool validHead = result.TargetSlot >= 0 && target.HeadVisible
                 && AimAssistMath.CanHeadshotAtDistance(weapon, target.Distance);
             var headError = AimAssistMath.HeadError(target);
-            bool inside = validHead && headError.LengthSquared() == 0;
+            bool inside = validHead && AimAssistMath.InsideHead(target);
             _nearHead = validHead && headError.Length() <= .8f;
             if (validHead)
             {
@@ -145,6 +161,20 @@ namespace MphRead.Mods.Input.AimAssist
                 bucket.TargetSwitchesWhileFiring++;
             bucket.TrackingCorrectionSum += result.TrackingCorrection.Length();
             bucket.PositionCorrectionSum += result.PositionCorrection.Length();
+            bucket.VisibilityCoverageSum += result.VisibilityCoverage;
+            bucket.BodyConfidenceSum += result.BodyTrackingConfidence;
+            bucket.HeadConfidenceSum += result.HeadTrackingConfidence;
+            bucket.FilterReleaseSum += result.FilterRelease;
+            if (result.FlickActive) bucket.FlickLandingErrorSum += result.FlickLandingError;
+            if (result.ShotCommitted) bucket.ShotCommitSamples++;
+            switch (result.MotionPhase)
+            {
+                case AimAssistMotionPhase.Approaching: bucket.ApproachingSamples++; break;
+                case AimAssistMotionPhase.Braking: bucket.BrakingSamples++; break;
+                case AimAssistMotionPhase.Matched: bucket.MatchedSamples++; break;
+                case AimAssistMotionPhase.Overshooting: bucket.OvershootSamples++; break;
+                case AimAssistMotionPhase.Escaping: bucket.EscapingSamples++; break;
+            }
             bucket.FrictionSum += result.Friction;
             bucket.CorrectionSum += correction;
             if (result.Occluded) bucket.OccludedSamples++;

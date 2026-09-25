@@ -49,12 +49,17 @@ namespace MphRead.Mods.Input
         }
 
         public static System.Numerics.Vector2 FilterAim(System.Numerics.Vector2 previous,
-            System.Numerics.Vector2 sample, float dt)
+            System.Numerics.Vector2 sample, float dt, float precisionRelease = 0)
         {
             if (sample == System.Numerics.Vector2.Zero || System.Numerics.Vector2.Dot(previous, sample) < 0
                 || sample.Length() >= .65f) return sample;
             float velocity = (sample - previous).Length() / Math.Max(dt, .0001f);
             float rate = 35 + 165 * Math.Clamp(velocity / 8, 0, 1);
+            // Near a retained target edge the previous assist step can ask the
+            // noise filter to become more transparent. This preserves deliberate
+            // micro-corrections without changing off-target stick smoothing.
+            precisionRelease = Math.Clamp(precisionRelease, 0, 1);
+            rate *= 1 + 2.5f * precisionRelease;
             return System.Numerics.Vector2.Lerp(previous, sample, 1 - MathF.Exp(-rate * dt));
         }
 

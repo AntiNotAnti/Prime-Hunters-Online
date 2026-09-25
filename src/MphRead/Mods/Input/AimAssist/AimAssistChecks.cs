@@ -115,6 +115,7 @@ namespace MphRead.Mods.Input.AimAssist
 
             RegionAndIntentChecks();
             TrackingChecks();
+            V3Checks();
             AimAssistCameraChecks.Run();
 
             AimInputSourceTracker.Reset();
@@ -393,6 +394,194 @@ namespace MphRead.Mods.Input.AimAssist
                 Check(moving < 1f, $"moving torso tracking at {hz} Hz ({moving:F3} deg)");
                 Check(head < 1f, $"jumping/reversing head tracking at {hz} Hz ({head:F3} deg)");
             }
+        }
+
+        private static void V3Checks()
+        {
+            void Check(bool ok, string name) => GamepadChecks.Check(ok, "aim v3: " + name);
+            const float dt = 1f / 60;
+            var profile = AimAssistWeaponProfile.For(AimAssistWeaponClass.Standard, false);
+
+            var broad = new AimAssistRegion(-1, 1, -1, 1);
+            var exact = new AimAssistTarget(1, 1, new(.1f, 0), new(0, .2f), 10, true, false,
+                BodyRegion: broad, BodySurface: new(new(.4f, 0), false));
+            Check(AimAssistMath.InsideRegion(broad) && !AimAssistMath.InsideBody(exact)
+                && AimAssistMath.BodyError(exact) == new Vector2(.4f, 0),
+                "exact hit surface overrides enclosing rectangle");
+
+            AimAssistRegion stationarySafe = AimAssistMath.MotionSafeRegion(
+                new(-1, 1, -.3f, .3f), Vector2.Zero);
+            AimAssistRegion movingSafe = AimAssistMath.MotionSafeRegion(
+                new(-1, 1, -.3f, .3f), new(40, 0));
+            Check(movingSafe.Center.X > stationarySafe.Center.X
+                && movingSafe.MaxYaw <= 1 && movingSafe.MinYaw >= -1,
+                "head safe pocket biases with motion but stays inside hit band");
+
+            Check(AimAssistMath.RelativeTrackingVelocity(new(10, 0), new(7, 0)) == new Vector2(3, 0)
+                && AimAssistMath.RelativeTrackingVelocity(new(10, 0), new(12, 0)) == Vector2.Zero
+                && AimAssistMath.RelativeTrackingVelocity(new(10, 0), new(-4, 0)) == new Vector2(10, 0),
+                "tracking supplies only target velocity the player is not already matching");
+
+            float onPath = AimAssistMath.TrajectoryRegionScore(new(.6f, .9f, -.1f, .1f), new(1, 0));
+            float offPath = AimAssistMath.TrajectoryRegionScore(new(.2f, .4f, .6f, .8f), new(1, 0));
+            Check(onPath > .99f && onPath > offPath,
+                "trajectory score prefers a region the current aim path will cross");
+
+            float slowRadius = AimAssistMath.DynamicFlickRadius(.5f,
+                AimAssistTuning.FlickDirectionalSpeed, scoped: false);
+            float fastRadius = AimAssistMath.DynamicFlickRadius(.5f, 45, scoped: false);
+            float scopedRadius = AimAssistMath.DynamicFlickRadius(.5f, 45, scoped: true);
+            Check(fastRadius > slowRadius && scopedRadius < fastRadius
+                && AimAssistMath.FlickLandingHorizon(45)
+                    < AimAssistMath.FlickLandingHorizon(AimAssistTuning.FlickDirectionalSpeed),
+                "flick speed widens finishing envelope while shortening landing horizon");
+
+            Vector2 filteredNormal = GamepadAnalog.FilterAim(new(.1f, .1f), new(.16f, .14f), dt, 0);
+            Vector2 filteredPrecision = GamepadAnalog.FilterAim(new(.1f, .1f), new(.16f, .14f), dt, 1);
+            Check((new Vector2(.16f, .14f) - filteredPrecision).Length()
+                    < (new Vector2(.16f, .14f) - filteredNormal).Length(),
+                "near-target precision context releases stick smoothing");
+
+            AimAssistState Seed(Vector2 previousError)
+            {
+                return new AimAssistState
+                {
+                    TargetSlot = 1, TargetLife = 1, RetainedSeconds = .3f,
+                    BodyTrackingConfidence = 1, PreviousBodyVisible = true,
+                    PreviousError = previousError, PreviousOutput = Vector2.Zero,
+                    PreviousDeltaTime = dt, PreviousStick = new(.4f, 0)
+                };
+            }
+
+            var movingTarget = new AimAssistTarget(1, 1, new(.6f, 0), new(.6f, 2), 12, true, false,
+                BodyRegion: new(.4f, .8f, -.4f, .4f),
+                BodySurface: new(new(.6f, 0), false), BodyVisibility: 1);
+            var fullState = Seed(new(.3f, 0));
+            var full = AimAssist.Apply(fullState, new[] { movingTarget }, Vector2.Zero,
+                new Vector2(.4f, 0), 0, dt, true, profile);
+            var peekState = Seed(new(.3f, 0));
+            var peek = AimAssist.Apply(peekState,
+                new[] { movingTarget with { BodyVisibility = .15f } }, Vector2.Zero,
+                new Vector2(.4f, 0), 0, dt, true, profile);
+            Check(full.TrackingCorrection.Length() > peek.TrackingCorrection.Length()
+                && full.VisibilityCoverage > peek.VisibilityCoverage,
+                "partial-cover exposure scales retained tracking");
+
+            var approachState = Seed(new(.6f, 0));
+            var approachTarget = movingTarget with { BodyError = new(.6f, 0),
+                BodySurface = new(new(.6f, 0), false) };
+            var approaching = AimAssist.Apply(approachState, new[] { approachTarget },
+                new Vector2(.2f, 0), new Vector2(.4f, 0), 0, dt, true, profile);
+            Check(approaching.MotionPhase == AimAssistMotionPhase.Approaching,
+                "control phase identifies rapid approach");
+
+            var brakeState = Seed(new(.6f, 0));
+            brakeState.PreviousClosingSpeed = 10;
+            var braking = AimAssist.Apply(brakeState, new[] { approachTarget },
+                new Vector2(.05f, 0), new Vector2(.4f, 0), 0, dt, true, profile);
+            Check(braking.MotionPhase == AimAssistMotionPhase.Braking,
+                "control phase identifies player braking before target");
+
+            var overState = Seed(new(.1f, 0));
+            var overTarget = movingTarget with { BodyError = new(1.2f, 0),
+                BodySurface = new(new(1.2f, 0), false) };
+            var overshoot = AimAssist.Apply(overState, new[] { overTarget }, Vector2.Zero,
+                new Vector2(.4f, 0), 0, dt, true, profile);
+            Check(overshoot.MotionPhase == AimAssistMotionPhase.Overshooting,
+                "control phase identifies target error opening again");
+
+            var matchedState = Seed(Vector2.Zero);
+            var matchedTarget = movingTarget with { BodyError = Vector2.Zero,
+                BodyRegion = broad, BodySurface = new(Vector2.Zero, true) };
+            var matched = AimAssist.Apply(matchedState, new[] { matchedTarget }, Vector2.Zero,
+                new Vector2(.4f, 0), 0, dt, true, profile);
+            Check(matched.MotionPhase == AimAssistMotionPhase.Matched,
+                "exact surface containment enters matched phase");
+
+            var confidenceState = new AimAssistState();
+            var confidenceTarget = new AimAssistTarget(1, 1, new(.5f, 0), new(.2f, 0), 12,
+                true, false, BodyRegion: new(.3f, .7f, -.4f, .4f));
+            for (int i = 0; i < 12; i++)
+                AimAssist.Apply(confidenceState, new[] { confidenceTarget }, Vector2.Zero,
+                    new Vector2(.4f, 0), 0, dt, true, profile);
+            Check(confidenceState.BodyTrackingConfidence > .3f
+                && confidenceState.HeadTrackingConfidence == 0,
+                "body confidence builds without granting head confidence");
+            confidenceTarget = confidenceTarget with
+            {
+                HeadVisible = true, HeadRegion = new(.05f, .35f, -.15f, .15f),
+                HeadSurface = new(new(.2f, 0), false), HeadVisibility = 1
+            };
+            for (int i = 0; i < 12; i++)
+                AimAssist.Apply(confidenceState, new[] { confidenceTarget }, Vector2.Zero,
+                    new Vector2(.4f, 0), 0, dt, true, profile);
+            Check(confidenceState.HeadTrackingConfidence > .1f,
+                "head confidence builds only after real head engagement");
+
+            var hiddenState = Seed(new(.4f, 0));
+            hiddenState.AngularVelocity = new(10, 0);
+            hiddenState.AngularAcceleration = new(20, 0);
+            var hiddenTarget = movingTarget with { BodyVisible = false, HeadVisible = false };
+            var hidden = AimAssist.Apply(hiddenState, new[] { hiddenTarget }, Vector2.Zero,
+                new Vector2(.4f, 0), 0, dt, true, profile);
+            float remembered = hiddenState.AngularVelocity.Length();
+            Check(hidden.Occluded && hidden.TrackingCorrection == Vector2.Zero
+                && remembered > 0 && remembered < 10,
+                "brief cover outputs no tracking but preserves decayed motion memory");
+            var returned = AimAssist.Apply(hiddenState, new[] { movingTarget }, Vector2.Zero,
+                new Vector2(.4f, 0), 0, dt, true, profile);
+            Check(hiddenState.AngularVelocity.Length() > 0 && !returned.Occluded,
+                "reappearing target resumes from decayed motion instead of zero");
+
+            var commitState = Seed(new(.5f, 0));
+            commitState.PreviousInsideBody = true;
+            var commitTargets = new[] {
+                movingTarget with { Slot = 1, BodyError = new(.5f, 0),
+                    BodySurface = new(new(.5f, 0), false) },
+                movingTarget with { Slot = 2, BodyError = new(.05f, 0),
+                    BodyRegion = new(-.05f, .15f, -.2f, .2f),
+                    BodySurface = new(new(.05f, 0), false) }
+            };
+            var committed = AimAssist.Apply(commitState, commitTargets, Vector2.Zero,
+                new Vector2(.4f, 0), 0, dt, true, profile, firing: true);
+            Check(committed.TargetSlot == 1 && committed.ShotCommitted,
+                "shot commitment prevents a last-moment challenger steal");
+
+            var trajectoryState = new AimAssistState();
+            var trajectoryTargets = new[] {
+                new AimAssistTarget(1, 1, new(.3f, .4f), new(3, 3), 12, true, false,
+                    BodyRegion: new(.2f, .4f, .35f, .55f)),
+                new AimAssistTarget(2, 1, new(.6f, 0), new(3, 3), 12, true, false,
+                    BodyRegion: new(.5f, .8f, -.1f, .1f))
+            };
+            var trajectoryChoice = AimAssist.Apply(trajectoryState, trajectoryTargets,
+                new Vector2(.14f, 0), new Vector2(.8f, 0), 0, dt, true, profile);
+            Check(trajectoryChoice.TargetSlot == 2,
+                "normal target selection prefers the hunter on the current aim trajectory");
+
+            var flickState = new AimAssistState { PreviousStick = new(.7f, 0),
+                StickHistory0 = new(.7f, 0), StickHistory1 = new(.7f, 0) };
+            var flickTarget = new AimAssistTarget(1, 1, new(0, -1), new(.15f, .45f), 12,
+                true, true, BodyRegion: new(-.5f, .5f, -1.5f, -.5f),
+                HeadRegion: new(-.25f, .25f, .25f, .55f),
+                HeadSurface: new(new(0, .25f), false), HeadVisibility: 1);
+            AimAssist.Apply(flickState, new[] { flickTarget }, new Vector2(.03f, .18f),
+                new Vector2(.2f, .7f), 0, dt, true, profile);
+            var landing = AimAssist.Apply(flickState, new[] { flickTarget }, new Vector2(.02f, .08f),
+                new Vector2(.2f, .7f), 0, dt, true, profile);
+            Check(landing.FlickActive && landing.FlickBraking
+                && float.IsFinite(landing.FlickLandingError),
+                "flick braking phase carries a predicted landing error");
+
+            var coupledState = Seed(new(.1f, .1f));
+            var diagonalTarget = movingTarget with { BodyError = new(.5f, .4f),
+                BodySurface = new(new(.5f, .4f), false) };
+            AimAssist.Apply(coupledState, new[] { diagonalTarget }, Vector2.Zero,
+                new Vector2(.4f, .3f), 0, dt, true, profile);
+            Check(coupledState.MotionDirection.LengthSquared() > .9f
+                && Math.Abs(coupledState.MotionDirection.X) > .1f
+                && Math.Abs(coupledState.MotionDirection.Y) > .1f,
+                "target motion direction couples yaw and pitch for diagonal tracking");
         }
 
         private static float SimulateTracking(int hz, bool moving, bool head)

@@ -164,14 +164,20 @@ namespace MphRead.Mods.Input
         /// </summary>
         private const float TurnRate = 3.5f;
         private static System.Numerics.Vector2 _filteredAimStick;
+        private static float _aimPrecisionRelease;
         private const float TurnAccelerationMax = 1.5f;
         private static float _turnRateScale = 1;
 
         private static void ResetAimRamp()
         {
             _filteredAimStick = default;
+            _aimPrecisionRelease = 0;
             _turnRateScale = 1;
         }
+
+        internal static void SetAimPrecisionContext(float release)
+            => _aimPrecisionRelease = float.IsFinite(release)
+                ? Math.Clamp(release, 0, 1) : 0;
 
         private static float NextTurnRateScale(float magnitude, float current)
         {
@@ -195,7 +201,7 @@ namespace MphRead.Mods.Input
             float magnitude = MathF.Sqrt(x * x + y * y);
             float scale = NextTurnRateScale(magnitude, _turnRateScale);
             var filtered = GamepadAnalog.FilterAim(_filteredAimStick,
-                new System.Numerics.Vector2(x, y), 1f / 60);
+                new System.Numerics.Vector2(x, y), 1f / 60, _aimPrecisionRelease);
             (x, y) = GamepadAnalog.ApplyRadialResponseCurve(filtered.X, filtered.Y, options.Curve);
             return (-x * TurnRate * scale * options.LookX * (options.InvertX ? -1 : 1),
                 y * TurnRate * scale * options.LookY * (options.InvertY ? -1 : 1));
@@ -300,7 +306,8 @@ namespace MphRead.Mods.Input
             var (x, y) = AimStick;
             float magnitude = MathF.Sqrt(x * x + y * y);
             UpdateAimRamp(magnitude);
-            _filteredAimStick = GamepadAnalog.FilterAim(_filteredAimStick, new(x, y), 1f / 60);
+            _filteredAimStick = GamepadAnalog.FilterAim(_filteredAimStick,
+                new(x, y), 1f / 60, _aimPrecisionRelease);
             (x, y) = (_filteredAimStick.X, _filteredAimStick.Y);
             (x, y) = GamepadAnalog.ApplyRadialResponseCurve(x, y, GamepadOptions.Curve);
             AimDeltaX = -x * TurnRate * _turnRateScale * GamepadOptions.LookX

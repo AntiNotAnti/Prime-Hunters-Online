@@ -46,6 +46,90 @@ namespace MphRead.Entities
                 MathHelper.RadiansToDegrees(max - cameraPitch));
         }
 
+        private bool AssistSurfacePitchRange(PlayerEntity target, float yawError,
+            float lower, float upper, float radius, out float minPitch, out float maxPitch)
+        {
+            minPitch = maxPitch = 0;
+            float cameraYaw = MathF.Atan2(_gunVec1.X, _gunVec1.Z);
+            float yaw = cameraYaw + MathHelper.DegreesToRadians(yawError);
+            float dx = CameraInfo.Position.X - target.Position.X;
+            float dz = CameraInfo.Position.Z - target.Position.Z;
+            float dirX = MathF.Sin(yaw), dirZ = MathF.Cos(yaw);
+            float b = dx * dirX + dz * dirZ;
+            float q = dx * dx + dz * dz - radius * radius;
+            float discriminant = b * b - q;
+            if (discriminant < 0) return false;
+            float root = MathF.Sqrt(discriminant);
+            float horizontal = -b - root;
+            if (horizontal <= .001f) horizontal = -b + root;
+            if (horizontal <= .001f) return false;
+
+            float cameraPitch = MathF.Atan2(_gunVec1.Y,
+                MathF.Sqrt(_gunVec1.X * _gunVec1.X + _gunVec1.Z * _gunVec1.Z));
+            float low = target.Position.Y + lower - CameraInfo.Position.Y;
+            float high = target.Position.Y + upper - CameraInfo.Position.Y;
+            float a = MathHelper.RadiansToDegrees(MathF.Atan2(low, horizontal) - cameraPitch);
+            float z = MathHelper.RadiansToDegrees(MathF.Atan2(high, horizontal) - cameraPitch);
+            minPitch = Math.Min(a, z);
+            maxPitch = Math.Max(a, z);
+            return float.IsFinite(minPitch) && float.IsFinite(maxPitch);
+        }
+
+        private AimAssistSurface AssistSurface(PlayerEntity target, AimAssistRegion region,
+            float lower, float upper, float radius)
+        {
+            float bestSq = float.MaxValue;
+            System.Numerics.Vector2 best = new(float.NaN, float.NaN);
+
+            float DistanceSq(float yaw)
+            {
+                if (!AssistSurfacePitchRange(target, yaw, lower, upper, radius,
+                        out float minPitch, out float maxPitch))
+                {
+                    return float.MaxValue;
+                }
+                float pitch = Math.Clamp(0, minPitch, maxPitch);
+                return yaw * yaw + pitch * pitch;
+            }
+
+            void Candidate(float yaw)
+            {
+                if (!AssistSurfacePitchRange(target, yaw, lower, upper, radius,
+                        out float minPitch, out float maxPitch))
+                {
+                    return;
+                }
+                float pitch = Math.Clamp(0, minPitch, maxPitch);
+                float sq = yaw * yaw + pitch * pitch;
+                if (sq < bestSq)
+                {
+                    bestSq = sq;
+                    best = new(yaw, pitch);
+                }
+            }
+
+            float clampedYaw = Math.Clamp(0, region.MinYaw, region.MaxYaw);
+            Candidate(clampedYaw);
+            Candidate(region.MinYaw);
+            Candidate(region.MaxYaw);
+            Candidate(region.Center.X);
+
+            // The silhouette is a one-dimensional family of exact cylinder
+            // intersections. Minimize angular correction along that family
+            // instead of treating the enclosing rectangle as a hit surface.
+            float lo = region.MinYaw, hi = region.MaxYaw;
+            for (int i = 0; i < 12; i++)
+            {
+                float third = (hi - lo) / 3;
+                float a = lo + third, b = hi - third;
+                if (DistanceSq(a) <= DistanceSq(b)) hi = b;
+                else lo = a;
+            }
+            Candidate((lo + hi) * .5f);
+            bool inside = bestSq <= .0000001f;
+            return new(best, inside);
+        }
+
         private bool AssistRegionRayVisible(PlayerEntity target, System.Numerics.Vector2 error,
             float lower, float upper)
         {
@@ -57,40 +141,55 @@ namespace MphRead.Entities
             Vector3 offset = CameraInfo.Position - target.Position;
             float a = direction.X * direction.X + direction.Z * direction.Z;
             float b = offset.X * direction.X + offset.Z * direction.Z;
-            float c = offset.X * offset.X + offset.Z * offset.Z
+            float d = offset.X * offset.X + offset.Z * offset.Z
                 - target.Volume.SphereRadius * target.Volume.SphereRadius;
-            float discriminant = b * b - a * c;
+            float discriminant = b * b - a * d;
             if (a <= .000001f || discriminant < 0) return false;
             float distance = (-b - MathF.Sqrt(discriminant)) / a;
+            if (distance <= 0) distance = (-b + MathF.Sqrt(discriminant)) / a;
             Vector3 impact = CameraInfo.Position + direction * distance;
             float impactHeight = impact.Y - target.Position.Y;
             return distance > 0 && impactHeight >= lower && impactHeight <= upper && AssistVisible(impact);
         }
 
-        private bool AssistRegionVisible(PlayerEntity target, AimAssistRegion region, float lower, float upper)
+        private float AssistVisibilityCoverage(PlayerEntity target, AimAssistRegion region,
+            float lower, float upper, float radius)
         {
-            // Visibility belongs to the hittable region, not its center. A hunter
-            // peeking around a pillar or over cover can expose a legitimate slice
-            // while the center ray remains blocked. Sample deterministic inset
-            // points and accept the region only when one real cylinder impact has LOS.
-            AimAssistRegion inset = region.Inset(.12f);
-            float pitch = Math.Clamp(0, inset.MinPitch, inset.MaxPitch);
-            float yaw = Math.Clamp(0, inset.MinYaw, inset.MaxYaw);
-            Span<System.Numerics.Vector2> samples = stackalloc System.Numerics.Vector2[6];
-            samples[0] = AimAssistMath.RegionError(inset);
-            samples[1] = inset.Center;
-            samples[2] = new(inset.MinYaw, pitch);
-            samples[3] = new(inset.MaxYaw, pitch);
-            samples[4] = new(yaw, inset.MinPitch);
-            samples[5] = new(yaw, inset.MaxPitch);
-            for (int i = 0; i < samples.Length; i++)
+            // Sample only rays that are proven to intersect the cylinder band.
+            // Coverage is then useful as a continuous quality signal instead of
+            // turning a one-pixel peek into the same tracking strength as 100% exposure.
+            int visible = 0, valid = 0;
+            ReadOnlySpan<float> yawFractions = stackalloc float[] { .12f, .5f, .88f };
+            for (int x = 0; x < yawFractions.Length; x++)
             {
-                if (AssistRegionRayVisible(target, samples[i], lower, upper))
+                float yaw = region.MinYaw + region.Width * yawFractions[x];
+                if (!AssistSurfacePitchRange(target, yaw, lower, upper, radius,
+                        out float minPitch, out float maxPitch))
                 {
-                    return true;
+                    continue;
+                }
+                valid++;
+                if (AssistRegionRayVisible(target, new(yaw, (minPitch + maxPitch) * .5f),
+                        lower, upper))
+                {
+                    visible++;
                 }
             }
-            return false;
+            // Two vertical samples at centre yaw distinguish a thin head/torso
+            // peek from a fully exposed band without paying for a 3x3 trace grid.
+            float centerYaw = region.Center.X;
+            if (AssistSurfacePitchRange(target, centerYaw, lower, upper, radius,
+                    out float centerMin, out float centerMax))
+            {
+                for (int i = 0; i < 2; i++)
+                {
+                    float pitch = centerMin + (centerMax - centerMin) * (i == 0 ? .2f : .8f);
+                    valid++;
+                    if (AssistRegionRayVisible(target, new(centerYaw, pitch), lower, upper))
+                        visible++;
+                }
+            }
+            return valid == 0 ? 0 : visible / (float)valid;
         }
 
         private bool AssistVisible(Vector3 point)
@@ -152,15 +251,21 @@ namespace MphRead.Entities
                 Vector3 head = target.Position + new Vector3(0, height - .15f, 0);
                 float distance = (head - CameraInfo.Position).Length;
                 float radius = target.Volume.SphereRadius;
-                var bodyRegion = AssistRegion(target, target.IsAltForm ? volume.SpherePosition.Y - radius
-                    : Fixed.ToFloat(target.Values.MinPickupHeight), target.IsAltForm ? volume.SpherePosition.Y + radius : height, radius);
+                float bodyLower = target.IsAltForm ? volume.SpherePosition.Y - radius
+                    : Fixed.ToFloat(target.Values.MinPickupHeight);
+                float bodyUpper = target.IsAltForm ? volume.SpherePosition.Y + radius : height;
+                var bodyRegion = AssistRegion(target, bodyLower, bodyUpper, radius);
                 var headRegion = AssistRegion(target, height - .3f, height, radius);
+                var bodySurface = AssistSurface(target, bodyRegion, bodyLower, bodyUpper, radius);
+                var headSurface = AssistSurface(target, headRegion, height - .3f, height, radius);
                 var bodyError = AssistAngles(chest);
                 var headError = AssistAngles(head);
-                if (!AimAssistMath.Finite(bodyError) || !float.IsFinite(distance) || distance > 60
-                    || (AimAssistMath.RegionDistance(bodyRegion) > profile.ReleaseCone
+                if (!AimAssistMath.Finite(bodyError) || !AimAssistMath.Finite(bodySurface.Error)
+                    || !AimAssistMath.Finite(headSurface.Error)
+                    || !float.IsFinite(distance) || distance > 60
+                    || (bodySurface.Error.Length() > profile.ReleaseCone
                         && (!profile.Head || target.IsAltForm || !AimAssistMath.Finite(headError)
-                            || AimAssistMath.RegionDistance(headRegion) > profile.ReleaseCone))) continue;
+                            || headSurface.Error.Length() > profile.ReleaseCone))) continue;
 
                 long targetLife = NetSession.Active
                     ? ((long)NetPlayerLifecycle.Generation(target.SlotIndex) << 16)
@@ -168,22 +273,25 @@ namespace MphRead.Entities
                     : 0;
                 bool retained = target.SlotIndex == _controllerAssist.TargetSlot
                     && targetLife == _controllerAssist.TargetLife;
-                bool visible = AssistRegionVisible(target, bodyRegion,
-                    target.IsAltForm ? volume.SpherePosition.Y - radius : Fixed.ToFloat(target.Values.MinPickupHeight),
-                    target.IsAltForm ? volume.SpherePosition.Y + radius : height);
-                bool headVisible = !target.IsAltForm && profile.Head
+                float bodyCoverage = AssistVisibilityCoverage(target, bodyRegion,
+                    bodyLower, bodyUpper, radius);
+                float headCoverage = !target.IsAltForm && profile.Head
                     && AimAssistMath.Finite(headError)
-                    && AimAssistMath.RegionDistance(headRegion) <= profile.ReleaseCone
+                    && headSurface.Error.Length() <= profile.ReleaseCone
                     && headRegion.MaxPitch > headRegion.MinPitch
                     && AimAssistMath.CanHeadshotAtDistance(CurrentWeapon, distance)
-                    && AssistRegionVisible(target, headRegion, height - .3f, height);
+                    ? AssistVisibilityCoverage(target, headRegion, height - .3f, height, radius) : 0;
+                bool visible = bodyCoverage > 0;
+                bool headVisible = headCoverage > 0;
                 if (!visible && !headVisible && !retained) continue;
                 candidates[count++] = new(target.SlotIndex, targetLife, bodyError, headError, distance,
                     visible, headVisible,
                     BodyPointType: target.IsAltForm ? AimAssistPointType.CenterMass : AimAssistPointType.UpperChest,
                     // Half the 0.3-unit headshot band used by BeamProjectileEntity.
                     HeadRadiusDegrees: MathHelper.RadiansToDegrees(MathF.Atan2(.15f, (head - CameraInfo.Position).Length)),
-                    BodyRegion: bodyRegion, HeadRegion: headRegion);
+                    BodyRegion: bodyRegion, HeadRegion: headRegion,
+                    BodySurface: bodySurface, HeadSurface: headSurface,
+                    BodyVisibility: bodyCoverage, HeadVisibility: headCoverage);
                 if (count == candidates.Length) break;
             }
             var pad = snapshot.State;
@@ -208,6 +316,8 @@ namespace MphRead.Entities
                 };
                 _controllerAssist.PreviousOutput = new(x, y);
             }
+            GamepadInput.SetAimPrecisionContext(
+                AimAssistDebug.UnassistedArm ? 0 : result.FilterRelease);
             AimAssistDebug.Result = result; AimAssistDebug.Target = chosen;
             AimAssistDebug.Raw = new(x, y); AimAssistDebug.Velocity = _controllerAssist.AngularVelocity;
             var observation = result;
