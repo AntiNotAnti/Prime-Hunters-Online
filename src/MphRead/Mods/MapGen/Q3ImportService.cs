@@ -171,7 +171,20 @@ public static class Q3ImportService
         {
             var fresh = MapDefinition.Load(imported.ProjectPath);
             var merged = MapProjectSerializer.Clone(existing);
+            var previousImport = existing.Import;
             merged.Import = fresh.Import;
+            if (merged.Import != null && previousImport != null)
+            {
+                merged.Import.KeepSky = previousImport.KeepSky;
+                merged.Import.KeepClip = previousImport.KeepClip;
+                merged.Import.KeepSpawns = previousImport.KeepSpawns;
+                merged.Import.KeepItems = previousImport.KeepItems;
+                merged.Import.PatchLevel = previousImport.PatchLevel;
+                merged.Import.TexScale = previousImport.TexScale;
+                merged.Import.DefaultMaterial = previousImport.DefaultMaterial;
+                merged.Import.ShaderMaterials = new Dictionary<string, int>(previousImport.ShaderMaterials,
+                    StringComparer.OrdinalIgnoreCase);
+            }
             merged.ScaleFactor = fresh.ScaleFactor;
             merged.KillHeight = fresh.KillHeight;
             merged.FarClip = fresh.FarClip;
