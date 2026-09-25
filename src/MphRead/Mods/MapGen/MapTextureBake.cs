@@ -66,8 +66,7 @@ namespace MphRead.Mods.MapGen
         /// <summary>
         /// Texture archives for a Q3 source, in deterministic precedence order:
         /// the selected source first, explicit dependencies next, then sibling
-        /// PK3s. This makes the GUI promise that "PK3s beside the map are used"
-        /// true instead of merely advisory text.
+        /// PK3s.
         /// </summary>
         public static IReadOnlyList<string> DiscoverArchives(string source,
             IEnumerable<string>? dependencies = null)
@@ -107,20 +106,26 @@ namespace MphRead.Mods.MapGen
                     else missing.Add(name);
                 }
                 return new(total, resolved, missing.AsReadOnly(),
-                    archivePaths.Where(File.Exists).Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+                    archivePaths.Where(File.Exists).Select(Path.GetFullPath)
+                        .Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
             }
-            finally { foreach (var archive in archives) archive.Dispose(); }
+            finally
+            {
+                foreach (var archive in archives) archive.Dispose();
+            }
         }
 
         /// <summary>
         /// Writes a pack for every shader the level's drawn surfaces use.
-        /// Images are looked for in the archives given, in order; a level's own
-        /// .pk3 first, then whatever else the player has.
+        /// Images are looked for in the archives given, in order. Unresolved
+        /// shaders receive a visible deterministic fallback instead of losing
+        /// their surfaces.
         /// </summary>
         public static Result Bake(Q3Bsp bsp, IReadOnlyList<string> archivePaths, string outputPath,
             int size = DefaultSize, bool sky = true, CancellationToken cancellation = default)
         {
-            if (size is < 8 or > 256) throw new ArgumentOutOfRangeException(nameof(size), "Texture size must be 8-256.");
+            if (size is < 8 or > 256)
+                throw new ArgumentOutOfRangeException(nameof(size), "Texture size must be 8-256.");
             var archives = OpenArchives(archivePaths);
             try
             {
@@ -163,14 +168,11 @@ namespace MphRead.Mods.MapGen
                         writer.Write((ushort)palette.Length);
                         writer.Write((ushort)encoded.Length);
                         writer.Write(encoded);
-                        foreach (ushort colour in palette)
-                        {
-                            writer.Write(colour);
-                        }
+                        foreach (ushort colour in palette) writer.Write(colour);
                         writer.Write(pixels);
                     }
                 }
-                return new Result()
+                return new Result
                 {
                     Baked = entries.Count,
                     Resolved = resolved,
@@ -181,7 +183,10 @@ namespace MphRead.Mods.MapGen
                     Bytes = new FileInfo(outputPath).Length
                 };
             }
-            finally { foreach (ZipArchive archive in archives) archive.Dispose(); }
+            finally
+            {
+                foreach (var archive in archives) archive.Dispose();
+            }
         }
 
         private static List<ZipArchive> OpenArchives(IReadOnlyList<string> paths)
@@ -190,7 +195,8 @@ namespace MphRead.Mods.MapGen
             try
             {
                 foreach (string path in paths.Distinct(StringComparer.OrdinalIgnoreCase))
-                    if (File.Exists(path) && !Path.GetExtension(path).Equals(".bsp", StringComparison.OrdinalIgnoreCase))
+                    if (File.Exists(path)
+                        && !Path.GetExtension(path).Equals(".bsp", StringComparison.OrdinalIgnoreCase))
                         archives.Add(ZipFile.OpenRead(path));
                 return archives;
             }
@@ -214,16 +220,16 @@ namespace MphRead.Mods.MapGen
         }
 
         /// <summary>
-        /// Resolve common Quake 3 shader indirection. Full shader simulation is
-        /// deliberately out of scope; for editor import we need the image the
-        /// material should visibly resemble. The first concrete qer/map/
-        /// clampmap/animMap/skyparms image wins.
+        /// Resolve the common image-bearing parts of Quake 3 shader scripts.
+        /// Full shader simulation is out of scope; the editor only needs a
+        /// representative source image for each surface.
         /// </summary>
         private static Dictionary<string, string> ParseShaderAliases(
             Dictionary<string, ZipArchiveEntry> files)
         {
             var aliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var script in files.Where(p => p.Key.EndsWith(".shader", StringComparison.OrdinalIgnoreCase)))
+            foreach (var script in files.Where(p =>
+                p.Key.EndsWith(".shader", StringComparison.OrdinalIgnoreCase)))
             {
                 string text;
                 try
@@ -232,11 +238,14 @@ namespace MphRead.Mods.MapGen
                     using var reader = new StreamReader(script.Value.Open(), Encoding.UTF8, true);
                     text = reader.ReadToEnd();
                 }
-                catch (Exception ex) when (ex is IOException or InvalidDataException) { continue; }
+                catch (Exception ex) when (ex is IOException or InvalidDataException)
+                {
+                    continue;
+                }
                 var tokens = TokenizeShader(text);
                 for (int i = 0; i + 1 < tokens.Count;)
                 {
-                    string shader = tokens[i++];
+                    string shader = tokens[i++].Trim('"');
                     if (shader is "{" or "}") continue;
                     if (i >= tokens.Count || tokens[i++] != "{") continue;
                     int depth = 1;
@@ -252,221 +261,8 @@ namespace MphRead.Mods.MapGen
                         {
                             if (i < tokens.Count)
                             {
-                                string value = tokens[i++];
-                                if (!value.StartsWith('        private static IEnumerable<(int, string)> UsedTextures(Q3Bsp bsp, bool sky)
-        {
-            var seen = new HashSet<int>();
-            var results = new List<(int, string)>();
-            foreach (Q3Face face in bsp.Faces)
-            {
-                if (face.Type != 1 && face.Type != 2 && face.Type != 3)
-                {
-                    continue;
-                }
-                if (!seen.Add(face.Texture))
-                {
-                    continue;
-                }
-                Q3Texture texture = bsp.Textures[face.Texture];
-                if ((texture.Flags & (Q3Bsp.SurfaceNoDraw | Q3Bsp.SurfaceHint | Q3Bsp.SurfaceSkip)) != 0)
-                {
-                    continue;
-                }
-                if ((texture.Flags & Q3Bsp.SurfaceSky) != 0 && !sky)
-                {
-                    continue;
-                }
-                results.Add((face.Texture, texture.Name));
-            }
-            results.Sort((a, b) => a.Item1.CompareTo(b.Item1));
-            return results;
-        }
-
-        private static ZipArchiveEntry? FindEntry(Dictionary<string, ZipArchiveEntry> files,
-            Dictionary<string, string> aliases, string name)
-        {
-            foreach (string candidate in aliases.TryGetValue(name, out string? alias)
-                ? new[] { name, alias }
-                : new[] { name })
-            {
-                string normalized = candidate.TrimStart('/').Replace('\\', '/');
-                foreach (string suffix in _skySuffixes.Prepend(""))
-                    foreach (string extension in _extensions)
-                        if (files.TryGetValue(normalized + suffix + extension, out var entry)) return entry;
-                if (files.TryGetValue(normalized, out var exact)) return exact;
-            }
-            return null;
-        }
-
-        private static byte[]? Find(Dictionary<string, ZipArchiveEntry> files,
-            Dictionary<string, string> aliases, string name)
-        {
-            var entry = FindEntry(files, aliases, name);
-            if (entry == null) return null;
-            using Stream stream = entry.Open();
-            using var memory = new MemoryStream();
-            byte[] buffer = new byte[65536];
-            int read;
-            while ((read = stream.Read(buffer)) > 0)
-            {
-                if (memory.Length + read > MapPackageReader.MaxEntryBytes)
-                    throw new InvalidDataException("Texture image exceeds the map asset limit.");
-                memory.Write(buffer, 0, read);
-            }
-            return memory.ToArray();
-        }
-
-        private static byte[] Fallback(int size, string name)
-        {
-            // Loud, deterministic checkerboard: missing art stays visible and
-            // geometry never disappears. The hash stripe makes adjacent
-            // missing materials distinguishable while authoring.
-            uint hash = 2166136261;
-            foreach (char ch in name.ToUpperInvariant()) { hash ^= ch; hash *= 16777619; }
-            var rgb = new byte[size * size * 3];
-            for (int y = 0; y < size; y++)
-                for (int x = 0; x < size; x++)
-                {
-                    bool checker = ((x / 8) + (y / 8)) % 2 == 0;
-                    bool stripe = ((x + y + (hash & 31u)) % 17) < 3;
-                    int o = (y * size + x) * 3;
-                    rgb[o] = (byte)(stripe ? 255 : checker ? 230 : 30);
-                    rgb[o + 1] = (byte)(stripe ? 220 : 20);
-                    rgb[o + 2] = (byte)(checker ? 230 : 30);
-                }
-            return rgb;
-        }
-
-        /// <summary>Decode and box-filter down to the square the hardware wants.</summary>
-        private static byte[] Decode(byte[] raw, int size, CancellationToken cancellation)
-        {
-            using var source = new MemoryStream(raw);
-            using StbImage image = StbImage.Load(source, StbiImageFormat.Rgb);
-            ReadOnlySpan<byte> pixels = image.AsSpan<byte>();
-            int width = image.Width;
-            int height = image.Height;
-            var result = new byte[size * size * 3];
-            for (int y = 0; y < size; y++)
-            {
-                cancellation.ThrowIfCancellationRequested();
-                int y0 = y * height / size;
-                int y1 = Math.Max(y0 + 1, (y + 1) * height / size);
-                for (int x = 0; x < size; x++)
-                {
-                    int x0 = x * width / size;
-                    int x1 = Math.Max(x0 + 1, (x + 1) * width / size);
-                    int r = 0;
-                    int g = 0;
-                    int b = 0;
-                    int count = 0;
-                    for (int sy = y0; sy < y1 && sy < height; sy++)
-                    {
-                        for (int sx = x0; sx < x1 && sx < width; sx++)
-                        {
-                            int offset = (sy * width + sx) * 3;
-                            r += pixels[offset];
-                            g += pixels[offset + 1];
-                            b += pixels[offset + 2];
-                            count++;
-                        }
-                    }
-                    int target = (y * size + x) * 3;
-                    result[target] = (byte)(r / Math.Max(1, count));
-                    result[target + 1] = (byte)(g / Math.Max(1, count));
-                    result[target + 2] = (byte)(b / Math.Max(1, count));
-                }
-            }
-            return result;
-        }
-
-        /// <summary>
-        /// Median cut to 256 colours. Split the box with the widest channel at
-        /// that channel's median until there are enough boxes, then take each
-        /// box's mean as its colour -- the usual answer, and enough for a
-        /// 64x64 tile that will be seen at a distance on a texture unit that
-        /// only reads 8-bit indices anyway.
-        /// </summary>
-        private static (ushort[], byte[]) Quantize(byte[] rgb, int size, CancellationToken cancellation)
-        {
-            int count = size * size;
-            var indices = new int[count];
-            for (int i = 0; i < count; i++)
-            {
-                indices[i] = i;
-            }
-            var boxes = new List<(int Start, int Length)>() { (0, count) };
-            while (boxes.Count < PaletteSize)
-            {
-                int widest = -1;
-                cancellation.ThrowIfCancellationRequested();
-                int widestSpread = 0;
-                int widestChannel = 0;
-                for (int i = 0; i < boxes.Count; i++)
-                {
-                    (int start, int length) = boxes[i];
-                    if (length < 2)
-                    {
-                        continue;
-                    }
-                    for (int channel = 0; channel < 3; channel++)
-                    {
-                        int low = 255;
-                        int high = 0;
-                        for (int j = start; j < start + length; j++)
-                        {
-                            int value = rgb[indices[j] * 3 + channel];
-                            low = Math.Min(low, value);
-                            high = Math.Max(high, value);
-                        }
-                        if (high - low > widestSpread)
-                        {
-                            widestSpread = high - low;
-                            widest = i;
-                            widestChannel = channel;
-                        }
-                    }
-                }
-                if (widest < 0 || widestSpread == 0)
-                {
-                    break;
-                }
-                (int boxStart, int boxLength) = boxes[widest];
-                Array.Sort(indices, boxStart, boxLength,
-                    Comparer<int>.Create((a, b) => rgb[a * 3 + widestChannel].CompareTo(rgb[b * 3 + widestChannel])));
-                int half = boxLength / 2;
-                boxes[widest] = (boxStart, half);
-                boxes.Add((boxStart + half, boxLength - half));
-            }
-            var palette = new ushort[Math.Max(1, boxes.Count)];
-            var lookup = new byte[count];
-            for (int i = 0; i < boxes.Count; i++)
-            {
-                (int start, int length) = boxes[i];
-                int r = 0;
-                int g = 0;
-                int b = 0;
-                for (int j = start; j < start + length; j++)
-                {
-                    r += rgb[indices[j] * 3];
-                    g += rgb[indices[j] * 3 + 1];
-                    b += rgb[indices[j] * 3 + 2];
-                }
-                int divisor = Math.Max(1, length);
-                r /= divisor;
-                g /= divisor;
-                b /= divisor;
-                // BGR555, red in the low bits, which is what the palette format is
-                palette[i] = (ushort)(((b >> 3) << 10) | ((g >> 3) << 5) | (r >> 3));
-                for (int j = start; j < start + length; j++)
-                {
-                    lookup[indices[j]] = (byte)i;
-                }
-            }
-            return (palette, lookup);
-        }
-    }
-}
-) && value != "-") candidate = value;
+                                string value = tokens[i++].Trim('"');
+                                if (!value.StartsWith('$') && value != "-") candidate = value;
                             }
                         }
                         else if (key == "animmap")
@@ -474,189 +270,13 @@ namespace MphRead.Mods.MapGen
                             if (i < tokens.Count) i++; // frequency
                             if (i < tokens.Count)
                             {
-                                string value = tokens[i++];
-                                if (!value.StartsWith('        private static IEnumerable<(int, string)> UsedTextures(Q3Bsp bsp, bool sky)
-        {
-            var seen = new HashSet<int>();
-            var results = new List<(int, string)>();
-            foreach (Q3Face face in bsp.Faces)
-            {
-                if (face.Type != 1 && face.Type != 2 && face.Type != 3)
-                {
-                    continue;
-                }
-                if (!seen.Add(face.Texture))
-                {
-                    continue;
-                }
-                Q3Texture texture = bsp.Textures[face.Texture];
-                if ((texture.Flags & (Q3Bsp.SurfaceNoDraw | Q3Bsp.SurfaceHint | Q3Bsp.SurfaceSkip)) != 0)
-                {
-                    continue;
-                }
-                if ((texture.Flags & Q3Bsp.SurfaceSky) != 0 && !sky)
-                {
-                    continue;
-                }
-                results.Add((face.Texture, texture.Name));
-            }
-            results.Sort((a, b) => a.Item1.CompareTo(b.Item1));
-            return results;
-        }
-
-        private static byte[]? Find(Dictionary<string, ZipArchiveEntry> files, string name)
-        {
-            foreach (string suffix in _skySuffixes.Prepend(""))
-            {
-                foreach (string extension in _extensions)
-                {
-                    if (files.TryGetValue(name + suffix + extension, out ZipArchiveEntry? entry))
-                    {
-                        using Stream stream = entry.Open();
-                        using var memory = new MemoryStream();
-                        stream.CopyTo(memory);
-                        return memory.ToArray();
-                    }
-                }
-            }
-            return null;
-        }
-
-        /// <summary>Decode and box-filter down to the square the hardware wants.</summary>
-        private static byte[] Decode(byte[] raw, int size, CancellationToken cancellation)
-        {
-            using var source = new MemoryStream(raw);
-            using StbImage image = StbImage.Load(source, StbiImageFormat.Rgb);
-            ReadOnlySpan<byte> pixels = image.AsSpan<byte>();
-            int width = image.Width;
-            int height = image.Height;
-            var result = new byte[size * size * 3];
-            for (int y = 0; y < size; y++)
-            {
-                cancellation.ThrowIfCancellationRequested();
-                int y0 = y * height / size;
-                int y1 = Math.Max(y0 + 1, (y + 1) * height / size);
-                for (int x = 0; x < size; x++)
-                {
-                    int x0 = x * width / size;
-                    int x1 = Math.Max(x0 + 1, (x + 1) * width / size);
-                    int r = 0;
-                    int g = 0;
-                    int b = 0;
-                    int count = 0;
-                    for (int sy = y0; sy < y1 && sy < height; sy++)
-                    {
-                        for (int sx = x0; sx < x1 && sx < width; sx++)
-                        {
-                            int offset = (sy * width + sx) * 3;
-                            r += pixels[offset];
-                            g += pixels[offset + 1];
-                            b += pixels[offset + 2];
-                            count++;
-                        }
-                    }
-                    int target = (y * size + x) * 3;
-                    result[target] = (byte)(r / Math.Max(1, count));
-                    result[target + 1] = (byte)(g / Math.Max(1, count));
-                    result[target + 2] = (byte)(b / Math.Max(1, count));
-                }
-            }
-            return result;
-        }
-
-        /// <summary>
-        /// Median cut to 256 colours. Split the box with the widest channel at
-        /// that channel's median until there are enough boxes, then take each
-        /// box's mean as its colour -- the usual answer, and enough for a
-        /// 64x64 tile that will be seen at a distance on a texture unit that
-        /// only reads 8-bit indices anyway.
-        /// </summary>
-        private static (ushort[], byte[]) Quantize(byte[] rgb, int size, CancellationToken cancellation)
-        {
-            int count = size * size;
-            var indices = new int[count];
-            for (int i = 0; i < count; i++)
-            {
-                indices[i] = i;
-            }
-            var boxes = new List<(int Start, int Length)>() { (0, count) };
-            while (boxes.Count < PaletteSize)
-            {
-                int widest = -1;
-                cancellation.ThrowIfCancellationRequested();
-                int widestSpread = 0;
-                int widestChannel = 0;
-                for (int i = 0; i < boxes.Count; i++)
-                {
-                    (int start, int length) = boxes[i];
-                    if (length < 2)
-                    {
-                        continue;
-                    }
-                    for (int channel = 0; channel < 3; channel++)
-                    {
-                        int low = 255;
-                        int high = 0;
-                        for (int j = start; j < start + length; j++)
-                        {
-                            int value = rgb[indices[j] * 3 + channel];
-                            low = Math.Min(low, value);
-                            high = Math.Max(high, value);
-                        }
-                        if (high - low > widestSpread)
-                        {
-                            widestSpread = high - low;
-                            widest = i;
-                            widestChannel = channel;
-                        }
-                    }
-                }
-                if (widest < 0 || widestSpread == 0)
-                {
-                    break;
-                }
-                (int boxStart, int boxLength) = boxes[widest];
-                Array.Sort(indices, boxStart, boxLength,
-                    Comparer<int>.Create((a, b) => rgb[a * 3 + widestChannel].CompareTo(rgb[b * 3 + widestChannel])));
-                int half = boxLength / 2;
-                boxes[widest] = (boxStart, half);
-                boxes.Add((boxStart + half, boxLength - half));
-            }
-            var palette = new ushort[Math.Max(1, boxes.Count)];
-            var lookup = new byte[count];
-            for (int i = 0; i < boxes.Count; i++)
-            {
-                (int start, int length) = boxes[i];
-                int r = 0;
-                int g = 0;
-                int b = 0;
-                for (int j = start; j < start + length; j++)
-                {
-                    r += rgb[indices[j] * 3];
-                    g += rgb[indices[j] * 3 + 1];
-                    b += rgb[indices[j] * 3 + 2];
-                }
-                int divisor = Math.Max(1, length);
-                r /= divisor;
-                g /= divisor;
-                b /= divisor;
-                // BGR555, red in the low bits, which is what the palette format is
-                palette[i] = (ushort)(((b >> 3) << 10) | ((g >> 3) << 5) | (r >> 3));
-                for (int j = start; j < start + length; j++)
-                {
-                    lookup[indices[j]] = (byte)i;
-                }
-            }
-            return (palette, lookup);
-        }
-    }
-}
-) && value != "-") candidate = value;
+                                string value = tokens[i++].Trim('"');
+                                if (!value.StartsWith('$') && value != "-") candidate = value;
                             }
                         }
                         else if (key == "skyparms" && i < tokens.Count)
                         {
-                            string value = tokens[i++];
+                            string value = tokens[i++].Trim('"');
                             if (value != "-") candidate = value;
                         }
                     }
@@ -724,22 +344,63 @@ namespace MphRead.Mods.MapGen
             return results;
         }
 
-        private static byte[]? Find(Dictionary<string, ZipArchiveEntry> files, string name)
+        private static ZipArchiveEntry? FindEntry(
+            Dictionary<string, ZipArchiveEntry> files,
+            Dictionary<string, string> aliases, string name)
         {
-            foreach (string suffix in _skySuffixes.Prepend(""))
+            IEnumerable<string> candidates = aliases.TryGetValue(name, out string? alias)
+                ? new[] { name, alias! }
+                : new[] { name };
+            foreach (string candidate in candidates)
             {
-                foreach (string extension in _extensions)
-                {
-                    if (files.TryGetValue(name + suffix + extension, out ZipArchiveEntry? entry))
-                    {
-                        using Stream stream = entry.Open();
-                        using var memory = new MemoryStream();
-                        stream.CopyTo(memory);
-                        return memory.ToArray();
-                    }
-                }
+                string normalized = candidate.TrimStart('/').Replace('\\', '/');
+                foreach (string suffix in _skySuffixes.Prepend(""))
+                    foreach (string extension in _extensions)
+                        if (files.TryGetValue(normalized + suffix + extension, out var entry))
+                            return entry;
+                if (files.TryGetValue(normalized, out var exact)) return exact;
             }
             return null;
+        }
+
+        private static byte[]? Find(Dictionary<string, ZipArchiveEntry> files,
+            Dictionary<string, string> aliases, string name)
+        {
+            ZipArchiveEntry? entry = FindEntry(files, aliases, name);
+            if (entry == null) return null;
+            using Stream stream = entry.Open();
+            using var memory = new MemoryStream();
+            byte[] buffer = new byte[65536];
+            int read;
+            while ((read = stream.Read(buffer)) > 0)
+            {
+                if (memory.Length + read > MapPackageReader.MaxEntryBytes)
+                    throw new InvalidDataException("Texture image exceeds the map asset limit.");
+                memory.Write(buffer, 0, read);
+            }
+            return memory.ToArray();
+        }
+
+        private static byte[] Fallback(int size, string name)
+        {
+            uint hash = 2166136261;
+            foreach (char ch in name.ToUpperInvariant())
+            {
+                hash ^= ch;
+                hash *= 16777619;
+            }
+            var rgb = new byte[size * size * 3];
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    bool checker = ((x / 8) + (y / 8)) % 2 == 0;
+                    bool stripe = ((long)x + y + (hash & 31u)) % 17 < 3;
+                    int o = (y * size + x) * 3;
+                    rgb[o] = (byte)(stripe ? 255 : checker ? 230 : 30);
+                    rgb[o + 1] = (byte)(stripe ? 220 : 20);
+                    rgb[o + 2] = (byte)(checker ? 230 : 30);
+                }
+            return rgb;
         }
 
         /// <summary>Decode and box-filter down to the square the hardware wants.</summary>
