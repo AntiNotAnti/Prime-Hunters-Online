@@ -169,12 +169,50 @@ public sealed class NetDynamicGeometryHistory
         else if (historical == -1) ShadowCurrentBlocked++;
         else ShadowDifferent++;
     }
+    internal static bool TryTraceDistanceAtFrame(Scene scene, Vector3 start, Vector3 end,
+        double frame, out float closest)
+    {
+        closest = 1;
+        if (_room == null) return false;
+        if (frame >= NetSession.NetFrame) { closest = TraceDistance(scene, start, end); return true; }
+        using var scope = _room.Begin(frame);
+        if (!scope.Applied) return false;
+        closest = TraceDistance(scene, start, end);
+        return true;
+    }
+
+    private static float TraceDistance(Scene scene, Vector3 start, Vector3 end)
+    {
+        CollisionResult result = default;
+        float closest = CollisionDetection.CheckBetweenPoints(start, end, TestFlags.Beams, scene, ref result) ? result.Distance : 1;
+        foreach (var door in scene.GetDoorEntities())
+        {
+            if (door.Flags.TestFlag(DoorFlags.Open) || door.ConnectorInactive) continue;
+            var normal = door.FacingVector; var position = door.LockPosition;
+            if (Vector3.Dot(start - position, normal) < 0) normal = -normal;
+            var plane = new Vector4(normal, Vector3.Dot(normal, position + .4f * normal));
+            if (CollisionDetection.CheckCylinderIntersectPlane(start, end, plane, ref result)
+                && result.Distance < closest && (result.Position - position).LengthSquared < door.RadiusSquared)
+                closest = result.Distance;
+        }
+        foreach (var field in scene.GetForceFieldEntities())
+        {
+            if (!field.Active || !CollisionDetection.CheckCylinderIntersectPlane(start, end, field.Plane, ref result)
+                || result.Distance >= closest) continue;
+            var relative = result.Position - field.Position;
+            if (Math.Abs(Vector3.Dot(relative, field.FieldUpVector)) <= field.Height
+                && Math.Abs(Vector3.Dot(relative, field.FieldRightVector)) <= field.Width)
+                closest = result.Distance;
+        }
+        return closest;
+    }
+
     // Read-only first-segment obstruction comparison, matching projectile door
     // and force-field tests as well as the ordinary mesh collision broadphase.
     private static int Trace(Scene scene, Vector3 start, Vector3 end)
     {
         CollisionResult result = default;
-        float closest = CollisionDetection.CheckBetweenPoints(start, end, TestFlags.Beams, scene, ref result) ? result.Distance : 1;
+        float closest = TraceDistance(scene, start, end);
         int Identity(EntityBase entity)
         { int index = 0; foreach (var candidate in scene.Entities) { if (ReferenceEquals(entity, candidate)) return index; index++; } return -2; }
         int obstacle = closest < 1 ? result.EntityCollision is { } mesh ? Identity(mesh.Entity) : -2 : -1;

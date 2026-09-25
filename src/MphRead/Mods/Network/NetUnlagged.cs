@@ -577,6 +577,13 @@ namespace MphRead.Mods.Network
             return true;
         }
 
+        internal static bool HistoryAvailable(double target)
+        {
+            if (!double.IsFinite(target) || target < 1 || target >= uint.MaxValue) return false;
+            uint frame = (uint)Math.Floor(target);
+            return _stamp[frame % HistoryFrames] == frame;
+        }
+
         public static bool PositionAt(int slot, uint frame, ushort expectedGeneration, ushort expectedLife, out Vector3 position)
         {
             position = Vector3.Zero;

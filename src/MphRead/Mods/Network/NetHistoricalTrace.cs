@@ -79,9 +79,13 @@ public static class NetHistoricalTrace
     internal static ShadowOutcome CompareShot(PlayerEntity shooter, Vector3 origin, Vector3 direction,
         double hard, double allowed)
     {
+        var policy = WeaponLagPolicies.Resolve(shooter.EquipInfo);
+        if (policy.Mode == LagCompensationMode.ProjectileCatchUp)
+            return NetProjectileCounterfactual.Compare(shooter, origin, direction, hard, allowed);
         // Imperialist's first travel segment is a practical read-only trace.
-        // Other mechanics need a private simulation, not a second live Process.
-        if (WeaponLagPolicies.Resolve(shooter.EquipInfo.Weapon).Mode != LagCompensationMode.HistoricalTrace || direction.LengthSquared < .001f)
+        // Homing, continuous, area and ricochet mechanics remain unavailable
+        // until their exact alternate-state inputs can be reproduced.
+        if (policy.Mode != LagCompensationMode.HistoricalTrace || direction.LengthSquared < .001f)
             return ShadowOutcome.HistoricalDataUnavailable;
         var scene = shooter.OwningScene;
         // Dynamic occluders/secondary bodies have no complete historical model.
