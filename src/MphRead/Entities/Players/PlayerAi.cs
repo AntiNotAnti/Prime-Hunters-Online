@@ -503,6 +503,81 @@ namespace MphRead.Entities
                 _nodeDataSelOn = 0;
             }
 
+            private readonly struct BotDifficultyTuning
+            {
+                public float AimDotThreshold { get; }
+                public float MaxTurnDegrees { get; }
+                public float FireAimDotThreshold { get; }
+                public float FireVerticalTolerance { get; }
+                public int PredictionRefreshFrames { get; }
+                public float PredictionStrength { get; }
+                public int PredictionIterations { get; }
+                public float AimMotionErrorScale { get; }
+                public float AimBaseError { get; }
+                public float AimDistanceDivisor { get; }
+                public float BipedAimHeightOffset { get; }
+                public int ShotDelayFrames { get; }
+                public float ImperialistTurnDegrees { get; }
+                public int ImperialistFireDelayFrames { get; }
+                public float CombatRange { get; }
+                public int StrafeMinFrames { get; }
+                public int StrafeVarianceFrames { get; }
+                public int JumpCooldownMinFrames { get; }
+                public int JumpCooldownVarianceFrames { get; }
+
+                public BotDifficultyTuning(float aimDotThreshold, float maxTurnDegrees,
+                    float fireAimDotThreshold, float fireVerticalTolerance,
+                    int predictionRefreshFrames, float predictionStrength, int predictionIterations,
+                    float aimMotionErrorScale, float aimBaseError, float aimDistanceDivisor,
+                    float bipedAimHeightOffset, int shotDelayFrames,
+                    float imperialistTurnDegrees, int imperialistFireDelayFrames,
+                    float combatRange, int strafeMinFrames, int strafeVarianceFrames,
+                    int jumpCooldownMinFrames, int jumpCooldownVarianceFrames)
+                {
+                    AimDotThreshold = aimDotThreshold;
+                    MaxTurnDegrees = maxTurnDegrees;
+                    FireAimDotThreshold = fireAimDotThreshold;
+                    FireVerticalTolerance = fireVerticalTolerance;
+                    PredictionRefreshFrames = predictionRefreshFrames;
+                    PredictionStrength = predictionStrength;
+                    PredictionIterations = predictionIterations;
+                    AimMotionErrorScale = aimMotionErrorScale;
+                    AimBaseError = aimBaseError;
+                    AimDistanceDivisor = aimDistanceDivisor;
+                    BipedAimHeightOffset = bipedAimHeightOffset;
+                    ShotDelayFrames = shotDelayFrames;
+                    ImperialistTurnDegrees = imperialistTurnDegrees;
+                    ImperialistFireDelayFrames = imperialistFireDelayFrames;
+                    CombatRange = combatRange;
+                    StrafeMinFrames = strafeMinFrames;
+                    StrafeVarianceFrames = strafeVarianceFrames;
+                    JumpCooldownMinFrames = jumpCooldownMinFrames;
+                    JumpCooldownVarianceFrames = jumpCooldownVarianceFrames;
+                }
+            }
+
+            // One source of truth for how each difficulty fights. Easy remains intentionally
+            // forgiving, but every tier now uses the same modern aiming/prediction/movement
+            // pipeline instead of weapon-specific code silently falling back to vanilla timing.
+            private static readonly BotDifficultyTuning[] _difficultyTuning =
+            [
+                // Easy
+                new(255 / 256f, 5, 0.970f, 12, 15, 0.15f, 1,
+                    5, 0.25f, 2, 0.20f, 60, 0.75f, 10, 16, 90, 120, 0, 0),
+                // Normal
+                new(3956 / 4096f, 15, 0.985f, 8, 7, 0.50f, 1,
+                    2, 0.10f, 9, 0.35f, 15, 3, 6, 20, 65, 90, 180, 120),
+                // Hard
+                new(3849 / 4096f, 20, 0.995f, 5, 3, 0.80f, 2,
+                    0.2f, 0.01f, 50, 0.50f, 5, 10, 2, 24, 35, 55, 90, 90),
+                // Insane
+                new(-1, 180, 0.999f, 3, 1, 1, 4,
+                    0, 0, 0, 0.50f, 0, 180, 0, 28, 20, 35, 45, 60)
+            ];
+
+            private BotDifficultyTuning Difficulty =>
+                _difficultyTuning[Math.Clamp(_player.BotLevel, 0, _difficultyTuning.Length - 1)];
+
             // duplicated the last value for Guardian
             // Insane (index 3) is the added difficulty tier: near-zero reaction jitter, everything else maxed out below
             private static readonly IReadOnlyList<IReadOnlyList<uint>> _botLevelRandomValues1
@@ -779,7 +854,7 @@ namespace MphRead.Entities
             private void ApplyCombatEnhancements()
             {
                 bool instaGib = _scene.GameState.Mode == GameMode.InstaGib;
-                int level = Math.Clamp(_player.BotLevel, 0, 3);
+                BotDifficultyTuning tuning = Difficulty;
 
                 // Insta-Gib owns the loadout. The stock Battle personality assumes
                 // Power Beam/Missiles are always valid fallbacks, so keep every AI
@@ -802,10 +877,6 @@ namespace MphRead.Entities
                 {
                     _combatJumpCooldown--;
                 }
-                if (!instaGib && level < 2)
-                {
-                    return;
-                }
 
                 PlayerEntity? target = null;
                 if (Flags2.TestFlag(AiFlags2.TargetPlayer) && _targetPlayer != null
@@ -817,12 +888,21 @@ namespace MphRead.Entities
                 }
                 else if (instaGib)
                 {
+                    // Insta-Gib has no pickup/weapon goals to fall back to. If the
+                    // Battle tree has not chosen somebody yet, immediately use the
+                    // nearest opponent the bot can genuinely see.
                     float minDist = Single.MaxValue;
                     foreach (PlayerEntity candidate in _scene.GetPlayerEntities())
                     {
                         if (candidate == _player || candidate.Health == 0 || !candidate.ModInPlay
                             || candidate.TeamIndex == _player.TeamIndex
                             || !IsPlayerVisible(_player, candidate))
+                        {
+                            continue;
+                        }
+                        if (candidate.CurAlpha < 1
+                            && !candidate.Flags2.TestFlag(PlayerFlags2.RadarReveal)
+                            && !_scene.GameState.RadarPlayers)
                         {
                             continue;
                         }
@@ -851,11 +931,7 @@ namespace MphRead.Entities
                     {
                         _touchButtons.Imperialist.IsDown = true;
                     }
-                    target.GetPosition(out Vector3 targetPos);
-                    targetPos = targetPos.AddY(target.IsAltForm
-                        ? Fixed.ToFloat(target.Values.AltColYPos)
-                        : 0.5f);
-                    Func2145738(targetPos);
+                    Func2144B88();
                     if (Flags2.TestFlag(AiFlags2.Bit8))
                     {
                         Func2143A40();
@@ -868,21 +944,21 @@ namespace MphRead.Entities
                 }
 
                 float distSqr = Vector3.DistanceSquared(target.Position, _player.Position);
-                if (distSqr > 24 * 24)
+                if (distSqr > tuning.CombatRange * tuning.CombatRange)
                 {
                     _combatStrafeTimer = 0;
                     return;
                 }
 
-                // Hard and Insane stop behaving like stationary turrets once a duel
-                // starts. Insta-Gib gets the same baseline movement at every level,
-                // while the higher tiers change direction more often and jump.
+                // Every tier now uses combat movement; difficulty controls how quickly
+                // it changes direction and how often it adds a jump. Easy is readable
+                // and slow, Normal moves with intent, Hard is evasive, Insane keeps
+                // changing the duel geometry instead of standing still with perfect aim.
                 if (_combatStrafeTimer <= 0)
                 {
                     _combatStrafeRight = _scene.Random.GetRandomInt2(2) == 0;
-                    int minFrames = level >= 3 ? 20 : level >= 2 ? 35 : 50;
-                    int variance = level >= 3 ? 35 : level >= 2 ? 55 : 70;
-                    _combatStrafeTimer = (minFrames + (int)_scene.Random.GetRandomInt2(variance)) * 2;
+                    _combatStrafeTimer = (tuning.StrafeMinFrames
+                        + (int)_scene.Random.GetRandomInt2(tuning.StrafeVarianceFrames)) * 2;
                 }
                 else
                 {
@@ -897,13 +973,14 @@ namespace MphRead.Entities
                     _buttons.Y.IsDown = true;
                 }
 
-                if (level >= 3 && _combatJumpCooldown == 0
+                if (tuning.JumpCooldownMinFrames > 0 && _combatJumpCooldown == 0
                     && _player.Flags1.TestFlag(PlayerFlags1.Grounded)
                     && !_player.Flags1.TestFlag(PlayerFlags1.UsedJump)
                     && _buttons.L.FramesUp > 10 * 2)
                 {
                     _buttons.L.IsDown = true;
-                    _combatJumpCooldown = (45 + (int)_scene.Random.GetRandomInt2(60)) * 2;
+                    _combatJumpCooldown = (tuning.JumpCooldownMinFrames
+                        + (int)_scene.Random.GetRandomInt2(tuning.JumpCooldownVarianceFrames)) * 2;
                 }
             }
 
