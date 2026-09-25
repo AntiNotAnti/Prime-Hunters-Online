@@ -52,7 +52,8 @@ namespace MphRead.Mods.Network
                 requestedPort: port,
                 friendlyFire: GameState.FriendlyFire,
                 shadowFreeze: GameState.ShadowFreeze,
-                affinityWeapons: GameState.AffinityWeapons);
+                affinityWeapons: GameState.AffinityWeapons,
+                spawnProtection: GameState.SpawnProtection);
             if (started < 0 || LocalServer.Running == null)
             {
                 LastError = LocalServer.LastError ?? "the local server would not start";

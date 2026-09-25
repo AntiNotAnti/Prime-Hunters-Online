@@ -469,6 +469,7 @@ namespace MphRead.Mods.Network
         /// <see cref="NetHitClaims"/>.
         /// </summary>
         private static BeamType _claimedBeam = BeamType.None;
+        public static BeamType ClaimedBeam => _claimedBeam;
 
         public static void SetClaimedBeam(BeamType beam) => _claimedBeam = beam;
 

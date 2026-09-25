@@ -22,7 +22,7 @@ namespace MphRead.Mods.Network
 
         public static ushort DefaultValue(GameMode mode) => mode switch
         {
-            GameMode.Battle or GameMode.BattleTeams => 7,
+            GameMode.Battle or GameMode.BattleTeams or GameMode.InstaGib => 7,
             GameMode.Survival or GameMode.SurvivalTeams => 2, // two spare lives = three total
             GameMode.Bounty or GameMode.BountyTeams => 3,
             GameMode.Capture => 5,
@@ -38,7 +38,7 @@ namespace MphRead.Mods.Network
     {
         None = 0, FriendlyFire = 1, AffinityWeapons = 2, ShadowFreeze = 4,
         RequireReady = 8, AllowJoinInProgress = 16, LockTeams = 32,
-        HideOpponentHealth = 64, DisablePowerups = 128
+        HideOpponentHealth = 64, DisablePowerups = 128, SpawnProtection = 256
     }
 
     public readonly record struct MatchDefinition
@@ -54,10 +54,20 @@ namespace MphRead.Mods.Network
         public bool ShadowFreeze { get; init; }
         public bool HideOpponentHealth { get; init; }
         public bool DisablePowerups { get; init; }
+        // Store the opt-out rather than the opt-in. MatchDefinition is a value
+        // type, so its zero/default value must still mean the user-facing
+        // default: spawn protection enabled.
+        private readonly bool _disableSpawnProtection;
+        public bool SpawnProtection
+        {
+            get => !_disableSpawnProtection;
+            init => _disableSpawnProtection = !value;
+        }
         public SessionRules Rules => (FriendlyFire ? SessionRules.FriendlyFire : 0)
             | (AffinityWeapons ? SessionRules.AffinityWeapons : 0)
             | (ShadowFreeze ? SessionRules.ShadowFreeze : 0)
             | (HideOpponentHealth ? SessionRules.HideOpponentHealth : 0)
-            | (DisablePowerups ? SessionRules.DisablePowerups : 0);
+            | (DisablePowerups ? SessionRules.DisablePowerups : 0)
+            | (SpawnProtection ? SessionRules.SpawnProtection : 0);
     }
 }

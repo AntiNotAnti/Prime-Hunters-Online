@@ -184,6 +184,10 @@ namespace MphRead.Mods.Network
                 ResetMatchState(preserveRoomChange: newMatch && state.Phase != SessionPhase.Lobby);
             }
             ServerSession = state;
+            // The session packet can arrive before the world is constructed.
+            // Put the authoritative rule on the scene template now so initial
+            // spawns and the server simulation do not briefly use a local value.
+            GameState.SpawnProtection = state.Match.SpawnProtection;
             ReplayCapture.AcceptedConfiguration(state);
             if (state.Policy == ServerSessionPolicy.Lobby && state.Phase == SessionPhase.Lobby)
             {
@@ -197,6 +201,7 @@ namespace MphRead.Mods.Network
                     PointGoal = state.Match.PointGoal, TimeRemaining = state.Match.TimeLimitSeconds, MatchId = state.MatchId,
                     Flags = (byte)(MatchStatePacket.FlagInProgress | (state.Match.FriendlyFire ? MatchStatePacket.FlagFriendlyFire : 0)
                         | (state.Match.ShadowFreeze ? 0 : MatchStatePacket.FlagNoShadowFreeze)
+                        | (state.Match.SpawnProtection ? 0 : MatchStatePacket.FlagNoSpawnProtection)
                         | MatchStatePacket.RuleFlags(1, state.Match.AffinityWeapons)) }, rotated: false);
             }
             MatchStartIdentity startIdentity = StartIdentity(state);

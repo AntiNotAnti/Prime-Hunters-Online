@@ -56,7 +56,15 @@ namespace MphRead.Mods.Network
 
         private static void ProtocolChecks()
         {
-            Check(NetConfig.ProtocolVersion == 18 && (byte)PacketType.SessionState == 36
+            Check(new MatchDefinition().SpawnProtection
+                && !(new MatchDefinition { SpawnProtection = false }).SpawnProtection,
+                "spawn protection defaults on and can be disabled");
+            var defaultMatchState = new MatchStatePacket();
+            var disabledMatchState = new MatchStatePacket
+                { Flags = MatchStatePacket.FlagNoSpawnProtection };
+            Check(defaultMatchState.SpawnProtection && !disabledMatchState.SpawnProtection,
+                "match state carries default-on spawn protection without ambiguity");
+            Check(NetConfig.ProtocolVersion == 19 && (byte)PacketType.SessionState == 36
                 && (byte)PacketType.MapOffer == 32 && (byte)PacketType.MapDone == 35
                 && (byte)PacketType.MatchStartCommit == 44 && (byte)PacketType.MatchLoadProgress == 45,
                 "combined protocol and non-overlapping map/lobby/start IDs");
@@ -69,7 +77,7 @@ namespace MphRead.Mods.Network
                 Match = new MatchDefinition { RoomKey = new string('X', 40), Mode = GameMode.BattleTeams,
                     Format = MatchFormat.FourVsFour, TimeLimitSeconds = 600, PointGoal = 20,
                     FriendlyFire = true, AffinityWeapons = true, ShadowFreeze = true, HideOpponentHealth = true,
-                    DisablePowerups = true } };
+                    DisablePowerups = true, SpawnProtection = true } };
             byte[] data = new byte[SessionStatePacket.Size]; state.Write(data);
             Check(SessionStatePacket.TryRead(data, out var read) && read.Match == state.Match
                 && read.Revision == state.Revision && read.LoadedParticipants == 3
@@ -219,6 +227,9 @@ namespace MphRead.Mods.Network
                 Check(LobbyRules.ValidateDefinition(match with { Format = MatchFormat.Custom, CustomTeams = invalid }, out _) == LobbyResultCode.InvalidConfiguration, "reject invalid layout");
             Check(LobbyRules.ValidateDefinition(match with { Mode = GameMode.Capture, Format = MatchFormat.TwoVsTwoVsTwoVsTwo }, out _) == LobbyResultCode.InvalidConfiguration, "capture rejects four teams");
             Check(LobbyRules.ValidateDefinition(match with { Mode = GameMode.PrimeHunter, Format = MatchFormat.OneVsOne }, out _) == LobbyResultCode.InvalidConfiguration, "prime hunter stays FFA");
+            Check(LobbyRules.ValidateDefinition(match with { Mode = GameMode.InstaGib, Format = MatchFormat.FreeForAll }, out _) == LobbyResultCode.Ok, "insta-gib accepts FFA");
+            Check(LobbyRules.ValidateDefinition(match with { Mode = GameMode.InstaGib, Format = MatchFormat.OneVsOne }, out _) == LobbyResultCode.InvalidConfiguration, "insta-gib stays FFA");
+            Check(MatchGoalRules.DefaultValue(GameMode.InstaGib) == 7, "insta-gib uses battle score goal");
             var single = RosterPacket.Create(); single.Count = 1;
             Check(LobbyRules.Validate(match with { Mode = GameMode.Battle, Format = MatchFormat.FreeForAll }, single, false, out _) == LobbyResultCode.NotEnoughPlayers, "explicit FFA minimum two");
 

@@ -51,7 +51,8 @@ namespace MphRead
                 Mode = Mode, Teams = Teams, TeamCount = TeamCount,
                 FriendlyFire = FriendlyFire, PointGoal = PointGoal, TimeGoal = TimeGoal,
                 OctolithReset = OctolithReset, RadarPlayers = RadarPlayers,
-                AffinityWeapons = AffinityWeapons, ShadowFreeze = ShadowFreeze
+                AffinityWeapons = AffinityWeapons, ShadowFreeze = ShadowFreeze,
+                SpawnProtection = SpawnProtection
             };
             Nicknames.CopyTo(state.Nicknames, 0);
             return state;
@@ -138,6 +139,12 @@ namespace MphRead
         public bool OctolithReset { get; set; } = false;
         public bool RadarPlayers { get; set; } = false;
         public bool AffinityWeapons { get; set; } = false;
+        /// <summary>
+        /// Whether a multiplayer spawn is protected from normal combat damage
+        /// for the first three seconds of the life. Firing a real shot clears
+        /// the player's timer immediately; see PlayerEntity.TryFireWeapon.
+        /// </summary>
+        public bool SpawnProtection { get; set; } = true;
 
         /// <summary>
         /// Whether the Judicator's ice wave keeps the cartridge's own reach.
@@ -272,7 +279,7 @@ namespace MphRead
             // this to null, which left SinglePlayer with no handler and made
             // the first gameplay frame crash at ModeState(scene).
             ModeState = ModeStateAdventure;
-            if (Mode == GameMode.Battle || Mode == GameMode.BattleTeams)
+            if (Mode == GameMode.Battle || Mode == GameMode.BattleTeams || Mode == GameMode.InstaGib)
             {
                 PointGoal = 7;
                 MatchTime = 7 * 60;
@@ -1265,7 +1272,7 @@ namespace MphRead
                     Time[i] = TeamTime[player.TeamIndex];
                 }
             }
-            if (Mode == GameMode.Battle || Mode == GameMode.BattleTeams || Mode == GameMode.Capture || Mode == GameMode.Bounty
+            if (Mode == GameMode.Battle || Mode == GameMode.BattleTeams || Mode == GameMode.InstaGib || Mode == GameMode.Capture || Mode == GameMode.Bounty
                 || Mode == GameMode.BountyTeams || Mode == GameMode.Nodes || Mode == GameMode.NodesTeams)
             {
                 int teamPoints = TeamPoints[_players.Main.TeamIndex];
@@ -1335,7 +1342,7 @@ namespace MphRead
             int deaths2 = Deaths[slot2];
             int kills1 = Kills[slot1];
             int kills2 = Kills[slot2];
-            if (Mode == GameMode.Battle || Mode == GameMode.BattleTeams)
+            if (Mode == GameMode.Battle || Mode == GameMode.BattleTeams || Mode == GameMode.InstaGib)
             {
                 if (points1 == points2 && deaths1 == deaths2)
                 {

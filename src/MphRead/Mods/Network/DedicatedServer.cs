@@ -319,6 +319,12 @@ namespace MphRead.Mods.Network
         public bool ShadowFreeze { get; set; } = true;
 
         /// <summary>
+        /// Whether players receive the three-second spawn protection rule.
+        /// Enabled by default; lobby matches may override it per match.
+        /// </summary>
+        public bool SpawnProtection { get; set; } = true;
+
+        /// <summary>
         /// Whether this server keeps itself on the newest release.
         ///
         /// Opt-in, and set by exactly one caller: the standalone
@@ -697,6 +703,7 @@ namespace MphRead.Mods.Network
                 Flags = (byte)((ending ? MatchStatePacket.FlagEnding : MatchStatePacket.FlagInProgress)
                     | (entry.FriendlyFire ? MatchStatePacket.FlagFriendlyFire : 0)
                     | (entry.ShadowFreeze ? 0 : MatchStatePacket.FlagNoShadowFreeze)
+                    | (entry.SpawnProtection ? 0 : MatchStatePacket.FlagNoSpawnProtection)
                     | MatchStatePacket.RuleFlags(DamageLevel, entry.AffinityWeapons)),
                 PointGoal = entry.PointGoal,
                 MatchId = _matchId,

@@ -46,7 +46,7 @@ namespace MphRead.Mods.Multiplayer
                         int baseHealth = Health(original).Length;
                         var objectives = actual.Where(e => e.Type is EntityType.FlagBase or EntityType.OctolithFlag
                             or EntityType.NodeDefense).ToArray();
-                        if (scenario.Mode is not (GameMode.Battle or GameMode.BattleTeams) && objectives.Length == 0)
+                        if (scenario.Mode is not (GameMode.Battle or GameMode.BattleTeams or GameMode.InstaGib) && objectives.Length == 0)
                             missingObjectives++;
                         int units = 0;
                         var intervals = new SortedSet<int>();

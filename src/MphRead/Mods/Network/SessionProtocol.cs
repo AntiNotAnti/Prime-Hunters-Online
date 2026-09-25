@@ -57,7 +57,7 @@ namespace MphRead.Mods.Network
                 || src[8] > (byte)MatchFormat.Custom
                 || !Enum.IsDefined(typeof(GameMode), src[9])) return false;
             var flags = (SessionRules)BinaryPrimitives.ReadUInt16LittleEndian(src[14..]);
-            if (((ushort)flags & ~255) != 0) return false;
+            if (((ushort)flags & ~511) != 0) return false;
             state = new SessionStatePacket
             {
                 StartGeneration = BinaryPrimitives.ReadUInt32LittleEndian(src[LegacySize..]),
@@ -82,7 +82,8 @@ namespace MphRead.Mods.Network
                     AffinityWeapons = flags.HasFlag(SessionRules.AffinityWeapons),
                     ShadowFreeze = flags.HasFlag(SessionRules.ShadowFreeze),
                     HideOpponentHealth = flags.HasFlag(SessionRules.HideOpponentHealth),
-                    DisablePowerups = flags.HasFlag(SessionRules.DisablePowerups)
+                    DisablePowerups = flags.HasFlag(SessionRules.DisablePowerups),
+                    SpawnProtection = flags.HasFlag(SessionRules.SpawnProtection)
                 }
             };
             return LobbyRules.ValidateDefinition(state.Match, out _) == LobbyResultCode.Ok

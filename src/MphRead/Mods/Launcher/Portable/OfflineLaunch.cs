@@ -12,6 +12,7 @@ namespace MphRead.Mods.Launcher
             new OfflineModeOption[]
             {
                 new("Battle", GameMode.Battle),
+                new("Insta-Gib", GameMode.InstaGib),
                 new("Battle teams", GameMode.BattleTeams),
                 new("Survival", GameMode.Survival),
                 new("Survival teams", GameMode.SurvivalTeams),

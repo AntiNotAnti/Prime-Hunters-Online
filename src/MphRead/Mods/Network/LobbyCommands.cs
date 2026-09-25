@@ -39,7 +39,7 @@ namespace MphRead.Mods.Network
             TimeLimitSeconds = (ushort)Math.Clamp(entry.TimeLimit, 0, ushort.MaxValue),
             PointGoal = (ushort)Math.Clamp(entry.PointGoal, 0, ushort.MaxValue),
             FriendlyFire = FriendlyFire, AffinityWeapons = AffinityWeapons, ShadowFreeze = ShadowFreeze,
-            HideOpponentHealth = true, DisablePowerups = true
+            HideOpponentHealth = true, DisablePowerups = true, SpawnProtection = SpawnProtection
         };
 
         private void InvalidateLobbyReady()
