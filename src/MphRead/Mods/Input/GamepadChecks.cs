@@ -46,6 +46,14 @@ namespace MphRead.Mods.Input
                 Near(diagonal.X * diagonal.X + diagonal.Y * diagonal.Y, 1, "maximum magnitude");
                 Near(GamepadAnalog.ApplyRadialDeadZone(.8f, 0, .2f, .2f).X, 1, "outer deadzone");
                 Check(GamepadAnalog.ApplyRadialDeadZone(float.NaN, 0, .2f) == (0, 0), "invalid axis neutral");
+                var analogControls = Entities.PlayerControls.GetDefault();
+                analogControls.SetAnalogMovement(.25f, -.75f);
+                Near(analogControls.AnalogScaleX(1), .25f, "analog right scales strafe traction");
+                Near(analogControls.AnalogScaleY(-1), .75f, "analog back scales walk traction");
+                Near(analogControls.AnalogScaleX(-1), 0, "opposite analog axis contributes no traction");
+                analogControls.ClearAll();
+                Check(!analogControls.AnalogMoveActive && analogControls.AnalogMoveX == 0
+                    && analogControls.AnalogMoveY == 0, "control reset clears analog movement");
                 Near(GamepadAnalog.ApplyResponseCurve(.5f, GamepadCurve.Classic), .29f, "classic curve");
                 Near(GamepadAnalog.ApplyResponseCurve(-.5f, GamepadCurve.Linear), -.5f, "linear sign");
                 var curved = GamepadAnalog.ApplyRadialResponseCurve(.8f, .4f, GamepadCurve.Classic);
