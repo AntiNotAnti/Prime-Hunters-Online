@@ -42,12 +42,63 @@ namespace MphRead.Mods.Input.AimAssist
             return 1 - amount;
         }
         public static Vector2 BodyError(in AimAssistTarget target)
-            => target.BodyRegion is { } r ? RegionError(r) : target.BodyError;
+            => target.BodySurface is { } s ? s.Error
+                : target.BodyRegion is { } r ? RegionError(r) : target.BodyError;
         public static Vector2 HeadError(in AimAssistTarget target)
-            => target.HeadRegion is { } r ? RegionError(r) : target.HeadError;
+            => target.HeadSurface is { } s ? s.Error
+                : target.HeadRegion is { } r ? RegionError(r) : target.HeadError;
+        public static bool InsideBody(in AimAssistTarget target)
+            => target.BodySurface is { } s ? s.Inside
+                : target.BodyRegion is { } r && InsideRegion(r);
+        public static bool InsideHead(in AimAssistTarget target)
+            => target.HeadSurface is { } s ? s.Inside
+                : target.HeadRegion is { } r && InsideRegion(r);
         public static bool CanHeadshotAtDistance(BeamType weapon, float distance)
             => float.IsFinite(distance) && distance >= 0 && (weapon == BeamType.Imperialist
                 || (weapon is BeamType.PowerBeam or BeamType.VoltDriver && distance <= 15));
+
+        public static AimAssistRegion MotionSafeRegion(AimAssistRegion region,
+            Vector2 angularVelocity, float inset = AimAssistTuning.HeadSafeInset)
+        {
+            AimAssistRegion safe = region.Inset(inset);
+            float bx = Math.Clamp(angularVelocity.X / AimAssistTuning.HeadSafeMotionSpeed, -1, 1)
+                * region.Width * AimAssistTuning.HeadSafeMotionBias;
+            float by = Math.Clamp(angularVelocity.Y / AimAssistTuning.HeadSafeMotionSpeed, -1, 1)
+                * region.Height * AimAssistTuning.HeadSafeMotionBias;
+            // Clamp the shifted pocket back inside the real mechanical region.
+            bx = Math.Clamp(bx, region.MinYaw - safe.MinYaw, region.MaxYaw - safe.MaxYaw);
+            by = Math.Clamp(by, region.MinPitch - safe.MinPitch, region.MaxPitch - safe.MaxPitch);
+            return safe.Shift(bx, by);
+        }
+
+        public static Vector2 MotionSafeRegionError(AimAssistRegion region, Vector2 angularVelocity)
+            => RegionError(MotionSafeRegion(region, angularVelocity));
+
+        public static Vector2 RelativeTrackingVelocity(Vector2 targetVelocity, Vector2 cameraVelocity)
+        {
+            float speed = targetVelocity.Length();
+            if (!Finite(targetVelocity) || !Finite(cameraVelocity) || speed < .0001f)
+                return Vector2.Zero;
+            Vector2 direction = targetVelocity / speed;
+            float supplied = Math.Clamp(Vector2.Dot(cameraVelocity, direction), 0, speed);
+            return targetVelocity - direction * supplied;
+        }
+
+        public static float TrajectoryRegionScore(AimAssistRegion region, Vector2 travel)
+        {
+            if (!Finite(region.Center) || !Finite(travel)) return 0;
+            // Fixed samples are deterministic and allocation-free; an intersection
+            // with the rectangle scores one, otherwise score closest approach.
+            float best = float.MaxValue;
+            for (int i = 0; i <= 8; i++)
+            {
+                Vector2 point = travel * (i / 8f);
+                float distance = RegionError(point, region).Length();
+                if (distance < best) best = distance;
+                if (best == 0) return 1;
+            }
+            return 1 - Smooth(0, 2f, best);
+        }
 
         public static float Smooth(float a, float b, float value)
         {
