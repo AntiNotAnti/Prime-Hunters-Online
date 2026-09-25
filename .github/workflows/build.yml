@@ -29,6 +29,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: telemetry collector and report checks
+        run: python3 -m unittest discover -s tools/telemetry -p 'test_*.py'
+
 
       - name: nothing from the game is tracked
         run: tools/check-no-game-assets.sh

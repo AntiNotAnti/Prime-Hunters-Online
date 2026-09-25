@@ -37,12 +37,17 @@ namespace MphRead.Mods.Network
     /// </summary>
     public sealed partial class DedicatedServer
     {
+        // Admission IDs are retained only in memory for the current match, never serialized.
+        private readonly uint[] _studyAdmissions = new uint[32];
+        private int _studyAdmissionHead;
         private sealed class Peer
         {
             public readonly NetPeerTelemetry Telemetry = new();
             public IPEndPoint EndPoint = null!;
             public int SlotIndex = -1;
             public double LastSeen;
+            public double JoinedAt, LoadStartedAt, FirstBootstrapAt;
+            public bool LateJoin, Rejoining, AdmissionReady;
             public uint LastIntentFrame;
             public bool HasIntentFrame;
             public string Name = "";
@@ -490,6 +495,13 @@ namespace MphRead.Mods.Network
                             foreach (var peer in _peers)
                             {
                                 var timing = LagCompensationPolicy.Timing(peer.SlotIndex);
+                                var connection = _transport.ConnectionStats(peer.EndPoint);
+                                var reliable = _transport.ReliableStats(peer.EndPoint);
+                                Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.ConnectionDetail, NetSession.NetFrame,
+                                    Player: (byte)peer.SlotIndex, Generation: _slotGenerations[peer.SlotIndex],
+                                    A: connection?.RttJitterMilliseconds ?? -1, B: reliable?.Retransmissions ?? 0,
+                                    C: connection?.EstimatedLost ?? 0, D: connection?.Sent ?? 0, E: connection?.Acknowledged ?? 0,
+                                    F: connection?.Duplicates ?? 0, G: connection?.Reordered ?? 0, H: connection?.TooOld ?? 0));
                                 Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.Connection, NetSession.NetFrame,
                                     Player: (byte)peer.SlotIndex, A: timing.RttMilliseconds ?? -1, B: timing.MinimumRecentRttMilliseconds ?? -1,
                                     C: timing.JitterMilliseconds ?? -1, D: sample.PacketsReceived, E: sample.PacketsSent,
@@ -841,6 +853,8 @@ namespace MphRead.Mods.Network
             }
             _sim = sim;
             Telemetry.ProductionTelemetry.Begin(entry.RoomKey, entry.Mode.ToString(), _maxPlayers);
+            Array.Clear(_studyAdmissions); _studyAdmissionHead = 0;
+            foreach (var participant in _peers) _studyAdmissions[_studyAdmissionHead++ % _studyAdmissions.Length] = participant.ClientId;
             NetSession.ReplayWorldSink = payload =>
             {
                 foreach (var peer in _peers) _transport?.Send(peer.EndPoint, PacketType.ReplayWorld, payload);
@@ -1945,7 +1959,10 @@ namespace MphRead.Mods.Network
                 { SendRefusal(packet.Sender, RefusedPacket.ReasonFull); return; }
                 _slotGenerations[slot] = NetLifecycleTracker.Next(_slotGenerations[slot]);
                 _slotLives[slot] = 0;
-                peer = new Peer { EndPoint = packet.Sender, SlotIndex = slot, ClientId = clientId, TeamIndex = team };
+                bool rejoining = clientId != 0 && Array.IndexOf(_studyAdmissions, clientId) >= 0;
+                _studyAdmissions[_studyAdmissionHead++ % _studyAdmissions.Length] = clientId;
+                peer = new Peer { EndPoint = packet.Sender, SlotIndex = slot, ClientId = clientId, TeamIndex = team,
+                    JoinedAt = now, LoadStartedAt = now, FirstBootstrapAt = -1, LateJoin = _phase == SessionPhase.InMatch, Rejoining = rejoining };
                 _peers.Add(peer);
                 CareerPeerJoined(peer);
                 EverOccupied = true;
@@ -2424,6 +2441,8 @@ namespace MphRead.Mods.Network
 
         private void Remove(Peer peer, string reason)
         {
+            Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.Lifecycle, NetSession.NetFrame,
+                Player: (byte)peer.SlotIndex, Generation: _slotGenerations[peer.SlotIndex], Result: 202));
             CareerPeerLeaving(peer);
             _transport?.RetireConnection(peer.EndPoint);
             _peers.Remove(peer);

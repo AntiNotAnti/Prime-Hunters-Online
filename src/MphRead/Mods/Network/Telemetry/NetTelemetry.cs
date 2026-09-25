@@ -19,14 +19,18 @@ public static class ProductionTelemetry
             var assembly = typeof(ProductionTelemetry).Assembly;
             string version = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
             int separator = version.IndexOf('+');
-            var header = new TelemetryHeader(1, NetConfig.ProtocolVersion, Guid.NewGuid().ToString("N"),
+            var header = new TelemetryHeader(2, NetConfig.ProtocolVersion, Guid.NewGuid().ToString("N"),
                 separator < 0 ? "unknown" : version[(separator + 1)..], version,
                 System.Runtime.InteropServices.RuntimeInformation.OSDescription, mode, map, players);
             _writer = new NetTelemetryWriter(_config, header);
         }
         catch (Exception) { _writer = null; }
     }
-    public static void Emit(in NetTelemetryEvent e) => Volatile.Read(ref _writer)?.Emit(e);
+    public static void Emit(in NetTelemetryEvent e)
+    {
+        var writer = Volatile.Read(ref _writer);
+        if (writer != null) writer.Emit(e with { TimestampMilliseconds = System.Diagnostics.Stopwatch.GetTimestamp() * (1000.0 / System.Diagnostics.Stopwatch.Frequency) });
+    }
     public static void End()
     {
         var writer = Interlocked.Exchange(ref _writer, null);

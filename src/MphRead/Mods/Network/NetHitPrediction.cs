@@ -768,7 +768,7 @@ namespace MphRead.Mods.Network
         public static void NoteHit(PlayerEntity victim, PlayerEntity? attacker,
             ref DamageFlags flags, ref uint damage, BeamType beam = BeamType.None,
             uint launchFrame = 0, float flight = 0, Vector3? direction = null,
-            Affliction afflictions = Affliction.None, uint unsplitDamage = 0)
+            Affliction afflictions = Affliction.None, uint unsplitDamage = 0, uint continuousPhase = 0)
         {
             int local = NetHooks.LocalSlot;
             if (local < 0)
@@ -859,7 +859,7 @@ namespace MphRead.Mods.Network
                 {
                     ushort claimId = NetHitClaims.Declare(victim, attacker, beam, flags.TestFlag(DamageFlags.Halfturret) ? unsplitDamage : claimedDamage,
                         flags, claimedLethal, victim.Position, launchFrame,
-                        direction ?? Vector3.Zero, afflictions, predictedBodyDamage: claimedDamage);
+                        direction ?? Vector3.Zero, afflictions, predictedBodyDamage: claimedDamage, continuousPhase: continuousPhase);
                     StampClaim(victim.SlotIndex, at, claimId);
                 }
                 if (headshot && !self)
@@ -1642,16 +1642,10 @@ namespace MphRead.Mods.Network
                 if (_pendingClaim[slot, at] != ack.ClaimId) continue;
                 int predicted = _pendingDamage[slot, at];
                 bool head = _pendingHeadshot[slot, at];
-                Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.CombatAck, NetSession.NetFrame,
-                    Player: (byte)NetSession.LocalSlot, Victim: ack.VictimSlot, Id: ack.ClaimId, Result: ack.Result,
-                    A: latencyFrames * (1000.0 / 60), B: ack.DamageApplied - predicted,
-                    C: ack.HealthAfter - _shownHealth[slot], D: head == ((ack.Flags & CombatAckFlags.Headshot) != 0) ? 0 : 1));
-                CombatStudyReports.Record(ack, latencyFrames, ack.DamageApplied - predicted,
-                    ack.HealthAfter - _shownHealth[slot], head != ((ack.Flags & CombatAckFlags.Headshot) != 0));
+                int healthBefore = PlayerEntity._players[slot]?.Health ?? 0;
                 CombatAcks++;
                 if (predicted != ack.DamageApplied) DamageCorrections++;
                 if (head != ack.Flags.HasFlag(CombatAckFlags.Headshot)) HeadshotCorrections++;
-                if (_shownHealth[slot] != ack.HealthAfter) HealthCorrections++;
                 ResolveHeld(slot, at, ack.Accepted && (ack.Flags & CombatAckFlags.Lethal) != 0);
                 Settle(slot, ack.ClaimId, ack.Accepted);
                 // Exact acknowledgement retires this debit immediately. Other
@@ -1679,6 +1673,14 @@ namespace MphRead.Mods.Network
                         else player.OnHalfturretDied();
                     }
                 }
+                int healthCorrection = healthBefore > 0 && player != null ? player.Health - healthBefore : 0;
+                if (healthCorrection != 0) HealthCorrections++;
+                Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.CombatAck, NetSession.NetFrame,
+                    Player: (byte)NetSession.LocalSlot, Victim: ack.VictimSlot, Id: ack.ClaimId, Result: ack.Result, Flags: (int)ack.Flags,
+                    A: latencyFrames * (1000.0 / 60), B: ack.DamageApplied - predicted,
+                    C: healthCorrection, D: head == ((ack.Flags & CombatAckFlags.Headshot) != 0) ? 0 : 1));
+                CombatStudyReports.Record(ack, latencyFrames, ack.DamageApplied - predicted,
+                    healthCorrection, head != ((ack.Flags & CombatAckFlags.Headshot) != 0));
                 return true;
             }
             return false;

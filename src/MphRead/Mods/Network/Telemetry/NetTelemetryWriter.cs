@@ -77,7 +77,7 @@ public sealed class NetTelemetryWriter
                     {
                         // Aggregate stores only periodic/session records in raw;
                         // combat samples still contribute to the bounded summary.
-                        if (_config.Detail >= TelemetryDetail.Study || e.Type is TelemetryEventType.Connection or TelemetryEventType.Lifecycle)
+                        if (_config.Detail >= TelemetryDetail.Study || e.Type is TelemetryEventType.Connection or TelemetryEventType.ConnectionDetail or TelemetryEventType.Lifecycle)
                             raw.WriteLine(JsonSerializer.Serialize(e, TelemetryJsonContext.Default.NetTelemetryEvent));
                     }
                     catch (Exception) { Interlocked.Increment(ref _failures); try { raw.Dispose(); } catch { } raw = null; }

@@ -134,3 +134,16 @@ the next investigation is continuous firing-phase/collision/claim correspondence
 The former turret-state gap is addressed by the coordinated Protocol 19 combat
 work. An eight-player TEST PADS impairment run completed; human eight-player
 gameplay remains distinct from these automated runs.
+
+## Continuous hit identity
+
+Shock Coil claims carry the firing tick in the existing claim `Frame` field,
+marked by `FlagContinuousTick`. `AckFrame` and `LaunchFrame` retain their existing
+historical geometry, grace and kill-order meanings. A settled tick remains in
+the bounded, lifecycle-fenced authority ledger throughout grace. New claim IDs
+or delayed physical copies of that same tick cannot apply damage again. Other
+weapons keep their existing launch-frame matching and direct/splash multiplicity.
+
+Developer target traces now record the final collision winner and fraction in
+addition to candidate player overlap. A candidate overlap can lose to a nearer
+world obstacle; it must not be counted as a delivered hit.

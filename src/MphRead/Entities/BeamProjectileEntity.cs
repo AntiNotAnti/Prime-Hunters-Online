@@ -518,6 +518,7 @@ namespace MphRead.Entities
                     }
                 }
             }
+            NetContinuousTargetDiagnostics.CollisionWinner(this, colWith, minDist);
             if (minDist >= 0 && minDist <= 1)
             {
                 float amt = Fixed.ToFloat(204);

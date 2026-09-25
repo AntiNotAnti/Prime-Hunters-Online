@@ -83,22 +83,26 @@ failures. They are diagnostics only. Histograms use fixed memory; timing and
 rewind quantiles are quantized. Samples outside a histogram's finite range fall
 in its last bin; the exact maximum is retained separately.
 
-## Schema 1 records
+## Schema 2 records
 
 All raw events have frame, player/victim sample IDs, weapon, generation/life,
 record ID, result/flags and numeric fields A–H. Absent timing/displacement uses
--1, not an invented zero.
+-1, not an invented zero. Schema 2 adds a monotonic timestamp in milliseconds,
+connection distributions, lifecycle durations, correction counts, explicit
+inside/outside counts and unknown shadow outcomes. Readers also accept schema 1
+and show fields it did not record as unknown.
 
 | Event | Numeric payload |
 |---|---|
 | Connection | RTT, recent minimum RTT, jitter, transport received/sent, queue drops/current/high-water |
+| ConnectionDetail | RTT variation, reliable retransmissions, estimated losses, sent/acknowledged/duplicate/reordered/old packet counts |
 | Shot | requested/served/plausible rewind, recovered press age; result is geometry shadow category |
 | AuthorityResult | actual body damage, body health, turret health; flags include headshot/lethal/afflictions |
 | Claim | body damage and resulting health; explicit terminal reason, including capacity |
 | CombatAck | settlement milliseconds, damage correction, health correction, headshot correction |
 | ContinuousTarget | reported/selected target encoding, phase, cone or collision damage; collision flags |
-| Form | mismatch duration, snapshot frame, intent frame; episode ID and correction reason |
-| Lifecycle | packet/phase event; 200 identifies accepted WorldReady |
+| Form | mismatch duration, snapshot/intent frames and ages, transition start/last progress/attempt; episode ID, action and reason |
+| Lifecycle | packet/phase event; 200 is accepted WorldReady with join/load/bootstrap durations and late-join/rejoin flags; 201 bootstrap creation; 202 disconnect |
 | ServerStep | engine step milliseconds, cumulative dropped ticks, allocated bytes, GC generation counts |
 | LagStudy | requested/served/plausible rewind, displacement, RTT/jitter, horizontal/vertical displacement |
 
@@ -149,10 +153,24 @@ PRIME_TELEMETRY_COLLECTOR_TOKEN='<server token>' python3 tools/telemetry/collect
   --directory /var/lib/prime-telemetry --listen 127.0.0.1 --port 8099
 ```
 
-It accepts only schema-1 aggregate shapes, caps request size, file count and disk
+It accepts only schema-1/2 aggregate shapes, caps request size, file count and disk
 usage, authenticates server tokens, and does not log request addresses/headers.
-Use the deployment's HTTPS reverse proxy for external access. No collector or
-production server is deployed by this change.
+Use the deployment's HTTPS reverse proxy for external access. The study installer
+keeps the collector on localhost; only the isolated gameplay port is opened.
+
+Generate the interactive offline report with:
+
+```sh
+python3 tools/telemetry/report.py /var/lib/prime-telemetry --output /tmp/prime-study.html
+```
+
+The report deduplicates uploads by match identity, separates build/schema cohorts,
+and exports a JSON companion. Means are weighted by sample count. Quantile ranges
+are per-match ranges, not reconstructed population percentiles. Keep scripted
+smoke/performance data in a separate directory from human matches. Missing data,
+dropped events and unsupported counterfactual geometry remain explicit.
+
+See [the VPS study runbook](study-deployment.md) for installation and rollback.
 
 ## Validation and release gates
 

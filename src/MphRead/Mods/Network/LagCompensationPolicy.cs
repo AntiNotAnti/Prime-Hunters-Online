@@ -60,6 +60,13 @@ public static class LagCompensationPolicy
 
     public static void Study(int shooter, int victim, int weapon, in LagCompensationDecision decision, int outcome, bool timingSample = false)
     {
+        if (!Telemetry.ProductionTelemetry.Enabled) return;
+        Telemetry.ProductionTelemetry.Emit(CreateStudyEvent(shooter, victim, weapon, decision, outcome, timingSample));
+    }
+
+    internal static Telemetry.NetTelemetryEvent CreateStudyEvent(int shooter, int victim, int weapon,
+        in LagCompensationDecision decision, int outcome, bool timingSample = false)
+    {
         var timing = Timing(shooter);
         double horizontal = -1, vertical = -1, total = -1;
         if ((uint)victim < 8 && MphRead.Entities.PlayerEntity._players[victim] is { } player
@@ -69,10 +76,10 @@ public static class LagCompensationPolicy
             var delta = oldPose.Position - proposed.Position;
             horizontal = Math.Sqrt(delta.X * delta.X + delta.Z * delta.Z); vertical = Math.Abs(delta.Y); total = delta.Length;
         }
-        Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.LagStudy, NetSession.NetFrame,
+        return new(Telemetry.TelemetryEventType.LagStudy, NetSession.NetFrame,
             Player: (byte)shooter, Victim: (byte)victim, Weapon: (byte)weapon, Result: outcome, Flags: (decision.WouldClamp ? 1 : 0) | (timingSample ? 0 : 2),
             A: decision.RequestedDepth, B: decision.GlobalServedDepth, C: decision.PlausibleDepth ?? -1,
-            D: total, E: timing.RttMilliseconds ?? -1, F: timing.JitterMilliseconds ?? -1, G: horizontal, H: vertical));
+            D: total, E: timing.RttMilliseconds ?? -1, F: timing.JitterMilliseconds ?? -1, G: horizontal, H: vertical);
     }
 
     private readonly record struct ShotStudy(ShotKey Key, LagCompensationDecision Decision, int Weapon);

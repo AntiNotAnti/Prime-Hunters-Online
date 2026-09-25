@@ -25,6 +25,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--dotnet", default=str(Path.home() / ".dotnet/dotnet"))
     parser.add_argument("--seconds", type=int, default=40)
+    parser.add_argument("--seed", type=int, default=431)
     parser.add_argument("--modes", default="shockcoil")
     parser.add_argument("--profiles", default="all")
     parser.add_argument("--players", type=int, default=2, choices=[2, 4, 8])
@@ -78,14 +79,14 @@ def main():
                 for role in [f"peer{i}" for i in range(args.players)]:
                     peers.append(launch(role, ["-netcheck", "127.0.0.1", "-port", port, "-name", role,
                         "-hunter", args.hunter, "-seconds", str(args.seconds), "-nographics", "-hitrig", mode,
-                        "-netlag", lag, "-netloss", loss, "-netreorder", reorder, "-netduplicate", "1%", "-netseed", "431", "-debuglog"]))
+                        "-netlag", lag, "-netloss", loss, "-netreorder", reorder, "-netduplicate", "1%", "-netseed", str(args.seed), "-debuglog"]))
                     time.sleep(.4)
                 codes = [peer.wait(timeout=args.seconds + 90) for peer in peers]
                 def last_line(path, prefix):
                     if not path.is_file():
                         return None
                     return next((line for line in reversed(path.read_text().splitlines()) if line.startswith(prefix)), None)
-                result = dict(mode=mode, telemetry=args.telemetry, players=args.players, hunter=args.hunter, profile=name, latency=lag, loss=loss,
+                result = dict(seed=args.seed, mode=mode, telemetry=args.telemetry, players=args.players, hunter=args.hunter, profile=name, latency=lag, loss=loss,
                               reorder=reorder, client_exit_codes=codes,
                               authority_target=last_line(folder / "server/netlog-server.txt", "continuous target:"),
                               client_reports={role: {

@@ -36,6 +36,12 @@ public static class NetContinuousTargetDiagnostics
         public uint Damage;
         public Vector3 Back, Position, Center, Origin, Direction, TargetPosition;
         public float Radius;
+        // Final winner after world, player and turret candidates competed.
+        // Candidate overlap alone does not establish an unobstructed hit.
+        public bool CollisionResolved;
+        public int CollisionKind;
+        public NetTargetIdentity CollisionWinner;
+        public float CollisionFraction;
     }
     public const int Capacity = 4096;
     private static readonly Evaluation[] _ring = new Evaluation[Capacity];
@@ -60,6 +66,8 @@ public static class NetContinuousTargetDiagnostics
         if ((owner.Dot >= owner.Threshold) != (authority.Dot >= authority.Threshold)) return ContinuousTargetDivergence.AngleDisagreement;
         if (owner.Rejection == ContinuousTargetRejection.Range != (authority.Rejection == ContinuousTargetRejection.Range)) return ContinuousTargetDivergence.DistanceDisagreement;
         if (owner.Phase != authority.Phase) return ContinuousTargetDivergence.PhaseDisagreement;
+        if (owner.CollisionResolved != authority.CollisionResolved || owner.CollisionKind != authority.CollisionKind
+            || owner.CollisionWinner != authority.CollisionWinner) return ContinuousTargetDivergence.CollisionDisagreement;
         if (owner.CollisionTest != authority.CollisionTest || owner.Overlap != authority.Overlap
             || owner.CollisionTarget != authority.CollisionTarget) return ContinuousTargetDivergence.CollisionDisagreement;
         if (owner.DamageGate != authority.DamageGate || owner.Damage != authority.Damage) return ContinuousTargetDivergence.DamageGateDisagreement;
@@ -110,6 +118,21 @@ public static class NetContinuousTargetDiagnostics
                 Player: (byte)item.Owner, Victim: (byte)target.SlotIndex, Result: (int)item.Rejection,
                 Flags: (overlap ? 1 : 0) | (damage > 0 ? 2 : 0), A: item.Reported.EncodedSlot,
                 B: item.Selected.EncodedSlot, C: item.Phase, D: damage));
+            return;
+        }
+    }
+    internal static void CollisionWinner(BeamProjectileEntity beam, EntityBase? winner, float fraction)
+    {
+        if (beam.Beam != BeamType.ShockCoil) return;
+        for (int n = 1; n <= Math.Min(_count, 128); n++)
+        {
+            int i = (_next - n + Capacity) % Capacity;
+            if (_beams[i] != beam) continue;
+            ref var item = ref _ring[i]; item.CollisionResolved = true;
+            item.CollisionFraction = fraction;
+            item.CollisionKind = fraction > 1 ? -2 : winner == null ? -1 : (int)winner.Type;
+            item.CollisionWinner = winner is PlayerEntity player ? NetTargetIdentity.ForSlot(player.SlotIndex)
+                : winner is HalfturretEntity turret ? NetTargetIdentity.ForSlot(turret.Owner.SlotIndex) : NetTargetIdentity.None;
             return;
         }
     }

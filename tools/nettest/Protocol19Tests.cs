@@ -21,7 +21,7 @@ internal static class Protocol19Tests
         Directory.CreateDirectory(root);
         try
         {
-            Codecs(); FormEpisodes(); Timing(); Pipeline(root);
+            Codecs(); FormEpisodes(); Timing(); Aggregation(); Pipeline(root);
             Console.WriteLine($"PASS: {_checks} Protocol 19 combat/telemetry checks"); return 0;
         }
         catch (Exception ex) { Console.WriteLine(ex); return 1; }
@@ -81,6 +81,36 @@ internal static class Protocol19Tests
             && LagCompensationPolicy.RttBucket(400) == 7 && LagCompensationPolicy.JitterBucket(80) == 4,
             "study bucket boundaries");
     }
+    private static void Aggregation()
+    {
+        var aggregate = new NetTelemetryAggregator();
+        aggregate.Add(new(TelemetryEventType.Connection, 1, A: -1, B: -1, C: -1));
+        aggregate.Add(new(TelemetryEventType.Connection, 2, A: 100, B: 80, C: 25, H: 7));
+        aggregate.Add(new(TelemetryEventType.ConnectionDetail, 2, Player: 1, Generation: 2, A: 12, B: 3, C: 4));
+        aggregate.Add(new(TelemetryEventType.ConnectionDetail, 3, Player: 1, Generation: 2, A: 14, B: 5, C: 7));
+        aggregate.Add(new(TelemetryEventType.ConnectionDetail, 4, Player: 1, Generation: 3, A: 2, B: 1, C: 2));
+        aggregate.Add(new(TelemetryEventType.Lifecycle, 5, Result: 200, Flags: 3, B: 1250, C: 1000, D: 250));
+        aggregate.Add(new(TelemetryEventType.Lifecycle, 6, Result: 202));
+        aggregate.Add(new(TelemetryEventType.CombatAck, 7, Result: 1, A: 50));
+        aggregate.Add(new(TelemetryEventType.CombatAck, 8, Result: 7, A: 100, B: -10, C: 5, D: 1));
+        aggregate.Add(new(TelemetryEventType.LagStudy, 9, Weapon: 7, Result: -1, A: 12, B: 12, C: 10, D: -1, E: 100, F: 25));
+        aggregate.Add(new(TelemetryEventType.LagStudy, 10, Weapon: 7, Result: 1, Flags: 3, A: 12, B: 12, C: 10, D: 2, E: 100, F: 25));
+        aggregate.Add(new(TelemetryEventType.LagStudy, 11, Weapon: 7, Result: 2, Flags: 2, A: 8, B: 8, C: 10, D: 1, E: 100, F: 25));
+        var summary = aggregate.Capture(new(2, 19, "fixture", "fixture", "fixture", "fixture", "Battle", "fixture", 2), 1, default);
+        Check(summary.NetworkDetails.RttMilliseconds.Count == 1 && summary.NetworkDetails.RttBuckets[8] == 1
+            && summary.NetworkDetails.RttBuckets[2] == 1, "unknown timing excluded from distributions and explicitly bucketed");
+        Check(summary.NetworkDetails.Retransmissions == 6 && summary.NetworkDetails.EstimatedLost == 9,
+            "connection totals are deltas fenced across slot generations");
+        Check(summary.LifecycleDetails.JoinMilliseconds.Mean == 1250 && summary.LifecycleDetails.LoadMilliseconds.Mean == 1000
+            && summary.LifecycleDetails.BootstrapMilliseconds.Mean == 250 && summary.LifecycleDetails.RejoinMilliseconds.Count == 1,
+            "ready event preserves monotonic join, load, bootstrap and rejoin durations");
+        Check(summary.CombatDetails.ExactDamagePredictions == 1 && summary.CombatDetails.DamageCorrections == 1
+            && summary.CombatDetails.RejectedPredictions == 1 && summary.CombatAckLatency.Mean == 75,
+            "exact/corrected/rejected settlements have distinct counters");
+        Check(summary.LagComp.Single().Requested.Count == 1 && summary.LagComp.Single().HitsOutside == 1
+            && summary.LagComp.Single().RescuesInside == 1 && summary.LagComp.Single().MissesOutside == 0,
+            "impact observations do not inflate shots or invent misses");
+    }
     private sealed class FailedWriteStream : Stream
     {
         public override bool CanRead => false; public override bool CanSeek => false; public override bool CanWrite => true;
@@ -129,9 +159,12 @@ internal static class Protocol19Tests
         writer.Emit(sample); // warm channel paths before allocation measurement
         long before = GC.GetAllocatedBytesForCurrentThread(); var clock = Stopwatch.StartNew();
         long allocationStart = GC.GetAllocatedBytesForCurrentThread();
+        long emissionStarted = Stopwatch.GetTimestamp();
         for (int i = 0; i < 20000; i++) writer.Emit(sample);
+        double nanosecondsPerEmission = Stopwatch.GetElapsedTime(emissionStarted).TotalNanoseconds / 20000;
         long allocations = GC.GetAllocatedBytesForCurrentThread() - allocationStart;
         Check(allocations == 0, $"Emit zero allocations with blocked writer ({allocations} bytes)");
+        Console.WriteLine($"V19 MEASURE bounded Emit: {nanosecondsPerEmission:F1} ns/attempt (accepted + dropped, blocked writer)");
         Check(writer.Counters.EventsQueued == 8192 && writer.Counters.EventsDropped == 11809 && writer.Counters.QueueHighWater <= 8192, "queue pressure drops telemetry at fixed capacity");
         clock.Restart(); writer.Stop(); Check(clock.ElapsedMilliseconds < 50, "shutdown request never waits on writer");
         gate.Set(); Check(writer.WaitForExit(5000) && writer.Counters.EventsWritten == 8192, "match end drains pending queue before summary");

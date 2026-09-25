@@ -71,12 +71,49 @@ public static class NetProtocol19Check
             Prepare(100, 37); answers = 0;
             claim.ShooterLifeId = NetPlayerLifecycle.Get(0); claim.VictimLifeId = NetPlayerLifecycle.Get(1);
             claim.AckFrame = NetSession.NetFrame; claim.Write(packet.AsSpan(1));
+            string studyRoot = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "prime-claim-study-" + Guid.NewGuid().ToString("N"));
+            Telemetry.ProductionTelemetry.Configure(new Telemetry.NetTelemetryConfig { Directory = studyRoot, LocalRaw = false });
+            Telemetry.ProductionTelemetry.Begin(room, "Battle", 2);
+            LagCompensationPolicy.SetTiming(0, new LagTiming(100, 10, 80, 8));
             NetHitClaims.Receive(0, packet);
             for (int i = 0; i <= NetHitClaims.MaxGraceFrames + 1; i++) { typeof(NetSession).GetProperty(nameof(NetSession.NetFrame))!.SetValue(null, NetSession.NetFrame + 1); NetHitClaims.Tick(); }
             Check(answers == 1 && received.Result == (byte)CombatAckResult.Applied && victim.Health == 95 && victim.Halfturret.Health == 31,
                 "rescued turret claim uses canonical pre-split damage once");
             NetHitClaims.Receive(0, packet); NetHitClaims.Tick();
             Check(victim.Health == 95 && victim.Halfturret.Health == 31 && answers == 2, "rescued turret retry cannot pay twice");
+            Telemetry.ProductionTelemetry.Shutdown();
+            var studyFiles = System.IO.Directory.GetFiles(studyRoot, "*.summary.json", System.IO.SearchOption.AllDirectories);
+            var study = System.Text.Json.JsonSerializer.Deserialize(System.IO.File.ReadAllText(studyFiles[0]), Telemetry.TelemetryJsonContext.Default.TelemetrySummary)!;
+            long inside = 0, outside = 0;
+            foreach (var bucket in study.LagComp) { inside += bucket.RescuesInside; outside += bucket.RescuesOutside; }
+            Check(inside == 1 && outside == 0, "rescue study preserves admission rewind without adding arbitration grace");
+            Telemetry.ProductionTelemetry.Configure(new Telemetry.NetTelemetryConfig { Enabled = false });
+            System.IO.Directory.Delete(studyRoot, recursive: true);
+            Prepare(100, 37); answers = 0;
+            uint phase = NetSession.NetFrame + 50;
+            var continuous = new BeamProjectileEntity(shooter.OwningScene) { Owner = shooter,
+                Beam = BeamType.ShockCoil, ModHasSharedContinuousPhase = true, ModContinuousPhase = phase };
+            NetPlayerLifecycle.StampProjectile(continuous);
+            victim.TakeDamage(10, DamageFlags.Halfturret | DamageFlags.NoDmgInvuln, null, continuous);
+            int continuousBody = victim.Health, continuousTurret = victim.Halfturret.Health;
+            Check(continuousBody < 100 && continuousTurret < 37, "continuous physical hit records actual split");
+            typeof(NetSession).GetProperty(nameof(NetSession.NetFrame))!.SetValue(null, NetSession.NetFrame + 1);
+            NetUnlagged.Record(NetSession.NetFrame);
+            claim = new HitClaimPacket { ClaimId = 21, MatchId = 1, AuthorityEpoch = 1,
+                ShooterGeneration = NetPlayerLifecycle.Generation(0), ShooterLifeId = NetPlayerLifecycle.Get(0),
+                VictimSlot = 1, VictimGeneration = NetPlayerLifecycle.Generation(1), VictimLifeId = NetPlayerLifecycle.Get(1),
+                Frame = phase, AckFrame = NetSession.NetFrame, LaunchFrame = NetSession.NetFrame,
+                Damage = 10, Beam = (byte)BeamType.ShockCoil,
+                Flags = HitClaimPacket.FlagHalfturret | HitClaimPacket.FlagContinuousTick, HitPoint = victim.Position };
+            claim.Write(packet.AsSpan(1)); NetHitClaims.Receive(0, packet); NetHitClaims.Tick();
+            Check(answers == 1 && received.Result == (byte)CombatAckResult.AlreadyResolved
+                && received.HealthAfter == continuousBody && received.HalfturretHealthAfter == continuousTurret,
+                $"same continuous tick settles despite different world ACK frames: answers={answers} result={received.Result} body={received.HealthAfter}/{continuousBody} turret={received.HalfturretHealthAfter}/{continuousTurret}");
+            claim.ClaimId++; claim.Write(packet.AsSpan(1)); NetHitClaims.Receive(0, packet); NetHitClaims.Tick();
+            victim.TakeDamage(10, DamageFlags.Halfturret | DamageFlags.NoDmgInvuln, null, continuous);
+            Check(answers == 2 && received.Result == (byte)CombatAckResult.AlreadyResolved
+                && victim.Health == continuousBody && victim.Halfturret.Health == continuousTurret,
+                "different claim ID and delayed physical copy cannot pay continuous tick twice");
             Prepare(100, 37); Authority(false);
             NetSession.RemoteStates[1] = new PlayerState { SlotIndex = 1, SlotGeneration = NetPlayerLifecycle.Generation(1),
                 LifeId = NetPlayerLifecycle.Get(1), Health = 100, HalfturretActive = true, HalfturretHealth = 37 };

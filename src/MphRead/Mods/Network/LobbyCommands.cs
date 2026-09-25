@@ -271,6 +271,7 @@ namespace MphRead.Mods.Network
             {
                 participants |= (byte)(1 << participant.SlotIndex);
                 participant.MatchReady = participant.SceneLoaded = false;
+                participant.LoadStartedAt = now; participant.FirstBootstrapAt = -1; participant.LateJoin = false;
                 participant.BootstrapLength = 0;
                 participant.MatchLoadStage = MatchLoadStage.None;
                 participant.MatchLoadProgressAt = 0;

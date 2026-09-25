@@ -19,6 +19,9 @@ namespace MphRead.Mods.Network
         public uint EpisodeStartedFrame { get; private set; }
         public FormCorrectionReason Reason { get; private set; }
         public bool EpisodeActive { get; private set; }
+        public uint TransitionStartedFrame => _transitionSince;
+        public uint LastTransitionFrame => _transitionLastSeen;
+        public uint AttemptFrame => _attempted ? _attemptSince : 0;
         private bool _episodeDesired;
         private uint _mismatchSince;
         private uint _attemptSince;

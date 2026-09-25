@@ -782,9 +782,12 @@ namespace MphRead.Mods.Network
                 Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.Form, _host.Frame,
                     Player: (byte)slot, Generation: NetPlayerLifecycle.Generation(slot), Life: NetPlayerLifecycle.Get(slot),
                     Id: episode.EpisodeId, Result: (int)episode.Reason,
-                    Flags: (altForm ? 1 : 0) | (player.IsAltForm ? 2 : 0) | (player.IsMorphing ? 4 : 0) | (player.IsUnmorphing ? 8 : 0) | (wasMismatching && !episode.EpisodeActive ? 16 : 0),
+                    Flags: (altForm ? 1 : 0) | (player.IsAltForm ? 2 : 0) | (player.IsMorphing ? 4 : 0) | (player.IsUnmorphing ? 8 : 0) | (wasMismatching && !episode.EpisodeActive ? 16 : 0) | ((int)correction << 5),
                     A: _host.Frame - episode.EpisodeStartedFrame,
-                    B: NetSession.AppliedSnapshotFrame, C: NetSession.RemoteIntents[slot].Frame));
+                    B: NetSession.AppliedSnapshotFrame, C: NetSession.RemoteIntents[slot].Frame,
+                    D: NetSession.AppliedSnapshotFrame == 0 ? -1 : _host.Frame - NetSession.AppliedSnapshotFrame,
+                    E: _host.IntentAge(slot), F: episode.TransitionStartedFrame,
+                    G: episode.LastTransitionFrame, H: episode.AttemptFrame));
             // First the real transition, because that is what creates the
             // parts of a form that are separate entities -- Weavel's
             // halfturret exists only because EnterAltForm adds it, so a

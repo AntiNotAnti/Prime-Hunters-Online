@@ -28,6 +28,7 @@ def classify(owner, authority):
     if any(owner[k] != authority[k] for k in ['Eligible', 'TeamEligible', 'Targetable']): return 'EligibilityDisagreement'
     if (owner['Dot'] >= owner['Threshold']) != (authority['Dot'] >= authority['Threshold']): return 'AngleDisagreement'
     if owner['Phase'] != authority['Phase']: return 'PhaseDisagreement'
+    if any(owner.get(k) != authority.get(k) for k in ['CollisionResolved', 'CollisionKind', 'CollisionWinner']): return 'CollisionDisagreement'
     if any(owner[k] != authority[k] for k in ['CollisionTest', 'Overlap']) or owner.get('CollisionTarget') != authority.get('CollisionTarget'): return 'CollisionDisagreement'
     if any(owner[k] != authority[k] for k in ['DamageGate', 'Damage']): return 'DamageGateDisagreement'
     return 'Agreed'

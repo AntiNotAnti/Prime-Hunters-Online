@@ -1757,6 +1757,9 @@ namespace MphRead.Mods.Network
         /// <summary>Volt Driver disruption.</summary>
         public const byte FlagDisrupted = 1 << 4;
         public const byte FlagHalfturret = 1 << 5;
+        // Frame names the logical firing tick for a synchronized Shock Coil.
+        // AckFrame and LaunchFrame retain historical-world/arbitration semantics.
+        public const byte FlagContinuousTick = 1 << 6;
 
         /// <summary>
         /// Rolling, per shooter, so a verdict can name a claim and a repeat

@@ -352,7 +352,7 @@ namespace MphRead.Mods.Network
         /// </returns>
         public static ushort Declare(PlayerEntity victim, PlayerEntity attacker,
             BeamType beam, uint damage, DamageFlags flags, bool lethal, Vector3 hitPoint,
-            uint launchFrame, Vector3 direction, Affliction afflictions = Affliction.None, uint? predictedBodyDamage = null)
+            uint launchFrame, Vector3 direction, Affliction afflictions = Affliction.None, uint? predictedBodyDamage = null, uint continuousPhase = 0)
         {
             if (!Claiming || victim == attacker || damage == 0
                 || NetPlayerLifecycle.Get(victim.SlotIndex) == 0 || NetPlayerLifecycle.Get(attacker.SlotIndex) == 0)
@@ -365,6 +365,7 @@ namespace MphRead.Mods.Network
                 return 0;
             }
             byte claimFlags = AfflictionClaimFlags(afflictions);
+            if (beam == BeamType.ShockCoil && continuousPhase != 0) claimFlags |= HitClaimPacket.FlagContinuousTick;
             if (flags.TestFlag(DamageFlags.Halfturret)) claimFlags |= HitClaimPacket.FlagHalfturret;
             if (flags.TestFlag(DamageFlags.Headshot))
             {
@@ -419,7 +420,7 @@ namespace MphRead.Mods.Network
                 VictimGeneration = NetPlayerLifecycle.Generation(slot),
                 VictimLifeId = NetPlayerLifecycle.Get(slot),
                 Id = _nextId,
-                Frame = NetSession.NetFrame,
+                Frame = continuousPhase != 0 ? continuousPhase : NetSession.NetFrame,
                 AckFrame = ack,
                 LaunchFrame = launchFrame,
                 VictimSlot = (byte)slot,
@@ -660,6 +661,8 @@ namespace MphRead.Mods.Network
 
         private struct Pending
         {
+            public Telemetry.NetTelemetryEvent RescueStudy;
+            public uint ContinuousPhase;
             public ushort MatchId;
             public ulong AuthorityEpoch;
             public ushort ShooterGeneration;
@@ -788,6 +791,8 @@ namespace MphRead.Mods.Network
         /// hits -- <c>BeamProjectileEntity.ModLaunchFrame</c>. Zero for a hit
         /// with no beam behind it.
         /// </summary>
+        private static readonly uint[,,] _authorityContinuousPhase = new uint[Slots, Slots, LedgerDepth];
+        private static uint _applyingContinuousPhase;
         private static readonly uint[,,] _authorityHitLaunch = new uint[Slots, Slots, LedgerDepth];
         private static readonly bool[,,] _authorityHitUsed = new bool[Slots, Slots, LedgerDepth];
         /// <summary>
@@ -838,7 +843,10 @@ namespace MphRead.Mods.Network
             for (int n = 0; n < LedgerDepth; n++)
             {
                 int i = (_authorityHitHead[attacker, victim] + n) % LedgerDepth;
-                if (!LedgerLive(attacker, victim, i) || _authorityHitUsed[attacker, victim, i]) { head = i; break; }
+                // Continuous ticks remain identifiable after claim settlement: a
+                // delayed physical copy or a different claim ID must not pay again.
+                if (!LedgerLive(attacker, victim, i)
+                    || (_authorityHitUsed[attacker, victim, i] && _authorityContinuousPhase[attacker, victim, i] == 0)) { head = i; break; }
             }
             if (head < 0)
             {
@@ -856,6 +864,7 @@ namespace MphRead.Mods.Network
             _authorityHit[attacker, victim, head] = NetSession.NetFrame;
             _authorityHitAck[attacker, victim, head] = ack;
             _authorityHitLaunch[attacker, victim, head] = launch;
+            _authorityContinuousPhase[attacker, victim, head] = 0;
             _authorityHitDamage[attacker, victim, head] = damage;
             _authorityOutcomes[attacker, victim, head] = default;
             _authorityHitUsed[attacker, victim, head] = used;
@@ -897,6 +906,30 @@ namespace MphRead.Mods.Network
                 }
             }
             return best;
+        }
+
+        public static bool ContinuousAlreadyResolved(int attacker, int victim, uint phase)
+        {
+            if ((uint)attacker >= Slots || (uint)victim >= Slots || phase == 0) return false;
+            for (int i = 0; i < LedgerDepth; i++)
+                if (_authorityContinuousPhase[attacker, victim, i] == phase && LedgerLive(attacker, victim, i)) return true;
+            return false;
+        }
+
+        private static bool TakeContinuousLedger(int attacker, int victim, uint phase, out int damage)
+        {
+            damage = 0;
+            for (int i = 0; i < LedgerDepth; i++)
+            {
+                if (_authorityContinuousPhase[attacker, victim, i] != phase || !LedgerLive(attacker, victim, i)) continue;
+                // One continuous beam can damage this victim only once per firing tick.
+                // New claim IDs for the same tick replay the stored result, never rescue twice.
+                _authorityHitUsed[attacker, victim, i] = true;
+                damage = _authorityHitDamage[attacker, victim, i];
+                _takenOutcome = _authorityOutcomes[attacker, victim, i];
+                MatchedByLaunch++; return true;
+            }
+            return false;
         }
 
         private static bool TakeLedger(int attacker, int victim, uint claimAck,
@@ -1079,7 +1112,7 @@ namespace MphRead.Mods.Network
         /// for a hit it is rescuing.
         /// </summary>
         public static void NoteAuthorityHit(int attackerSlot, int victimSlot,
-            uint launchFrame = 0, int damage = 0)
+            uint launchFrame = 0, int damage = 0, uint continuousPhase = 0)
         {
             if (!Arbitrating || victimSlot < 0 || victimSlot >= Slots)
             {
@@ -1103,6 +1136,8 @@ namespace MphRead.Mods.Network
                     ApplyingClaim ? ApplyingClaimAck : fire,
                     ApplyingClaim ? ApplyingClaimLaunch : launchFrame,
                     damage, used: ApplyingClaim);
+                if (_completingLedger[victimSlot] >= 0)
+                    _authorityContinuousPhase[attackerSlot, victimSlot, _completingLedger[victimSlot]] = ApplyingClaim ? _applyingContinuousPhase : continuousPhase;
             }
         }
 
@@ -1506,6 +1541,7 @@ namespace MphRead.Mods.Network
             ApplyingClaim = true;
             ApplyingClaimAck = entry.AckFrame;
             ApplyingClaimLaunch = entry.LaunchFrame;
+            _applyingContinuousPhase = entry.ContinuousPhase;
             try
             {
                 using (new NetDamage.ClaimScope(BeamType.Imperialist))
@@ -1552,6 +1588,13 @@ namespace MphRead.Mods.Network
             }
             _pending[index] = new Pending
             {
+                // Capture at admission, before arbitration grace elapses or
+                // historical poses expire. Grace is not requested rewind.
+                RescueStudy = Telemetry.ProductionTelemetry.Enabled
+                    ? LagCompensationPolicy.CreateStudyEvent(shooterSlot, claim.VictimSlot,
+                        NetShotDiagnostics.Bucket((BeamType)claim.Beam),
+                        LagCompensationPolicy.Evaluate(shooterSlot, NetSession.NetFrame, claim.AckFrame, 0, 0), 2)
+                    : default,
                 MatchId = claim.MatchId,
                 AuthorityEpoch = claim.AuthorityEpoch,
                 ShooterGeneration = claim.ShooterGeneration,
@@ -1559,6 +1602,7 @@ namespace MphRead.Mods.Network
                 VictimGeneration = claim.VictimGeneration,
                 VictimLifeId = claim.VictimLifeId,
                 Id = claim.ClaimId,
+                ContinuousPhase = claim.Beam == (byte)BeamType.ShockCoil && (claim.Flags & HitClaimPacket.FlagContinuousTick) != 0 ? claim.Frame : 0,
                 ShooterSlot = (byte)shooterSlot,
                 VictimSlot = claim.VictimSlot,
                 Beam = claim.Beam,
@@ -1701,8 +1745,11 @@ namespace MphRead.Mods.Network
                         NetPlayerLifecycle.OldLifeClaims++;
                         continue;
                     }
-                    if (TakeLedger(entry.ShooterSlot, entry.VictimSlot, entry.AckFrame,
-                        entry.LaunchFrame, entry.Arrived, entry.Grace, out int resolved))
+                    int resolved;
+                    if (entry.ContinuousPhase != 0
+                        ? TakeContinuousLedger(entry.ShooterSlot, entry.VictimSlot, entry.ContinuousPhase, out resolved)
+                        : TakeLedger(entry.ShooterSlot, entry.VictimSlot, entry.AckFrame,
+                            entry.LaunchFrame, entry.Arrived, entry.Grace, out resolved))
                     {
                         // A validated Imperialist headshot can pair with the
                         // authority's body hit when the two rewinds differ by
@@ -1977,6 +2024,7 @@ namespace MphRead.Mods.Network
             ApplyingClaim = true;
             ApplyingClaimAck = entry.AckFrame;
             ApplyingClaimLaunch = entry.LaunchFrame;
+            _applyingContinuousPhase = entry.ContinuousPhase;
             bool lethal = victim.Health <= entry.Damage;
             uint before = (uint)victim.Health;
             int turretBefore = victim.Halfturret?.Health ?? 0;
@@ -2032,9 +2080,8 @@ namespace MphRead.Mods.Network
                 }
             }
             AppliedHere++;
-            if (Telemetry.ProductionTelemetry.Enabled)
-                LagCompensationPolicy.Study(shooterSlot, victimSlot, NetShotDiagnostics.Bucket((BeamType)entry.Beam),
-                    LagCompensationPolicy.Evaluate(shooterSlot, NetSession.NetFrame, entry.AckFrame, 0, 0), 2);
+            if (entry.RescueStudy.Type == Telemetry.TelemetryEventType.LagStudy)
+                Telemetry.ProductionTelemetry.Emit(entry.RescueStudy);
             // Remember the shot, so the authority's own copy of it -- which
             // for a slow projectile can still be in the air -- is refused when
             // it lands rather than paid a second time.
@@ -2174,7 +2221,7 @@ namespace MphRead.Mods.Network
             Array.Clear(_ledgerUnsafeUntil);
             Array.Clear(_authorityHit);
             Array.Clear(_authorityHitAck);
-            Array.Clear(_authorityHitLaunch);
+            Array.Clear(_authorityHitLaunch); Array.Clear(_authorityContinuousPhase); _applyingContinuousPhase = 0;
             Array.Clear(_authorityHitUsed);
             Array.Clear(_authorityHitHead);
             Array.Clear(_deathFire);
