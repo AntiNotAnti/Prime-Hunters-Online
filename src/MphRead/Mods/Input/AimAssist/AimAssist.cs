@@ -28,12 +28,16 @@ namespace MphRead.Mods.Input.AimAssist
                 ? AimAssistMath.Smooth(AimAssistTuning.IntentStart, AimAssistTuning.IntentFull, stickIntent) : 0;
             state.SecondsSinceLookIntent = intent > 0 ? 0 : state.SecondsSinceLookIntent + dt;
             bool strafe = intent == 0 && state.TargetSlot >= 0
-                && state.TrackingConfidence >= AimAssistTuning.TrackingConfidenceMin
+                && state.BodyTrackingConfidence >= AimAssistTuning.TrackingConfidenceMin
                 && moveIntent >= .15f && state.SecondsSinceLookIntent <= .45f;
 
+            Vector2 cameraVelocity = raw / dt;
+            Vector2 cameraAcceleration = AimAssistMath.ClampLength(
+                (cameraVelocity - state.PreviousCameraVelocity) / dt, 900f);
             float previousMagnitude = state.PreviousStick.Length();
             Vector2 stickDelta = physicalStick - state.PreviousStick;
             float directionalSpeed = stickDelta.Length() / dt;
+            float historySpeed = (physicalStick - state.StickHistory2).Length() / Math.Max(2 * dt, .0001f);
             float directionDot = previousMagnitude > .0001f && stickIntent > .0001f
                 ? Vector2.Dot(state.PreviousStick, physicalStick) / (previousMagnitude * stickIntent) : 1;
             bool magnitudeFlick = stickIntent >= .65f && (previousMagnitude < .35f
@@ -47,20 +51,52 @@ namespace MphRead.Mods.Input.AimAssist
                     ? stickDelta : physicalStick;
                 state.FlickActive = true; state.FlickConsumed = false; state.FlickAge = 0;
                 state.FlickDirection = Vector2.Normalize(flick); state.FlickPeak = stickIntent;
-                // A new flick gets one target-selection pass based on its trajectory.
-                // Once selected, that target is locked for the short capture window.
+                state.FlickSpeed = Math.Max(directionalSpeed, historySpeed);
+                state.FlickBraking = false;
+                // A new flick gets one trajectory-weighted selection pass.
                 state.FlickTarget = -1;
             }
-            else state.FlickAge += dt;
+            else
+            {
+                state.FlickAge += dt;
+                if (state.FlickActive)
+                {
+                    float speed = Math.Max(directionalSpeed, historySpeed);
+                    state.FlickBraking = state.FlickAge > dt
+                        && state.FlickSpeed > AimAssistTuning.FlickDirectionalSpeed
+                        && speed <= state.FlickSpeed * AimAssistTuning.FlickBrakeRatio;
+                    state.FlickSpeed = Math.Max(state.FlickSpeed, speed);
+                }
+            }
+            state.PushStick(physicalStick);
             state.PreviousStick = physicalStick;
             state.FlickActive &= intent > 0 && state.FlickAge <= AimAssistTuning.HeadFlickCaptureSeconds;
-            if (!state.FlickActive) state.FlickTarget = -1;
+            if (!state.FlickActive)
+            {
+                state.FlickTarget = -1;
+                state.FlickBraking = false;
+            }
+
+            state.ShotCommitSeconds = Math.Max(0, state.ShotCommitSeconds - dt);
+            bool firePressed = firing && !state.PreviousFiring;
+            if (firePressed && state.TargetSlot >= 0)
+            {
+                bool nearCommit = profile.Precision
+                    ? state.PreviousInsideHead || state.PreviousHeadError.Length() <= .65f
+                    : state.PreviousInsideHead || state.PreviousInsideBody
+                        || state.PreviousError.Length() <= .5f;
+                if (nearCommit) state.ShotCommitSeconds = AimAssistTuning.ShotCommitSeconds;
+            }
+            state.PreviousFiring = firing;
+            bool shotCommitted = state.ShotCommitSeconds > 0;
+
             if (intent == 0 && !strafe)
             {
                 state.Reset();
                 return new(raw.X, raw.Y);
             }
 
+            Vector2 trajectoryTravel = cameraVelocity * AimAssistTuning.TrajectoryHorizon;
             bool flickSelecting = state.FlickActive && state.FlickTarget < 0;
             int best = -1, retained = -1, occludedRetained = -1;
             float bestScore = -1, retainedScore = -1, bestAlignment = 0;
