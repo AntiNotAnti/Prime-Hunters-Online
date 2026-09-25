@@ -4049,7 +4049,7 @@ namespace MphRead.Entities
                 return;
             }
 
-            string text = String.Join('\n', visibleLabels);
+            string text = String.Join("\n", visibleLabels);
             Debug.Assert(text.Length < 256);
             char[] buffer = new char[512];
             int lineCount = WrapText(text, 220, buffer);
