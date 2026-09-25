@@ -263,12 +263,11 @@ namespace MphRead.Mods.Launcher.Gui
             if(project.Definition.Import!=null)
             {
                 // Import completion calls Load from inside the active import
-                // Job. Work() deliberately refuses to start while a job is
-                // active, so an immediate Validate() there is silently lost
-                // and the BSP never reaches the viewport. Queue it behind the
-                // current dispatcher turn so Job's finally clears _work first.
-                if(_work==null)_=Validate();
-                else Dispatcher.UIThread.Post(()=>_=Validate());
+                // Job. Queue the visual preview behind that job so the busy
+                // lock is released first. The preview deliberately uses patch
+                // detail 1; full Validate still checks the authored setting.
+                if(_work==null)_=PreviewImport();
+                else Dispatcher.UIThread.Post(()=>_=PreviewImport());
             }
         }
         private void Recovery()
@@ -872,11 +871,33 @@ namespace MphRead.Mods.Launcher.Gui
             _inspector.Children.Add(Text("Scale step"));_inspector.Children.Add(scale);_inspector.Children.Add(local);
             AddButton(_inspector,"Apply",()=>{try{float g=Number(grid.Text??""),a=Number(angle.Text??""),s=Number(scale.Text??"");if(g<0||g>100||a<1||a>180||s<=0||s>10)throw new FormatException("Use grid spacing 0–100, rotation step 1–180 and scale step above 0 through 10.");_viewport.Snap=g;_viewport.AngleSnap=a;_viewport.ScaleSnap=s;_viewport.LocalAxes=local.IsChecked==true;}catch(Exception ex){Failure(ex);}});
         }
+        private Task PreviewImport()=>Work("Preparing imported map preview",async(p,token)=>
+        {
+            if(p.Definition.Import==null)return;
+            int authoredDetail=p.Definition.Import.PatchLevel;
+            p.Definition.Import.PatchLevel=1;
+            var result=await MapBuildScheduler.Shared.AnalyzeAsync(MapBuildSnapshot.Capture(p),cancellation:token);
+            GuardJob(token);
+            if(result.Faces.Length>0)
+            {
+                _viewport?.SetImported(result);
+                _status.Text=result.Succeeded
+                    ? $"Imported map preview ready · runtime patch detail {authoredDetail}"
+                    : $"Imported map preview ready · runtime limits need attention · press Validate for detail {authoredDetail}";
+            }
+            else
+            {
+                Problems(result.Validation());
+            }
+        });
         private Task Validate()=>Work("Validating",async(p,token)=>
         {
             var result=await MapBuildScheduler.Shared.AnalyzeAsync(MapBuildSnapshot.Capture(p),cancellation:token);
             GuardJob(token);Problems(result.Validation());
-            if(result.Succeeded&&p.Definition.Import!=null)_viewport?.SetImported(result);
+            // Invalid runtime budgets should not make the authoring viewport
+            // disappear. If geometry compiled, show it and keep the errors as
+            // build blockers.
+            if(p.Definition.Import!=null&&result.Faces.Length>0)_viewport?.SetImported(result);
         });
         private Task Navigation()=>Work("Generating navigation",async(p,token)=>
         {
