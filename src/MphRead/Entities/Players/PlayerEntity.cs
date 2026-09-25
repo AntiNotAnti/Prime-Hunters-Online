@@ -2412,13 +2412,50 @@ namespace MphRead.Entities
                                 }
                                 if (attacker == _scene.Players.Main)
                                 {
-                                    Mods.Sound.CombatFeedbackAudio.OnConfirmedKill(_scene,
-                                        _scene.GameState.KillStreak[attacker.SlotIndex]);
+                                    int matchKills = 0;
+                                    for (int i = 0; i < _scene.GameState.Kills.Length; i++)
+                                    {
+                                        matchKills += _scene.GameState.Kills[i];
+                                    }
+                                    bool firstBlood = matchKills == 1;
+                                    Mods.Sound.CombatFeedbackAwards awards =
+                                        Mods.Sound.CombatFeedbackAudio.OnConfirmedKill(_scene,
+                                            _scene.GameState.KillStreak[attacker.SlotIndex],
+                                            firstBlood);
+                                    if (Mods.Launcher.LauncherPrefs.CombatNotificationsVisible)
+                                    {
+                                        if (awards.FirstBlood is Mods.Sound.CombatFeedbackCue firstBloodCue)
+                                        {
+                                            attacker.QueueHudMessage(128, 72, 2.25f, 2,
+                                                Mods.Sound.CombatFeedbackAudio.Label(firstBloodCue).ToUpperInvariant());
+                                        }
+                                        if (awards.MultiKill is Mods.Sound.CombatFeedbackCue multiKill)
+                                        {
+                                            attacker.QueueHudMessage(128, 72, 2.25f, 2,
+                                                Mods.Sound.CombatFeedbackAudio.Label(multiKill).ToUpperInvariant());
+                                        }
+                                        if (awards.LifeStreak is Mods.Sound.CombatFeedbackCue lifeStreak)
+                                        {
+                                            attacker.QueueHudMessage(128, 72, 2.25f, 2,
+                                                Mods.Sound.CombatFeedbackAudio.Label(lifeStreak).ToUpperInvariant());
+                                        }
+                                    }
                                 }
                                 Mods.Network.CareerMatchStats.NoteKill(attacker);
                                 if (_scene.GameState.KillStreak[attacker.SlotIndex] == 5)
                                 {
-                                    _soundSource.QueueStream(VoiceId.VOICE_CONSECUTIVE_KILLS, delay: 1);
+                                    // Avoid two announcers calling the same local milestone.
+                                    // If the Project Prime Killing Spree cue is disabled, preserve
+                                    // the original Hunter massacre line as the fallback.
+                                    bool customSpreeEnabled = attacker.IsMainPlayer
+                                        && !Mods.Sound.CombatFeedbackAudio.GetSelection(
+                                            Mods.Sound.CombatFeedbackCue.KillingSpree)
+                                            .Equals("off", StringComparison.OrdinalIgnoreCase);
+                                    if (!customSpreeEnabled)
+                                    {
+                                        _soundSource.QueueStream(
+                                            VoiceId.VOICE_CONSECUTIVE_KILLS, delay: 1);
+                                    }
                                     string message;
                                     if (attacker.IsMainPlayer)
                                     {

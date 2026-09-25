@@ -13,24 +13,41 @@ namespace MphRead.Mods.Sound
     internal enum CombatFeedbackCue
     {
         ImperialistHeadshot,
+        FirstBlood,
         DoubleKill,
         TripleKill,
-        QuadraKill,
-        KillingSpree
+        Overkill,
+        Killtacular,
+        Killtrocity,
+        Kilimanjaro,
+        Killtastrophe,
+        Killpocalypse,
+        Killionaire,
+        KillingSpree,
+        KillingFrenzy,
+        RunningRiot,
+        Rampage,
+        Untouchable,
+        Invincible
     }
 
     internal readonly record struct CombatFeedbackOption(string Id, string Label);
+
+    internal readonly record struct CombatFeedbackAwards(
+        CombatFeedbackCue? FirstBlood,
+        CombatFeedbackCue? MultiKill,
+        CombatFeedbackCue? LifeStreak);
 
     /// <summary>
     /// Local-only, authoritative combat confirmation audio.
     ///
     /// Gameplay decides that a hit/kill is confirmed before calling here. This
-    /// class owns only presentation: a single feedback lane, embedded defaults,
-    /// optional user files, and rapid multi-kill timing.
+    /// class owns only presentation: embedded defaults, optional user files,
+    /// rapid multi-kill timing, and life-streak milestone selection.
     /// </summary>
     internal static class CombatFeedbackAudio
     {
-        private const long MultiKillWindowMs = 4000;
+        public const long MultiKillWindowMs = 4000;
         private const long MaxCustomBytes = 8 * 1024 * 1024;
         private const string CustomPrefix = "file:";
 
@@ -49,22 +66,71 @@ namespace MphRead.Mods.Sound
                 ["prime"] = "headshot-prime.wav",
                 ["impact"] = "headshot-impact.wav",
                 ["arena"] = "headshot-arena.wav",
+                ["first-blood"] = "first-blood.wav",
                 ["double"] = "double-kill.wav",
                 ["triple"] = "triple-kill.wav",
+                // Retain legacy IDs so old launcher.txt selections still play.
                 ["quadra"] = "quadra-kill.wav",
-                ["spree"] = "killing-spree.wav"
+                ["penta"] = "penta-kill.wav",
+                ["overkill"] = "overkill.wav",
+                ["killtacular"] = "killtacular.wav",
+                ["killtrocity"] = "killtrocity.wav",
+                ["kilimanjaro"] = "kilimanjaro.wav",
+                ["killtastrophe"] = "killtastrophe.wav",
+                ["killpocalypse"] = "killpocalypse.wav",
+                ["killionaire"] = "killionaire.wav",
+                ["spree"] = "killing-spree.wav",
+                ["frenzy"] = "killing-frenzy.wav",
+                ["riot"] = "running-riot.wav",
+                ["rampage"] = "rampage.wav",
+                ["untouchable"] = "untouchable.wav",
+                ["invincible"] = "invincible.wav"
             };
 
         public static string CustomDirectory =>
             Path.Combine(LauncherPrefs.Directory, "sounds", "combat");
 
+        public static string Label(CombatFeedbackCue cue) => cue switch
+        {
+            CombatFeedbackCue.ImperialistHeadshot => "Imperialist Headshot",
+            CombatFeedbackCue.FirstBlood => "First Blood",
+            CombatFeedbackCue.DoubleKill => "Double Kill",
+            CombatFeedbackCue.TripleKill => "Triple Kill",
+            CombatFeedbackCue.Overkill => "Overkill",
+            CombatFeedbackCue.Killtacular => "Killtacular",
+            CombatFeedbackCue.Killtrocity => "Killtrocity",
+            CombatFeedbackCue.Kilimanjaro => "Kilimanjaro",
+            CombatFeedbackCue.Killtastrophe => "Killtastrophe",
+            CombatFeedbackCue.Killpocalypse => "Killpocalypse",
+            CombatFeedbackCue.Killionaire => "Killionaire",
+            CombatFeedbackCue.KillingSpree => "Killing Spree",
+            CombatFeedbackCue.KillingFrenzy => "Killing Frenzy",
+            CombatFeedbackCue.RunningRiot => "Running Riot",
+            CombatFeedbackCue.Rampage => "Rampage",
+            CombatFeedbackCue.Untouchable => "Untouchable",
+            CombatFeedbackCue.Invincible => "Invincible",
+            _ => cue.ToString()
+        };
+
         public static string DefaultSelection(CombatFeedbackCue cue) => cue switch
         {
             CombatFeedbackCue.ImperialistHeadshot => "prime",
+            CombatFeedbackCue.FirstBlood => "first-blood",
             CombatFeedbackCue.DoubleKill => "double",
             CombatFeedbackCue.TripleKill => "triple",
-            CombatFeedbackCue.QuadraKill => "quadra",
+            CombatFeedbackCue.Overkill => "overkill",
+            CombatFeedbackCue.Killtacular => "killtacular",
+            CombatFeedbackCue.Killtrocity => "killtrocity",
+            CombatFeedbackCue.Kilimanjaro => "kilimanjaro",
+            CombatFeedbackCue.Killtastrophe => "killtastrophe",
+            CombatFeedbackCue.Killpocalypse => "killpocalypse",
+            CombatFeedbackCue.Killionaire => "killionaire",
             CombatFeedbackCue.KillingSpree => "spree",
+            CombatFeedbackCue.KillingFrenzy => "frenzy",
+            CombatFeedbackCue.RunningRiot => "riot",
+            CombatFeedbackCue.Rampage => "rampage",
+            CombatFeedbackCue.Untouchable => "untouchable",
+            CombatFeedbackCue.Invincible => "invincible",
             _ => "off"
         };
 
@@ -74,25 +140,15 @@ namespace MphRead.Mods.Sound
             {
                 new("off", "Off")
             };
-            switch (cue)
+            if (cue == CombatFeedbackCue.ImperialistHeadshot)
             {
-            case CombatFeedbackCue.ImperialistHeadshot:
                 options.Add(new("prime", "Prime"));
                 options.Add(new("impact", "Impact"));
                 options.Add(new("arena", "Arena"));
-                break;
-            case CombatFeedbackCue.DoubleKill:
-                options.Add(new("double", "Built-in"));
-                break;
-            case CombatFeedbackCue.TripleKill:
-                options.Add(new("triple", "Built-in"));
-                break;
-            case CombatFeedbackCue.QuadraKill:
-                options.Add(new("quadra", "Built-in"));
-                break;
-            case CombatFeedbackCue.KillingSpree:
-                options.Add(new("spree", "Built-in"));
-                break;
+            }
+            else
+            {
+                options.Add(new(DefaultSelection(cue), "Built-in"));
             }
 
             foreach (string file in CustomFiles())
@@ -104,6 +160,86 @@ namespace MphRead.Mods.Sound
             return options;
         }
 
+        public static string GetSelection(CombatFeedbackCue cue) => cue switch
+        {
+            CombatFeedbackCue.ImperialistHeadshot => LauncherPrefs.ImperialistHeadshotSound,
+            CombatFeedbackCue.FirstBlood => LauncherPrefs.FirstBloodSound,
+            CombatFeedbackCue.DoubleKill => LauncherPrefs.DoubleKillSound,
+            CombatFeedbackCue.TripleKill => LauncherPrefs.TripleKillSound,
+            CombatFeedbackCue.Overkill => LauncherPrefs.OverkillSound,
+            CombatFeedbackCue.Killtacular => LauncherPrefs.KilltacularSound,
+            CombatFeedbackCue.Killtrocity => LauncherPrefs.KilltrocitySound,
+            CombatFeedbackCue.Kilimanjaro => LauncherPrefs.KilimanjaroSound,
+            CombatFeedbackCue.Killtastrophe => LauncherPrefs.KilltastropheSound,
+            CombatFeedbackCue.Killpocalypse => LauncherPrefs.KillpocalypseSound,
+            CombatFeedbackCue.Killionaire => LauncherPrefs.KillionaireSound,
+            CombatFeedbackCue.KillingSpree => LauncherPrefs.KillingSpreeSound,
+            CombatFeedbackCue.KillingFrenzy => LauncherPrefs.KillingFrenzySound,
+            CombatFeedbackCue.RunningRiot => LauncherPrefs.RunningRiotSound,
+            CombatFeedbackCue.Rampage => LauncherPrefs.RampageSound,
+            CombatFeedbackCue.Untouchable => LauncherPrefs.UntouchableSound,
+            CombatFeedbackCue.Invincible => LauncherPrefs.InvincibleSound,
+            _ => "off"
+        };
+
+        public static void SetSelection(CombatFeedbackCue cue, string selection)
+        {
+            switch (cue)
+            {
+            case CombatFeedbackCue.ImperialistHeadshot:
+                LauncherPrefs.ImperialistHeadshotSound = selection;
+                break;
+            case CombatFeedbackCue.FirstBlood:
+                LauncherPrefs.FirstBloodSound = selection;
+                break;
+            case CombatFeedbackCue.DoubleKill:
+                LauncherPrefs.DoubleKillSound = selection;
+                break;
+            case CombatFeedbackCue.TripleKill:
+                LauncherPrefs.TripleKillSound = selection;
+                break;
+            case CombatFeedbackCue.Overkill:
+                LauncherPrefs.OverkillSound = selection;
+                break;
+            case CombatFeedbackCue.Killtacular:
+                LauncherPrefs.KilltacularSound = selection;
+                break;
+            case CombatFeedbackCue.Killtrocity:
+                LauncherPrefs.KilltrocitySound = selection;
+                break;
+            case CombatFeedbackCue.Kilimanjaro:
+                LauncherPrefs.KilimanjaroSound = selection;
+                break;
+            case CombatFeedbackCue.Killtastrophe:
+                LauncherPrefs.KilltastropheSound = selection;
+                break;
+            case CombatFeedbackCue.Killpocalypse:
+                LauncherPrefs.KillpocalypseSound = selection;
+                break;
+            case CombatFeedbackCue.Killionaire:
+                LauncherPrefs.KillionaireSound = selection;
+                break;
+            case CombatFeedbackCue.KillingSpree:
+                LauncherPrefs.KillingSpreeSound = selection;
+                break;
+            case CombatFeedbackCue.KillingFrenzy:
+                LauncherPrefs.KillingFrenzySound = selection;
+                break;
+            case CombatFeedbackCue.RunningRiot:
+                LauncherPrefs.RunningRiotSound = selection;
+                break;
+            case CombatFeedbackCue.Rampage:
+                LauncherPrefs.RampageSound = selection;
+                break;
+            case CombatFeedbackCue.Untouchable:
+                LauncherPrefs.UntouchableSound = selection;
+                break;
+            case CombatFeedbackCue.Invincible:
+                LauncherPrefs.InvincibleSound = selection;
+                break;
+            }
+        }
+
         public static void Warm()
         {
             if (MphRead.Mods.Headless.Active || MphRead.Mods.ThumbnailMode.Active
@@ -113,7 +249,7 @@ namespace MphRead.Mods.Sound
             }
             foreach (CombatFeedbackCue cue in Enum.GetValues<CombatFeedbackCue>())
             {
-                _ = TryGetPlayer(Selection(cue));
+                _ = TryGetPlayer(GetSelection(cue));
             }
         }
 
@@ -147,14 +283,15 @@ namespace MphRead.Mods.Sound
             Play(CombatFeedbackCue.ImperialistHeadshot);
         }
 
-        public static void OnConfirmedKill(Scene scene, int lifeStreak)
+        public static CombatFeedbackAwards OnConfirmedKill(Scene scene, int lifeStreak,
+            bool firstBlood = false)
         {
             if (!CanPresent(scene))
             {
-                return;
+                return default;
             }
 
-            CombatFeedbackCue? cue = null;
+            CombatFeedbackCue? multiKill;
             long now = Environment.TickCount64;
             lock (_gate)
             {
@@ -170,27 +307,31 @@ namespace MphRead.Mods.Sound
                 }
                 _killScene = scene;
                 _lastKillMs = now;
-
-                if (lifeStreak == 5)
-                {
-                    cue = CombatFeedbackCue.KillingSpree;
-                }
-                else
-                {
-                    cue = _multiKillCount switch
-                    {
-                        2 => CombatFeedbackCue.DoubleKill,
-                        3 => CombatFeedbackCue.TripleKill,
-                        4 => CombatFeedbackCue.QuadraKill,
-                        _ => null
-                    };
-                }
+                multiKill = MultiKillCue(_multiKillCount);
             }
 
-            if (cue.HasValue)
+            CombatFeedbackCue? first = firstBlood ? CombatFeedbackCue.FirstBlood : null;
+            CombatFeedbackCue? life = LifeStreakCue(lifeStreak);
+            var awards = new CombatFeedbackAwards(first, multiKill, life);
+
+            if (first.HasValue)
             {
-                Play(cue.Value);
+                // First Blood belongs to the opening kill itself. It replaces
+                // a headshot ping from the same shot just like other medals.
+                Play(first.Value, replaceExisting: true);
             }
+            if (multiKill.HasValue)
+            {
+                // Replace the headshot ping from the same shot.
+                Play(multiKill.Value, replaceExisting: !first.HasValue);
+            }
+            if (life.HasValue)
+            {
+                // A kill can legitimately earn both ladders. Layer the second
+                // stinger instead of silently dropping one of the awards.
+                Play(life.Value, replaceExisting: !multiKill.HasValue);
+            }
+            return awards;
         }
 
         public static void OnLocalDeath(Scene scene)
@@ -205,6 +346,31 @@ namespace MphRead.Mods.Sound
             }
         }
 
+        private static CombatFeedbackCue? MultiKillCue(int kills) => kills switch
+        {
+            2 => CombatFeedbackCue.DoubleKill,
+            3 => CombatFeedbackCue.TripleKill,
+            4 => CombatFeedbackCue.Overkill,
+            5 => CombatFeedbackCue.Killtacular,
+            6 => CombatFeedbackCue.Killtrocity,
+            7 => CombatFeedbackCue.Kilimanjaro,
+            8 => CombatFeedbackCue.Killtastrophe,
+            9 => CombatFeedbackCue.Killpocalypse,
+            10 => CombatFeedbackCue.Killionaire,
+            _ => null
+        };
+
+        private static CombatFeedbackCue? LifeStreakCue(int kills) => kills switch
+        {
+            5 => CombatFeedbackCue.KillingSpree,
+            10 => CombatFeedbackCue.KillingFrenzy,
+            15 => CombatFeedbackCue.RunningRiot,
+            20 => CombatFeedbackCue.Rampage,
+            25 => CombatFeedbackCue.Untouchable,
+            30 => CombatFeedbackCue.Invincible,
+            _ => null
+        };
+
         private static bool CanPresent(Scene scene)
         {
             return !MphRead.Mods.Headless.Active
@@ -213,19 +379,9 @@ namespace MphRead.Mods.Sound
                 && scene.Services.AllowsPresentationSideEffects;
         }
 
-        private static string Selection(CombatFeedbackCue cue) => cue switch
+        private static void Play(CombatFeedbackCue cue, bool replaceExisting = true)
         {
-            CombatFeedbackCue.ImperialistHeadshot => LauncherPrefs.ImperialistHeadshotSound,
-            CombatFeedbackCue.DoubleKill => LauncherPrefs.DoubleKillSound,
-            CombatFeedbackCue.TripleKill => LauncherPrefs.TripleKillSound,
-            CombatFeedbackCue.QuadraKill => LauncherPrefs.QuadraKillSound,
-            CombatFeedbackCue.KillingSpree => LauncherPrefs.KillingSpreeSound,
-            _ => "off"
-        };
-
-        private static void Play(CombatFeedbackCue cue)
-        {
-            string id = Selection(cue);
+            string id = GetSelection(cue);
             if (id.Equals("off", StringComparison.OrdinalIgnoreCase))
             {
                 return;
@@ -243,11 +399,12 @@ namespace MphRead.Mods.Sound
 
             lock (_gate)
             {
-                // One presentation lane: a kill callout replaces the headshot
-                // ping from the same shot instead of stacking two confirmations.
-                foreach (CuePlayer cached in _players.Values)
+                if (replaceExisting)
                 {
-                    cached.Stop();
+                    foreach (CuePlayer cached in _players.Values)
+                    {
+                        cached.Stop();
+                    }
                 }
                 player.Play(Math.Clamp(
                     Sfx.Volume * LauncherPrefs.CombatFeedbackVolume, 0, 1.5f));
