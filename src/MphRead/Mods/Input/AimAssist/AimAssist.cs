@@ -258,12 +258,20 @@ namespace MphRead.Mods.Input.AimAssist
             if (!same)
             {
                 bool active = state.FlickActive; Vector2 direction = state.FlickDirection;
-                float age = state.FlickAge, flickSpeed = state.FlickSpeed;
-                bool flickBraking = state.FlickBraking; int flickTarget = state.FlickTarget;
+                float age = state.FlickAge, flickSpeed = state.FlickSpeed, flickPeak = state.FlickPeak;
+                bool flickBraking = state.FlickBraking, previousFiring = state.PreviousFiring;
+                int flickTarget = state.FlickTarget;
+                Vector2 history0 = state.StickHistory0, history1 = state.StickHistory1;
+                Vector2 history2 = state.StickHistory2, history3 = state.StickHistory3;
+                Vector2 previousRaw = state.PreviousRaw, previousCameraVelocity = state.PreviousCameraVelocity;
                 state.Reset();
                 state.PreviousStick = physicalStick; state.FlickActive = active;
                 state.FlickDirection = direction; state.FlickAge = age; state.FlickTarget = flickTarget;
-                state.FlickSpeed = flickSpeed; state.FlickBraking = flickBraking;
+                state.FlickSpeed = flickSpeed; state.FlickPeak = flickPeak; state.FlickBraking = flickBraking;
+                state.StickHistory0 = history0; state.StickHistory1 = history1;
+                state.StickHistory2 = history2; state.StickHistory3 = history3;
+                state.PreviousRaw = previousRaw; state.PreviousCameraVelocity = previousCameraVelocity;
+                state.PreviousFiring = previousFiring;
             }
 
             Vector2 selection = AimAssistMath.SelectionError(target, profile);
