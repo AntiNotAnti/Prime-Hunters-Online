@@ -117,11 +117,30 @@ namespace MphRead.Mods.Launcher
 
         /// <summary>Master gain for Project Prime combat-feedback cues, before the normal SFX volume.</summary>
         public static float CombatFeedbackVolume { get; set; } = 1f;
+        /// <summary>Show local medal text when a multi-kill or life-streak milestone is earned.</summary>
+        public static bool CombatNotificationsVisible { get; set; } = true;
         public static string ImperialistHeadshotSound { get; set; } = "prime";
         public static string DoubleKillSound { get; set; } = "double";
         public static string TripleKillSound { get; set; } = "triple";
-        public static string QuadraKillSound { get; set; } = "quadra";
+        public static string OverkillSound { get; set; } = "overkill";
+        // Compatibility alias for builds that exposed the old four-kill name.
+        public static string QuadraKillSound
+        {
+            get => OverkillSound;
+            set => OverkillSound = value;
+        }
+        public static string KilltacularSound { get; set; } = "killtacular";
+        public static string KilltrocitySound { get; set; } = "killtrocity";
+        public static string KilimanjaroSound { get; set; } = "kilimanjaro";
+        public static string KilltastropheSound { get; set; } = "killtastrophe";
+        public static string KillpocalypseSound { get; set; } = "killpocalypse";
+        public static string KillionaireSound { get; set; } = "killionaire";
         public static string KillingSpreeSound { get; set; } = "spree";
+        public static string KillingFrenzySound { get; set; } = "frenzy";
+        public static string RunningRiotSound { get; set; } = "riot";
+        public static string RampageSound { get; set; } = "rampage";
+        public static string UntouchableSound { get; set; } = "untouchable";
+        public static string InvincibleSound { get; set; } = "invincible";
 
         /// <summary>
         /// How the game window opens. Kept here rather than in MenuSettings
@@ -377,6 +396,12 @@ namespace MphRead.Mods.Launcher
                                 CombatFeedbackVolume = Math.Clamp(feedbackVolume, 0, 1);
                             }
                             break;
+                        case "combat_notifications_visible":
+                            if (Boolean.TryParse(value, out bool combatNotificationsVisible))
+                            {
+                                CombatNotificationsVisible = combatNotificationsVisible;
+                            }
+                            break;
                         case "imperialist_headshot_sound":
                             if (value.Length > 0) ImperialistHeadshotSound = value;
                             break;
@@ -387,10 +412,44 @@ namespace MphRead.Mods.Launcher
                             if (value.Length > 0) TripleKillSound = value;
                             break;
                         case "quadra_kill_sound":
-                            if (value.Length > 0) QuadraKillSound = value;
+                        case "overkill_sound":
+                            if (value.Length > 0) OverkillSound = value;
+                            break;
+                        case "killtacular_sound":
+                            if (value.Length > 0) KilltacularSound = value;
+                            break;
+                        case "killtrocity_sound":
+                            if (value.Length > 0) KilltrocitySound = value;
+                            break;
+                        case "kilimanjaro_sound":
+                            if (value.Length > 0) KilimanjaroSound = value;
+                            break;
+                        case "killtastrophe_sound":
+                            if (value.Length > 0) KilltastropheSound = value;
+                            break;
+                        case "killpocalypse_sound":
+                            if (value.Length > 0) KillpocalypseSound = value;
+                            break;
+                        case "killionaire_sound":
+                            if (value.Length > 0) KillionaireSound = value;
                             break;
                         case "killing_spree_sound":
                             if (value.Length > 0) KillingSpreeSound = value;
+                            break;
+                        case "killing_frenzy_sound":
+                            if (value.Length > 0) KillingFrenzySound = value;
+                            break;
+                        case "running_riot_sound":
+                            if (value.Length > 0) RunningRiotSound = value;
+                            break;
+                        case "rampage_sound":
+                            if (value.Length > 0) RampageSound = value;
+                            break;
+                        case "untouchable_sound":
+                            if (value.Length > 0) UntouchableSound = value;
+                            break;
+                        case "invincible_sound":
+                            if (value.Length > 0) InvincibleSound = value;
                             break;
                         case "replay_storage_gb":
                             if (Int32.TryParse(value, NumberStyles.Integer,
@@ -499,11 +558,23 @@ namespace MphRead.Mods.Launcher
                     $"player_outline_width={RenderOptions.PlayerOutlineWidth.ToString(CultureInfo.InvariantCulture)}",
                     $"reduce_motion={ReduceMotion.ToString().ToLowerInvariant()}",
                     $"combat_feedback_volume={CombatFeedbackVolume.ToString(CultureInfo.InvariantCulture)}",
+                    $"combat_notifications_visible={CombatNotificationsVisible.ToString().ToLowerInvariant()}",
                     $"imperialist_headshot_sound={ImperialistHeadshotSound}",
                     $"double_kill_sound={DoubleKillSound}",
                     $"triple_kill_sound={TripleKillSound}",
-                    $"quadra_kill_sound={QuadraKillSound}",
+                    $"overkill_sound={OverkillSound}",
+                    $"killtacular_sound={KilltacularSound}",
+                    $"killtrocity_sound={KilltrocitySound}",
+                    $"kilimanjaro_sound={KilimanjaroSound}",
+                    $"killtastrophe_sound={KilltastropheSound}",
+                    $"killpocalypse_sound={KillpocalypseSound}",
+                    $"killionaire_sound={KillionaireSound}",
                     $"killing_spree_sound={KillingSpreeSound}",
+                    $"killing_frenzy_sound={KillingFrenzySound}",
+                    $"running_riot_sound={RunningRiotSound}",
+                    $"rampage_sound={RampageSound}",
+                    $"untouchable_sound={UntouchableSound}",
+                    $"invincible_sound={InvincibleSound}",
                     $"replay_storage_gb={ReplayStorageLimitGb.ToString(CultureInfo.InvariantCulture)}",
                     $"replay_auto_prune={ReplayAutoPrune.ToString().ToLowerInvariant()}",
                     $"replay_delete_clips={ReplayDeleteClips.ToString().ToLowerInvariant()}",
