@@ -92,6 +92,13 @@ namespace MphRead.Entities
             private int _findWeaponIndex = 0;
             private int _shotDelay = 0;
 
+            // Modern combat layer state. The original DS AI already knows how to navigate
+            // the maps; these only make its close-range combat less static on higher
+            // difficulties without replacing the personality tree.
+            private int _combatStrafeTimer = 0;
+            private bool _combatStrafeRight = false;
+            private int _combatJumpCooldown = 0;
+
             public void Reset()
             {
                 _nodeData = null!;
@@ -142,6 +149,9 @@ namespace MphRead.Entities
                 _weapon1 = 0;
                 _weapon2 = 0;
                 _shotDelay = 0;
+                _combatStrafeTimer = 0;
+                _combatStrafeRight = false;
+                _combatJumpCooldown = 0;
                 for (int i = 0; i < _executionTree.Length; i++)
                 {
                     if (_executionTree[i] == null)
@@ -199,8 +209,6 @@ namespace MphRead.Entities
             // to pick a target.
             private static readonly bool[,] _playerVisibility =
                 new bool[PlayerEntity.SlotCapacity, PlayerEntity.SlotCapacity];
-            private static byte _visIndex1 = 0;
-            private static byte _visIndex2 = 0;
 
             public class AiGlobals
             {
@@ -229,8 +237,6 @@ namespace MphRead.Entities
                         _playerVisibility[i, j] = false;
                     }
                 }
-                _visIndex1 = 1;
-                _visIndex2 = 0;
             }
 
             public static void UpdateVisibilityAndGlobals(Scene scene)
@@ -241,45 +247,47 @@ namespace MphRead.Entities
 
             private static void UpdateVisibility(Scene scene)
             {
-                // sktodo-ai: presumably these are done one player per frame for efficiency,
-                // but we don't really need to worry about that, and we're not being 100% accurate
-                // to the game by doing this once per 60 fps frame anyway, so yeah.
-                // the game's unused counter that disables these updates for a certain number of frames
-                // was probably also added to make them even less frequent, but was ultimately not needed.
-                _playerVisibility[_visIndex1, _visIndex2] = false;
-                _playerVisibility[_visIndex2, _visIndex1] = false;
-                PlayerEntity player1 = scene.Players.Items[_visIndex1];
-                PlayerEntity player2 = scene.Players.Items[_visIndex2];
-                if (player1.Health != 0 && player1.LoadFlags.TestFlag(LoadFlags.Active)
-                    && player2.Health != 0 && player2.LoadFlags.TestFlag(LoadFlags.Active)
-                    && (player1.IsBot || player2.IsBot))
+                // The DS spread this work over frames to save CPU. At eight players that
+                // leaves 28 unordered pairs, so a bot can act on nearly half a second of
+                // stale LOS at 60 FPS. Modern hosts can cheaply resolve every bot-related
+                // pair each frame, which makes acquisition, pursuit, and firing react to
+                // the world the bot is actually seeing now.
+                for (int i = 0; i < PlayerEntity.SlotCapacity; i++)
                 {
-                    Vector3 pos1 = player1.CameraInfo.Position;
-                    Vector3 pos2 = player2.CameraInfo.Position;
-                    if (pos1 == pos2)
+                    for (int j = 0; j < PlayerEntity.SlotCapacity; j++)
                     {
-                        pos1 = player1.Position;
-                        pos2 = player2.Position;
-                    }
-                    CollisionResult discard = default;
-                    if (!CollisionDetection.CheckBetweenPoints(pos1, pos2, TestFlags.None, scene, ref discard))
-                    {
-                        _playerVisibility[_visIndex1, _visIndex2] = true;
-                        _playerVisibility[_visIndex2, _visIndex1] = true;
+                        _playerVisibility[i, j] = false;
                     }
                 }
-                // The same walk over every unordered pair, over however many
-                // slots this match has. Players is always SlotCapacity long,
-                // so visiting a slot nobody is in is safe and is what the
-                // original did with fewer than four players anyway.
+
                 int slots = Math.Clamp(scene.Players.MaxPlayers, 2, PlayerEntity.SlotCapacity);
-                if (++_visIndex1 >= slots)
+                for (int i = 0; i < slots; i++)
                 {
-                    if (++_visIndex2 >= slots - 1)
+                    PlayerEntity player1 = scene.Players.Items[i];
+                    for (int j = i + 1; j < slots; j++)
                     {
-                        _visIndex2 = 0;
+                        PlayerEntity player2 = scene.Players.Items[j];
+                        if (player1.Health == 0 || !player1.LoadFlags.TestFlag(LoadFlags.Active)
+                            || player2.Health == 0 || !player2.LoadFlags.TestFlag(LoadFlags.Active)
+                            || (!player1.IsBot && !player2.IsBot))
+                        {
+                            continue;
+                        }
+
+                        Vector3 pos1 = player1.CameraInfo.Position;
+                        Vector3 pos2 = player2.CameraInfo.Position;
+                        if (pos1 == pos2)
+                        {
+                            pos1 = player1.Position;
+                            pos2 = player2.Position;
+                        }
+                        CollisionResult discard = default;
+                        if (!CollisionDetection.CheckBetweenPoints(pos1, pos2, TestFlags.None, scene, ref discard))
+                        {
+                            _playerVisibility[i, j] = true;
+                            _playerVisibility[j, i] = true;
+                        }
                     }
-                    _visIndex1 = (byte)(_visIndex2 + 1);
                 }
             }
 
@@ -758,6 +766,7 @@ namespace MphRead.Entities
                 Func2134594();
                 Func2148ABC();
                 Execute(_executionTree[0]);
+                ApplyCombatEnhancements();
                 Array.Fill(_slotHits, 0);
                 Array.Fill(_slotDamage, 0);
                 DamageFromHalfturret = 0;
@@ -765,6 +774,137 @@ namespace MphRead.Entities
                 Flags2 &= ~AiFlags2.Bit16;
                 Flags2 &= ~AiFlags2.Bit17;
                 Flags2 &= ~AiFlags2.Bit21;
+            }
+
+            private void ApplyCombatEnhancements()
+            {
+                bool instaGib = _scene.GameState.Mode == GameMode.InstaGib;
+                int level = Math.Clamp(_player.BotLevel, 0, 3);
+
+                // Insta-Gib owns the loadout. The stock Battle personality assumes
+                // Power Beam/Missiles are always valid fallbacks, so keep every AI
+                // weapon selector pinned to Imperialist and keep bots in biped form.
+                if (instaGib)
+                {
+                    int imperialist = GetWeaponIndex(BeamType.Imperialist);
+                    _weapon1 = imperialist;
+                    _weapon2 = imperialist;
+                    _findWeaponIndex = imperialist;
+                    Flags4 &= ~AiFlags4.Bit1;
+                    _touchButtons.Morph.IsDown = false;
+                    if (_player.IsAltForm)
+                    {
+                        _touchButtons.Unmorph.IsDown = true;
+                    }
+                }
+
+                if (_combatJumpCooldown > 0)
+                {
+                    _combatJumpCooldown--;
+                }
+                if (!instaGib && level < 2)
+                {
+                    return;
+                }
+
+                PlayerEntity? target = null;
+                if (Flags2.TestFlag(AiFlags2.TargetPlayer) && _targetPlayer != null
+                    && _targetPlayer.Health > 0 && _targetPlayer.ModInPlay
+                    && _targetPlayer.TeamIndex != _player.TeamIndex
+                    && IsPlayerVisible(_player, _targetPlayer))
+                {
+                    target = _targetPlayer;
+                }
+                else if (instaGib)
+                {
+                    float minDist = Single.MaxValue;
+                    foreach (PlayerEntity candidate in _scene.GetPlayerEntities())
+                    {
+                        if (candidate == _player || candidate.Health == 0 || !candidate.ModInPlay
+                            || candidate.TeamIndex == _player.TeamIndex
+                            || !IsPlayerVisible(_player, candidate))
+                        {
+                            continue;
+                        }
+                        float dist = Vector3.DistanceSquared(candidate.Position, _player.Position);
+                        if (dist < minDist)
+                        {
+                            minDist = dist;
+                            target = candidate;
+                        }
+                    }
+                    if (target != null)
+                    {
+                        Func21356C0(target);
+                    }
+                }
+
+                if (target == null)
+                {
+                    _combatStrafeTimer = 0;
+                    return;
+                }
+
+                if (instaGib && !_player.IsAltForm && !_player.IsMorphing && !_player.IsUnmorphing)
+                {
+                    if (_player.CurrentWeapon != BeamType.Imperialist)
+                    {
+                        _touchButtons.Imperialist.IsDown = true;
+                    }
+                    target.GetPosition(out Vector3 targetPos);
+                    targetPos = targetPos.AddY(target.IsAltForm
+                        ? Fixed.ToFloat(target.Values.AltColYPos)
+                        : 0.5f);
+                    Func2145738(targetPos);
+                    if (Flags2.TestFlag(AiFlags2.Bit8))
+                    {
+                        Func2143A40();
+                    }
+                }
+
+                if (_player.IsAltForm || _player.IsMorphing || _player.IsUnmorphing)
+                {
+                    return;
+                }
+
+                float distSqr = Vector3.DistanceSquared(target.Position, _player.Position);
+                if (distSqr > 24 * 24)
+                {
+                    _combatStrafeTimer = 0;
+                    return;
+                }
+
+                // Hard and Insane stop behaving like stationary turrets once a duel
+                // starts. Insta-Gib gets the same baseline movement at every level,
+                // while the higher tiers change direction more often and jump.
+                if (_combatStrafeTimer <= 0)
+                {
+                    _combatStrafeRight = _scene.Random.GetRandomInt2(2) == 0;
+                    int minFrames = level >= 3 ? 20 : level >= 2 ? 35 : 50;
+                    int variance = level >= 3 ? 35 : level >= 2 ? 55 : 70;
+                    _combatStrafeTimer = (minFrames + (int)_scene.Random.GetRandomInt2(variance)) * 2;
+                }
+                else
+                {
+                    _combatStrafeTimer--;
+                }
+                if (_combatStrafeRight)
+                {
+                    _buttons.A.IsDown = true;
+                }
+                else
+                {
+                    _buttons.Y.IsDown = true;
+                }
+
+                if (level >= 3 && _combatJumpCooldown == 0
+                    && _player.Flags1.TestFlag(PlayerFlags1.Grounded)
+                    && !_player.Flags1.TestFlag(PlayerFlags1.UsedJump)
+                    && _buttons.L.FramesUp > 10 * 2)
+                {
+                    _buttons.L.IsDown = true;
+                    _combatJumpCooldown = (45 + (int)_scene.Random.GetRandomInt2(60)) * 2;
+                }
             }
 
             // todo: member name
@@ -793,10 +933,9 @@ namespace MphRead.Entities
                     float w = Matrix.ProjectPosition(other.Position, _player.CameraInfo.ViewMatrix, perspectiveMatrix, out Vector2 proj);
                     if (w < 0)
                     {
-                        // sktodo-ai: bug? should this be a continue? or is the byte array check only expected to pass for one player?
-                        // but then why do we continue if the screen coordinates are out of range?
-                        //Debugger.Break();
-                        return;
+                        // One opponent being behind the bot must not suppress awareness
+                        // of every later opponent in the roster.
+                        continue;
                     }
                     if (proj.X >= 1 || proj.Y >= 1)
                     {
@@ -830,8 +969,8 @@ namespace MphRead.Entities
                         }
                         if (_scene.Random.GetRandomInt2((31 - alpha + rand) / div) != 0)
                         {
-                            // sktodo-ai: same as above
-                            return;
+                            // Failed detection applies to this cloaked player only.
+                            continue;
                         }
                         alpha = alpha <= 2 ? 1 : (alpha - 2);
                         AggroFunc214864C(6, 1, 2, null, other, 0, alpha, 10, 3);
@@ -841,9 +980,7 @@ namespace MphRead.Entities
                     w = Matrix.ProjectPosition(_player.Position, other.CameraInfo.ViewMatrix, otherPerspective, out proj);
                     if (w < 0)
                     {
-                        // sktodo-ai: same as above
-                        //Debugger.Break();
-                        return;
+                        continue;
                     }
                     if (proj.X < 1 && proj.Y < 1)
                     {
@@ -2054,6 +2191,10 @@ namespace MphRead.Entities
             // helper
             private bool CheckBeam(BeamType beam)
             {
+                if (_scene.GameState.Mode == GameMode.InstaGib)
+                {
+                    return beam == BeamType.Imperialist && _player._availableWeapons[beam];
+                }
                 WeaponInfo info = _scene.WeaponRules[(int)beam];
                 return _player._ammo[info.AmmoType] >= info.AmmoCost && _player._availableWeapons[beam];
             }
@@ -2061,6 +2202,10 @@ namespace MphRead.Entities
             // helper
             private bool CheckCharge(BeamType beam)
             {
+                if (_scene.GameState.Mode == GameMode.InstaGib)
+                {
+                    return false;
+                }
                 WeaponInfo info = _scene.WeaponRules[(int)beam];
                 return info.Flags.TestFlag(WeaponFlags.CanCharge)
                     && _player._ammo[info.AmmoType] >= info.ChargeCost && _player._availableCharges[beam];
@@ -2106,6 +2251,11 @@ namespace MphRead.Entities
 
             private void Func1_214A098()
             {
+                if (_scene.GameState.Mode == GameMode.InstaGib)
+                {
+                    _findWeaponIndex = GetWeaponIndex(BeamType.Imperialist);
+                    return;
+                }
                 // check item spawns for missing affinity weapons
                 BeamType affinityWeapon = Weapons.AffinityWeapons[(int)_player.Hunter];
                 int affinityIndex = GetWeaponIndex(affinityWeapon);
@@ -2174,6 +2324,12 @@ namespace MphRead.Entities
 
             private void Func1_2149D3C()
             {
+                if (_scene.GameState.Mode == GameMode.InstaGib)
+                {
+                    _weapon2 = GetWeaponIndex(BeamType.Imperialist);
+                    Flags4 &= ~AiFlags4.Bit1;
+                    return;
+                }
                 // check beams to switch to
                 if (CheckBeam(BeamType.OmegaCannon))
                 {
@@ -6973,7 +7129,9 @@ namespace MphRead.Entities
                     shotDelay /= 2;
                 }
                 shotDelay *= 2; // todo: FPS stuff
-                BeamType beam = GetBeamType(_weapon1);
+                BeamType beam = _scene.GameState.Mode == GameMode.InstaGib
+                    ? BeamType.Imperialist
+                    : GetBeamType(_weapon1);
                 if (beam != BeamType.ShockCoil && !_player.AvailableWeapons[beam])
                 {
                     return;
@@ -7084,6 +7242,7 @@ namespace MphRead.Entities
                     else if (_buttons.R.FramesUp > _shotDelay)
                     {
                         _buttons.R.IsDown = true;
+                        SetRandomDelay();
                     }
                 }
                 else if (beam == BeamType.Judicator)
@@ -7222,7 +7381,9 @@ namespace MphRead.Entities
                 {
                     return;
                 }
-                BeamType beam = GetBeamType(_weapon1);
+                BeamType beam = _scene.GameState.Mode == GameMode.InstaGib
+                    ? BeamType.Imperialist
+                    : GetBeamType(_weapon1);
                 if (_player.CurrentWeapon != beam && _player._availableWeapons[beam])
                 {
                     if (beam == BeamType.PowerBeam)
