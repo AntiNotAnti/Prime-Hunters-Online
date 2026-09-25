@@ -60,6 +60,9 @@ public static class NetContactLagComp
         return Math.Max(Math.Max(1, (double)now - NetUnlagged.MaxRewindFrames), ack + subFrame / 256.0);
     }
 
+    public static bool UsesLiveFallback(ContactAttackKind kind, bool historyFrameAvailable) =>
+        kind == ContactAttackKind.Noxus && !historyFrameAvailable;
+
     // Contact retains the game's contact sphere (also for biped victims), rather
     // than borrowing the taller beam/headshot cylinder and changing melee reach.
     public static bool Intersects(in HistoricalAltAttackState attack, in HistoricalBody victim, bool sweep)
@@ -135,7 +138,7 @@ public static class NetContactLagComp
                         // an automatic miss. A frame that *does* exist but refuses this victim is
                         // a lifecycle/in-play fence (death, respawn, spectator, slot reuse) and
                         // must remain fail-closed.
-                        if (attack.Kind != ContactAttackKind.Noxus || NetUnlagged.HistoryAvailable(target))
+                        if (!UsesLiveFallback(attack.Kind, NetUnlagged.HistoryAvailable(target)))
                             continue;
                         HistoryFallbacks++;
                         liveFallback = true;
