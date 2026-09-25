@@ -120,6 +120,7 @@ namespace MphRead.Mods.Launcher
         /// <summary>Show local medal text when a multi-kill or life-streak milestone is earned.</summary>
         public static bool CombatNotificationsVisible { get; set; } = true;
         public static string ImperialistHeadshotSound { get; set; } = "prime";
+        public static string FirstBloodSound { get; set; } = "first-blood";
         public static string DoubleKillSound { get; set; } = "double";
         public static string TripleKillSound { get; set; } = "triple";
         public static string OverkillSound { get; set; } = "overkill";
@@ -405,6 +406,9 @@ namespace MphRead.Mods.Launcher
                         case "imperialist_headshot_sound":
                             if (value.Length > 0) ImperialistHeadshotSound = value;
                             break;
+                        case "first_blood_sound":
+                            if (value.Length > 0) FirstBloodSound = value;
+                            break;
                         case "double_kill_sound":
                             if (value.Length > 0) DoubleKillSound = value;
                             break;
@@ -560,6 +564,7 @@ namespace MphRead.Mods.Launcher
                     $"combat_feedback_volume={CombatFeedbackVolume.ToString(CultureInfo.InvariantCulture)}",
                     $"combat_notifications_visible={CombatNotificationsVisible.ToString().ToLowerInvariant()}",
                     $"imperialist_headshot_sound={ImperialistHeadshotSound}",
+                    $"first_blood_sound={FirstBloodSound}",
                     $"double_kill_sound={DoubleKillSound}",
                     $"triple_kill_sound={TripleKillSound}",
                     $"overkill_sound={OverkillSound}",
