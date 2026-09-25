@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using MphRead.Mods.MapEditor;
+using MphRead.Mods.MapGen;
 
-namespace MphRead.Mods.MapGen;
+namespace MphRead.Mods.MapEditor;
 
 /// <summary>Reusable selections stored as ordinary map-definition JSON plus local texture assets.</summary>
 public static class MapPrefabService
