@@ -153,9 +153,10 @@ namespace MphRead.Mods.Input
                     new GamepadState { Connected = true, Name = "test", RightX = .8f }, true);
                 GamepadInput.BeginFrame();
                 var acceptedRenderAim = GamepadInput.RenderAim(.5);
-                GamepadManager.UpdateDevice("mapped",
-                    new GamepadState { Connected = true, Name = "test", RightX = -.8f,
-                        Buttons = GamepadButtons.A }, true);
+                GamepadManager.UpdatePresentationAxes("mapped", 0, 0, -.8f, 0);
+                Check(Math.Abs(GamepadManager.ActiveState.RightX - .8f) < .0001f
+                    && GamepadManager.PresentationSnapshot?.State.RightX < -.79f,
+                    "render-only axes do not overwrite simulation device state");
                 GamepadInput.CapturePresentationSample();
                 var lateRenderAim = GamepadInput.RenderAim(.5);
                 Check(Math.Sign(lateRenderAim.X) == -Math.Sign(acceptedRenderAim.X)
@@ -165,11 +166,11 @@ namespace MphRead.Mods.Input
                     && Math.Sign(lateRawX) == Math.Sign(lateRenderAim.X),
                     "late-latch exposes only the unsimulated raw aim difference");
                 Check(!GamepadInput.TakePress(GamepadButtons.A),
-                    "render-only sample cannot advance button edges");
+                    "render-only axis sample cannot advance button edges");
 
                 // A still-newer hardware sample arrives before simulation. The
-                // previewed -0.8 aim axes win for this one BeginFrame, while the
-                // newest button state remains authoritative.
+                // previewed -0.8 aim axes win for this one BeginFrame, while all
+                // non-aim state comes from the newest fixed-step sample.
                 GamepadManager.UpdateDevice("mapped",
                     new GamepadState { Connected = true, Name = "test", RightX = .2f }, true);
                 GamepadInput.BeginFrame();
