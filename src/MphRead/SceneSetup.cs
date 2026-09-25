@@ -358,6 +358,12 @@ namespace MphRead
             {
                 playerCount = scene.Players.PlayerCount;
             }
+            Mods.Multiplayer.MatchWorldProfile? worldProfile = mode == GameMode.SinglePlayer
+                ? null
+                : scene.Services.NetworkWorldProfile ?? Mods.Multiplayer.MatchWorldProfile.Resolve(playerCount);
+            bool vanillaDuelResources = mode == GameMode.BattleTeams
+                && worldProfile?.Resources == Mods.Multiplayer.ResourceSpawnProfile.Vanilla;
+
             if (entityLayerId < 0 || entityLayerId > 15)
             {
                 if (mode == GameMode.SinglePlayer)
@@ -370,12 +376,13 @@ namespace MphRead
                 }
                 else
                 {
-                    entityLayerId = Metadata.GetMultiplayerEntityLayer(mode, playerCount);
+                    entityLayerId = GetMultiplayerEntityLayer(mode, playerCount,
+                        worldProfile!.Value.Resources);
                 }
             }
             if (nodeLayerMask == 0)
             {
-                int nodePlayerCount = Features.MaxRoomDetail ? 2 : playerCount;
+                int nodePlayerCount = vanillaDuelResources || Features.MaxRoomDetail ? 2 : playerCount;
                 nodeLayerMask = GetNodeLayer(mode, metadata.NodeLayer, nodePlayerCount);
             }
             CollisionInstance collision = Collision.GetCollision(metadata, nodeLayerMask);
@@ -386,10 +393,21 @@ namespace MphRead
             room.Setup(metadata.Name, metadata, collision, nodeLayerMask, metadata.Id);
             if (!scene.Services.IsReplica) Mods.Network.NetHealthSync.BeginRoom();
             var resources = mode == GameMode.SinglePlayer ? Mods.Multiplayer.ResourceSpawnProfile.Low
-                : (scene.Services.NetworkWorldProfile ?? Mods.Multiplayer.MatchWorldProfile.Resolve(playerCount)).Resources;
+                : worldProfile!.Value.Resources;
             IReadOnlyList<EntityBase> entities = LoadEntities(metadata, entityLayerId, scene, resources);
             entities = GetExtraEntities(room.RoomId, entities, scene);
             return (collision, entities);
+        }
+
+        internal static int GetMultiplayerEntityLayer(GameMode mode, int playerCount,
+            Mods.Multiplayer.ResourceSpawnProfile resources)
+        {
+            if (mode == GameMode.BattleTeams
+                && resources == Mods.Multiplayer.ResourceSpawnProfile.Vanilla)
+            {
+                return Metadata.GetMultiplayerEntityLayer(GameMode.Battle, 2);
+            }
+            return Metadata.GetMultiplayerEntityLayer(mode, playerCount);
         }
 
         public static int GetNodeLayer(GameMode mode, int roomLayer, int playerCount)

@@ -38,7 +38,8 @@ namespace MphRead.Mods.Network
     {
         None = 0, FriendlyFire = 1, AffinityWeapons = 2, ShadowFreeze = 4,
         RequireReady = 8, AllowJoinInProgress = 16, LockTeams = 32,
-        HideOpponentHealth = 64, DisablePowerups = 128, SpawnProtection = 256
+        HideOpponentHealth = 64, DisablePowerups = 128, SpawnProtection = 256,
+        VanillaDuelResources = 512
     }
 
     public readonly record struct MatchDefinition
@@ -54,6 +55,7 @@ namespace MphRead.Mods.Network
         public bool ShadowFreeze { get; init; }
         public bool HideOpponentHealth { get; init; }
         public bool DisablePowerups { get; init; }
+        public bool VanillaDuelResources { get; init; }
         // Store the opt-out rather than the opt-in. MatchDefinition is a value
         // type, so its zero/default value must still mean the user-facing
         // default: spawn protection enabled.
@@ -68,6 +70,7 @@ namespace MphRead.Mods.Network
             | (ShadowFreeze ? SessionRules.ShadowFreeze : 0)
             | (HideOpponentHealth ? SessionRules.HideOpponentHealth : 0)
             | (DisablePowerups ? SessionRules.DisablePowerups : 0)
-            | (SpawnProtection ? SessionRules.SpawnProtection : 0);
+            | (SpawnProtection ? SessionRules.SpawnProtection : 0)
+            | (VanillaDuelResources ? SessionRules.VanillaDuelResources : 0);
     }
 }

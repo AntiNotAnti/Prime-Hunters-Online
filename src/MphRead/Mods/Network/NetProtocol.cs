@@ -2139,8 +2139,11 @@ namespace MphRead.Mods.Network
         /// adds three canonical turret-state bytes and exact CombatAck outcomes.
         /// Version 20 appends two signed movement-axis bytes to IntentPacket so
         /// controller magnitude reaches authority, observers and replay instead of
-        /// being reconstructed from digital direction bits. Mixed v19/v20 peers
-        /// must be refused because the realtime intent length changed.
+        /// being reconstructed from digital direction bits. The same protocol train
+        /// also spends SessionState rule bit 9 and resource profile value 3 on the
+        /// optional vanilla Battle 1v1 world. Mixed v19/v20 peers must be refused:
+        /// the realtime intent length changed, and v19 SessionState readers reject
+        /// the new rule/profile values.
         /// </summary>
         public const int ProtocolVersion = 20;
         /// <summary>
