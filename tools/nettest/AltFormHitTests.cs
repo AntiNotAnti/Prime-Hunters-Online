@@ -33,7 +33,15 @@ internal static class AltFormHitTests
                 HistoricalPoseTests.Check(hit.Slot == 2 && !hit.Head, "Kanden head/middle/rear historical intersection");
             }
             AltContactLagTests.Run();
-            Console.WriteLine("PASS: alt-form poses, all hunter beams, Kanden chain, contact sweeps and lifecycle boundaries");
+            // The counterfactual geometry primitive must distinguish a shifted
+            // historical body without ever mutating a live entity.
+            var current = new HistoricalBody(4, Vector3.Zero, .5f, 0, 1.5f);
+            var shifted = current with { Position = new Vector3(5, 0, 0) };
+            var hard = NetHistoricalTrace.Trace(new[] { current }, new(0, .5f, -2), new(0, .5f, 2), .05f);
+            var shadow = NetHistoricalTrace.Trace(new[] { shifted }, new(0, .5f, -2), new(0, .5f, 2), .05f);
+            HistoricalPoseTests.Check(NetHistoricalTrace.Compare(hard, shadow) == ShadowOutcome.ExistingHit_ShadowMiss,
+                "counterfactual trace classifies alternate historical miss");
+            Console.WriteLine("PASS: alt-form poses, all hunter beams, Kanden chain, contact sweeps, counterfactual geometry and lifecycle boundaries");
             return 0;
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }

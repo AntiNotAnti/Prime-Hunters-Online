@@ -56,6 +56,27 @@ def summarize(matches):
     net = [m['networkDetails'] for m in matches if 'networkDetails' in m]
     life = [m['lifecycleDetails'] for m in matches if 'lifecycleDetails' in m]
     details = [m['combatDetails'] for m in matches if 'combatDetails' in m]
+    ack_cells = defaultdict(list)
+    for match in matches:
+        for cell in match.get('combatAcks', []):
+            ack_cells[(cell['weapon'], cell['result'])].append(cell)
+    combat_acks = []
+    for (weapon, result), values in sorted(ack_cells.items()):
+        combat_acks.append({
+            'weapon': weapon, 'result': result,
+            'settlementMilliseconds': distribution([v['settlementMilliseconds'] for v in values]),
+            **{k: sum(v[k] for v in values) for k in ('exactDamage','damageCorrections','healthCorrections','headshotCorrections','rejected')},
+            'correctionReasons': [sum(v['correctionReasons'][i] for v in values) for i in range(16)]
+        })
+    contention = [m['transportContention'] for m in matches if 'transportContention' in m]
+    transport = {
+        'acquisitions': sum(v['acquisitions'] for v in contention),
+        'contended': sum(v['contended'] for v in contention),
+        'waitPerAcquisitionMilliseconds': distribution([v['waitPerAcquisitionMilliseconds'] for v in contention]),
+        'holdPerAcquisitionMilliseconds': distribution([v['holdPerAcquisitionMilliseconds'] for v in contention]),
+        'maximumWaitMilliseconds': max((v['maximumWaitMilliseconds'] for v in contention), default=None),
+        'maximumHoldMilliseconds': max((v['maximumHoldMilliseconds'] for v in contention), default=None)
+    }
     sums = lambda source, field, size: [sum(m[field][i] for m in source) for i in range(size)] if source else None
     return {'matches': len(matches), 'maps': sorted({m['header']['map'] for m in matches}),
             'durationSeconds': sum(m['durationSeconds'] for m in matches), 'lagComp': lag,
@@ -73,7 +94,8 @@ def summarize(matches):
             'writerFailures': sum(m['counters']['writerFailures'] for m in matches),
             'claims': sums(matches, 'claims', 16),
             'combat': {key: sum(m[key] for m in details) for key in details[0]} if details else None,
-            'shadowOutcomes': sums([m for m in matches if 'shadowOutcomes' in m], 'shadowOutcomes', 7)}
+            'shadowOutcomes': sums([m for m in matches if 'shadowOutcomes' in m], 'shadowOutcomes', 7),
+            'combatAcks': combat_acks, 'transportContention': transport}
 
 
 def render(data, title):
@@ -81,7 +103,7 @@ def render(data, title):
     return '''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <title>''' + html.escape(title) + '''</title><style>
 body{font:16px system-ui;margin:0;background:#101820;color:#e7edf3}main{max-width:1180px;margin:auto;padding:32px}h1{font-size:30px}h2{font-size:21px;margin-top:32px}p{line-height:1.6;color:#b8c7d5}select{padding:9px;background:#1e303e;color:white;border:1px solid #7fa4b7;max-width:100%}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}.card{padding:18px;background:#1e303e;border-radius:8px}.card strong{display:block;font-size:25px;color:#6ce0c1}table{border-collapse:collapse;width:100%;font-size:14px}th,td{text-align:left;padding:9px;border-bottom:1px solid #334552} .scroll{overflow:auto}.bar{display:inline-block;background:#6ce0c1;height:12px}code{overflow-wrap:anywhere}.notice{padding:15px;border-left:4px solid #f3bb64;background:#2b2c26}
-</style><main><h1>''' + html.escape(title) + '''</h1><p>Anonymous server measurements. Select one build/schema cohort. Scripted sessions and human matches must be supplied as separate input directories.</p><select id="cohort" aria-label="Build cohort"></select><p id="coverage" class="notice"></p><div id="cards" class="cards"></div><h2>Connection samples</h2><div id="network" class="scroll"></div><h2>Timing and reconciliation</h2><p>Means are weighted by sample count. Percentile ranges are the lowest and highest per-match quantiles; they are not pooled population percentiles. Unknown values are never treated as zero.</p><div id="timing" class="scroll"></div><h2>Lag policy by weapon and connection</h2><p>Hit/rescue counts describe observed current-policy outcomes inside or outside the proposed window. They do not establish a counterfactual miss, causality or fairness. Unknown geometry remains unknown.</p><div id="lag" class="scroll"></div><h2>Combat and data quality</h2><div id="quality"></div><p id="sources"></p></main><script>
+</style><main><h1>''' + html.escape(title) + '''</h1><p>Anonymous server measurements. Select one build/schema cohort. Scripted sessions and human matches must be supplied as separate input directories.</p><select id="cohort" aria-label="Build cohort"></select><p id="coverage" class="notice"></p><div id="cards" class="cards"></div><h2>Connection samples</h2><div id="network" class="scroll"></div><h2>Timing and reconciliation</h2><p>Means are weighted by sample count. Percentile ranges are the lowest and highest per-match quantiles; they are not pooled population percentiles. Unknown values are never treated as zero.</p><div id="timing" class="scroll"></div><h2>Lag policy by weapon and connection</h2><p>Hit/rescue counts describe observed current-policy outcomes inside or outside the proposed window. Counterfactual classifications are emitted only where the server can replay the alternate geometry without side effects; unsupported mechanics remain unknown.</p><div id="lag" class="scroll"></div><h2>Combat acknowledgement detail</h2><div id="acks" class="scroll"></div><h2>Combat and data quality</h2><div id="quality"></div><p id="sources"></p></main><script>
 const data=''' + payload + ''';
 const $=id=>document.getElementById(id), esc=x=>String(x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const rate=(part,total)=>total>0?(100*part/total).toFixed(2)+'%':'Unknown';
@@ -97,7 +119,12 @@ const timing=['rtt','jitter','combatAckLatency','formDuration','serverStepMillis
 $('timing').innerHTML=table(['Metric (ms, except form frames)','Samples','Mean','p50 range','p95 range','p99 range','Max'],timing.map(k=>{const v=s[k];return [k,n(v.count),n(v.mean),...['matchP50Range','matchP95Range','matchP99Range'].map(q=>v[q]?v[q].map(n).join(' – '):'Unknown'),n(v.maximum)]}));
 const weapons=''' + json.dumps(WEAPONS) + ''';
 $('lag').innerHTML=table(['Weapon','RTT','Jitter','Shots','Requested mean; p50/p95/p99 ranges','Plausible mean; p50/p95/p99 ranges','Hits outside/observed (%)','Rescues outside/observed (%)','Displacement mean/max'],s.lagComp.map(v=>[weapons[v.weapon]??v.weapon,rtt[v.rttBucket],jitter[v.jitterBucket],n(v.requested.count),n(v.requested.mean)+'; '+quantiles(v.requested),n(v.plausible.mean)+'; '+quantiles(v.plausible),n(v.hitsOutside)+' / '+n(v.hitsInside===null?null:v.hitsInside+v.hitsOutside)+' ('+rate(v.hitsOutside,v.hitsInside===null?null:v.hitsInside+v.hitsOutside)+')',n(v.rescuesOutside)+' / '+n(v.rescuesInside===null?null:v.rescuesInside+v.rescuesOutside)+' ('+rate(v.rescuesOutside,v.rescuesInside===null?null:v.rescuesInside+v.rescuesOutside)+')',n(v.displacement.mean)+' / '+n(v.displacement.maximum)]));
-$('quality').innerHTML=table(['Measure','Value'],[['Dropped ticks',n(s.droppedTicks)],['Writer failures',n(s.writerFailures)],['Unknown shadow geometry',n(s.shadowOutcomes?.[6])],['Settled reported predictions',n(s.combat?.settledPredictions)],['Damage corrections',n(s.combat?.damageCorrections)],['Health corrections',n(s.combat?.healthCorrections)],['Headshot corrections',n(s.combat?.headshotCorrections)],['Claim rescued',n(s.claims?.[0])],['Claim already resolved',n(s.claims?.[1])],['Claim rescue rate',rate(s.claims?.[0],s.claims?.reduce((a,b)=>a+b,0))],['Claim rejection rate',rate(s.claims?.slice(2,13).reduce((a,b)=>a+b,0),s.claims?.reduce((a,b)=>a+b,0))]]);
+const ackResults=['Applied','AlreadyResolved','RejectedDeadShooter','RejectedDeadVictim','RejectedPlausibility','RejectedTooOld','RejectedLifecycle','RejectedGeometry','RejectedDamage','RejectedLaunch','RejectedNoDamage','RejectedImpulse','ClaimCapacity','Corrected'];
+$('acks').innerHTML=table(['Weapon','Result','Settlements','Latency mean; p50/p95/p99 ranges','Exact damage','Damage corr','Health corr','Head corr','Rejected'],(s.combatAcks??[]).map(v=>[weapons[v.weapon]??v.weapon,ackResults[v.result]??v.result,n(v.settlementMilliseconds.count),n(v.settlementMilliseconds.mean)+'; '+quantiles(v.settlementMilliseconds),n(v.exactDamage),n(v.damageCorrections),n(v.healthCorrections),n(v.headshotCorrections),n(v.rejected)]));
+$('quality').innerHTML=table(['Measure','Value'],[['Dropped ticks',n(s.droppedTicks)],['Writer failures',n(s.writerFailures)],['Unknown shadow geometry',n(s.shadowOutcomes?.[6])],['Settled reported predictions',n(s.combat?.settledPredictions)],['Damage corrections',n(s.combat?.damageCorrections)],['Health corrections',n(s.combat?.healthCorrections)],['Headshot corrections',n(s.combat?.headshotCorrections)],['Claim rescued',n(s.claims?.[0])],['Claim already resolved',n(s.claims?.[1])],['Claim rescue rate',rate(s.claims?.[0],s.claims?.reduce((a,b)=>a+b,0))],['Claim rejection rate',rate(s.claims?.slice(2,13).reduce((a,b)=>a+b,0),s.claims?.reduce((a,b)=>a+b,0))],
+['Transport lock acquisitions',n(s.transportContention?.acquisitions)],['Transport lock contended',n(s.transportContention?.contended)],
+['Transport lock contention rate',rate(s.transportContention?.contended,s.transportContention?.acquisitions)],
+['Transport lock max wait ms',n(s.transportContention?.maximumWaitMilliseconds)],['Transport lock max hold ms',n(s.transportContention?.maximumHoldMilliseconds)]]);
 $('sources').textContent='Cohort: '+c.key+'; maps: '+s.maps.join(', ')+'. Excluded invalid files: '+data.rejected.length+'; duplicate uploads: '+data.duplicates+'; empty server sessions excluded: '+(data.excludedEmptyMatches??0)+'.';}
 data.cohorts.forEach((c,i)=>{let o=document.createElement('option');o.value=i;o.textContent=c.key;$('cohort').append(o)});$('cohort').onchange=show;show();if(!data.cohorts.length)$('coverage').textContent='No valid match summaries. No study conclusions are available.';
 </script></html>'''

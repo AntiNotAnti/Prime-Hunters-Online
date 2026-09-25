@@ -149,6 +149,7 @@ public sealed class NetConnection
         _minimum = minimum;
         _variance = _rtt.HasValue ? .75 * _variance!.Value + .25 * Math.Abs(sample - _rtt.Value) : sample / 2;
         _rtt = _rtt.HasValue ? .875 * _rtt.Value + .125 * sample : sample;
+        Reliable.UpdateRto(_rtt, _variance);
     }
     public NetConnectionSnapshot Capture() => new(Id, _sent, _acked, _lost, _duplicates, _reordered, _old, _rtt, _variance, _minimum);
 }

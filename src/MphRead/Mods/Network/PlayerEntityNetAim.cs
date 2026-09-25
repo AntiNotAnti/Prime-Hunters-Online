@@ -1465,6 +1465,7 @@ namespace MphRead.Entities
         private NetTargetIdentity _modPendingHomingTarget;
         internal NetTargetIdentity ModContinuousNetworkTarget;
         internal ContinuousTargetState ModContinuousTargetState;
+        internal uint ModContinuousFireTick;
 
         internal void ModSetPendingHomingTarget(NetTargetIdentity encodedTarget)
         {

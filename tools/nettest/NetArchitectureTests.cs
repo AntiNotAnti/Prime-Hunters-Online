@@ -12,10 +12,10 @@ internal static class NetArchitectureTests
     internal static void Check(bool ok, string name)
     { if (!ok) throw new InvalidOperationException(name); }
 
-    // Independent v20 fixture: constants deliberately do not come from the codec.
+    // Independent v21 fixture: constants deliberately do not come from the codec.
     internal static byte[] IntentFixture()
     {
-        byte[] bytes = new byte[98];
+        byte[] bytes = new byte[102];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, 0x12345678);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), 5);
         BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(16), 1);
@@ -35,6 +35,7 @@ internal static class NetArchitectureTests
         bytes[88] = 17; bytes[89] = 19; bytes[90] = 1; bytes[91] = 0x82;
         bytes[92] = 9; bytes[94] = 2;
         bytes[96] = 64; bytes[97] = unchecked((byte)-96);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(98), 0xCAFEBABE);
         return bytes;
     }
 
@@ -59,13 +60,14 @@ internal static class NetArchitectureTests
             var intent = IntentPacket.Read(fixture);
             Check(intent.Position == new Vector3(123.25f, -42.5f, 17.75f), "owner position survives wire");
             byte[] output = new byte[IntentPacket.FullSize]; intent.Write(output);
-            Check(output.SequenceEqual(fixture), "v20 intent byte fixture");
+            Check(output.SequenceEqual(fixture), "v21 intent byte fixture");
             Check(intent.AckFrame == 0x87654321 && intent.AckSubFrame == 128 && IntentPacket.PressHistory == 8,
                 "displayed world ACK and eight-frame edge retention");
-            Check(NetConfig.ProtocolVersion == 20 && IntentPacket.FullSize == 98 && intent.HasAnalogMove
+            Check(NetConfig.ProtocolVersion == 21 && IntentPacket.FullSize == 102 && intent.HasAnalogMove
                 && intent.MoveX == 64 && intent.MoveY == -96
+                && intent.HasContinuousFireTick && intent.ContinuousFireTick == 0xCAFEBABE
                 && Math.Abs(IntentPacket.UnpackMoveAxis(intent.MoveX) - 64 / 127f) < .00001f,
-                "protocol 20 carries signed analog movement axes");
+                "protocol 21 carries analog movement and exact continuous firing tick");
             string[] forbidden = { "MovementCommand", "MovementAck", "ProcessedMovementFrame", "MovementReconciliation",
                 "PredictedMovementState", "IntentBundle", "SnapshotDelta", "SnapshotKeyframe" };
             Check(!typeof(IntentPacket).Assembly.GetTypes().Any(t => forbidden.Any(n => t.Name.Contains(n))),

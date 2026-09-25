@@ -598,10 +598,14 @@ namespace MphRead.Mods.Network
                         // answered. Retain that healthy path in the study too.
                         bool headCorrection = ((entry.Flags & HitClaimPacket.FlagHeadshot) != 0)
                             != ((ack.Flags & CombatAckFlags.Headshot) != 0);
-                        CombatStudyReports.Record(ack, entry.Age, ack.DamageApplied - entry.PredictedBodyDamage, 0, headCorrection);
+                        byte weapon = (byte)(entry.Beam == HitClaimPacket.NoBeam
+                            ? NetShotDiagnostics.WeaponCount - 1 : NetShotDiagnostics.Bucket((BeamType)entry.Beam));
+                        CombatStudyReports.Record(ack, entry.Age,
+                            ack.DamageApplied - entry.PredictedBodyDamage, 0, headCorrection, weapon);
                         Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.CombatAck, NetSession.NetFrame,
-                            Player: (byte)NetSession.LocalSlot, Victim: entry.VictimSlot, Id: id, Result: result,
-                            A: entry.Age * (1000.0 / 60), B: ack.DamageApplied - entry.PredictedBodyDamage, D: headCorrection ? 1 : 0));
+                            Player: (byte)NetSession.LocalSlot, Victim: entry.VictimSlot, Weapon: weapon,
+                            Id: id, Result: result, A: entry.Age * (1000.0 / 60),
+                            B: ack.DamageApplied - entry.PredictedBodyDamage, D: headCorrection ? 1 : 0));
                     }
                     int weapon = NetShotDiagnostics.Bucket((BeamType)entry.Beam);
                     if (result == HitVerdictPacket.ResultApplied) NetShotDiagnostics.Rescues[weapon]++;
@@ -1341,10 +1345,17 @@ namespace MphRead.Mods.Network
             // Where the authority itself had the victim, at the frame the
             // shooter was looking at. This is the claim's only evidence and
             // the authority's own record of it.
-            if (!NetUnlagged.PositionAt(victimSlot, claim.AckFrame, claim.VictimGeneration, claim.VictimLifeId, out Vector3 was))
+            bool turretClaim = (claim.Flags & HitClaimPacket.FlagHalfturret) != 0;
+            bool historicalAvailable = turretClaim
+                ? NetUnlagged.TryHistoricalHalfturretPosition(victimSlot, claim.AckFrame,
+                    claim.VictimGeneration, claim.VictimLifeId, out Vector3 was)
+                : NetUnlagged.PositionAt(victimSlot, claim.AckFrame, claim.VictimGeneration,
+                    claim.VictimLifeId, out was);
+            if (!historicalAvailable)
             {
-                // Either the victim was not in play in that world, or the ring
-                // no longer holds it. Both mean there is nothing to check.
+                // Either the victim/turret was not in play in that world, or the
+                // ring no longer holds it. A detached turret claim is never
+                // validated against the owner's body as a substitute.
                 TooOldHere++;
                 return HitVerdictPacket.ResultTooOld;
             }

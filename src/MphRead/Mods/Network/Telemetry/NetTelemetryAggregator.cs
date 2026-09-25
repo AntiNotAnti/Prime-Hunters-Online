@@ -8,12 +8,19 @@ public sealed record TelemetryLagBucket(int Weapon, int RttBucket, int JitterBuc
     TelemetryDistribution Requested, TelemetryDistribution Plausible, TelemetryDistribution Displacement,
     long GlobalClamps, long ShadowClamps, long HitsOutside, long RescuesOutside, long MissesOutside,
     long HitsInside, long RescuesInside, long MissesInside, long UnknownOutcomes);
+public sealed record TelemetryCombatAckBucket(int Weapon, int Result,
+    TelemetryDistribution SettlementMilliseconds, long ExactDamage, long DamageCorrections,
+    long HealthCorrections, long HeadshotCorrections, long Rejected, long[] CorrectionReasons);
+public sealed record TelemetryTransportContentionDetails(long Acquisitions, long Contended,
+    TelemetryDistribution WaitPerAcquisitionMilliseconds, TelemetryDistribution HoldPerAcquisitionMilliseconds,
+    double MaximumWaitMilliseconds, double MaximumHoldMilliseconds);
 public sealed record TelemetrySummary(TelemetryHeader Header, double DurationSeconds, TelemetryCounters Counters,
     long[] Network, long[] Combat, long[] Claims, long[] Lifecycle,
     TelemetryDistribution CombatAckLatency, TelemetryDistribution FormDuration, long ForcedForms,
     TelemetryDistribution ServerStepMilliseconds, long DroppedTicks, TelemetryLagBucket[] LagComp,
     TelemetryNetworkDetails NetworkDetails, TelemetryLifecycleDetails LifecycleDetails, TelemetryCombatDetails CombatDetails,
-    long[] ShadowOutcomes, long[] FormCorrectionReasons);
+    long[] ShadowOutcomes, long[] FormCorrectionReasons, TelemetryCombatAckBucket[] CombatAcks,
+    TelemetryTransportContentionDetails TransportContention);
 public sealed record TelemetryNetworkDetails(TelemetryDistribution RttMilliseconds, TelemetryDistribution JitterMilliseconds,
     TelemetryDistribution RecentMinimumRttMilliseconds, TelemetryDistribution RttVariationMilliseconds,
     long[] RttBuckets, long[] JitterBuckets, long Retransmissions, long EstimatedLost, long QueueHighWater);
@@ -50,7 +57,14 @@ public sealed class NetTelemetryAggregator
         public readonly Distribution Requested = new(4), Plausible = new(4), Displacement = new(100);
         public long Global, Shadow, Hits, Rescues, Misses, HitsInside, RescuesInside, MissesInside, Unknown;
     }
+    private sealed class CombatAckCell
+    {
+        public readonly Distribution Latency = new();
+        public long Exact, Damage, Health, Head, Rejected;
+        public readonly long[] Reasons = new long[16];
+    }
     private readonly LagCell?[] _lag = new LagCell[NetShotDiagnostics.WeaponCount * 9 * 6];
+    private readonly CombatAckCell?[] _combatAcks = new CombatAckCell[NetShotDiagnostics.WeaponCount * ((int)CombatAckResult.Corrected + 1)];
     private readonly long[] _network = new long[8], _combat = new long[8], _claims = new long[16], _lifecycle = new long[256];
     private readonly Distribution _latency = new(), _forms = new(), _steps = new(100);
     private long _forced, _dropped, _ready, _lateJoins, _disconnects, _exact, _rejected, _retransmissions, _lost, _queueHigh;
@@ -59,6 +73,10 @@ public sealed class NetTelemetryAggregator
     private readonly long[] _rttBuckets = new long[9], _jitterBuckets = new long[6], _outcomes = new long[7], _formReasons = new long[7];
     private readonly long[] _lastRetransmissions = new long[8], _lastLost = new long[8];
     private readonly ushort[] _connectionGeneration = new ushort[8];
+    private long _lastLockAcquisitions, _lastLockContended;
+    private double _lastLockWait, _lastLockHold, _maxLockWait, _maxLockHold;
+    private long _lockAcquisitions, _lockContended;
+    private readonly Distribution _lockWait = new(1000), _lockHold = new(1000);
     public void Add(in NetTelemetryEvent e)
     {
         switch (e.Type)
@@ -85,9 +103,23 @@ public sealed class NetTelemetryAggregator
             case TelemetryEventType.AuthorityResult: _combat[0]++; _combat[1] += (long)e.A; break;
             case TelemetryEventType.CombatAck:
                 _combat[2]++; if (e.B != 0) _combat[3]++; if (e.C != 0) _combat[4]++; if (e.D != 0) _combat[5]++;
+                bool accepted = new CombatAckEntry { Result = (byte)e.Result }.Accepted;
                 if (e.B == 0) _exact++;
-                if (!new CombatAckEntry { Result = (byte)e.Result }.Accepted) _rejected++;
-                _latency.Add(e.A); break;
+                if (!accepted) _rejected++;
+                _latency.Add(e.A);
+                if (e.Weapon < NetShotDiagnostics.WeaponCount && (uint)e.Result <= (uint)CombatAckResult.Corrected)
+                {
+                    int ackAt = e.Weapon * ((int)CombatAckResult.Corrected + 1) + e.Result;
+                    var ack = _combatAcks[ackAt] ??= new();
+                    ack.Latency.Add(e.A);
+                    CombatCorrectionReason reason = CombatCorrectionReason.None;
+                    if (!accepted) { ack.Rejected++; reason |= CombatCorrectionReason.Rejected; }
+                    if (e.B != 0) { ack.Damage++; reason |= CombatCorrectionReason.Damage; } else ack.Exact++;
+                    if (e.C != 0) { ack.Health++; reason |= CombatCorrectionReason.Health; }
+                    if (e.D != 0) { ack.Head++; reason |= CombatCorrectionReason.Headshot; }
+                    ack.Reasons[(int)reason]++;
+                }
+                break;
             case TelemetryEventType.Claim: if ((uint)e.Result < _claims.Length) _claims[e.Result]++; break;
             case TelemetryEventType.Lifecycle:
                 if ((uint)e.Result < _lifecycle.Length) _lifecycle[e.Result]++;
@@ -103,6 +135,24 @@ public sealed class NetTelemetryAggregator
                 if (e.Result == (int)FormCorrectionReason.ForcedMaximumMismatch) _forced++;
                 break;
             case TelemetryEventType.ServerStep: _steps.Add(e.A); _dropped = (long)e.B; break;
+            case TelemetryEventType.TransportContention:
+                {
+                    long acquisitions = Math.Max(0, (long)e.A - _lastLockAcquisitions);
+                    long contended = Math.Max(0, (long)e.B - _lastLockContended);
+                    double wait = Math.Max(0, e.C - _lastLockWait);
+                    double hold = Math.Max(0, e.E - _lastLockHold);
+                    _lastLockAcquisitions = (long)e.A; _lastLockContended = (long)e.B;
+                    _lastLockWait = e.C; _lastLockHold = e.E;
+                    _lockAcquisitions += acquisitions; _lockContended += contended;
+                    if (acquisitions > 0)
+                    {
+                        _lockWait.Add(wait / acquisitions);
+                        _lockHold.Add(hold / acquisitions);
+                    }
+                    _maxLockWait = Math.Max(_maxLockWait, e.D);
+                    _maxLockHold = Math.Max(_maxLockHold, e.F);
+                    break;
+                }
             case TelemetryEventType.LagStudy:
                 int weapon = Math.Clamp(e.Weapon, (byte)0, (byte)(NetShotDiagnostics.WeaponCount - 1));
                 int rtt = LagCompensationPolicy.RttBucket(e.E < 0 ? null : e.E);
@@ -121,9 +171,16 @@ public sealed class NetTelemetryAggregator
         var buckets = new List<TelemetryLagBucket>();
         for (int i = 0; i < _lag.Length; i++) if (_lag[i] is { } cell)
             buckets.Add(new(i / 54, i / 6 % 9, i % 6, cell.Requested.Capture(), cell.Plausible.Capture(), cell.Displacement.Capture(), cell.Global, cell.Shadow, cell.Hits, cell.Rescues, cell.Misses, cell.HitsInside, cell.RescuesInside, cell.MissesInside, cell.Unknown));
+        var combatAcks = new List<TelemetryCombatAckBucket>();
+        int results = (int)CombatAckResult.Corrected + 1;
+        for (int i = 0; i < _combatAcks.Length; i++) if (_combatAcks[i] is { } ack)
+            combatAcks.Add(new(i / results, i % results, ack.Latency.Capture(), ack.Exact,
+                ack.Damage, ack.Health, ack.Head, ack.Rejected, ack.Reasons));
         return new(header, seconds, counters, _network, _combat, _claims, _lifecycle, _latency.Capture(), _forms.Capture(), _forced, _steps.Capture(), _dropped, buckets.ToArray(),
             new(_rtt.Capture(), _jitter.Capture(), _minimum.Capture(), _variation.Capture(), _rttBuckets, _jitterBuckets, _retransmissions, _lost, _queueHigh),
             new(_join.Capture(), _load.Capture(), _bootstrap.Capture(), _rejoin.Capture(), _ready, _lateJoins, _disconnects),
-            new(_combat[2], _exact, _combat[3], _combat[5], _combat[4], _rejected), _outcomes, _formReasons);
+            new(_combat[2], _exact, _combat[3], _combat[5], _combat[4], _rejected), _outcomes, _formReasons,
+            combatAcks.ToArray(), new(_lockAcquisitions, _lockContended, _lockWait.Capture(), _lockHold.Capture(),
+                _maxLockWait, _maxLockHold));
     }
 }

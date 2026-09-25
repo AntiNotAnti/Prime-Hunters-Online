@@ -31,10 +31,11 @@ class ReportTests(unittest.TestCase):
         x=copy.deepcopy(self.fixture);x['ip']='example';self.assertFalse(valid(x))
         x=copy.deepcopy(self.fixture);x['combatAckLatency']['mean']=float('inf');self.assertFalse(valid(x))
 
-    def test_current_protocol_twenty_is_accepted(self):
+    def test_current_protocols_are_accepted_by_their_schema(self):
         x=copy.deepcopy(self.fixture);x['header']['protocol']=20
         self.assertTrue(valid(x))
-        x['header']['protocol']=21;self.assertFalse(valid(x))
+        x['header']['protocol']=21
+        self.assertTrue(valid(x))
 
     def test_schema_two_and_bucket_bounds(self):
         x=copy.deepcopy(self.fixture);x['header']['schema']=2
@@ -51,6 +52,24 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(summary['lagComp'][0]['weapon'],11)
         x['lagComp'][0]['weapon']=12;self.assertFalse(valid(x))
         x['lagComp'][0]['weapon']=1.5;self.assertFalse(valid(x))
+
+    def test_schema_three_combat_ack_and_contention(self):
+        x=copy.deepcopy(self.fixture);x['header']['schema']=2;x['header']['protocol']=20
+        d=dict(count=1,mean=10,p50=10,p95=10,p99=10,maximum=10)
+        x['networkDetails']={k:copy.deepcopy(d) for k in ('rttMilliseconds','jitterMilliseconds','recentMinimumRttMilliseconds','rttVariationMilliseconds')}
+        x['networkDetails'].update(rttBuckets=[1]+[0]*8,jitterBuckets=[1]+[0]*5,retransmissions=2,estimatedLost=3,queueHighWater=4)
+        x['lifecycleDetails']={k:copy.deepcopy(d) for k in ('joinMilliseconds','loadMilliseconds','bootstrapMilliseconds','rejoinMilliseconds')}
+        x['lifecycleDetails'].update(ready=1,lateJoins=0,disconnects=1)
+        x['combatDetails']=dict(settledPredictions=1,exactDamagePredictions=1,damageCorrections=0,headshotCorrections=0,healthCorrections=0,rejectedPredictions=0)
+        x['shadowOutcomes']=[0]*7;x['formCorrectionReasons']=[0]*7
+        x['header']['schema']=3;x['header']['protocol']=21
+        x['combatAcks']=[dict(weapon=4,result=1,settlementMilliseconds=d,exactDamage=1,damageCorrections=0,
+            healthCorrections=0,headshotCorrections=0,rejected=0,correctionReasons=[1]+[0]*15)]
+        x['transportContention']=dict(acquisitions=100,contended=2,waitPerAcquisitionMilliseconds=d,
+            holdPerAcquisitionMilliseconds=d,maximumWaitMilliseconds=.2,maximumHoldMilliseconds=.3)
+        self.assertTrue(valid(x)); summary=summarize([x])
+        self.assertEqual(summary['combatAcks'][0]['weapon'],4)
+        self.assertEqual(summary['transportContention']['contended'],2)
 
     def test_legacy_missing_values_and_injection(self):
         s=summarize([self.fixture]);self.assertIsNone(s['rttBuckets']);self.assertIsNone(s['combat'])

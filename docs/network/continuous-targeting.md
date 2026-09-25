@@ -1,4 +1,4 @@
-# Protocol 19 continuous player targeting
+# Protocol 21 continuous player targeting
 
 Shock Coil now uses the owner's production target decision. The receiver validates
 that particular player and either accepts it or selects no player. It never runs a
@@ -8,14 +8,18 @@ non-player candidates and the cartridge cone formulas remain in their normal pat
 ## Wire and capture
 
 IntentPacket.Size remains 88. Protocol 19's shot-state block is still the first
-eight bytes of the tail; protocol 20 appends two signed movement axes, so
-IntentPacket.FullSize is 98 bytes (122 with the transport envelope). Offsets 88–90 carry charge, boost damage and
-shot flags. Offset 91 carries the encoded slot, 92–93 its generation, and 94–95 its
-life, with ushort values little endian. `0x80/0/0` explicitly means no player;
+eight bytes of the tail; protocol 20 appends two signed movement axes at 96–97,
+and protocol 21 appends the owner's exact 32-bit continuous firing tick at 98–101.
+IntentPacket.FullSize is therefore 102 bytes (126 with the transport envelope).
+Offsets 88–90 carry charge, boost damage and shot flags. Offset 91 carries the
+encoded slot, 92–93 its generation, and 94–95 its life, with ushort values little
+endian. `0x80/0/0` explicitly means no player;
 `0x81` through `0x88` identify slots zero through seven. A player identity requires
 nonzero generation and life. An absent or malformed decision cannot trigger an
-independent player selection. Live ingress requires the complete current tail. Protocol 20 adds only the
-movement-axis pair after the v19 target identity, so all v19 offsets remain stable.
+independent player selection. Live ingress requires the complete current tail.
+Protocol 20 adds only the movement-axis pair after the v19 target identity and
+protocol 21 adds the continuous tick after those axes, so all v19 offsets remain
+stable.
 Earlier protocol peers and recordings are refused rather than decoding a shorter
 realtime intent silently. Charged affinity Volt Driver uses the same `NetTargetIdentity` structure
 and preserves its one-release selection flow with the added lifecycle fence.
@@ -129,10 +133,12 @@ Accepted target identity agreement is separate from rejection rate and hit
 agreement. In the corrected 320 ms/80 ms/2% loss arm, paired accepted identities
 matched 100%, but 147 confirmed and 73 unpredicted hits imply only 66.8% local share
 of authority-confirmed hits. That does **not** meet the plan's 95% impaired hit-count
-criterion. Phase offsets dominate retained paired disagreements. The work therefore
-provides the targeting implementation and classified evidence, but does not establish
-full gameplay acceptance under impairment. Timer replication remains unjustified;
-the next investigation is continuous firing-phase/collision/claim correspondence.
+criterion. Phase offsets dominated retained paired disagreements in protocol 19.
+Protocol 21 removes that reconstruction entirely: the owner publishes the exact
+continuous firing tick, and a receiver may reuse the latest beam presentation but
+cannot spend ammo or deal continuous damage twice for the same tick. Timer
+replication remains unjustified; residual disagreement should now be evaluated at
+collision/claim correspondence rather than packet-arrival phase.
 The former turret-state gap is addressed by the coordinated Protocol 19 combat
 work. An eight-player TEST PADS impairment run completed; human eight-player
 gameplay remains distinct from these automated runs.

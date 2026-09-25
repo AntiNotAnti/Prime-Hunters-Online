@@ -29,7 +29,7 @@ internal static class Protocol19Tests
     }
     private static void Codecs()
     {
-        Check(NetConfig.ProtocolVersion == 20 && SnapshotFast.MaximumEncodedSize <= 1200, "current version and eight-player fast packet budget");
+        Check(NetConfig.ProtocolVersion == 21 && SnapshotFast.MaximumEncodedSize <= 1200, "current version and eight-player fast packet budget");
         Span<byte> bytes = stackalloc byte[PlayerState.Size];
         foreach (ushort health in new ushort[] { 0, 1, 37, 100, ushort.MaxValue })
         {
@@ -91,12 +91,14 @@ internal static class Protocol19Tests
         aggregate.Add(new(TelemetryEventType.ConnectionDetail, 4, Player: 1, Generation: 3, A: 2, B: 1, C: 2));
         aggregate.Add(new(TelemetryEventType.Lifecycle, 5, Result: 200, Flags: 3, B: 1250, C: 1000, D: 250));
         aggregate.Add(new(TelemetryEventType.Lifecycle, 6, Result: 202));
-        aggregate.Add(new(TelemetryEventType.CombatAck, 7, Result: 1, A: 50));
-        aggregate.Add(new(TelemetryEventType.CombatAck, 8, Result: 7, A: 100, B: -10, C: 5, D: 1));
+        aggregate.Add(new(TelemetryEventType.CombatAck, 7, Weapon: 4, Result: 1, A: 50));
+        aggregate.Add(new(TelemetryEventType.CombatAck, 8, Weapon: 4, Result: 7, A: 100, B: -10, C: 5, D: 1));
+        aggregate.Add(new(TelemetryEventType.TransportContention, 8, A: 100, B: 10, C: 2, D: .2, E: 4, F: .3));
+        aggregate.Add(new(TelemetryEventType.TransportContention, 9, A: 200, B: 12, C: 3, D: .25, E: 6, F: .4));
         aggregate.Add(new(TelemetryEventType.LagStudy, 9, Weapon: 7, Result: -1, A: 12, B: 12, C: 10, D: -1, E: 100, F: 25));
         aggregate.Add(new(TelemetryEventType.LagStudy, 10, Weapon: 7, Result: 1, Flags: 3, A: 12, B: 12, C: 10, D: 2, E: 100, F: 25));
         aggregate.Add(new(TelemetryEventType.LagStudy, 11, Weapon: 7, Result: 2, Flags: 2, A: 8, B: 8, C: 10, D: 1, E: 100, F: 25));
-        var summary = aggregate.Capture(new(2, 19, "fixture", "fixture", "fixture", "fixture", "Battle", "fixture", 2), 1, default);
+        var summary = aggregate.Capture(new(3, 21, "fixture", "fixture", "fixture", "fixture", "Battle", "fixture", 2), 1, default);
         Check(summary.NetworkDetails.RttMilliseconds.Count == 1 && summary.NetworkDetails.RttBuckets[8] == 1
             && summary.NetworkDetails.RttBuckets[2] == 1, "unknown timing excluded from distributions and explicitly bucketed");
         Check(summary.NetworkDetails.Retransmissions == 6 && summary.NetworkDetails.EstimatedLost == 9,
@@ -107,6 +109,16 @@ internal static class Protocol19Tests
         Check(summary.CombatDetails.ExactDamagePredictions == 1 && summary.CombatDetails.DamageCorrections == 1
             && summary.CombatDetails.RejectedPredictions == 1 && summary.CombatAckLatency.Mean == 75,
             "exact/corrected/rejected settlements have distinct counters");
+        Check(summary.CombatAcks.Length == 2 && summary.CombatAcks.All(x => x.Weapon == 4)
+            && summary.CombatAcks.Single(x => x.Result == 7).DamageCorrections == 1
+            && summary.CombatAcks.Single(x => x.Result == 7).CorrectionReasons[(int)(
+                CombatCorrectionReason.Rejected | CombatCorrectionReason.Damage
+                | CombatCorrectionReason.Health | CombatCorrectionReason.Headshot)] == 1,
+            "CombatAck analytics retain weapon, terminal result, latency and correction reason combination");
+        Check(summary.TransportContention.Acquisitions == 200 && summary.TransportContention.Contended == 12
+            && summary.TransportContention.MaximumWaitMilliseconds == .25
+            && summary.TransportContention.WaitPerAcquisitionMilliseconds.Count == 2,
+            "transport contention aggregates cumulative counters into interval samples");
         Check(summary.LagComp.Single().Requested.Count == 1 && summary.LagComp.Single().HitsOutside == 1
             && summary.LagComp.Single().RescuesInside == 1 && summary.LagComp.Single().MissesOutside == 0,
             "impact observations do not inflate shots or invent misses");
@@ -148,7 +160,7 @@ internal static class Protocol19Tests
         Check(failures == 1 && Directory.GetFiles(Path.Combine(config.Directory, "pending"), "*.retry").Length == 1,
             slow ? "slow HTTP timeout retains retry without simulation work" : "HTTP 500 retains local summary with exponential retry");
     }
-    private static TelemetryHeader Header() => new(1, 19, Guid.NewGuid().ToString("N"), "test", "test", "test", "Battle", "test-room", 8);
+    private static TelemetryHeader Header() => new(3, 21, Guid.NewGuid().ToString("N"), "test", "test", "test", "Battle", "test-room", 8);
     private static void ConfigDefaults(string root)
     {
         string? before = Environment.GetEnvironmentVariable("PRIME_TELEMETRY_CONFIG");
@@ -231,7 +243,7 @@ internal static class Protocol19Tests
         Check(real.WaitForExit(5000), "real gzip writer completes");
         using var gzip = new GZipStream(File.OpenRead(Directory.GetFiles(output, "*.gz", SearchOption.AllDirectories).Single()), CompressionMode.Decompress);
         using var reader = new StreamReader(gzip); string raw = reader.ReadToEnd();
-        Check(raw.Contains("protocol\":19") && raw.Contains("ServerStep") && !raw.Contains("127.0.0.1"), "versioned compressed header/events and privacy-safe schema");
+        Check(raw.Contains("protocol\":21") && raw.Contains("ServerStep") && !raw.Contains("127.0.0.1"), "versioned compressed header/events and privacy-safe schema");
         string summary = Directory.GetFiles(output, "*.summary.json", SearchOption.AllDirectories).Single();
         UploadFailure(config with { Directory = Path.Combine(root, "http500") }, summary, false);
         UploadFailure(config with { Directory = Path.Combine(root, "http-slow") }, summary, true);

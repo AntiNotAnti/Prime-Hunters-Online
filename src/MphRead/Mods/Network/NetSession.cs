@@ -431,6 +431,8 @@ namespace MphRead.Mods.Network
             Array.Clear(_lastSlotIntentFrame);
             _lastServerPacket = 0;
             _lastClientMaintenance = 0;
+            _lastConnectionProbe = 0;
+            ConnectionProbes = 0;
             ReAnnouncements = 0;
             LongestServerSilence = 0;
             AuthorityFrames = 0;
@@ -649,8 +651,7 @@ namespace MphRead.Mods.Network
             {
                 SendHello(); // still waiting to be admitted
             }
-            else if (serviceClientConnection
-                && time - _lastServerPacket > SilenceBeforeRejoin)
+            else if (serviceClientConnection && time - _lastServerPacket > RejoinSilenceSeconds())
             {
                 // The server has not said anything for a long time, which
                 // means it has forgotten us -- dropped while a room was
@@ -679,6 +680,13 @@ namespace MphRead.Mods.Network
                 SendHello();
                 SendIdentify();
             }
+            else if (serviceClientConnection && time - _lastServerPacket > ProbeSilenceSeconds()
+                && time - _lastConnectionProbe >= 1 && _transport != null && _hostEndPoint != null)
+            {
+                _lastConnectionProbe = time;
+                ConnectionProbes++;
+                _transport.Send(_hostEndPoint, PacketType.Ping, ReadOnlySpan<byte>.Empty);
+            }
             // PumpLobby already retries identity on its one-second clock.
         }
 
@@ -691,11 +699,23 @@ namespace MphRead.Mods.Network
         /// </summary>
         public static bool ConnectionLost { get; private set; }
 
-        /// <summary>Seconds of silence from the server before saying hello again.</summary>
-        private const double SilenceBeforeRejoin = 5.0;
+        private static double ProbeSilenceSeconds()
+        {
+            double rtt = _transport != null && _hostEndPoint != null
+                ? _transport.ConnectionStats(_hostEndPoint)?.RttMilliseconds ?? 100 : 100;
+            return Math.Clamp(.75 + rtt * .004, 1.0, 2.5);
+        }
+        private static double RejoinSilenceSeconds()
+        {
+            double rtt = _transport != null && _hostEndPoint != null
+                ? _transport.ConnectionStats(_hostEndPoint)?.RttMilliseconds ?? 100 : 100;
+            return Math.Clamp(2.0 + rtt * .006, 2.5, 5.0);
+        }
 
         private static double _lastServerPacket;
         private static double _lastClientMaintenance;
+        private static double _lastConnectionProbe;
+        public static int ConnectionProbes { get; private set; }
         // Loading pauses gameplay, not the connection's monotonic clock.
         // Refresh packet liveness without advancing any simulation frame.
         internal static void PumpMapTransfer()

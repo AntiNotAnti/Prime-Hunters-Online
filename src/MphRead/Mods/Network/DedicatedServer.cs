@@ -391,6 +391,8 @@ namespace MphRead.Mods.Network
             if (!_controlPlaneOnlyForTests)
             {
                 Mods.Headless.Enter();
+                double prewarmMs = ServerHotPathPrewarm.Run();
+                Log($"server hot paths prewarmed in {prewarmMs:0.0} ms");
                 ServerReplayRecorder.Configure(ReplayPolicy);
                 CareerReportOutbox.Start();
             }
@@ -478,6 +480,11 @@ namespace MphRead.Mods.Network
                                     C: timing.JitterMilliseconds ?? -1, D: sample.PacketsReceived, E: sample.PacketsSent,
                                     F: sample.QueueDrops, G: sample.QueueCurrent, H: sample.QueueHighWater));
                             }
+                            var contention = _transport.ContentionStats();
+                            Telemetry.ProductionTelemetry.Emit(new(Telemetry.TelemetryEventType.TransportContention, NetSession.NetFrame,
+                                A: contention.Acquisitions, B: contention.Contended,
+                                C: contention.TotalWaitMilliseconds, D: contention.MaximumWaitMilliseconds,
+                                E: contention.TotalHoldMilliseconds, F: contention.MaximumHoldMilliseconds));
                         }
                         if (NetDiagnostics.Enabled)
                         {
@@ -815,6 +822,7 @@ namespace MphRead.Mods.Network
                 throw new ProgramException($"the server could not load \"{entry.RoomKey}\"");
             }
             _sim = sim;
+            _transport?.ResetContentionStats();
             Telemetry.ProductionTelemetry.Begin(entry.RoomKey, entry.Mode.ToString(), _maxPlayers);
             Array.Clear(_studyAdmissions); _studyAdmissionHead = 0;
             foreach (var participant in _peers) _studyAdmissions[_studyAdmissionHead++ % _studyAdmissions.Length] = participant.ClientId;

@@ -3,7 +3,8 @@ using System;
 namespace MphRead.Mods.Network;
 
 public readonly record struct NetReliableSnapshot(int Pending, int HighWater, long Refused, long ReserveUses,
-    long SpanRefused, long Retransmissions, long Duplicates, double? OldestAgeMilliseconds, bool Failed);
+    long SpanRefused, long Retransmissions, long Duplicates, double? OldestAgeMilliseconds, bool Failed,
+    double CurrentRtoMilliseconds);
 public readonly record struct ReliableTransmission(uint EventId, PacketType Type, ReadOnlyMemory<byte> Payload);
 
 /// <summary>Bounded, unordered, exactly-once event delivery within one live connection.
@@ -13,12 +14,14 @@ public sealed class NetReliableChannel
 {
     public const int OrdinaryCapacity = 32, Capacity = 40, History = 256;
     public const double LifetimeMilliseconds = 15000;
+    public const double MinimumRtoMilliseconds = 75, MaximumRtoMilliseconds = 1200;
+    private double _baseRto = 150;
     private sealed class PendingEvent
     {
         public uint Id;
         public PacketType Type;
         public byte[] Payload = null!;
-        public double Created, Due, Rto = 150;
+        public double Created, Due, Rto;
         public int Attempts;
         public bool Critical;
     }
@@ -31,6 +34,12 @@ public sealed class NetReliableChannel
     private long _refused, _reserve, _spanRefused, _retransmissions, _duplicates;
     public bool Failed { get; private set; }
     internal void Fail() => Failed = true;
+    public void UpdateRto(double? smoothedRttMilliseconds, double? variationMilliseconds)
+    {
+        if (smoothedRttMilliseconds is not double rtt || variationMilliseconds is not double variation
+            || !double.IsFinite(rtt) || !double.IsFinite(variation) || rtt < 0 || variation < 0) return;
+        _baseRto = Math.Clamp(rtt + 4 * variation, MinimumRtoMilliseconds, MaximumRtoMilliseconds);
+    }
     public bool HasPending(PacketType type)
     { foreach (var pending in _pending) if (pending?.Type == type) return true; return false; }
     public static bool IsReliable(PacketType type) => type is PacketType.Welcome or PacketType.SessionState
@@ -82,7 +91,8 @@ public sealed class NetReliableChannel
         for (int i = 0; i < _pending.Length; i++) if (_pending[i] == null)
         {
             eventId = _next++;
-            _pending[i] = new PendingEvent { Id = eventId, Type = type, Payload = payload.ToArray(), Created = nowMs, Due = nowMs, Critical = critical };
+            _pending[i] = new PendingEvent { Id = eventId, Type = type, Payload = payload.ToArray(),
+                Created = nowMs, Due = nowMs, Rto = _baseRto, Critical = critical };
             if (!critical) _ordinary++;
             _count++; _high = Math.Max(_high, _count); if (critical && _count > OrdinaryCapacity) _reserve++;
             return true;
@@ -100,7 +110,7 @@ public sealed class NetReliableChannel
             if (nowMs - pending.Created >= LifetimeMilliseconds) { Failed = true; return false; }
             if (pending.Due > nowMs) continue;
             if (pending.Attempts++ > 0) _retransmissions++;
-            pending.Due = nowMs + pending.Rto; pending.Rto = Math.Min(1200, pending.Rto * 2);
+            pending.Due = nowMs + pending.Rto; pending.Rto = Math.Min(MaximumRtoMilliseconds, pending.Rto * 2);
             transmission = new(pending.Id, pending.Type, pending.Payload);
             return true;
         }
@@ -127,6 +137,7 @@ public sealed class NetReliableChannel
     {
         double? oldest = null;
         foreach (var pending in _pending) if (pending != null) oldest = Math.Max(oldest ?? 0, nowMs - pending.Created);
-        return new(_count, _high, _refused, _reserve, _spanRefused, _retransmissions, _duplicates, oldest, Failed);
+        return new(_count, _high, _refused, _reserve, _spanRefused, _retransmissions, _duplicates,
+            oldest, Failed, _baseRto);
     }
 }

@@ -295,6 +295,8 @@ namespace MphRead.Mods.Network
                 MoveX = c.AnalogMoveActive ? IntentPacket.PackMoveAxis(c.AnalogMoveX) : (sbyte)0,
                 MoveY = c.AnalogMoveActive ? IntentPacket.PackMoveAxis(c.AnalogMoveY) : (sbyte)0,
                 HasAnalogMove = true,
+                HasContinuousFireTick = true,
+                ContinuousFireTick = 0,
                 Aim = player.ModGunVector,
                 Position = player.Position,
                 // The owner's own weapon, every frame. The authority never

@@ -1,6 +1,12 @@
 namespace MphRead.Mods.Network.Telemetry;
 
-public enum TelemetryEventType { Connection, Shot, AuthorityResult, Claim, CombatAck, ContinuousTarget, Form, Lifecycle, ServerStep, LagStudy, ConnectionDetail }
+public enum TelemetryEventType { Connection, Shot, AuthorityResult, Claim, CombatAck, ContinuousTarget, Form, Lifecycle, ServerStep, LagStudy, ConnectionDetail, TransportContention }
+
+[System.Flags]
+public enum CombatCorrectionReason : byte
+{
+    None = 0, Rejected = 1, Damage = 2, Health = 4, Headshot = 8
+}
 
 /// <summary>Fixed value payload: no references, player names, addresses, or account IDs.
 /// Meaning of numeric fields is defined by schema version and event type.</summary>

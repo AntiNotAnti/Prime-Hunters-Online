@@ -25,7 +25,7 @@ public static class ProductionTelemetry
             var assembly = typeof(ProductionTelemetry).Assembly;
             string version = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
             int separator = version.IndexOf('+');
-            var header = new TelemetryHeader(2, NetConfig.ProtocolVersion, Guid.NewGuid().ToString("N"),
+            var header = new TelemetryHeader(3, NetConfig.ProtocolVersion, Guid.NewGuid().ToString("N"),
                 separator < 0 ? "unknown" : version[(separator + 1)..], version,
                 System.Runtime.InteropServices.RuntimeInformation.OSDescription, mode, map, players);
             _writer = new NetTelemetryWriter(_config, header);

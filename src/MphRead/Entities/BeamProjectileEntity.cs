@@ -445,7 +445,7 @@ namespace MphRead.Entities
                 {
                     if (!_scene.Services.IsReplica) NetDamage.PlayerChecks[player.SlotIndex]++;
                 }
-                bool hasHalfturret = player.Hunter == Hunter.Weavel && player.Flags2.TestFlag(PlayerFlags2.Halfturret);
+                bool hasHalfturret = NetUnlagged.TryCollisionHalfturret(player, out Vector3 halfturretPosition);
                 if ((Owner == player || hasHalfturret && Owner == player.Halfturret)
                     && (!Flags.TestFlag(BeamFlags.SelfDamage) || Age < 1 / 30f * 4))
                 {
@@ -485,7 +485,7 @@ namespace MphRead.Entities
                 {
                     CollisionResult turretRes = default;
                     float radius = CylinderRadius + 0.45f;
-                    if (CollisionDetection.CheckCylinderOverlapSphere(BackPosition, Position, player.Halfturret.Position,
+                    if (CollisionDetection.CheckCylinderOverlapSphere(BackPosition, Position, halfturretPosition,
                         radius, ref turretRes) && turretRes.Distance < minDist)
                     {
                         minDist = turretRes.Distance;
@@ -1452,6 +1452,7 @@ namespace MphRead.Entities
             int cost = (int)GetAmount(weapon.AmmoCost, weapon.MinChargeCost, weapon.ChargeCost);
             ulong phase = scene.FrameCount;
             bool sharedPhase = false;
+            bool freshContinuousTick = true;
             if (weapon.Flags.TestFlag(WeaponFlags.Continuous) && owner is PlayerEntity firingPlayer)
             {
                 int slot = firingPlayer.SlotIndex;
@@ -1460,7 +1461,9 @@ namespace MphRead.Entities
                 phase = scene.WeaponPhase.Resolve(slot, scene.FrameCount,
                     replication.Active && !firingPlayer.IsBot,
                     replication.LocalSlot >= 0 && slot == replication.LocalSlot,
-                    replication.Frame, hasIntent, intent.Frame, replication.IntentAge(slot), out sharedPhase,
+                    replication.Frame, hasIntent, intent.Frame, replication.IntentAge(slot),
+                    intent.HasContinuousFireTick ? intent.ContinuousFireTick : 0,
+                    out sharedPhase, out freshContinuousTick,
                     receivedBeforeStep: !scene.Services.IsReplica && NetSession.Role == NetRole.Server);
             }
             if (weapon.Flags.TestFlag(WeaponFlags.Continuous))
@@ -1472,6 +1475,7 @@ namespace MphRead.Entities
                 //    our cycle for green beam (15): 0 0 0 0 1 0 0 0 1 0 0 0 1 0 0 0 1 0 0 0 1 0 0 0 1 0 0 0 1 0 0 0
                 //                                   0 0 1 0 0 0 1 0 0 0 1 0 0 0 1 0 0 0 1 0 0 0 1 0 0 0 1 0 0 0 0 0
                 cost = ContinuousWeaponPhase.Amount(cost, phase, damage: false);
+                if (!freshContinuousTick) cost = 0;
             }
             int ammo = equip.Ammo;
             if (ammo >= 0 && cost > ammo)
@@ -1603,6 +1607,7 @@ namespace MphRead.Entities
                 // was zero after the division by 32, which is true for Shock Coil but not e.g. platform green energy beams,
                 // so we need those to hit every other frame to match the DPS from the game
                 damage = ContinuousWeaponPhase.Amount(damage, phase, damage: true);
+                if (!freshContinuousTick) damage = 0;
             }
             if (Cheats.QuadrupleDamage)
             {
@@ -2149,9 +2154,9 @@ namespace MphRead.Entities
                     continue;
                 }
                 CheckIceWaveCollision(player, player.Position, angleCos, halfturret: false);
-                if (player.Flags2.TestFlag(PlayerFlags2.Halfturret))
+                if (NetUnlagged.TryCollisionHalfturret(player, out Vector3 turretPosition))
                 {
-                    CheckIceWaveCollision(player, player.Halfturret.Position, angleCos, halfturret: true);
+                    CheckIceWaveCollision(player, turretPosition, angleCos, halfturret: true);
                 }
             }
         }
