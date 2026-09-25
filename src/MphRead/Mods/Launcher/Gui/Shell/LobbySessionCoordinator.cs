@@ -47,7 +47,7 @@ namespace MphRead.Mods.Launcher.Gui
             _timer = new DispatcherTimer(TimeSpan.FromMilliseconds(50),
                 DispatcherPriority.Input, (_, _) => Tick());
 #else
-            _pulse = new PrimeUiPulse(TimeSpan.FromMilliseconds(50), Tick);
+            _pulse = new PrimeUiPulse(TimeSpan.FromMilliseconds(50), () => Tick());
 #endif
         }
 
