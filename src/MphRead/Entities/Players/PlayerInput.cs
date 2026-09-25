@@ -675,7 +675,8 @@ namespace MphRead.Entities
                         {
                             Flags1 &= ~PlayerFlags1.Walking;
                         }
-                        float traction = Fixed.ToFloat(Values.StrafeBipedTraction);
+                        float traction = Fixed.ToFloat(Values.StrafeBipedTraction)
+                            * Controls.AnalogScaleX(sign);
                         if (_jumpPadControlLockMin > 0)
                         {
                             traction *= Fixed.ToFloat(Values.JumpPadSlideFactor);
@@ -709,7 +710,8 @@ namespace MphRead.Entities
                         {
                             Flags1 &= ~PlayerFlags1.Walking;
                         }
-                        float traction = Fixed.ToFloat(Values.WalkBipedTraction);
+                        float traction = Fixed.ToFloat(Values.WalkBipedTraction)
+                            * Controls.AnalogScaleY(sign);
                         if (_jumpPadControlLockMin > 0)
                         {
                             traction *= Fixed.ToFloat(Values.JumpPadSlideFactor);
@@ -1427,7 +1429,8 @@ namespace MphRead.Entities
                             {
                                 Flags1 &= ~PlayerFlags1.Walking;
                             }
-                            float traction = Fixed.ToFloat(Values.StrafeBipedTraction);
+                            float traction = Fixed.ToFloat(Values.StrafeBipedTraction)
+                            * Controls.AnalogScaleX(sign);
                             if (_jumpPadControlLockMin > 0)
                             {
                                 traction *= Fixed.ToFloat(Values.JumpPadSlideFactor);
@@ -1456,7 +1459,8 @@ namespace MphRead.Entities
                             {
                                 Flags1 &= ~PlayerFlags1.Walking;
                             }
-                            float traction = Fixed.ToFloat(Values.WalkBipedTraction);
+                            float traction = Fixed.ToFloat(Values.WalkBipedTraction)
+                            * Controls.AnalogScaleY(sign);
                             if (_jumpPadControlLockMin > 0)
                             {
                                 traction *= Fixed.ToFloat(Values.JumpPadSlideFactor);
@@ -1562,23 +1566,27 @@ namespace MphRead.Entities
                     {
                         if (Controls.RollUp.IsDown)
                         {
-                            speedDelta.X += _altRollFbX * traction;
-                            speedDelta.Z += _altRollFbZ * traction;
+                            float scale = Controls.AnalogScaleY(1);
+                            speedDelta.X += _altRollFbX * traction * scale;
+                            speedDelta.Z += _altRollFbZ * traction * scale;
                         }
                         else if (Controls.RollDown.IsDown)
                         {
-                            speedDelta.X -= _altRollFbX * traction;
-                            speedDelta.Z -= _altRollFbZ * traction;
+                            float scale = Controls.AnalogScaleY(-1);
+                            speedDelta.X -= _altRollFbX * traction * scale;
+                            speedDelta.Z -= _altRollFbZ * traction * scale;
                         }
                         if (Controls.RolltLeft.IsDown)
                         {
-                            speedDelta.X += _altRollLrX * traction;
-                            speedDelta.Z += _altRollLrZ * traction;
+                            float scale = Controls.AnalogScaleX(-1);
+                            speedDelta.X += _altRollLrX * traction * scale;
+                            speedDelta.Z += _altRollLrZ * traction * scale;
                         }
                         else if (Controls.RollRight.IsDown)
                         {
-                            speedDelta.X -= _altRollLrX * traction;
-                            speedDelta.Z -= _altRollLrZ * traction;
+                            float scale = Controls.AnalogScaleX(1);
+                            speedDelta.X -= _altRollLrX * traction * scale;
+                            speedDelta.Z -= _altRollLrZ * traction * scale;
                         }
                     }
                 }
@@ -2853,6 +2861,37 @@ namespace MphRead.Entities
     {
         public bool MouseAim { get; set; }
         public bool KeyboardAim { get; set; }
+
+        // Controller movement stays analogue all the way to the movement step.
+        // Keyboard/touch/bot writers leave this false and retain full-strength
+        // digital movement. Remote controller values arrive through IntentPacket.
+        public bool AnalogMoveActive;
+        public float AnalogMoveX;
+        public float AnalogMoveY;
+
+        public void SetAnalogMovement(float x, float y)
+        {
+            if (!float.IsFinite(x) || !float.IsFinite(y))
+            {
+                ClearAnalogMovement();
+                return;
+            }
+            AnalogMoveX = Math.Clamp(x, -1, 1);
+            AnalogMoveY = Math.Clamp(y, -1, 1);
+            AnalogMoveActive = AnalogMoveX != 0 || AnalogMoveY != 0;
+        }
+
+        public void ClearAnalogMovement()
+        {
+            AnalogMoveActive = false;
+            AnalogMoveX = AnalogMoveY = 0;
+        }
+
+        public float AnalogScaleX(int sign)
+            => AnalogMoveActive ? Math.Clamp(AnalogMoveX * sign, 0, 1) : 1;
+        public float AnalogScaleY(int sign)
+            => AnalogMoveActive ? Math.Clamp(AnalogMoveY * sign, 0, 1) : 1;
+
         public Keybind MoveLeft { get; }
         public Keybind MoveRight { get; }
         public Keybind MoveUp { get; }
@@ -2968,6 +3007,7 @@ namespace MphRead.Entities
                 All[i].IsPressed = false;
                 All[i].IsReleased = false;
             }
+            ClearAnalogMovement();
         }
 
         public void ClearPressed()
