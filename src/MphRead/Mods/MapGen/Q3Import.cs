@@ -266,6 +266,13 @@ namespace MphRead.Mods.MapGen
                     ToDirection(new[] { normal.X, normal.Y, normal.Z }), 0, 1f));
             }
 
+            // From here on, anything appended is Project Prime-authored
+            // geometry rather than immutable BSP architecture. Keep the split
+            // so the viewport can cache/rebuild each side independently.
+            map.ImportedFaceCount = map.Faces.Count;
+            map.ImportedCollisionFaceCount = map.Solid.Count;
+            int nativeMaterialOffset = pack?.Entries.Count ?? 0;
+            MapBuilder.AddAuthoredGeometry(map, def, cancellation, nativeMaterialOffset);
             AddEntities(map, def, bsp, import, verbose);
 
             // A converted level has no authored viewpoint to borrow, and its
