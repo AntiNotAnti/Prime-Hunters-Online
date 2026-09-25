@@ -637,8 +637,9 @@ arithmetic -- `delta / 4 * mouse sensitivity` degrees -- and a third of a turn
 inside five simulation frames is the baseline flick. The shared **Alt swipe
 sensitivity** setting (0.25x-4.00x) then scales only that gesture threshold:
 higher values need less travel, without changing normal mouse aim or the
-rest/jitter gate. The gates are all "is the mouse saying something else": the weapon wheel is answered by dragging, the boost bind held
-is a charge being built on purpose, and a gap in the frame numbers (the ball
+rest/jitter gate. The gates are all "is the mouse saying something else": the
+weapon wheel is answered by dragging, the dedicated Boost bind held is a charge
+being built on purpose, and a gap in the frame numbers (the ball
 just closed, the player was frozen or paused) throws the history away.
 `-debuglog` says so the first time one is read.
 
