@@ -12,19 +12,25 @@ import uuid
 MAX_BODY = 1024 * 1024
 SUMMARY_KEYS = {"header", "durationSeconds", "counters", "network", "combat", "claims", "lifecycle", "combatAckLatency", "formDuration", "forcedForms", "serverStepMilliseconds", "droppedTicks", "lagComp"}
 V2_KEYS = {"networkDetails", "lifecycleDetails", "combatDetails", "shadowOutcomes", "formCorrectionReasons"}
+V3_KEYS = {"combatAcks", "transportContention"}
 HEADER_KEYS = {"schema", "protocol", "matchSessionId", "buildCommit", "serverVersion", "serverPlatform", "matchMode", "map", "playerCount"}
 DISTRIBUTION_KEYS = {"count", "mean", "p50", "p95", "p99", "maximum"}
 COUNTER_KEYS = {"eventsQueued", "eventsWritten", "eventsDropped", "queueHighWater", "writerFailures", "uploadFailures"}
 LAG_KEYS = {"weapon", "rttBucket", "jitterBucket", "requested", "plausible", "displacement", "globalClamps", "shadowClamps", "hitsOutside", "rescuesOutside", "missesOutside"}
+COMBAT_ACK_KEYS = {"weapon", "result", "settlementMilliseconds", "exactDamage", "damageCorrections",
+                   "healthCorrections", "headshotCorrections", "rejected", "correctionReasons"}
+TRANSPORT_CONTENTION_KEYS = {"acquisitions", "contended", "waitPerAcquisitionMilliseconds",
+                             "holdPerAcquisitionMilliseconds", "maximumWaitMilliseconds", "maximumHoldMilliseconds"}
 
 
 def valid(summary):
-    if not isinstance(summary, dict) or set(summary) not in (SUMMARY_KEYS, SUMMARY_KEYS | V2_KEYS):
+    if not isinstance(summary, dict):
         return False
-    header = summary["header"]
-    if not isinstance(header, dict) or set(header) != HEADER_KEYS or header["schema"] not in (1, 2) or header["protocol"] not in (19, 20):
+    header = summary.get("header")
+    if not isinstance(header, dict) or set(header) != HEADER_KEYS or header["schema"] not in (1, 2, 3) or header["protocol"] not in (19, 20, 21):
         return False
-    if (header["schema"] == 2) != (set(summary) == SUMMARY_KEYS | V2_KEYS):
+    expected = SUMMARY_KEYS | (V2_KEYS if header["schema"] >= 2 else set()) | (V3_KEYS if header["schema"] >= 3 else set())
+    if set(summary) != expected:
         return False
     if type(header["playerCount"]) is not int or not 0 <= header["playerCount"] <= 8:
         return False
@@ -52,7 +58,7 @@ def valid(summary):
         if any(type(bucket[k]) is not int or not 0 <= bucket[k] < size
                for k, size in (("weapon", 12 if header["schema"] == 2 else 11), ("rttBucket", 9), ("jitterBucket", 6))):
             return False
-    if header["schema"] == 2:
+    if header["schema"] >= 2:
         groups = {
             "networkDetails": ({"rttMilliseconds", "jitterMilliseconds", "recentMinimumRttMilliseconds", "rttVariationMilliseconds"}, {"retransmissions", "estimatedLost", "queueHighWater"}, {"rttBuckets": 9, "jitterBuckets": 6}),
             "lifecycleDetails": ({"joinMilliseconds", "loadMilliseconds", "bootstrapMilliseconds", "rejoinMilliseconds"}, {"ready", "lateJoins", "disconnects"}, {}),
@@ -65,6 +71,37 @@ def valid(summary):
             if any(not isinstance(item[k], list) or len(item[k]) != length or any(type(v) is not int or v < 0 for v in item[k]) for k, length in arrays.items()): return False
         for key in ("shadowOutcomes", "formCorrectionReasons"):
             if not isinstance(summary[key], list) or len(summary[key]) != 7 or any(type(v) is not int or v < 0 for v in summary[key]): return False
+    if header["schema"] >= 3:
+        acks = summary["combatAcks"]
+        if not isinstance(acks, list) or len(acks) > 12 * 14:
+            return False
+        for ack in acks:
+            if not isinstance(ack, dict) or set(ack) != COMBAT_ACK_KEYS:
+                return False
+            if type(ack["weapon"]) is not int or not 0 <= ack["weapon"] < 12:
+                return False
+            if type(ack["result"]) is not int or not 0 <= ack["result"] < 14:
+                return False
+            if not numbers(ack["settlementMilliseconds"], DISTRIBUTION_KEYS):
+                return False
+            for key in ("exactDamage", "damageCorrections", "healthCorrections", "headshotCorrections", "rejected"):
+                if type(ack[key]) is not int or ack[key] < 0:
+                    return False
+            if not isinstance(ack["correctionReasons"], list) or len(ack["correctionReasons"]) != 16 \
+                    or any(type(v) is not int or v < 0 for v in ack["correctionReasons"]):
+                return False
+        contention = summary["transportContention"]
+        if not isinstance(contention, dict) or set(contention) != TRANSPORT_CONTENTION_KEYS:
+            return False
+        for key in ("acquisitions", "contended"):
+            if type(contention[key]) is not int or contention[key] < 0:
+                return False
+        for key in ("waitPerAcquisitionMilliseconds", "holdPerAcquisitionMilliseconds"):
+            if not numbers(contention[key], DISTRIBUTION_KEYS):
+                return False
+        for key in ("maximumWaitMilliseconds", "maximumHoldMilliseconds"):
+            if type(contention[key]) not in (int, float) or not math.isfinite(contention[key]) or contention[key] < 0:
+                return False
     return all(type(summary[k]) in (int, float) and math.isfinite(summary[k]) and summary[k] >= 0 for k in ("durationSeconds", "forcedForms", "droppedTicks"))
 
 
