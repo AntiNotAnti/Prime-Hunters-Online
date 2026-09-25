@@ -955,16 +955,15 @@ namespace MphRead.Mods.Launcher.Gui
                 catch(Exception ex){report.Text="Preflight failed: "+ex.Message;}
             }
 #if !ANDROID
-            AddButton(view,"Add dependency PK3",()=>_=Task.Run(async()=>
+            async Task AddDependency()
             {
                 string? dep=NativeFilePicker.Available
                     ? await NativeFilePicker.OpenFile("Add texture dependency PK3","Quake 3 package","pk3")
                     : null;
-                await Dispatcher.UIThread.InvokeAsync(async()=>{
-                    if(dep!=null&&!dependencies.Contains(dep,StringComparer.OrdinalIgnoreCase))dependencies.Add(dep);
-                    await AnalyzeWizard();
-                });
-            }));
+                if(dep!=null&&!dependencies.Contains(dep,StringComparer.OrdinalIgnoreCase))dependencies.Add(dep);
+                await AnalyzeWizard();
+            }
+            AddButton(view,"Add dependency PK3",()=>_=AddDependency());
 #endif
             AddButton(view,"Analyze",()=>_=AnalyzeWizard());
             AddButton(view,"Import",()=>
@@ -1003,6 +1002,71 @@ namespace MphRead.Mods.Launcher.Gui
             });
             AddButton(view,"Cancel",Dismiss);Modal(view);_=AnalyzeWizard();
         }
+        private Task RebakeImportTextures()=>Job("Rebaking Q3 textures",async token=>
+        {
+            if(_document==null)return;
+            var definition=_document.CaptureBuildSnapshot().CreateDefinition();
+            var import=definition.Import??throw new InvalidOperationException("This project is not imported.");
+            string level=import.Resolve()??throw new IOException("Imported Q3 source could not be resolved.");
+            if(String.IsNullOrWhiteSpace(import.Textures))
+            {
+                import.Textures=definition.Name.ToLowerInvariant()+".tex";
+                _document.Edit("Set Q3 texture pack",d=>d.Import!.Textures=import.Textures,MapChangeDomain.Import);
+                definition=_document.CaptureBuildSnapshot().CreateDefinition();import=definition.Import!;
+            }
+            string target=Path.Combine(import.BaseDirectory??definition.BaseDirectory??CustomRooms.MapDirectory,import.Textures!);
+            var bsp=await Task.Run(()=>Q3Bsp.Load(level,import.MapName,token),token);
+            var archives=MapTextureBake.DiscoverArchives(level);
+            var result=await Task.Run(()=>MapTextureBake.Bake(bsp,archives,target,MapTextureBake.DefaultSize,cancellation:token),token);
+            GuardJob(token);_validatedState=null;
+            _status.Text=$"Rebaked {result.Baked} Q3 textures · {result.Resolved} resolved · {result.Fallbacks} fallback · {result.Archives.Count} archive(s)";
+        });
+
+        private async Task PickReimportSource()
+        {
+            if(_document?.Project.Definition.Import==null)return;
+#if !ANDROID
+            if(NativeFilePicker.Available)
+            {
+                string? picked=await NativeFilePicker.OpenFile("Reimport Quake 3 PK3","Quake 3 package","pk3");
+                if(picked!=null){RunReimport(picked);return;}
+            }
+#endif
+            Browse("Choose replacement Quake 3 source",false,RunReimport,".pk3",".bsp");
+        }
+
+        private void RunReimport(string source)
+        {
+            if(_document?.Project.Definition.Import is not {} import)return;
+            string projectPath=_document.FilePath??_path.Text??"";
+            if(String.IsNullOrWhiteSpace(projectPath)){_status.Text="Save this project before reimporting its source.";return;}
+            var existing=_document.Project.ToDefinition();
+            string? selectedMap=import.MapName;
+            try
+            {
+                var maps=Q3Bsp.ListMaps(source);
+                if(selectedMap==null||!maps.Contains(selectedMap,StringComparer.OrdinalIgnoreCase))selectedMap=maps.FirstOrDefault();
+            }
+            catch(Exception ex){Failure(ex);return;}
+            var options=new Q3ImportService.Options(source,selectedMap,existing.Name,
+                Path.Combine(Path.GetTempPath(),"ProjectPrime-reimport-"+Guid.NewGuid().ToString("N")),
+                import.UnitsPerUnit,import.KeepClip,import.KeepItems,import.KeepSky,import.KeepSpawns,
+                import.PatchLevel,MapTextureBake.DefaultSize);
+            _=Job("Reimporting Q3 source",async token=>
+            {
+                var result=await Task.Run(()=>Q3ImportService.Reimport(existing,options,projectPath,token),token);
+                GuardJob(token);
+                _problems.ItemsSource=result.Diagnostics.Select(d=>$"{d.Severity} · {d.Message}").ToArray();
+                if(!result.Succeeded||result.ProjectPath==null)
+                {
+                    _status.Text=result.Diagnostics.LastOrDefault(d=>d.Severity==Q3ImportService.Severity.Error)?.Message??"Reimport failed.";
+                    return;
+                }
+                Load(MapProjectSerializer.Load(result.ProjectPath),result.ProjectPath);
+                _status.Text="Q3 architecture and textures reimported; authored gameplay and hybrid geometry were preserved.";
+            });
+        }
+
         private void Failure(Exception ex)
         {_status.Text=ex.Message;if(ex is not(IOException or InvalidDataException or ProgramException or FormatException or ArgumentException))DebugLog.Exception("mapeditor",ex);}
         protected override void OnKeyDown(KeyEventArgs e)
