@@ -170,8 +170,16 @@ namespace MphRead.Mods.Launcher.Gui
                 if(_document==null||!_document.IsDirty||_document.LastEditUtc<=_autosaved||DateTime.UtcNow-_document.LastEditUtc<TimeSpan.FromSeconds(3))return;
                 if (_autosave.Queue(_document.CaptureAutosave(CustomRooms.MapDirectory))) _autosaved = _document.LastEditUtc;
             };
-            AttachedToVisualTree+=(_,_)=>{_detached=false;_autosave=new();LauncherBackdrop.Set(LauncherBackdropScene.MapEditor);_idle.Start();};
-            DetachedFromVisualTree+=(_,_)=>{_detached=true;_editorGeneration++;_idle.Stop();_work?.Cancel();_autosave.Dispose();DisposePreviewCaches();};
+            AttachedToVisualTree+=(_,_)=>{_detached=false;_autosave=new();LauncherBackdrop.Set(LauncherBackdropScene.MapEditor);_idle.Start();
+#if MPHREAD_SHELL
+                Shell.FilesDropped+=OnFilesDropped;
+#endif
+            };
+            DetachedFromVisualTree+=(_,_)=>{
+#if MPHREAD_SHELL
+                Shell.FilesDropped-=OnFilesDropped;
+#endif
+                _detached=true;_editorGeneration++;_idle.Stop();_work?.Cancel();_autosave.Dispose();DisposePreviewCaches();};
             if (preview) Load(MapTemplates.Create("Studio example", true)); else ShowLibrary();
         }
         public void Dispose()
@@ -925,6 +933,17 @@ namespace MphRead.Mods.Launcher.Gui
             var result=await MapAuditRunner.Run(p,token);GuardJob(token);_status.Text=result.Passed?"Map audit passed.":"Map audit failed.";
             _problems.ItemsSource=result.Lines;
         });
+        private void OnFilesDropped(IReadOnlyList<string> files)
+        {
+            if(_work!=null||_detached)return;
+            string? path=files.FirstOrDefault(file=>File.Exists(file)&&
+                Path.GetExtension(file).ToLowerInvariant() is ".pk3" or ".bsp" or ".json" or ".ppmap");
+            if(path==null){_status.Text="Drop a .pk3, .bsp, .json or .ppmap file into Map Studio.";return;}
+            string extension=Path.GetExtension(path).ToLowerInvariant();
+            if(extension is ".pk3" or ".bsp")ShowImportWizard(path);
+            else Open(path);
+        }
+
         private void Import()=>_ = PickImportSource();
         private async Task PickImportSource()
         {
