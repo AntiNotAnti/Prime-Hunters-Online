@@ -8066,7 +8066,7 @@ namespace MphRead
             if (!Mods.Network.DemoPlayback.IsActive
                 && Mods.Render.FrameTiming.HighRefreshPresentation)
             {
-                Mods.Input.GamepadDesktop.Poll();
+                Mods.Input.GamepadDesktop.PollAimOnly();
                 Mods.Input.GamepadInput.CapturePresentationSample();
             }
 
