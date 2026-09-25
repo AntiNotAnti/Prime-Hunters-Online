@@ -6,7 +6,7 @@ Implemented together with combat telemetry on `feature/net-v19-combat-telemetry`
 alt-form prerequisite from `fix/alt-form-lag-compensation`. Owner-selected Shock Coil
 targets now carry generation/life identity, historical validation, explicit none,
 lifecycle resets, bounded diagnostics and deterministic/real-scene tests. The same
-identity serves charged Volt Driver. Intent payload increases from 92 to 96 bytes.
+identity serves charged Volt Driver. Protocol 19 increased intent payload from 92 to 96 bytes; protocol 20 appends two signed controller movement axes for a 98-byte intent.
 
 The paired traces exposed and fixed the post-input newest-snapshot overwrite of the
 displayed world and a dedicated initial phase offset. Damage/ramp/cones remain
