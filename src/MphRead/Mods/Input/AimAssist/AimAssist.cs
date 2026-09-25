@@ -603,22 +603,55 @@ namespace MphRead.Mods.Input.AimAssist
 
         private static Vector2 TrackMotion(Vector2 filtered, Vector2 acceleration,
             Vector2 error, Vector2 previous, Vector2 cameraDelta, float previousDt,
-            float dt, bool history, float rate, out Vector2 nextAcceleration)
+            float dt, bool history, bool preserveHistory, float rate,
+            ref Vector2 direction, out Vector2 nextAcceleration)
         {
+            if (preserveHistory)
+            {
+                nextAcceleration = acceleration;
+                return filtered;
+            }
             nextAcceleration = Vector2.Zero;
-            if (!history || previousDt <= 0) return Vector2.Zero;
+            if (!history || previousDt <= 0)
+            {
+                direction = Vector2.Zero;
+                return Vector2.Zero;
+            }
             Vector2 motion = AimAssistMath.AngularDelta(error, previous) + cameraDelta;
             if (!AimAssistMath.Finite(motion) || motion.Length() > AimAssistTuning.MotionDiscontinuity)
+            {
+                direction = Vector2.Zero;
                 return Vector2.Zero;
+            }
 
             Vector2 measured = AimAssistMath.ClampLength(motion / previousDt,
                 AimAssistTuning.MaxTrackedSpeed);
 
-            // Filter measured velocity directly. Feeding the previous acceleration
-            // back into this estimate creates an unstable loop under alternating
-            // frame intervals: a constant-speed target can ring above/below its
-            // real velocity. Acceleration is feed-forward for the camera, not a
-            // state predictor for the velocity estimator itself.
+            // Couple yaw/pitch through a persistent target-motion direction. This
+            // suppresses minor-axis corkscrew noise on diagonal strafe+jump motion
+            // while still changing direction quickly on a real reversal.
+            float measuredSpeed = measured.Length();
+            if (measuredSpeed > .05f)
+            {
+                Vector2 measuredDirection = measured / measuredSpeed;
+                if (direction.LengthSquared() < .0001f
+                    || Vector2.Dot(direction, measuredDirection) < -.25f)
+                {
+                    direction = measuredDirection;
+                }
+                else
+                {
+                    float directionRate = AimAssistTuning.MotionDirectionRate
+                        * (Vector2.Dot(direction, measuredDirection) < .25f ? 1.8f : 1f);
+                    Vector2 blended = Vector2.Lerp(direction, measuredDirection,
+                        1 - MathF.Exp(-directionRate * dt));
+                    direction = blended.LengthSquared() > .0001f
+                        ? Vector2.Normalize(blended) : measuredDirection;
+                }
+                float coupling = .35f * AimAssistMath.Smooth(3f, 30f, measuredSpeed);
+                measured = Vector2.Lerp(measured, direction * measuredSpeed, coupling);
+            }
+
             float xRate = filtered.X * measured.X < 0 ? rate * 2.5f : rate;
             float yRate = filtered.Y * measured.Y < 0 ? rate * 2.5f : rate;
             Vector2 velocity = new(
@@ -626,9 +659,6 @@ namespace MphRead.Mods.Input.AimAssist
                 filtered.Y + (measured.Y - filtered.Y) * (1 - MathF.Exp(-yRate * dt)));
             velocity = AimAssistMath.ClampLength(velocity, AimAssistTuning.MaxTrackedSpeed);
 
-            // Estimate target angular acceleration from the velocity estimate's
-            // actual change over this observation. At constant measured speed
-            // this naturally decays to zero even with variable dt.
             Vector2 observedAcceleration = AimAssistMath.ClampLength(
                 (velocity - filtered) / Math.Max(dt, .001f),
                 AimAssistTuning.MaxTrackedAcceleration);
