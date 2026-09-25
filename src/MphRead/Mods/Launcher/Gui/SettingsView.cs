@@ -185,6 +185,7 @@ namespace MphRead.Mods.Launcher.Gui
         private SliderRow _fovRow = null!;
         private ToggleRow _proHud = null!;
         private ToggleRow _smoothNativeHud = null!;
+        private ToggleRow _killFeed = null!;
         private ChoiceRow _crosshairSizeRow = null!;
         private ChoiceRow _crosshairStyleRow = null!;
         private ChoiceRow _weaponStyleRow = null!;
@@ -772,6 +773,8 @@ namespace MphRead.Mods.Launcher.Gui
             _smoothNativeHud = Add(page, new ToggleRow("Smooth native HUD",
                 RenderOptions.SmoothNativeHud));
             Explain(page, "Smooth native HUD uses filtered sampling for the original DS reticle, meters and weapon-menu sprites when they are enlarged on modern displays. Turn it off for the original hard pixel edges.");
+            _killFeed = Add(page, new ToggleRow("Kill feed", Features.KillFeedEnabled));
+            Explain(page, "Shows confirmed match deaths with attacker, weapon or cause, victim, headshots and team kills.");
             // Size applies to both the original DS reticle and the Pro/custom
             // crosshair. Type and weapon behavior remain Pro-mode choices.
             _crosshairSizeRow = Add(page, new ChoiceRow("Crosshair size",
@@ -1785,6 +1788,7 @@ namespace MphRead.Mods.Launcher.Gui
             RenderOptions.PlayerOutline = (PlayerOutlineStyle)_playerOutlineRow.Index;
             RenderOptions.PlayerOutlineWidth = _playerOutlineWidthRow.Value;
             Features.ProHud = _proHud.On;
+            Features.KillFeedEnabled = _killFeed.On;
             Crosshair.Size = (CrosshairSize)_crosshairSizeRow.Index;
             Crosshair.Style = (CrosshairStyle)_crosshairStyleRow.Index;
             Features.ProHudFixedWeapon = _weaponStyleRow.Index == 0;
