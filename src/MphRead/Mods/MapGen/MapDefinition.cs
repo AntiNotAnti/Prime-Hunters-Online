@@ -192,6 +192,7 @@ namespace MphRead.Mods.MapGen
     public sealed class MapNativeRoomSource
     {
         public string Room { get; set; } = "";
+        public bool UseNativeArchitecture { get; set; } = true;
         public bool PreserveEntities { get; set; } = true;
         public bool EditableSpawns { get; set; } = true;
         public bool EditableItems { get; set; } = true;
