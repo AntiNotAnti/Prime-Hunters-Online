@@ -110,13 +110,13 @@ namespace MphRead.Mods.Launcher.Gui
             Choice(new[]{"Free","X","Y","Z","XY","XZ","YZ"},name=>{if(_viewport!=null)_viewport.Axes=name;});
             Choice(new[]{"Perspective","Top","Front","Side"},name=>_viewport?.SetView(name));
             Choice(new[]{"Add object","Box","Wedge","Prism","Convex","Mesh","Spawn","Pickup","Jump pad","Navigation link"},name=>{if(name!="Add object")AddObject(name);});
-            Choice(new[]{"Overlays","Rendered","Wireframe","Collision","Collision heat","Kill plane","Navigation"},name=>
+            Choice(new[]{"Overlays","Rendered","Wireframe","Collision","Collision heat","Partitions","Kill plane","Navigation"},name=>
             {
                 if(_viewport==null)return;
                 if(name=="Navigation"){_=Navigation();return;}
-                _viewport.Wireframe=name=="Wireframe";_viewport.Collision=name is "Collision" or "Collision heat";_viewport.CollisionHeatmap=name=="Collision heat";_viewport.KillPlane=name=="Kill plane";_viewport.InvalidateVisual();
+                _viewport.Wireframe=name=="Wireframe";_viewport.Collision=name is "Collision" or "Collision heat";_viewport.CollisionHeatmap=name=="Collision heat";_viewport.PartitionOverlay=name=="Partitions";_viewport.KillPlane=name=="Kill plane";_viewport.InvalidateVisual();
             });
-            Choice(new[]{"Inspector","Modeling","Environment","Materials","Assets & music","Snapping","Arrange","Layers","Map health","Navigation path","Statistics"},name=>ShowInspectorPage(name));
+            Choice(new[]{"Inspector","Modeling","Partitioning","Environment","Materials","Assets & music","Snapping","Arrange","Layers","Map health","Navigation path","Statistics"},name=>ShowInspectorPage(name));
             AddButton(tools,"Frame all",()=>_viewport?.FrameAll());AddButton(tools,"Focus",()=>_viewport?.FrameSelection());
             AddButton(tools,"Copy",()=>_document?.CopySelection());AddButton(tools,"Paste",()=>_document?.PasteClipboard());
             AddButton(tools,"Duplicate",()=>EditSelection("Duplicate",MapObjects.Duplicate));AddButton(tools,"Delete",()=>EditSelection("Delete",MapObjects.Delete));
@@ -482,6 +482,7 @@ namespace MphRead.Mods.Launcher.Gui
             switch(name)
             {
                 case "Modeling": ModelingInspector(); break;
+                case "Partitioning": PartitionInspector(); break;
                 case "Environment": EnvironmentInspector(); break;
                 case "Materials": MaterialInspector(); break;
                 case "Assets & music": AssetInspector(); break;
@@ -578,6 +579,59 @@ namespace MphRead.Mods.Launcher.Gui
             }
             AddButton(_inspector,"Apply",()=>{try{_document.EditObjects("Edit properties",new[]{id},d=>{var target=MapObjects.All(d).First(o=>o.Id==id).Value;foreach(var edit in edits)edit(target);});}catch(Exception ex){Failure(ex);}});
         }
+        private void PartitionInspector()
+        {
+            _inspector.Children.Clear();if(_document==null)return;
+            _inspector.Children.Add(Text("RUNTIME PARTITIONING"));
+            var current=MapRuntimePartitioner.Effective(_document.Project.Definition.Partitioning);
+            var enabled=new CheckBox{Content="Enable spatial render partitioning",IsChecked=current.Enabled};
+            var portals=new CheckBox{Content="Generate room-part portal culling when safe",IsChecked=current.PortalCulling};
+            var cell=new TextBox{Text=current.CellSize.ToString(CultureInfo.InvariantCulture)};
+            var threshold=new TextBox{Text=current.FaceThreshold.ToString(CultureInfo.InvariantCulture)};
+            var vertices=new TextBox{Text=current.MaxVerticesPerDisplayList.ToString(CultureInfo.InvariantCulture)};
+            var margin=new TextBox{Text=current.PortalVerticalMargin.ToString(CultureInfo.InvariantCulture)};
+            _inspector.Children.Add(enabled);_inspector.Children.Add(portals);
+            _inspector.Children.Add(Text("Cell size (8–512)"));_inspector.Children.Add(cell);
+            _inspector.Children.Add(Text("Partition after face count"));_inspector.Children.Add(threshold);
+            _inspector.Children.Add(Text("Max vertices per display list"));_inspector.Children.Add(vertices);
+            _inspector.Children.Add(Text("Portal vertical margin"));_inspector.Children.Add(margin);
+            _inspector.Children.Add(Text($"Portal culling is capped at {MapRuntimePartitioner.MaxPortalParts} room parts. Disconnected or larger plans automatically fall back to render-only partitioning."));
+            AddButton(_inspector,"Apply",()=>
+            {
+                try
+                {
+                    float size=Number(cell.Text??"");int faces=int.Parse(threshold.Text??"",CultureInfo.InvariantCulture);
+                    int maxVertices=int.Parse(vertices.Text??"",CultureInfo.InvariantCulture);float portalMargin=Number(margin.Text??"");
+                    if(size is <8 or >512||faces is <256 or >1_000_000||maxVertices is <1024 or >65000||portalMargin is <0 or >64)
+                        throw new FormatException("Partition settings are outside their supported ranges.");
+                    _document.Edit("Runtime partitioning",d=>d.Partitioning=new()
+                    {
+                        Enabled=enabled.IsChecked==true,PortalCulling=portals.IsChecked==true,
+                        CellSize=size,FaceThreshold=faces,MaxVerticesPerDisplayList=maxVertices,
+                        PortalVerticalMargin=portalMargin
+                    },MapChangeDomain.Metadata|MapChangeDomain.Import);
+                    if(_viewport!=null){_viewport.PartitionCellSize=size;_viewport.PartitionOverlay=true;_viewport.InvalidateVisual();}
+                    _=Validate();
+                }
+                catch(Exception ex){Failure(ex);}
+            });
+            AddButton(_inspector,"Reset to automatic defaults",()=>
+            {
+                _document.Edit("Reset partitioning",d=>d.Partitioning=null,MapChangeDomain.Metadata|MapChangeDomain.Import);
+                if(_viewport!=null){_viewport.PartitionCellSize=64;_viewport.InvalidateVisual();}
+                PartitionInspector();
+            });
+            AddButton(_inspector,"Show partition overlay",()=>
+            {
+                if(_viewport==null)return;_viewport.PartitionCellSize=current.CellSize;_viewport.PartitionOverlay=true;_viewport.InvalidateVisual();
+            });
+            AddButton(_inspector,"Analyze runtime budgets",()=>_=Validate());
+            var budgets=_document.Diagnostics.Budgets.Where(b=>b.Name.StartsWith("Render ",StringComparison.Ordinal)
+                ||b.Name.StartsWith("Portal ",StringComparison.Ordinal)||b.Name=="Generated portals").ToArray();
+            foreach(var budget in budgets)
+                _inspector.Children.Add(Text($"{budget.Name}: {budget.Used:N0}"+(budget.Limit.HasValue?$" / {budget.Limit.Value:N0}":"")));
+        }
+
         private void ModelingInspector()
         {
             _inspector.Children.Clear();if(_document==null)return;
