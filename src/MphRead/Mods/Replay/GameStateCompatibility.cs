@@ -59,6 +59,11 @@ namespace MphRead
         public static int[] BeamDamageDealt { get => Current.BeamDamageDealt; }
         public static int[] DamageCount { get => Current.DamageCount; }
         public static int[] AltDamageCount { get => Current.AltDamageCount; }
+        public static int[] ShotsFired { get => Current.ShotsFired; }
+        public static int[] ShotsHit { get => Current.ShotsHit; }
+        public static int[] MatchDamageDealt { get => Current.MatchDamageDealt; }
+        public static int[] MatchDamageTaken { get => Current.MatchDamageTaken; }
+        public static int[] LongestKillStreak { get => Current.LongestKillStreak; }
         public static int[] KillStreak { get => Current.KillStreak; }
         public static int[] Suicides { get => Current.Suicides; }
         public static int[] FriendlyKills { get => Current.FriendlyKills; }
