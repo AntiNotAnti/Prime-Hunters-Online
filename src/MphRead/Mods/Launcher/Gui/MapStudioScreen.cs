@@ -44,6 +44,7 @@ namespace MphRead.Mods.Launcher.Gui
         private bool _refreshing;
         private string _hierarchySignature = "";
         private string _inspectorPage = "Inspector";
+        private MapStudioState _studioState = new();
         private long _editorGeneration;
         private bool _detached;
         private MapAutosaveService _autosave = new();
@@ -256,7 +257,9 @@ namespace MphRead.Mods.Launcher.Gui
             _lastBuild = null; _hierarchySignature = "";
             foreach(var preview in _materialPreviewCache.Values)preview.Bitmap.Dispose();_materialPreviewCache.Clear();
             if(_document!=null)_document.Changed-=Changed;
-            _document=new(project,path);_document.Changed+=Changed;_viewport=new(_document);_viewport.SelectionChanged+=()=>{RefreshHierarchy();ShowInspectorPage(_inspectorPage,false);};
+            _document=new(project,path);_document.Changed+=Changed;
+            _studioState=MapStudioStateStore.Load(project.Definition);MapStudioStateStore.Prune(project.Definition,_studioState);
+            _viewport=new(_document);_viewport.SelectionChanged+=()=>{RefreshHierarchy();ShowInspectorPage(_inspectorPage,false);};
             _viewportHost.Children.Clear();_viewportHost.Children.Add(_viewport);_path.Text=path??Path.Combine(CustomRooms.MapDirectory,project.Definition.Name.ToLowerInvariant()+".json");
             Dismiss();Changed();_viewport.FrameAll();
             if(_document.HasRecovery(CustomRooms.MapDirectory))Recovery();
@@ -410,6 +413,10 @@ namespace MphRead.Mods.Launcher.Gui
             });AddButton(buttons,"Cancel",Dismiss);Refresh();Modal(view);
         }
         private sealed record BrowserRow(string Path){public override string ToString()=>(Directory.Exists(Path)?"[folder] ":"")+System.IO.Path.GetFileName(Path);}
+        private sealed record PrefabRow(string Path,int Objects,int Materials)
+        {
+            public override string ToString()=>$"{System.IO.Path.GetFileNameWithoutExtension(Path)} · {Objects} objects · {Materials} materials";
+        }
         private void AddObject(string kind)
         {
             _document?.EditObjects("Create "+kind,Array.Empty<Guid>(),d=>
@@ -563,6 +570,30 @@ namespace MphRead.Mods.Launcher.Gui
             AddButton(_inspector, "Create array", () => Duplicate(false));
             AddButton(_inspector, "Create radial array", () => Duplicate(true));
             AddButton(_inspector, "Duplicate in place", () => EditSelection("Duplicate in place", (d, ids) => MapLayoutCommands.Array(d, ids, 1, System.Numerics.Vector3.Zero)));
+            _inspector.Children.Add(Text("SELECTION SETS"));
+            var setName=new TextBox{PlaceholderText="Selection set name"};_inspector.Children.Add(setName);
+            AddButton(_inspector,"Save current selection",()=>
+            {
+                string name=(setName.Text??"").Trim();
+                if(String.IsNullOrWhiteSpace(name)||_document.Selection.Count==0){_status.Text="Name the set and select at least one object.";return;}
+                _studioState.SelectionSets[name]=_document.Selection.ToArray();
+                MapStudioStateStore.Save(_document.Project.Definition,_studioState);ArrangeInspector();
+            });
+            foreach(var pair in _studioState.SelectionSets.OrderBy(p=>p.Key,StringComparer.OrdinalIgnoreCase))
+            {
+                string name=pair.Key;Guid[] ids=pair.Value;
+                _inspector.Children.Add(Text($"{name} · {ids.Length} objects"));
+                AddButton(_inspector,"Recall "+name,()=>
+                {
+                    var existing=MapObjects.All(_document.Project.Definition).Select(o=>o.Id).ToHashSet();
+                    _document.Selection.Clear();foreach(Guid id in ids.Where(existing.Contains))_document.Selection.Add(id);
+                    _document.ActiveObjectId=_document.Selection.FirstOrDefault();_document.SelectionChanged();_viewport?.FrameSelection();
+                });
+                AddButton(_inspector,"Delete "+name,()=>
+                {
+                    _studioState.SelectionSets.Remove(name);MapStudioStateStore.Save(_document.Project.Definition,_studioState);ArrangeInspector();
+                });
+            }
             AddButton(_inspector, "Save selection as prefab", SavePrefab);
             AddButton(_inspector, "Insert prefab", InsertPrefab);
         }
@@ -591,13 +622,34 @@ namespace MphRead.Mods.Launcher.Gui
         {
             if(_document==null)return;
             string directory=Path.Combine(CustomRooms.MapDirectory,".prefabs");
-            var panel=new StackPanel{Spacing=8};panel.Children.Add(Text("INSERT PREFAB"));
-            var list=new ListBox{MaxHeight=340};
-            list.ItemsSource=Directory.Exists(directory)?Directory.EnumerateFiles(directory,"*.json")
-                .OrderBy(Path.GetFileName).Select(p=>new BrowserRow(p)).ToArray():Array.Empty<BrowserRow>();
-            panel.Children.Add(list);
+            var panel=new StackPanel{Spacing=8};panel.Children.Add(Text("PREFAB BROWSER"));
+            var search=new TextBox{PlaceholderText="Search prefabs"};panel.Children.Add(search);
+            var list=new ListBox{MaxHeight=340};panel.Children.Add(list);
+            PrefabRow[] ReadRows()
+            {
+                if(!Directory.Exists(directory))return Array.Empty<PrefabRow>();
+                var rows=new List<PrefabRow>();
+                foreach(string path in Directory.EnumerateFiles(directory,"*.json"))
+                {
+                    try
+                    {
+                        var d=MapDefinition.Load(path);
+                        int count=d.Geometry.Count+d.Brushes.Count+d.Spawns.Count+d.Items.Count+d.JumpPads.Count+d.NavigationLinks.Count;
+                        rows.Add(new(path,count,d.Materials.Count));
+                    }
+                    catch(Exception ex) when(ex is IOException or InvalidDataException or UnauthorizedAccessException or System.Text.Json.JsonException or ProgramException or ArgumentException){ }
+                }
+                return rows.OrderByDescending(r=>_studioState.RecentPrefabs.Contains(r.Path,StringComparer.OrdinalIgnoreCase))
+                    .ThenBy(r=>System.IO.Path.GetFileName(r.Path),StringComparer.OrdinalIgnoreCase).ToArray();
+            }
+            var rows=ReadRows();list.ItemsSource=rows;
+            search.TextChanged+=(_,_)=>
+            {
+                string q=(search.Text??"").Trim();
+                list.ItemsSource=rows.Where(r=>q.Length==0||r.ToString().Contains(q,StringComparison.OrdinalIgnoreCase)).ToArray();
+            };
             AddButton(panel,"Insert",()=>{
-                if(list.SelectedItem is not BrowserRow row)return;
+                if(list.SelectedItem is not PrefabRow row)return;
                 try
                 {
                     string root=_document.Project.Definition.BaseDirectory??CustomRooms.MapDirectory;
@@ -610,10 +662,15 @@ namespace MphRead.Mods.Launcher.Gui
                         _document.Selection.Clear();foreach(Guid id in inserted.ObjectIds)_document.Selection.Add(id);
                         _document.SelectionChanged();_viewport?.FrameSelection();
                     }
+                    _studioState.RecentPrefabs.RemoveAll(p=>p.Equals(row.Path,StringComparison.OrdinalIgnoreCase));
+                    _studioState.RecentPrefabs.Insert(0,row.Path);
+                    if(_studioState.RecentPrefabs.Count>12)_studioState.RecentPrefabs.RemoveRange(12,_studioState.RecentPrefabs.Count-12);
+                    MapStudioStateStore.Save(_document.Project.Definition,_studioState);
                     Dismiss();_status.Text=$"Inserted {inserted?.ObjectIds.Count??0} prefab objects.";
                 }
                 catch(Exception ex){Failure(ex);}
             });
+            AddButton(panel,"Refresh",()=>{rows=ReadRows();list.ItemsSource=rows;});
             AddButton(panel,"Cancel",Dismiss);Modal(panel);
         }
         private void NavigationInspector()
@@ -695,6 +752,16 @@ namespace MphRead.Mods.Launcher.Gui
                     edits.Add(m=>{switch(pair.Item1){case "Use source spawns":m.Import!.KeepSpawns=check.IsChecked==true;break;case "Keep player clips":m.Import!.KeepClip=check.IsChecked==true;break;case "Keep sky":m.Import!.KeepSky=check.IsChecked==true;break;case "Keep source pickups":m.Import!.KeepItems=check.IsChecked==true;break;}});
                 }
                 _inspector.Children.Add(Text("Imported BSP surfaces stay immutable. Boxes, wedges, prisms and convex brushes can be layered on top."));
+                string provenanceRoot=d.BaseDirectory??Path.GetDirectoryName(d.SourcePath??"")??CustomRooms.MapDirectory;
+                if(Q3ImportManifest.Load(provenanceRoot) is {} provenance)
+                {
+                    _inspector.Children.Add(Text("Q3 SOURCE PROVENANCE\n"+provenance.Summary()));
+                    AddButton(_inspector,"Show unresolved textures",()=>
+                    {
+                        string[] missing=provenance.Textures.Where(t=>t.Fallback).Select(t=>t.Shader).ToArray();
+                        _status.Text=missing.Length==0?"All imported textures resolved.":String.Join(" · ",missing.Take(20))+(missing.Length>20?$" · +{missing.Length-20} more":"");
+                    });
+                }
                 AddButton(_inspector,"Rebake Q3 textures",()=>_=RebakeImportTextures());
                 AddButton(_inspector,"Reimport Q3 source",()=>_=PickReimportSource());
             }
@@ -705,27 +772,80 @@ namespace MphRead.Mods.Launcher.Gui
         }
         private void MaterialInspector()
         {
-            _inspector.Children.Clear();if(_document==null)return;_inspector.Children.Add(Text("MATERIALS"));
-            for(int i=0;i<_document.Project.Definition.Materials.Count;i++)
+            _inspector.Children.Clear();if(_document==null)return;
+            _inspector.Children.Add(Text("MATERIAL BROWSER"));
+            var filter=new TextBox{PlaceholderText="Search materials"};_inspector.Children.Add(filter);
+            var panels=new List<(Control Panel,string Search)>();
+            var definition=_document.Project.Definition;
+            var order=Enumerable.Range(0,definition.Materials.Count)
+                .OrderByDescending(i=>_studioState.FavoriteMaterials.Contains(MaterialKey(definition.Materials[i]),StringComparer.OrdinalIgnoreCase))
+                .ThenBy(i=>definition.Materials[i].Name,StringComparer.OrdinalIgnoreCase).ToArray();
+            foreach(int i in order)
             {
-                int index=i;var m=_document.Project.Definition.Materials[i];_inspector.Children.Add(Text($"{i} · {m.Name}"));
-                try{if(m.Texture!=null||GameFiles.Ready){string key=PreviewCacheKey(_document.Project.Definition,m);if(!_materialPreviewCache.TryGetValue(key,out var preview)){preview=MapMaterialPreview.Create(_document.Project.Definition,m);_materialPreviewCache[key]=preview;}_inspector.Children.Add(new Image {Source=preview.Bitmap,Width=64,Height=64,HorizontalAlignment=HorizontalAlignment.Left});_inspector.Children.Add(Text(preview.Details));}}
-                catch(Exception ex)when(ex is IOException or InvalidDataException or ProgramException or ArgumentException or InvalidOperationException){_inspector.Children.Add(Text("Preview unavailable: "+ex.Message));}
-                var source=new TextBox{Text=m.SourceMaterial.ToString()};var scale=new TextBox{Text=m.TexScale.ToString(CultureInfo.InvariantCulture)};_inspector.Children.Add(Text("Source material / texels per unit"));_inspector.Children.Add(source);_inspector.Children.Add(scale);
-                AddButton(_inspector,"Apply material",()=>{try{_document.EditMaterial(index,m=>{m.SourceMaterial=int.Parse(source.Text??"",CultureInfo.InvariantCulture);m.TexScale=Number(scale.Text??"");});}catch(Exception ex){Failure(ex);}});
+                int index=i;var m=definition.Materials[i];
+                int uses=definition.Geometry.Count(g=>g.Material==index)+definition.Brushes.Count(b=>b.Material==index);
+                bool favorite=_studioState.FavoriteMaterials.Contains(MaterialKey(m),StringComparer.OrdinalIgnoreCase);
+                var panel=new StackPanel{Spacing=4,Margin=new Thickness(0,4,0,8)};
+                panel.Children.Add(Text($"{(favorite?"★ ":"")}{index} · {m.Name} · {uses} uses"));
+                try
+                {
+                    if(m.Texture!=null||GameFiles.Ready)
+                    {
+                        string key=PreviewCacheKey(definition,m);
+                        if(!_materialPreviewCache.TryGetValue(key,out var preview))
+                        {preview=MapMaterialPreview.Create(definition,m);_materialPreviewCache[key]=preview;}
+                        panel.Children.Add(new Image{Source=preview.Bitmap,Width=72,Height=72,HorizontalAlignment=HorizontalAlignment.Left});
+                        panel.Children.Add(Text(preview.Details));
+                    }
+                }
+                catch(Exception ex)when(ex is IOException or InvalidDataException or ProgramException or ArgumentException or InvalidOperationException)
+                {panel.Children.Add(Text("Preview unavailable: "+ex.Message));}
+                var source=new TextBox{Text=m.SourceMaterial.ToString(CultureInfo.InvariantCulture)};
+                var scale=new TextBox{Text=m.TexScale.ToString(CultureInfo.InvariantCulture)};
+                panel.Children.Add(Text("Source material / texels per unit"));panel.Children.Add(source);panel.Children.Add(scale);
+                AddButton(panel,"Assign to selection",()=>
+                {
+                    if(_document.Selection.Count==0){_status.Text="Select authored geometry first.";return;}
+                    var ids=_document.Selection.ToHashSet();
+                    _document.EditObjects("Assign material",ids,d=>
+                    {
+                        foreach(var g in d.Geometry)g.Material=index;
+                        foreach(var b in d.Brushes)b.Material=index;
+                    });
+                });
+                AddButton(panel,favorite?"Unfavorite":"Favorite",()=>
+                {
+                    string key=MaterialKey(m);
+                    _studioState.FavoriteMaterials.RemoveAll(x=>x.Equals(key,StringComparison.OrdinalIgnoreCase));
+                    if(!favorite)_studioState.FavoriteMaterials.Add(key);
+                    MapStudioStateStore.Save(definition,_studioState);MaterialInspector();
+                });
+                AddButton(panel,"Apply material",()=>{try{_document.EditMaterial(index,value=>{value.SourceMaterial=int.Parse(source.Text??"",CultureInfo.InvariantCulture);value.TexScale=Number(scale.Text??"");});}catch(Exception ex){Failure(ex);}});
                 if(m.Texture==null&&GameFiles.Ready)
                 {
                     try
                     {
-                        var materials=Read.GetRoomModelInstance(_document.Project.Definition.TextureSource).Model.Materials;
-                        var choices=new ComboBox {ItemsSource=materials.Select((material,n)=>$"{n} · {material.Name}").ToArray(),SelectedIndex=m.SourceMaterial};_inspector.Children.Add(choices);
+                        var materials=Read.GetRoomModelInstance(definition.TextureSource).Model.Materials;
+                        var choices=new ComboBox{ItemsSource=materials.Select((material,n)=>$"{n} · {material.Name}").ToArray(),SelectedIndex=m.SourceMaterial};
+                        panel.Children.Add(choices);
                         choices.SelectionChanged+=(_,_)=>{if(choices.SelectedIndex>=0)source.Text=choices.SelectedIndex.ToString(CultureInfo.InvariantCulture);};
                     }
-                    catch(Exception ex){_inspector.Children.Add(Text("Source materials unavailable: "+ex.Message));}
+                    catch(Exception ex){panel.Children.Add(Text("Source materials unavailable: "+ex.Message));}
                 }
+                _inspector.Children.Add(panel);
+                panels.Add((panel,$"{index} {m.Name} {m.Texture} {m.SourceMaterial}"));
             }
+            filter.TextChanged+=(_,_)=>
+            {
+                string q=(filter.Text??"").Trim();
+                foreach(var item in panels)item.Panel.IsVisible=q.Length==0||item.Search.Contains(q,StringComparison.OrdinalIgnoreCase);
+            };
             AddButton(_inspector,"Add material",()=>_document.Edit("Add material",d=>d.Materials.Add(new(){Id=Guid.NewGuid(),Name="Material "+d.Materials.Count})));
         }
+
+        private static string MaterialKey(MapMaterial material)
+            => material.Id==Guid.Empty?material.Name:material.Id.ToString("N");
+
         private sealed record ProblemRow(MapDiagnostic Diagnostic){public override string ToString()=>$"{Diagnostic.Severity} · {Diagnostic.Code} · {Diagnostic.Message}";}
 
         private void FixSelectedProblem()
@@ -1167,7 +1287,9 @@ namespace MphRead.Mods.Launcher.Gui
             Browse("Choose replacement Quake 3 source",false,RunReimport,".pk3",".bsp");
         }
 
-        private void RunReimport(string source)
+        private void RunReimport(string source)=>_=PreviewReimport(source);
+
+        private async Task PreviewReimport(string source)
         {
             if(_document?.Project.Definition.Import is not {} import)return;
             string projectPath=_document.FilePath??_path.Text??"";
@@ -1178,8 +1300,19 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 var maps=Q3Bsp.ListMaps(source);
                 if(selectedMap==null||!maps.Contains(selectedMap,StringComparer.OrdinalIgnoreCase))selectedMap=maps.FirstOrDefault();
+                _status.Text="Comparing Q3 source…";
+                var diff=await Task.Run(()=>Q3ImportService.PreviewReimport(existing,source,selectedMap));
+                var panel=new StackPanel{Spacing=8,MinWidth=560};
+                var summary=Text(diff.Summary());summary.TextWrapping=TextWrapping.Wrap;panel.Children.Add(summary);
+                string map=selectedMap??diff.Next.MapName;
+                AddButton(panel,"Apply reimport",()=>{Dismiss();StartReimport(source,map,existing,projectPath,import);});
+                AddButton(panel,"Cancel",Dismiss);Modal(panel);
             }
-            catch(Exception ex){Failure(ex);return;}
+            catch(Exception ex){Failure(ex);}
+        }
+
+        private void StartReimport(string source,string selectedMap,MapDefinition existing,string projectPath,MapImport import)
+        {
             var options=new Q3ImportService.Options(source,selectedMap,existing.Name,
                 Path.Combine(Path.GetTempPath(),"ProjectPrime-reimport-"+Guid.NewGuid().ToString("N")),
                 import.UnitsPerUnit,import.KeepClip,import.KeepItems,import.KeepSky,import.KeepSpawns,
