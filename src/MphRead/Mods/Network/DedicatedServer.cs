@@ -781,35 +781,71 @@ namespace MphRead.Mods.Network
 
         private void BroadcastPostMatchReports()
         {
-            if (_transport == null || _sim == null)
+            if (_transport == null || _sim == null || _peers.Count == 0)
             {
                 return;
             }
+
+            GameState.UpdateStandings();
+            PostMatchReportPacket report = PostMatchReportPacket.Create();
+            report.MatchId = _matchId;
+            var added = new bool[PlayerEntity.SlotCapacity];
+
+            void AddPeer(Peer peer)
+            {
+                if (report.Count >= PostMatchReportPacket.MaxEntries)
+                {
+                    return;
+                }
+                int slot = peer.SlotIndex;
+                if ((uint)slot >= PlayerEntity.SlotCapacity || added[slot])
+                {
+                    return;
+                }
+
+                int at = report.Count;
+                report.Slots[at] = (byte)slot;
+                report.Generations[at] = _slotGenerations[slot];
+                report.Teams[at] = (sbyte)Math.Clamp((int)peer.TeamIndex, -1, PlayerEntity.SlotCapacity - 1);
+                report.Kills[at] = (ushort)Math.Clamp(GameState.Kills[slot], 0, UInt16.MaxValue);
+                report.Deaths[at] = (ushort)Math.Clamp(GameState.Deaths[slot], 0, UInt16.MaxValue);
+                report.Headshots[at] = (ushort)Math.Clamp(GameState.HeadshotKills[slot], 0, UInt16.MaxValue);
+                report.LongestKillStreaks[at] = (ushort)Math.Clamp(
+                    GameState.LongestKillStreak[slot], 0, UInt16.MaxValue);
+                report.ShotsFired[at] = (uint)Math.Max(0, GameState.ShotsFired[slot]);
+                report.ShotsHit[at] = (uint)Math.Max(0, GameState.ShotsHit[slot]);
+                report.DamageDealt[at] = (uint)Math.Max(0, GameState.MatchDamageDealt[slot]);
+                report.DamageTaken[at] = (uint)Math.Max(0, GameState.MatchDamageTaken[slot]);
+                report.Names[at] = peer.Name.Length > 0 ? peer.Name : $"Player{slot + 1}";
+                report.Count++;
+                added[slot] = true;
+            }
+
+            // ResultSlots is already the match's authoritative ranking order.
+            // Walk that first, then append any connected slot that somehow was
+            // not active when standings were built (for example a late join at
+            // the exact ending edge) so nobody disappears from the report.
+            for (int rank = 0; rank < GameState.ActivePlayers; rank++)
+            {
+                int slot = GameState.ResultSlots[rank];
+                for (int p = 0; p < _peers.Count; p++)
+                {
+                    if (_peers[p].SlotIndex == slot)
+                    {
+                        AddPeer(_peers[p]);
+                        break;
+                    }
+                }
+            }
+            for (int p = 0; p < _peers.Count; p++)
+            {
+                AddPeer(_peers[p]);
+            }
+
+            report.Write(_scratch);
             for (int i = 0; i < _peers.Count; i++)
             {
-                Peer peer = _peers[i];
-                int slot = peer.SlotIndex;
-                if ((uint)slot >= PlayerEntity.SlotCapacity)
-                {
-                    continue;
-                }
-                var report = new PostMatchReportPacket
-                {
-                    MatchId = _matchId,
-                    SlotGeneration = _slotGenerations[slot],
-                    SlotIndex = (byte)slot,
-                    Kills = (ushort)Math.Clamp(GameState.Kills[slot], 0, UInt16.MaxValue),
-                    Deaths = (ushort)Math.Clamp(GameState.Deaths[slot], 0, UInt16.MaxValue),
-                    Headshots = (ushort)Math.Clamp(GameState.HeadshotKills[slot], 0, UInt16.MaxValue),
-                    LongestKillStreak = (ushort)Math.Clamp(
-                        GameState.LongestKillStreak[slot], 0, UInt16.MaxValue),
-                    ShotsFired = (uint)Math.Max(0, GameState.ShotsFired[slot]),
-                    ShotsHit = (uint)Math.Max(0, GameState.ShotsHit[slot]),
-                    DamageDealt = (uint)Math.Max(0, GameState.MatchDamageDealt[slot]),
-                    DamageTaken = (uint)Math.Max(0, GameState.MatchDamageTaken[slot])
-                };
-                report.Write(_scratch);
-                _transport.Send(peer.EndPoint, PacketType.PostMatchReport,
+                _transport.Send(_peers[i].EndPoint, PacketType.PostMatchReport,
                     _scratch.AsSpan(0, PostMatchReportPacket.Size));
             }
         }
