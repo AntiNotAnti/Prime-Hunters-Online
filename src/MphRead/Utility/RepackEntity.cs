@@ -13,6 +13,17 @@ namespace MphRead.Utility
 {
     public static partial class Repack
     {
+        public static IReadOnlyList<EntityEditorBase> ReadRoomEntities(string room,
+            RepackFilter filter = RepackFilter.All)
+        {
+            RoomMetadata meta = Metadata.RoomMetadata[room];
+            if (meta.EntityPath == null) return Array.Empty<EntityEditorBase>();
+            List<EntityEditorBase> entities = meta.FirstHunt
+                ? GetFhEntities(meta.EntityPath)
+                : GetEntities(meta.EntityPath, filter);
+            return meta.FirstHunt ? ConvertFhToMph(entities) : entities;
+        }
+
         public static byte[] RepackMphEntities(string room)
         {
             RoomMetadata meta = Metadata.RoomMetadata[room];
