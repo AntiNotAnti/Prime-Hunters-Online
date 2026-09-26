@@ -419,16 +419,16 @@ namespace MphRead.Entities
                 * (Mods.InputSettings.InvertMouseX ? -1 : 1);
             float mouseY = -pointerY / 4f * mouseSensitivity
                 * (Mods.InputSettings.InvertMouseY ? -1 : 1);
-            if (EquipInfo.Zoomed)
-            {
-                controllerX *= Mods.Input.GamepadOptions.ScopedX;
-                controllerY *= Mods.Input.GamepadOptions.ScopedY;
-            }
+            float scopeBlend = AimScopeBlend();
+            float scopedX = 1 + (Mods.Input.GamepadOptions.ScopedX - 1) * scopeBlend;
+            float scopedY = 1 + (Mods.Input.GamepadOptions.ScopedY - 1) * scopeBlend;
+            controllerX *= scopedX;
+            controllerY *= scopedY;
 
             float normalFov = Fixed.ToFloat(Values.NormalFov) * 2;
-            if (EquipInfo.Zoomed && normalFov != 0)
+            if (normalFov != 0 && (EquipInfo.Zoomed || scopeBlend > 0))
             {
-                float zoomScale = CameraInfo.Fov / normalFov;
+                float zoomScale = Math.Clamp(CameraInfo.Fov / normalFov, .05f, 1);
                 mouseX *= zoomScale;
                 mouseY *= zoomScale;
                 controllerX *= zoomScale;
@@ -450,11 +450,8 @@ namespace MphRead.Entities
                 if (Mods.Input.GamepadInput.TryRenderRawAimDelta(
                     out float lateRawX, out float lateRawY))
                 {
-                    if (EquipInfo.Zoomed)
-                    {
-                        lateRawX *= Mods.Input.GamepadOptions.ScopedX;
-                        lateRawY *= Mods.Input.GamepadOptions.ScopedY;
-                    }
+                    lateRawX *= scopedX;
+                    lateRawY *= scopedY;
                     var lateCamera = Mods.Input.AimAssist.AimAssistMath.CameraDelta(
                         new(lateRawX, lateRawY), AimZoomScale(),
                         Controls.InvertAimX, Controls.InvertAimY);
@@ -2199,8 +2196,11 @@ namespace MphRead.Entities
                 _controllerAssist.Reset();
                 return;
             }
-            float x = Mods.Input.GamepadInput.AimDeltaX * (EquipInfo.Zoomed ? Mods.Input.GamepadOptions.ScopedX : 1);
-            float y = Mods.Input.GamepadInput.AimDeltaY * (EquipInfo.Zoomed ? Mods.Input.GamepadOptions.ScopedY : 1);
+            float scopeBlend = AimScopeBlend();
+            float scopedX = 1 + (Mods.Input.GamepadOptions.ScopedX - 1) * scopeBlend;
+            float scopedY = 1 + (Mods.Input.GamepadOptions.ScopedY - 1) * scopeBlend;
+            float x = Mods.Input.GamepadInput.AimDeltaX * scopedX;
+            float y = Mods.Input.GamepadInput.AimDeltaY * scopedY;
             var cameraDelta = Mods.Input.AimAssist.AimAssistMath.CameraDelta(new(x, y), AimZoomScale(),
                 Controls.InvertAimX, Controls.InvertAimY);
             var assisted = ApplyControllerAssist(cameraDelta.X, cameraDelta.Y);
