@@ -1277,7 +1277,9 @@ namespace MphRead.Mods.Launcher.Gui
             Browse("Choose replacement Quake 3 source",false,RunReimport,".pk3",".bsp");
         }
 
-        private void RunReimport(string source)
+        private void RunReimport(string source)=>_=PreviewReimport(source);
+
+        private async Task PreviewReimport(string source)
         {
             if(_document?.Project.Definition.Import is not {} import)return;
             string projectPath=_document.FilePath??_path.Text??"";
@@ -1288,8 +1290,19 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 var maps=Q3Bsp.ListMaps(source);
                 if(selectedMap==null||!maps.Contains(selectedMap,StringComparer.OrdinalIgnoreCase))selectedMap=maps.FirstOrDefault();
+                _status.Text="Comparing Q3 source…";
+                var diff=await Task.Run(()=>Q3ImportService.PreviewReimport(existing,source,selectedMap));
+                var panel=new StackPanel{Spacing=8,MinWidth=560};
+                var summary=Text(diff.Summary());summary.TextWrapping=TextWrapping.Wrap;panel.Children.Add(summary);
+                string map=selectedMap??diff.Next.MapName;
+                AddButton(panel,"Apply reimport",()=>{Dismiss();StartReimport(source,map,existing,projectPath,import);});
+                AddButton(panel,"Cancel",Dismiss);Modal(panel);
             }
-            catch(Exception ex){Failure(ex);return;}
+            catch(Exception ex){Failure(ex);}
+        }
+
+        private void StartReimport(string source,string selectedMap,MapDefinition existing,string projectPath,MapImport import)
+        {
             var options=new Q3ImportService.Options(source,selectedMap,existing.Name,
                 Path.Combine(Path.GetTempPath(),"ProjectPrime-reimport-"+Guid.NewGuid().ToString("N")),
                 import.UnitsPerUnit,import.KeepClip,import.KeepItems,import.KeepSky,import.KeepSpawns,
