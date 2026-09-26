@@ -58,7 +58,7 @@ public static class MapCollisionOptimizer
         return editors;
     }
 
-    public static Result Optimize(IReadOnlyList<CollisionDataEditor> input,int maxPointIndices=ushort.MaxValue)
+    public static Result Optimize(IReadOnlyList<CollisionDataEditor> input,int maxPointIndices=ushort.MaxValue-1)
     {
         int originalFaces=input.Count;
         int originalIndices=input.Sum(e=>e.Points.Count);
