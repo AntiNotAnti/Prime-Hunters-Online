@@ -25,10 +25,11 @@ namespace MphRead.Mods.Input
     /// A pen tablet is an absolute device: a point on the tablet is a point on
     /// the screen, and it stays that point. That is what the DS's touch screen
     /// was, and it is why a tablet is the one desktop device that can play
-    /// this game the way it was actually played -- the four weapon buttons
-    /// along the top, the morph ball in the corner, and aiming by dragging in
-    /// the middle. Reaching for a button is a movement of the hand to a place,
-    /// not a search with a cursor.
+    /// this game the way it was actually played -- three direct weapon icons
+    /// across the top, a separate sub-weapon-change icon beside them, the alt
+    /// form control in the corner, and aiming by dragging in the middle.
+    /// Reaching for a button is a movement of the hand to a place, not a
+    /// search with a cursor.
     ///
     /// So the player marks out a rectangle on their screen that stands for the
     /// bottom screen, and maps their tablet to it. Inside it, the layout is
@@ -42,11 +43,12 @@ namespace MphRead.Mods.Input
     /// part of the picture. The DS player could glance down; this is the
     /// nearest thing to that on one screen.
     ///
-    /// Positions below are in the DS's own 256x192 units and are taken off the
-    /// game's bottom screen: four buttons across the top -- the Power Beam,
-    /// the missile with its ammo count, the weapon and the weapon select --
-    /// the alt form in the bottom right corner, and the map filling the
-    /// middle, which is where aiming happens.
+    /// Positions below are in the DS's own 256x192 units. The native weapon
+    /// strip has exactly three rectangular quick-select boxes: Power Beam,
+    /// Missile and the currently stored sub-weapon. The round icon to their
+    /// right is not a fourth box; it is the sub-weapon-change hold that opens
+    /// the six-slot wheel. Alt form is separate in the lower-right corner and
+    /// the remaining surface is the aiming area.
     ///
     /// <para>
     /// Inside the zone the pen is a pen and not a mouse, and that is three
@@ -69,38 +71,64 @@ namespace MphRead.Mods.Input
         public const float DsHeight = 192;
 
         /// <summary>
-        /// A button on the bottom screen: where it is and how big, in DS
-        /// units, and what it does.
+        /// A touch target on the bottom screen, in native 256x192 DS units.
+        /// The three weapon icons are rectangular in the cartridge UI; the
+        /// change/alt icons are round.
         /// </summary>
         public readonly struct Button
         {
             public readonly StylusRegion Region;
             public readonly float X;
             public readonly float Y;
-            public readonly float Radius;
+            public readonly float Width;
+            public readonly float Height;
+            public readonly bool Round;
             public readonly string Label;
 
-            public Button(StylusRegion region, float x, float y, float radius, string label)
+            public Button(StylusRegion region, float x, float y, float width, float height,
+                string label, bool round = false)
             {
                 Region = region;
                 X = x;
                 Y = y;
-                Radius = radius;
+                Width = width;
+                Height = height;
+                Round = round;
                 Label = label;
+            }
+
+            public bool Contains(float x, float y)
+            {
+                float dx = x - X;
+                float dy = y - Y;
+                float halfWidth = Width / 2;
+                float halfHeight = Height / 2;
+                if (halfWidth <= 0 || halfHeight <= 0)
+                {
+                    return false;
+                }
+                if (!Round)
+                {
+                    return Math.Abs(dx) <= halfWidth && Math.Abs(dy) <= halfHeight;
+                }
+                float nx = dx / halfWidth;
+                float ny = dy / halfHeight;
+                return nx * nx + ny * ny <= 1;
             }
         }
 
         /// <summary>
-        /// The layout, off the DS screen. Order matters only in that the
-        /// first one containing the point wins, and they do not overlap.
+        /// Native touch geometry. There are three rectangular weapon boxes,
+        /// then the separate round sub-weapon-change icon. Coordinates align
+        /// with the cartridge bottom-screen art.
         /// </summary>
         public static readonly Button[] Buttons =
         {
-            new Button(StylusRegion.PowerBeam, 26, 26, 22, "BEAM"),
-            new Button(StylusRegion.Missile, 80, 24, 20, "MSL"),
-            new Button(StylusRegion.Weapons, 150, 28, 30, "WPN"),
-            new Button(StylusRegion.WeaponSelect, 222, 28, 26, "SEL"),
-            new Button(StylusRegion.AltForm, 228, 166, 22, "ALT")
+            new Button(StylusRegion.PowerBeam, 86, 42, 36, 36, "BEAM"),
+            new Button(StylusRegion.Missile, 126, 42, 36, 36, "MSL"),
+            new Button(StylusRegion.Weapons, 174, 42, 52, 36, "WPN"),
+            new Button(StylusRegion.WeaponSelect, 232, 43, 44, 44, "SEL", round: true),
+            new Button(StylusRegion.AltForm, 228, 166, 44, 44, "ALT", round: true)
         };
 
         /// <summary>
@@ -173,7 +201,7 @@ namespace MphRead.Mods.Input
         /// <summary>Opacity of the DS screen rectangle, from invisible to solid.</summary>
         public static float OutlineOpacity { get; set; } = DefaultOutlineOpacity;
 
-        /// <summary>Opacity of the circular touch targets, from invisible to solid.</summary>
+        /// <summary>Opacity of the touch-target guide shapes, from invisible to solid.</summary>
         public static float ButtonOpacity { get; set; } = DefaultButtonOpacity;
 
         /// <summary>
@@ -530,9 +558,7 @@ namespace MphRead.Mods.Input
             for (int i = 0; i < Buttons.Length; i++)
             {
                 Button button = Buttons[i];
-                float dx = dsX - button.X;
-                float dy = dsY - button.Y;
-                if (dx * dx + dy * dy <= button.Radius * button.Radius)
+                if (button.Contains(dsX, dsY))
                 {
                     return button.Region;
                 }

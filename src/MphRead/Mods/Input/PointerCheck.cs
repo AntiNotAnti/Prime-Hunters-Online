@@ -264,6 +264,24 @@ namespace MphRead.Mods.Input
             StylusZone.Enabled = true;
             StylusZone.AspectCorrection = 1920f / 1080;
             StylusZone.SetRect(0, 0, 1);
+
+            StylusRegion AtDs(float x, float y)
+                => StylusZone.RegionAt(x / StylusZone.DsWidth,
+                    y / StylusZone.DsHeight * StylusZone.Height);
+            Require(AtDs(86, 42) == StylusRegion.PowerBeam
+                && AtDs(126, 42) == StylusRegion.Missile
+                && AtDs(174, 42) == StylusRegion.Weapons,
+                "native weapon strip has three direct-select boxes");
+            Require(AtDs(106, 42) == StylusRegion.Aim
+                && AtDs(146, 42) == StylusRegion.Aim,
+                "gaps between the three weapon boxes remain aim surface");
+            Require(AtDs(232, 43) == StylusRegion.WeaponSelect,
+                "round sub-weapon-change icon is separate from the three boxes");
+            Require(AtDs(68, 24) == StylusRegion.PowerBeam
+                && AtDs(104, 60) == StylusRegion.PowerBeam
+                && AtDs(67.9f, 42) == StylusRegion.Aim,
+                "BEAM rectangular hitbox follows native art edges");
+
             Frame(100, 600, false);
             Frame(1500, 600, true);
             Require(StylusZone.Held == StylusRegion.Aim && !StylusZone.Aiming, "first contact belongs to aim without rotating");
