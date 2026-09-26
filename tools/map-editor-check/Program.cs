@@ -317,6 +317,102 @@ try
     Check(MapValidator.Validate(nativeRoundtrip,checkSources:false).Diagnostics.All(d=>d.Code!="FP-MAP-005"),
         "native room remix source validates without reading cartridge bytes");
 
+    // Imported collision auto-heal: runtime precision, invalid polygons, seams,
+    // T-junctions, coverage repair, phantom pruning, spawn repair and probes.
+    BuiltFace HealFloor(float y=0,float half=4)
+        => new(new[]{
+            new OpenTK.Mathematics.Vector3(-half,y,-half),
+            new OpenTK.Mathematics.Vector3(-half,y,half),
+            new OpenTK.Mathematics.Vector3(half,y,half),
+            new OpenTK.Mathematics.Vector3(half,y,-half)},
+            new OpenTK.Mathematics.Vector2[4],OpenTK.Mathematics.Vector3.UnitY,0,1);
+    var healImport=new MapImport{AutoHealCollision=true,CollisionHealTolerance=.0625f};
+
+    var precisionMap=new BuiltMap(new MapDefinition{Name="HEAL_PRECISION",Import=healImport});
+    var precisionFace=HealFloor(.00037f);
+    precisionFace.CollisionSource="Brush";precisionMap.Solid.Add(precisionFace);
+    MapCollisionHealer.Heal(precisionMap,healImport);
+    Check(precisionMap.Solid.All(face=>face.Points.All(point=>
+        point.X==MphRead.Fixed.ToFloat(MphRead.Fixed.ToInt(point.X))
+        &&point.Y==MphRead.Fixed.ToFloat(MphRead.Fixed.ToInt(point.Y))
+        &&point.Z==MphRead.Fixed.ToFloat(MphRead.Fixed.ToInt(point.Z)))),
+        "collision healer canonicalizes to exact runtime fixed-point precision");
+
+    var convexMap=new BuiltMap(new MapDefinition{Name="HEAL_CONVEX",Import=healImport});
+    var concave=new BuiltFace(new[]{
+        new OpenTK.Mathematics.Vector3(-2,0,-2),new OpenTK.Mathematics.Vector3(-2,0,2),
+        new OpenTK.Mathematics.Vector3(0,0,.5f),new OpenTK.Mathematics.Vector3(2,0,2),
+        new OpenTK.Mathematics.Vector3(2,0,-2)},new OpenTK.Mathematics.Vector2[5],
+        OpenTK.Mathematics.Vector3.UnitY,0,1){CollisionSource="Brush"};
+    convexMap.Solid.Add(concave);
+    var convexHealth=MapCollisionHealer.Heal(convexMap,healImport);
+    Check(convexHealth.ConvexifiedFaces>0&&convexMap.Solid.All(face=>face.Points.Length>=3),
+        "collision healer convexifies runtime-invalid imported polygons");
+
+    var seamMap=new BuiltMap(new MapDefinition{Name="HEAL_SEAM",Import=healImport});
+    seamMap.Solid.Add(new BuiltFace(new[]{
+        new OpenTK.Mathematics.Vector3(0,0,0),new OpenTK.Mathematics.Vector3(0,0,2),
+        new OpenTK.Mathematics.Vector3(2,0,2),new OpenTK.Mathematics.Vector3(2,0,0)},
+        new OpenTK.Mathematics.Vector2[4],OpenTK.Mathematics.Vector3.UnitY,0,1){CollisionSource="Brush"});
+    seamMap.Solid.Add(new BuiltFace(new[]{
+        new OpenTK.Mathematics.Vector3(2.03f,0,0),new OpenTK.Mathematics.Vector3(2.03f,0,2),
+        new OpenTK.Mathematics.Vector3(4,0,2),new OpenTK.Mathematics.Vector3(4,0,0)},
+        new OpenTK.Mathematics.Vector2[4],OpenTK.Mathematics.Vector3.UnitY,0,1){CollisionSource="Brush"});
+    var seamHealth=MapCollisionHealer.Heal(seamMap,healImport);
+    Check(seamHealth.StitchedVertices>0,
+        "collision healer welds sub-player-radius imported seams");
+
+    var tjMap=new BuiltMap(new MapDefinition{Name="HEAL_TJ",Import=healImport});
+    tjMap.Solid.Add(HealFloor(0,2));
+    tjMap.Solid.Add(new BuiltFace(new[]{
+        new OpenTK.Mathematics.Vector3(0,0,-2.03f),new OpenTK.Mathematics.Vector3(.5f,0,-3),
+        new OpenTK.Mathematics.Vector3(-.5f,0,-3)},new OpenTK.Mathematics.Vector2[3],
+        OpenTK.Mathematics.Vector3.UnitY,0,1){CollisionSource="Brush"});
+    var tjHealth=MapCollisionHealer.Heal(tjMap,healImport);
+    Check(tjHealth.TJunctions>0,
+        "collision healer stitches near-edge T-junctions");
+
+    var buriedMap=new BuiltMap(new MapDefinition{Name="HEAL_BURIED",Import=healImport});
+    BuiltFace visibleFloor=HealFloor();buriedMap.Faces.Add(visibleFloor);
+    BuiltFace buriedFloor=HealFloor();buriedFloor.CollisionSource="Brush";buriedFloor.CollisionSourceId=42;
+    var buriedHealth=MapCollisionHealer.Heal(buriedMap,healImport,new[]{buriedFloor});
+    Check(buriedHealth.RestoredBuriedFaces>0&&buriedMap.Solid.Any(f=>f.CollisionSource=="BuriedRestored"),
+        "coverage-aware burial pruning restores a source floor that visible geometry needs");
+
+    var proxyMap=new BuiltMap(new MapDefinition{Name="HEAL_PROXY",Import=healImport});
+    proxyMap.Faces.Add(HealFloor());
+    var proxyHealth=MapCollisionHealer.Heal(proxyMap,healImport);
+    Check(proxyHealth.FloorProxies>0&&proxyMap.Solid.Any(f=>f.CollisionSource=="AutoFloor"),
+        "uncovered visible walkable geometry receives an automatic floor proxy");
+
+    var phantomMap=new BuiltMap(new MapDefinition{Name="HEAL_PHANTOM",Import=healImport});
+    var phantom=new BuiltFace(new[]{
+        new OpenTK.Mathematics.Vector3(0,0,0),new OpenTK.Mathematics.Vector3(0,2,0),
+        new OpenTK.Mathematics.Vector3(0,2,2),new OpenTK.Mathematics.Vector3(0,0,2)},
+        new OpenTK.Mathematics.Vector2[4],OpenTK.Mathematics.Vector3.UnitX,0,1)
+        {CollisionSource="Brush",CollisionShader="textures/common/caulk"};
+    phantomMap.Solid.Add(phantom);
+    var phantomHealth=MapCollisionHealer.Heal(phantomMap,healImport);
+    Check(phantomHealth.PhantomFacesRemoved>0&&phantomMap.Solid.Count==0,
+        "high-confidence hidden collision with no render support is pruned");
+
+    var traversalDefinition=new MapDefinition{Name="HEAL_TRAVERSAL",Import=healImport};
+    traversalDefinition.Spawns.Add(new(){Id=Guid.NewGuid(),Position=new[]{0f,3f,0f}});
+    traversalDefinition.Items.Add(new(){Id=Guid.NewGuid(),Position=new[]{1f,2f,0f},Type="HealthBig"});
+    var traversalMap=new BuiltMap(traversalDefinition);
+    traversalMap.Faces.Add(HealFloor(0,8));traversalMap.Solid.Add(HealFloor(0,8));
+    MapCollisionHealer.Heal(traversalMap,healImport);
+    MapCollisionHealer.RepairGameplayObjects(traversalMap,traversalDefinition);
+    Check(traversalMap.CollisionHealth!.SpawnsMoved>0&&traversalDefinition.Spawns[0].Position[1]<.2f,
+        "imported spawn automatically snaps to a clear healed floor");
+    Check(traversalMap.CollisionHealth.ItemsMoved>0&&traversalDefinition.Items[0].Position[1]<.2f,
+        "imported pickup automatically snaps to healed floor");
+    Check(traversalMap.CollisionHealth.ProbeCount>0&&traversalMap.CollisionHealth.ProbeFailures==0,
+        "headless render-driven floor probes validate healed walkable surfaces");
+    Check(traversalMap.CollisionHealth.NavigationNodes>=0
+        &&traversalMap.CollisionRepairs.Any(r=>r.Kind==MapCollisionRepairKind.SpawnMoved),
+        "collision repair provenance and traversal audit remain available to Map Studio");
+
     foreach (string tool in new[] { "Move", "Rotate", "Scale" })
     {
         var id = layoutIds.First(); var item = MapObjects.Find(layoutDocument.Project.Definition, id)!;
