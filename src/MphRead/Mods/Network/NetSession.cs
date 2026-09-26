@@ -1820,6 +1820,7 @@ namespace MphRead.Mods.Network
                     Facing = player.FacingVector,
                     Health = (ushort)Math.Clamp(player.Health, 0, ushort.MaxValue),
                     HalfturretActive = player.Flags2.TestFlag(PlayerFlags2.Halfturret),
+                    SpawnProtected = player.ModMatchSpawnProtectionActive,
                     HalfturretHealth = (ushort)Math.Clamp(player.Halfturret?.Health ?? 0, 0, ushort.MaxValue),
                     CurrentWeapon = (byte)player.CurrentWeapon,
                     Team = (byte)player.Team
