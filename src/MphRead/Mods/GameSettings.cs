@@ -97,7 +97,7 @@ namespace MphRead.Mods
                     (int)MathF.Round(RenderOptions.CelEdge * 100)) / 100f, 0, 1);
 
             if (Enum.TryParse(settings.GraphicsPreset, true, out GraphicsPreset preset))
-                RenderOptions.GraphicsPreset = preset;
+                RenderOptions.Preset = preset;
             if (Enum.TryParse(settings.AntiAliasing, true, out AntiAliasingMode aa))
                 RenderOptions.AntiAliasing = aa;
             RenderOptions.SharpenStrength = RenderOptions.ParseInt(settings.SharpenStrength,
