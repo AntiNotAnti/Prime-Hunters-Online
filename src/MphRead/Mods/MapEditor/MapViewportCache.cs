@@ -6,6 +6,9 @@ using MphRead.Mods.MapGen;
 namespace MphRead.Mods.MapEditor;
 
 /// <summary>CPU authoring caches. Camera movement never enters this invalidation path.</summary>
+public sealed record MapViewportRepair(MapCollisionRepairKind Kind,float Confidence,string Detail,
+    System.Numerics.Vector3[] Points);
+
 public sealed class MapViewportCache
 {
     private readonly Dictionary<Guid, MapViewportFace[]> _native = new();
@@ -16,6 +19,8 @@ public sealed class MapViewportCache
     public MapFaceSpatialIndex ImportedSpatial { get; private set; } = new(Array.Empty<MapViewportFace>());
     public MapFaceSpatialIndex ImportedCollisionSpatial { get; private set; } = new(Array.Empty<MapViewportFace>());
     public IReadOnlyList<MapCollisionHeatCell> CollisionHeat { get; private set; } = Array.Empty<MapCollisionHeatCell>();
+    public IReadOnlyList<MapViewportRepair> CollisionRepairs { get; private set; } = Array.Empty<MapViewportRepair>();
+    public MapCollisionHealthSnapshot? CollisionHealth { get; private set; }
     public IReadOnlyList<MapViewportFace> NativeFaces { get; private set; } = Array.Empty<MapViewportFace>();
     public IReadOnlyList<MapViewportFace> ImportedFaces { get; private set; } = Array.Empty<MapViewportFace>();
     public IReadOnlyList<MapViewportFace> ImportedCollisionFaces { get; private set; } = Array.Empty<MapViewportFace>();
@@ -70,6 +75,8 @@ public sealed class MapViewportCache
             ImportedSpatial = new(Array.Empty<MapViewportFace>());
             ImportedCollisionSpatial = new(Array.Empty<MapViewportFace>());
             CollisionHeat = Array.Empty<MapCollisionHeatCell>();
+            CollisionRepairs = Array.Empty<MapViewportRepair>();
+            CollisionHealth = null;
         }
         if (geometry || domains.HasFlag(MapChangeDomain.Import)) UpdateMeshes();
     }
@@ -83,6 +90,14 @@ public sealed class MapViewportCache
         ImportedCollisionFaces = Array.AsReadOnly(map.Solid.Take(map.ImportedCollisionFaceCount).Select(face => new MapViewportFace(Guid.Empty,
             face.Points.Select(p => new System.Numerics.Vector3(p.X, p.Y, p.Z)).ToArray(), face.Shade, face.Material, true)).ToArray());
         CollisionRebuildCount++;
+        CollisionRepairs = Array.AsReadOnly(map.CollisionRepairs.Select(r => new MapViewportRepair(
+            r.Kind,r.Confidence,r.Detail,r.Points.Select(p=>new System.Numerics.Vector3(p.X,p.Y,p.Z)).ToArray())).ToArray());
+        CollisionHealth = map.CollisionHealth is { } h
+            ? new MapCollisionHealthSnapshot(h.InputFaces,h.OutputFaces,h.CanonicalizedFaces,h.ConvexifiedFaces,
+                h.StitchedVertices,h.TJunctions,h.RestoredBuriedFaces,h.FloorProxies,h.PhantomFacesRemoved,
+                h.SpawnsMoved,h.ItemsMoved,h.NavigationNodes,h.ReachableNodes,h.NavigationComponents,
+                h.ReachableComponents,h.ProbeCount,h.ProbeFailures,h.SweepCount,h.SweepFailures,h.Confidence)
+            : null;
         RebuildImported();
     }
 
@@ -95,6 +110,9 @@ public sealed class MapViewportCache
         ImportedCollisionFaces = Array.AsReadOnly(analysis.CollisionFaces.Take(analysis.ImportedCollisionFaceCount).Select(face => new MapViewportFace(Guid.Empty,
             face.Points.Select(p => new System.Numerics.Vector3(p.X, p.Y, p.Z)).ToArray(), face.Shade, face.Material, true)).ToArray());
         CollisionRebuildCount++;
+        CollisionRepairs = Array.AsReadOnly(analysis.CollisionRepairs.Select(r => new MapViewportRepair(
+            r.Kind,r.Confidence,r.Detail,r.Points.Select(p=>new System.Numerics.Vector3(p.X,p.Y,p.Z)).ToArray())).ToArray());
+        CollisionHealth = analysis.CollisionHealth;
         RebuildImported();
     }
 

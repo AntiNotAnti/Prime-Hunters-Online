@@ -29,6 +29,7 @@ namespace MphRead.Mods.Launcher.Gui
         public bool Wireframe { get; set; }
         public bool Collision { get; set; }
         public bool CollisionHeatmap { get; set; }
+        public bool CollisionRepairsOverlay { get; set; }
         public bool PartitionOverlay { get; set; }
         public float PartitionCellSize { get; set; } = 64f;
         public bool KillPlane { get; set; }
@@ -216,6 +217,41 @@ namespace MphRead.Mods.Launcher.Gui
                 context.DrawGeometry(Wireframe?null:new SolidColorBrush(color),new Pen(selected?Brushes.Gold:grid,selected?2:1),Polygon(item.Points));
                 if(item.Face.ObjectId!=Guid.Empty)_pick.Add((item.Face.ObjectId,item.Points,item.Depth));
             }
+            }
+            if(CollisionRepairsOverlay)
+            {
+                int shown=0;
+                foreach(MapViewportRepair repair in Cache.CollisionRepairs
+                    .OrderByDescending(r=>r.Confidence))
+                {
+                    if(repair.Points.Length==0||shown>=256)break;
+                    IBrush color=repair.Kind switch
+                    {
+                        MapCollisionRepairKind.FloorProxyAdded => Brushes.LimeGreen,
+                        MapCollisionRepairKind.BuriedRestored => Brushes.Cyan,
+                        MapCollisionRepairKind.PhantomRemoved => repair.Confidence>=.9f?Brushes.OrangeRed:Brushes.Orange,
+                        MapCollisionRepairKind.SpawnMoved or MapCollisionRepairKind.ItemMoved => Brushes.Gold,
+                        MapCollisionRepairKind.ProbeFailure or MapCollisionRepairKind.ReachabilityWarning => Brushes.Magenta,
+                        MapCollisionRepairKind.SeamStitched or MapCollisionRepairKind.TJunctionStitched => Brushes.DeepSkyBlue,
+                        _ => Brushes.LightGreen
+                    };
+                    if(repair.Points.Length==1)
+                    {
+                        var point=Project(repair.Points[0]);
+                        if(point!=null)context.DrawEllipse(color,new Pen(Brushes.White,1),point.Value.Point,5,5);
+                    }
+                    else
+                    {
+                        for(int i=0;i<repair.Points.Length;i++)
+                            Line(context,repair.Points[i],repair.Points[(i+1)%repair.Points.Length],color,2);
+                    }
+                    if(shown<24)
+                    {
+                        Vector center=repair.Points.Aggregate(Vector.Zero,(a,b)=>a+b)/repair.Points.Length;
+                        Label(context,Guid.Empty,$"{repair.Kind} · {repair.Confidence*100:0}% ",center);
+                    }
+                    shown++;
+                }
             }
             if(CollisionHeatmap)
             {

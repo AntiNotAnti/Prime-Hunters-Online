@@ -8,6 +8,13 @@ using OpenTK.Mathematics;
 namespace MphRead.Mods.MapGen;
 
 public sealed record MapPreviewFace(ImmutableArray<Vector3> Points, float Shade, int Material);
+public sealed record MapCollisionRepairPreview(MapCollisionRepairKind Kind, float Confidence,
+    string Detail, ImmutableArray<Vector3> Points);
+public sealed record MapCollisionHealthSnapshot(int InputFaces,int OutputFaces,int CanonicalizedFaces,
+    int ConvexifiedFaces,int StitchedVertices,int TJunctions,int RestoredBuriedFaces,int FloorProxies,
+    int PhantomFacesRemoved,int SpawnsMoved,int ItemsMoved,int NavigationNodes,int ReachableNodes,
+    int NavigationComponents,int ReachableComponents,int ProbeCount,int ProbeFailures,int SweepCount,
+    int SweepFailures,float Confidence);
 
 /// <summary>Immutable analysis shared between waiters. Mutable navigation views are copied.</summary>
 public sealed class MapAnalysisResult
@@ -19,6 +26,8 @@ public sealed class MapAnalysisResult
     public ImmutableArray<MapPreviewFace> CollisionFaces { get; }
     public int ImportedFaceCount { get; }
     public int ImportedCollisionFaceCount { get; }
+    public ImmutableArray<MapCollisionRepairPreview> CollisionRepairs { get; }
+    public MapCollisionHealthSnapshot? CollisionHealth { get; }
     private readonly MapNodePacker.NavigationGraph? _navigation;
     public bool Succeeded => Diagnostics.All(d => d.Severity != MapDiagnosticSeverity.Error);
     internal MapAnalysisResult(string key, MapCompilation compilation, bool navigation, CancellationToken cancellation = default)
@@ -33,6 +42,16 @@ public sealed class MapAnalysisResult
             .ToImmutableArray() ?? ImmutableArray<MapPreviewFace>.Empty;
         ImportedFaceCount = compilation.Map?.ImportedFaceCount ?? 0;
         ImportedCollisionFaceCount = compilation.Map?.ImportedCollisionFaceCount ?? 0;
+        CollisionRepairs = compilation.Map?.CollisionRepairs.Select(r => new MapCollisionRepairPreview(
+            r.Kind,r.Confidence,r.Detail,r.Points.ToImmutableArray())).ToImmutableArray()
+            ?? ImmutableArray<MapCollisionRepairPreview>.Empty;
+        CollisionHealth = compilation.Map?.CollisionHealth is { } health
+            ? new MapCollisionHealthSnapshot(health.InputFaces,health.OutputFaces,health.CanonicalizedFaces,
+                health.ConvexifiedFaces,health.StitchedVertices,health.TJunctions,health.RestoredBuriedFaces,
+                health.FloorProxies,health.PhantomFacesRemoved,health.SpawnsMoved,health.ItemsMoved,
+                health.NavigationNodes,health.ReachableNodes,health.NavigationComponents,health.ReachableComponents,
+                health.ProbeCount,health.ProbeFailures,health.SweepCount,health.SweepFailures,health.Confidence)
+            : null;
         if (navigation && compilation.Map is BuiltMap map)
         {
             try

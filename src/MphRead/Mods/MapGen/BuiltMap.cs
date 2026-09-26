@@ -27,6 +27,8 @@ namespace MphRead.Mods.MapGen
         public int ImportedPatchCollisionLevel { get; set; } = -2;
         public int ImportedPatchCollisionSourceFaces { get; set; }
         public int ImportedPatchCollisionFaces { get; set; }
+        public MapCollisionHealth? CollisionHealth { get; set; }
+        public List<MapCollisionRepair> CollisionRepairs { get; } = new();
 
         public BuiltMap(MapDefinition definition)
         {
@@ -67,6 +69,13 @@ namespace MphRead.Mods.MapGen
         public bool IgnorePlayers { get; set; }
         public bool IgnoreBeams { get; set; }
         public bool IgnoreScan { get; set; }
+
+        // Import/editor provenance. Never serialized into the runtime format.
+        public string CollisionSource { get; set; } = "Unknown";
+        public int CollisionSourceId { get; set; } = -1;
+        public string? CollisionShader { get; set; }
+        public bool PlayerClip { get; set; }
+        public float CollisionConfidence { get; set; } = 1f;
 
         public BuiltFace(Vector3[] points, Vector2[] texcoords, Vector3 normal, int material, float shade)
         {

@@ -24,7 +24,9 @@ public static class Q3ImportService
         bool KeepSpawns = true,
         int PatchLevel = 3,
         int TextureSize = MapTextureBake.DefaultSize,
-        IReadOnlyList<string>? Dependencies = null);
+        IReadOnlyList<string>? Dependencies = null,
+        bool AutoHealCollision = true,
+        float CollisionHealTolerance = 0.0625f);
 
     public sealed record Analysis(
         string Source,
@@ -162,6 +164,8 @@ public static class Q3ImportService
                 definition.Import.KeepSky = options.KeepSky;
                 definition.Import.KeepClip = options.KeepClip;
                 definition.Import.PatchLevel = options.PatchLevel;
+                definition.Import.AutoHealCollision = options.AutoHealCollision;
+                definition.Import.CollisionHealTolerance = options.CollisionHealTolerance;
                 if (!options.KeepSpawns)
                 {
                     definition.Import.KeepSpawns = false;
@@ -225,6 +229,8 @@ public static class Q3ImportService
                 merged.Import.KeepItems = previousImport.KeepItems;
                 merged.Import.PatchLevel = previousImport.PatchLevel;
                 merged.Import.CollisionPatchLevel = previousImport.CollisionPatchLevel;
+                merged.Import.AutoHealCollision = previousImport.AutoHealCollision;
+                merged.Import.CollisionHealTolerance = previousImport.CollisionHealTolerance;
                 merged.Import.TexScale = previousImport.TexScale;
                 merged.Import.DefaultMaterial = previousImport.DefaultMaterial;
                 merged.Import.ShaderMaterials = new Dictionary<string, int>(previousImport.ShaderMaterials,
