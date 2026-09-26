@@ -456,6 +456,16 @@ namespace MphRead.Mods.MapGen
         public int PatchLevel { get; set; } = 3;
 
         /// <summary>
+        /// Collision tessellation for Quake Bezier patches.
+        /// -1 is automatic: keep the rendered patch collision when it fits,
+        /// retry at level 1 when needed, then fall back to structural BSP
+        /// brushes/player clips if the MPH collision format would overflow.
+        /// 0 disables patch collision explicitly; 1-8 forces that detail.
+        /// Rendering still uses <see cref="PatchLevel"/>.
+        /// </summary>
+        public int CollisionPatchLevel { get; set; } = -1;
+
+        /// <summary>
         /// Take the level's own player starts as spawn points. True is right
         /// for a deathmatch level, which was authored with eight of them in
         /// the places its author wanted people to appear. It is wrong for
