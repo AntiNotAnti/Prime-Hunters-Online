@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Collections.Generic;
 using OpenTK.Mathematics;
 
 namespace MphRead.Mods.MapGen
@@ -45,10 +46,76 @@ namespace MphRead.Mods.MapGen
                 references = count > long.MaxValue - references ? long.MaxValue : references + count;
             }
             Add(result, "Collision references", references, 65535);
+            if (map.Definition.Import is { CollisionPatchLevel: -1 }
+                && map.Definition.Collision == null
+                && map.ImportedPatchCollisionLevel >= 0
+                && map.ImportedPatchCollisionLevel < map.Definition.Import.PatchLevel
+                && map.ImportedPatchCollisionSourceFaces > map.ImportedPatchCollisionFaces)
+            {
+                string mode = map.ImportedPatchCollisionLevel == 0
+                    ? "disabled"
+                    : $"reduced to level {map.ImportedPatchCollisionLevel}";
+                result.Warning("FP-MAP-018",
+                    $"Q3 patch collision was {mode} automatically to fit MPH collision budgets "
+                    + $"({map.ImportedPatchCollisionFaces:N0} of {map.ImportedPatchCollisionSourceFaces:N0} patch collision faces kept). "
+                    + "Rendered curves are unchanged; structural BSP brushes and player clips remain solid.");
+            }
             float limit = 8 * MathF.Pow(2, map.Definition.ScaleFactor);
             if (map.Faces.SelectMany(f => f.Points).Any(p => !float.IsFinite(p.LengthSquared)
                 || p.X < -limit || p.Y < -limit || p.Z < -limit || p.X >= limit || p.Y >= limit || p.Z >= limit))
                 result.Error("FP-MAP-004", "Compiled vertices exceed the model fixed-point range.");
+        }
+
+        public static bool CollisionFits(IEnumerable<BuiltFace> faces)
+        {
+            const long max16 = 65535;
+            var parts = new List<BuiltFace>();
+            var points = new HashSet<Vector3>();
+            long pointIndices = 0;
+            Vector3 min = new(float.MaxValue), max = new(float.MinValue);
+            foreach (BuiltFace face in faces)
+            {
+                foreach (BuiltFace part in MapPacker.CollisionParts(face))
+                {
+                    if (parts.Count + 1 >= max16) return false;
+                    pointIndices += part.Points.Length + 1L;
+                    if (pointIndices >= max16) return false;
+                    parts.Add(part);
+                    foreach (Vector3 point in part.Points)
+                    {
+                        points.Add(point);
+                        if (points.Count >= max16) return false;
+                        min = Vector3.ComponentMin(min, point);
+                        max = Vector3.ComponentMax(max, point);
+                    }
+                }
+            }
+            if (parts.Count == 0) return false;
+            long cells = 1;
+            for (int axis = 0; axis < 3; axis++)
+            {
+                cells = SaturatingMultiply(cells,
+                    (long)Math.Floor((max[axis] - min[axis]) / 4.0) + 1);
+                if (cells >= MaxGridCells) return false;
+            }
+            long references = 0;
+            foreach (BuiltFace face in parts)
+            {
+                long count = 1;
+                for (int axis = 0; axis < 3; axis++)
+                {
+                    int a = axis;
+                    double low = face.Points.Min(p => p[a]);
+                    double high = face.Points.Max(p => p[a]);
+                    count = SaturatingMultiply(count,
+                        (long)(Math.Floor((high - min[axis]) / 4)
+                            - Math.Floor((low - min[axis]) / 4) + 1));
+                }
+                references = references > long.MaxValue - count
+                    ? long.MaxValue : references + count;
+                if (references >= max16) return false;
+            }
+            return true;
         }
 
         private static long SaturatingMultiply(long a, long b) => a <= 0 || b <= 0 || a > long.MaxValue / b ? long.MaxValue : a * b;
