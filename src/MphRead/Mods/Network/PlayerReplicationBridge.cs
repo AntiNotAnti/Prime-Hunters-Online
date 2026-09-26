@@ -215,7 +215,6 @@ namespace MphRead.Mods.Network
             if (c.Shoot.IsReleased || c.Boost.IsReleased || c.AltAttack.IsPressed)
             {
                 _latchedCharge = player.ModChargeLevel;
-                _latchedBoostDamage = player.ModBoostDamage;
                 _latchedHomingTarget = c.Shoot.IsReleased
                     ? player.ModPickNetworkHomingTarget()
                     : default;
@@ -230,11 +229,12 @@ namespace MphRead.Mods.Network
         }
 
         /// <summary>
-        /// The charge and ram strength of the newest release, waiting for a
-        /// packet to carry it. See <see cref="IntentPacket.StateSize"/>.
+        /// The weapon charge of the newest release, waiting for a packet to
+        /// carry it. BoostDamage is deliberately not latched here: Samus computes
+        /// the ram damage later in the simulation step, so this pre-step hook only
+        /// ever saw the previous boost's value.
         /// </summary>
         private int _latchedCharge;
-        private int _latchedBoostDamage;
         private NetTargetIdentity _latchedHomingTarget;
         private bool _hasLatch;
 
@@ -324,10 +324,14 @@ namespace MphRead.Mods.Network
                 // IntentPacket.StateSize.
                 ChargeLevel = (byte)Math.Clamp(
                     _hasLatch ? _latchedCharge : player.ModChargeLevel, 0, 255),
-                BoostDamage = (byte)Math.Clamp(
-                    _hasLatch ? _latchedBoostDamage : player.ModBoostDamage, 0, 255),
+                // Unlike weapon charge, boost damage is persistent state for the
+                // active ram. The owner computes it during the previous simulation
+                // step, so reading it live here is the exact value; the old release
+                // latch captured the pre-release (usually zero) value.
+                BoostDamage = (byte)Math.Clamp(player.ModBoostDamage, 0, 255),
                 ShotFlags = (byte)((player.DoubleDamage ? IntentPacket.FlagDoubleDamage : 0)
-                    | (player.IsPrimeHunter ? IntentPacket.FlagPrimeHunter : 0)),
+                    | (player.IsPrimeHunter ? IntentPacket.FlagPrimeHunter : 0)
+                    | (player.Flags1.TestFlag(PlayerFlags1.Boosting) ? IntentPacket.FlagBoosting : 0)),
                 Target = player.CurrentWeapon == BeamType.ShockCoil ? player.ModContinuousNetworkTarget
                     : _hasLatch ? _latchedHomingTarget : default,
                 HasState = true,
@@ -562,7 +566,8 @@ namespace MphRead.Mods.Network
             if (intent.HasState && (_host.IsAuthority || _host.IsHost))
             {
                 player.ModSetShotState(intent.ChargeLevel, intent.BoostDamage,
-                    (intent.ShotFlags & IntentPacket.FlagDoubleDamage) != 0);
+                    (intent.ShotFlags & IntentPacket.FlagDoubleDamage) != 0,
+                    (intent.ShotFlags & IntentPacket.FlagBoosting) != 0);
             }
         }
 
@@ -911,7 +916,7 @@ namespace MphRead.Mods.Network
             {
                 _pressHistory = default; _edgeSender.Reset();
                 _hasLatch = false;
-                _latchedCharge = _latchedBoostDamage = 0;
+                _latchedCharge = 0;
             }
             _lastReportPosition[slot] = Vector3.Zero;
             _lastReportFrame[slot] = 0;
