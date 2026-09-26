@@ -795,6 +795,8 @@ namespace MphRead.Mods.Launcher.Gui
             ControllerNav.Identify(reset, "settings.maintenance.reset-performance");
             reset.Click += (_, _) =>
             {
+                _graphicsPresetRow.Index = (int)GraphicsPreset.Original;
+                ApplyGraphicsPresetDraft(GraphicsPreset.Original);
                 _resolutionScale.Value = 100;
                 _fovRow.Value = RenderOptions.DefaultFov;
                 _lightingRow.On = true;
@@ -1231,6 +1233,7 @@ namespace MphRead.Mods.Launcher.Gui
                 enhancedLight = false; ao = AmbientOcclusionQuality.Off; contacts = false;
                 enhancedFog = volumeFog = hdr = reflections = glow = false;
                 filtering = mipmaps = false; anisotropy = 1;
+                _textureReplacementsRow.On = false;
                 break;
             default:
                 return;
