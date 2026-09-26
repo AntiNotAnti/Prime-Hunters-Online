@@ -246,7 +246,7 @@ internal static class Protocol19Tests
         Check(real.WaitForExit(5000), "real gzip writer completes");
         using var gzip = new GZipStream(File.OpenRead(Directory.GetFiles(output, "*.gz", SearchOption.AllDirectories).Single()), CompressionMode.Decompress);
         using var reader = new StreamReader(gzip); string raw = reader.ReadToEnd();
-        Check(raw.Contains($"protocol\\":{NetConfig.ProtocolVersion}") && raw.Contains("ServerStep") && !raw.Contains("127.0.0.1"), "versioned compressed header/events and privacy-safe schema");
+        Check(raw.Contains($"protocol\":{NetConfig.ProtocolVersion}") && raw.Contains("ServerStep") && !raw.Contains("127.0.0.1"), "versioned compressed header/events and privacy-safe schema");
         string summary = Directory.GetFiles(output, "*.summary.json", SearchOption.AllDirectories).Single();
         UploadFailure(config with { Directory = Path.Combine(root, "http500") }, summary, false);
         UploadFailure(config with { Directory = Path.Combine(root, "http-slow") }, summary, true);
