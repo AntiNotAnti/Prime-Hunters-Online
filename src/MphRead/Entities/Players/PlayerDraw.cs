@@ -53,7 +53,21 @@ namespace MphRead.Entities
                 LoadFlags.TestFlag(LoadFlags.Spawned), _health);
 
             if (_scene.ReplayPoses?.Sample(SlotIndex, _scene.ReplayRenderAlpha, out _, out Vector3 replicaFacing) == true)
+            {
                 drawFacing = replicaFacing;
+            }
+            else if (networkPresented && Mods.Render.FrameTiming.Active
+                && CameraInfo.ModGetFirstPersonDrawPose(
+                    Mods.Render.FrameTiming.PresentationAlpha,
+                    out Vector3 drawCameraPosition, out Vector3 drawCameraTarget,
+                    out _, out _))
+            {
+                Vector3 presentedFacing = drawCameraTarget - drawCameraPosition;
+                if (presentedFacing.LengthSquared > 0.000001f)
+                {
+                    drawFacing = presentedFacing.Normalized();
+                }
+            }
 
             if (Flags2.TestFlag(PlayerFlags2.Spectating))
             {
@@ -173,10 +187,21 @@ namespace MphRead.Entities
                     spineNode.AfterTransform = null;
                     float scale = Metadata.HunterScales[Hunter];
                     float bottom = Fixed.ToFloat(Values.MinPickupHeight);
-                    var lateral = new Vector3(_field70, 0, _field74);
+                    // Build the render-only body basis from the same facing
+                    // selected above for this picture. Remote/replay hunters have
+                    // already been angularly interpolated there; using raw
+                    // _field70/_field74/_gunVec2 here put their torso rotation
+                    // back on the 60 Hz simulation clock.
+                    Vector3 lateral = new(drawFacing.X, 0, drawFacing.Z);
+                    if (lateral.LengthSquared < 0.000001f)
+                    {
+                        lateral = new Vector3(_field70, 0, _field74);
+                    }
+                    lateral = lateral.Normalized();
+                    Vector3 bodyRight = new(lateral.Z, 0, -lateral.X);
                     Matrix4 transform = Matrix4.Identity;
-                    transform.Row0.Xyz = -_gunVec2;
-                    transform.Row1.Xyz = Vector3.Cross(lateral, _gunVec2);
+                    transform.Row0.Xyz = -bodyRight;
+                    transform.Row1.Xyz = Vector3.Cross(lateral, bodyRight);
                     transform.Row2.Xyz = -lateral;
                     transform.Row3.Xyz = drawPosition;
                     transform.Row3.Y += bottom + bottom * (1 - scale);

@@ -110,7 +110,7 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 if (SpectatorMode.IsSpectating)
                 {
-                    Add(menu, "REJOIN MATCH",
+                    Add(menu, "JOIN MATCH",
                         () => RejoinRequested?.Invoke(this, EventArgs.Empty));
                 }
                 else if (SpectatorMode.CanSpectate)

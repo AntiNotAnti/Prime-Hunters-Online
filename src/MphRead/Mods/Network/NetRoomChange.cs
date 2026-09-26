@@ -155,6 +155,10 @@ namespace MphRead.Mods.Network
                 created.LoadFlags |= LoadFlags.SlotActive;
                 created.LoadFlags |= LoadFlags.Active;
                 created.LoadFlags |= LoadFlags.Initial;
+                // Player objects are pooled across rooms. The session preference
+                // decides spectator role after rebuild; never inherit the old
+                // room's hidden/non-solid flag just because this object survived.
+                created.ModSetSpectating(false);
                 // Where this player was, in the room that no longer exists.
                 //
                 // PlayerEntity.Create hands back the same pooled objects
@@ -243,6 +247,15 @@ namespace MphRead.Mods.Network
                 scene.InitEntity(player.Halfturret);
                 NetLog.Event($"slot {slot} re-inserted into the new room");
             }
+            // Per-match teardown deliberately drops the concrete camera state,
+            // but a player who chose the spectator role keeps that preference for
+            // the network session. Rotation/rematch does not pass through MatchStart,
+            // so re-enter spectating here after the new actors exist.
+            if (SpectatorMode.PreferSpectator)
+            {
+                SpectatorMode.Start();
+            }
+
             // Initial MatchStart calls this after LoadScene, but a map/rematch
             // transition never goes through MatchStart. Without this ack the server
             // sits in Starting until its timeout and the client discards snapshots

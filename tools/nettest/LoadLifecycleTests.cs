@@ -3,6 +3,7 @@ using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
+using MphRead.Mods;
 using MphRead.Mods.Network;
 using MphRead.Mods.Multiplayer;
 
@@ -15,6 +16,16 @@ internal static class LoadLifecycleTests
         try
         {
             StartAnnouncementBurst();
+
+            SpectatorMode.Reset();
+            SpectatorMode.SetSessionPreference(true);
+            SpectatorMode.Reset(preservePreference: true);
+            NetArchitectureTests.Check(SpectatorMode.PreferSpectator,
+                "per-match reset preserves spectator session role");
+            SpectatorMode.Reset();
+            NetArchitectureTests.Check(!SpectatorMode.PreferSpectator,
+                "full session reset clears spectator role");
+
             foreach (double lag in new[] { 0.0, .1, 2, 10 })
             {
                 var start = new NetMatchStart(); start.Begin(42, 9, 255); var identity = start.Identity;
