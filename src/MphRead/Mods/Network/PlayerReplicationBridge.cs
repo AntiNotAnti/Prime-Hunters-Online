@@ -200,41 +200,33 @@ namespace MphRead.Mods.Network
             if (c.RollUp.IsPressed) pressed |= IntentButtons.RollUp;
             if (c.RollDown.IsPressed) pressed |= IntentButtons.RollDown;
             _pressHistory = _edgeSender.Record(_host.Frame, pressed);
-            // The charge that will be spent by the shot this frame fires, and
-            // the ram that will be spent by the boost it releases.
+            // A projectile release needs the weapon charge and homing decision
+            // from the frame before ProcessInput spends/resets them. Capture
+            // that release every frame, then hold it until the next intent is
+            // actually sent.
             //
-            // Sampled here rather than in CaptureIntent because this runs
-            // every frame and that one does not: a packet goes out every other
-            // frame, so the current value at capture time is the charge as it
-            // stands *after* the release, which is zero. What the authority
-            // needs is the value the trigger was let go on, so it is latched
-            // on the frame of the release and held until a packet carries it.
-            // Nothing is latched on a frame with no release, and the current
-            // value is sent then, which is what keeps a puppet's charge
-            // tracking its owner's while the trigger is still held.
-            if (c.Shoot.IsReleased || c.Boost.IsReleased || c.AltAttack.IsPressed)
+            // Morph-ball boost damage deliberately is not latched here. Samus
+            // computes _boostDamage later in the simulation step, and it stays
+            // valid while the ram is active; CaptureIntent reads that live
+            // owner-authored result on the following packet.
+            if (c.Shoot.IsReleased)
             {
                 _latchedCharge = player.ModChargeLevel;
-                _latchedBoostDamage = player.ModBoostDamage;
-                _latchedHomingTarget = c.Shoot.IsReleased
-                    ? player.ModPickNetworkHomingTarget()
-                    : default;
-                if (c.Shoot.IsReleased)
-                {
-                    // The owner's visual projectile consumes the same decision
-                    // that is put on the wire for the authority/observers.
-                    player.ModSetPendingHomingTarget(_latchedHomingTarget);
-                }
+                _latchedHomingTarget = player.ModPickNetworkHomingTarget();
+                // The owner's visual projectile consumes the same decision
+                // that is put on the wire for the authority/observers.
+                player.ModSetPendingHomingTarget(_latchedHomingTarget);
                 _hasLatch = true;
             }
         }
 
         /// <summary>
-        /// The charge and ram strength of the newest release, waiting for a
-        /// packet to carry it. See <see cref="IntentPacket.StateSize"/>.
+        /// The weapon charge of the newest release, waiting for a packet to
+        /// carry it. BoostDamage is deliberately not latched here: Samus computes
+        /// the ram damage later in the simulation step, so this pre-step hook only
+        /// ever saw the previous boost's value.
         /// </summary>
         private int _latchedCharge;
-        private int _latchedBoostDamage;
         private NetTargetIdentity _latchedHomingTarget;
         private bool _hasLatch;
 
@@ -324,10 +316,14 @@ namespace MphRead.Mods.Network
                 // IntentPacket.StateSize.
                 ChargeLevel = (byte)Math.Clamp(
                     _hasLatch ? _latchedCharge : player.ModChargeLevel, 0, 255),
-                BoostDamage = (byte)Math.Clamp(
-                    _hasLatch ? _latchedBoostDamage : player.ModBoostDamage, 0, 255),
+                // Unlike weapon charge, boost damage is persistent state for the
+                // active ram. The owner computes it during the previous simulation
+                // step, so reading it live here is the exact value; the old release
+                // latch captured the pre-release (usually zero) value.
+                BoostDamage = (byte)Math.Clamp(player.ModBoostDamage, 0, 255),
                 ShotFlags = (byte)((player.DoubleDamage ? IntentPacket.FlagDoubleDamage : 0)
-                    | (player.IsPrimeHunter ? IntentPacket.FlagPrimeHunter : 0)),
+                    | (player.IsPrimeHunter ? IntentPacket.FlagPrimeHunter : 0)
+                    | (player.Flags1.TestFlag(PlayerFlags1.Boosting) ? IntentPacket.FlagBoosting : 0)),
                 Target = player.CurrentWeapon == BeamType.ShockCoil ? player.ModContinuousNetworkTarget
                     : _hasLatch ? _latchedHomingTarget : default,
                 HasState = true,
@@ -562,7 +558,8 @@ namespace MphRead.Mods.Network
             if (intent.HasState && (_host.IsAuthority || _host.IsHost))
             {
                 player.ModSetShotState(intent.ChargeLevel, intent.BoostDamage,
-                    (intent.ShotFlags & IntentPacket.FlagDoubleDamage) != 0);
+                    (intent.ShotFlags & IntentPacket.FlagDoubleDamage) != 0,
+                    (intent.ShotFlags & IntentPacket.FlagBoosting) != 0);
             }
         }
 
@@ -911,7 +908,7 @@ namespace MphRead.Mods.Network
             {
                 _pressHistory = default; _edgeSender.Reset();
                 _hasLatch = false;
-                _latchedCharge = _latchedBoostDamage = 0;
+                _latchedCharge = 0;
             }
             _lastReportPosition[slot] = Vector3.Zero;
             _lastReportFrame[slot] = 0;

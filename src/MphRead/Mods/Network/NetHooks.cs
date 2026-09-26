@@ -605,6 +605,22 @@ namespace MphRead.Mods.Network
             }
             if (NetSession.IsAuthority)
             {
+                // ProcessAlt runs from relayed controls and can overwrite the
+                // owner's exact ram strength or fail to create a swipe boost at
+                // all. Restore fresh owner state after simulation, immediately
+                // before the authority resolves contact. Stale reports fail
+                // closed instead of leaving a damaging boost armed forever.
+                for (int i = 0; i < PlayerEntity.Players.Count; i++)
+                {
+                    PlayerEntity player = PlayerEntity.Players[i];
+                    if (!player.LoadFlags.TestFlag(LoadFlags.Active) || i == NetSession.LocalSlot)
+                    {
+                        continue;
+                    }
+                    bool fresh = NetSession.RemoteIntentValid[i]
+                        && NetSession.RemoteIntentAge(i) <= StaleIntentFrames;
+                    player.ModApplyReportedBoostState(fresh);
+                }
                 NetContactLagComp.ResolveFrame();
                 NetSession.BroadcastSnapshot();
             }

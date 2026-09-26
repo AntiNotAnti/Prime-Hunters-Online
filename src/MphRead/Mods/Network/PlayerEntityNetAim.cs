@@ -1501,6 +1501,13 @@ namespace MphRead.Entities
         /// whoever is playing a character is the one who knows.
         /// </summary>
         private NetTargetIdentity _modPendingHomingTarget;
+        // The owner's morph-ball attack state is state, not a second simulation.
+        // It arrives one packet after the release frame because the owner computes
+        // _boostDamage during that frame's simulation. Keep it separate from the
+        // authority's transient copy so ProcessAlt cannot overwrite the answer.
+        private ushort _modReportedBoostDamage;
+        private bool _modReportedBoostActive;
+        private bool _modReportedBoostConsumed;
         internal NetTargetIdentity ModContinuousNetworkTarget;
         internal ContinuousTargetState ModContinuousTargetState;
         internal uint ModContinuousFireTick;
@@ -1554,7 +1561,7 @@ namespace MphRead.Entities
             return default;
         }
 
-        internal void ModSetShotState(int chargeLevel, int boostDamage, bool doubleDamage)
+        internal void ModSetShotState(int chargeLevel, int boostDamage, bool doubleDamage, bool boostActive)
         {
             if (SlotIndex == _scene.Services.PlayerReplication.LocalSlot)
             {
@@ -1563,7 +1570,23 @@ namespace MphRead.Entities
                 return;
             }
             EquipInfo.ChargeLevel = (ushort)Math.Clamp(chargeLevel, 0, UInt16.MaxValue);
-            _boostDamage = (ushort)Math.Clamp(boostDamage, 0, UInt16.MaxValue);
+
+            // A client may report the exact value it computed, but it may not
+            // invent a stronger ram. Samus' table tops out at AltAttackDamage
+            // (28 in stock data); Double Damage is applied separately by
+            // TakeDamage just as it is offline.
+            int legalBoostMax = Hunter == Hunter.Samus ? Values.AltAttackDamage : 0;
+            _modReportedBoostDamage = (ushort)Math.Clamp(boostDamage, 0, legalBoostMax);
+            _modReportedBoostActive = boostActive && Hunter == Hunter.Samus
+                && _modReportedBoostDamage > 0;
+            if (!_modReportedBoostActive)
+            {
+                // Seeing the owner's inactive state is the boundary between two
+                // boosts. A ram consumed by a hit may arm again only after this.
+                _modReportedBoostConsumed = false;
+            }
+            _boostDamage = _modReportedBoostDamage;
+
             if (doubleDamage)
             {
                 // Held up rather than counted down: the owner says so again
@@ -1580,6 +1603,51 @@ namespace MphRead.Entities
             {
                 _doubleDmgTimer = 0;
             }
+        }
+
+        /// <summary>
+        /// Re-apply the owner's boost answer after ProcessAlt has had a chance
+        /// to re-derive it from delayed buttons. This runs immediately before
+        /// authoritative contact resolution.
+        /// </summary>
+        internal void ModApplyReportedBoostState(bool fresh)
+        {
+            if (SlotIndex == _scene.Services.PlayerReplication.LocalSlot)
+            {
+                return;
+            }
+            _boostDamage = _modReportedBoostDamage;
+            bool active = fresh && _modReportedBoostActive && !_modReportedBoostConsumed
+                && Hunter == Hunter.Samus && IsAltForm && _health > 0;
+            if (active)
+            {
+                Flags1 |= PlayerFlags1.Boosting;
+            }
+            else
+            {
+                Flags1 &= ~PlayerFlags1.Boosting;
+            }
+        }
+
+        /// <summary>
+        /// A confirmed ram is one attack. The owner can continue reporting
+        /// Boosting for several packets after contact because clients do not
+        /// apply authoritative player-contact damage locally; do not resurrect
+        /// the same ram until the owner reports the inactive boundary.
+        /// </summary>
+        internal void ModConsumeReportedBoost()
+        {
+            if (_modReportedBoostActive)
+            {
+                _modReportedBoostConsumed = true;
+            }
+        }
+
+        internal void ModResetReportedBoostState()
+        {
+            _modReportedBoostDamage = 0;
+            _modReportedBoostActive = false;
+            _modReportedBoostConsumed = false;
         }
 
         internal void ModSetAmmo(int ua, int missiles)

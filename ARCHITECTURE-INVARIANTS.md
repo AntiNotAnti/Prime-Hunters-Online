@@ -6,7 +6,7 @@ This file is the short, machine-oriented source of truth for architectural assum
 
 ## Network protocol
 
-- The current wire protocol is **21** (`NetConfig.ProtocolVersion`).
+- The current wire protocol is **22** (`NetConfig.ProtocolVersion`).
 - Protocol mismatches are refused during the Hello handshake. Do not make incompatible wire or simulation changes without a protocol bump.
 - Dated protocol 6/7/8 measurements in `.claude/` are historical A/B evidence, not the current architecture.
 
@@ -27,7 +27,9 @@ This file is the short, machine-oriented source of truth for architectural assum
   additionally relays controller MoveX/MoveY magnitude so puppet simulation,
   animation, and replay do not reconstruct analogue movement from digital bits.
   Protocol 21 additionally carries the owner's exact continuous firing tick so
-  Shock Coil cadence is not reconstructed from packet arrival timing.
+  Shock Coil cadence is not reconstructed from packet arrival timing. Protocol 22
+  assigns a spare shot-state bit to Samus' active morph-ball boost so the authority
+  uses the owner's exact ram state/damage instead of reconstructing it from delayed input.
 - Preserve `AckFrame`, `AckSubFrame`, eight rising-edge frames, MatchId,
   AuthorityEpoch, SlotGeneration and LifeId. Snapshots are independently decodable
   full states; remote presentation continues to use NetSmoothing.

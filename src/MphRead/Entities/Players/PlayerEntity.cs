@@ -825,6 +825,7 @@ namespace MphRead.Entities
             ModContinuousNetworkTarget = Mods.Network.NetTargetIdentity.None;
             ModContinuousTargetState = default;
             ModContinuousFireTick = 0;
+            ModResetReportedBoostState();
             if (IsMainPlayer)
             {
                 ResetRespawnVisualState();

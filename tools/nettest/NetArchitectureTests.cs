@@ -60,14 +60,14 @@ internal static class NetArchitectureTests
             var intent = IntentPacket.Read(fixture);
             Check(intent.Position == new Vector3(123.25f, -42.5f, 17.75f), "owner position survives wire");
             byte[] output = new byte[IntentPacket.FullSize]; intent.Write(output);
-            Check(output.SequenceEqual(fixture), "v21 intent byte fixture");
+            Check(output.SequenceEqual(fixture), "v22 intent byte fixture");
             Check(intent.AckFrame == 0x87654321 && intent.AckSubFrame == 128 && IntentPacket.PressHistory == 8,
                 "displayed world ACK and eight-frame edge retention");
-            Check(NetConfig.ProtocolVersion == 21 && IntentPacket.FullSize == 102 && intent.HasAnalogMove
+            Check(NetConfig.ProtocolVersion == 22 && IntentPacket.FullSize == 102 && intent.HasAnalogMove
                 && intent.MoveX == 64 && intent.MoveY == -96
                 && intent.HasContinuousFireTick && intent.ContinuousFireTick == 0xCAFEBABE
                 && Math.Abs(IntentPacket.UnpackMoveAxis(intent.MoveX) - 64 / 127f) < .00001f,
-                "protocol 21 carries analog movement and exact continuous firing tick");
+                "protocol 22 carries analog movement, exact continuous firing tick, and boost state");
             string[] forbidden = { "MovementCommand", "MovementAck", "ProcessedMovementFrame", "MovementReconciliation",
                 "PredictedMovementState", "IntentBundle", "SnapshotDelta", "SnapshotKeyframe" };
             Check(!typeof(IntentPacket).Assembly.GetTypes().Any(t => forbidden.Any(n => t.Name.Contains(n))),
