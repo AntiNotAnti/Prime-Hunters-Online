@@ -379,8 +379,30 @@ try
             OpenTK.Mathematics.Vector3.UnitY,0,1);
         Check(MapBudgetValidator.CollisionFits(Enumerable.Repeat(collisionTriangle,10000)),
             "collision fit accepts representable point-index load");
-        Check(!MapBudgetValidator.CollisionFits(Enumerable.Repeat(collisionTriangle,17000)),
+        Check(!MapBudgetValidator.CollisionFits(Enumerable.Repeat(collisionTriangle,22000)),
             "collision fit rejects 16-bit point-index overflow");
+        var strip=new System.Collections.Generic.List<MphRead.Utility.CollisionDataEditor>();
+        for(int x=0;x<1000;x++)
+        {
+            var quad=new MphRead.Utility.CollisionDataEditor
+            {
+                Plane=new OpenTK.Mathematics.Vector4(OpenTK.Mathematics.Vector3.UnitY,0),
+                LayerMask=5
+            };
+            quad.Points.AddRange(new[]{
+                new OpenTK.Mathematics.Vector3(x,0,0),
+                new OpenTK.Mathematics.Vector3(x,0,1),
+                new OpenTK.Mathematics.Vector3(x+1,0,1),
+                new OpenTK.Mathematics.Vector3(x+1,0,0)});
+            strip.Add(quad);
+        }
+        var compactStrip=MapCollisionOptimizer.Optimize(strip,1000);
+        Check(compactStrip.MergedFaces>0&&compactStrip.OptimizedPointIndices<=1000,
+            "coplanar collision strip compacts under point-index target");
+        byte[] compactCollision=MapCollisionPacker.Pack(new[]{strip[0]});
+        var compactHeader=MphRead.Read.ReadStruct<MphRead.Formats.Collision.CollisionHeader>(compactCollision);
+        Check(compactHeader.PointIndexCount==4,
+            "custom collision omits legacy duplicate closing index");
         stopped = false;
         try { Q3Bsp.Load("missing.bsp", null, cancelled.Token); }
         catch (OperationCanceledException) { stopped = true; }
