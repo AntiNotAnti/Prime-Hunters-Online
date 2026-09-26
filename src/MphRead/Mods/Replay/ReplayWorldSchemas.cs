@@ -231,7 +231,7 @@ internal static class ReplayWorldSchemas
             "_modSpawnProtectionStateKnown",
             "_modSpawnProtectedByAuthority",
             "_modSpawnProtectionReleasedThisLife",
-            "_modSpawnProtectionReleaseReports",
+            "_modSpawnProtectionOwnerShotReleasedThisLife",
             "_modSpawnProtectionVisualTicks",
             "_camSwitchTimer",
             "_doubleDmgTimer",
