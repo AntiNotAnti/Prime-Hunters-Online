@@ -176,11 +176,11 @@ namespace MphRead.Mods.Input.AimAssist
                         float candidateFlickAlignment = AimAssistMath.Alignment(state.FlickDirection, flickHead);
                         if (!keep && candidateFlickAlignment < AimAssistTuning.FlickTargetAlignment) continue;
                         float headDistance = flickHead.Length();
-                        float speedT = AimAssistMath.Smooth(AimAssistTuning.FlickDirectionalSpeed,
+                        float candidateSpeedT = AimAssistMath.Smooth(AimAssistTuning.FlickDirectionalSpeed,
                             45f, state.FlickSpeed);
                         float horizon = AimAssistTuning.FlickLandingMaxSeconds
                             + (AimAssistTuning.FlickLandingMinSeconds - AimAssistTuning.FlickLandingMaxSeconds)
-                            * speedT;
+                            * candidateSpeedT;
                         Vector2 candidatePredictedTurn = fittedCameraVelocity * horizon
                             + cameraAcceleration * (.5f * horizon * horizon);
                         Vector2 candidateTargetMotion = keep
@@ -289,7 +289,7 @@ namespace MphRead.Mods.Input.AimAssist
                 Vector2 previousRaw = state.PreviousRaw, previousCameraVelocity = state.PreviousCameraVelocity;
                 Vector2 camera0 = state.CameraVelocity0, camera1 = state.CameraVelocity1;
                 Vector2 camera2 = state.CameraVelocity2, camera3 = state.CameraVelocity3;
-                float correctionBudget = state.CorrectionBudgetUsed, scopeBlend = state.ScopeBlend;
+                float savedCorrectionBudget = state.CorrectionBudgetUsed, scopeBlend = state.ScopeBlend;
                 state.Reset();
                 state.PreviousStick = physicalStick; state.FlickActive = active;
                 state.FlickDirection = direction; state.FlickAge = age; state.FlickTarget = flickTarget;
@@ -299,7 +299,7 @@ namespace MphRead.Mods.Input.AimAssist
                 state.PreviousRaw = previousRaw; state.PreviousCameraVelocity = previousCameraVelocity;
                 state.CameraVelocity0 = camera0; state.CameraVelocity1 = camera1;
                 state.CameraVelocity2 = camera2; state.CameraVelocity3 = camera3;
-                state.CorrectionBudgetUsed = correctionBudget; state.ScopeBlend = scopeBlend;
+                state.CorrectionBudgetUsed = savedCorrectionBudget; state.ScopeBlend = scopeBlend;
                 state.PreviousFiring = previousFiring;
             }
 
