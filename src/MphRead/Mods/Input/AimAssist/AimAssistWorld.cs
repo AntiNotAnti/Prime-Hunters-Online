@@ -199,6 +199,18 @@ namespace MphRead.Entities
                 null, Vector3.Zero, includeEntities: true, _scene);
             return !CollisionDetection.CheckBetweenPoints(candidates, CameraInfo.Position, point, TestFlags.Beams, _scene, ref result);
         }
+
+        private AimAssistShotPhase AssistShotPhase()
+        {
+            if (_timeSinceShot == 0) return AimAssistShotPhase.Fired;
+            if (Controls.Shoot.IsReleased) return AimAssistShotPhase.Released;
+            bool continuous = EquipInfo.Weapon?.Flags.TestFlag(WeaponFlags.Continuous) == true;
+            bool chargeable = EquipInfo.Weapon?.Flags.TestFlag(WeaponFlags.CanCharge) == true;
+            if (continuous && Controls.Shoot.IsDown) return AimAssistShotPhase.Continuous;
+            if (chargeable && Controls.Shoot.IsDown) return AimAssistShotPhase.Charging;
+            if (Controls.Shoot.IsPressed) return AimAssistShotPhase.Pressed;
+            return AimAssistShotPhase.None;
+        }
         private AimAssistResult ApplyControllerAssist(float x, float y)
         {
             // Remote and replay actors consume recorded aim. They must never read or
@@ -212,10 +224,25 @@ namespace MphRead.Entities
                 PointerDevice.Active && PointerDevice.Current.Device != PointerDeviceType.Mouse, now);
             var aim = GamepadInput.AimStick;
             AimInputSourceTracker.Stick(aim.X, aim.Y, now);
-            if (_assistDeviceRevision != snapshot.Revision || _assistContextRevision != context
-                || _aimSourceRevision != AimInputSourceTracker.Revision || !ReferenceEquals(_assistRoom, _scene.Room)
-                || _assistWeapon != CurrentWeapon || _assistZoomed != EquipInfo.Zoomed)
+            bool fullReset = _assistDeviceRevision != snapshot.Revision
+                || _assistContextRevision != context
+                || _aimSourceRevision != AimInputSourceTracker.Revision
+                || !ReferenceEquals(_assistRoom, _scene.Room)
+                || _assistWeapon != CurrentWeapon;
+            float scopeBlend = AimScopeBlend();
+            if (fullReset)
+            {
                 _controllerAssist.Reset();
+                _controllerAssist.ScopeBlend = scopeBlend;
+            }
+            else if (_assistZoomed != EquipInfo.Zoomed)
+            {
+                _controllerAssist.BeginScopeTransition(scopeBlend);
+            }
+            else
+            {
+                _controllerAssist.ScopeBlend = scopeBlend;
+            }
             _assistDeviceRevision = snapshot.Revision;
             _assistContextRevision = context;
             _assistRoom = _scene.Room;
@@ -226,13 +253,7 @@ namespace MphRead.Entities
                 && GamepadContexts.Current == GamepadContext.Gameplay && !GamepadInput.WheelHeld
                 && AimInputSourceTracker.Current == AimInputSource.Gamepad && Health > 0
                 && LoadFlags.TestFlag(LoadFlags.Spawned) && !IsAltForm && !Mods.SpectatorMode.IsSpectating;
-            var weapon = CurrentWeapon switch {
-                BeamType.ShockCoil => AimAssistWeaponClass.Tracking,
-                BeamType.Imperialist => AimAssistWeaponClass.Precision,
-                BeamType.Missile or BeamType.Magmaul or BeamType.OmegaCannon => AimAssistWeaponClass.Splash,
-                BeamType.Judicator or BeamType.Battlehammer => AimAssistWeaponClass.Projectile,
-                _ => AimAssistWeaponClass.Standard };
-            var profile = AimAssistWeaponProfile.For(weapon, EquipInfo.Zoomed);
+            var profile = AimAssistWeaponProfile.For(CurrentWeapon, scopeBlend);
             Span<AimAssistTarget> candidates = stackalloc AimAssistTarget[SlotCapacity];
             int count = 0;
             bool observe = AimAssistTelemetry.Enabled && GamepadContexts.Focused && !GamepadContexts.MenuVisible
@@ -247,7 +268,8 @@ namespace MphRead.Entities
                 Vector3 center = target.Position + volume.SpherePosition;
                 float height = Fixed.ToFloat(target.Values.MaxPickupHeight);
                 Vector3 chest = target.IsAltForm ? center
-                    : Vector3.Lerp(center, target.Position + new Vector3(0, height - .3f, 0), .65f);
+                    : Vector3.Lerp(center, target.Position + new Vector3(0, height - .3f, 0),
+                        profile.BodyAimHeight);
                 Vector3 head = target.Position + new Vector3(0, height - .15f, 0);
                 float distance = (head - CameraInfo.Position).Length;
                 float radius = target.Volume.SphereRadius;
@@ -300,9 +322,10 @@ namespace MphRead.Entities
                 : GamepadAnalog.ApplyRadialDeadZone(pad.LeftX, pad.LeftY, GamepadOptions.LeftInner, GamepadOptions.LeftOuter);
             float move = MathF.Sqrt(movement.X * movement.X + movement.Y * movement.Y);
             // The engine's input/simulation step is fixed at 60 Hz; render rate does not change this interval.
+            AimAssistShotPhase shotPhase = AssistShotPhase();
             var result = AimAssist.Apply(_controllerAssist, candidates[..count], new(x, y), new System.Numerics.Vector2(-aim.X * (GamepadOptions.InvertX != Controls.InvertAimX ? -1 : 1),
                     aim.Y * (GamepadOptions.InvertY != Controls.InvertAimY ? -1 : 1)),
-                move, 1f / 60, eligible, profile, Controls.Shoot.IsDown);
+                move, 1f / 60, eligible, profile, Controls.Shoot.IsDown, shotPhase);
             AimAssistTarget chosen = default;
             foreach (ref readonly var candidate in candidates[..count]) if (candidate.Slot == result.TargetSlot) chosen = candidate;
             if (AimAssistDebug.UnassistedArm)
@@ -317,7 +340,8 @@ namespace MphRead.Entities
                 _controllerAssist.PreviousOutput = new(x, y);
             }
             GamepadInput.SetAimPrecisionContext(
-                AimAssistDebug.UnassistedArm ? 0 : result.FilterRelease);
+                AimAssistDebug.UnassistedArm ? 0 : result.FilterRelease,
+                AimAssistDebug.UnassistedArm ? 0 : result.TurnAccelerationBrake);
             AimAssistDebug.Result = result; AimAssistDebug.Target = chosen;
             AimAssistDebug.Raw = new(x, y); AimAssistDebug.Velocity = _controllerAssist.AngularVelocity;
             var observation = result;
