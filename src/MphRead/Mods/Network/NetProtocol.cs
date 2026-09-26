@@ -934,7 +934,7 @@ namespace MphRead.Mods.Network
         {
             dest[..Size].Clear();
             BinaryPrimitives.WriteUInt16LittleEndian(dest, MatchId);
-            dest[2] = (byte)Math.Min(Count, MaxEntries);
+            dest[2] = (byte)Math.Min((int)Count, MaxEntries);
             int offset = HeaderSize;
             for (int i = 0; i < Count && i < MaxEntries; i++)
             {
