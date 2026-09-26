@@ -95,6 +95,39 @@ namespace MphRead.Mods
             RenderOptions.CelEdge = Math.Clamp(
                 RenderOptions.ParseInt(settings.CelEdge,
                     (int)MathF.Round(RenderOptions.CelEdge * 100)) / 100f, 0, 1);
+
+            if (Enum.TryParse(settings.GraphicsPreset, true, out GraphicsPreset preset))
+                RenderOptions.Preset = preset;
+            if (Enum.TryParse(settings.AntiAliasing, true, out AntiAliasingMode aa))
+                RenderOptions.AntiAliasing = aa;
+            RenderOptions.SharpenStrength = RenderOptions.ParseInt(settings.SharpenStrength,
+                RenderOptions.SharpenStrength);
+            RenderOptions.Bloom = RenderOptions.ParseOnOff(settings.Bloom, RenderOptions.Bloom);
+            RenderOptions.BloomIntensity = RenderOptions.ParseInt(settings.BloomIntensity,
+                RenderOptions.BloomIntensity);
+            if (Enum.TryParse(settings.ColorGrade, true, out ColorGradeProfile grade))
+                RenderOptions.ColorGrade = grade;
+            RenderOptions.Gamma = RenderOptions.ParseInt(settings.Gamma, RenderOptions.Gamma);
+            RenderOptions.Contrast = RenderOptions.ParseInt(settings.Contrast, RenderOptions.Contrast);
+            RenderOptions.Saturation = RenderOptions.ParseInt(settings.Saturation, RenderOptions.Saturation);
+            RenderOptions.EnhancedLighting = RenderOptions.ParseOnOff(settings.EnhancedLighting,
+                RenderOptions.EnhancedLighting);
+            if (Enum.TryParse(settings.AmbientOcclusion, true, out AmbientOcclusionQuality ao))
+                RenderOptions.AmbientOcclusion = ao;
+            RenderOptions.ContactShadows = RenderOptions.ParseOnOff(settings.ContactShadows,
+                RenderOptions.ContactShadows);
+            RenderOptions.EnhancedFog = RenderOptions.ParseOnOff(settings.EnhancedFog,
+                RenderOptions.EnhancedFog);
+            RenderOptions.VolumetricFog = RenderOptions.ParseOnOff(settings.VolumetricFog,
+                RenderOptions.VolumetricFog);
+            RenderOptions.InternalHdr = RenderOptions.ParseOnOff(settings.InternalHdr,
+                RenderOptions.InternalHdr);
+            RenderOptions.Reflections = RenderOptions.ParseOnOff(settings.Reflections,
+                RenderOptions.Reflections);
+            RenderOptions.DynamicGlow = RenderOptions.ParseOnOff(settings.DynamicGlow,
+                RenderOptions.DynamicGlow);
+            RenderOptions.TextureReplacements = RenderOptions.ParseOnOff(settings.TextureReplacements,
+                RenderOptions.TextureReplacements);
             DebugLog.Line("performance", Maintenance.PerformanceSummary(settings));
         }
 

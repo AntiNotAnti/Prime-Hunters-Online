@@ -658,7 +658,12 @@ namespace MphRead.Mods.Input.AimAssist
             if (state.FlickSpeed > 45 && flickLandingError > captureRadii * 1.5f)
                 captureRadii *= .75f;
             bool naturalLanding = flickLandingError <= captureRadii;
-            bool currentCapture = normalizedHead > 0 && normalizedHead <= captureRadii;
+            // Normalized target radii keep flick behavior consistent across distance,
+            // but a very small projected head can make a tiny sub-degree miss look
+            // numerically huge. Preserve the existing precision behavior: an aligned
+            // flick may finish the last 0.30 degrees into the mechanical head region.
+            bool currentCapture = normalizedHead > 0
+                && (normalizedHead <= captureRadii || headAngle <= .30f);
             bool capture = state.FlickActive && !state.FlickConsumed && visibleHead && !opposingHead
                 && state.FlickTarget == target.Slot
                 && (currentCapture || state.FlickBraking && naturalLanding)

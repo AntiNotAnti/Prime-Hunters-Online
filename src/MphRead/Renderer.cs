@@ -1478,8 +1478,14 @@ namespace MphRead
             }
             Texture texture = model.Recolors[recolorId].Textures[textureId];
             GL.BindTexture(TextureTarget.Texture2D, _lastTextureId);
-            GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba, texture.Width, texture.Height, 0,
-                PixelFormat.Rgba, PixelType.UnsignedByte, pixels.ToArray());
+            bool replaced = Mods.Render.TextureReplacementPack.TryUpload(model,
+                textureId, paletteId, recolorId, out _, out _);
+            if (!replaced)
+            {
+                GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba,
+                    texture.Width, texture.Height, 0, PixelFormat.Rgba,
+                    PixelType.UnsignedByte, pixels.ToArray());
+            }
             // Mipmaps are generated lazily if/when the player enables them.
             // The default DS/competitive path therefore pays no extra upload
             // time or GPU memory simply because the option exists.
@@ -2318,7 +2324,7 @@ namespace MphRead
                 return null;
             }
             byte[] buffer = new byte[width * height * 3];
-            GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, _frameBuffer);
+            GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, GraphicsReadFramebuffer());
             GL.ReadBuffer(ReadBufferMode.ColorAttachment0);
             GL.PixelStore(PixelStoreParameter.PackAlignment, 1);
             GL.ReadPixels(0, 0, width, height, PixelFormat.Rgb, PixelType.UnsignedByte, buffer);
@@ -2356,8 +2362,9 @@ namespace MphRead
         /// </summary>
         private void UpdateDepthAttachment(Vector2i target)
         {
-            bool want = !_depthTextureRefused && Mods.RenderOptions.CelShading
-                && Mods.RenderOptions.CelEdge > 0;
+            bool want = !_depthTextureRefused
+                && ((Mods.RenderOptions.CelShading && Mods.RenderOptions.CelEdge > 0)
+                    || Mods.RenderOptions.NeedsReadableDepth);
             if (want == (_depthTexture != 0))
             {
                 return;
@@ -2913,6 +2920,10 @@ namespace MphRead
                 this.Players.Main.DrawHudModels();
                 UnsetHudLayerUniforms();
             }
+
+            // Process the completed scene target before it is presented. The full
+            // visor/HUD is still drawn afterwards at window resolution.
+            ApplyGraphicsPostProcess();
 
             // After the weapon, so it is drawn around too, and before the
             // target is put on screen, so the helmet and the HUD are not.
@@ -4757,6 +4768,7 @@ namespace MphRead
             }
             if (Services?.IsReplica != true) Read.ClearCache();
             DisposePlayerOutlines();
+            DisposeGraphicsPipeline();
             // The cel target also owns a reference to _screenTexture. Release
             // it before deleting that texture in the shell's persistent context.
             if (_celFrameBuffer != 0)

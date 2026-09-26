@@ -154,7 +154,7 @@ namespace MphRead
             {
                 GL.UseProgram(_rttShaderProgramId);
             }
-            GL.BindTexture(TextureTarget.Texture2D, _screenTexture);
+            GL.BindTexture(TextureTarget.Texture2D, GraphicsCompositeTexture());
             CheckGlError("BeginCompositePass");
         }
 

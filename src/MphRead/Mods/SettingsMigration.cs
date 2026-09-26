@@ -15,7 +15,7 @@ namespace MphRead.Mods
     /// </summary>
     public static class SettingsMigration
     {
-        public const int CurrentSchema = 1;
+        public const int CurrentSchema = 2;
 
         public static bool Apply(MenuSettings settings, out string summary)
         {
@@ -66,6 +66,47 @@ namespace MphRead.Mods
                 Math.Clamp(RenderOptions.ParseInt(settings.CelEdge, 50), 0, 100)
                     .ToString(CultureInfo.InvariantCulture), "cel edge", changed);
 
+            settings.GraphicsPreset = NormalizeEnum(settings.GraphicsPreset,
+                GraphicsPreset.Original, "graphics preset", changed);
+            settings.AntiAliasing = NormalizeEnum(settings.AntiAliasing,
+                AntiAliasingMode.Off, "anti-aliasing", changed);
+            settings.SharpenStrength = Normalize(settings.SharpenStrength,
+                Math.Clamp(RenderOptions.ParseInt(settings.SharpenStrength, 0), 0, 100)
+                    .ToString(CultureInfo.InvariantCulture), "sharpening", changed);
+            settings.Bloom = NormalizeToggle(settings.Bloom, false, "bloom", changed);
+            settings.BloomIntensity = Normalize(settings.BloomIntensity,
+                Math.Clamp(RenderOptions.ParseInt(settings.BloomIntensity, 60), 0, 150)
+                    .ToString(CultureInfo.InvariantCulture), "bloom intensity", changed);
+            settings.ColorGrade = NormalizeEnum(settings.ColorGrade,
+                ColorGradeProfile.Original, "color grade", changed);
+            settings.Gamma = Normalize(settings.Gamma,
+                Math.Clamp(RenderOptions.ParseInt(settings.Gamma, 100), 50, 150)
+                    .ToString(CultureInfo.InvariantCulture), "gamma", changed);
+            settings.Contrast = Normalize(settings.Contrast,
+                Math.Clamp(RenderOptions.ParseInt(settings.Contrast, 100), 50, 150)
+                    .ToString(CultureInfo.InvariantCulture), "contrast", changed);
+            settings.Saturation = Normalize(settings.Saturation,
+                Math.Clamp(RenderOptions.ParseInt(settings.Saturation, 100), 0, 200)
+                    .ToString(CultureInfo.InvariantCulture), "saturation", changed);
+            settings.EnhancedLighting = NormalizeToggle(settings.EnhancedLighting, false,
+                "enhanced lighting", changed);
+            settings.AmbientOcclusion = NormalizeEnum(settings.AmbientOcclusion,
+                AmbientOcclusionQuality.Off, "ambient occlusion", changed);
+            settings.ContactShadows = NormalizeToggle(settings.ContactShadows, false,
+                "contact shadows", changed);
+            settings.EnhancedFog = NormalizeToggle(settings.EnhancedFog, false,
+                "enhanced fog", changed);
+            settings.VolumetricFog = NormalizeToggle(settings.VolumetricFog, false,
+                "volumetric fog", changed);
+            settings.InternalHdr = NormalizeToggle(settings.InternalHdr, false,
+                "HDR tone mapping", changed);
+            settings.Reflections = NormalizeToggle(settings.Reflections, false,
+                "reflections", changed);
+            settings.DynamicGlow = NormalizeToggle(settings.DynamicGlow, false,
+                "dynamic glow", changed);
+            settings.TextureReplacements = NormalizeToggle(settings.TextureReplacements, false,
+                "HD texture replacements", changed);
+
             settings.SfxVolume = NormalizeVolume(settings.SfxVolume, 0.35f, "sfx volume", changed);
             settings.MusicVolume = NormalizeVolume(settings.MusicVolume, 0.50f, "music volume", changed);
 
@@ -96,7 +137,40 @@ namespace MphRead.Mods
             settings.CelShading = "off";
             settings.CelBands = "8";
             settings.CelEdge = "50";
+            settings.GraphicsPreset = "original";
+            settings.AntiAliasing = "off";
+            settings.SharpenStrength = "0";
+            settings.Bloom = "off";
+            settings.BloomIntensity = "60";
+            settings.ColorGrade = "original";
+            settings.Gamma = "100";
+            settings.Contrast = "100";
+            settings.Saturation = "100";
+            settings.EnhancedLighting = "off";
+            settings.AmbientOcclusion = "off";
+            settings.ContactShadows = "off";
+            settings.EnhancedFog = "off";
+            settings.VolumetricFog = "off";
+            settings.InternalHdr = "off";
+            settings.Reflections = "off";
+            settings.DynamicGlow = "off";
+            settings.TextureReplacements = "off";
             settings.SettingsSchemaVersion = CurrentSchema;
+        }
+
+        private static string NormalizeToggle(string value, bool fallback, string name,
+            List<string> changed)
+        {
+            return Normalize(value,
+                RenderOptions.OnOff(RenderOptions.ParseOnOff(value, fallback)), name, changed);
+        }
+
+        private static string NormalizeEnum<T>(string value, T fallback, string name,
+            List<string> changed) where T : struct, Enum
+        {
+            T normalized = Enum.TryParse(value, true, out T parsed)
+                && Enum.IsDefined(typeof(T), parsed) ? parsed : fallback;
+            return Normalize(value, normalized.ToString().ToLowerInvariant(), name, changed);
         }
 
         private static string NormalizeVolume(string value, float fallback, string name,

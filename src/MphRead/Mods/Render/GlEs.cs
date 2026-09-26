@@ -1008,6 +1008,11 @@ namespace MphRead.Mods.Render
             ES.GL.Uniform1(location, count, value);
         }
 
+        public static void Uniform2(int location, float x, float y)
+        {
+            ES.GL.Uniform2(location, x, y);
+        }
+
         public static void Uniform3(int location, Vector3 vector)
         {
             ES.GL.Uniform3(location, vector);
