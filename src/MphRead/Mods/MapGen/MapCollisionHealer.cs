@@ -823,6 +823,7 @@ public static class MapCollisionHealer
     private sealed class FaceIndex
     {
         private readonly Dictionary<(int X, int Y, int Z), List<BuiltFace>> _cells = new();
+        private readonly List<BuiltFace> _large = new();
         private readonly float _cell;
 
         public FaceIndex(IEnumerable<BuiltFace> faces, float cell)
@@ -840,7 +841,7 @@ public static class MapCollisionHealer
                 long count = (long)(high.X - low.X + 1) * (high.Y - low.Y + 1) * (high.Z - low.Z + 1);
                 if (count > 4096)
                 {
-                    Add(Cell(Centre(face), _cell), face);
+                    _large.Add(face);
                     continue;
                 }
                 for (int x = low.X; x <= high.X; x++)
@@ -861,6 +862,8 @@ public static class MapCollisionHealer
             var low = Cell(point - new Vector3(radius), _cell);
             var high = Cell(point + new Vector3(radius), _cell);
             var seen = new HashSet<BuiltFace>();
+            foreach(BuiltFace face in _large)
+                if(seen.Add(face))yield return face;
             for (int x = low.X; x <= high.X; x++)
                 for (int y = low.Y; y <= high.Y; y++)
                     for (int z = low.Z; z <= high.Z; z++)
