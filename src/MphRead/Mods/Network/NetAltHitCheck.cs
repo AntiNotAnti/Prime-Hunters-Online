@@ -102,6 +102,46 @@ public static class NetAltHitCheck
             Check(!NetUnlagged.TryHistoricalPose(victim, 213, out _), "spectators never enter history");
             typeof(PlayerEntity).GetProperty(nameof(PlayerEntity.Flags2))!.SetValue(victim, victim.Flags2 & ~PlayerFlags2.Spectating);
 
+            // Protocol 22 boost state: exact owner-authored damage, server-side
+            // bounds, one contact per ram, and stale reports fail closed.
+            shooter.ModForceForm(true); victim.ModForceForm(false);
+            shooter.Health = victim.Health = 199;
+            typeof(PlayerEntity).GetField("_spawnInvulnTimer", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(victim, (ushort)0);
+
+            shooter.ModSetShotState(0, 14, doubleDamage: false, boostActive: true);
+            shooter.ModApplyReportedBoostState(fresh: true);
+            Check(shooter.Flags1.TestFlag(PlayerFlags1.Boosting) && shooter.ModBoostDamage == 14,
+                "partial owner boost arms exact authority damage");
+            int exactHealth = victim.Health;
+            shooter.ModApplyContactHit(victim, ContactAttackKind.Boost);
+            Check(exactHealth - victim.Health == 14, "partial boost deals exact reported damage");
+            shooter.ModApplyReportedBoostState(fresh: true);
+            Check(!shooter.Flags1.TestFlag(PlayerFlags1.Boosting),
+                "confirmed boost stays consumed while owner still reports active");
+            shooter.ModSetShotState(0, 0, doubleDamage: false, boostActive: false);
+
+            shooter.ModSetShotState(0, 255, doubleDamage: false, boostActive: true);
+            shooter.ModApplyReportedBoostState(fresh: true);
+            Check(shooter.ModBoostDamage == shooter.Values.AltAttackDamage,
+                "authority caps reported boost to Samus legal maximum");
+            shooter.ModSetShotState(0, 0, doubleDamage: false, boostActive: false);
+
+            victim.Health = 199;
+            shooter.ModSetShotState(0, shooter.Values.AltAttackDamage, doubleDamage: true, boostActive: true);
+            shooter.ModApplyReportedBoostState(fresh: true);
+            exactHealth = victim.Health;
+            shooter.ModApplyContactHit(victim, ContactAttackKind.Boost);
+            Check(exactHealth - victim.Health == shooter.Values.AltAttackDamage * 2,
+                "full boost receives Double Damage exactly once");
+            shooter.ModSetShotState(0, 0, doubleDamage: false, boostActive: false);
+
+            shooter.ModSetShotState(0, shooter.Values.AltAttackDamage, doubleDamage: false, boostActive: true);
+            shooter.ModApplyReportedBoostState(fresh: false);
+            Check(!shooter.Flags1.TestFlag(PlayerFlags1.Boosting),
+                "stale owner boost report cannot remain damaging");
+            shooter.ModSetShotState(0, 0, doubleDamage: false, boostActive: false);
+
             // Real Samus damage path: accepted endpoint misses, sweep crosses.
             shooter.ModForceForm(true); victim.ModForceForm(false);
             shooter.ModPlaceAt(new Vector3(-2, 5, 10)); victim.ModPlaceAt(new Vector3(0, 5, 10));
