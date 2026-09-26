@@ -22,6 +22,16 @@ namespace MphRead.Mods.MapGen
                 Add(result,"Render partitions",render.Partitions,Int16.MaxValue-1);
                 Add(result,"Render meshes",render.Meshes,UInt16.MaxValue/2);
                 Add(result,"Render command bytes",render.CommandBytes,MapPackageReader.MaxEntryBytes);
+                if(map.Definition.Partitioning?.PortalCulling==true)
+                {
+                    Add(result,"Portal room parts",render.Partitions,MapRuntimePartitioner.MaxPortalParts+1);
+                    Add(result,"Generated portals",render.Portals,512);
+                    if(!render.PortalCullingApplied&&render.Partitions>1)
+                        result.Warning("FP-MAP-018",
+                            render.Partitions>MapRuntimePartitioner.MaxPortalParts
+                                ? $"Portal culling requested, but {render.Partitions} spatial parts exceed the runtime {MapRuntimePartitioner.MaxPortalParts}-part visibility ceiling. Render partitioning remains enabled without portal culling."
+                                : "Portal culling requested, but the spatial part graph is disconnected. Render partitioning remains enabled without portal culling.");
+                }
             }
             Add(result, "Collision faces", collisionMetrics.Faces, 65535);
             Add(result, "Collision points", collisionMetrics.Points, 65535);
