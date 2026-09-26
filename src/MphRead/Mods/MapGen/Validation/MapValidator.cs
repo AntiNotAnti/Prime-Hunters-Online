@@ -46,6 +46,14 @@ namespace MphRead.Mods.MapGen
                 r.Error("FP-MAP-012", "Fog slope or offset is outside the runtime range.");
             if (d.Preview != null && (!Vector(d.Preview.Position) || !Vector(d.Preview.Target)))
                 r.Error("FP-MAP-011", "Preview camera needs finite position and target vectors.");
+            if(d.Partitioning is {} partition)
+            {
+                if(!float.IsFinite(partition.CellSize)||partition.CellSize is < 8 or > 512
+                    || partition.FaceThreshold is < 256 or > 1_000_000
+                    || partition.MaxVerticesPerDisplayList is < 1024 or > 65000
+                    || !float.IsFinite(partition.PortalVerticalMargin)||partition.PortalVerticalMargin is < 0 or > 64)
+                    r.Error("FP-MAP-003","Partition settings require cell size 8–512, face threshold 256–1,000,000, display-list vertex cap 1,024–65,000 and portal margin 0–64.");
+            }
             if (d.Materials == null || d.Brushes == null || d.Geometry == null || d.Spawns == null || d.Items == null || d.JumpPads == null)
             {
                 r.Error("FP-MAP-008", "Map collections cannot be null.");
