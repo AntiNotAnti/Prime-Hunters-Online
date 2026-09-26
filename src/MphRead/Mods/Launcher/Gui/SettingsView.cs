@@ -1089,7 +1089,7 @@ namespace MphRead.Mods.Launcher.Gui
             Heading(page, "Quality preset");
             _graphicsPresetRow = Add(page, new ChoiceRow("Preset",
                 new[] { "Original", "Performance", "Enhanced", "Ultra", "Extreme", "Custom" },
-                (int)RenderOptions.GraphicsPreset));
+                (int)RenderOptions.Preset));
             Explain(page, "Original preserves the existing renderer. Enhanced and above add presentation-only processing after the 3D world is rendered and before the full-resolution HUD.");
 
             Heading(page, "Rendering");
