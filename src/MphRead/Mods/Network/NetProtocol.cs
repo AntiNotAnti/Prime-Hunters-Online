@@ -1345,8 +1345,9 @@ namespace MphRead.Mods.Network
         /// </summary>
         public const byte FlagBoosting = 1 << 2;
         /// <summary>
-        /// The owner successfully spawned a real weapon shot since the previous
-        /// intent. Repeated for several frames by the sender. The authority may
+        /// The owner successfully spawned a real weapon shot during this life.
+        /// Kept set until the next spawn so packet loss or reconnection cannot
+        /// resurrect protection. The authority may
         /// trust this only to REMOVE spawn protection, which can never benefit a
         /// dishonest sender, and lifecycle fencing prevents an old-life report
         /// from touching a respawn.
