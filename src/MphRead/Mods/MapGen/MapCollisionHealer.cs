@@ -196,7 +196,7 @@ public static class MapCollisionHealer
                     }
                     BuiltFace repaired = Copy(source, hull, normal);
                     repaired.CollisionConfidence = Math.Min(repaired.CollisionConfidence, .98f);
-                    health?.ConvexifiedFaces++;
+                    if(health!=null)health.ConvexifiedFaces++;
                     map?.CollisionRepairs.Add(new(MapCollisionRepairKind.Convexified, .98f,
                         $"Runtime-invalid {points.Length}-vertex polygon rebuilt as a convex {hull.Length}-vertex polygon.",
                         hull));
@@ -223,7 +223,7 @@ public static class MapCollisionHealer
                 repaired.CollisionConfidence = Math.Min(repaired.CollisionConfidence, .94f);
                 yield return repaired;
             }
-            health?.ConvexifiedFaces++;
+            if(health!=null)health.ConvexifiedFaces++;
             map?.CollisionRepairs.Add(new(MapCollisionRepairKind.Convexified, .94f,
                 "Runtime-invalid polygon triangulated because a safe convex hull could not be retained.",
                 points));
@@ -233,7 +233,7 @@ public static class MapCollisionHealer
         BuiltFace normalized = Copy(source, points, normal);
         if (changed)
         {
-            health?.CanonicalizedFaces++;
+            if(health!=null)health.CanonicalizedFaces++;
             map?.CollisionRepairs.Add(new(MapCollisionRepairKind.Canonicalized, .995f,
                 "Collision vertices snapped to exact 20.12 runtime precision and redundant edge points removed.",
                 points));
