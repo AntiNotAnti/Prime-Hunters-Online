@@ -477,6 +477,9 @@ namespace MphRead.Entities
         private ushort _shockCoilTimer = 0;
         public ushort ShockCoilTimer => _shockCoilTimer;
         private ushort _timeSinceMorphCamera = 0;
+        // Local rolling-alt input can temporarily pin its camera-relative basis
+        // while the third-person camera is being displaced by collision.
+        private bool _altCameraCollisionBasisLock = false;
         private ushort _horizColTimer = 0;
 
         private EffectEntry? _deathaltEffect = null;

@@ -209,6 +209,8 @@ namespace MphRead.Entities
             {
                 _field553--;
             }
+            Vector3 cameraCollisionStart = CameraInfo.Position;
+            bool cameraObstructed = false;
             if ((CameraInfo.Position - Volume.SpherePosition).LengthSquared >= 6 * 6)
             {
                 _field551 = 255;
@@ -483,11 +485,16 @@ namespace MphRead.Entities
                 {
                     _field552 = 255;
                 }
+                else
+                {
+                    cameraObstructed = true;
+                }
             }
             CollisionResult targResult = default;
             if (CollisionDetection.CheckBetweenPoints(CameraInfo.Target, CameraInfo.Position,
                 TestFlags.Players, _scene, ref targResult))
             {
+                cameraObstructed = true;
                 if (_field552 < 15 * 2) // todo: FPS stuff
                 {
                     _field552++;
@@ -501,6 +508,25 @@ namespace MphRead.Entities
             else
             {
                 _field552 = 0;
+            }
+
+            // Some collision paths (sphere push-out and closed doors)
+            // correct the camera without tripping the side/vertical probes above.
+            // Any displacement produced by this collision phase counts too.
+            cameraObstructed |= (CameraInfo.Position - cameraCollisionStart).LengthSquared > 0.000001f;
+
+            bool rollingInputHeld = Controls.RollUp.IsDown || Controls.RollDown.IsDown
+                || Controls.RolltLeft.IsDown || Controls.RollRight.IsDown || Input.AltSwipeEngaged;
+            if (cameraObstructed && IsMainPlayer && rollingInputHeld)
+            {
+                // Rolling alt-form movement is camera-relative. Do not let the
+                // collision-adjusted third-person camera rotate an already-held
+                // WASD/stick/drag command underneath the player. ProcessAlt owns
+                // the unlock policy: release/new direction re-anchors immediately;
+                // otherwise the lock expires after the camera has stayed clear.
+                _altCameraCollisionBasisLock = true;
+                Flags1 |= PlayerFlags1.AltDirOverride;
+                _timeSinceMorphCamera = 0;
             }
         }
 
