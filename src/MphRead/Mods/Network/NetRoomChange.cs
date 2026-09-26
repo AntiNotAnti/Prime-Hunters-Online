@@ -243,6 +243,15 @@ namespace MphRead.Mods.Network
                 scene.InitEntity(player.Halfturret);
                 NetLog.Event($"slot {slot} re-inserted into the new room");
             }
+            // Per-match teardown deliberately drops the concrete camera state,
+            // but a player who chose the spectator role keeps that preference for
+            // the network session. Rotation/rematch does not pass through MatchStart,
+            // so re-enter spectating here after the new actors exist.
+            if (SpectatorMode.PreferSpectator)
+            {
+                SpectatorMode.Start();
+            }
+
             // Initial MatchStart calls this after LoadScene, but a map/rematch
             // transition never goes through MatchStart. Without this ack the server
             // sits in Starting until its timeout and the client discards snapshots
