@@ -91,16 +91,31 @@ namespace MphRead.Mods.MapGen
                 if (geometry is MapConvexBrush && (vertices.Any(p => Vector3.Dot(normal, p-points[0]) > .001)
                     || points.Any(p => Math.Abs(Vector3.Dot(normal, p-points[0])) > .001)))
                     throw new MapAuthoringException("FP-MAP-013", "Brush faces must be planar and convex.");
-                MapUv uv = geometry.FaceUv != null && geometry.FaceUv.TryGetValue(faceIndex, out var custom) ? custom : geometry.Uv;
-                if (uv == null || uv.Scale?.Length != 2 || uv.Offset?.Length != 2 || uv.Scale.Any(x => !float.IsFinite(x) || x <= 0)
-                    || uv.Offset.Any(x => !float.IsFinite(x)) || !float.IsFinite(uv.Rotation)) throw new MapAuthoringException("FP-MAP-001", "Invalid UV settings.");
-                Vector3 u = (points[1]-points[0]).Normalized(), v = Vector3.Cross(normal,u);
-                float angle = MathHelper.DegreesToRadians(uv.Rotation), cos = MathF.Cos(angle), sin = MathF.Sin(angle);
-                Vector2[] coords = points.Select(p =>
+                Vector2[] coords;
+                if (geometry is MapMesh explicitMesh && explicitMesh.FaceTexcoords != null
+                    && faceIndex < explicitMesh.FaceTexcoords.Count
+                    && explicitMesh.FaceTexcoords[faceIndex] is {} authoredUv)
                 {
-                    float x = Vector3.Dot(p-points[0],u)*texScale*uv.Scale[0], y = Vector3.Dot(p-points[0],v)*texScale*uv.Scale[1];
-                    return new Vector2(x*cos-y*sin+uv.Offset[0], x*sin+y*cos+uv.Offset[1]);
-                }).ToArray();
+                    if (authoredUv.Length != points.Length
+                        || authoredUv.Any(value => value == null || value.Length != 2
+                            || !float.IsFinite(value[0]) || !float.IsFinite(value[1])))
+                        throw new MapAuthoringException("FP-MAP-001", "Explicit mesh UVs must provide two finite values per face vertex.");
+                    coords = authoredUv.Select(value => new Vector2(value[0], value[1])).ToArray();
+                }
+                else
+                {
+                    MapUv uv = geometry.FaceUv != null && geometry.FaceUv.TryGetValue(faceIndex, out var custom) ? custom : geometry.Uv;
+                    if (uv == null || uv.Scale?.Length != 2 || uv.Offset?.Length != 2 || uv.Scale.Any(x => !float.IsFinite(x) || x <= 0)
+                        || uv.Offset.Any(x => !float.IsFinite(x)) || !float.IsFinite(uv.Rotation))
+                        throw new MapAuthoringException("FP-MAP-001", "Invalid UV settings.");
+                    Vector3 u = (points[1]-points[0]).Normalized(), v = Vector3.Cross(normal,u);
+                    float angle = MathHelper.DegreesToRadians(uv.Rotation), cos = MathF.Cos(angle), sin = MathF.Sin(angle);
+                    coords = points.Select(p =>
+                    {
+                        float x = Vector3.Dot(p-points[0],u)*texScale*uv.Scale[0], y = Vector3.Dot(p-points[0],v)*texScale*uv.Scale[1];
+                        return new Vector2(x*cos-y*sin+uv.Offset[0], x*sin+y*cos+uv.Offset[1]);
+                    }).ToArray();
+                }
                 if (coords.Any(p => Math.Abs(p.X) >= 2048 || Math.Abs(p.Y) >= 2048)) throw new MapAuthoringException("FP-MAP-001", "UV coordinates exceed the runtime range; lower texture scale.");
                 int material = geometry.Material;
                 if (geometry is MapMesh mesh && mesh.FaceMaterials != null && faceIndex < mesh.FaceMaterials.Count)
