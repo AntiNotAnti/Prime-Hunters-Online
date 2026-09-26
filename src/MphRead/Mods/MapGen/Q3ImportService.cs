@@ -169,6 +169,7 @@ public static class Q3ImportService
                 }
             }
             definition.Save(projectPath);
+            Q3ImportManifest.From(analysis,options.UnitsPerUnit??analysis.AutoScale).Save(staging);
             cancellation.ThrowIfCancellationRequested();
 
             progress?.Invoke("Publishing imported map…");
@@ -258,6 +259,9 @@ public static class Q3ImportService
             merged.SourcePath = Path.GetFullPath(projectPath);
             merged.BundlePath = null;
             merged.Save(projectPath);
+            string manifest=Path.Combine(freshRoot,Q3ImportManifest.FileName);
+            if(File.Exists(manifest))
+                AtomicFile.Write(Path.Combine(root,Q3ImportManifest.FileName),File.ReadAllBytes(manifest));
             return imported with { ProjectPath = Path.GetFullPath(projectPath) };
         }
         finally
