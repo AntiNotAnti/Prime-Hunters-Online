@@ -36,6 +36,8 @@ class ReportTests(unittest.TestCase):
         self.assertTrue(valid(x))
         x['header']['protocol']=21
         self.assertTrue(valid(x))
+        x['header']['protocol']=22
+        self.assertTrue(valid(x))
 
     def test_schema_two_and_bucket_bounds(self):
         x=copy.deepcopy(self.fixture);x['header']['schema']=2
