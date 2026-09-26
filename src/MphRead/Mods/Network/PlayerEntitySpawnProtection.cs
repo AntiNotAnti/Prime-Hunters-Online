@@ -76,6 +76,17 @@ namespace MphRead.Entities
         /// </summary>
         internal void ModReleaseSpawnProtection()
         {
+            // Every peer replays remote input for animation/projectiles, but only
+            // the player's owner and the authority are entitled to decide this
+            // gameplay state. An observer that happens to reproduce a shot one
+            // frame early must not hide the shield before the server does.
+            if (_scene.GameState.Multiplayer && NetSession.Active
+                && !NetSession.IsAuthority && !NetSession.IsHost
+                && SlotIndex != NetHooks.LocalSlot)
+            {
+                return;
+            }
+
             bool wasMatchProtected = ModMatchSpawnProtectionActive || _matchSpawnProtectionTimer > 0;
             _matchSpawnProtectionTimer = 0;
 
