@@ -227,6 +227,7 @@ internal static class ReplayWorldSchemas
             "_lostOctolithSpeed",
             "_damageInvulnTimer",
             "_spawnInvulnTimer",
+            "_matchSpawnProtectionTimer",
             "_camSwitchTimer",
             "_doubleDmgTimer",
             "_cloakTimer",
