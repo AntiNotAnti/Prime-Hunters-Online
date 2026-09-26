@@ -68,6 +68,7 @@ public sealed class MapCollisionHealth
 /// </summary>
 public static class MapCollisionHealer
 {
+    public const int MaxRepairPreviews = 2048;
     private const float WalkableY = .45f;
     private const float CoverBehind = 1f;
     private const float CoverFront = .25f;
@@ -134,7 +135,7 @@ public static class MapCollisionHealer
             {
                 spawn.Position = A(repaired);
                 health.SpawnsMoved++;
-                map.CollisionRepairs.Add(new(MapCollisionRepairKind.SpawnMoved, .98f,
+                Record(map,new(MapCollisionRepairKind.SpawnMoved, .98f,
                     $"Spawn snapped {Vector3.Distance(original, repaired):0.###} units to valid floor/clearance.",
                     new[] { original, repaired }));
             }
@@ -151,7 +152,7 @@ public static class MapCollisionHealer
                 {
                     item.Position = A(repaired);
                     health.ItemsMoved++;
-                    map.CollisionRepairs.Add(new(MapCollisionRepairKind.ItemMoved, .96f,
+                    Record(map,new(MapCollisionRepairKind.ItemMoved, .96f,
                         "Pickup snapped to final healed floor.", new[] { original, repaired }));
                 }
             }
@@ -197,7 +198,7 @@ public static class MapCollisionHealer
                     BuiltFace repaired = Copy(source, hull, normal);
                     repaired.CollisionConfidence = Math.Min(repaired.CollisionConfidence, .98f);
                     if(health!=null)health.ConvexifiedFaces++;
-                    map?.CollisionRepairs.Add(new(MapCollisionRepairKind.Convexified, .98f,
+                    Record(map,new(MapCollisionRepairKind.Convexified, .98f,
                         $"Runtime-invalid {points.Length}-vertex polygon rebuilt as a convex {hull.Length}-vertex polygon.",
                         hull));
                     yield return repaired;
@@ -224,7 +225,7 @@ public static class MapCollisionHealer
                 yield return repaired;
             }
             if(health!=null)health.ConvexifiedFaces++;
-            map?.CollisionRepairs.Add(new(MapCollisionRepairKind.Convexified, .94f,
+            Record(map,new(MapCollisionRepairKind.Convexified, .94f,
                 "Runtime-invalid polygon triangulated because a safe convex hull could not be retained.",
                 points));
             yield break;
@@ -234,7 +235,7 @@ public static class MapCollisionHealer
         if (changed)
         {
             if(health!=null)health.CanonicalizedFaces++;
-            map?.CollisionRepairs.Add(new(MapCollisionRepairKind.Canonicalized, .995f,
+            Record(map,new(MapCollisionRepairKind.Canonicalized, .995f,
                 "Collision vertices snapped to exact 20.12 runtime precision and redundant edge points removed.",
                 points));
         }
@@ -288,7 +289,7 @@ public static class MapCollisionHealer
             if (Vector3.Dot(normal, face.Normal) < 0) { Array.Reverse(points); normal = -normal; }
             result.Add(Copy(face, points, normal));
             if (changed)
-                map.CollisionRepairs.Add(new(MapCollisionRepairKind.SeamStitched, .99f,
+                Record(map,new(MapCollisionRepairKind.SeamStitched, .99f,
                     $"Near-identical collision vertices welded within {tolerance:0.####} units.", points));
         }
         return result;
@@ -357,7 +358,7 @@ public static class MapCollisionHealer
             normal.Normalize();
             if (Vector3.Dot(normal, face.Normal) < 0) { Array.Reverse(repairedPoints); normal = -normal; }
             faces[faceIndex] = Copy(face, repairedPoints, normal);
-            map.CollisionRepairs.Add(new(MapCollisionRepairKind.TJunctionStitched, .97f,
+            Record(map,new(MapCollisionRepairKind.TJunctionStitched, .97f,
                 "A near-edge imported vertex was inserted into the neighbouring collision edge to close a T-junction.",
                 repairedPoints));
         }
@@ -393,7 +394,7 @@ public static class MapCollisionHealer
                     restoredFace.CollisionConfidence = .985f;
                     solid.Add(restoredFace);
                     health.RestoredBuriedFaces++;
-                    map.CollisionRepairs.Add(new(MapCollisionRepairKind.BuriedRestored, .985f,
+                    Record(map,new(MapCollisionRepairKind.BuriedRestored, .985f,
                         "Buried-face pruning would have left visible walkable geometry unsupported, so the source brush face was restored.",
                         restoredFace.Points));
                     restoredAny = true;
@@ -414,7 +415,7 @@ public static class MapCollisionHealer
             };
             solid.Add(proxy);
             health.FloorProxies++;
-            map.CollisionRepairs.Add(new(MapCollisionRepairKind.FloorProxyAdded, .94f,
+            Record(map,new(MapCollisionRepairKind.FloorProxyAdded, .94f,
                 "Visible walkable surface had no usable collision within the runtime coverage envelope; a thin render-aligned floor proxy was generated.",
                 proxy.Points));
             collision = new FaceIndex(solid, 4f);
@@ -443,7 +444,7 @@ public static class MapCollisionHealer
             {
                 solid.RemoveAt(i);
                 health.PhantomFacesRemoved++;
-                map.CollisionRepairs.Add(new(MapCollisionRepairKind.PhantomRemoved, .965f,
+                Record(map,new(MapCollisionRepairKind.PhantomRemoved, .965f,
                     $"High-confidence invisible {face.CollisionShader ?? "brush"} collision had no rendered surface nearby and was removed.",
                     face.Points));
             }
@@ -451,7 +452,7 @@ public static class MapCollisionHealer
             {
                 // Keep uncertain invisible solids, but surface them in the
                 // repair overlay instead of silently guessing.
-                map.CollisionRepairs.Add(new(MapCollisionRepairKind.PhantomRemoved, .68f,
+                Record(map,new(MapCollisionRepairKind.PhantomRemoved, .68f,
                     "Collision has no corresponding rendered surface. Kept because its source shader is not confidently decorative/caulk.",
                     face.Points));
             }
@@ -486,7 +487,7 @@ public static class MapCollisionHealer
             health.ReachableComponents = spawnComponents.Count;
             health.ReachableNodes = graph.Components.Count(spawnComponents.Contains);
             if (health.NavigationComponents > health.ReachableComponents)
-                map.CollisionRepairs.Add(new(MapCollisionRepairKind.ReachabilityWarning, .72f,
+                Record(map,new(MapCollisionRepairKind.ReachabilityWarning, .72f,
                     $"Navigation has {health.NavigationComponents} components but spawn traversal reaches {health.ReachableComponents}.",
                     definition.Spawns.Select(s => V(s.Position)).ToArray()));
 
@@ -530,12 +531,18 @@ public static class MapCollisionHealer
                 {
                     health.ProbeFailures++;
                     if (health.ProbeFailures <= 64)
-                        map.CollisionRepairs.Add(new(MapCollisionRepairKind.ProbeFailure, .55f,
+                        Record(map,new(MapCollisionRepairKind.ProbeFailure, .55f,
                             "Headless player-sized floor probe still found rendered walkable geometry without support.",
                             new[] { sample }));
                 }
             }
         }
+    }
+
+    private static void Record(BuiltMap? map, MapCollisionRepair repair)
+    {
+        if(map!=null&&map.CollisionRepairs.Count<MaxRepairPreviews)
+            map.CollisionRepairs.Add(repair);
     }
 
     private static bool FindSafeStandingPoint(Vector3 origin, FaceIndex collision, out Vector3 result)
