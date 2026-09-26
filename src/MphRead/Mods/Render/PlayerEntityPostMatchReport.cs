@@ -163,7 +163,7 @@ namespace MphRead.Entities
                 return "PLAYER";
             }
             name = name.ToUpperInvariant();
-            return name.Length <= 12 ? name : name[..11] + "…";
+            return name.Length <= 12 ? name : name[..9] + "...";
         }
     }
 }
