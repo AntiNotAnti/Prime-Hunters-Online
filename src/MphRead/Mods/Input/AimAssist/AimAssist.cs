@@ -459,7 +459,7 @@ namespace MphRead.Mods.Input.AimAssist
                 state.HeadAngularVelocity, state.HeadBlend);
             Vector2 trackedAcceleration = Vector2.Lerp(state.AngularAcceleration,
                 state.HeadAngularAcceleration, state.HeadBlend);
-            Vector2 servoVelocity = AimAssistMath.ClampLength(
+            Vector2 targetServoVelocity = AimAssistMath.ClampLength(
                 trackedVelocity + trackedAcceleration * AimAssistTuning.MotionServoLookahead,
                 AimAssistTuning.MaxTrackedSpeed);
 
@@ -467,11 +467,15 @@ namespace MphRead.Mods.Input.AimAssist
                 + headCoverage * state.HeadBlend, 0, 1);
             float coverageScale = visibilityCoverage <= 0 ? 0
                 : .25f + .75f * MathF.Sqrt(visibilityCoverage);
-            float distanceStrength = (.55f + .45f * AimAssistMath.Smooth(0, 5, target.Distance))
-                * (1 - .5f * AimAssistMath.Smooth(25, 60, target.Distance));
-            float targetRangeScale = 1 - .4f * AimAssistMath.Smooth(25, 60, target.Distance);
-            float bubble = 1 - AimAssistMath.Smooth(profile.Inner * targetRangeScale,
-                profile.ReleaseCone * targetRangeScale, AimAssistMath.SelectionError(target, profile).Length());
+            float distanceStrength = 1 - .15f * AimAssistMath.Smooth(35, 60, target.Distance);
+
+            AimAssistRegion? activeRegion = state.HeadBlend > .35f && visibleHead
+                ? target.HeadRegion : target.BodyRegion;
+            float normalizedError = activeRegion is { } normalizedRegion
+                ? AimAssistMath.NormalizeToRegion(error, normalizedRegion).Length()
+                : error.Length();
+            float bubble = 1 - AimAssistMath.Smooth(profile.NormalizedInner,
+                profile.NormalizedRelease, normalizedError);
 
             // Control phase is based on the error velocity after the player's own
             // camera turn. Approaching should feel free; braking and overshoot
@@ -481,7 +485,7 @@ namespace MphRead.Mods.Input.AimAssist
             float closingSpeed = 0;
             if (error.LengthSquared() > .000001f)
             {
-                Vector2 relativeErrorVelocity = servoVelocity - cameraVelocity;
+                Vector2 relativeErrorVelocity = targetServoVelocity - cameraVelocity;
                 closingSpeed = -Vector2.Dot(Vector2.Normalize(error), relativeErrorVelocity);
             }
             bool escaping = stickIntent > .20f && error.LengthSquared() > .000001f
@@ -519,8 +523,6 @@ namespace MphRead.Mods.Input.AimAssist
             frictionStrength = Math.Clamp(frictionStrength, 0, 1 - AimAssistTuning.MinimumFriction);
             float friction = 1 - frictionStrength;
             Vector2 adjusted = raw;
-            AimAssistRegion? activeRegion = state.HeadBlend > .35f && visibleHead
-                ? target.HeadRegion : target.BodyRegion;
             if (activeRegion is { } region && activeInside)
             {
                 adjusted.X *= AimAssistMath.EdgeFrictionFactor(raw.X, physicalStick.X,
@@ -541,21 +543,34 @@ namespace MphRead.Mods.Input.AimAssist
                     ? 1 - (1 - friction) * .25f : friction) + tangent * friction;
             }
 
+            Vector2 positionHeadGain = target.HeadRegion is { } positionHeadRegion
+                ? AimAssistMath.HeadGeometryGain(positionHeadRegion,
+                    AimAssistTuning.HeadHorizontalPositionGain,
+                    AimAssistTuning.HeadVerticalPositionGain)
+                : new(AimAssistTuning.HeadHorizontalPositionGain,
+                    AimAssistTuning.HeadVerticalPositionGain);
+            Vector2 trackingHeadGain = target.HeadRegion is { } trackingHeadRegion
+                ? AimAssistMath.HeadGeometryGain(trackingHeadRegion,
+                    AimAssistTuning.HeadHorizontalTrackingGain,
+                    AimAssistTuning.HeadVerticalTrackingGain)
+                : new(AimAssistTuning.HeadHorizontalTrackingGain,
+                    AimAssistTuning.HeadVerticalTrackingGain);
+
             float strength = intent * distanceStrength * bubble * profile.Rotation
                 * AimAssistTuning.RotationAssistMultiplier;
             Vector2 position = new(error.X * (1 + state.HeadBlend
-                    * (AimAssistTuning.HeadHorizontalPositionGain - 1)),
-                error.Y * (1 + state.HeadBlend * (AimAssistTuning.HeadVerticalPositionGain - 1)));
+                    * (positionHeadGain.X - 1)),
+                error.Y * (1 + state.HeadBlend * (positionHeadGain.Y - 1)));
             position = AimAssistMath.ClampLength(position * profile.PositionGain * strength,
                 profile.MaxPositionSpeed) * dt;
 
             // Supply only target motion the player is not already matching.
             Vector2 relativeTrackingVelocity = AimAssistMath.RelativeTrackingVelocity(
-                servoVelocity, cameraVelocity);
+                targetServoVelocity, cameraVelocity);
             Vector2 tracking = new(relativeTrackingVelocity.X * (1 + state.HeadBlend
-                    * (AimAssistTuning.HeadHorizontalTrackingGain - 1)),
+                    * (trackingHeadGain.X - 1)),
                 relativeTrackingVelocity.Y * (1 + state.HeadBlend
-                    * (AimAssistTuning.HeadVerticalTrackingGain - 1)));
+                    * (trackingHeadGain.Y - 1)));
             float retentionConfidence = state.BodyTrackingConfidence * (1 - state.HeadBlend)
                 + state.HeadTrackingConfidence * state.HeadBlend;
             float trackingIntent = strafe
@@ -565,32 +580,56 @@ namespace MphRead.Mods.Input.AimAssist
                 : same ? intent : 0;
             tracking = AimAssistMath.ClampLength(tracking * profile.TrackingGain * bubble
                 * trackingIntent * coverageScale, profile.MaxTrackingSpeed) * dt;
+
+            // Once the target is genuinely retained, replace the loosely coupled
+            // position+velocity terms with a normalized critically damped follower.
+            bool servoActive = same && state.RetainedSeconds >= .075f && intent > 0
+                && !strafe && phase != AimAssistMotionPhase.Escaping;
+            if (servoActive)
+            {
+                Vector2 servoError = new(error.X * (1 + state.HeadBlend * (positionHeadGain.X - 1)),
+                    error.Y * (1 + state.HeadBlend * (positionHeadGain.Y - 1)));
+                float frequency = profile.ServoFrequency * (state.MotionTransition ? 1.25f : 1f);
+                Vector2 servoStep = AimAssistMath.CriticallyDampedServo(ref state.ServoVelocity,
+                    servoError, relativeTrackingVelocity, activeRegion, frequency, dt,
+                    profile.MaxTrackingSpeed);
+                float servoScale = Math.Clamp(profile.TrackingGain * bubble * coverageScale
+                    * (.70f + .30f * intent), 0, 1.2f);
+                position = servoStep * servoScale;
+                tracking = Vector2.Zero;
+            }
+            else
+            {
+                state.ServoVelocity *= MathF.Exp(-10f * dt);
+            }
+
             if (strafe) position = Vector2.Zero;
             position *= new Vector2(opposeX, opposeY);
             tracking *= new Vector2(opposeX, opposeY);
 
-            // Predict where the unassisted flick is landing, then only finish it
-            // when the player's trajectory was already going to reach the head.
+            // Predict where the unassisted flick is landing using a short fitted
+            // camera trajectory rather than a single noisy velocity sample.
             float flickAlignment = AimAssistMath.Alignment(state.FlickDirection,
                 AimAssistMath.Finite(target.HeadError) ? target.HeadError : headError);
-            float baseCaptureRadius = target.HeadRegion is { } captureRegion
-                ? Math.Clamp(captureRegion.Height * 1.5f, .35f, .8f) : .5f;
-            float captureRadius = AimAssistMath.DynamicFlickRadius(
-                baseCaptureRadius, state.FlickSpeed, profile.Scoped);
             float flickHorizon = AimAssistMath.FlickLandingHorizon(state.FlickSpeed);
-            Vector2 predictedTurn = cameraVelocity * flickHorizon
+            Vector2 fittedVelocity = haveCameraHistory ? fittedCameraVelocity : cameraVelocity;
+            Vector2 predictedTurn = fittedVelocity * flickHorizon
                 + cameraAcceleration * (.5f * flickHorizon * flickHorizon);
             Vector2 predictedTargetMotion = state.HeadAngularVelocity * flickHorizon
                 + state.HeadAngularAcceleration * (.5f * flickHorizon * flickHorizon);
+            float speedT = AimAssistMath.Smooth(AimAssistTuning.FlickDirectionalSpeed, 45f,
+                state.FlickSpeed);
+            float captureRadii = AimAssistTuning.FlickRadiusMinScale
+                + (AimAssistTuning.FlickRadiusMaxScale - AimAssistTuning.FlickRadiusMinScale) * speedT;
+            if (profile.ScopeBlend > 0) captureRadii *= 1 - .25f * profile.ScopeBlend;
             float flickLandingError = target.HeadRegion is { } landingRegion
-                ? AimAssistMath.RegionError(landingRegion.Shift(
-                    predictedTargetMotion.X - predictedTurn.X,
-                    predictedTargetMotion.Y - predictedTurn.Y)).Length()
+                ? AimAssistMath.NormalizedLandingMiss(landingRegion,
+                    predictedTargetMotion - predictedTurn)
                 : (headError + predictedTargetMotion - predictedTurn).Length();
-            if (state.FlickSpeed > 45 && flickLandingError > captureRadius * 1.5f)
-                captureRadius *= .75f;
-            bool naturalLanding = flickLandingError <= captureRadius;
-            bool currentCapture = headAngle > 0 && headAngle <= captureRadius;
+            if (state.FlickSpeed > 45 && flickLandingError > captureRadii * 1.5f)
+                captureRadii *= .75f;
+            bool naturalLanding = flickLandingError <= captureRadii;
+            bool currentCapture = normalizedHead > 0 && normalizedHead <= captureRadii;
             bool capture = state.FlickActive && !state.FlickConsumed && visibleHead && !opposingHead
                 && state.FlickTarget == target.Slot
                 && (currentCapture || state.FlickBraking && naturalLanding)
@@ -603,13 +642,15 @@ namespace MphRead.Mods.Input.AimAssist
                     * (1 - MathF.Exp(-AimAssistTuning.HeadFlickSnapGain * dt));
                 position = AimAssistMath.ClampLength(flickCorrection,
                     profile.MaxPositionSpeed * dt);
+                tracking = Vector2.Zero;
+                state.ServoVelocity = Vector2.Zero;
                 error = safe; state.HeadBlend = 1;
                 state.HeadTrackingConfidence = Math.Max(state.HeadTrackingConfidence, .85f);
             }
             if (headInside) state.FlickConsumed = true;
 
-            // Near a target edge, let the next frame's stick filter get out of
-            // the player's way so tiny counter-corrections are not smoothed away.
+            // Near a target edge, let the next frame's stick filter and the
+            // outer-stick acceleration get out of the player's way.
             float filterRelease = 0;
             if (activeRegion is { } filterRegion)
             {
@@ -627,13 +668,45 @@ namespace MphRead.Mods.Input.AimAssist
                 if (phase is AimAssistMotionPhase.Braking or AimAssistMotionPhase.Overshooting)
                     filterRelease = Math.Max(filterRelease, .85f);
             }
+            float turnAccelerationBrake = phase switch
+            {
+                AimAssistMotionPhase.Braking => .95f,
+                AimAssistMotionPhase.Overshooting => .90f,
+                AimAssistMotionPhase.Matched => .45f,
+                AimAssistMotionPhase.Escaping => 0,
+                _ => 0
+            };
+            if (state.FlickBraking) turnAccelerationBrake = Math.Max(turnAccelerationBrake, .9f);
+            if (shotCommitted) turnAccelerationBrake = Math.Max(turnAccelerationBrake, .85f);
+            if (state.HeadBlend > .6f) turnAccelerationBrake = Math.Max(turnAccelerationBrake, .55f);
+            turnAccelerationBrake = Math.Max(turnAccelerationBrake, filterRelease * .55f);
 
             Vector2 rotation = position + tracking;
-            Vector2 remaining = error + servoVelocity * dt - adjusted;
+            Vector2 remaining = error + targetServoVelocity * dt - adjusted;
             Vector2 bounded = new(AimAssistMath.LimitCorrection(rotation.X, remaining.X),
                 AimAssistMath.LimitCorrection(rotation.Y, remaining.Y));
             bool saturated = bounded != rotation;
+
+            // Leaky correction budget: tiny rescues can be sharp, but sustained
+            // automatic pull quickly spends the budget and has to recover.
+            state.CorrectionBudgetUsed = Math.Max(0,
+                state.CorrectionBudgetUsed - profile.CorrectionBudgetRecovery * dt);
+            float budgetRemaining = Math.Max(0,
+                profile.CorrectionBudgetDegrees - state.CorrectionBudgetUsed);
+            float correctionLength = bounded.Length();
+            if (correctionLength > budgetRemaining && correctionLength > .000001f)
+            {
+                bounded *= budgetRemaining / correctionLength;
+                correctionLength = budgetRemaining;
+                saturated = true;
+            }
+            state.CorrectionBudgetUsed += correctionLength;
+            float correctionBudget = profile.CorrectionBudgetDegrees <= 0 ? 0
+                : Math.Clamp(state.CorrectionBudgetUsed / profile.CorrectionBudgetDegrees, 0, 1);
+
             Vector2 output = adjusted + bounded;
+            float playerContribution = raw.Length();
+            float assistContribution = (output - raw).Length();
 
             state.TrackingState = capture ? AimAssistTrackingState.FlickCapturingHead
                 : state.HeadBlend > .01f
@@ -650,6 +723,7 @@ namespace MphRead.Mods.Input.AimAssist
             state.PreviousInsideHead = headInside;
             state.PreviousRaw = raw;
             state.PreviousCameraVelocity = cameraVelocity;
+            state.PushCameraVelocity(cameraVelocity);
             return new(output.X, output.Y, target.Slot, friction, strength,
                 state.HeadBlend > 0 ? AimAssistPointType.Head : target.BodyPointType,
                 state.HeadBlend, bestScore, bestAlignment, predictionAmount, false, saturated,
@@ -657,7 +731,9 @@ namespace MphRead.Mods.Input.AimAssist
                 state.FlickActive, state.FlickAge, flickAlignment, strafe, false, firing,
                 phase, state.BodyTrackingConfidence, state.HeadTrackingConfidence,
                 flickLandingError, state.FlickBraking, shotCommitted,
-                visibilityCoverage, filterRelease);
+                visibilityCoverage, filterRelease, turnAccelerationBrake,
+                normalizedError, playerContribution, assistContribution,
+                correctionBudget, profile.ScopeBlend, shotPhase, state.MotionTransition);
         }
 
         private static Vector2 TrackMotion(Vector2 filtered, Vector2 acceleration,
