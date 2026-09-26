@@ -239,6 +239,7 @@ namespace MphRead.Mods.Input.AimAssist
                     state.MotionPhase = AimAssistMotionPhase.None;
                     state.PreviousRaw = raw;
                     state.PreviousCameraVelocity = cameraVelocity;
+                    state.PushCameraVelocity(cameraVelocity);
                     return new(raw.X, raw.Y, hidden.Slot, 1, 0, hidden.BodyPointType, 0, 0,
                         AimAssistMath.Alignment(physicalStick, hidden.BodyError), 0, true, false,
                         state.RetainedSeconds, AimAssistTrackingState.OccludedRetention,
@@ -247,18 +248,44 @@ namespace MphRead.Mods.Input.AimAssist
                         HeadTrackingConfidence: state.HeadTrackingConfidence,
                         VisibilityCoverage: 0);
                 }
-                // Target loss may preserve a not-yet-targeted flick for the remainder
-                // of its tiny capture window, but never preserve target history.
+                // Target loss clears target motion/confidence, but input history is
+                // not target state. Preserve recent physical-stick/camera samples so
+                // a flick that begins in empty space can still be fitted when it
+                // reaches a candidate a frame later.
                 bool pendingFlick = state.FlickActive && state.FlickTarget < 0;
                 Vector2 pendingDirection = state.FlickDirection;
-                float pendingAge = state.FlickAge;
+                float pendingAge = state.FlickAge, pendingSpeed = state.FlickSpeed;
+                float pendingPeak = state.FlickPeak;
+                bool pendingBraking = state.FlickBraking;
+                Vector2 stick0 = state.StickHistory0, stick1 = state.StickHistory1;
+                Vector2 stick2 = state.StickHistory2, stick3 = state.StickHistory3;
+                Vector2 camera0 = state.CameraVelocity0, camera1 = state.CameraVelocity1;
+                Vector2 camera2 = state.CameraVelocity2, camera3 = state.CameraVelocity3;
+                float savedBudget = Math.Max(0, state.CorrectionBudgetUsed
+                    - profile.CorrectionBudgetRecovery * dt);
+                float savedScope = state.ScopeBlend;
                 state.Reset();
                 state.PreviousStick = physicalStick;
                 state.FlickActive = pendingFlick;
                 state.FlickDirection = pendingDirection;
                 state.FlickAge = pendingAge;
+                state.FlickSpeed = pendingSpeed;
+                state.FlickPeak = pendingPeak;
+                state.FlickBraking = pendingBraking;
+                state.StickHistory0 = stick0; state.StickHistory1 = stick1;
+                state.StickHistory2 = stick2; state.StickHistory3 = stick3;
+                state.CameraVelocity0 = camera0; state.CameraVelocity1 = camera1;
+                state.CameraVelocity2 = camera2; state.CameraVelocity3 = camera3;
+                state.CorrectionBudgetUsed = savedBudget;
+                state.ScopeBlend = savedScope;
+                state.PreviousCameraVelocity = cameraVelocity;
+                state.PushCameraVelocity(cameraVelocity);
                 return new(raw.X, raw.Y, StickIntent: physicalStick, FlickActive: pendingFlick,
-                    FlickAge: pendingAge, Firing: firing);
+                    FlickAge: pendingAge, Firing: firing, ScopeBlend: profile.ScopeBlend,
+                    CorrectionBudget: profile.CorrectionBudgetDegrees <= 0 ? 0
+                        : savedBudget / profile.CorrectionBudgetDegrees,
+                    ShotPhase: shotPhase,
+                    PlayerContribution: raw.Length());
             }
 
             bool wasOccluded = state.OccludedSeconds > 0;
