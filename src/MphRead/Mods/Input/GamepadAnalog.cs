@@ -11,6 +11,24 @@ namespace MphRead.Mods.Input
         public static float Finite(float value, float min = -1, float max = 1)
             => float.IsFinite(value) ? Math.Clamp(value, min, max) : 0;
 
+        public static void UpdateRuntimeCenter(ref float biasX, ref float biasY,
+            float x, float y, float inner)
+        {
+            if (!float.IsFinite(x) || !float.IsFinite(y)) return;
+            inner = Math.Clamp(inner, .04f, .4f);
+            float length = MathF.Sqrt(x * x + y * y);
+            if (length > inner * .72f) return;
+            // Intentionally glacial: this only follows slow temperature/wear drift,
+            // never a thumb making a real micro-aim input inside the deadzone.
+            const float alpha = .0015f;
+            biasX = Math.Clamp(biasX + (x - biasX) * alpha, -.03f, .03f);
+            biasY = Math.Clamp(biasY + (y - biasY) * alpha, -.03f, .03f);
+        }
+
+        public static (float X, float Y) ApplyRuntimeCenter(float x, float y,
+            float biasX, float biasY)
+            => (Finite(x - biasX), Finite(y - biasY));
+
         public static (float X, float Y) ApplyRadialDeadZone(float x, float y,
             float inner, float outer = 0)
         {
