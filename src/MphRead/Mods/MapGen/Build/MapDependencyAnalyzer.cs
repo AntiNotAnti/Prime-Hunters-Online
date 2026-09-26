@@ -43,8 +43,16 @@ public static class MapDependencyAnalyzer
                 dependencies.Add(new("asset", asset, hash));
             }
         }
+        if(definition.NativeRoom is { } native && Metadata.RoomMetadata.TryGetValue(native.Room,out RoomMetadata? sourceRoom))
+        {
+            string? root=null;
+            try { root=sourceRoom.FirstHunt ? Paths.FhFileSystem : Paths.FileSystem; }
+            catch(KeyNotFoundException) { }
+            foreach(string? path in new[]{sourceRoom.ModelPath,sourceRoom.TexturePath,sourceRoom.CollisionPath,sourceRoom.EntityPath,sourceRoom.NodePath})
+                if(!String.IsNullOrEmpty(path))FileDependency("native",path!,root==null?null:Paths.Combine(root,path!));
+        }
         bool usesBase = definition.Import?.Textures == null && (definition.Import != null
-            || definition.Materials.Any(m => m.Texture == null));
+            || definition.NativeRoom != null || definition.Materials.Any(m => m.Texture == null));
         if (usesBase)
         {
             var (room, _) = Metadata.GetRoomByName(definition.TextureSource);
