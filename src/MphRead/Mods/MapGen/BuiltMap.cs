@@ -24,6 +24,11 @@ namespace MphRead.Mods.MapGen
         // the immutable BSP portion so the editor can cache it separately.
         public int ImportedFaceCount { get; set; }
         public int ImportedCollisionFaceCount { get; set; }
+        // -2 means not an imported-patch decision, -1 is never a resolved
+        // value, 0 means brushes/clips only, 1-8 is the tessellation used.
+        public int ImportedPatchCollisionLevel { get; set; } = -2;
+        public int ImportedPatchCollisionSourceFaces { get; set; }
+        public int ImportedPatchCollisionFaces { get; set; }
 
         public BuiltMap(MapDefinition definition)
         {
