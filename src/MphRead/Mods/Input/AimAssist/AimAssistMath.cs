@@ -44,16 +44,26 @@ namespace MphRead.Mods.Input.AimAssist
         public static float NormalizedSelectionDistance(in AimAssistTarget target,
             AimAssistWeaponProfile profile)
         {
-            if (VisibleHead(target, profile) && target.HeadRegion is { } hr)
+            Vector2 bodyError = BodyError(target);
+            float bodyDistance = target.BodyRegion is { } bodyRegion
+                ? NormalizeToRegion(bodyError, bodyRegion).Length()
+                : bodyError.Length();
+
+            if (!VisibleHead(target, profile))
             {
-                Vector2 head = NormalizeToRegion(HeadError(target), hr);
-                if (!target.BodyVisible || target.BodyRegion is not { } br) return head.Length();
-                Vector2 body = NormalizeToRegion(BodyError(target), br);
-                return Math.Min(head.Length(), body.Length());
+                return bodyDistance;
             }
-            return target.BodyRegion is { } bodyRegion
-                ? NormalizeToRegion(BodyError(target), bodyRegion).Length()
-                : BodyError(target).Length();
+
+            Vector2 headError = HeadError(target);
+            float headDistance = target.HeadRegion is { } headRegion
+                ? NormalizeToRegion(headError, headRegion).Length()
+                : headError.Length();
+
+            // SelectionError uses the visible head when the chest is hidden and
+            // whichever visible region is closer otherwise. Use that same region
+            // for the normalized acquire gate. Requiring HeadRegion here made
+            // head-only targets silently fall back to an occluded/far-away chest.
+            return !target.BodyVisible ? headDistance : Math.Min(headDistance, bodyDistance);
         }
 
         /// <summary>
