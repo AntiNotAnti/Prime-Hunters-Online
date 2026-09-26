@@ -52,6 +52,20 @@ namespace MphRead.Mods.MapGen
             }
             Add(result, "Collision grid cells", collisionMetrics.GridCells, MaxGridCells);
             Add(result, "Collision references", collisionMetrics.References, 65535);
+            if(map.CollisionHealth is {} health)
+            {
+                Add(result,"Collision auto-heal repairs",map.CollisionRepairs.Count);
+                Add(result,"Collision probes",health.ProbeCount+health.SweepCount);
+                Add(result,"Collision probe failures",health.ProbeFailures+health.SweepFailures);
+                if(health.ProbeFailures+health.SweepFailures>0)
+                    result.Warning("FP-MAP-018",
+                        $"Imported collision auto-heal completed with {health.ProbeFailures:N0} unsupported floor probes and "
+                        +$"{health.SweepFailures:N0} short-walk sweep failures. Review the Collision repairs overlay.");
+                if(health.NavigationComponents>health.ReachableComponents&&health.ReachableComponents>0)
+                    result.Warning("FP-MAP-007",
+                        $"Imported traversal has {health.NavigationComponents} navigation regions; "
+                        +$"{health.ReachableComponents} contain or connect to repaired spawn areas.");
+            }
             if(collision.RemovedVertices>0||collision.MergedFaces>0)
                 result.Warning("FP-MAP-018",
                     $"Collision compaction removed {collision.RemovedVertices:N0} redundant vertices and merged "
