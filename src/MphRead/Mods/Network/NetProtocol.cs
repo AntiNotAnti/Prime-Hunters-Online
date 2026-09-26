@@ -882,65 +882,144 @@ namespace MphRead.Mods.Network
     }
 
     /// <summary>
-    /// The authoritative combat summary for one player's post-match report.
+    /// Authoritative post-match combat rows for everybody still in the match.
     ///
-    /// Sent only during the intermission, not in snapshots: these values are
-    /// presentation data once the round has ended and do not belong on the
-    /// high-frequency replication lanes.
+    /// The report is sent only during intermission and repeated with the other
+    /// post-match state. Names and teams ride with the rows so the results
+    /// remain self-contained even if a final roster datagram was lost.
     /// </summary>
     public struct PostMatchReportPacket
     {
-        public const int Size = 29;
+        public const int MaxEntries = PlayerEntity.SlotCapacity;
+        public const int MaxNameBytes = 16;
+        public const int HeaderSize = 3;
+        public const int EntrySize = 44;
+        public const int Size = HeaderSize + MaxEntries * EntrySize;
 
         public ushort MatchId;
-        public ushort SlotGeneration;
-        public byte SlotIndex;
-        public ushort Kills;
-        public ushort Deaths;
-        public ushort Headshots;
-        public ushort LongestKillStreak;
-        public uint ShotsFired;
-        public uint ShotsHit;
-        public uint DamageDealt;
-        public uint DamageTaken;
+        public byte Count;
+        public byte[] Slots;
+        public ushort[] Generations;
+        public sbyte[] Teams;
+        public ushort[] Kills;
+        public ushort[] Deaths;
+        public ushort[] Headshots;
+        public ushort[] LongestKillStreaks;
+        public uint[] ShotsFired;
+        public uint[] ShotsHit;
+        public uint[] DamageDealt;
+        public uint[] DamageTaken;
+        public string[] Names;
+
+        public static PostMatchReportPacket Create()
+        {
+            return new PostMatchReportPacket
+            {
+                Slots = new byte[MaxEntries],
+                Generations = new ushort[MaxEntries],
+                Teams = new sbyte[MaxEntries],
+                Kills = new ushort[MaxEntries],
+                Deaths = new ushort[MaxEntries],
+                Headshots = new ushort[MaxEntries],
+                LongestKillStreaks = new ushort[MaxEntries],
+                ShotsFired = new uint[MaxEntries],
+                ShotsHit = new uint[MaxEntries],
+                DamageDealt = new uint[MaxEntries],
+                DamageTaken = new uint[MaxEntries],
+                Names = new string[MaxEntries]
+            };
+        }
 
         public readonly void Write(Span<byte> dest)
         {
+            dest[..Size].Clear();
             BinaryPrimitives.WriteUInt16LittleEndian(dest, MatchId);
-            BinaryPrimitives.WriteUInt16LittleEndian(dest[2..], SlotGeneration);
-            dest[4] = SlotIndex;
-            BinaryPrimitives.WriteUInt16LittleEndian(dest[5..], Kills);
-            BinaryPrimitives.WriteUInt16LittleEndian(dest[7..], Deaths);
-            BinaryPrimitives.WriteUInt16LittleEndian(dest[9..], Headshots);
-            BinaryPrimitives.WriteUInt16LittleEndian(dest[11..], LongestKillStreak);
-            BinaryPrimitives.WriteUInt32LittleEndian(dest[13..], ShotsFired);
-            BinaryPrimitives.WriteUInt32LittleEndian(dest[17..], ShotsHit);
-            BinaryPrimitives.WriteUInt32LittleEndian(dest[21..], DamageDealt);
-            BinaryPrimitives.WriteUInt32LittleEndian(dest[25..], DamageTaken);
+            dest[2] = (byte)Math.Min(Count, MaxEntries);
+            int offset = HeaderSize;
+            for (int i = 0; i < Count && i < MaxEntries; i++)
+            {
+                dest[offset] = Slots[i];
+                BinaryPrimitives.WriteUInt16LittleEndian(dest[(offset + 1)..], Generations[i]);
+                dest[offset + 3] = unchecked((byte)Teams[i]);
+                BinaryPrimitives.WriteUInt16LittleEndian(dest[(offset + 4)..], Kills[i]);
+                BinaryPrimitives.WriteUInt16LittleEndian(dest[(offset + 6)..], Deaths[i]);
+                BinaryPrimitives.WriteUInt16LittleEndian(dest[(offset + 8)..], Headshots[i]);
+                BinaryPrimitives.WriteUInt16LittleEndian(dest[(offset + 10)..], LongestKillStreaks[i]);
+                BinaryPrimitives.WriteUInt32LittleEndian(dest[(offset + 12)..], ShotsFired[i]);
+                BinaryPrimitives.WriteUInt32LittleEndian(dest[(offset + 16)..], ShotsHit[i]);
+                BinaryPrimitives.WriteUInt32LittleEndian(dest[(offset + 20)..], DamageDealt[i]);
+                BinaryPrimitives.WriteUInt32LittleEndian(dest[(offset + 24)..], DamageTaken[i]);
+                WritePostMatchName(dest.Slice(offset + 28, MaxNameBytes), Names[i]);
+                offset += EntrySize;
+            }
         }
 
         public static bool TryRead(ReadOnlySpan<byte> src, out PostMatchReportPacket report)
         {
             report = default;
-            if (src.Length != Size || src[4] >= PlayerEntity.SlotCapacity)
+            if (src.Length != Size || src[2] > MaxEntries)
             {
                 return false;
             }
-            report = new PostMatchReportPacket
+            int seen = 0;
+            for (int i = 0; i < src[2]; i++)
             {
-                MatchId = BinaryPrimitives.ReadUInt16LittleEndian(src),
-                SlotGeneration = BinaryPrimitives.ReadUInt16LittleEndian(src[2..]),
-                SlotIndex = src[4],
-                Kills = BinaryPrimitives.ReadUInt16LittleEndian(src[5..]),
-                Deaths = BinaryPrimitives.ReadUInt16LittleEndian(src[7..]),
-                Headshots = BinaryPrimitives.ReadUInt16LittleEndian(src[9..]),
-                LongestKillStreak = BinaryPrimitives.ReadUInt16LittleEndian(src[11..]),
-                ShotsFired = BinaryPrimitives.ReadUInt32LittleEndian(src[13..]),
-                ShotsHit = BinaryPrimitives.ReadUInt32LittleEndian(src[17..]),
-                DamageDealt = BinaryPrimitives.ReadUInt32LittleEndian(src[21..]),
-                DamageTaken = BinaryPrimitives.ReadUInt32LittleEndian(src[25..])
-            };
+                int offset = HeaderSize + i * EntrySize;
+                int slot = src[offset];
+                int team = unchecked((sbyte)src[offset + 3]);
+                if (slot >= MaxEntries || (seen & (1 << slot)) != 0 || team < -1 || team >= MaxEntries)
+                {
+                    return false;
+                }
+                seen |= 1 << slot;
+            }
+
+            report = Create();
+            report.MatchId = BinaryPrimitives.ReadUInt16LittleEndian(src);
+            report.Count = src[2];
+            int at = HeaderSize;
+            for (int i = 0; i < report.Count; i++)
+            {
+                report.Slots[i] = src[at];
+                report.Generations[i] = BinaryPrimitives.ReadUInt16LittleEndian(src[(at + 1)..]);
+                report.Teams[i] = unchecked((sbyte)src[at + 3]);
+                report.Kills[i] = BinaryPrimitives.ReadUInt16LittleEndian(src[(at + 4)..]);
+                report.Deaths[i] = BinaryPrimitives.ReadUInt16LittleEndian(src[(at + 6)..]);
+                report.Headshots[i] = BinaryPrimitives.ReadUInt16LittleEndian(src[(at + 8)..]);
+                report.LongestKillStreaks[i] = BinaryPrimitives.ReadUInt16LittleEndian(src[(at + 10)..]);
+                report.ShotsFired[i] = BinaryPrimitives.ReadUInt32LittleEndian(src[(at + 12)..]);
+                report.ShotsHit[i] = BinaryPrimitives.ReadUInt32LittleEndian(src[(at + 16)..]);
+                report.DamageDealt[i] = BinaryPrimitives.ReadUInt32LittleEndian(src[(at + 20)..]);
+                report.DamageTaken[i] = BinaryPrimitives.ReadUInt32LittleEndian(src[(at + 24)..]);
+                report.Names[i] = ReadPostMatchName(src.Slice(at + 28, MaxNameBytes));
+                at += EntrySize;
+            }
             return true;
+        }
+
+        private static void WritePostMatchName(Span<byte> dest, string? value)
+        {
+            dest.Clear();
+            if (String.IsNullOrEmpty(value))
+            {
+                return;
+            }
+            int count = Math.Min(value.Length, dest.Length);
+            for (int i = 0; i < count; i++)
+            {
+                char ch = value[i];
+                dest[i] = (byte)(ch < 32 || ch > 126 ? '?' : ch);
+            }
+        }
+
+        private static string ReadPostMatchName(ReadOnlySpan<byte> src)
+        {
+            int length = 0;
+            while (length < src.Length && src[length] != 0)
+            {
+                length++;
+            }
+            return length == 0 ? String.Empty : Encoding.ASCII.GetString(src[..length]);
         }
     }
 
