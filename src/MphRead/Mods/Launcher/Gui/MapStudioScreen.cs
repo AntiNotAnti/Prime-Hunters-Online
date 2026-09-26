@@ -110,11 +110,15 @@ namespace MphRead.Mods.Launcher.Gui
             Choice(new[]{"Free","X","Y","Z","XY","XZ","YZ"},name=>{if(_viewport!=null)_viewport.Axes=name;});
             Choice(new[]{"Perspective","Top","Front","Side"},name=>_viewport?.SetView(name));
             Choice(new[]{"Add object","Box","Wedge","Prism","Convex","Mesh","Spawn","Pickup","Jump pad","Navigation link"},name=>{if(name!="Add object")AddObject(name);});
-            Choice(new[]{"Overlays","Rendered","Wireframe","Collision","Collision heat","Partitions","Kill plane","Navigation"},name=>
+            Choice(new[]{"Overlays","Rendered","Wireframe","Collision","Collision heat","Collision repairs","Partitions","Kill plane","Navigation"},name=>
             {
                 if(_viewport==null)return;
                 if(name=="Navigation"){_=Navigation();return;}
-                _viewport.Wireframe=name=="Wireframe";_viewport.Collision=name is "Collision" or "Collision heat";_viewport.CollisionHeatmap=name=="Collision heat";_viewport.PartitionOverlay=name=="Partitions";_viewport.KillPlane=name=="Kill plane";_viewport.InvalidateVisual();
+                _viewport.Wireframe=name=="Wireframe";
+                _viewport.Collision=name is "Collision" or "Collision heat" or "Collision repairs";
+                _viewport.CollisionHeatmap=name=="Collision heat";
+                _viewport.CollisionRepairsOverlay=name=="Collision repairs";
+                _viewport.PartitionOverlay=name=="Partitions";_viewport.KillPlane=name=="Kill plane";_viewport.InvalidateVisual();
             });
             Choice(new[]{"Inspector","Modeling","Partitioning","Environment","Materials","Assets & music","Snapping","Arrange","Layers","Map health","Navigation path","Statistics"},name=>ShowInspectorPage(name));
             AddButton(tools,"Frame all",()=>_viewport?.FrameAll());AddButton(tools,"Focus",()=>_viewport?.FrameSelection());
@@ -981,6 +985,22 @@ namespace MphRead.Mods.Launcher.Gui
                 _inspector.Children.Add(collisionPatch);
                 edits.Add(m=>m.Import!.CollisionPatchLevel=collisionPatch.SelectedIndex==0?-1:collisionPatch.SelectedIndex-1);
                 _inspector.Children.Add(Text("Auto keeps full patch collision when it fits, then tries level 1, then structural BSP brushes/clips only."));
+                var autoHeal=new CheckBox{Content="Auto-heal imported collision",IsChecked=import.AutoHealCollision};
+                var healTolerance=new TextBox{Text=import.CollisionHealTolerance.ToString(CultureInfo.InvariantCulture)};
+                _inspector.Children.Add(autoHeal);
+                _inspector.Children.Add(Text("Collision seam heal tolerance (0.0005–0.25)"));
+                _inspector.Children.Add(healTolerance);
+                _inspector.Children.Add(Text("Auto Heal snaps collision to runtime precision, repairs invalid polygons and seams, restores dropped floor support, creates safe floor proxies, validates spawns and runs reachability/probe checks."));
+                edits.Add(m=>{m.Import!.AutoHealCollision=autoHeal.IsChecked==true;m.Import.CollisionHealTolerance=Number(healTolerance.Text??"");});
+                if(_viewport?.Cache.CollisionHealth is {} collisionHealth)
+                {
+                    _inspector.Children.Add(Text(
+                        $"AUTO-HEAL HEALTH · {collisionHealth.Confidence*100:0.0}%\n"
+                        +$"{collisionHealth.OutputFaces:N0} final faces · {collisionHealth.StitchedVertices:N0} seam welds · {collisionHealth.TJunctions:N0} T-junctions\n"
+                        +$"{collisionHealth.RestoredBuriedFaces:N0} buried faces restored · {collisionHealth.FloorProxies:N0} floor proxies · {collisionHealth.PhantomFacesRemoved:N0} phantom faces removed\n"
+                        +$"{collisionHealth.SpawnsMoved:N0} spawns moved · {collisionHealth.ProbeFailures:N0}/{collisionHealth.ProbeCount:N0} floor probes failed · {collisionHealth.SweepFailures:N0}/{collisionHealth.SweepCount:N0} walk sweeps failed"));
+                    AddButton(_inspector,"Show collision repairs",()=>{if(_viewport!=null){_viewport.Collision=true;_viewport.CollisionRepairsOverlay=true;_viewport.InvalidateVisual();}});
+                }
                 foreach(var pair in new[]{("Use source spawns",import.KeepSpawns),("Keep player clips",import.KeepClip),("Keep sky",import.KeepSky),("Keep source pickups",import.KeepItems)})
                 {
                     var check=new CheckBox{Content=pair.Item1,IsChecked=pair.Item2};_inspector.Children.Add(check);
