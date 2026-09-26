@@ -18,18 +18,17 @@ namespace MphRead.Entities
     /// is the one moment the player *is* looking at it, and a rectangle you
     /// are dragging out has to be visible to be dragged.
     ///
-    /// Circles rather than boxes, because the layout is a picture the hand
-    /// learns and the DS's buttons are round. There is no circle primitive in
-    /// the HUD -- it draws flat boxes -- so each one is a stack of horizontal
-    /// spans, which is a few dozen quads apiece and costs nothing beside the
-    /// room behind it.
+    /// The fallback guide follows the cartridge geometry too: the three
+    /// weapon quick-selects are boxes, while the change and alt-form controls
+    /// are round. That keeps the visible target and the actual hit test on top
+    /// of each other even when the native artwork is disabled.
     /// </summary>
     public partial class PlayerEntity
     {
         private static readonly Vector4 _stylusInk = new Vector4(0.85f, 0.30f, 0.30f, 1);
         private static readonly Vector4 _stylusFill = new Vector4(0.55f, 0.16f, 0.16f, 1);
         private static readonly Vector4 _stylusLit = new Vector4(1f, 0.72f, 0.35f, 1);
-        private static readonly StylusZone.Button _stylusEquippedWeaponSlot =
+        private static readonly StylusZone.Button _stylusAffinityWeaponSlot =
             Array.Find(StylusZone.Buttons, button => button.Region == StylusRegion.Weapons);
 
         private int _stylusBottomTexture = -1;
@@ -186,8 +185,20 @@ namespace MphRead.Entities
                             Vector4 colour = lit
                                 ? new Vector4(_stylusLit.Xyz, alpha)
                                 : new Vector4(_stylusFill.Xyz, alpha);
-                            DrawStylusCircle(left + button.X * scaleX, top + button.Y * scaleY,
-                                button.Radius * scaleX, button.Radius * scaleY, colour);
+                            if (button.Round)
+                            {
+                                DrawStylusCircle(left + button.X * scaleX, top + button.Y * scaleY,
+                                    button.Width / 2 * scaleX, button.Height / 2 * scaleY, colour);
+                            }
+                            else
+                            {
+                                _scene.DrawHudFlatBox(
+                                    left + (button.X - button.Width / 2) * scaleX,
+                                    top + (button.Y - button.Height / 2) * scaleY,
+                                    left + (button.X + button.Width / 2) * scaleX,
+                                    top + (button.Y + button.Height / 2) * scaleY,
+                                    colour);
+                            }
                         }
                     }
                 }
@@ -217,7 +228,7 @@ namespace MphRead.Entities
                 return;
             }
             HudObjectInstance icon = _weaponListIcons[index];
-            if (icon == null || _stylusEquippedWeaponSlot.Region != StylusRegion.Weapons)
+            if (icon == null || _stylusAffinityWeaponSlot.Region != StylusRegion.Weapons)
             {
                 return;
             }
@@ -230,9 +241,9 @@ namespace MphRead.Entities
             float scale = side / Math.Max(bounds.Width, bounds.Height);
             float aspect = HudAspectFix;
             float centerX = (StylusZone.Left
-                + _stylusEquippedWeaponSlot.X / StylusZone.DsWidth * StylusZone.Width) * 256f;
+                + _stylusAffinityWeaponSlot.X / StylusZone.DsWidth * StylusZone.Width) * 256f;
             float centerY = (StylusZone.Top
-                + _stylusEquippedWeaponSlot.Y / StylusZone.DsHeight * StylusZone.Height) * 192f;
+                + _stylusAffinityWeaponSlot.Y / StylusZone.DsHeight * StylusZone.Height) * 192f;
 
             float oldX = icon.PositionX;
             float oldY = icon.PositionY;
