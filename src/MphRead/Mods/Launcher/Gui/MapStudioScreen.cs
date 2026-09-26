@@ -109,14 +109,14 @@ namespace MphRead.Mods.Launcher.Gui
             Choice(new[]{"Move","Rotate","Scale"},name=>{if(_viewport!=null)_viewport.Tool=name;});
             Choice(new[]{"Free","X","Y","Z","XY","XZ","YZ"},name=>{if(_viewport!=null)_viewport.Axes=name;});
             Choice(new[]{"Perspective","Top","Front","Side"},name=>_viewport?.SetView(name));
-            Choice(new[]{"Add object","Box","Wedge","Prism","Convex","Spawn","Pickup","Jump pad","Navigation link"},name=>{if(name!="Add object")AddObject(name);});
+            Choice(new[]{"Add object","Box","Wedge","Prism","Convex","Mesh","Spawn","Pickup","Jump pad","Navigation link"},name=>{if(name!="Add object")AddObject(name);});
             Choice(new[]{"Overlays","Rendered","Wireframe","Collision","Collision heat","Kill plane","Navigation"},name=>
             {
                 if(_viewport==null)return;
                 if(name=="Navigation"){_=Navigation();return;}
                 _viewport.Wireframe=name=="Wireframe";_viewport.Collision=name is "Collision" or "Collision heat";_viewport.CollisionHeatmap=name=="Collision heat";_viewport.KillPlane=name=="Kill plane";_viewport.InvalidateVisual();
             });
-            Choice(new[]{"Inspector","Environment","Materials","Assets & music","Snapping","Arrange","Layers","Map health","Navigation path","Statistics"},name=>ShowInspectorPage(name));
+            Choice(new[]{"Inspector","Modeling","Environment","Materials","Assets & music","Snapping","Arrange","Layers","Map health","Navigation path","Statistics"},name=>ShowInspectorPage(name));
             AddButton(tools,"Frame all",()=>_viewport?.FrameAll());AddButton(tools,"Focus",()=>_viewport?.FrameSelection());
             AddButton(tools,"Copy",()=>_document?.CopySelection());AddButton(tools,"Paste",()=>_document?.PasteClipboard());
             AddButton(tools,"Duplicate",()=>EditSelection("Duplicate",MapObjects.Duplicate));AddButton(tools,"Delete",()=>EditSelection("Delete",MapObjects.Delete));
@@ -468,6 +468,7 @@ namespace MphRead.Mods.Launcher.Gui
                     case "Wedge":d.Geometry.Add(new MapWedge {Label="Ramp",Transform=new(){Position=new[]{0f,1,0},Scale=new[]{4f,2,6}}});break;
                     case "Prism":d.Geometry.Add(new MapPrism {Label="Prism",Transform=new(){Position=new[]{0f,1,0},Scale=new[]{3f,2,3}}});break;
                     case "Convex":d.Geometry.Add(new MapConvexBrush {Label="Convex brush",Vertices=new(){new[]{-1f,0,-1},new[]{1f,0,-1},new[]{0f,2,0},new[]{0f,0,1}},Faces=new(){new[]{0,1,2},new[]{0,1,3},new[]{0,2,3},new[]{1,2,3}}});break;
+                    case "Mesh":d.Geometry.Add(new MapMesh {Label="Editable mesh",Vertices=new(){new[]{-2f,0,-2},new[]{2f,0,-2},new[]{2f,0,2},new[]{-2f,0,2}},Faces=new(){new[]{0,1,2,3}},FaceMaterials=new(){0},Solid=false});break;
                     case "Spawn":d.Spawns.Add(new(){Id=Guid.NewGuid(),Position=new[]{0f,.1f,0}});break;
                     case "Pickup":d.Items.Add(new(){Id=Guid.NewGuid(),Type="HealthMedium",Position=new[]{0f,.1f,0}});break;
                     case "Jump pad":d.JumpPads.Add(new(){Id=Guid.NewGuid(),Position=new[]{0f,.1f,0},Target=new[]{8f,2,0}});break;
@@ -480,6 +481,7 @@ namespace MphRead.Mods.Launcher.Gui
             if (remember) _inspectorPage=name;
             switch(name)
             {
+                case "Modeling": ModelingInspector(); break;
                 case "Environment": EnvironmentInspector(); break;
                 case "Materials": MaterialInspector(); break;
                 case "Assets & music": AssetInspector(); break;
@@ -576,6 +578,106 @@ namespace MphRead.Mods.Launcher.Gui
             }
             AddButton(_inspector,"Apply",()=>{try{_document.EditObjects("Edit properties",new[]{id},d=>{var target=MapObjects.All(d).First(o=>o.Id==id).Value;foreach(var edit in edits)edit(target);});}catch(Exception ex){Failure(ex);}});
         }
+        private void ModelingInspector()
+        {
+            _inspector.Children.Clear();if(_document==null)return;
+            _inspector.Children.Add(Text("MODELING"));
+            var selected=MapObjects.All(_document.Project.Definition).Where(o=>_document.Selection.Contains(o.Id)).ToArray();
+            var geometry=selected.Where(o=>o.Value is MapGeometry).ToArray();
+            _inspector.Children.Add(Text($"{geometry.Length} geometry objects selected"));
+            AddButton(_inspector,"Convert selection to editable mesh",()=>
+            {
+                var ids=geometry.Select(o=>o.Id).ToHashSet();
+                if(ids.Count==0){_status.Text="Select authored geometry first.";return;}
+                _document.EditObjects("Convert to mesh",ids,d=>
+                {
+                    for(int i=0;i<d.Geometry.Count;i++)
+                    {
+                        MapGeometry source=d.Geometry[i];
+                        if(!ids.Contains(source.Id)||source is MapMesh)continue;
+                        d.Geometry[i]=MapMeshEditing.Convert(source,d.Materials[source.Material].TexScale);
+                    }
+                });ModelingInspector();
+            });
+
+            if(selected.FirstOrDefault(o=>o.Value is MapMesh) is {Value:MapMesh mesh} active)
+            {
+                _inspector.Children.Add(Text($"MESH · {mesh.Vertices.Count} vertices · {mesh.Faces.Count} faces"));
+                var face=new TextBox{Text="0"};var amount=new TextBox{Text=".25"};
+                _inspector.Children.Add(Text("Face index"));_inspector.Children.Add(face);
+                _inspector.Children.Add(Text("Amount / ratio"));_inspector.Children.Add(amount);
+                void FaceEdit(string label,Action<MapMesh,int,float> edit)
+                {
+                    try
+                    {
+                        int index=int.Parse(face.Text??"",CultureInfo.InvariantCulture);float value=Number(amount.Text??"");
+                        var id=active.Id;
+                        _document.EditObjects(label,new[]{id},d=>
+                        {
+                            var target=(MapMesh)MapObjects.Find(d,id)!.Value;edit(target,index,value);
+                        });ModelingInspector();
+                    }
+                    catch(Exception ex){Failure(ex);}
+                }
+                AddButton(_inspector,"Extrude face",()=>FaceEdit("Extrude face",(m,i,v)=>MapMeshEditing.ExtrudeFace(m,i,v)));
+                AddButton(_inspector,"Inset face",()=>FaceEdit("Inset face",(m,i,v)=>MapMeshEditing.InsetFace(m,i,v)));
+                AddButton(_inspector,"Bevel face",()=>FaceEdit("Bevel face",(m,i,v)=>MapMeshEditing.BevelFace(m,i,Math.Clamp(MathF.Abs(v),.01f,.9f),v*.25f)));
+                AddButton(_inspector,"Subdivide face",()=>FaceEdit("Subdivide face",(m,i,_)=>{MapMeshEditing.SubdivideFace(m,i);}));
+                AddButton(_inspector,"Flip face",()=>FaceEdit("Flip face",(m,i,_)=>{MapMeshEditing.FlipFace(m,i);}));
+                AddButton(_inspector,"Delete face",()=>FaceEdit("Delete face",(m,i,_)=>{MapMeshEditing.DeleteFace(m,i);}));
+
+                var vertex=new TextBox{Text="0"};var delta=new TextBox{Text="0,0.25,0"};
+                _inspector.Children.Add(Text("Vertex index"));_inspector.Children.Add(vertex);
+                _inspector.Children.Add(Text("Vertex delta X,Y,Z"));_inspector.Children.Add(delta);
+                AddButton(_inspector,"Move vertex",()=>
+                {
+                    try
+                    {
+                        int index=int.Parse(vertex.Text??"",CultureInfo.InvariantCulture);float[] v=ParseVector(delta.Text??"",3);var id=active.Id;
+                        _document.EditObjects("Move mesh vertex",new[]{id},d=>MapMeshEditing.MoveVertex((MapMesh)MapObjects.Find(d,id)!.Value,index,new(v[0],v[1],v[2])));
+                        ModelingInspector();
+                    }
+                    catch(Exception ex){Failure(ex);}
+                });
+                AddButton(_inspector,"Weld nearby vertices",()=>
+                {
+                    try
+                    {
+                        float tolerance=Math.Max(.00001f,MathF.Abs(Number(amount.Text??"")));var id=active.Id;int removed=0;
+                        _document.EditObjects("Weld mesh vertices",new[]{id},d=>removed=MapMeshEditing.Weld((MapMesh)MapObjects.Find(d,id)!.Value,tolerance));
+                        _status.Text=$"Welded {removed} duplicate/nearby vertices.";ModelingInspector();
+                    }
+                    catch(Exception ex){Failure(ex);}
+                });
+            }
+
+            var boxes=selected.Where(o=>o.Value is MapBox).ToArray();
+            if(boxes.Length==2)
+            {
+                _inspector.Children.Add(Text("BOX CSG · axis-aligned boxes"));
+                void Csg(string mode)
+                {
+                    try
+                    {
+                        Guid aId=boxes[0].Id,bId=boxes[1].Id;
+                        _document.Edit("Box CSG "+mode,d=>
+                        {
+                            var a=(MapBox)MapObjects.Find(d,aId)!.Value;var b=(MapBox)MapObjects.Find(d,bId)!.Value;
+                            d.Geometry.RemoveAll(g=>g.Id==aId||g.Id==bId);
+                            if(mode=="Union")d.Geometry.Add(MapBoxCsg.UnionBounds(a,b));
+                            else if(mode=="Intersect"){var result=MapBoxCsg.Intersect(a,b);if(result!=null)d.Geometry.Add(result);}
+                            else d.Geometry.AddRange(MapBoxCsg.Subtract(a,b));
+                        },MapChangeDomain.Geometry);
+                        _document.Selection.Clear();_document.SelectionChanged();ModelingInspector();
+                    }
+                    catch(Exception ex){Failure(ex);}
+                }
+                AddButton(_inspector,"Union bounds",()=>Csg("Union"));
+                AddButton(_inspector,"Intersect",()=>Csg("Intersect"));
+                AddButton(_inspector,"Subtract second from first",()=>Csg("Subtract"));
+            }
+        }
+
         private void ArrangeInspector()
         {
             _inspector.Children.Clear(); if (_document == null) return;
