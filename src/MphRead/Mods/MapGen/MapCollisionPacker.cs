@@ -31,8 +31,9 @@ namespace MphRead.Mods.MapGen
         /// <summary>The grid step is fixed: the run-time lookup divides by four.</summary>
         private const float CellSize = 4f;
 
-        public static byte[] Pack(IReadOnlyList<CollisionDataEditor> data)
+        public static byte[] Pack(IReadOnlyList<CollisionDataEditor> data, IReadOnlyList<Portal>? portals = null)
         {
+            portals ??= Array.Empty<Portal>();
             if (data.Count == 0)
             {
                 throw new ProgramException("A map needs at least one solid face.");
@@ -189,9 +190,23 @@ namespace MphRead.Mods.MapGen
                 writer.Write(count);
                 writer.Write(start);
             }
-            // no portals: a custom map is one room part, with nothing to see
-            // through into another
             int portalOffset = (int)stream.Position;
+            foreach(Portal portal in portals)
+            {
+                if(portal.Points.Count!=4||portal.Planes.Count!=4)
+                    throw new MapAuthoringException("FP-MAP-003","Runtime partition portals require four points and four edge planes.");
+                writer.WriteString(portal.Name,40);
+                writer.WriteString(portal.NodeName1,24);
+                writer.WriteString(portal.NodeName2,24);
+                foreach(Vector3 point in portal.Points)writer.WriteVector3(point);
+                foreach(Vector4 plane in portal.Planes)writer.WriteVector4(plane);
+                writer.WriteVector4(portal.Plane);
+                writer.Write((ushort)0); // Flags; generated spatial portals are always open
+                writer.Write(portal.LayerMask);
+                writer.Write((ushort)4);
+                writer.Write(portal.Unknown00);
+                writer.Write(portal.Unknown01);
+            }
             stream.Position = 0;
             writer.Write("wc01".ToCharArray());
             writer.Write(points.Count);
@@ -210,7 +225,7 @@ namespace MphRead.Mods.MapGen
             writer.WriteVector3(min);
             writer.Write(entries.Count);
             writer.Write(entryOffset);
-            writer.Write(0); // portal count
+            writer.Write(portals.Count);
             writer.Write(portalOffset);
             return stream.ToArray();
         }
