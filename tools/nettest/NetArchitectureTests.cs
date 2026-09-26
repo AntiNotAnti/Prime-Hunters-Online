@@ -60,14 +60,14 @@ internal static class NetArchitectureTests
             var intent = IntentPacket.Read(fixture);
             Check(intent.Position == new Vector3(123.25f, -42.5f, 17.75f), "owner position survives wire");
             byte[] output = new byte[IntentPacket.FullSize]; intent.Write(output);
-            Check(output.SequenceEqual(fixture), "v23 intent byte fixture");
+            Check(output.SequenceEqual(fixture), "v24 keeps the v22 intent byte fixture");
             Check(intent.AckFrame == 0x87654321 && intent.AckSubFrame == 128 && IntentPacket.PressHistory == 8,
                 "displayed world ACK and eight-frame edge retention");
-            Check(NetConfig.ProtocolVersion == 23 && IntentPacket.FullSize == 102 && intent.HasAnalogMove
+            Check(NetConfig.ProtocolVersion == 24 && IntentPacket.FullSize == 102 && intent.HasAnalogMove
                 && intent.MoveX == 64 && intent.MoveY == -96
                 && intent.HasContinuousFireTick && intent.ContinuousFireTick == 0xCAFEBABE
                 && Math.Abs(IntentPacket.UnpackMoveAxis(intent.MoveX) - 64 / 127f) < .00001f,
-                "protocol 23 preserves analog movement, continuous firing tick, boost and spare shot-state bits");
+                "protocol 24 preserves analog movement, continuous firing tick, boost and spawn-release state");
             string[] forbidden = { "MovementCommand", "MovementAck", "ProcessedMovementFrame", "MovementReconciliation",
                 "PredictedMovementState", "IntentBundle", "SnapshotDelta", "SnapshotKeyframe" };
             Check(!typeof(IntentPacket).Assembly.GetTypes().Any(t => forbidden.Any(n => t.Name.Contains(n))),
@@ -126,7 +126,7 @@ internal static class NetArchitectureTests
             for (int i = 0; i < 180; i++) bridge.ApplyState(player, state, isLocal: true);
             Check(player.Position == position && player.Speed == speed && player.PrevPosition == previous,
                 "same-life snapshots cannot correct owner's physical position or velocity");
-            Console.WriteLine("PASS: architecture, owner position, full snapshots and v23 byte fixture");
+            Console.WriteLine("PASS: architecture, owner position, full snapshots and v20 byte fixture");
             return 0;
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }

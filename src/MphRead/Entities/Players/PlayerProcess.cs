@@ -1272,9 +1272,39 @@ namespace MphRead.Entities
             return true;
         }
 
+        // Authoritative launch sequence carried in PlayerState. It is deliberately
+        // independent of the pad's own cooldown: a receiver only needs to know
+        // that this player launched again, even if the snapshot containing the
+        // exact trigger position was lost.
+        private ushort _jumpPadAudioEventId;
+        internal ushort ModJumpPadAudioEventId => _jumpPadAudioEventId;
+
+        internal void ModPlayReplicatedJumpPadSfx()
+        {
+            _soundSource.PlaySfx(SfxId.JUMP_PAD);
+        }
+
         public void ActivateJumpPad(JumpPadEntity jumpPad, Vector3 vector, ushort lockTime)
         {
-            if (_timeSinceJumpPad > 5 * 2) // todo: FPS stuff
+            // Only the authority authors the sequence during a live session.
+            // Offline play still advances it so map/network harnesses can inspect
+            // the same state without opening a socket.
+            if (!Mods.Network.NetSession.Active || Mods.Network.NetSession.IsAuthority)
+            {
+                _jumpPadAudioEventId++;
+                if (_jumpPadAudioEventId == 0)
+                {
+                    _jumpPadAudioEventId = 1; // reserve zero for "never launched"
+                }
+            }
+
+            // A live remote puppet's exact trigger crossing can disappear between
+            // snapshots. Its cue therefore comes from the authoritative sequence,
+            // not from this machine guessing that the puppet occupied the volume.
+            bool snapshotDrivenPuppet = Mods.Network.NetSession.Active
+                && !Mods.Network.NetSession.IsAuthority
+                && Mods.Network.NetHooks.IsPuppet(this);
+            if (_timeSinceJumpPad > 5 * 2 && !snapshotDrivenPuppet) // todo: FPS stuff
             {
                 _soundSource.PlaySfx(SfxId.JUMP_PAD);
             }
@@ -1956,6 +1986,14 @@ namespace MphRead.Entities
             else if (Hunter == Hunter.Weavel)
             {
                 _altModel.SetAnimation((int)WeavelAltAnim.Idle);
+                // The player entity is Weavel's mobile upper half after the split.
+                // Give it an immediate upward pop as the lower turret is planted,
+                // while preserving any stronger upward velocity it already has.
+                float liftSpeed = Fixed.ToFloat(Values.JumpSpeed);
+                if (Speed.Y < liftSpeed)
+                {
+                    Speed = Speed.WithY(liftSpeed);
+                }
                 Flags2 |= PlayerFlags2.Halfturret;
                 _halfturret.NodeRef = NodeRef;
                 _scene.AddEntity(_halfturret);

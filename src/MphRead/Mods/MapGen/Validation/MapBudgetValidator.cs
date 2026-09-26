@@ -13,6 +13,13 @@ namespace MphRead.Mods.MapGen
             var solid = map.Solid.SelectMany(MapPacker.CollisionParts).ToArray();
             Add(result, "Geometry faces", map.Faces.Count);
             Add(result, "Vertices", map.Faces.Sum(f => (long)f.Points.Length));
+            if(map.Faces.Count>0)
+            {
+                var render=MapPacker.EstimateRenderLayout(map);
+                Add(result,"Render partitions",render.Partitions,Int16.MaxValue-1);
+                Add(result,"Render meshes",render.Meshes,UInt16.MaxValue/2);
+                Add(result,"Render command bytes",render.CommandBytes,MapPackageReader.MaxEntryBytes);
+            }
             Add(result, "Collision faces", solid.Length, 65535);
             Add(result, "Collision points", map.Solid.SelectMany(f => f.Points).Distinct().LongCount(), 65535);
             Add(result, "Collision point indices", solid.Sum(f => (long)f.Points.Length + 1), 65535);

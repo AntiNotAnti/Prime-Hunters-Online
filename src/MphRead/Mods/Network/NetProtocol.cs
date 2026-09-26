@@ -1347,10 +1347,9 @@ namespace MphRead.Mods.Network
         /// <summary>
         /// The owner successfully spawned a real weapon shot during this life.
         /// Kept set until the next spawn so packet loss or reconnection cannot
-        /// resurrect protection. The authority may
-        /// trust this only to REMOVE spawn protection, which can never benefit a
-        /// dishonest sender, and lifecycle fencing prevents an old-life report
-        /// from touching a respawn.
+        /// resurrect protection. The authority may trust this only to REMOVE
+        /// spawn protection, which can never benefit a dishonest sender, and
+        /// lifecycle fencing prevents an old-life report from touching a respawn.
         /// </summary>
         public const byte FlagSpawnProtectionReleased = 1 << 3;
 
@@ -1599,12 +1598,20 @@ namespace MphRead.Mods.Network
     {
         public ushort SlotGeneration;
         public ushort LifeId;
-        public const int Size = 57 + DamageEvent.Size * DamageHistory;
+        private const int HalfturretOffset = 54 + DamageEvent.Size * DamageHistory;
         private const byte AuxHalfturretActive = 1 << 0;
         private const byte AuxSpawnProtected = 1 << 1;
+        private const int JumpPadEventOffset = HalfturretOffset + 3;
+        public const int Size = JumpPadEventOffset + 2;
         public bool HalfturretActive;
         public bool SpawnProtected;
         public ushort HalfturretHealth;
+        /// <summary>
+        /// Monotonic per-player launch sequence. Remote clients use this to play
+        /// jump-pad audio even when packet loss skips the trigger-volume crossing.
+        /// Zero means no launch has been authored yet.
+        /// </summary>
+        public ushort JumpPadEventId;
 
         public byte SlotIndex;
         public byte Flags;          // bit 0 = active, bit 1 = alt form, bit 2 = spawned
@@ -1735,9 +1742,10 @@ namespace MphRead.Mods.Network
             BinaryPrimitives.WriteUInt16LittleEndian(dest[48..], SlotGeneration);
             BinaryPrimitives.WriteUInt16LittleEndian(dest[50..], LifeId);
             BinaryPrimitives.WriteUInt16LittleEndian(dest[52..], DamageEventId);
-            dest[Size - 3] = (byte)((HalfturretActive ? AuxHalfturretActive : 0)
+            dest[HalfturretOffset] = (byte)((HalfturretActive ? AuxHalfturretActive : 0)
                 | (SpawnProtected ? AuxSpawnProtected : 0));
-            BinaryPrimitives.WriteUInt16LittleEndian(dest[(Size - 2)..], HalfturretHealth);
+            BinaryPrimitives.WriteUInt16LittleEndian(dest[(HalfturretOffset + 1)..], HalfturretHealth);
+            BinaryPrimitives.WriteUInt16LittleEndian(dest[JumpPadEventOffset..], JumpPadEventId);
             for (int i = 0; i < DamageHistory; i++)
             {
                 EventAt(i).Write(dest[(54 + i * DamageEvent.Size)..]);
@@ -1746,7 +1754,7 @@ namespace MphRead.Mods.Network
 
         public static PlayerState Read(ReadOnlySpan<byte> src)
         {
-            byte auxiliary = src[Size - 3];
+            byte auxiliary = src[HalfturretOffset];
             var state = new PlayerState
             {
                 SlotIndex = src[0],
@@ -1765,7 +1773,8 @@ namespace MphRead.Mods.Network
                 DamageEventId = BinaryPrimitives.ReadUInt16LittleEndian(src[52..]),
                 HalfturretActive = (auxiliary & AuxHalfturretActive) != 0,
                 SpawnProtected = (auxiliary & AuxSpawnProtected) != 0,
-                HalfturretHealth = BinaryPrimitives.ReadUInt16LittleEndian(src[(Size - 2)..]),
+                HalfturretHealth = BinaryPrimitives.ReadUInt16LittleEndian(src[(HalfturretOffset + 1)..]),
+                JumpPadEventId = BinaryPrimitives.ReadUInt16LittleEndian(src[JumpPadEventOffset..]),
                 Damage0 = DamageEvent.Read(src[54..]),
                 Damage1 = DamageEvent.Read(src[(54 + DamageEvent.Size)..]),
                 Damage2 = DamageEvent.Read(src[(54 + 2 * DamageEvent.Size)..]),
@@ -2258,16 +2267,17 @@ namespace MphRead.Mods.Network
         /// Shock Coil damage/ammo cadence. Mixed peers must be refused because the
         /// realtime intent length changed and older SessionState readers reject the
         /// newer rule/profile values.
-        /// Version 22 assigns the spare shot-state bit to Samus' active boost so
-        /// authority contact damage uses the owner's real ram state.
-        /// Version 23 turns PlayerState's existing turret-active byte into a bitfield
-        /// without changing packet size: bit 0 remains Weavel turret activity and bit
-        /// 1 carries authoritative spawn-protection state. It also spends another
-        /// spare ShotFlags bit on a redundant successful-shot release signal. Mixed
-        /// v22/v23 peers must be refused because those existing bytes now have new
-        /// gameplay semantics.
+        /// Version 23 appends a 16-bit jump-pad launch sequence to PlayerState.
+        /// Remote clients no longer have to infer a pad crossing from sampled
+        /// puppet positions, so a lost snapshot cannot silently drop the launch
+        /// cue. Mixed peers must be refused because PlayerState grew by two bytes.
+        /// Version 24 turns PlayerState's existing turret-active byte into a bitfield:
+        /// bit 0 remains Weavel turret activity and bit 1 carries authoritative
+        /// spawn-protection state. It also spends a spare ShotFlags bit on a
+        /// life-fenced successful-shot release signal. Mixed v23/v24 peers must be
+        /// refused because those existing bytes now have new gameplay semantics.
         /// </summary>
-        public const int ProtocolVersion = 23;
+        public const int ProtocolVersion = 24;
         /// <summary>
         /// Frames between intent packets. One, so every frame.
         ///

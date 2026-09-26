@@ -29,13 +29,16 @@ internal static class Protocol19Tests
     }
     private static void Codecs()
     {
-        Check(NetConfig.ProtocolVersion == 23 && SnapshotFast.MaximumEncodedSize <= 1200, "current version and eight-player fast packet budget");
+        Check(NetConfig.ProtocolVersion == 24 && SnapshotFast.MaximumEncodedSize <= 1200, "current version and eight-player fast packet budget");
         Span<byte> bytes = stackalloc byte[PlayerState.Size];
         foreach (ushort health in new ushort[] { 0, 1, 37, 100, ushort.MaxValue })
         {
-            var state = new PlayerState { SlotIndex = 7, SlotGeneration = 65535, LifeId = 42, HalfturretActive = true, HalfturretHealth = health };
+            var state = new PlayerState { SlotIndex = 7, SlotGeneration = 65535, LifeId = 42, HalfturretActive = true,
+                HalfturretHealth = health, JumpPadEventId = 65534 };
             state.Write(bytes); var decoded = PlayerState.Read(bytes);
-            Check(decoded.HalfturretActive && decoded.HalfturretHealth == health && decoded.LifeId == 42 && decoded.SlotGeneration == 65535, "turret canonical codec " + health);
+            Check(decoded.HalfturretActive && decoded.HalfturretHealth == health && decoded.LifeId == 42
+                && decoded.SlotGeneration == 65535 && decoded.JumpPadEventId == 65534,
+                "turret/jump-pad canonical codec " + health);
         }
         Span<byte> ackBytes = stackalloc byte[CombatAckEntry.Size];
         for (byte result = 0; result <= (byte)CombatAckResult.Corrected; result++)
