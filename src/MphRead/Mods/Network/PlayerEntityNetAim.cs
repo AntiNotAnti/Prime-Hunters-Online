@@ -94,7 +94,7 @@ namespace MphRead.Entities
             return true;
         }
 
-        private bool ModPrepareObservedFirstPersonViewmodel(double presentationAlpha,
+        internal bool ModPrepareObservedFirstPersonViewmodel(double presentationAlpha,
             Vector3 cameraPosition, Vector3 cameraTarget, Vector3 cameraUp,
             float fov, Matrix4 view)
         {
