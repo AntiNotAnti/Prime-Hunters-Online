@@ -1497,6 +1497,7 @@ namespace MphRead.Mods.Network
                 }
                 else if (newMatch) NetPlayerLifecycle.ResetLives();
                 if (newMatch) NetTelemetry.NewMatch();
+                ClearPostMatchReport();
                 SnapshotStreamResets++;
             }
             if (newMatch || previous?.RoomKey != state.RoomKey)
@@ -1514,6 +1515,32 @@ namespace MphRead.Mods.Network
         private static bool _hasSnapshot;
         private static uint _rosterRevision;
         private static bool _hasRoster;
+
+        private static ushort _postMatchReportMatchId;
+        private static int _postMatchReportCount;
+        private static readonly byte[] _postMatchReportSlots = new byte[PlayerEntity.SlotCapacity];
+        private static readonly sbyte[] _postMatchReportTeams = new sbyte[PlayerEntity.SlotCapacity];
+        private static readonly string[] _postMatchReportNames = new string[PlayerEntity.SlotCapacity];
+
+        internal static bool HasPostMatchReport =>
+            _postMatchReportMatchId == CurrentMatchId && _postMatchReportCount > 0;
+        internal static int PostMatchReportCount => HasPostMatchReport ? _postMatchReportCount : 0;
+        internal static int PostMatchReportSlot(int index) =>
+            (uint)index < (uint)PostMatchReportCount ? _postMatchReportSlots[index] : -1;
+        internal static int PostMatchReportTeam(int index) =>
+            (uint)index < (uint)PostMatchReportCount ? _postMatchReportTeams[index] : -1;
+        internal static string PostMatchReportName(int index) =>
+            (uint)index < (uint)PostMatchReportCount ? _postMatchReportNames[index] : String.Empty;
+
+        private static void ClearPostMatchReport()
+        {
+            _postMatchReportMatchId = 0;
+            _postMatchReportCount = 0;
+            Array.Clear(_postMatchReportSlots);
+            Array.Clear(_postMatchReportTeams);
+            Array.Clear(_postMatchReportNames);
+        }
+
         public static ushort CurrentMatchId => ServerMatch?.MatchId ?? (IsHost ? (ushort)1 : (ushort)0);
         public static ulong AuthorityEpoch => ServerMatch?.AuthorityEpoch ?? (IsHost ? (ushort)1 : (ushort)0);
         public static int SnapshotStreamResets { get; private set; }
@@ -1531,29 +1558,44 @@ namespace MphRead.Mods.Network
 
         private static void ApplyPostMatchReport(PostMatchReportPacket report)
         {
-            int slot = report.SlotIndex;
-            if (report.MatchId != CurrentMatchId || slot != LocalSlot
-                || (uint)slot >= PlayerEntity.SlotCapacity)
-            {
-                return;
-            }
-            ushort generation = NetPlayerLifecycle.Generation(slot);
-            if (report.SlotGeneration != 0 && generation != 0
-                && report.SlotGeneration != generation)
+            if (report.MatchId != CurrentMatchId)
             {
                 return;
             }
 
-            // The server is the scorer. Re-apply K/D too so the detailed card
-            // and the scoreboard cannot disagree if the final snapshot was lost.
-            GameState.Kills[slot] = report.Kills;
-            GameState.Deaths[slot] = report.Deaths;
-            GameState.HeadshotKills[slot] = report.Headshots;
-            GameState.LongestKillStreak[slot] = report.LongestKillStreak;
-            GameState.ShotsFired[slot] = (int)Math.Min(report.ShotsFired, Int32.MaxValue);
-            GameState.ShotsHit[slot] = (int)Math.Min(report.ShotsHit, Int32.MaxValue);
-            GameState.MatchDamageDealt[slot] = (int)Math.Min(report.DamageDealt, Int32.MaxValue);
-            GameState.MatchDamageTaken[slot] = (int)Math.Min(report.DamageTaken, Int32.MaxValue);
+            _postMatchReportMatchId = report.MatchId;
+            _postMatchReportCount = Math.Min(report.Count, (byte)PlayerEntity.SlotCapacity);
+            Array.Clear(_postMatchReportSlots);
+            Array.Clear(_postMatchReportTeams);
+            Array.Clear(_postMatchReportNames);
+
+            for (int i = 0; i < _postMatchReportCount; i++)
+            {
+                int slot = report.Slots[i];
+                if ((uint)slot >= PlayerEntity.SlotCapacity)
+                {
+                    continue;
+                }
+
+                _postMatchReportSlots[i] = (byte)slot;
+                _postMatchReportTeams[i] = report.Teams[i];
+                _postMatchReportNames[i] = String.IsNullOrWhiteSpace(report.Names[i])
+                    ? GameState.Nicknames[slot]
+                    : report.Names[i];
+
+                GameState.Kills[slot] = report.Kills[i];
+                GameState.Deaths[slot] = report.Deaths[i];
+                GameState.HeadshotKills[slot] = report.Headshots[i];
+                GameState.LongestKillStreak[slot] = report.LongestKillStreaks[i];
+                GameState.ShotsFired[slot] = (int)Math.Min(report.ShotsFired[i], Int32.MaxValue);
+                GameState.ShotsHit[slot] = (int)Math.Min(report.ShotsHit[i], Int32.MaxValue);
+                GameState.MatchDamageDealt[slot] = (int)Math.Min(report.DamageDealt[i], Int32.MaxValue);
+                GameState.MatchDamageTaken[slot] = (int)Math.Min(report.DamageTaken[i], Int32.MaxValue);
+                if (!String.IsNullOrWhiteSpace(report.Names[i]))
+                {
+                    GameState.Nicknames[slot] = report.Names[i];
+                }
+            }
         }
 
         private static void HandleSnapshot(ReceivedPacket packet, bool bootstrap = false)
