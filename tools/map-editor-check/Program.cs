@@ -287,7 +287,7 @@ try
             "collision fit accepts representable point-index load");
         Check(!MapBudgetValidator.CollisionFits(Enumerable.Repeat(collisionTriangle,22000)),
             "collision fit rejects 16-bit point-index overflow");
-        var strip=new List<MphRead.Utility.CollisionDataEditor>();
+        var strip=new System.Collections.Generic.List<MphRead.Utility.CollisionDataEditor>();
         for(int x=0;x<1000;x++)
         {
             var quad=new MphRead.Utility.CollisionDataEditor
