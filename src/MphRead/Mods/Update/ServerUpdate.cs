@@ -353,6 +353,11 @@ namespace MphRead.Mods.Update
         /// </summary>
         private static void ReplaceInPlace(string source, string target)
         {
+            // Client and server packages use the same ownership manifest. Any
+            // release-owned file removed by the new build is deleted before
+            // replacement, while settings/game data/replays remain outside the
+            // manifest and are never inferred as disposable.
+            DesktopUpdate.RemoveObsoleteReleaseFiles(source, target);
             foreach (string path in Directory.EnumerateFiles(source, "*",
                 SearchOption.AllDirectories))
             {
