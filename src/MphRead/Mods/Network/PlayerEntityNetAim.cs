@@ -81,6 +81,51 @@ namespace MphRead.Entities
             position = replicaPosition;
             fov = replicaFov;
             view = Matrix4.LookAt(replicaPosition, replicaTarget, replicaUp);
+
+            // TransformCamera invalidates the local render pose before asking for
+            // the watched/replay camera. Rebuild the arm cannon against this exact
+            // interpolated camera now, otherwise PlayerDraw falls back to raw
+            // 60 Hz _gunDrawPos/_aimVec while the POV itself is sub-frame smooth.
+            if (CameraType == CameraType.First)
+            {
+                ModPrepareObservedFirstPersonViewmodel(alpha,
+                    replicaPosition, replicaTarget, replicaUp, replicaFov, view);
+            }
+            return true;
+        }
+
+        internal bool ModPrepareObservedFirstPersonViewmodel(double presentationAlpha,
+            Vector3 cameraPosition, Vector3 cameraTarget, Vector3 cameraUp,
+            float fov, Matrix4 view)
+        {
+            Vector3 renderFacing = cameraTarget - cameraPosition;
+            if (!ModPresentationBasis(renderFacing, cameraUp,
+                    out Vector3 renderRight, out Vector3 renderUp, out Vector3 renderForward)
+                || !ModInterpolatedFirstPersonLocalPose(
+                    presentationAlpha,
+                    out Vector3 gunLocalPosition, out Vector3 gunLocalFacing,
+                    out Vector3 gunLocalUp))
+            {
+                return false;
+            }
+
+            Vector3 gunPosition = cameraPosition + ModFromPresentationLocal(
+                gunLocalPosition, renderRight, renderUp, renderForward);
+            Vector3 gunFacing = ModFromPresentationLocal(
+                gunLocalFacing, renderRight, renderUp, renderForward);
+            Vector3 gunUp = ModFromPresentationLocal(
+                gunLocalUp, renderRight, renderUp, renderForward);
+            if (!ModFinite(gunPosition) || !ModFinite(gunFacing) || !ModFinite(gunUp)
+                || gunFacing.LengthSquared < 0.000001f || gunUp.LengthSquared < 0.000001f)
+            {
+                return false;
+            }
+
+            gunFacing = gunFacing.Normalized();
+            gunUp = gunUp.Normalized();
+            _fpRenderPose = new FirstPersonRenderPose(
+                view, cameraPosition, gunPosition, gunFacing, gunUp, fov);
+            _fpRenderPoseValid = true;
             return true;
         }
 
