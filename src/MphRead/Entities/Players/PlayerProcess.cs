@@ -1951,6 +1951,14 @@ namespace MphRead.Entities
             else if (Hunter == Hunter.Weavel)
             {
                 _altModel.SetAnimation((int)WeavelAltAnim.Idle);
+                // The player entity is Weavel's mobile upper half after the split.
+                // Give it an immediate upward pop as the lower turret is planted,
+                // while preserving any stronger upward velocity it already has.
+                float liftSpeed = Fixed.ToFloat(Values.JumpSpeed);
+                if (Speed.Y < liftSpeed)
+                {
+                    Speed = Speed.WithY(liftSpeed);
+                }
                 Flags2 |= PlayerFlags2.Halfturret;
                 _halfturret.NodeRef = NodeRef;
                 _scene.AddEntity(_halfturret);
