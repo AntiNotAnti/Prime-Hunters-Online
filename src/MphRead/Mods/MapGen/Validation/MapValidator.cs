@@ -91,6 +91,9 @@ namespace MphRead.Mods.MapGen
                 Id(geometry.Id);
                 if (geometry.Material < 0 || geometry.Material >= d.Materials.Count || d.Materials[geometry.Material] == null)
                 { r.Error("FP-MAP-001", "Geometry references a missing material.", geometry.Id); continue; }
+                if (geometry is MapMesh mesh && mesh.FaceMaterials != null
+                    && mesh.FaceMaterials.Any(material => material < 0 || material >= d.Materials.Count))
+                    r.Error("FP-MAP-001","Mesh face references a missing material.",geometry.Id);
                 if(!float.IsFinite(geometry.Shade)||geometry.Shade is <0 or >1||!Enum.TryParse<Terrain>(geometry.Terrain,true,out var ground)||!Enum.IsDefined(ground))
                     r.Error("FP-MAP-013","Geometry requires shade 0–1 and a valid terrain.",geometry.Id);
                 try
