@@ -45,7 +45,7 @@ namespace MphRead.Mods
                 MaintenanceReport report = CleanReproducibleData();
                 File.WriteAllText(marker, current);
                 DebugLog.Line("maintenance",
-                    $"upgrade/startup sweep {previous.Length == 0 ? "(first)" : previous} -> {current}: {report.Summary}");
+                    $"upgrade/startup sweep {(previous.Length == 0 ? "(first)" : previous)} -> {current}: {report.Summary}");
                 return report;
             }
             catch (Exception ex)
