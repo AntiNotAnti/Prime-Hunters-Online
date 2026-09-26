@@ -59,5 +59,10 @@ namespace MphRead.Mods.MapGen
         public List<float[]> Vertices { get; set; } = new();
         public List<int[]> Faces { get; set; } = new();
         public List<int> FaceMaterials { get; set; } = new();
+        /// <summary>
+        /// Optional source-authored UVs in texels, one float[2] per face
+        /// vertex. Null entries use MapUv projection instead.
+        /// </summary>
+        public List<float[][]?> FaceTexcoords { get; set; } = new();
     }
 }
