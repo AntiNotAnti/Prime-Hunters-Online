@@ -8,7 +8,8 @@ claim grace, smoothing, and the 45-frame production rewind limit are unchanged.
 
 ## Combat state
 
-`PlayerState` is 117 bytes. Its final three bytes contain `HalfturretActive` and
+`PlayerState` is 117 bytes. Its final three bytes contain one auxiliary bitfield
+(bit 0 `HalfturretActive`, bit 1 authoritative `SpawnProtected`) followed by
 little-endian `HalfturretHealth`. Fast replication and WorldBootstrap use the
 same canonical fields; the maximum eight-player fast datagram is 927 bytes.
 Generation/life acceptance precedes application. Form transitions create the
