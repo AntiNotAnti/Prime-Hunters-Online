@@ -31,6 +31,8 @@ namespace MphRead.Mods.Input
         public static float RightTriggerMax { get => State.RightTriggerMax; set => State.RightTriggerMax = value; }
         public static StickCalibration LeftCalibration { get => State.LeftCalibration; set => State.LeftCalibration = value; }
         public static StickCalibration RightCalibration { get => State.RightCalibration; set => State.RightCalibration = value; }
+        public static StickRadialCalibration LeftRadial { get => State.LeftRadial; set => State.LeftRadial = value; }
+        public static StickRadialCalibration RightRadial { get => State.RightRadial; set => State.RightRadial = value; }
         public static int[] WheelOrder => State.WheelOrder;
         public static void SetWheelSlot(int position, int slot) => State.SetWheelSlot(position, slot);
         public static void Load(IEnumerable<string> lines) => State.Load(lines);
