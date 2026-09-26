@@ -67,7 +67,7 @@ internal static class NetArchitectureTests
                 && intent.MoveX == 64 && intent.MoveY == -96
                 && intent.HasContinuousFireTick && intent.ContinuousFireTick == 0xCAFEBABE
                 && Math.Abs(IntentPacket.UnpackMoveAxis(intent.MoveX) - 64 / 127f) < .00001f,
-                "protocol 22 carries analog movement, exact continuous firing tick, and boost state");
+                "protocol 23 preserves analog movement, continuous firing tick, boost and spare shot-state bits");
             string[] forbidden = { "MovementCommand", "MovementAck", "ProcessedMovementFrame", "MovementReconciliation",
                 "PredictedMovementState", "IntentBundle", "SnapshotDelta", "SnapshotKeyframe" };
             Check(!typeof(IntentPacket).Assembly.GetTypes().Any(t => forbidden.Any(n => t.Name.Contains(n))),
@@ -126,7 +126,7 @@ internal static class NetArchitectureTests
             for (int i = 0; i < 180; i++) bridge.ApplyState(player, state, isLocal: true);
             Check(player.Position == position && player.Speed == speed && player.PrevPosition == previous,
                 "same-life snapshots cannot correct owner's physical position or velocity");
-            Console.WriteLine("PASS: architecture, owner position, full snapshots and v20 byte fixture");
+            Console.WriteLine("PASS: architecture, owner position, full snapshots and v23 byte fixture");
             return 0;
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
