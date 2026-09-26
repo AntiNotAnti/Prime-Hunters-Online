@@ -10,7 +10,7 @@ internal static class ContinuousTargetTests
     {
         try
         {
-            Check(NetConfig.ProtocolVersion == 22 && IntentPacket.FullSize == 102, "protocol 22 layout");
+            Check(NetConfig.ProtocolVersion == 23 && IntentPacket.FullSize == 102, "protocol 23 preserves intent layout");
             Span<byte> bytes = stackalloc byte[102];
             foreach (byte slot in new byte[] { 0x80, 0x81, 0x88 })
             {
