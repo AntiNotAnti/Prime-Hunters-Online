@@ -880,6 +880,7 @@ namespace MphRead.Mods.Launcher.Gui
                 _inspector.Children.Add(Text("NATIVE ROOM REMIX"));
                 _inspector.Children.Add(Text($"Source: {native.Room}\nOriginal architecture is preserved from the extracted game files and never overwritten."));
                 foreach(var pair in new[]{
+                    ("Use native architecture",native.UseNativeArchitecture),
                     ("Preserve unsupported/native entities",native.PreserveEntities),
                     ("Editable native spawns",native.EditableSpawns),
                     ("Editable native pickups",native.EditableItems),
@@ -892,6 +893,7 @@ namespace MphRead.Mods.Launcher.Gui
                         var n=m.NativeRoom!;
                         switch(pair.Item1)
                         {
+                            case "Use native architecture":n.UseNativeArchitecture=check.IsChecked==true;break;
                             case "Preserve unsupported/native entities":n.PreserveEntities=check.IsChecked==true;break;
                             case "Editable native spawns":n.EditableSpawns=check.IsChecked==true;break;
                             case "Editable native pickups":n.EditableItems=check.IsChecked==true;break;
@@ -901,6 +903,8 @@ namespace MphRead.Mods.Launcher.Gui
                     });
                 }
                 _inspector.Children.Add(Text("Add Project Prime boxes, wedges, prisms, meshes, prefabs, spawns, pickups and navigation normally; the native source remains the immutable base."));
+                if(native.UseNativeArchitecture)
+                    AddButton(_inspector,"Detach native architecture for editing",()=>_=DetachNativeArchitecture());
             }
             if(d.Import is {} import)
             {
@@ -940,6 +944,22 @@ namespace MphRead.Mods.Launcher.Gui
             AddButton(_inspector,"Upgrade project",()=>_document.Upgrade());
             AddButton(_inspector,"Use camera as preview",()=>{if(_viewport!=null){var p=_viewport.CameraPosition;var t=_viewport.CameraTarget;_document.Edit("Preview camera",m=>m.Preview=new(){Position=new[]{p.X,p.Y,p.Z},Target=new[]{t.X,t.Y,t.Z}});}});
         }
+        private Task DetachNativeArchitecture()=>Job("Detaching native architecture",async token=>
+        {
+            if(_document?.Project.Definition.NativeRoom is not {UseNativeArchitecture:true})return;
+            var snapshot=_document.CaptureBuildSnapshot().CreateDefinition();
+            var extracted=await Task.Run(()=>NativeRoomImport.ExtractEditableGeometry(snapshot,token),token);
+            GuardJob(token);
+            if(extracted.Count==0){_status.Text="The selected native source layer contains no editable render geometry.";return;}
+            _document.Edit("Detach native architecture",d=>
+            {
+                d.Geometry.AddRange(extracted.Select(g=>MapSnapshotCopy.Copy(g)).Cast<MapGeometry>());
+                d.NativeRoom!.UseNativeArchitecture=false;
+            },MapChangeDomain.Geometry|MapChangeDomain.Import);
+            _status.Text=$"Detached {extracted.Count:N0} native mesh objects. Native collision/entities remain linked to the source room.";
+            ShowInspectorPage("Modeling");
+        });
+
         private void MaterialInspector()
         {
             _inspector.Children.Clear();if(_document==null)return;
