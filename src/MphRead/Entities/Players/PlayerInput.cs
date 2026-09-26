@@ -1171,6 +1171,7 @@ namespace MphRead.Entities
                 SlotIndex, value: (int)CurrentWeapon);
             else _scene.ReplayShotPresented?.Invoke(SlotIndex, (int)CurrentWeapon);
             NetShotDiagnostics.Finish(this, ShotAttemptResult.Spawned, shotVec, _gunVec1);
+            Mods.Network.MatchReportStats.NoteShotFired(this);
             ModControllerFeedback(EquipWeapon.MinCharge > 0 && EquipInfo.ChargeLevel >= EquipWeapon.MinCharge * 2
                 ? Mods.Input.GamepadFeedback.ChargedShot : Mods.Input.GamepadFeedback.Fire);
             // A protected player gives up spawn safety as soon as a real shot exists.
