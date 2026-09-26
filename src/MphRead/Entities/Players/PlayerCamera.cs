@@ -209,6 +209,7 @@ namespace MphRead.Entities
             {
                 _field553--;
             }
+            Vector3 cameraCollisionStart = CameraInfo.Position;
             bool cameraObstructed = false;
             if ((CameraInfo.Position - Volume.SpherePosition).LengthSquared >= 6 * 6)
             {
@@ -509,18 +510,22 @@ namespace MphRead.Entities
                 _field552 = 0;
             }
 
-            if (cameraObstructed && IsMainPlayer)
+            // Some collision paths (sphere push-out and closed doors)
+            // correct the camera without tripping the side/vertical probes above.
+            // Any displacement produced by this collision phase counts too.
+            cameraObstructed |= (CameraInfo.Position - cameraCollisionStart).LengthSquared > 0.000001f;
+
+            bool rollingInputHeld = Controls.RollUp.IsDown || Controls.RollDown.IsDown
+                || Controls.RolltLeft.IsDown || Controls.RollRight.IsDown || Input.AltSwipeEngaged;
+            if (cameraObstructed && IsMainPlayer && rollingInputHeld)
             {
-                // Rolling alt-form movement is camera-relative, but the third-person
-                // camera can orbit or get pushed around the ball while resolving
-                // terrain and door collisions. ProcessAlt normally copies that camera
-                // basis into the WASD/analogue roll basis every simulation step. If we
-                // let a collision-adjusted camera rewrite it immediately, "forward"
-                // can rotate sharply or even appear inverted while the same input is
-                // still held. Reuse the existing morph/external-camera settle timer:
-                // keep the last trustworthy roll basis for as long as the camera is
-                // obstructed, then allow it to re-anchor after the camera has been
-                // clear and stable for the normal settling window.
+                // Rolling alt-form movement is camera-relative. Do not let the
+                // collision-adjusted third-person camera rotate an already-held
+                // WASD/stick/drag command underneath the player. ProcessAlt owns
+                // the unlock policy: release/new direction re-anchors immediately;
+                // otherwise the lock expires after the camera has stayed clear.
+                _altCameraCollisionBasisLock = true;
+                Flags1 |= PlayerFlags1.AltDirOverride;
                 _timeSinceMorphCamera = 0;
             }
         }
