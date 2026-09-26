@@ -29,6 +29,8 @@ namespace MphRead.Mods.Launcher.Gui
         public bool Wireframe { get; set; }
         public bool Collision { get; set; }
         public bool CollisionHeatmap { get; set; }
+        public bool PartitionOverlay { get; set; }
+        public float PartitionCellSize { get; set; } = 64f;
         public bool KillPlane { get; set; }
         public int[] NavigationPath { get; set; } = Array.Empty<int>();
         public MapNodePacker.NavigationGraph? Navigation { get; set; }
@@ -165,6 +167,34 @@ namespace MphRead.Mods.Launcher.Gui
             var grid=new SolidColorBrush(Color.Parse("#293641"));
             if (!GpuActive)
                 for(int n=-64;n<=64;n+=4){Line(context,new(n,0,-64),new(n,0,64),grid);Line(context,new(-64,0,n),new(64,0,n),grid);}
+            if(PartitionOverlay)
+            {
+                float cell=Math.Clamp(PartitionCellSize,8,512);
+                bool have=false;Vector min=Vector.Zero,max=Vector.Zero;
+                if(Cache.ImportedFaces.Count>0)
+                {
+                    var b=Cache.ImportedSpatial.Bounds;min=b.Min;max=b.Max;have=true;
+                }
+                foreach(var face in Cache.NativeFaces)
+                    foreach(var point in face.Points)
+                    {
+                        if(!have){min=max=point;have=true;}
+                        else{min=Vector.Min(min,point);max=Vector.Max(max,point);}
+                    }
+                if(have)
+                {
+                    float y=CameraTarget.Y;
+                    int x0=(int)MathF.Floor(min.X/cell),x1=(int)MathF.Ceiling(max.X/cell);
+                    int z0=(int)MathF.Floor(min.Z/cell),z1=(int)MathF.Ceiling(max.Z/cell);
+                    int lines=(x1-x0+1)+(z1-z0+1);
+                    int stride=Math.Max(1,(int)MathF.Ceiling(lines/160f));
+                    var penBrush=new SolidColorBrush(Color.FromArgb(150,80,200,255));
+                    for(int x=x0;x<=x1;x+=stride)
+                        Line(context,new Vector(x*cell,y,z0*cell),new Vector(x*cell,y,z1*cell),penBrush,1.5);
+                    for(int z=z0;z<=z1;z+=stride)
+                        Line(context,new Vector(x0*cell,y,z*cell),new Vector(x1*cell,y,z*cell),penBrush,1.5);
+                }
+            }
             _pick.Clear();
             if (!GpuActive)
             {
