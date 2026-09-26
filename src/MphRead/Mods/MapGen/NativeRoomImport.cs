@@ -34,15 +34,18 @@ public static class NativeRoomImport
         }
 
         var map=new BuiltMap(definition);
-        foreach(Node node in model.Nodes)
+        if(source.UseNativeArchitecture)
         {
-            cancellation.ThrowIfCancellationRequested();
-            if(!node.Enabled||!model.NodeParentsEnabled(node))continue;
-            foreach(int meshId in node.GetMeshIds())
+            foreach(Node node in model.Nodes)
             {
-                if(meshId<0||meshId>=model.Meshes.Count)continue;
-                Mesh mesh=model.Meshes[meshId];
-                foreach(BuiltFace face in Decode(model,mesh,cancellation))map.Faces.Add(face);
+                cancellation.ThrowIfCancellationRequested();
+                if(!node.Enabled||!model.NodeParentsEnabled(node))continue;
+                foreach(int meshId in node.GetMeshIds())
+                {
+                    if(meshId<0||meshId>=model.Meshes.Count)continue;
+                    Mesh mesh=model.Meshes[meshId];
+                    foreach(BuiltFace face in Decode(model,mesh,cancellation))map.Faces.Add(face);
+                }
             }
         }
         map.ImportedFaceCount=map.Faces.Count;
@@ -67,6 +70,67 @@ public static class NativeRoomImport
         }
         MapBuilder.AddEntities(map,definition);
         return map;
+    }
+
+    public static IReadOnlyList<MapMesh> DetachArchitecture(MapDefinition definition,
+        CancellationToken cancellation=default)
+    {
+        MapNativeRoomSource source=definition.NativeRoom
+            ?? throw new MapAuthoringException("FP-MAP-013","Native room source is missing.");
+        if(!Metadata.RoomMetadata.TryGetValue(source.Room,out RoomMetadata? meta))
+            throw new MapAuthoringException("FP-MAP-013",$"Unknown built-in room {source.Room}.");
+        Model model=Read.GetRoomModelInstance(meta.Name).Model.CreateSceneCopy();
+        if(source.MultiplayerLayerOnly)
+        {
+            int layer=SceneSetup.GetNodeLayer(GameMode.Battle,meta.NodeLayer,2);
+            model.FilterNodes(layer);
+        }
+
+        var result=new List<MapMesh>();
+        foreach(Node node in model.Nodes)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            if(!node.Enabled||!model.NodeParentsEnabled(node))continue;
+            foreach(int meshId in node.GetMeshIds())
+            {
+                if(meshId<0||meshId>=model.Meshes.Count)continue;
+                Mesh sourceMesh=model.Meshes[meshId];
+                BuiltFace[] faces=Decode(model,sourceMesh,cancellation).ToArray();
+                if(faces.Length==0)continue;
+
+                var vertices=new List<float[]>();
+                var vertexMap=new Dictionary<(int X,int Y,int Z),int>();
+                int Vertex(Vector3 point)
+                {
+                    const float precision=10000;
+                    var key=((int)MathF.Round(point.X*precision),(int)MathF.Round(point.Y*precision),
+                        (int)MathF.Round(point.Z*precision));
+                    if(vertexMap.TryGetValue(key,out int id))return id;
+                    id=vertices.Count;vertices.Add(new[]{point.X,point.Y,point.Z});vertexMap.Add(key,id);return id;
+                }
+
+                string materialName=sourceMesh.MaterialId>=0&&sourceMesh.MaterialId<model.Materials.Count
+                    ?model.Materials[sourceMesh.MaterialId].Name:$"material {sourceMesh.MaterialId}";
+                var mesh=new MapMesh
+                {
+                    Id=Guid.NewGuid(),
+                    Label=$"{node.Name} · {materialName}",
+                    Material=Math.Max(0,sourceMesh.MaterialId),
+                    Solid=false,
+                    Layer="Native Detached",
+                    Transform=new()
+                };
+                foreach(BuiltFace face in faces)
+                {
+                    mesh.Faces.Add(face.Points.Select(Vertex).ToArray());
+                    mesh.FaceMaterials.Add(face.Material);
+                    mesh.FaceTexcoords.Add(face.Texcoords.Select(uv=>new[]{uv.X,uv.Y}).ToArray());
+                }
+                mesh.Vertices=vertices;
+                result.Add(mesh);
+            }
+        }
+        return result.AsReadOnly();
     }
 
     private static void AddCollision(BuiltMap map,CollisionInstance collision)
