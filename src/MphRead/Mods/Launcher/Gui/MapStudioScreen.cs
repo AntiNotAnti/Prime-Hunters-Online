@@ -1443,7 +1443,10 @@ namespace MphRead.Mods.Launcher.Gui
             var items=new CheckBox {Content="Import source pickups",IsChecked=true};
             var sky=new CheckBox {Content="Keep sky surfaces",IsChecked=true};
             var spawns=new CheckBox {Content="Use source spawn points",IsChecked=true};
-            view.Children.Add(clip);view.Children.Add(items);view.Children.Add(sky);view.Children.Add(spawns);
+            var heal=new CheckBox {Content="Auto-heal imported collision",IsChecked=true};
+            var healTolerance=new TextBox{Text="0.0625"};
+            view.Children.Add(clip);view.Children.Add(items);view.Children.Add(sky);view.Children.Add(spawns);view.Children.Add(heal);
+            view.Children.Add(Text("Collision heal tolerance"));view.Children.Add(healTolerance);
             var dependencies=new List<string>();
             var report=Text("Preflight has not run yet.");report.MaxHeight=120;view.Children.Add(report);
 
@@ -1499,7 +1502,9 @@ namespace MphRead.Mods.Launcher.Gui
                 var options=new Q3ImportService.Options(source,map,room,
                     Path.Combine(CustomRooms.MapDirectory,room.ToLowerInvariant()),
                     selectedScale,clip.IsChecked==true,items.IsChecked==true,sky.IsChecked==true,spawns.IsChecked==true,
-                    patchLevel,texSize,dependencies.ToArray());
+                    patchLevel,texSize,dependencies.ToArray(),
+                    AutoHealCollision:heal.IsChecked==true,
+                    CollisionHealTolerance:Number(healTolerance.Text??""));
                 WithUnsaved(()=>_=Job("Importing Quake 3 map",async token=>
                 {
                     Dismiss();
