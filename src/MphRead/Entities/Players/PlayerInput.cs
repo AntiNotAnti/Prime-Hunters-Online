@@ -1175,8 +1175,10 @@ namespace MphRead.Entities
             ModControllerFeedback(EquipWeapon.MinCharge > 0 && EquipInfo.ChargeLevel >= EquipWeapon.MinCharge * 2
                 ? Mods.Input.GamepadFeedback.ChargedShot : Mods.Input.GamepadFeedback.Fire);
             // A protected player gives up spawn safety as soon as a real shot exists.
-            // Dry fire does not consume the protection window.
-            _spawnInvulnTimer = 0;
+            // Dry fire does not consume the protection window. The network helper
+            // also repeats this successful release to the authority so a puppet-side
+            // spawn failure cannot accidentally leave the shooter protected.
+            ModReleaseSpawnProtection();
             // todo: update license stats
             _timeSinceShot = 0;
             if (IsMainPlayer)
