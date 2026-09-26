@@ -32,6 +32,8 @@ namespace MphRead.Mods.MapGen
             lock (MapCompiler.ContentReadLock) (model, vertices) = BuildModel(map);
             cancellation.ThrowIfCancellationRequested();
             byte[] collision = BuildCollision(map);
+            MapRuntimePartitionPlan runtimePlan=MapRuntimePartitioner.Create(map.Faces,def.Partitioning);
+            MapRuntimePartitioner.AssignEntityNodes(map.Entities,runtimePlan);
             byte[] entities = Repack.PackEntities(map.Entities);
             (byte[] nodes, int nodeCount, int edges) = MapNodePacker.Pack(map.Solid,def.NavigationLinks,cancellation);
             // Build every byte before replacing any output. The manifest is the
@@ -181,31 +183,21 @@ namespace MphRead.Mods.MapGen
             float scale = MathF.Pow(2, def.ScaleFactor);
             var renders = new List<IReadOnlyList<RenderInstruction>>();
             var meshes = new List<Mesh>();
-            var nodeMeshes = new List<(int First,int Count)>();
+            var nodeMeshes = new List<(MapRuntimePartition Part,int First,int Count)>();
             int vertexCount = 0;
+            MapPartitionSettings partitionSettings=MapRuntimePartitioner.Effective(def.Partitioning);
+            MapRuntimePartitionPlan plan=MapRuntimePartitioner.Create(map.Faces,def.Partitioning);
+            int maxVertices=Math.Clamp(partitionSettings.MaxVerticesPerDisplayList,1024,65000);
 
-            // A single material-sized display list is fine for cartridge-scale
-            // rooms, but imported PC maps can put hundreds of thousands of
-            // triangles behind one shader. Split large maps spatially first,
-            // then cap each display list's vertex load. This preserves one
-            // logical room part while giving the renderer bounded child nodes
-            // with useful culling bounds.
-            IEnumerable<(int X,int Y,int Z,IReadOnlyList<BuiltFace> Faces)> chunks;
-            if(map.Faces.Count<RenderPartitionThreshold)
-                chunks=new[]{(0,0,0,(IReadOnlyList<BuiltFace>)map.Faces)};
-            else
-                chunks=map.Faces.GroupBy(FaceCell).OrderBy(g=>g.Key.X).ThenBy(g=>g.Key.Y).ThenBy(g=>g.Key.Z)
-                    .Select(g=>(g.Key.X,g.Key.Y,g.Key.Z,(IReadOnlyList<BuiltFace>)g.ToArray()));
-
-            foreach(var chunk in chunks)
+            foreach(MapRuntimePartition part in plan.Parts)
             {
                 int firstMesh=meshes.Count;
-                foreach(var materialGroup in chunk.Faces.GroupBy(f=>f.Material).OrderBy(g=>g.Key))
+                foreach(var materialGroup in part.Faces.GroupBy(f=>f.Material).OrderBy(g=>g.Key))
                 {
                     if(materialGroup.Key<0||materialGroup.Key>=materials.Count)
                         throw new MapAuthoringException("FP-MAP-001",$"Geometry references material {materialGroup.Key}, but only {materials.Count} exist.");
                     var normalized=materialGroup.SelectMany(face=>face.Points.Length<=4?new[]{face}:Fan(face)).ToArray();
-                    foreach(var batch in RenderBatches(normalized,MaxRenderVerticesPerList))
+                    foreach(var batch in RenderBatches(normalized,maxVertices))
                     {
                         if(renders.Count>=UInt16.MaxValue)
                             throw new MapAuthoringException("FP-MAP-003","Render display-list budget exceeded; increase spatial partition size or simplify geometry.");
@@ -222,21 +214,35 @@ namespace MphRead.Mods.MapGen
                 {
                     if(firstMesh>UInt16.MaxValue/2)
                         throw new MapAuthoringException("FP-MAP-003","Render mesh offset exceeds the native room format's 16-bit byte offset.");
-                    nodeMeshes.Add((firstMesh,meshCount));
+                    nodeMeshes.Add((part,firstMesh,meshCount));
                 }
             }
 
             if(nodeMeshes.Count==0)throw new MapAuthoringException("FP-MAP-013","A map needs visible geometry.");
-            if(nodeMeshes.Count>=Int16.MaxValue)throw new MapAuthoringException("FP-MAP-003","Render partition node budget exceeded.");
-            var nodes=new List<Node>
+            if(nodeMeshes.Count>=Int16.MaxValue/2)throw new MapAuthoringException("FP-MAP-003","Render partition node budget exceeded.");
+            var nodes=new List<Node>();
+            if(plan.PortalCullingApplied)
             {
-                RawStructs.MakeNode("rmMain",meshCount:0,firstMeshId:0,child:1)
-            };
-            for(int i=0;i<nodeMeshes.Count;i++)
+                nodes.Add(RawStructs.MakeNode("root",meshCount:0,firstMeshId:0,child:1));
+                for(int i=0;i<nodeMeshes.Count;i++)
+                {
+                    int roomIndex=1+i*2,geoIndex=roomIndex+1;
+                    int next=i+1<nodeMeshes.Count?roomIndex+2:-1;
+                    var item=nodeMeshes[i];
+                    nodes.Add(RawStructs.MakeNode(item.Part.RoomNodeName,meshCount:0,firstMeshId:0,
+                        parent:0,child:geoIndex,next:next));
+                    nodes.Add(RawStructs.MakeNode($"geoP{i:D4}",item.Count,item.First,parent:roomIndex));
+                }
+            }
+            else
             {
-                var part=nodeMeshes[i];
-                nodes.Add(RawStructs.MakeNode($"geo{i+1:D4}",part.Count,part.First,parent:0,
-                    next:i+1<nodeMeshes.Count?i+2:-1));
+                nodes.Add(RawStructs.MakeNode("rmMain",meshCount:0,firstMeshId:0,child:1));
+                for(int i=0;i<nodeMeshes.Count;i++)
+                {
+                    var item=nodeMeshes[i];
+                    nodes.Add(RawStructs.MakeNode($"geo{i+1:D4}",item.Count,item.First,parent:0,
+                        next:i+1<nodeMeshes.Count?i+2:-1));
+                }
             }
             var dlists = new DisplayList[renders.Count];
             var options = new Repack.RepackOptions()
@@ -250,29 +256,27 @@ namespace MphRead.Mods.MapGen
             return (bytes, vertexCount);
         }
 
-        internal const int RenderPartitionThreshold=8192;
-        internal const int MaxRenderVerticesPerList=60000;
-        internal const float RenderCellSize=64f;
-
-        internal readonly record struct RenderLayoutEstimate(int Partitions,int Meshes,int Vertices,long CommandBytes);
+        internal readonly record struct RenderLayoutEstimate(int Partitions,int Meshes,int Vertices,long CommandBytes,
+            int Portals,bool PortalCullingApplied);
 
         internal static RenderLayoutEstimate EstimateRenderLayout(BuiltMap map)
         {
-            IEnumerable<IGrouping<(int X,int Y,int Z),BuiltFace>> groups =
-                map.Faces.GroupBy(face=>map.Faces.Count<RenderPartitionThreshold?(0,0,0):FaceCell(face));
+            MapPartitionSettings settings=MapRuntimePartitioner.Effective(map.Definition.Partitioning);
+            MapRuntimePartitionPlan plan=MapRuntimePartitioner.Create(map.Faces,map.Definition.Partitioning);
+            int maxVertices=Math.Clamp(settings.MaxVerticesPerDisplayList,1024,65000);
             int partitions=0,meshes=0,vertices=0;long bytes=0;
-            foreach(var chunk in groups)
+            foreach(MapRuntimePartition chunk in plan.Parts)
             {
                 bool any=false;
-                foreach(var material in chunk.GroupBy(f=>f.Material))
+                foreach(var material in chunk.Faces.GroupBy(f=>f.Material))
                 {
                     var normalized=material.SelectMany(face=>face.Points.Length<=4?new[]{face}:Fan(face)).ToArray();
-                    foreach(var batch in RenderBatches(normalized,MaxRenderVerticesPerList))
+                    foreach(var batch in RenderBatches(normalized,maxVertices))
                     {
                         any=true;meshes++;
                         int batchVertices=batch.Sum(f=>f.Points.Length);
-                        int instructions=2; // BEGIN/END
-                        long arguments=1; // BEGIN primitive argument
+                        int instructions=2;
+                        long arguments=1;
                         foreach(var face in batch)
                         {
                             instructions+=2+2*face.Points.Length;
@@ -285,15 +289,8 @@ namespace MphRead.Mods.MapGen
                 }
                 if(any)partitions++;
             }
-            return new(partitions,meshes,vertices,bytes);
+            return new(partitions,meshes,vertices,bytes,plan.Portals.Count,plan.PortalCullingApplied);
         }
-        private static (int X,int Y,int Z) FaceCell(BuiltFace face)
-        {
-            if(face.Points.Length==0)return(0,0,0);
-            Vector3 centre=Vector3.Zero;foreach(var point in face.Points)centre+=point;centre/=face.Points.Length;
-            return((int)MathF.Floor(centre.X/RenderCellSize),(int)MathF.Floor(centre.Y/RenderCellSize),(int)MathF.Floor(centre.Z/RenderCellSize));
-        }
-
         private static IEnumerable<IReadOnlyList<BuiltFace>> RenderBatches(
             IReadOnlyList<BuiltFace> faces,int maxVertices)
         {
@@ -510,7 +507,8 @@ namespace MphRead.Mods.MapGen
             {
                 throw new ProgramException("A map needs at least one solid face.");
             }
-            return MapCollisionPacker.Pack(editors);
+            MapRuntimePartitionPlan plan=MapRuntimePartitioner.Create(map.Faces,map.Definition.Partitioning);
+            return MapCollisionPacker.Pack(editors,plan.PortalCullingApplied?plan.Portals:null);
         }
 
         public static int GetPrimaryAxis(Vector3 normal)
