@@ -77,6 +77,17 @@ namespace MphRead.Mods.Replay
         private static IReadOnlyList<ReplayHighlight>? _cachedHighlights;
         private static ReplayAnalyticsSnapshot? _cachedAnalytics;
 
+        internal static bool TryBeamType(int value, out BeamType beam)
+        {
+            beam = default;
+            if (value is < sbyte.MinValue or > sbyte.MaxValue)
+            {
+                return false;
+            }
+            beam = (BeamType)(sbyte)value;
+            return Enum.IsDefined(beam);
+        }
+
         internal static void ResetCache()
         {
             _cachePath = null;

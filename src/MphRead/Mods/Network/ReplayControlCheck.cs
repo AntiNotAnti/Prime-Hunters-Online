@@ -105,6 +105,10 @@ namespace MphRead.Mods.Network
                     && analytics.WeaponUsage[0].Weapon == 7
                     && analytics.WeaponUsage[0].Shots == 1,
                     "studio weapon usage");
+                Require(Replay.ReplayStudio.TryBeamType((int)BeamType.Imperialist, out BeamType replayBeam)
+                    && replayBeam == BeamType.Imperialist
+                    && !Replay.ReplayStudio.TryBeamType(999, out _),
+                    "studio weapon labels handle sbyte-backed BeamType without Enum.IsDefined type mismatch");
                 var paired = Replay.ReplayStudio.Analytics(new[]
                 {
                     new ReplayEvent(60, ReplayEventType.PlayerDeath, 1, 0),

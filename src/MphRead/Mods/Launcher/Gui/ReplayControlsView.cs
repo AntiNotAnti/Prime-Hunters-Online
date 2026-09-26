@@ -814,8 +814,8 @@ namespace MphRead.Mods.Launcher.Gui
                 _analyticsPanel.Children.Add(new Caption("Weapon usage"));
                 foreach (ReplayWeaponUsage weapon in analytics.WeaponUsage.Take(9))
                 {
-                    string label = Enum.IsDefined(typeof(BeamType), weapon.Weapon)
-                        ? ((BeamType)weapon.Weapon).ToString()
+                    string label = ReplayStudio.TryBeamType(weapon.Weapon, out BeamType beam)
+                        ? beam.ToString()
                         : $"Weapon {weapon.Weapon}";
                     ReplayEvent? first = DemoPlayback.Events.FirstOrDefault(e =>
                         e.Type == ReplayEventType.WeaponFired && e.Value == weapon.Weapon);
@@ -1172,8 +1172,8 @@ namespace MphRead.Mods.Launcher.Gui
                 : "\nWeapons: " + String.Join(", ", analytics.WeaponUsage.Take(6)
                     .Select(weapon =>
                     {
-                        string label = Enum.IsDefined(typeof(BeamType), weapon.Weapon)
-                            ? ((BeamType)weapon.Weapon).ToString()
+                        string label = ReplayStudio.TryBeamType(weapon.Weapon, out BeamType beam)
+                            ? beam.ToString()
                             : $"W{weapon.Weapon}";
                         return $"{label} {weapon.Shots}";
                     }));
