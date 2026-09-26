@@ -784,6 +784,27 @@ namespace MphRead.Mods.Network
                 uint ack = NetSession.RemoteIntents[slot].AckFrame;
                 if (ack != 0 && ack <= NetSession.NetFrame)
                 {
+                    // A trigger edge recovered from a later intent belongs to the
+                    // older world that RewindFor actually simulates. Stamp the
+                    // projectile with that same world too. Otherwise the client
+                    // claim names the original shot while the authority ledger
+                    // names the newer carrier packet, so two non-zero launch
+                    // stamps disagree and TakeLedger deliberately cannot pair
+                    // them. The claim then "rescues" a hit the authority already
+                    // dealt, which is one physical shot doing its damage twice.
+                    //
+                    // Keep zero reserved for "no launch stamp". In practice an
+                    // acknowledged match is well past this boundary, but the
+                    // clamp also makes the startup edge safe.
+                    int pressAge = PressAgeEnabled
+                        && WeaponLagPolicies.Resolve(shooter.EquipInfo).AllowPressAge
+                        && slot < NetPlayerBridge.ShootPressAge.Length
+                        ? Math.Max(0, NetPlayerBridge.ShootPressAge[slot]) : 0;
+                    if (pressAge > 0)
+                    {
+                        uint age = (uint)pressAge;
+                        return ack > age ? ack - age : 1;
+                    }
                     return ack;
                 }
             }
