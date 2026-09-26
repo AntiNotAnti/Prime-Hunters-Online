@@ -1321,13 +1321,31 @@ namespace MphRead.Entities
             Flags1 |= PlayerFlags1.UsedJump;
             if (_frozenTimer == 0 && _health > 0)
             {
-                // todo?: if touch movement for alt form was a thing, this would need extra conditions
-                if ((!Controls.RollRight.IsDown && !Controls.RolltLeft.IsDown && !Controls.RollUp.IsDown && !Controls.RollDown.IsDown)
-                    || Controls.RollRight.IsPressed || Controls.RolltLeft.IsPressed || Controls.RollUp.IsPressed || Controls.RollDown.IsPressed)
+                bool explicitRoll = Controls.RollUp.IsDown || Controls.RollDown.IsDown
+                    || Controls.RolltLeft.IsDown || Controls.RollRight.IsDown;
+                bool rollPressed = Controls.RollUp.IsPressed || Controls.RollDown.IsPressed
+                    || Controls.RolltLeft.IsPressed || Controls.RollRight.IsPressed;
+                bool rollInputHeld = explicitRoll || Input.AltSwipeEngaged;
+                bool resetCollisionBasis = _altCameraCollisionBasisLock && (!rollInputHeld || rollPressed);
+
+                // External camera overrides keep their original release/new-press
+                // semantics. Collision locks are softer: a fresh direction or
+                // release re-anchors immediately, while uninterrupted held input
+                // gets a short clear-camera settling window before normal
+                // camera-relative steering resumes.
+                if (!rollInputHeld || rollPressed)
                 {
                     Flags1 &= ~PlayerFlags1.AltDirOverride;
+                    _altCameraCollisionBasisLock = false;
                 }
-                if (_timeSinceMorphCamera > 10 * 2 && !Flags1.TestFlag(PlayerFlags1.AltDirOverride) // todo: FPS stuff
+                else if (_altCameraCollisionBasisLock && _timeSinceMorphCamera > 10 * 2)
+                {
+                    Flags1 &= ~PlayerFlags1.AltDirOverride;
+                    _altCameraCollisionBasisLock = false;
+                }
+
+                if ((_timeSinceMorphCamera > 10 * 2 || resetCollisionBasis)
+                    && !Flags1.TestFlag(PlayerFlags1.AltDirOverride) // todo: FPS stuff
                     && (MathF.Abs(CameraInfo.Field48) >= 1 / 4096f || MathF.Abs(CameraInfo.Field4C) >= 1 / 4096f))
                 {
                     _altRollFbX = CameraInfo.Field48;
@@ -1526,8 +1544,6 @@ namespace MphRead.Entities
                         traction = 0;
                     }
 
-                    bool explicitRoll = Controls.RollUp.IsDown || Controls.RollDown.IsDown
-                        || Controls.RolltLeft.IsDown || Controls.RollRight.IsDown;
                     bool swipeRequested = Input.AltSwipeEngaged || Input.AltSwipeStopRequested;
                     bool preciseSwipe = swipeRequested && !explicitRoll
                         && IsAltForm && !IsMorphing && !IsUnmorphing
