@@ -78,7 +78,12 @@ namespace MphRead.Mods.MapGen
                 Vector3 normal = Vector3.Cross(points[1]-points[0], points[2]-points[0]);
                 if (normal.LengthSquared < 1e-10f) throw new MapAuthoringException("FP-MAP-013", "Degenerate geometry face.");
                 normal.Normalize();
-                if (Vector3.Dot(normal, points[0]-center) < 0) { Array.Reverse(points); normal = -normal; }
+                // Primitive/convex geometry is authored as a closed volume and
+                // can be oriented outward from its center. General MapMesh
+                // geometry may be open or concave, so its face winding is
+                // authoritative and must not be silently reversed.
+                if (geometry is not MapMesh && Vector3.Dot(normal, points[0]-center) < 0)
+                { Array.Reverse(points); normal = -normal; }
                 // Two faces per edge also describes a flattened tetrahedron.
                 // A solid convex brush must have an interior behind every face.
                 if (geometry is MapConvexBrush && !(Vector3.Dot(normal, center-points[0]) < 0))
