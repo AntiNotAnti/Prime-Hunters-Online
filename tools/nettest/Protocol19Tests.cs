@@ -29,7 +29,7 @@ internal static class Protocol19Tests
     }
     private static void Codecs()
     {
-        Check(NetConfig.ProtocolVersion == 21 && SnapshotFast.MaximumEncodedSize <= 1200, "current version and eight-player fast packet budget");
+        Check(NetConfig.ProtocolVersion == 22 && SnapshotFast.MaximumEncodedSize <= 1200, "current version and eight-player fast packet budget");
         Span<byte> bytes = stackalloc byte[PlayerState.Size];
         foreach (ushort health in new ushort[] { 0, 1, 37, 100, ushort.MaxValue })
         {
@@ -243,7 +243,7 @@ internal static class Protocol19Tests
         Check(real.WaitForExit(5000), "real gzip writer completes");
         using var gzip = new GZipStream(File.OpenRead(Directory.GetFiles(output, "*.gz", SearchOption.AllDirectories).Single()), CompressionMode.Decompress);
         using var reader = new StreamReader(gzip); string raw = reader.ReadToEnd();
-        Check(raw.Contains("protocol\":21") && raw.Contains("ServerStep") && !raw.Contains("127.0.0.1"), "versioned compressed header/events and privacy-safe schema");
+        Check(raw.Contains("protocol\":22") && raw.Contains("ServerStep") && !raw.Contains("127.0.0.1"), "versioned compressed header/events and privacy-safe schema");
         string summary = Directory.GetFiles(output, "*.summary.json", SearchOption.AllDirectories).Single();
         UploadFailure(config with { Directory = Path.Combine(root, "http500") }, summary, false);
         UploadFailure(config with { Directory = Path.Combine(root, "http-slow") }, summary, true);
