@@ -27,7 +27,7 @@ def valid(summary):
     if not isinstance(summary, dict):
         return False
     header = summary.get("header")
-    if not isinstance(header, dict) or set(header) != HEADER_KEYS or header["schema"] not in (1, 2, 3) or header["protocol"] not in (19, 20, 21):
+    if not isinstance(header, dict) or set(header) != HEADER_KEYS or header["schema"] not in (1, 2, 3) or header["protocol"] not in (19, 20, 21, 22):
         return False
     expected = SUMMARY_KEYS | (V2_KEYS if header["schema"] >= 2 else set()) | (V3_KEYS if header["schema"] >= 3 else set())
     if set(summary) != expected:
