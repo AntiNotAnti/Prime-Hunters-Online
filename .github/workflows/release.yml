@@ -389,6 +389,7 @@ jobs:
           it omits the launcher/UI, but the authoritative server still needs
           your extracted game files and a valid paths.txt beside the binary.
           NOTE
+          python3 tools/write-release-manifest.py publish/win-x64
           ( cd publish/win-x64 && zip -qr "../../dist/ProjectPrime-$TAG-win-x64.zip" . )
 
           cp LICENSE publish/linux-x64/ 2>/dev/null || true
@@ -425,6 +426,7 @@ jobs:
 
           F11 or Alt+Enter switches to fullscreen, Escape opens the pause menu.
           NOTE
+          python3 tools/write-release-manifest.py publish/linux-x64
           ( cd publish/linux-x64 && tar czf "../../dist/ProjectPrime-$TAG-linux-x64.tar.gz" . )
 
           cat > publish/linux-arm64/SERVER.txt <<'NOTE'
@@ -447,6 +449,7 @@ jobs:
             ./ProjectPrime -masterserver -port 27889
           NOTE
           cp SERVER.md publish/linux-arm64/SERVER.md
+          python3 tools/write-release-manifest.py publish/linux-arm64
           ( cd publish/linux-arm64 && tar czf "../../dist/ProjectPrime-$TAG-server-linux-arm64.tar.gz" . )
 
           cp LICENSE publish/linux-x64-server/ 2>/dev/null || true
@@ -476,6 +479,7 @@ jobs:
           build, and the same units work here with the RID changed.
           NOTE
           cp SERVER.md publish/linux-x64-server/SERVER.md
+          python3 tools/write-release-manifest.py publish/linux-x64-server
           ( cd publish/linux-x64-server && tar czf "../../dist/ProjectPrime-$TAG-server-linux-x64.tar.gz" . )
 
           cp LICENSE publish/win-x64-server/ 2>/dev/null || true
@@ -515,6 +519,7 @@ jobs:
             ProjectPrimeServer.exe -servers
           NOTE
           cp SERVER.md publish/win-x64-server/SERVER.md
+          python3 tools/write-release-manifest.py publish/win-x64-server
           ( cd publish/win-x64-server && zip -qr "../../dist/ProjectPrime-$TAG-server-win-x64.zip" . )
 
           # The APK goes out on its own rather than in an archive: what a phone
