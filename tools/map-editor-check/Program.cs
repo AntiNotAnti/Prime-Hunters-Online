@@ -206,6 +206,20 @@ try
     var chunks=MapViewportChunker.Create(chunkFaces,chunkFaces);
     Check(chunks.Count>1&&chunks.Sum(x=>x.Faces.Count)==chunkFaces.Length,"large imported geometry partitions into stable viewport chunks");
     Check(MapCollisionHeatmap.Build(chunkFaces).Count>1,"collision heatmap aggregates large-map cost spatially");
+    var partitionDefinition=new MapDefinition{Name="PARTITION_CHECK",ScaleFactor=8};partitionDefinition.Materials.Add(new());
+    var partitionMap=new BuiltMap(partitionDefinition);
+    for(int i=0;i<9000;i++)
+    {
+        float x=(i%300)*2,z=(i/300)*2;
+        partitionMap.Faces.Add(new BuiltFace(
+            new[]{new OpenTK.Mathematics.Vector3(x,0,z),new OpenTK.Mathematics.Vector3(x+1,0,z),new OpenTK.Mathematics.Vector3(x,0,z+1)},
+            new[]{OpenTK.Mathematics.Vector2.Zero,OpenTK.Mathematics.Vector2.Zero,OpenTK.Mathematics.Vector2.Zero},
+            OpenTK.Mathematics.Vector3.UnitY,0,1));
+    }
+    partitionMap.Solid.Add(partitionMap.Faces[0]);
+    var partitionValidation=new MapValidationResult();MapBudgetValidator.Analyze(partitionMap,partitionValidation);
+    Check(partitionValidation.Budgets.Single(b=>b.Name=="Render partitions").Used>1,
+        "large runtime geometry is spatially partitioned before packing");
     layoutDocument.EditObjects("Floor", layoutIds, d => MapLayoutCommands.SnapToFloor(d, layoutIds, floorFaces));
     Check(layoutDocument.Project.Definition.Geometry.All(g => Math.Abs(g.Transform.Position[1] - .5f) < .001), "floor snap lands selected bounds");
     layoutDocument.History.Undo();
