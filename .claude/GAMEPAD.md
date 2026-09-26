@@ -187,10 +187,11 @@ because the reviving touch was swallowed. See ANDROID-PORT.md.
   into slow octagons. Past the edge the magnitude is rescaled, so the first
   movement past the dead zone is the smallest movement rather than a jump to
   the dead zone's own size.
-- **The look curve is squared, keeping the sign.** The useful half of a
-  stick's travel is the first half, where a shooter wants to make small
-  corrections; linear, one stick has to do both the flick and the nudge and is
-  bad at the nudge.
+- **Look response is radial and piecewise.** Linear remains truly linear; the
+  Classic, Precision and Dynamic presets reserve extra travel for micro-aim,
+  transition more directly through tracking speeds, then reach full turn at
+  the outer ring. The curve is applied to radial magnitude so direction is
+  preserved instead of warping diagonals.
 - **3.5 degrees per frame at full deflection** — 210 a second, which is where
   console shooters have sat since they settled the question. The sensitivity
   setting runs 0.25x to 3x around it.
@@ -200,6 +201,16 @@ because the reviving touch was swallowed. See ANDROID-PORT.md.
   proportionally finer movement. Directional keybinds are still filled for
   animation, jumping and legacy gameplay checks. Keyboard/touch/bot movement
   remains full-strength digital input.
+- **Calibration includes the stick gate.** The existing centre/min/max pass now
+  records eight outer-radius sectors. That corrects square, elliptical and
+  unevenly worn gates after axis normalization so diagonal and cardinal full
+  travel agree. Gameplay also keeps a tiny per-device, unsaved drift estimate
+  learned only while the stick is safely inside its deadzone; real thumb input
+  is never used to train it.
+- **Precision can unwind turn acceleration.** The normal 1.5x outer-stick
+  acceleration still gives fast turns, but the aim controller can rapidly
+  return it toward 1x during braking, overshoot, head refinement and a committed
+  shot. That removes fly-past momentum without adding target magnetism.
 - **High-refresh aim late-latches axes only.** Above 60 Hz the renderer may
   sample the already-active pad's calibrated aim-stick axes into a separate
   presentation snapshot. It cannot discover/switch devices, advance buttons,
