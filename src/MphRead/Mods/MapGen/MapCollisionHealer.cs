@@ -810,7 +810,7 @@ public static class MapCollisionHealer
         if (String.IsNullOrWhiteSpace(shader)) return false;
         string value = shader.ToLowerInvariant();
         return value.Contains("caulk") || value.Contains("nodraw") || value.Contains("skip")
-            || value.Contains("hint") || value.Contains("trigger") || value.Contains("invisible");
+            || value.Contains("hint") || value.Contains("invisible");
     }
 
     private static (int X, int Y, int Z) Cell(Vector3 point, float cell)
@@ -836,8 +836,9 @@ public static class MapCollisionHealer
                 foreach (Vector3 point in face.Points.Skip(1))
                 { min = Vector3.ComponentMin(min, point); max = Vector3.ComponentMax(max, point); }
                 var low = Cell(min, _cell); var high = Cell(max, _cell);
-                // Giant shell faces can cover thousands of cells. Index their
-                // centre and queries still see them through the wide fallback.
+                // Giant surfaces can cover thousands of cells. Keep them in
+                // a small global fallback list so every query can still see
+                // them without populating thousands of buckets.
                 long count = (long)(high.X - low.X + 1) * (high.Y - low.Y + 1) * (high.Z - low.Z + 1);
                 if (count > 4096)
                 {
