@@ -11,6 +11,7 @@
 src/MphRead/Assets/project-prime-mark.png
 src/MphRead/Assets/project-prime-mark-server.png
 src/MphRead/Assets/project-prime-banner.png
+src/MphRead/Assets/project_prime_icon.png
 
 # Supplied Project Prime startup artwork. Keep the exact path; locally
 # extracted game previews are still excluded.
