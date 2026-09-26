@@ -42,6 +42,25 @@ public static class Q3ImportService
         int Pickups,
         MapTextureBake.Coverage Textures);
 
+    public sealed record ReimportDiff(
+        Analysis? Current, Analysis Next,
+        int AuthoredGeometry, int AuthoredEntities, int AuthoredMaterials)
+    {
+        public string Summary()
+        {
+            string Delta(int? a,int b)=>a.HasValue?$"{a.Value:N0} → {b:N0}":$"? → {b:N0}";
+            string currentTextures=Current==null?"?":$"{Current.Textures.Resolved}/{Current.Textures.Total}";
+            return $"Q3 REIMPORT PREVIEW\n"
+                +$"Map: {Next.MapName}\n"
+                +$"Surfaces: {Delta(Current?.Surfaces,Next.Surfaces)}\n"
+                +$"Patches: {Delta(Current?.Patches,Next.Patches)} · Brushes: {Delta(Current?.Brushes,Next.Brushes)}\n"
+                +$"Spawns: {Delta(Current?.Spawns,Next.Spawns)} · Pickups: {Delta(Current?.Pickups,Next.Pickups)}\n"
+                +$"Dimensions: {(Current==null?"?":$"{Current.Width:0.#} × {Current.Height:0.#} × {Current.Depth:0.#}")} → {Next.Width:0.#} × {Next.Height:0.#} × {Next.Depth:0.#}\n"
+                +$"Textures resolved: {currentTextures} → {Next.Textures.Resolved}/{Next.Textures.Total} ({Next.Textures.Missing.Count} fallback)\n\n"
+                +$"Preserved Project Prime authoring: {AuthoredGeometry} geometry · {AuthoredEntities} gameplay objects · {AuthoredMaterials} materials";
+        }
+    }
+
     public enum Severity { Info, Warning, Error }
     public sealed record Diagnostic(Severity Severity, string Message);
     public sealed record Result(bool Succeeded, string? ProjectPath, Analysis? Analysis,
@@ -77,6 +96,23 @@ public static class Q3ImportService
             (max[2] - min[2]) / unit,
             (max[1] - min[1]) / unit,
             bsp.Faces.Count, patches, bsp.Brushes.Count, clips, spawns, pickups, coverage);
+    }
+
+    public static ReimportDiff PreviewReimport(MapDefinition existing,string source,string? mapName=null,
+        IReadOnlyList<string>? dependencies=null,CancellationToken cancellation=default)
+    {
+        if(existing.Import==null)throw new InvalidOperationException("This project is not a Q3 import.");
+        Analysis? current=null;
+        string? currentSource=existing.Import.Resolve();
+        if(currentSource!=null)
+        {
+            try{current=Analyze(currentSource,existing.Import.MapName,null,existing.Import.UnitsPerUnit,cancellation);}
+            catch(Exception ex) when(ex is IOException or InvalidDataException or ProgramException or ArgumentException){ }
+        }
+        Analysis next=Analyze(source,mapName??existing.Import.MapName,dependencies,existing.Import.UnitsPerUnit,cancellation);
+        int authoredGeometry=existing.Geometry.Count+existing.Brushes.Count;
+        int authoredEntities=existing.Spawns.Count+existing.Items.Count+existing.JumpPads.Count+existing.NavigationLinks.Count;
+        return new(current,next,authoredGeometry,authoredEntities,existing.Materials.Count);
     }
 
     public static Result Import(Options options, CancellationToken cancellation = default,
