@@ -1276,7 +1276,10 @@ namespace MphRead.Mods.Network
         /// </summary>
         public byte BoostDamage;
 
-        /// <summary>The two multipliers, as state rather than as an edge.</summary>
+        /// <summary>
+        /// Owner-authored combat state that cannot safely be reconstructed from
+        /// packet arrival timing: damage multipliers plus Samus' active boost ram.
+        /// </summary>
         public byte ShotFlags;
 
         /// <summary>
@@ -1329,6 +1332,18 @@ namespace MphRead.Mods.Network
         /// shows up in a log rather than only in a health bar.
         /// </summary>
         public const byte FlagPrimeHunter = 1 << 1;
+        /// <summary>
+        /// The owner is currently inside Samus' damaging morph-ball boost.
+        ///
+        /// Protocol 22 assigns gameplay meaning to this previously spare bit.
+        /// The boost itself starts during the owner's simulation step, after
+        /// intent capture, so the authority cannot reconstruct this state from
+        /// the held Boost button without being one simulation behind. The owner
+        /// sends the answer and the authority still validates hunter/form,
+        /// consumes the ram after one confirmed contact, and caps BoostDamage to
+        /// Samus' legal base damage.
+        /// </summary>
+        public const byte FlagBoosting = 1 << 2;
 
         /// <summary>
         /// Whether the sender included the block at all. False for a client
@@ -2229,7 +2244,7 @@ namespace MphRead.Mods.Network
         /// realtime intent length changed and older SessionState readers reject the
         /// newer rule/profile values.
         /// </summary>
-        public const int ProtocolVersion = 21;
+        public const int ProtocolVersion = 22;
         /// <summary>
         /// Frames between intent packets. One, so every frame.
         ///
