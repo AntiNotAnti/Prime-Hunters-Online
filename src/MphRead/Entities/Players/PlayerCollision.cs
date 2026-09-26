@@ -153,6 +153,10 @@ namespace MphRead.Entities
             if (kind == ContactAttackKind.Boost)
             {
                 target.TakeDamage(_boostDamage, DamageFlags.NoDmgInvuln, Speed, this);
+                // The owner will keep reporting Boosting until its own movement
+                // slows; remember that this particular ram has already paid so a
+                // later packet cannot arm it again and deal repeated contact damage.
+                ModConsumeReportedBoost();
                 EndAltAttack();
             }
             else if (kind == ContactAttackKind.Spire || kind == ContactAttackKind.Noxus)
