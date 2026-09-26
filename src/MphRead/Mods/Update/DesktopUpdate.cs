@@ -4,6 +4,9 @@ using System.Diagnostics;
 using System.Formats.Tar;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Text.Json;
 using System.Threading;
 
 namespace MphRead.Mods.Update
@@ -226,6 +229,8 @@ namespace MphRead.Mods.Update
             string source = AppContext.BaseDirectory;
             try
             {
+                EnsureReleaseManifest(source);
+                RemoveObsoleteReleaseFiles(source, target);
                 Copy(source, target);
             }
             catch (Exception ex)
@@ -353,6 +358,188 @@ namespace MphRead.Mods.Update
             {
                 // Litter, not a failure. The next stage overwrites it.
             }
+        }
+
+        public const string ReleaseManifestName = ".project-prime-files.json";
+        private const int ReleaseManifestVersion = 1;
+
+        private sealed record ReleaseManifest(
+            int Version,
+            string[] Files,
+            Dictionary<string, string>? Hashes = null);
+
+        /// <summary>
+        /// Make staged/fresh packages self-describing. New release archives
+        /// already contain this file, but generating it here keeps upgrades
+        /// from older packages safe too.
+        /// </summary>
+        private static void EnsureReleaseManifest(string root)
+        {
+            string path = Path.Combine(root, ReleaseManifestName);
+            if (File.Exists(path)) return;
+            var files = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+                .Select(file => Path.GetRelativePath(root, file).Replace('\\', '/'))
+                .Where(file => !String.Equals(file, ReleaseManifestName,
+                    StringComparison.OrdinalIgnoreCase))
+                .OrderBy(file => file, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            var hashes = files.ToDictionary(
+                relative => relative,
+                relative => HashFile(Path.Combine(root,
+                    relative.Replace('/', Path.DirectorySeparatorChar))),
+                StringComparer.OrdinalIgnoreCase);
+            File.WriteAllText(path, JsonSerializer.Serialize(
+                new ReleaseManifest(ReleaseManifestVersion, files, hashes)));
+        }
+
+        private static ReleaseManifest? ReadReleaseManifest(string root)
+        {
+            try
+            {
+                string path = Path.Combine(root, ReleaseManifestName);
+                if (!File.Exists(path)) return null;
+                ReleaseManifest? manifest = JsonSerializer.Deserialize<ReleaseManifest>(
+                    File.ReadAllText(path));
+                return manifest?.Version == ReleaseManifestVersion ? manifest : null;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                or JsonException)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Delete only files the previous release explicitly owned. Player
+        /// data is never inferred from absence in the new archive.
+        /// </summary>
+        internal static void RemoveObsoleteReleaseFiles(string source, string target)
+        {
+            ReleaseManifest? next = ReadReleaseManifest(source);
+            if (next == null) return;
+            var keep = next.Files.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            ReleaseManifest? previous = ReadReleaseManifest(target);
+            if (previous != null)
+            {
+                foreach (string relative in previous.Files)
+                {
+                    if (keep.Contains(relative)) continue;
+                    DeleteOwnedFile(target, relative);
+                }
+                RemoveEmptyReleaseDirectories(target, previous.Files, keep);
+                return;
+            }
+
+            // Pre-manifest installs: remove only old executable/runtime names
+            // Project Prime itself has used. Never sweep arbitrary files.
+            foreach (string path in Directory.EnumerateFiles(target, "*",
+                SearchOption.TopDirectoryOnly))
+            {
+                string name = Path.GetFileName(path);
+                string relative = Path.GetRelativePath(target, path).Replace('\\', '/');
+                if (keep.Contains(relative)) continue;
+                bool legacy = name.Equals("MphRead", StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("MphRead.exe", StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("FruityPrime", StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("FruityPrime.exe", StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("PrimeHuntersOnline", StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("PrimeHuntersOnline.exe", StringComparison.OrdinalIgnoreCase)
+                    || name.StartsWith("MphRead.", StringComparison.OrdinalIgnoreCase)
+                    || name.StartsWith("FruityPrime.", StringComparison.OrdinalIgnoreCase)
+                    || name.StartsWith("PrimeHuntersOnline.", StringComparison.OrdinalIgnoreCase);
+                if (legacy)
+                {
+                    try { File.Delete(path); }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+                }
+            }
+        }
+
+        private static void DeleteOwnedFile(string root, string relative)
+        {
+            try
+            {
+                string fullRoot = Path.GetFullPath(root);
+                string path = Path.GetFullPath(Path.Combine(root,
+                    relative.Replace('/', Path.DirectorySeparatorChar)));
+                if (!path.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase)) return;
+                if (File.Exists(path)) File.Delete(path);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                or ArgumentException) { }
+        }
+
+        private static void RemoveEmptyReleaseDirectories(string target,
+            IEnumerable<string> previous, HashSet<string> keep)
+        {
+            var directories = previous.Where(path => !keep.Contains(path))
+                .Select(path => Path.GetDirectoryName(path.Replace('/',
+                    Path.DirectorySeparatorChar)))
+                .Where(path => !String.IsNullOrEmpty(path))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderByDescending(path => path!.Length);
+            foreach (string? relative in directories)
+            {
+                try
+                {
+                    string directory = Path.Combine(target, relative!);
+                    if (Directory.Exists(directory)
+                        && !Directory.EnumerateFileSystemEntries(directory).Any())
+                    {
+                        Directory.Delete(directory);
+                    }
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            }
+        }
+
+        public static string VerifyInstallation()
+        {
+            ReleaseManifest? manifest = ReadReleaseManifest(AppContext.BaseDirectory);
+            if (manifest == null)
+            {
+                return "No release manifest yet. The next in-app update will create one.";
+            }
+            int missing = 0, changed = 0;
+            foreach (string relative in manifest.Files)
+            {
+                string path = Path.Combine(AppContext.BaseDirectory,
+                    relative.Replace('/', Path.DirectorySeparatorChar));
+                if (!File.Exists(path))
+                {
+                    missing++;
+                    continue;
+                }
+                if (manifest.Hashes != null
+                    && manifest.Hashes.TryGetValue(relative, out string? expected))
+                {
+                    try
+                    {
+                        if (!String.Equals(HashFile(path), expected,
+                            StringComparison.OrdinalIgnoreCase))
+                        {
+                            changed++;
+                        }
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        changed++;
+                    }
+                }
+            }
+            if (missing == 0 && changed == 0)
+            {
+                return manifest.Hashes == null
+                    ? $"Release files verified ({manifest.Files.Length} files present; legacy manifest has no hashes)."
+                    : $"Release files verified ({manifest.Files.Length} SHA-256 checks passed).";
+            }
+            return $"{missing} release file(s) missing; {changed} file(s) failed SHA-256 verification.";
+        }
+
+        private static string HashFile(string path)
+        {
+            using var stream = File.OpenRead(path);
+            return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
         }
 
         private static void MakeExecutable(string path)
