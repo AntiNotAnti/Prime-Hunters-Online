@@ -391,7 +391,7 @@ namespace MphRead.Mods.Network
             int draws;
             if (PerformanceMode)
             {
-                _performanceDrawAccumulator += Math.Clamp(PerformanceHz, 30, 240);
+                _performanceDrawAccumulator += Math.Clamp(PerformanceHz, 60, 240);
                 draws = Math.Max(1, _performanceDrawAccumulator / 60);
                 _performanceDrawAccumulator -= draws * 60;
             }
@@ -1454,7 +1454,7 @@ namespace MphRead.Mods.Network
             if (DrawRate > 1 || (PerformanceMode && PerformanceHz > 60))
             {
                 string cadence = PerformanceMode
-                    ? $"{Math.Clamp(PerformanceHz, 30, 240)} Hz presentation"
+                    ? $"{Math.Clamp(PerformanceHz, 60, 240)} Hz presentation"
                     : $"{DrawRate} draws per step";
                 Console.WriteLine($"FRAMETIMING {_room} | {cadence}"
                     + $" | {_frame} steps, {Scene.FrameCount} counted"
@@ -1623,8 +1623,8 @@ namespace MphRead.Mods.Network
                 Height = ClientSize.Y,
                 RenderScale = RenderOptions.ResolutionScale,
                 DrawRate = DrawRate,
-                PresentationHz = Math.Clamp(PerformanceHz, 30, 240),
-                DrawRate = Math.Clamp(PerformanceHz, 30, 240) / 60.0,
+                PresentationHz = Math.Clamp(PerformanceHz, 60, 240),
+                DrawRate = Math.Clamp(PerformanceHz, 60, 240) / 60.0,
                 DrawSamples = _perfDrawMs.Count,
                 DrawAverageMs = avg,
                 DrawP50Ms = p50,
