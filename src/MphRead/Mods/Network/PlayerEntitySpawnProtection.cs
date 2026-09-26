@@ -11,10 +11,8 @@ namespace MphRead.Entities
         private bool _modSpawnProtectionStateKnown;
         private bool _modSpawnProtectedByAuthority;
         private bool _modSpawnProtectionReleasedThisLife;
-        private byte _modSpawnProtectionReleaseReports;
+        private bool _modSpawnProtectionOwnerShotReleasedThisLife;
         private ushort _modSpawnProtectionVisualTicks;
-
-        private const byte SpawnProtectionReleaseReportFrames = 8;
 
         /// <summary>
         /// The custom multiplayer spawn-protection rule as it should be presented
@@ -44,7 +42,7 @@ namespace MphRead.Entities
             _modSpawnProtectionStateKnown = false;
             _modSpawnProtectedByAuthority = false;
             _modSpawnProtectionReleasedThisLife = false;
-            _modSpawnProtectionReleaseReports = 0;
+            _modSpawnProtectionOwnerShotReleasedThisLife = false;
             _modSpawnProtectionVisualTicks = 0;
         }
 
@@ -105,7 +103,10 @@ namespace MphRead.Entities
             }
             if (wasMatchProtected && _scene.GameState.Multiplayer && _scene.GameState.SpawnProtection)
             {
-                _modSpawnProtectionReleaseReports = SpawnProtectionReleaseReportFrames;
+                // Keep the surrender bit set for the rest of this life. It can
+                // only remove protection, never grant it, so there is no reason
+                // to make correctness depend on an arbitrary packet-loss window.
+                _modSpawnProtectionOwnerShotReleasedThisLife = true;
             }
         }
 
@@ -123,16 +124,13 @@ namespace MphRead.Entities
             _modSpawnProtectionReleasedThisLife = true;
         }
 
-        /// <summary>Whether this intent should redundantly report a successful shot.</summary>
+        /// <summary>
+        /// Whether this life has already spawned the real shot that surrendered
+        /// its protection. Persistent until the next Spawn() so any later intent
+        /// can repair a lost release report.
+        /// </summary>
         internal bool ModReportSpawnProtectionReleased()
-        {
-            if (_modSpawnProtectionReleaseReports == 0)
-            {
-                return false;
-            }
-            _modSpawnProtectionReleaseReports--;
-            return true;
-        }
+            => _modSpawnProtectionOwnerShotReleasedThisLife;
 
         /// <summary>Presentation-only pulse clock; gameplay never reads it.</summary>
         internal void ModTickSpawnProtectionPresentation()
