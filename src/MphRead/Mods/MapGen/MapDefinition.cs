@@ -507,6 +507,20 @@ namespace MphRead.Mods.MapGen
         public int CollisionPatchLevel { get; set; } = -1;
 
         /// <summary>
+        /// Automatically reconcile BSP brush/patch collision with rendered
+        /// architecture at final MPH fixed-point precision. This is the normal
+        /// import mode; disable it only when auditing the source collision
+        /// exactly as authored.
+        /// </summary>
+        public bool AutoHealCollision { get; set; } = true;
+
+        /// <summary>
+        /// Maximum world-space seam/T-junction weld distance used by Auto Heal.
+        /// Kept small relative to the player radius and clamped by validation.
+        /// </summary>
+        public float CollisionHealTolerance { get; set; } = 0.0625f;
+
+        /// <summary>
         /// Take the level's own player starts as spawn points. True is right
         /// for a deathmatch level, which was authored with eight of them in
         /// the places its author wanted people to appear. It is wrong for
