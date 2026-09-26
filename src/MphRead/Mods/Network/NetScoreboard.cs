@@ -43,6 +43,12 @@ namespace MphRead.Mods.Network
             GameState.HeadshotKills[slot] = 0;
             GameState.DamageCount[slot] = 0;
             GameState.AltDamageCount[slot] = 0;
+            GameState.ShotsFired[slot] = 0;
+            GameState.ShotsHit[slot] = 0;
+            GameState.MatchDamageDealt[slot] = 0;
+            GameState.MatchDamageTaken[slot] = 0;
+            GameState.LongestKillStreak[slot] = 0;
+            MatchReportStats.ForgetSlot(slot);
             GameState.BeamDamageDealt[slot] = 0;
             GameState.BeamDamageMax[slot] = 0;
             GameState.OctolithScores[slot] = 0;

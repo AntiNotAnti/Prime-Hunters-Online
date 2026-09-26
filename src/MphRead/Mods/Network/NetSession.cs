@@ -861,6 +861,12 @@ namespace MphRead.Mods.Network
                 case PacketType.Snapshot when Role == NetRole.Client:
                     HandleSnapshot(packet);
                     break;
+                case PacketType.PostMatchReport when Role == NetRole.Client:
+                    if (PostMatchReportPacket.TryRead(packet.Payload, out var report))
+                    {
+                        ApplyPostMatchReport(report);
+                    }
+                    break;
                 case PacketType.Refused when Role == NetRole.Client:
                     if (packet.Payload.Length >= 1 && (LocalSlot < 0 || packet.Payload[0] == RefusedPacket.ReasonKicked))
                     {
@@ -1522,6 +1528,33 @@ namespace MphRead.Mods.Network
         public static NetTelemetrySnapshot CaptureTelemetry() => NetTelemetry.Capture(_transport);
 
         public static long SnapshotsOutOfOrder { get; private set; }
+
+        private static void ApplyPostMatchReport(PostMatchReportPacket report)
+        {
+            int slot = report.SlotIndex;
+            if (report.MatchId != CurrentMatchId || slot != LocalSlot
+                || (uint)slot >= PlayerEntity.SlotCapacity)
+            {
+                return;
+            }
+            ushort generation = NetPlayerLifecycle.Generation(slot);
+            if (report.SlotGeneration != 0 && generation != 0
+                && report.SlotGeneration != generation)
+            {
+                return;
+            }
+
+            // The server is the scorer. Re-apply K/D too so the detailed card
+            // and the scoreboard cannot disagree if the final snapshot was lost.
+            GameState.Kills[slot] = report.Kills;
+            GameState.Deaths[slot] = report.Deaths;
+            GameState.HeadshotKills[slot] = report.Headshots;
+            GameState.LongestKillStreak[slot] = report.LongestKillStreak;
+            GameState.ShotsFired[slot] = (int)Math.Min(report.ShotsFired, Int32.MaxValue);
+            GameState.ShotsHit[slot] = (int)Math.Min(report.ShotsHit, Int32.MaxValue);
+            GameState.MatchDamageDealt[slot] = (int)Math.Min(report.DamageDealt, Int32.MaxValue);
+            GameState.MatchDamageTaken[slot] = (int)Math.Min(report.DamageTaken, Int32.MaxValue);
+        }
 
         private static void HandleSnapshot(ReceivedPacket packet, bool bootstrap = false)
         {

@@ -502,7 +502,11 @@ namespace MphRead.Mods.Network
                         // measurement: ping first, publish second.
                         PingPeers(now);
                         BroadcastSessionState();
-                        if (_phase is SessionPhase.InMatch or SessionPhase.PostMatch) BroadcastMatchState(now);
+                        if (_phase is SessionPhase.InMatch or SessionPhase.PostMatch)
+                        {
+                            BroadcastMatchState(now);
+                            if (_phase == SessionPhase.PostMatch) BroadcastPostMatchReports();
+                        }
                         BroadcastRoster();
                         // A vote nobody finishes answering has to time out,
                         // and a client that missed a VoteState packet has to
@@ -704,6 +708,7 @@ namespace MphRead.Mods.Network
                     : $"{_rotation.Next.RoomKey} in {EndSequenceFor():0} s"
                         + (_ballotOpen ? "; ballot open" : "")));
             BroadcastMatchState(now);
+            BroadcastPostMatchReports();
             BroadcastMapChoices();
         }
 
@@ -771,6 +776,41 @@ namespace MphRead.Mods.Network
             {
                 _transport?.Send(_peers[i].EndPoint, PacketType.MatchState,
                     _scratch.AsSpan(0, MatchStatePacket.Size));
+            }
+        }
+
+        private void BroadcastPostMatchReports()
+        {
+            if (_transport == null || _sim == null)
+            {
+                return;
+            }
+            for (int i = 0; i < _peers.Count; i++)
+            {
+                Peer peer = _peers[i];
+                int slot = peer.SlotIndex;
+                if ((uint)slot >= PlayerEntity.SlotCapacity)
+                {
+                    continue;
+                }
+                var report = new PostMatchReportPacket
+                {
+                    MatchId = _matchId,
+                    SlotGeneration = _slotGenerations[slot],
+                    SlotIndex = (byte)slot,
+                    Kills = (ushort)Math.Clamp(GameState.Kills[slot], 0, UInt16.MaxValue),
+                    Deaths = (ushort)Math.Clamp(GameState.Deaths[slot], 0, UInt16.MaxValue),
+                    Headshots = (ushort)Math.Clamp(GameState.HeadshotKills[slot], 0, UInt16.MaxValue),
+                    LongestKillStreak = (ushort)Math.Clamp(
+                        GameState.LongestKillStreak[slot], 0, UInt16.MaxValue),
+                    ShotsFired = (uint)Math.Max(0, GameState.ShotsFired[slot]),
+                    ShotsHit = (uint)Math.Max(0, GameState.ShotsHit[slot]),
+                    DamageDealt = (uint)Math.Max(0, GameState.MatchDamageDealt[slot]),
+                    DamageTaken = (uint)Math.Max(0, GameState.MatchDamageTaken[slot])
+                };
+                report.Write(_scratch);
+                _transport.Send(peer.EndPoint, PacketType.PostMatchReport,
+                    _scratch.AsSpan(0, PostMatchReportPacket.Size));
             }
         }
 

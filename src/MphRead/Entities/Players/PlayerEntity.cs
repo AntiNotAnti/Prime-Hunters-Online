@@ -1968,6 +1968,7 @@ namespace MphRead.Entities
             }
             Mods.Network.CareerMatchStats.NoteDamage(
                 this, attacker, damage, dead, _scene.FrameCount);
+            Mods.Network.MatchReportStats.NoteDamage(this, attacker, beam, damage);
             // todo?: something for wifi
             if (attacker != null)
             {
@@ -2444,6 +2445,7 @@ namespace MphRead.Entities
                                     }
                                 }
                                 Mods.Network.CareerMatchStats.NoteKill(attacker);
+                                Mods.Network.MatchReportStats.NoteKill(attacker);
                                 if (_scene.GameState.KillStreak[attacker.SlotIndex] == 5)
                                 {
                                     // Avoid two announcers calling the same local milestone.

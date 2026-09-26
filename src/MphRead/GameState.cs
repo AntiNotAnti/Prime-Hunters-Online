@@ -181,6 +181,14 @@ namespace MphRead
         public int[] BeamDamageDealt { get; } = new int[PlayerEntity.SlotCapacity];
         public int[] DamageCount { get; } = new int[PlayerEntity.SlotCapacity];
         public int[] AltDamageCount { get; } = new int[PlayerEntity.SlotCapacity];
+        // Modern post-match report metrics. These are deliberately separate
+        // from the retail BeamDamage* counters, whose semantics are not total
+        // combat damage and whose maximum starts at zero.
+        public int[] ShotsFired { get; } = new int[PlayerEntity.SlotCapacity];
+        public int[] ShotsHit { get; } = new int[PlayerEntity.SlotCapacity];
+        public int[] MatchDamageDealt { get; } = new int[PlayerEntity.SlotCapacity];
+        public int[] MatchDamageTaken { get; } = new int[PlayerEntity.SlotCapacity];
+        public int[] LongestKillStreak { get; } = new int[PlayerEntity.SlotCapacity];
         public int[] KillStreak { get; } = new int[PlayerEntity.SlotCapacity];
         public int[] Suicides { get; } = new int[PlayerEntity.SlotCapacity];
         public int[] FriendlyKills { get; } = new int[PlayerEntity.SlotCapacity];
@@ -851,7 +859,8 @@ namespace MphRead
             PlayerEntity player = _players.Items[PrimeHunter];
             if (!player.LoadFlags.TestFlag(LoadFlags.Active))
             {
-                PrimeHunter = -1;
+                Mods.Network.MatchReportStats.ResetTracking();
+            PrimeHunter = -1;
                 return;
             }
             if (scene.FrameCount % (10 * 2) == 0) // todo: FPS stuff
@@ -1754,6 +1763,11 @@ namespace MphRead
                 BeamDamageDealt[i] = 0;
                 DamageCount[i] = 0;
                 AltDamageCount[i] = 0;
+                ShotsFired[i] = 0;
+                ShotsHit[i] = 0;
+                MatchDamageDealt[i] = 0;
+                MatchDamageTaken[i] = 0;
+                LongestKillStreak[i] = 0;
                 Kills[i] = 0;
                 Suicides[i] = 0;
                 FriendlyKills[i] = 0;

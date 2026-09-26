@@ -57,6 +57,7 @@ namespace MphRead.Mods.Network
         MapPick = 29,       // client -> server, which of them this player wants
         HitClaim = 30,      // client -> authority, "this shot of mine landed"
         CombatStudy = 51, // bounded unreliable client correction measurements
+        PostMatchReport = 52, // server -> client, authoritative local results summary
         CombatAck = 31,
         HitVerdict = CombatAck,    // authority -> client, what it did with those claims
         // Map transfer is negotiated before loading a custom room. All requests
@@ -878,6 +879,69 @@ namespace MphRead.Mods.Network
         /// behaviour exactly, and why this needs no protocol bump.
         /// </summary>
         ReadyState = 1u << 21
+    }
+
+    /// <summary>
+    /// The authoritative combat summary for one player's post-match report.
+    ///
+    /// Sent only during the intermission, not in snapshots: these values are
+    /// presentation data once the round has ended and do not belong on the
+    /// high-frequency replication lanes.
+    /// </summary>
+    public struct PostMatchReportPacket
+    {
+        public const int Size = 29;
+
+        public ushort MatchId;
+        public ushort SlotGeneration;
+        public byte SlotIndex;
+        public ushort Kills;
+        public ushort Deaths;
+        public ushort Headshots;
+        public ushort LongestKillStreak;
+        public uint ShotsFired;
+        public uint ShotsHit;
+        public uint DamageDealt;
+        public uint DamageTaken;
+
+        public readonly void Write(Span<byte> dest)
+        {
+            BinaryPrimitives.WriteUInt16LittleEndian(dest, MatchId);
+            BinaryPrimitives.WriteUInt16LittleEndian(dest[2..], SlotGeneration);
+            dest[4] = SlotIndex;
+            BinaryPrimitives.WriteUInt16LittleEndian(dest[5..], Kills);
+            BinaryPrimitives.WriteUInt16LittleEndian(dest[7..], Deaths);
+            BinaryPrimitives.WriteUInt16LittleEndian(dest[9..], Headshots);
+            BinaryPrimitives.WriteUInt16LittleEndian(dest[11..], LongestKillStreak);
+            BinaryPrimitives.WriteUInt32LittleEndian(dest[13..], ShotsFired);
+            BinaryPrimitives.WriteUInt32LittleEndian(dest[17..], ShotsHit);
+            BinaryPrimitives.WriteUInt32LittleEndian(dest[21..], DamageDealt);
+            BinaryPrimitives.WriteUInt32LittleEndian(dest[25..], DamageTaken);
+        }
+
+        public static bool TryRead(ReadOnlySpan<byte> src, out PostMatchReportPacket report)
+        {
+            report = default;
+            if (src.Length != Size || src[4] >= PlayerEntity.SlotCapacity)
+            {
+                return false;
+            }
+            report = new PostMatchReportPacket
+            {
+                MatchId = BinaryPrimitives.ReadUInt16LittleEndian(src),
+                SlotGeneration = BinaryPrimitives.ReadUInt16LittleEndian(src[2..]),
+                SlotIndex = src[4],
+                Kills = BinaryPrimitives.ReadUInt16LittleEndian(src[5..]),
+                Deaths = BinaryPrimitives.ReadUInt16LittleEndian(src[7..]),
+                Headshots = BinaryPrimitives.ReadUInt16LittleEndian(src[9..]),
+                LongestKillStreak = BinaryPrimitives.ReadUInt16LittleEndian(src[11..]),
+                ShotsFired = BinaryPrimitives.ReadUInt32LittleEndian(src[13..]),
+                ShotsHit = BinaryPrimitives.ReadUInt32LittleEndian(src[17..]),
+                DamageDealt = BinaryPrimitives.ReadUInt32LittleEndian(src[21..]),
+                DamageTaken = BinaryPrimitives.ReadUInt32LittleEndian(src[25..])
+            };
+            return true;
+        }
     }
 
     /// <summary>

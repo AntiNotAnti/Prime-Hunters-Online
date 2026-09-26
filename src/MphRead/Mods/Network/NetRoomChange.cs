@@ -323,8 +323,15 @@ namespace MphRead.Mods.Network
                 GameState.Standings[i] = 0;
                 GameState.TeamStandings[i] = 0;
                 GameState.DamageCount[i] = 0;
+                GameState.ShotsFired[i] = 0;
+                GameState.ShotsHit[i] = 0;
+                GameState.MatchDamageDealt[i] = 0;
+                GameState.MatchDamageTaken[i] = 0;
+                GameState.LongestKillStreak[i] = 0;
+                GameState.HeadshotKills[i] = 0;
                 GameState.KillStreak[i] = 0;
             }
+            MatchReportStats.ResetTracking();
             // The match itself, not just its scoreboard: the room this is
             // loading is a new round, and the flags that say the last one had
             // already ended have to go with the points.
