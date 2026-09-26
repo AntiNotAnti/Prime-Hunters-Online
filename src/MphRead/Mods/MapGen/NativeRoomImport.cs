@@ -34,15 +34,18 @@ public static class NativeRoomImport
         }
 
         var map=new BuiltMap(definition);
-        foreach(Node node in model.Nodes)
+        if(source.UseNativeArchitecture)
         {
-            cancellation.ThrowIfCancellationRequested();
-            if(!node.Enabled||!model.NodeParentsEnabled(node))continue;
-            foreach(int meshId in node.GetMeshIds())
+            foreach(Node node in model.Nodes)
             {
-                if(meshId<0||meshId>=model.Meshes.Count)continue;
-                Mesh mesh=model.Meshes[meshId];
-                foreach(BuiltFace face in Decode(model,mesh,cancellation))map.Faces.Add(face);
+                cancellation.ThrowIfCancellationRequested();
+                if(!node.Enabled||!model.NodeParentsEnabled(node))continue;
+                foreach(int meshId in node.GetMeshIds())
+                {
+                    if(meshId<0||meshId>=model.Meshes.Count)continue;
+                    Mesh mesh=model.Meshes[meshId];
+                    foreach(BuiltFace face in Decode(model,mesh,cancellation))map.Faces.Add(face);
+                }
             }
         }
         map.ImportedFaceCount=map.Faces.Count;
@@ -67,6 +70,51 @@ public static class NativeRoomImport
         }
         MapBuilder.AddEntities(map,definition);
         return map;
+    }
+
+    public static IReadOnlyList<MapGeometry> ExtractEditableGeometry(MapDefinition definition,
+        CancellationToken cancellation=default)
+    {
+        MapNativeRoomSource source=definition.NativeRoom
+            ?? throw new MapAuthoringException("FP-MAP-013","Native room source is missing.");
+        if(!Metadata.RoomMetadata.TryGetValue(source.Room,out RoomMetadata? meta))
+            throw new MapAuthoringException("FP-MAP-013",$"Unknown built-in room {source.Room}.");
+        Model model=Read.GetRoomModelInstance(meta.Name).Model.CreateSceneCopy();
+        if(source.MultiplayerLayerOnly)
+            model.FilterNodes(SceneSetup.GetNodeLayer(GameMode.Battle,meta.NodeLayer,2));
+        var result=new List<MapGeometry>();
+        foreach(Node node in model.Nodes)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            if(!node.Enabled||!model.NodeParentsEnabled(node))continue;
+            foreach(int meshId in node.GetMeshIds())
+            {
+                if(meshId<0||meshId>=model.Meshes.Count)continue;
+                Mesh sourceMesh=model.Meshes[meshId];
+                BuiltFace[] faces=Decode(model,sourceMesh,cancellation).ToArray();
+                if(faces.Length==0)continue;
+                var mesh=new MapMesh
+                {
+                    Id=Guid.NewGuid(),Label=$"{node.Name} · native mesh {meshId}",
+                    Material=sourceMesh.MaterialId,Solid=false,Layer="Native detached",Shade=1f
+                };
+                var vertices=new Dictionary<(int,int,int),int>();
+                int Vertex(Vector3 p)
+                {
+                    const float precision=10000;
+                    var key=((int)MathF.Round(p.X*precision),(int)MathF.Round(p.Y*precision),(int)MathF.Round(p.Z*precision));
+                    if(vertices.TryGetValue(key,out int index))return index;
+                    index=mesh.Vertices.Count;mesh.Vertices.Add(new[]{p.X,p.Y,p.Z});vertices.Add(key,index);return index;
+                }
+                foreach(BuiltFace face in faces)
+                {
+                    mesh.Faces.Add(face.Points.Select(Vertex).ToArray());
+                    mesh.FaceMaterials.Add(face.Material);
+                }
+                result.Add(mesh);
+            }
+        }
+        return result.AsReadOnly();
     }
 
     private static void AddCollision(BuiltMap map,CollisionInstance collision)
