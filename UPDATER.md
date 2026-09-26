@@ -61,7 +61,9 @@ Automatic updates remain forward-only. Version Manager is the explicit path that
 - macOS opens the selected release page for both upgrades and downgrades because copying individual files into a signed app bundle invalidates its resource seal.
 - Dedicated servers keep the existing safe-update behavior and only swap when the server lifecycle says it is safe. The client Version Manager does not change server auto-update policy.
 
-Desktop replacement copies the selected release over the installation. It does not delete unrelated player data such as settings, saves, extracted game data, or replays.
+Desktop replacement is manifest-driven. Every new desktop package records the files owned by that release. During an in-app update, files owned by the previous release but absent from the new one are removed before the new files are copied. Player-owned data is never inferred from the package manifest and is preserved: settings, controls, saves, extracted game data, replays, custom maps and user-created media remain untouched.
+
+The first upgrade from a pre-manifest build uses a conservative legacy cleanup that only removes historical Project Prime/Fruity Prime/MphRead executable/runtime names. The staged package also generates a manifest defensively, so Version Manager and older release packages converge on the same clean-install layout after one manifest-aware update.
 
 ## Security model
 
