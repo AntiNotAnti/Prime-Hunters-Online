@@ -83,7 +83,7 @@ namespace MphRead.Mods.Launcher.Gui
             BorderBrush = HubTheme.EdgeBrush,
             VerticalContentAlignment = VerticalAlignment.Center
         };
-        private readonly HubNavButton _leave, _mainMenu, _ready, _start;
+        private readonly HubNavButton _leave, _mainMenu, _ready, _start, _spectatorRole;
         private readonly HubNavButton _closeLobby, _transferButton, _kickButton;
         private readonly HubNavButton[] _teamAssign = new HubNavButton[5];
         private readonly Image _preview = new() { Height = 124, Stretch = Stretch.UniformToFill };
@@ -319,6 +319,14 @@ namespace MphRead.Mods.Launcher.Gui
                 primary: true);
             ControllerNav.Identify(_start, "lobby.start");
 
+            _spectatorRole = ActionButton("", () =>
+            {
+                SpectatorMode.SetSessionPreference(!SpectatorMode.PreferSpectator);
+                RefreshSpectatorRole();
+            }, accent: HubTheme.Accent);
+            ControllerNav.Identify(_spectatorRole, "lobby.spectator-role");
+            RefreshSpectatorRole();
+
             _leave.SetValue(ControllerNav.NavRightProperty, "lobby.menu");
             _mainMenu.SetValue(ControllerNav.NavLeftProperty, "lobby.leave");
             _mainMenu.SetValue(ControllerNav.NavRightProperty, "lobby.ready");
@@ -398,7 +406,7 @@ namespace MphRead.Mods.Launcher.Gui
             Grid.SetRow(chatBody, 1); comms.Children.Add(chatBody);
             Grid.SetRow(_status, 2); comms.Children.Add(_status);
             _start.MinHeight = 64;
-            var sessionActions = PrimeChrome.Stack(_start, _ready,
+            var sessionActions = PrimeChrome.Stack(_start, _ready, _spectatorRole,
                 PrimeChrome.Columns("*,*,*", new PrimeButton("INVITE", Invite), _mainMenu, _leave));
             Grid.SetRow(sessionActions, 3); comms.Children.Add(sessionActions);
             var nativeBody = PrimeChrome.Columns("1.04*,1.05*,1*", nativeLeft, nativeMiddle, new PrimePanel(comms));
@@ -608,6 +616,12 @@ namespace MphRead.Mods.Launcher.Gui
             });
         }
 
+        private void RefreshSpectatorRole()
+        {
+            _spectatorRole.Label = SpectatorMode.PreferSpectator
+                ? "JOIN NEXT MATCH" : "SPECTATE NEXT MATCH";
+        }
+
         private void Refresh()
         {
             if (NetSession.ServerSession is not { } session) return;
@@ -730,6 +744,7 @@ namespace MphRead.Mods.Launcher.Gui
                 && !NetSession.LobbyCommandPending;
             _ready.Label = NetSession.LocalSlot >= 0 && NetSession.SlotLobbyReady[NetSession.LocalSlot]
                 ? "UNREADY" : "READY";
+            RefreshSpectatorRole();
 
             LobbyResultCode valid = LobbyRules.Validate(session.Match, roster,
                 session.RequireReady, out string reason);
