@@ -1,5 +1,6 @@
 using System;
 using MphRead.Mods;
+using MphRead.Entities;
 using OpenTK.Graphics.OpenGL;
 using OpenTK.Mathematics;
 
@@ -29,6 +30,9 @@ namespace MphRead
         private int _gfxLighting, _gfxAo, _gfxContactShadows;
         private int _gfxEnhancedFog, _gfxVolumetricFog, _gfxHdr;
         private int _gfxReflections, _gfxDynamicGlow, _gfxFogColor, _gfxTime;
+        private int _gfxInvProjection, _gfxInvView, _gfxDynamicLightCount;
+        private readonly int[] _gfxDynamicLightPos = new int[8];
+        private readonly int[] _gfxDynamicLightColor = new int[8];
 
         private void ApplyGraphicsPostProcess()
         {
@@ -84,6 +88,11 @@ namespace MphRead
                 GL.Uniform1(_gfxDynamicGlow, RenderOptions.DynamicGlow ? 1 : 0);
                 GL.Uniform4(_gfxFogColor, _fogColor);
                 GL.Uniform1(_gfxTime, _globalElapsedTime);
+                Matrix4 invProjection = _perspectiveMatrix.Inverted();
+                Matrix4 invView = _viewMatrix.Inverted();
+                GL.UniformMatrix4(_gfxInvProjection, false, ref invProjection);
+                GL.UniformMatrix4(_gfxInvView, false, ref invView);
+                UploadDynamicLights();
 
                 DrawGraphicsFullscreenQuad();
                 _graphicsOutputReady = true;
@@ -159,6 +168,16 @@ namespace MphRead
                     _gfxDynamicGlow = GL.GetUniformLocation(_graphicsProgram, "dynamic_glow");
                     _gfxFogColor = GL.GetUniformLocation(_graphicsProgram, "fog_color");
                     _gfxTime = GL.GetUniformLocation(_graphicsProgram, "time_value");
+                    _gfxInvProjection = GL.GetUniformLocation(_graphicsProgram, "inv_projection");
+                    _gfxInvView = GL.GetUniformLocation(_graphicsProgram, "inv_view");
+                    _gfxDynamicLightCount = GL.GetUniformLocation(_graphicsProgram, "dynamic_light_count");
+                    for (int i = 0; i < 8; i++)
+                    {
+                        _gfxDynamicLightPos[i] = GL.GetUniformLocation(_graphicsProgram,
+                            $"dynamic_light_pos[{i}]");
+                        _gfxDynamicLightColor[i] = GL.GetUniformLocation(_graphicsProgram,
+                            $"dynamic_light_color[{i}]");
+                    }
                 }
                 finally
                 {
@@ -194,6 +213,95 @@ namespace MphRead
                 GL.BindTexture(TextureTarget.Texture2D, 0);
                 _graphicsOutputSize = _targetSize;
             }
+        }
+
+        private void UploadDynamicLights()
+        {
+            if (!RenderOptions.DynamicGlow)
+            {
+                GL.Uniform1(_gfxDynamicLightCount, 0);
+                return;
+            }
+
+            var lights = new System.Collections.Generic.List<(float Distance, Vector3 Position,
+                Vector3 Color, float Radius, float Intensity)>(16);
+            foreach (EntityBase entity in Entities)
+            {
+                if (entity is BeamProjectileEntity beam && beam.Lifespan > 0
+                    && !beam.Flags.TestFlag(BeamFlags.Collided))
+                {
+                    Vector3 color = beam.Color;
+                    if (color.LengthSquared < 0.01f)
+                    {
+                        color = BeamLightColor(beam.Beam);
+                    }
+                    color = new Vector3(
+                        Math.Clamp(color.X, 0f, 1f),
+                        Math.Clamp(color.Y, 0f, 1f),
+                        Math.Clamp(color.Z, 0f, 1f));
+                    float radius = BeamLightRadius(beam.Beam);
+                    float intensity = beam.Flags.TestFlag(BeamFlags.Charged) ? 1.25f : 0.85f;
+                    if (beam.Flags.TestFlag(BeamFlags.Continuous))
+                    {
+                        intensity *= 0.75f;
+                    }
+                    lights.Add(((beam.Position - _cameraPosition).LengthSquared,
+                        beam.Position, color, radius, intensity));
+                }
+            }
+            lights.Sort((a, b) => a.Distance.CompareTo(b.Distance));
+            int count = Math.Min(8, lights.Count);
+            GL.Uniform1(_gfxDynamicLightCount, count);
+            for (int i = 0; i < count; i++)
+            {
+                var light = lights[i];
+                GL.Uniform4(_gfxDynamicLightPos[i],
+                    light.Position.X, light.Position.Y, light.Position.Z, light.Radius);
+                GL.Uniform4(_gfxDynamicLightColor[i],
+                    light.Color.X, light.Color.Y, light.Color.Z, light.Intensity);
+            }
+        }
+
+        private static Vector3 BeamLightColor(BeamType beam) => beam switch
+        {
+            BeamType.PowerBeam => new Vector3(0.35f, 0.65f, 1f),
+            BeamType.VoltDriver => new Vector3(0.25f, 0.75f, 1f),
+            BeamType.Missile => new Vector3(1f, 0.55f, 0.20f),
+            BeamType.Battlehammer => new Vector3(0.45f, 1f, 0.25f),
+            BeamType.Imperialist => new Vector3(1f, 0.18f, 0.14f),
+            BeamType.Judicator => new Vector3(0.35f, 0.80f, 1f),
+            BeamType.Magmaul => new Vector3(1f, 0.30f, 0.06f),
+            BeamType.ShockCoil => new Vector3(0.60f, 0.35f, 1f),
+            BeamType.OmegaCannon => new Vector3(1f, 0.85f, 0.30f),
+            _ => new Vector3(0.65f, 0.80f, 1f)
+        };
+
+        private static float BeamLightRadius(BeamType beam) => beam switch
+        {
+            BeamType.Imperialist => 2.5f,
+            BeamType.PowerBeam => 3.0f,
+            BeamType.VoltDriver => 4.5f,
+            BeamType.Missile => 5.0f,
+            BeamType.Battlehammer => 5.5f,
+            BeamType.Judicator => 4.5f,
+            BeamType.Magmaul => 6.0f,
+            BeamType.ShockCoil => 4.0f,
+            BeamType.OmegaCannon => 7.0f,
+            _ => 3.5f
+        };
+
+        private void DisposeGraphicsPipeline()
+        {
+            _graphicsOutputReady = false;
+            _graphicsPipelineRefused = false;
+            _graphicsOutputSize = default;
+            if (_graphicsOutputFramebuffer != 0)
+            {
+                GL.DeleteFramebuffer(_graphicsOutputFramebuffer);
+                _graphicsOutputFramebuffer = 0;
+            }
+            DeleteTexture(ref _graphicsOutputTexture);
+            DeleteProgram(ref _graphicsProgram);
         }
 
         private static int CompileGraphicsShader(ShaderType type, string source)
@@ -277,6 +385,11 @@ uniform int reflections;
 uniform int dynamic_glow;
 uniform vec4 fog_color;
 uniform float time_value;
+uniform mat4 inv_projection;
+uniform mat4 inv_view;
+uniform int dynamic_light_count;
+uniform vec4 dynamic_light_pos[8];
+uniform vec4 dynamic_light_color[8];
 
 vec2 uv_clamp(vec2 uv) {
     return clamp(uv, vec2(0.0), vec2(1.0));
@@ -325,6 +438,30 @@ vec3 fxaa(vec2 uv, vec3 center) {
         resolved = resolved * 0.75 + (c + d) * 0.125;
     }
     return resolved;
+}
+
+vec3 world_position(vec2 uv, float d) {
+    vec4 clip = vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+    vec4 view = inv_projection * clip;
+    view /= max(abs(view.w), 0.000001);
+    vec4 world = inv_view * view;
+    return world.xyz / max(abs(world.w), 0.000001);
+}
+
+vec3 projectile_lighting(vec3 worldPos) {
+    if (dynamic_glow == 0 || dynamic_light_count <= 0) return vec3(0.0);
+    vec3 result = vec3(0.0);
+    for (int i = 0; i < 8; i++) {
+        if (i >= dynamic_light_count) break;
+        vec3 delta = dynamic_light_pos[i].xyz - worldPos;
+        float radius = max(dynamic_light_pos[i].w, 0.01);
+        float distanceToLight = length(delta);
+        float falloff = 1.0 - smoothstep(radius * 0.12, radius, distanceToLight);
+        falloff *= falloff;
+        result += dynamic_light_color[i].rgb
+            * dynamic_light_color[i].a * falloff * 0.34;
+    }
+    return result;
 }
 
 vec3 depth_normal(vec2 uv, float centerDepth) {
@@ -461,6 +598,7 @@ void main() {
         }
         color *= ambient_occlusion(uv, d);
         color *= contact_shadow(uv, d);
+        color += projectile_lighting(world_position(uv, d));
         if (reflections != 0) {
             float fresnel = pow(clamp(1.0 - n.z, 0.0, 1.0), 3.0);
             color += vec3(0.035, 0.050, 0.070) * fresnel;
