@@ -102,13 +102,15 @@ internal static class HitReactionPresentationCheck
                 out Vector3 observedUp, out float observedFov);
             Matrix4 observedView = Matrix4.LookAt(
                 observedPosition, observedTarget, observedUp);
-            Check(player.ModPrepareObservedFirstPersonViewmodel(.5,
-                    observedPosition, observedTarget, observedUp,
-                    observedFov, observedView)
-                && player.ModGetFirstPersonGunTransform(out Matrix4 observedGun),
+            bool observedPrepared = player.ModPrepareObservedFirstPersonViewmodel(.5,
+                observedPosition, observedTarget, observedUp,
+                observedFov, observedView);
+            bool observedGunReady = player.ModGetFirstPersonGunTransform(out Matrix4 observedGun);
+            Check(observedPrepared && observedGunReady,
                 "144 Hz observed POV prepares a fractional arm-cannon pose");
-            Vector3 observedCannon = Vector3.TransformVector(
-                observedGun.Row2.Xyz, observedView).Normalized();
+            Vector3 observedCannon = observedGunReady
+                ? Vector3.TransformVector(observedGun.Row2.Xyz, observedView).Normalized()
+                : Vector3.Zero;
             Vector3 observedCamera = -observedView.Inverted().Row2.Xyz.Normalized();
             Check(Vector3.Dot(observedCannon, observedCamera) > .95f,
                 "observed POV camera and arm cannon share one presentation basis");
