@@ -178,14 +178,13 @@ namespace MphRead.Mods.Input.AimAssist
                         float horizon = AimAssistTuning.FlickLandingMaxSeconds
                             + (AimAssistTuning.FlickLandingMinSeconds - AimAssistTuning.FlickLandingMaxSeconds)
                             * speedT;
-                        Vector2 candidatePredictedTurn = cameraVelocity * horizon
+                        Vector2 candidatePredictedTurn = fittedCameraVelocity * horizon
                             + cameraAcceleration * (.5f * horizon * horizon);
                         Vector2 candidateTargetMotion = keep
                             ? state.HeadAngularVelocity * horizon : Vector2.Zero;
                         float landing = t.HeadRegion is { } flickRegion
-                            ? AimAssistMath.RegionError(flickRegion.Shift(
-                                candidateTargetMotion.X - candidatePredictedTurn.X,
-                                candidateTargetMotion.Y - candidatePredictedTurn.Y)).Length()
+                            ? AimAssistMath.NormalizedLandingMiss(flickRegion,
+                                candidateTargetMotion - candidatePredictedTurn)
                             : (flickHead + candidateTargetMotion - candidatePredictedTurn).Length();
                         score += .65f * candidateFlickAlignment
                             + .20f * (1 - AimAssistMath.Smooth(0, Math.Max(.25f, Math.Min(2, cone)), headDistance))
