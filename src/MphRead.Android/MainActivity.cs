@@ -762,7 +762,7 @@ namespace MphRead.Droid
                 MphRead.Mods.Input.GamepadContexts.MenuVisible = true;
             }
             MphRead.Mods.Launcher.Gui.Deck.Asleep = false;
-            AndroidApp.Home?.Reset();
+            ResetLauncher();
             Window?.ClearFlags(WindowManagerFlags.KeepScreenOn);
             GoImmersive(true);
             RequestedOrientation = _orientationBefore;
@@ -1271,7 +1271,7 @@ namespace MphRead.Droid
             else
             {
                 NetSession.Stop(); NetHostSession.Stop();
-                AndroidApp.Home?.Reset();
+                ResetLauncher();
             }
             // A demo feeds NetSession from a file rather than a socket, so
             // stopping the session is not what closes it.
@@ -1279,6 +1279,19 @@ namespace MphRead.Droid
             Window?.ClearFlags(WindowManagerFlags.KeepScreenOn);
             GoImmersive(true);
             RequestedOrientation = _orientationBefore;
+        }
+
+        /// <summary>
+        /// Reload the launcher's settings after gameplay, matching the desktop
+        /// shell's return-to-front-screen path. StartScreen.Reset now receives
+        /// the freshly loaded settings object so pause-menu changes are not
+        /// replaced by the copy that existed before the match.
+        /// </summary>
+        private static void ResetLauncher()
+        {
+            MenuSettings settings = GameState.LoadSettings();
+            GameSettings.Apply(settings);
+            AndroidApp.Home?.Reset(settings);
         }
 
         private void GoImmersive(bool immersive)
