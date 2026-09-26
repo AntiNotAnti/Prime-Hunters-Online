@@ -28,6 +28,19 @@ namespace MphRead.Mods
         public static bool IsSpectating { get; private set; }
 
         /// <summary>
+        /// The role this client wants for the next multiplayer round. Unlike
+        /// <see cref="IsSpectating"/>, this survives per-match teardown and the
+        /// return to a persistent lobby. It is cleared only by explicitly
+        /// joining the match again or by ending the network session.
+        /// </summary>
+        public static bool PreferSpectator { get; private set; }
+
+        public static void SetSessionPreference(bool spectate)
+        {
+            PreferSpectator = spectate;
+        }
+
+        /// <summary>
         /// Looking around the map on the spectator's own camera, rather than
         /// out of some player's eyes. Where spectating starts.
         ///
@@ -71,6 +84,10 @@ namespace MphRead.Mods
                 return;
             }
             IsSpectating = true;
+            if (!Network.DemoPlayback.IsActive && Network.NetSession.Active)
+            {
+                PreferSpectator = true;
+            }
             // Hidden and non-solid on every client, like Quake 3's
             // spectator -- not just a body left standing still. Set on the
             // real local entity (not whoever Main points at); NetSession
@@ -274,6 +291,7 @@ namespace MphRead.Mods
             int localSlot = Network.NetHooks.LocalSlot;
             Registry.MainPlayerIndex = localSlot;
             IsSpectating = false;
+            PreferSpectator = false;
             ShowScoreboard = false;
             // Back behind your own eyes, whichever of the two spectator
             // cameras was up.
@@ -288,12 +306,16 @@ namespace MphRead.Mods
         }
 
         /// <summary>Forget spectating without the rejoin bookkeeping -- the match itself is ending.</summary>
-        public static void Reset()
+        public static void Reset(bool preservePreference = false)
         {
             IsSpectating = false;
             FreeCamera = false;
             ShowScoreboard = false;
             _cameraRequest = null;
+            if (!preservePreference)
+            {
+                PreferSpectator = false;
+            }
         }
 
         private static int FindPreviousActiveSlot(int fromSlot)
