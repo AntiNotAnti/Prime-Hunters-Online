@@ -199,13 +199,16 @@ namespace MphRead.NetTest
             reset.Invoke(player, Array.Empty<object>());
             matchTimer.SetValue(player, (ushort)180);
             release.Invoke(player, Array.Empty<object>());
-            bool repeated = true;
-            for (int i = 0; i < 8; i++)
+            bool persistent = true;
+            for (int i = 0; i < 64; i++)
             {
-                repeated &= (bool)report.Invoke(player, Array.Empty<object>())!;
+                persistent &= (bool)report.Invoke(player, Array.Empty<object>())!;
             }
-            Check(repeated && !(bool)report.Invoke(player, Array.Empty<object>())!,
-                "successful shot release is redundantly reported for eight intents");
+            Check(persistent,
+                "successful shot release remains reportable for the rest of the life");
+            reset.Invoke(player, Array.Empty<object>());
+            Check(!(bool)report.Invoke(player, Array.Empty<object>())!,
+                "new life clears the previous life's successful-shot release");
 
             reset.Invoke(player, Array.Empty<object>());
             matchTimer.SetValue(player, (ushort)0);
