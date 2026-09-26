@@ -934,6 +934,7 @@ namespace MphRead.Mods.Launcher.Gui
                 _inspector.Children.Add(Text("NATIVE ROOM REMIX"));
                 _inspector.Children.Add(Text($"Source: {native.Room}\nOriginal architecture is preserved from the extracted game files and never overwritten."));
                 foreach(var pair in new[]{
+                    ("Render native architecture",native.UseNativeArchitecture),
                     ("Preserve unsupported/native entities",native.PreserveEntities),
                     ("Editable native spawns",native.EditableSpawns),
                     ("Editable native pickups",native.EditableItems),
@@ -946,6 +947,7 @@ namespace MphRead.Mods.Launcher.Gui
                         var n=m.NativeRoom!;
                         switch(pair.Item1)
                         {
+                            case "Render native architecture":n.UseNativeArchitecture=check.IsChecked==true;break;
                             case "Preserve unsupported/native entities":n.PreserveEntities=check.IsChecked==true;break;
                             case "Editable native spawns":n.EditableSpawns=check.IsChecked==true;break;
                             case "Editable native pickups":n.EditableItems=check.IsChecked==true;break;
@@ -954,7 +956,16 @@ namespace MphRead.Mods.Launcher.Gui
                         }
                     });
                 }
-                _inspector.Children.Add(Text("Add Project Prime boxes, wedges, prisms, meshes, prefabs, spawns, pickups and navigation normally; the native source remains the immutable base."));
+                if(native.UseNativeArchitecture)
+                {
+                    _inspector.Children.Add(Text("Native render architecture is currently an immutable source layer. Detach it to convert the source display lists into editable Project Prime meshes while retaining source materials/UVs and native collision/entities."));
+                    AddButton(_inspector,"Detach native architecture for editing",()=>_=DetachNativeArchitecture());
+                }
+                else
+                {
+                    _inspector.Children.Add(Text("Native render architecture is detached. The authored meshes in layer 'Native Detached' are now the visible source geometry; native collision/entities can remain preserved independently."));
+                }
+                _inspector.Children.Add(Text("Add Project Prime boxes, wedges, prisms, meshes, prefabs, spawns, pickups and navigation normally."));
             }
             if(d.Import is {} import)
             {
@@ -994,6 +1005,28 @@ namespace MphRead.Mods.Launcher.Gui
             AddButton(_inspector,"Upgrade project",()=>_document.Upgrade());
             AddButton(_inspector,"Use camera as preview",()=>{if(_viewport!=null){var p=_viewport.CameraPosition;var t=_viewport.CameraTarget;_document.Edit("Preview camera",m=>m.Preview=new(){Position=new[]{p.X,p.Y,p.Z},Target=new[]{t.X,t.Y,t.Z}});}});
         }
+        private Task DetachNativeArchitecture()=>Job("Detaching native architecture",async token=>
+        {
+            if(_document?.Project.Definition.NativeRoom is not {UseNativeArchitecture:true})return;
+            if(!GameFiles.Ready)throw new IOException("Set up game files before detaching native architecture.");
+            GameFiles.ApplyPaths();
+            MapDefinition snapshot=_document.CaptureBuildSnapshot().CreateDefinition();
+            IReadOnlyList<MapMesh> meshes=await Task.Run(()=>NativeRoomImport.DetachArchitecture(snapshot,token),token);
+            GuardJob(token);
+            if(meshes.Count==0)throw new InvalidDataException("The source room produced no detachable render meshes.");
+            _document.Edit("Detach native architecture",d=>
+            {
+                d.Geometry.AddRange(meshes);
+                d.NativeRoom!.UseNativeArchitecture=false;
+            },MapChangeDomain.Geometry|MapChangeDomain.Import|MapChangeDomain.Material);
+            _document.Selection.Clear();
+            foreach(Guid id in meshes.Take(1).Select(m=>m.Id))_document.Selection.Add(id);
+            _document.ActiveObjectId=_document.Selection.FirstOrDefault();
+            _document.SelectionChanged();
+            _status.Text=$"Detached {meshes.Count:N0} native render meshes. Source collision/entities remain preserved.";
+            _=Validate();
+        });
+
         private void MaterialInspector()
         {
             _inspector.Children.Clear();if(_document==null)return;
