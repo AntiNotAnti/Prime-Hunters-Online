@@ -1920,6 +1920,7 @@ namespace MphRead.Entities
 
         private void EnterAltForm()
         {
+            _altCameraCollisionBasisLock = false;
             _altRollFbX = _field70;
             _altRollFbZ = _field74;
             _altRollLrX = _gunVec2.X;
