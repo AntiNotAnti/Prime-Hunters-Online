@@ -90,6 +90,31 @@ internal static class HitReactionPresentationCheck
                 Check(Near(turn.Camera, -Vector3.UnitX) && Near(turn.Cannon, before),
                     $"{rate} Hz camera and cannon turn immediately together");
             }
+            // Spectator/replay POV does not late-latch local input, but its
+            // arm cannon must still consume the same fractional camera pose.
+            FrameTiming.FrameRateCap = 144;
+            FrameTiming.Reset(); FrameTiming.ResetDiagnostics();
+            Pose(forward, forward);
+            player.ModResetFirstPersonDrawState();
+            Pose(shaken, shaken);
+            player.CameraInfo.ModGetFirstPersonDrawPose(.5,
+                out Vector3 observedPosition, out Vector3 observedTarget,
+                out Vector3 observedUp, out float observedFov);
+            Matrix4 observedView = Matrix4.LookAt(
+                observedPosition, observedTarget, observedUp);
+            bool observedPrepared = player.ModPrepareObservedFirstPersonViewmodel(.5,
+                observedPosition, observedTarget, observedUp,
+                observedFov, observedView);
+            bool observedGunReady = player.ModGetFirstPersonGunTransform(out Matrix4 observedGun);
+            Check(observedPrepared && observedGunReady,
+                "144 Hz observed POV prepares a fractional arm-cannon pose");
+            Vector3 observedCannon = observedGunReady
+                ? Vector3.TransformVector(observedGun.Row2.Xyz, observedView).Normalized()
+                : Vector3.Zero;
+            Vector3 observedCamera = -observedView.Inverted().Row2.Xyz.Normalized();
+            Check(Vector3.Dot(observedCannon, observedCamera) > .95f,
+                "observed POV camera and arm cannon share one presentation basis");
+
             FrameTiming.FrameRateCap = 60;
             FrameTiming.Reset(); FrameTiming.ResetDiagnostics();
             Pose(forward, forward);
