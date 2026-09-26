@@ -64,13 +64,14 @@ namespace MphRead.NetTest
         private static void Wire()
         {
             Check(NetUnlagged.PressAgeEnabled, "recovered trigger pulls include their age by default");
-            Check(PlayerState.Size == 117, "compact player wire size includes four event history entries");
+            Check(PlayerState.Size == 119, "compact player wire size includes four event history entries and jump-pad sequence");
             Check(1 + SnapshotHeader.Size + PlayerState.Size * PlayerEntity.SlotCapacity <= NetConfig.MaxPacketSize
                 && NetConfig.MaxPacketSize <= 1472, "eight-player snapshot fits one Ethernet UDP datagram");
             byte[] buffer = new byte[NetConfig.MaxPacketSize];
             var state = State(ushort.MaxValue, 99, 65400);
             state.SpawnProtected = true;
             state.HalfturretActive = false;
+            state.JumpPadEventId = 65534;
             state.DamageEventId = 65535;
             state.Damage3 = new DamageEvent { EventId = 65535,
                 AttackerSlot = 0, AttackerGeneration = 123, Damage = 32,
@@ -80,8 +81,8 @@ namespace MphRead.NetTest
             Check(read.LifeId == 65535 && read.SlotGeneration == 65400 && read.Damage3.Damage == 32
                 && (read.Damage3.Direction - state.Damage3.Direction).Length < 0.0002f
                 && read.Damage3.AttackerGeneration == 123 && read.AttackerSlot == 0
-                && read.SpawnProtected && !read.HalfturretActive,
-                "player, damage and spawn-protection state round trip");
+                && read.SpawnProtected && !read.HalfturretActive && read.JumpPadEventId == 65534,
+                "player, damage, jump-pad and spawn-protection state round trip");
             state.SpawnProtected = false;
             state.HalfturretActive = true;
             state.Write(buffer);
