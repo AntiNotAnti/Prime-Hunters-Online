@@ -752,6 +752,16 @@ namespace MphRead.Mods.Launcher.Gui
                     edits.Add(m=>{switch(pair.Item1){case "Use source spawns":m.Import!.KeepSpawns=check.IsChecked==true;break;case "Keep player clips":m.Import!.KeepClip=check.IsChecked==true;break;case "Keep sky":m.Import!.KeepSky=check.IsChecked==true;break;case "Keep source pickups":m.Import!.KeepItems=check.IsChecked==true;break;}});
                 }
                 _inspector.Children.Add(Text("Imported BSP surfaces stay immutable. Boxes, wedges, prisms and convex brushes can be layered on top."));
+                string provenanceRoot=d.BaseDirectory??Path.GetDirectoryName(d.SourcePath??"")??CustomRooms.MapDirectory;
+                if(Q3ImportManifest.Load(provenanceRoot) is {} provenance)
+                {
+                    _inspector.Children.Add(Text("Q3 SOURCE PROVENANCE\n"+provenance.Summary()));
+                    AddButton(_inspector,"Show unresolved textures",()=>
+                    {
+                        string[] missing=provenance.Textures.Where(t=>t.Fallback).Select(t=>t.Shader).ToArray();
+                        _status.Text=missing.Length==0?"All imported textures resolved.":String.Join(" · ",missing.Take(20))+(missing.Length>20?$" · +{missing.Length-20} more":"");
+                    });
+                }
                 AddButton(_inspector,"Rebake Q3 textures",()=>_=RebakeImportTextures());
                 AddButton(_inspector,"Reimport Q3 source",()=>_=PickReimportSource());
             }
