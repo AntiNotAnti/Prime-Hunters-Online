@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -51,6 +52,8 @@ namespace MphRead.Mods.MapGen
 
         private static readonly string[] _extensions = new[] { ".tga", ".jpg", ".jpeg", ".png" };
 
+        public sealed record Resolution(string Shader,string Image,string? Archive,bool ViaShader,bool Fallback);
+
         public sealed class Result
         {
             public int Baked { get; init; }
@@ -58,11 +61,12 @@ namespace MphRead.Mods.MapGen
             public int Fallbacks { get; init; }
             public IReadOnlyList<string> Missing { get; init; } = Array.Empty<string>();
             public IReadOnlyList<string> Archives { get; init; } = Array.Empty<string>();
+            public IReadOnlyList<Resolution> Resolutions { get; init; } = Array.Empty<Resolution>();
             public long Bytes { get; init; }
         }
 
         public sealed record Coverage(int Total, int Resolved, IReadOnlyList<string> Missing,
-            IReadOnlyList<string> Archives);
+            IReadOnlyList<string> Archives,IReadOnlyList<Resolution> Resolutions);
 
         /// <summary>
         /// Texture archives for a Q3 source, in deterministic precedence order:
@@ -98,17 +102,28 @@ namespace MphRead.Mods.MapGen
             {
                 var files = Index(archives);
                 var aliases = ParseShaderAliases(files);
+                var archiveNames = ArchiveNames(archives, archivePaths);
                 var missing = new List<string>();
+                var resolutions = new List<Resolution>();
                 int resolved = 0, total = 0;
                 foreach ((_, string name) in UsedTextures(bsp, sky))
                 {
                     total++;
-                    if (FindEntry(files, aliases, name) != null) resolved++;
-                    else missing.Add(name);
+                    ResolvedEntry? found=FindEntry(files, aliases, name);
+                    if(found!=null)
+                    {
+                        resolved++;
+                        archiveNames.TryGetValue(found.Entry.Archive,out string? archive);
+                        resolutions.Add(new(name,found.Image,archive,found.ViaShader,false));
+                    }
+                    else
+                    {
+                        missing.Add(name);resolutions.Add(new(name,name,null,false,true));
+                    }
                 }
                 return new(total, resolved, missing.AsReadOnly(),
                     archivePaths.Where(File.Exists).Select(Path.GetFullPath)
-                        .Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+                        .Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),resolutions.AsReadOnly());
             }
             finally
             {
@@ -133,8 +148,10 @@ namespace MphRead.Mods.MapGen
             {
                 var files = Index(archives);
                 var aliases = ParseShaderAliases(files);
+                var archiveNames = ArchiveNames(archives, archivePaths);
                 var entries = new List<(int Index, string Name, ushort[] Palette, byte[] Pixels)>();
                 var missing = new List<string>();
+                var resolutions = new List<Resolution>();
                 int resolved = 0;
                 var usedTextures = UsedTextures(bsp, sky).ToArray();
                 for (int textureNumber = 0; textureNumber < usedTextures.Length; textureNumber++)
@@ -142,20 +159,22 @@ namespace MphRead.Mods.MapGen
                     cancellation.ThrowIfCancellationRequested();
                     (int index, string name) = usedTextures[textureNumber];
                     progress?.Invoke(textureNumber, usedTextures.Length, name);
-                    byte[]? raw = Find(files, aliases, name);
-                    byte[] rgb;
-                    if (raw == null)
+                    ResolvedEntry? found=FindEntry(files,aliases,name);
+                    (ushort[] palette,byte[] pixels) quantized;
+                    if(found==null)
                     {
                         missing.Add(name);
-                        rgb = Fallback(size, name);
+                        resolutions.Add(new(name,name,null,false,true));
+                        quantized=QuantizedFallback(size,name,cancellation);
                     }
                     else
                     {
                         resolved++;
-                        rgb = Decode(raw, size, cancellation);
+                        archiveNames.TryGetValue(found.Entry.Archive,out string? archive);
+                        resolutions.Add(new(name,found.Image,archive,found.ViaShader,false));
+                        quantized=Quantized(found,archive,size,cancellation);
                     }
-                    (ushort[] palette, byte[] pixels) = Quantize(rgb, size, cancellation);
-                    entries.Add((index, name, palette, pixels));
+                    entries.Add((index, name, quantized.palette, quantized.pixels));
                 }
                 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputPath))!);
                 using (var stream = File.Create(outputPath))
@@ -186,6 +205,7 @@ namespace MphRead.Mods.MapGen
                     Missing = missing.AsReadOnly(),
                     Archives = archivePaths.Where(File.Exists).Select(Path.GetFullPath)
                         .Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+                    Resolutions = resolutions.AsReadOnly(),
                     Bytes = new FileInfo(outputPath).Length
                 };
             }
@@ -350,41 +370,70 @@ namespace MphRead.Mods.MapGen
             return results;
         }
 
-        private static ZipArchiveEntry? FindEntry(
+        private sealed record ResolvedEntry(ZipArchiveEntry Entry,string Image,bool ViaShader);
+
+        private static ResolvedEntry? FindEntry(
             Dictionary<string, ZipArchiveEntry> files,
             Dictionary<string, string> aliases, string name)
         {
-            IEnumerable<string> candidates = aliases.TryGetValue(name, out string? alias)
-                ? new[] { name, alias! }
-                : new[] { name };
-            foreach (string candidate in candidates)
+            bool hasAlias=aliases.TryGetValue(name,out string? alias);
+            foreach (string candidate in hasAlias ? new[] { name, alias! } : new[] { name })
             {
                 string normalized = candidate.TrimStart('/').Replace('\\', '/');
                 foreach (string suffix in _skySuffixes.Prepend(""))
                     foreach (string extension in _extensions)
                         if (files.TryGetValue(normalized + suffix + extension, out var entry))
-                            return entry;
-                if (files.TryGetValue(normalized, out var exact)) return exact;
+                            return new(entry,normalized+suffix+extension,hasAlias&&!candidate.Equals(name,StringComparison.OrdinalIgnoreCase));
+                if (files.TryGetValue(normalized, out var exact))
+                    return new(exact,normalized,hasAlias&&!candidate.Equals(name,StringComparison.OrdinalIgnoreCase));
             }
             return null;
         }
 
-        private static byte[]? Find(Dictionary<string, ZipArchiveEntry> files,
-            Dictionary<string, string> aliases, string name)
+        private static Dictionary<ZipArchive,string> ArchiveNames(IReadOnlyList<ZipArchive> archives,
+            IReadOnlyList<string> archivePaths)
         {
-            ZipArchiveEntry? entry = FindEntry(files, aliases, name);
-            if (entry == null) return null;
-            using Stream stream = entry.Open();
-            using var memory = new MemoryStream();
-            byte[] buffer = new byte[65536];
-            int read;
-            while ((read = stream.Read(buffer)) > 0)
+            var paths=archivePaths.Distinct(StringComparer.OrdinalIgnoreCase)
+                .Where(path=>File.Exists(path)&&!Path.GetExtension(path).Equals(".bsp",StringComparison.OrdinalIgnoreCase))
+                .Select(Path.GetFullPath).ToArray();
+            var result=new Dictionary<ZipArchive,string>();
+            for(int i=0;i<archives.Count&&i<paths.Length;i++)result[archives[i]]=paths[i];
+            return result;
+        }
+
+        private static readonly ConcurrentDictionary<string,(ushort[] Palette,byte[] Pixels)> _quantizedCache=new();
+
+        private static (ushort[] palette,byte[] pixels) Quantized(ResolvedEntry found,string? archive,
+            int size,CancellationToken cancellation)
+        {
+            string stamp="";
+            if(archive!=null)
             {
-                if (memory.Length + read > MapPackageReader.MaxEntryBytes)
-                    throw new InvalidDataException("Texture image exceeds the map asset limit.");
-                memory.Write(buffer, 0, read);
+                var info=new FileInfo(archive);
+                stamp=$"{info.Length}:{info.LastWriteTimeUtc.Ticks}";
             }
-            return memory.ToArray();
+            string key=$"{archive}|{stamp}|{found.Entry.FullName}|{found.Entry.Length}|{size}";
+            if(_quantizedCache.TryGetValue(key,out var cached))return(cached.Palette,cached.Pixels);
+            using Stream stream=found.Entry.Open();using var memory=new MemoryStream();
+            byte[] buffer=new byte[65536];int read;
+            while((read=stream.Read(buffer))>0)
+            {
+                if(memory.Length+read>MapPackageReader.MaxEntryBytes)throw new InvalidDataException("Texture image exceeds the map asset limit.");
+                memory.Write(buffer,0,read);
+            }
+            var result=Quantize(Decode(memory.ToArray(),size,cancellation),size,cancellation);
+            if(_quantizedCache.Count>2048)_quantizedCache.Clear();
+            _quantizedCache[key]=(result.Item1,result.Item2);
+            return result;
+        }
+
+        private static (ushort[] palette,byte[] pixels) QuantizedFallback(int size,string name,CancellationToken cancellation)
+        {
+            string key=$"fallback|{name.ToUpperInvariant()}|{size}";
+            if(_quantizedCache.TryGetValue(key,out var cached))return(cached.Palette,cached.Pixels);
+            var result=Quantize(Fallback(size,name),size,cancellation);
+            _quantizedCache[key]=(result.Item1,result.Item2);
+            return result;
         }
 
         private static byte[] Fallback(int size, string name)
