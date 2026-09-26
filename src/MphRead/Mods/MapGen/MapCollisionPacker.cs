@@ -18,7 +18,7 @@ namespace MphRead.Mods.MapGen
     /// notice. A level with tens of thousands does -- it is quadratic twice
     /// over, and the second one is cells times faces.
     ///
-    /// Same format, same runtime semantics: points are deduplicated
+    /// Same runtime semantics: points are deduplicated
     /// through a dictionary, and faces are pushed into the cells their bounds
     /// cover instead of every cell interrogating every face. Cells claim a
     /// face by its bounding box rather than by the exact polygon test, which
@@ -31,8 +31,9 @@ namespace MphRead.Mods.MapGen
         /// <summary>The grid step is fixed: the run-time lookup divides by four.</summary>
         private const float CellSize = 4f;
 
-        public static byte[] Pack(IReadOnlyList<CollisionDataEditor> data)
+        public static byte[] Pack(IReadOnlyList<CollisionDataEditor> data, IReadOnlyList<Portal>? portals = null)
         {
+            portals ??= Array.Empty<Portal>();
             MapCollisionOptimizer.Result optimization=MapCollisionOptimizer.Optimize(data);
             data=optimization.Editors;
             if (data.Count == 0)
@@ -88,11 +89,9 @@ namespace MphRead.Mods.MapGen
                     }
                     pointIndices.Add(pointIndex);
                 }
-                // Shipped wc01 files carry an extra copy of the first point
-                // after every face, but PointIndexCount explicitly excludes
-                // it and the runtime edge walker wraps its local index to zero.
-                // Custom maps do not need that round-trip padding. Omitting it
-                // saves one 16-bit index per collision face.
+                // The runtime wraps each polygon's local vertex index back to
+                // zero itself. Shipped files carry a duplicate closing index
+                // for round-trip fidelity, but custom maps do not need it.
                 faces.Add((planeIndex, editor, (ushort)editor.Points.Count, (ushort)start));
             }
 
@@ -196,9 +195,23 @@ namespace MphRead.Mods.MapGen
                 writer.Write(count);
                 writer.Write(start);
             }
-            // no portals: a custom map is one room part, with nothing to see
-            // through into another
             int portalOffset = (int)stream.Position;
+            foreach(Portal portal in portals)
+            {
+                if(portal.Points.Count!=4||portal.Planes.Count!=4)
+                    throw new MapAuthoringException("FP-MAP-003","Runtime partition portals require four points and four edge planes.");
+                writer.WriteString(portal.Name,40);
+                writer.WriteString(portal.NodeName1,24);
+                writer.WriteString(portal.NodeName2,24);
+                foreach(Vector3 point in portal.Points)writer.WriteVector3(point);
+                foreach(Vector4 plane in portal.Planes)writer.WriteVector4(plane);
+                writer.WriteVector4(portal.Plane);
+                writer.Write((ushort)0); // Flags; generated spatial portals are always open
+                writer.Write(portal.LayerMask);
+                writer.Write((ushort)4);
+                writer.Write(portal.Unknown00);
+                writer.Write(portal.Unknown01);
+            }
             stream.Position = 0;
             writer.Write("wc01".ToCharArray());
             writer.Write(points.Count);
@@ -217,7 +230,7 @@ namespace MphRead.Mods.MapGen
             writer.WriteVector3(min);
             writer.Write(entries.Count);
             writer.Write(entryOffset);
-            writer.Write(0); // portal count
+            writer.Write(portals.Count);
             writer.Write(portalOffset);
             return stream.ToArray();
         }

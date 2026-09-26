@@ -220,9 +220,103 @@ try
     var partitionValidation=new MapValidationResult();MapBudgetValidator.Analyze(partitionMap,partitionValidation);
     Check(partitionValidation.Budgets.Single(b=>b.Name=="Render partitions").Used>1,
         "large runtime geometry is spatially partitioned before packing");
+
+    var portalFaces=new System.Collections.Generic.List<BuiltFace>();
+    for(int i=0;i<300;i++)
+    {
+        float x=i<150?1:9;
+        float z=(i%10)*.05f;
+        portalFaces.Add(new BuiltFace(
+            new[]{new OpenTK.Mathematics.Vector3(x,0,z),new OpenTK.Mathematics.Vector3(x+.2f,0,z),new OpenTK.Mathematics.Vector3(x,1,z+.2f)},
+            new[]{OpenTK.Mathematics.Vector2.Zero,OpenTK.Mathematics.Vector2.Zero,OpenTK.Mathematics.Vector2.Zero},
+            OpenTK.Mathematics.Vector3.UnitY,0,1));
+    }
+    var portalSettings=new MapPartitionSettings{Enabled=true,CellSize=8,FaceThreshold=256,PortalCulling=true};
+    var portalPlan=MapRuntimePartitioner.Create(portalFaces,portalSettings);
+    Check(portalPlan.Parts.Count==2&&portalPlan.PortalCullingApplied&&portalPlan.Portals.Count==1,
+        "connected spatial parts generate one safe runtime portal");
+    var partitionSpawn=new MphRead.Editor.PlayerSpawnEntityEditor{Position=new OpenTK.Mathematics.Vector3(9,1,0)};
+    MapRuntimePartitioner.AssignEntityNodes(new MphRead.Editor.EntityEditorBase[]{partitionSpawn},portalPlan);
+    Check(partitionSpawn.NodeName==portalPlan.Parts[1].RoomNodeName,
+        "runtime entity is assigned to containing generated room part");
+    var collisionEditor=new MphRead.Utility.CollisionDataEditor
+    {
+        Plane=new OpenTK.Mathematics.Vector4(OpenTK.Mathematics.Vector3.UnitY,0),
+        LayerMask=5
+    };
+    collisionEditor.Points.AddRange(new[]{new OpenTK.Mathematics.Vector3(0,0,0),new OpenTK.Mathematics.Vector3(0,0,1),new OpenTK.Mathematics.Vector3(1,0,0)});
+    byte[] portalCollision=MapCollisionPacker.Pack(new[]{collisionEditor},portalPlan.Portals);
+    var portalHeader=MphRead.Read.ReadStruct<MphRead.Formats.Collision.CollisionHeader>(portalCollision);
+    Check(portalHeader.PortalCount==1,"optimized collision packer publishes generated room portal");
+    var partitionRoundtrip=new MapDefinition{Name="PARTITION_SERIALIZE",FormatVersion=2,MapId=Guid.NewGuid(),
+        Partitioning=portalSettings};
+    partitionRoundtrip.Materials.Add(new(){Id=Guid.NewGuid()});
+    partitionRoundtrip.Geometry.Add(new MapBox());
+    partitionRoundtrip.Spawns.Add(new(){Id=Guid.NewGuid(),Position=new[]{0f,2,0}});
+    Check(MapProjectSerializer.Clone(partitionRoundtrip).Partitioning?.PortalCulling==true,
+        "partition policy survives project serialization");
     layoutDocument.EditObjects("Floor", layoutIds, d => MapLayoutCommands.SnapToFloor(d, layoutIds, floorFaces));
     Check(layoutDocument.Project.Definition.Geometry.All(g => Math.Abs(g.Transform.Position[1] - .5f) < .001), "floor snap lands selected bounds");
     layoutDocument.History.Undo();
+
+    // General mesh authoring: convert, edit faces/vertices and preserve winding/materials.
+    var sourceBox=new MapBox{Material=0,Transform=new(){Position=new[]{2f,1,3},Scale=new[]{4f,2,6}}};
+    var editable=MapMeshEditing.Convert(sourceBox,16);
+    Check(editable.Vertices.Count==8&&editable.Faces.Count==6&&editable.Transform.Position.SequenceEqual(new[]{0f,0f,0f}),
+        "primitive converts to world-space editable mesh");
+    Check(editable.FaceTexcoords.Count==editable.Faces.Count&&editable.FaceTexcoords.All(uv=>uv!=null),
+        "mesh conversion preserves explicit per-face UVs");
+    int originalFaces=editable.Faces.Count,originalVertices=editable.Vertices.Count;
+    MapMeshEditing.ExtrudeFace(editable,0,1);
+    Check(editable.Faces.Count==originalFaces+4&&editable.Vertices.Count==originalVertices+4,
+        "mesh face extrusion adds cap and side walls");
+    MapMeshEditing.InsetFace(editable,0,.25f);
+    Check(editable.Faces.Count==originalFaces+8,"mesh face inset adds border faces");
+    int beforeSubdivide=editable.Faces.Count;
+    MapMeshEditing.SubdivideFace(editable,0);
+    Check(editable.Faces.Count>beforeSubdivide,"mesh face subdivision creates fan");
+    int beforeWeld=editable.Vertices.Count;
+    editable.Vertices.Add((float[])editable.Vertices[0].Clone());
+    editable.Faces.Add(new[]{0,1,editable.Vertices.Count-1});editable.FaceMaterials.Add(0);
+    Check(MapMeshEditing.Weld(editable,.0001f)>=1&&editable.Vertices.Count<=beforeWeld,
+        "mesh vertex weld removes duplicate vertices");
+    var explicitUvMesh=new MapMesh
+    {
+        Vertices=new(){new[]{0f,0,0},new[]{1f,0,0},new[]{0f,1,0}},
+        Faces=new(){new[]{0,1,2}},
+        FaceMaterials=new(){0},
+        FaceTexcoords=new(){new[]{new[]{3f,4f},new[]{7f,4f},new[]{3f,9f}}},
+        Solid=false
+    };
+    var explicitUvFace=GeometryCompiler.Compile(explicitUvMesh,16).Single();
+    Check(explicitUvFace.Texcoords[0].X==3&&explicitUvFace.Texcoords[1].X==7&&explicitUvFace.Texcoords[2].Y==9,
+        "explicit mesh UVs compile without reprojection");
+    MapMeshEditing.FlipFace(explicitUvMesh,0);
+    Check(explicitUvMesh.FaceTexcoords[0]![0][1]==9,
+        "face flip keeps explicit UV winding aligned");
+
+    var meshDefinition=new MapDefinition{Name="MESH_CHECK",FormatVersion=2,MapId=Guid.NewGuid()};
+    meshDefinition.Materials.Add(new(){Id=Guid.NewGuid()});meshDefinition.Geometry.Add(editable);
+    meshDefinition.Spawns.Add(new(){Id=Guid.NewGuid(),Position=new[]{0f,5,0}});
+    Check(MapValidator.Validate(meshDefinition,checkSources:false).Diagnostics.All(d=>d.Code!="FP-MAP-013"),
+        "editable mesh passes geometry validation");
+
+    var csgA=new MapBox{Transform=new(){Position=new[]{0f,0,0},Scale=new[]{4f,4,4}}};
+    var csgB=new MapBox{Transform=new(){Position=new[]{1f,0,0},Scale=new[]{2f,2,2}}};
+    Check(MapBoxCsg.Intersect(csgA,csgB)!=null&&MapBoxCsg.Subtract(csgA,csgB).Count>0,
+        "axis-aligned box CSG intersection and subtraction");
+
+    var nativeDefinition=new MapDefinition{Name="NATIVE_REMIX_CHECK",FormatVersion=2,MapId=Guid.NewGuid(),
+        NativeRoom=new(){Room="MP3 PROVING GROUND",UseNativeArchitecture=false},TextureSource="MP3 PROVING GROUND"};
+    nativeDefinition.Materials.Add(new(){Id=Guid.NewGuid(),SourceMaterial=0});
+    nativeDefinition.Spawns.Add(new(){Id=Guid.NewGuid(),Position=new[]{0f,1,0}});
+    var nativeRoundtrip=MapProjectSerializer.Clone(nativeDefinition);
+    Check(nativeRoundtrip.NativeRoom?.Room=="MP3 PROVING GROUND"&&nativeRoundtrip.NativeRoom.UseNativeCollision
+        &&!nativeRoundtrip.NativeRoom.UseNativeArchitecture,
+        "native room remix source and detached-architecture policy survive project serialization");
+    Check(MapValidator.Validate(nativeRoundtrip,checkSources:false).Diagnostics.All(d=>d.Code!="FP-MAP-005"),
+        "native room remix source validates without reading cartridge bytes");
+
     foreach (string tool in new[] { "Move", "Rotate", "Scale" })
     {
         var id = layoutIds.First(); var item = MapObjects.Find(layoutDocument.Project.Definition, id)!;
