@@ -8,6 +8,7 @@ namespace MphRead.Mods.Input
     public sealed class GamepadOptionState
     {
         public StickCalibration LeftCalibration = StickCalibration.Default, RightCalibration = StickCalibration.Default;
+        public StickRadialCalibration LeftRadial = StickRadialCalibration.Default, RightRadial = StickRadialCalibration.Default;
         public float LeftInner = 0.15f, RightInner = 0.12f, LeftOuter, RightOuter;
         public float LookX = 1, LookY = 1, TriggerThreshold = 0.60f, ActivityThreshold = 0.35f;
         public bool InvertX, InvertY, Southpaw, Vibration = true;
@@ -43,7 +44,17 @@ namespace MphRead.Mods.Input
                 Number("gamepad_" + side + "_center_x", 0, -.3f, .3f), Number("gamepad_" + side + "_center_y", 0, -.3f, .3f),
                 Number("gamepad_" + side + "_min_x", -1, -1, -.4f), Number("gamepad_" + side + "_max_x", 1, .4f, 1),
                 Number("gamepad_" + side + "_min_y", -1, -1, -.4f), Number("gamepad_" + side + "_max_y", 1, .4f, 1));
+            StickRadialCalibration Radial(string side) => new(
+                Number("gamepad_" + side + "_radius_0", 1, .65f, 1.45f),
+                Number("gamepad_" + side + "_radius_1", 1, .65f, 1.45f),
+                Number("gamepad_" + side + "_radius_2", 1, .65f, 1.45f),
+                Number("gamepad_" + side + "_radius_3", 1, .65f, 1.45f),
+                Number("gamepad_" + side + "_radius_4", 1, .65f, 1.45f),
+                Number("gamepad_" + side + "_radius_5", 1, .65f, 1.45f),
+                Number("gamepad_" + side + "_radius_6", 1, .65f, 1.45f),
+                Number("gamepad_" + side + "_radius_7", 1, .65f, 1.45f));
             LeftCalibration = Calibration("left"); RightCalibration = Calibration("right");
+            LeftRadial = Radial("left"); RightRadial = Radial("right");
             ScopedX = Number("gamepad_scoped_x", 1, .1f, 3);
             ScopedY = Number("gamepad_scoped_y", 1, .1f, 3);
             WheelThreshold = Number("gamepad_wheel_threshold", .45f, .1f, .95f);
@@ -94,7 +105,12 @@ namespace MphRead.Mods.Input
                 Number("gamepad_" + side + "_min_x", c.MinX); Number("gamepad_" + side + "_max_x", c.MaxX);
                 Number("gamepad_" + side + "_min_y", c.MinY); Number("gamepad_" + side + "_max_y", c.MaxY);
             }
+            void Radial(string side, StickRadialCalibration r)
+            {
+                for (int i = 0; i < 8; i++) Number("gamepad_" + side + "_radius_" + i, r.Radius(i));
+            }
             Calibration("left", LeftCalibration); Calibration("right", RightCalibration);
+            Radial("left", LeftRadial); Radial("right", RightRadial);
             Number("gamepad_scoped_x", ScopedX); Number("gamepad_scoped_y", ScopedY);
             Number("gamepad_wheel_threshold", WheelThreshold);
             Number("gamepad_lt_min", LeftTriggerMin); Number("gamepad_lt_max", LeftTriggerMax);
