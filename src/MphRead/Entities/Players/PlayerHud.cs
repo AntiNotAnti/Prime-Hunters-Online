@@ -1528,6 +1528,7 @@ namespace MphRead.Entities
             {
                 string text = Strings.GetHudMessage(219); // GAME OVER
                 DrawText2D(128, 40, Align.Center, 0, text, new ColorRgba(0x3FEF), fontSpacing: 8);
+                DrawPostMatchReport();
             }
             else if (_scene.GameState.MatchState == MatchState.Ending)
             {
@@ -1936,6 +1937,45 @@ namespace MphRead.Entities
         private static float Lerp(float first, float second, float by)
         {
             return first * (1 - by) + second * by;
+        }
+
+        /// <summary>
+        /// Detailed personal results while the final camera is running. The
+        /// following Ending phase keeps the existing ranking scoreboard clean
+        /// instead of squeezing combat analytics into its two DS-sized columns.
+        /// </summary>
+        private void DrawPostMatchReport()
+        {
+            int slot = Mods.Network.NetSession.Active && Mods.Network.NetSession.LocalSlot >= 0
+                ? Mods.Network.NetSession.LocalSlot
+                : _scene.Players.MainPlayerIndex;
+            if ((uint)slot >= PlayerEntity.SlotCapacity)
+            {
+                return;
+            }
+
+            SceneGameState state = _scene.GameState;
+            int shots = Math.Max(0, state.ShotsFired[slot]);
+            int hits = Math.Min(shots, Math.Max(0, state.ShotsHit[slot]));
+            int accuracy = Mods.Network.MatchReportStats.AccuracyPercent(state, slot);
+            var color = new ColorRgba(0x7FFF);
+
+            DrawText2D(128, 62, Align.Center, 0, "MATCH REPORT", color, fontSpacing: 7);
+            DrawText2D(128, 80, Align.Center, 0,
+                $"KILLS {state.Kills[slot]}   DEATHS {state.Deaths[slot]}",
+                color, fontSpacing: 6);
+            DrawText2D(128, 96, Align.Center, 0,
+                $"ACCURACY {accuracy}%   HITS {hits}/{shots}",
+                color, fontSpacing: 6);
+            DrawText2D(128, 112, Align.Center, 0,
+                $"DMG DEALT {state.MatchDamageDealt[slot]}",
+                color, fontSpacing: 6);
+            DrawText2D(128, 128, Align.Center, 0,
+                $"DMG TAKEN {state.MatchDamageTaken[slot]}",
+                color, fontSpacing: 6);
+            DrawText2D(128, 144, Align.Center, 0,
+                $"HEADSHOTS {state.HeadshotKills[slot]}   BEST STREAK {state.LongestKillStreak[slot]}",
+                color, fontSpacing: 6);
         }
 
         private void DrawScoreboard()
