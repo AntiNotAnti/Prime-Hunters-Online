@@ -24,7 +24,9 @@ namespace MphRead.Mods.MapGen
                 // Import can bake a missing texture pack, so fingerprint only after it completes.
                 var snapshot = MapProjectSerializer.Clone(definition);
                 BuiltMap map;
-                if (snapshot.Import == null) map = MapBuilder.Build(snapshot, cancellation);
+                if (snapshot.NativeRoom != null)
+                    lock (ContentReadLock) map = NativeRoomImport.Build(snapshot, cancellation);
+                else if (snapshot.Import == null) map = MapBuilder.Build(snapshot, cancellation);
                 else lock (ContentReadLock) map = Q3Import.Build(snapshot, false, cancellation);
                 MapPacker.ApplyCollision(map, snapshot, verbose: false);
                 map.SourceDefinition = definition;
