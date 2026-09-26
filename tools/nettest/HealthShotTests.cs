@@ -35,6 +35,7 @@ namespace MphRead.NetTest
                 FiredCounterRequiresActualSpawn();
                 OldLifeShootPressIsRejected();
                 RecoveredShootPressCannotCrossLife();
+                RecoveredShootPressKeepsOriginalLaunchFrame();
                 DuplicateIntentDoesNotDuplicateShot();
                 FrameWrapDoesNotDuplicateShot();
                 ReorderedIntentDoesNotDuplicateShot();
@@ -255,6 +256,32 @@ namespace MphRead.NetTest
             NetPlayerBridge.ApplyIntent(shooter, Intent(16, life: 8));
             Check(!shooter.Controls.Shoot.IsPressed, nameof(RecoveredShootPressCannotCrossLife));
         }
+        private static void RecoveredShootPressKeepsOriginalLaunchFrame()
+        {
+            Session();
+            typeof(NetSession).GetProperty(nameof(NetSession.IsAuthority))!.SetValue(null, true);
+            typeof(NetSession).GetProperty(nameof(NetSession.NetFrame))!.SetValue(null, (uint)20);
+            var shooter = Player(1);
+            NetPlayerBridge.ApplyIntent(shooter, Intent(10));
+
+            // The packet carrying frame 10's trigger edge was lost. Frame 13
+            // recovers it from redundant input history, so the simulation must
+            // rewind and identify the shot as frame 10, not as its carrier's
+            // newer frame 13. If those stamps differ from the shooter's claim,
+            // hit arbitration can rescue an authority hit a second time.
+            var recovered = Intent(13);
+            recovered.Presses[0] = InputEdgeHistory.Encode(1, IntentButtons.Shoot, 3);
+            NetSession.AcceptSlotIntent(1, recovered);
+            NetPlayerBridge.ApplyIntent(shooter, NetSession.RemoteIntents[1]);
+
+            Check(shooter.Controls.Shoot.IsPressed && NetPlayerBridge.ShootPressAge[1] == 3,
+                "fixture recovered a three-frame-old trigger edge");
+            MethodInfo launchFrameFor = typeof(NetUnlagged).GetMethod("LaunchFrameFor",
+                BindingFlags.NonPublic | BindingFlags.Static)!;
+            uint launch = (uint)launchFrameFor.Invoke(null, new object[] { shooter })!;
+            Check(launch == 10, nameof(RecoveredShootPressKeepsOriginalLaunchFrame));
+        }
+
         private static void FrameWrapDoesNotDuplicateShot()
         {
             Session(); var shooter = Player(1);
