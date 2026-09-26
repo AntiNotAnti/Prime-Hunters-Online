@@ -264,6 +264,8 @@ try
     var editable=MapMeshEditing.Convert(sourceBox,16);
     Check(editable.Vertices.Count==8&&editable.Faces.Count==6&&editable.Transform.Position.SequenceEqual(new[]{0f,0f,0f}),
         "primitive converts to world-space editable mesh");
+    Check(editable.FaceTexcoords.Count==editable.Faces.Count&&editable.FaceTexcoords.All(uv=>uv!=null),
+        "mesh conversion preserves explicit per-face UVs");
     int originalFaces=editable.Faces.Count,originalVertices=editable.Vertices.Count;
     MapMeshEditing.ExtrudeFace(editable,0,1);
     Check(editable.Faces.Count==originalFaces+4&&editable.Vertices.Count==originalVertices+4,
@@ -278,6 +280,21 @@ try
     editable.Faces.Add(new[]{0,1,editable.Vertices.Count-1});editable.FaceMaterials.Add(0);
     Check(MapMeshEditing.Weld(editable,.0001f)>=1&&editable.Vertices.Count<=beforeWeld,
         "mesh vertex weld removes duplicate vertices");
+    var explicitUvMesh=new MapMesh
+    {
+        Vertices=new(){new[]{0f,0,0},new[]{1f,0,0},new[]{0f,1,0}},
+        Faces=new(){new[]{0,1,2}},
+        FaceMaterials=new(){0},
+        FaceTexcoords=new(){new[]{new[]{3f,4f},new[]{7f,4f},new[]{3f,9f}}},
+        Solid=false
+    };
+    var explicitUvFace=GeometryCompiler.Compile(explicitUvMesh,16).Single();
+    Check(explicitUvFace.Texcoords[0].X==3&&explicitUvFace.Texcoords[1].X==7&&explicitUvFace.Texcoords[2].Y==9,
+        "explicit mesh UVs compile without reprojection");
+    MapMeshEditing.FlipFace(explicitUvMesh,0);
+    Check(explicitUvMesh.FaceTexcoords[0]![0][1]==9,
+        "face flip keeps explicit UV winding aligned");
+
     var meshDefinition=new MapDefinition{Name="MESH_CHECK",FormatVersion=2,MapId=Guid.NewGuid()};
     meshDefinition.Materials.Add(new(){Id=Guid.NewGuid()});meshDefinition.Geometry.Add(editable);
     meshDefinition.Spawns.Add(new(){Id=Guid.NewGuid(),Position=new[]{0f,5,0}});
@@ -290,12 +307,13 @@ try
         "axis-aligned box CSG intersection and subtraction");
 
     var nativeDefinition=new MapDefinition{Name="NATIVE_REMIX_CHECK",FormatVersion=2,MapId=Guid.NewGuid(),
-        NativeRoom=new(){Room="MP3 PROVING GROUND"},TextureSource="MP3 PROVING GROUND"};
+        NativeRoom=new(){Room="MP3 PROVING GROUND",UseNativeArchitecture=false},TextureSource="MP3 PROVING GROUND"};
     nativeDefinition.Materials.Add(new(){Id=Guid.NewGuid(),SourceMaterial=0});
     nativeDefinition.Spawns.Add(new(){Id=Guid.NewGuid(),Position=new[]{0f,1,0}});
     var nativeRoundtrip=MapProjectSerializer.Clone(nativeDefinition);
-    Check(nativeRoundtrip.NativeRoom?.Room=="MP3 PROVING GROUND"&&nativeRoundtrip.NativeRoom.UseNativeCollision,
-        "native room remix source survives project serialization");
+    Check(nativeRoundtrip.NativeRoom?.Room=="MP3 PROVING GROUND"&&nativeRoundtrip.NativeRoom.UseNativeCollision
+        &&!nativeRoundtrip.NativeRoom.UseNativeArchitecture,
+        "native room remix source and detached-architecture policy survive project serialization");
     Check(MapValidator.Validate(nativeRoundtrip,checkSources:false).Diagnostics.All(d=>d.Code!="FP-MAP-005"),
         "native room remix source validates without reading cartridge bytes");
 
