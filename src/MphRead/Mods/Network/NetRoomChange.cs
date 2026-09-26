@@ -155,6 +155,10 @@ namespace MphRead.Mods.Network
                 created.LoadFlags |= LoadFlags.SlotActive;
                 created.LoadFlags |= LoadFlags.Active;
                 created.LoadFlags |= LoadFlags.Initial;
+                // Player objects are pooled across rooms. The session preference
+                // decides spectator role after rebuild; never inherit the old
+                // room's hidden/non-solid flag just because this object survived.
+                created.ModSetSpectating(false);
                 // Where this player was, in the room that no longer exists.
                 //
                 // PlayerEntity.Create hands back the same pooled objects
