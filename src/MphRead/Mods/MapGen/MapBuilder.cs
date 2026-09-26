@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Collections.Generic;
+using System.Linq;
 using MphRead.Editor;
 using MphRead.Entities;
 using OpenTK.Mathematics;
@@ -137,7 +138,8 @@ namespace MphRead.Mods.MapGen
 
         public static void AddEntities(BuiltMap map, MapDefinition def)
         {
-            short id = (short)map.Entities.Count;
+            short id = map.Entities.Count == 0 ? (short)0
+                : checked((short)(map.Entities.Max(e => (int)e.Id) + 1));
             foreach (MapSpawn spawn in def.Spawns)
             {
                 float yaw = MathHelper.DegreesToRadians(spawn.Yaw);

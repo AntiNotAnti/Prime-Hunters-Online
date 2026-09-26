@@ -65,7 +65,10 @@ namespace MphRead.Mods.MapGen
                 if (m.SourceMaterial < 0 || !float.IsFinite(m.TexScale) || m.TexScale <= 0)
                     r.Error("FP-MAP-001", "Material requires a nonnegative source index and positive UV scale.", m.Id);
             }
-            if (d.Import == null && d.Materials.Count == 0) r.Error("FP-MAP-001", "At least one material is required.");
+            if (d.Import == null && d.NativeRoom == null && d.Materials.Count == 0)
+                r.Error("FP-MAP-001", "At least one material is required.");
+            if (d.Import != null && d.NativeRoom != null)
+                r.Error("FP-MAP-008", "A map cannot use both Q3 import and a native-room source.");
             foreach (var b in d.Brushes)
             {
                 if (b == null) { r.Error("FP-MAP-013", "Null brush."); continue; }
@@ -88,6 +91,9 @@ namespace MphRead.Mods.MapGen
                 Id(geometry.Id);
                 if (geometry.Material < 0 || geometry.Material >= d.Materials.Count || d.Materials[geometry.Material] == null)
                 { r.Error("FP-MAP-001", "Geometry references a missing material.", geometry.Id); continue; }
+                if (geometry is MapMesh mesh && mesh.FaceMaterials != null
+                    && mesh.FaceMaterials.Any(material => material < 0 || material >= d.Materials.Count))
+                    r.Error("FP-MAP-001","Mesh face references a missing material.",geometry.Id);
                 if(!float.IsFinite(geometry.Shade)||geometry.Shade is <0 or >1||!Enum.TryParse<Terrain>(geometry.Terrain,true,out var ground)||!Enum.IsDefined(ground))
                     r.Error("FP-MAP-013","Geometry requires shade 0–1 and a valid terrain.",geometry.Id);
                 try
@@ -161,6 +167,17 @@ namespace MphRead.Mods.MapGen
                         { r.Warning("FP-MAP-016", "Jump trajectory crosses solid geometry.", pad.Id); break; }
                     }
                 }
+            }
+            if (d.NativeRoom is { } native)
+            {
+                if (String.IsNullOrWhiteSpace(native.Room))
+                    r.Error("FP-MAP-005","Native-room source key is required.");
+                else if (!Metadata.RoomMetadata.ContainsKey(native.Room))
+                    r.Error("FP-MAP-005",$"Unknown native room {native.Room}.");
+                if (Metadata.IsBuiltInRoom(d.Name))
+                    r.Error("FP-MAP-010","A remix must use a new runtime name rather than replacing the built-in room key.");
+                if(checkSources && !Mods.Launcher.GameFiles.Ready)
+                    r.Warning("FP-MAP-005","Game files are required to compile this native-room remix.");
             }
             if (d.Import is { } import)
             {

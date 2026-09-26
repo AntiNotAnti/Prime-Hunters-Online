@@ -61,6 +61,14 @@ namespace MphRead.Mods.MapGen
         public MapImport? Import { get; set; }
 
         /// <summary>
+        /// Optional source cartridge room for a non-destructive remix. The
+        /// project stores only the room key and policy; geometry, collision,
+        /// materials and preserved entities are read from the user's extracted
+        /// game files when the project is compiled.
+        /// </summary>
+        public MapNativeRoomSource? NativeRoom { get; set; }
+
+        /// <summary>
         /// Collision read from a Wavefront OBJ, replacing whatever the
         /// geometry would have produced. See <see cref="MapCollision"/>.
         /// </summary>
@@ -157,6 +165,17 @@ namespace MphRead.Mods.MapGen
         {
             return JsonSerializer.Serialize(this, _options);
         }
+    }
+
+    public sealed class MapNativeRoomSource
+    {
+        public string Room { get; set; } = "";
+        public bool UseNativeArchitecture { get; set; } = true;
+        public bool PreserveEntities { get; set; } = true;
+        public bool EditableSpawns { get; set; } = true;
+        public bool EditableItems { get; set; } = true;
+        public bool UseNativeCollision { get; set; } = true;
+        public bool MultiplayerLayerOnly { get; set; } = true;
     }
 
     /// <summary>

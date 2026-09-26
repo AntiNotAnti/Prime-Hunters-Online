@@ -23,6 +23,7 @@ namespace MphRead.Mods.MapGen
     [JsonDerivedType(typeof(MapWedge), "wedge")]
     [JsonDerivedType(typeof(MapPrism), "prism")]
     [JsonDerivedType(typeof(MapConvexBrush), "convex")]
+    [JsonDerivedType(typeof(MapMesh), "mesh")]
     public abstract class MapGeometry
     {
         public Guid Id { get; set; } = Guid.NewGuid();
@@ -46,5 +47,17 @@ namespace MphRead.Mods.MapGen
     {
         public List<float[]> Vertices { get; set; } = new();
         public List<int[]> Faces { get; set; } = new();
+    }
+
+    /// <summary>
+    /// General authored polygon mesh. Unlike ConvexBrush this may be open or
+    /// concave; each face is compiled independently. FaceMaterials is optional
+    /// and falls back to Material when omitted.
+    /// </summary>
+    public sealed class MapMesh : MapGeometry
+    {
+        public List<float[]> Vertices { get; set; } = new();
+        public List<int[]> Faces { get; set; } = new();
+        public List<int> FaceMaterials { get; set; } = new();
     }
 }
