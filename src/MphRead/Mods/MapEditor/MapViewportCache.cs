@@ -11,7 +11,11 @@ public sealed class MapViewportCache
     private readonly Dictionary<Guid, MapViewportFace[]> _native = new();
     private readonly Dictionary<Guid, MapViewportMesh> _meshes = new();
     public IReadOnlyList<MapViewportMesh> Meshes { get; private set; } = Array.Empty<MapViewportMesh>();
-    private MapViewportMesh? _importedMesh;
+    private IReadOnlyList<MapViewportChunk> _importedChunks = Array.Empty<MapViewportChunk>();
+    public IReadOnlyList<MapViewportChunk> ImportedChunks => _importedChunks;
+    public MapFaceSpatialIndex ImportedSpatial { get; private set; } = new(Array.Empty<MapViewportFace>());
+    public MapFaceSpatialIndex ImportedCollisionSpatial { get; private set; } = new(Array.Empty<MapViewportFace>());
+    public IReadOnlyList<MapCollisionHeatCell> CollisionHeat { get; private set; } = Array.Empty<MapCollisionHeatCell>();
     public IReadOnlyList<MapViewportFace> NativeFaces { get; private set; } = Array.Empty<MapViewportFace>();
     public IReadOnlyList<MapViewportFace> ImportedFaces { get; private set; } = Array.Empty<MapViewportFace>();
     public IReadOnlyList<MapViewportFace> ImportedCollisionFaces { get; private set; } = Array.Empty<MapViewportFace>();
@@ -60,7 +64,13 @@ public sealed class MapViewportCache
         if (domains.HasFlag(MapChangeDomain.Navigation)) NavigationInvalidationCount++;
         if (domains.HasFlag(MapChangeDomain.Overlay)) OverlayInvalidationCount++;
         if (domains.HasFlag(MapChangeDomain.Import))
-        { ImportedFaces = ImportedCollisionFaces = Array.Empty<MapViewportFace>(); _importedMesh = null; }
+        {
+            ImportedFaces = ImportedCollisionFaces = Array.Empty<MapViewportFace>();
+            _importedChunks = Array.Empty<MapViewportChunk>();
+            ImportedSpatial = new(Array.Empty<MapViewportFace>());
+            ImportedCollisionSpatial = new(Array.Empty<MapViewportFace>());
+            CollisionHeat = Array.Empty<MapCollisionHeatCell>();
+        }
         if (geometry || domains.HasFlag(MapChangeDomain.Import)) UpdateMeshes();
     }
 
@@ -73,7 +83,7 @@ public sealed class MapViewportCache
         ImportedCollisionFaces = Array.AsReadOnly(map.Solid.Take(map.ImportedCollisionFaceCount).Select(face => new MapViewportFace(Guid.Empty,
             face.Points.Select(p => new System.Numerics.Vector3(p.X, p.Y, p.Z)).ToArray(), face.Shade, face.Material, true)).ToArray());
         CollisionRebuildCount++;
-        _importedMesh = new(Guid.Empty, ImportedFaces, ImportedCollisionFaces); UpdateMeshes();
+        RebuildImported();
     }
 
     public void SetImported(MapAnalysisResult analysis)
@@ -85,10 +95,31 @@ public sealed class MapViewportCache
         ImportedCollisionFaces = Array.AsReadOnly(analysis.CollisionFaces.Take(analysis.ImportedCollisionFaceCount).Select(face => new MapViewportFace(Guid.Empty,
             face.Points.Select(p => new System.Numerics.Vector3(p.X, p.Y, p.Z)).ToArray(), face.Shade, face.Material, true)).ToArray());
         CollisionRebuildCount++;
-        _importedMesh = new(Guid.Empty, ImportedFaces, ImportedCollisionFaces); UpdateMeshes();
+        RebuildImported();
     }
+
+    private void RebuildImported()
+    {
+        ImportedSpatial = new(ImportedFaces);
+        ImportedCollisionSpatial = new(ImportedCollisionFaces);
+        _importedChunks = MapViewportChunker.Create(ImportedFaces, ImportedCollisionFaces);
+        CollisionHeat = MapCollisionHeatmap.Build(ImportedCollisionFaces);
+        UpdateMeshes();
+    }
+
+    public IReadOnlyList<MapViewportMesh> VisibleMeshes(MapViewportCamera camera, MapViewportLayout layout)
+        => Array.AsReadOnly(_meshes.Values.Concat(_importedChunks.Where(c => c.Visible(camera, layout)).Select(c => c.Mesh)).ToArray());
+
+    public IReadOnlyList<MapViewportFace> VisibleImportedFaces(MapViewportCamera camera, MapViewportLayout layout, bool collision)
+        => Array.AsReadOnly(_importedChunks.Where(c => c.Visible(camera, layout))
+            .SelectMany(c => collision ? c.CollisionFaces : c.Faces).ToArray());
+
+    public IReadOnlyList<MapViewportFace> CollisionNear(System.Numerics.Vector3 point)
+        => Array.AsReadOnly(NativeFaces.Where(f => f.Solid)
+            .Concat(ImportedCollisionSpatial.Column(point)).ToArray());
+
     private void UpdateMeshes() => Meshes = Array.AsReadOnly(_meshes.Values
-        .Concat(_importedMesh == null ? Array.Empty<MapViewportMesh>() : new[] { _importedMesh }).ToArray());
+        .Concat(_importedChunks.Select(c => c.Mesh)).ToArray());
 }
 
 /// <summary>One logical/pixel rectangle contract for rendering, picking and capture.</summary>

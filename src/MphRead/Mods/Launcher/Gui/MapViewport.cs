@@ -28,12 +28,15 @@ namespace MphRead.Mods.Launcher.Gui
         public bool LocalAxes {get;set;}
         public bool Wireframe { get; set; }
         public bool Collision { get; set; }
+        public bool CollisionHeatmap { get; set; }
         public bool KillPlane { get; set; }
         public int[] NavigationPath { get; set; } = Array.Empty<int>();
         public MapNodePacker.NavigationGraph? Navigation { get; set; }
         public event Action? SelectionChanged;
         internal MapViewportCache Cache { get; } = new();
         private IEnumerable<MapViewportFace> Faces => Cache.NativeFaces.Concat(Collision ? Cache.ImportedCollisionFaces : Cache.ImportedFaces);
+        private IEnumerable<MapViewportFace> VisibleFaces => Cache.NativeFaces.Concat(
+            Cache.VisibleImportedFaces(Camera,Layout,Collision));
         private MapValidationResult? _overlayDiagnostics;
         private HashSet<Guid> _warningObjects = new();
         private readonly Dictionary<(Guid Id, string Text), FormattedText> _labels = new();
@@ -125,7 +128,7 @@ namespace MphRead.Mods.Launcher.Gui
             if (_drag)
                 foreach (var item in MapObjects.All(Document.Project.Definition))
                     if (Document.Selection.Contains(item.Id)) transforms[item.Id] = PreviewTransform(item);
-            return new(layout, Camera, Cache.Meshes, Document.Selection.ToHashSet(), transforms, Wireframe, Collision);
+            return new(layout, Camera, Cache.VisibleMeshes(Camera,layout), Document.Selection.ToHashSet(), transforms, Wireframe, Collision);
         }
 #if !MPHREAD_SHELL
         private bool GpuActive => false;
@@ -167,7 +170,7 @@ namespace MphRead.Mods.Launcher.Gui
             {
             var projected=new List<(MapViewportFace Face,Point[] Points,double Depth)>();
             var transforms = BuildRenderFrame(Layout).PreviewTransforms;
-            foreach(var face in Faces)
+            foreach(var face in VisibleFaces)
             {
                 if(Collision&&!face.Solid)continue;
                 var transform = transforms.GetValueOrDefault(face.ObjectId, Matrix4x4.Identity);
@@ -183,6 +186,23 @@ namespace MphRead.Mods.Launcher.Gui
                 context.DrawGeometry(Wireframe?null:new SolidColorBrush(color),new Pen(selected?Brushes.Gold:grid,selected?2:1),Polygon(item.Points));
                 if(item.Face.ObjectId!=Guid.Empty)_pick.Add((item.Face.ObjectId,item.Points,item.Depth));
             }
+            }
+            if(CollisionHeatmap)
+            {
+                int shown=0;
+                foreach(var cell in Cache.CollisionHeat)
+                {
+                    if(shown>=192)break;
+                    if(!new MapViewportChunk(Guid.Empty,cell.Bounds,Array.Empty<MapViewportFace>(),Array.Empty<MapViewportFace>())
+                        .Visible(Camera,Layout))continue;
+                    var p=Project(cell.Bounds.Center);if(p==null)continue;
+                    double radius=4+Math.Min(18,Math.Sqrt(cell.ReferenceCost)/5);
+                    byte alpha=(byte)Math.Clamp(70+cell.Severity*150,70,220);
+                    var brush=new SolidColorBrush(Color.FromArgb(alpha,255,(byte)(210*(1-cell.Severity)),40));
+                    context.DrawEllipse(brush,new Pen(Brushes.OrangeRed,1),p.Value.Point,radius,radius);
+                    if(shown<24)Label(context,Guid.Empty,$"{cell.Faces:N0} faces · {cell.ReferenceCost:N0} refs",cell.Bounds.Center);
+                    shown++;
+                }
             }
             if (!ReferenceEquals(_overlayDiagnostics, Document.Diagnostics))
             {

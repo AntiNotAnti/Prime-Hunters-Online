@@ -90,7 +90,7 @@ namespace MphRead.Mods.Launcher.Gui
             AddButton(toolbar,"Open",()=>Browse("Open project",false,p=>Open(p),".json",".ppmap"));
             AddButton(toolbar,"Import Q3",Import);AddButton(toolbar,"Save",Save);AddButton(toolbar,"Save as",()=>Browse("Save project",true,p=>SaveTo(p),".json"));
             AddButton(toolbar,"Undo",()=>_document?.History.Undo());AddButton(toolbar,"Redo",()=>_document?.History.Redo());
-            AddButton(toolbar,"Validate",()=>_=Validate());AddButton(toolbar,"Build",()=>_=Build(false));AddButton(toolbar,"Build .ppmap",()=>_=Build(true));
+            AddButton(toolbar,"Validate",()=>_=Validate());AddButton(toolbar,"Fix selected",FixSelectedProblem);AddButton(toolbar,"Build",()=>_=Build(false));AddButton(toolbar,"Build .ppmap",()=>_=Build(true));
             AddButton(toolbar,"Playtest",PlaytestInspector);AddButton(toolbar,"Run map test",()=>_=Audit());
             _editingControls.AddRange(toolbar.Children);
             AddButton(toolbar,"Cancel job",()=>_work?.Cancel());
@@ -109,11 +109,11 @@ namespace MphRead.Mods.Launcher.Gui
             Choice(new[]{"Free","X","Y","Z","XY","XZ","YZ"},name=>{if(_viewport!=null)_viewport.Axes=name;});
             Choice(new[]{"Perspective","Top","Front","Side"},name=>_viewport?.SetView(name));
             Choice(new[]{"Add object","Box","Wedge","Prism","Convex","Spawn","Pickup","Jump pad","Navigation link"},name=>{if(name!="Add object")AddObject(name);});
-            Choice(new[]{"Overlays","Rendered","Wireframe","Collision","Kill plane","Navigation"},name=>
+            Choice(new[]{"Overlays","Rendered","Wireframe","Collision","Collision heat","Kill plane","Navigation"},name=>
             {
                 if(_viewport==null)return;
                 if(name=="Navigation"){_=Navigation();return;}
-                _viewport.Wireframe=name=="Wireframe";_viewport.Collision=name=="Collision";_viewport.KillPlane=name=="Kill plane";_viewport.InvalidateVisual();
+                _viewport.Wireframe=name=="Wireframe";_viewport.Collision=name is "Collision" or "Collision heat";_viewport.CollisionHeatmap=name=="Collision heat";_viewport.KillPlane=name=="Kill plane";_viewport.InvalidateVisual();
             });
             Choice(new[]{"Inspector","Environment","Materials","Assets & music","Snapping","Arrange","Layers","Map health","Navigation path","Statistics"},name=>ShowInspectorPage(name));
             AddButton(tools,"Frame all",()=>_viewport?.FrameAll());AddButton(tools,"Focus",()=>_viewport?.FrameSelection());
@@ -542,8 +542,8 @@ namespace MphRead.Mods.Launcher.Gui
             AddButton(_inspector, "Snap to floor", () =>
             {
                 if (_viewport == null) return;
-                var faces = _viewport.Cache.NativeFaces.Concat(_viewport.Cache.ImportedCollisionFaces).ToArray();
-                EditSelection("Snap to floor", (d, ids) => MapLayoutCommands.SnapToFloor(d, ids, faces));
+                EditSelection("Snap to floor", (d, ids) => MapLayoutCommands.SnapToFloor(d, ids,
+                    point => _viewport.Cache.CollisionNear(point)));
             });
             var count = new TextBox { Text = "4" }; var spacing = new TextBox { Text = "4" };
             _inspector.Children.Add(Text("Copies (1–256)")); _inspector.Children.Add(count);
@@ -653,7 +653,7 @@ namespace MphRead.Mods.Launcher.Gui
                 + $"Spawns: {d.Spawns.Count} · Entities: {cache.Entities.Count}\nAssets: {d.Assets.Count} · Materials: {d.Materials.Count}\n"
                 + (_viewport.Navigation is { } nav ? $"Navigation: {nav.Positions.Length:N0} nodes · {nav.Components.Distinct().Count()} regions\n" : "Navigation: not generated\n")
                 + $"Autosave: {_autosave.Result?.Milliseconds ?? 0:0.0} ms\n\nViewport rebuilds\nGeometry: {cache.GeometryRebuildCount} ({cache.GeometryObjectsRebuilt} objects)\n"
-                + $"Imported: {cache.ImportedRebuildCount}\nSelection: {cache.SelectionRebuildCount}\nEntities: {cache.EntityRebuildCount}\n"
+                + $"Imported: {cache.ImportedRebuildCount} · {cache.ImportedChunks.Count:N0} spatial chunks\nSelection: {cache.SelectionRebuildCount}\nEntities: {cache.EntityRebuildCount}\n"
                 + $"Collision: {cache.CollisionRebuildCount}\nNavigation invalidations: {cache.NavigationInvalidationCount}\n\n"
                 + $"History: {_document.History.CommandCount} commands / {_document.History.ApproximateBytes / 1024d:0.0} KiB\n\n"
                 + $"Build queue: {jobs.PendingCount}\nShared requests: {jobs.SharedRequests}\nCompilations: {jobs.CompilationCount}\n"
@@ -727,6 +727,38 @@ namespace MphRead.Mods.Launcher.Gui
             AddButton(_inspector,"Add material",()=>_document.Edit("Add material",d=>d.Materials.Add(new(){Id=Guid.NewGuid(),Name="Material "+d.Materials.Count})));
         }
         private sealed record ProblemRow(MapDiagnostic Diagnostic){public override string ToString()=>$"{Diagnostic.Severity} · {Diagnostic.Code} · {Diagnostic.Message}";}
+
+        private void FixSelectedProblem()
+        {
+            if(_document==null||_problems.SelectedItem is not ProblemRow row)
+            { _status.Text="Select a validation problem first."; return; }
+            var diagnostic=row.Diagnostic;
+            try
+            {
+                if(diagnostic.Code=="FP-MAP-003"&&diagnostic.Message.Contains("Collision",StringComparison.OrdinalIgnoreCase)
+                    &&_document.Project.Definition.Import!=null)
+                {
+                    _document.Edit("Auto-fit imported collision",d=>
+                    {
+                        var import=d.Import!;
+                        import.CollisionPatchLevel=import.CollisionPatchLevel==-1?0:-1;
+                    },MapChangeDomain.Import);
+                    _status.Text=_document.Project.Definition.Import!.CollisionPatchLevel==0
+                        ?"Patch collision disabled; BSP brushes and clips remain solid."
+                        :"Patch collision returned to automatic budget fitting.";
+                    _=Validate();return;
+                }
+                if(diagnostic.Code=="FP-MAP-004")
+                {
+                    _document.Edit("Increase model scale",d=>d.ScaleFactor=Math.Min(15,d.ScaleFactor+1),MapChangeDomain.Metadata);
+                    _status.Text="Raised scaleFactor by one to increase the model fixed-point range.";_=Validate();return;
+                }
+                if(diagnostic.Code=="FP-MAP-006"&&_document.Project.Definition.Import!=null)
+                { _=RebakeImportTextures(); return; }
+                _status.Text="No safe automatic fix is registered for "+diagnostic.Code+".";
+            }
+            catch(Exception ex){Failure(ex);}
+        }
         private string StoreAsset(string kind,string extension,byte[] bytes)
         {
             if(_document==null)throw new InvalidOperationException("Open a project first.");

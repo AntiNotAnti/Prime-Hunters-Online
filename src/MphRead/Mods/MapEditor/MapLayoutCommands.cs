@@ -51,11 +51,16 @@ public static class MapLayoutCommands
             item.Move(item.Position.Select(p => MathF.Round(p / grid) * grid - p).ToArray());
     }
     public static void SnapToFloor(MapDefinition definition, ISet<Guid> ids, IReadOnlyList<MapViewportFace> faces)
+        => SnapToFloor(definition, ids, _ => faces);
+
+    public static void SnapToFloor(MapDefinition definition, ISet<Guid> ids,
+        Func<Vector3,IReadOnlyList<MapViewportFace>> candidates)
     {
         foreach (var item in Selected(definition, ids))
         {
             float bottom = Bounds(item, 1).Min;
-            float? floor = FloorBelow(new(item.Position[0], bottom + .05f, item.Position[2]), faces, ids);
+            var point = new Vector3(item.Position[0], bottom + .05f, item.Position[2]);
+            float? floor = FloorBelow(point, candidates(point), ids);
             if (floor.HasValue) item.Move(new[] { 0f, floor.Value - bottom, 0f });
         }
     }

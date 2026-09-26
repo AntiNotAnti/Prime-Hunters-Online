@@ -181,40 +181,63 @@ namespace MphRead.Mods.MapGen
             float scale = MathF.Pow(2, def.ScaleFactor);
             var renders = new List<IReadOnlyList<RenderInstruction>>();
             var meshes = new List<Mesh>();
+            var nodeMeshes = new List<(int First,int Count)>();
             int vertexCount = 0;
-            for (int materialId = 0; materialId < materials.Count; materialId++)
+
+            // A single material-sized display list is fine for cartridge-scale
+            // rooms, but imported PC maps can put hundreds of thousands of
+            // triangles behind one shader. Split large maps spatially first,
+            // then cap each display list's vertex load. This preserves one
+            // logical room part while giving the renderer bounded child nodes
+            // with useful culling bounds.
+            IEnumerable<(int X,int Y,int Z,IReadOnlyList<BuiltFace> Faces)> chunks;
+            if(map.Faces.Count<RenderPartitionThreshold)
+                chunks=new[]{(0,0,0,(IReadOnlyList<BuiltFace>)map.Faces)};
+            else
+                chunks=map.Faces.GroupBy(FaceCell).OrderBy(g=>g.Key.X).ThenBy(g=>g.Key.Y).ThenBy(g=>g.Key.Z)
+                    .Select(g=>(g.Key.X,g.Key.Y,g.Key.Z,(IReadOnlyList<BuiltFace>)g.ToArray()));
+
+            foreach(var chunk in chunks)
             {
-                List<BuiltFace> group = map.Faces.Where(f => f.Material == materialId).ToList();
-                if (group.Count == 0)
+                int firstMesh=meshes.Count;
+                foreach(var materialGroup in chunk.Faces.GroupBy(f=>f.Material).OrderBy(g=>g.Key))
                 {
-                    continue;
+                    if(materialGroup.Key<0||materialGroup.Key>=materials.Count)
+                        throw new MapAuthoringException("FP-MAP-001",$"Geometry references material {materialGroup.Key}, but only {materials.Count} exist.");
+                    var normalized=materialGroup.SelectMany(face=>face.Points.Length<=4?new[]{face}:Fan(face)).ToArray();
+                    foreach(var batch in RenderBatches(normalized,MaxRenderVerticesPerList))
+                    {
+                        if(renders.Count>=UInt16.MaxValue)
+                            throw new MapAuthoringException("FP-MAP-003","Render display-list budget exceeded; increase spatial partition size or simplify geometry.");
+                        var instructions=new List<RenderInstruction>();
+                        vertexCount+=EmitPrimitives(instructions,batch.Where(f=>f.Points.Length==3),0,scale);
+                        vertexCount+=EmitPrimitives(instructions,batch.Where(f=>f.Points.Length==4),1,scale);
+                        while(instructions.Count%4!=0)instructions.Add(new RenderInstruction(InstructionCode.NOP));
+                        meshes.Add(RawStructs.MakeMesh(materialGroup.Key,renders.Count));
+                        renders.Add(instructions);
+                    }
                 }
-                var instructions = new List<RenderInstruction>();
-                // triangles and quads are separate primitive types, so each
-                // gets its own block; anything with more sides is fanned into
-                // triangles rather than being dropped
-                vertexCount += EmitPrimitives(instructions, group.Where(f => f.Points.Length == 3), 0, scale);
-                vertexCount += EmitPrimitives(instructions, group.Where(f => f.Points.Length == 4), 1, scale);
-                vertexCount += EmitPrimitives(instructions, group.Where(f => f.Points.Length > 4).SelectMany(Fan), 0, scale);
-                // the hardware reads four packed opcodes per word, so a list
-                // that is not a multiple of four cannot be written at all
-                while (instructions.Count % 4 != 0)
+                int meshCount=meshes.Count-firstMesh;
+                if(meshCount>0)
                 {
-                    instructions.Add(new RenderInstruction(InstructionCode.NOP));
+                    if(firstMesh>UInt16.MaxValue/2)
+                        throw new MapAuthoringException("FP-MAP-003","Render mesh offset exceeds the native room format's 16-bit byte offset.");
+                    nodeMeshes.Add((firstMesh,meshCount));
                 }
-                meshes.Add(RawStructs.MakeMesh(materialId, renders.Count));
-                renders.Add(instructions);
             }
-            // Two nodes, the shape every real room has: a parent the loader
-            // adopts as the room part -- it looks for a name starting with
-            // "rm", and entities that reference a node by name assert that it
-            // has a child -- and a child that carries the geometry. A name
-            // that does not begin with an underscore is in every node layer.
-            var nodes = new List<Node>()
+
+            if(nodeMeshes.Count==0)throw new MapAuthoringException("FP-MAP-013","A map needs visible geometry.");
+            if(nodeMeshes.Count>=Int16.MaxValue)throw new MapAuthoringException("FP-MAP-003","Render partition node budget exceeded.");
+            var nodes=new List<Node>
             {
-                RawStructs.MakeNode("rmMain", meshCount: 0, firstMeshId: 0, child: 1),
-                RawStructs.MakeNode("geo1", meshes.Count, firstMeshId: 0, parent: 0)
+                RawStructs.MakeNode("rmMain",meshCount:0,firstMeshId:0,child:1)
             };
+            for(int i=0;i<nodeMeshes.Count;i++)
+            {
+                var part=nodeMeshes[i];
+                nodes.Add(RawStructs.MakeNode($"geo{i+1:D4}",part.Count,part.First,parent:0,
+                    next:i+1<nodeMeshes.Count?i+2:-1));
+            }
             var dlists = new DisplayList[renders.Count];
             var options = new Repack.RepackOptions()
             {
@@ -225,6 +248,64 @@ namespace MphRead.Mods.MapGen
             (byte[] bytes, _) = Repack.PackModel((int)scale, Array.Empty<int>(), Array.Empty<int>(),
                 materials, textures, palettes, nodes, meshes, renders, dlists, options);
             return (bytes, vertexCount);
+        }
+
+        internal const int RenderPartitionThreshold=8192;
+        internal const int MaxRenderVerticesPerList=60000;
+        internal const float RenderCellSize=64f;
+
+        internal readonly record struct RenderLayoutEstimate(int Partitions,int Meshes,int Vertices,long CommandBytes);
+
+        internal static RenderLayoutEstimate EstimateRenderLayout(BuiltMap map)
+        {
+            IEnumerable<IGrouping<(int X,int Y,int Z),BuiltFace>> groups =
+                map.Faces.GroupBy(face=>map.Faces.Count<RenderPartitionThreshold?(0,0,0):FaceCell(face));
+            int partitions=0,meshes=0,vertices=0;long bytes=0;
+            foreach(var chunk in groups)
+            {
+                bool any=false;
+                foreach(var material in chunk.GroupBy(f=>f.Material))
+                {
+                    var normalized=material.SelectMany(face=>face.Points.Length<=4?new[]{face}:Fan(face)).ToArray();
+                    foreach(var batch in RenderBatches(normalized,MaxRenderVerticesPerList))
+                    {
+                        any=true;meshes++;
+                        int batchVertices=batch.Sum(f=>f.Points.Length);
+                        int instructions=2; // BEGIN/END
+                        long arguments=1; // BEGIN primitive argument
+                        foreach(var face in batch)
+                        {
+                            instructions+=2+2*face.Points.Length;
+                            arguments+=2+3L*face.Points.Length;
+                        }
+                        instructions=(instructions+3)/4*4;
+                        bytes+=(instructions/4)*4+arguments*4;
+                        vertices+=batchVertices;
+                    }
+                }
+                if(any)partitions++;
+            }
+            return new(partitions,meshes,vertices,bytes);
+        }
+        private static (int X,int Y,int Z) FaceCell(BuiltFace face)
+        {
+            if(face.Points.Length==0)return(0,0,0);
+            Vector3 centre=Vector3.Zero;foreach(var point in face.Points)centre+=point;centre/=face.Points.Length;
+            return((int)MathF.Floor(centre.X/RenderCellSize),(int)MathF.Floor(centre.Y/RenderCellSize),(int)MathF.Floor(centre.Z/RenderCellSize));
+        }
+
+        private static IEnumerable<IReadOnlyList<BuiltFace>> RenderBatches(
+            IReadOnlyList<BuiltFace> faces,int maxVertices)
+        {
+            var batch=new List<BuiltFace>();int vertices=0;
+            foreach(var face in faces)
+            {
+                int count=face.Points.Length;
+                if(batch.Count>0&&vertices+count>maxVertices)
+                {yield return batch.ToArray();batch.Clear();vertices=0;}
+                batch.Add(face);vertices+=count;
+            }
+            if(batch.Count>0)yield return batch.ToArray();
         }
 
         /// <summary>
