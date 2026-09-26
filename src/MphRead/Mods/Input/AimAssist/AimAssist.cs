@@ -17,8 +17,11 @@ namespace MphRead.Mods.Input.AimAssist
             AimAssistWeaponProfile profile, bool firing = false,
             AimAssistShotPhase shotPhase = AimAssistShotPhase.None)
         {
+            // Legacy/test callers only supplied a firing boolean. Production
+            // supplies the exact phase; treat an otherwise-unspecified firing
+            // edge as a press so old callers retain their commitment semantics.
             if (shotPhase == AimAssistShotPhase.None && firing)
-                shotPhase = AimAssistShotPhase.Continuous;
+                shotPhase = AimAssistShotPhase.Pressed;
             float stickIntent = physicalStick.Length();
             if (!AimAssistMath.Finite(raw)) raw = Vector2.Zero;
             if (!eligible || !AimAssistMath.Finite(physicalStick) || !float.IsFinite(dt) || dt <= 0 || dt > .1f)
