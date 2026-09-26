@@ -144,8 +144,15 @@ public static class MapMeshEditing
         foreach(int[] face in mesh.Faces)
             for(int i=0;i<face.Length;i++)face[i]=replacement[face[i]];
         int removed=mesh.Vertices.Count-kept.Count;mesh.Vertices=kept;
-        mesh.Faces.RemoveAll(face=>face.Distinct().Count()<3);
-        while(mesh.FaceMaterials.Count>mesh.Faces.Count)mesh.FaceMaterials.RemoveAt(mesh.FaceMaterials.Count-1);
+        var faces=new List<int[]>();var materials=new List<int>();
+        for(int i=0;i<mesh.Faces.Count;i++)
+        {
+            int[] face=mesh.Faces[i];
+            if(face.Distinct().Count()<3)continue;
+            faces.Add(face);
+            materials.Add(i<mesh.FaceMaterials.Count?mesh.FaceMaterials[i]:mesh.Material);
+        }
+        mesh.Faces=faces;mesh.FaceMaterials=materials;
         return removed;
     }
 
