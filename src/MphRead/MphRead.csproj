@@ -245,6 +245,13 @@
     <ProjectReference Include="..\NcsfPlay\NcsfPlay.csproj" />
   </ItemGroup>
 
+  <!-- The in-repo network regression harness intentionally exercises a few
+       internal policy helpers without making those helpers part of the public
+       game API. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="nettest" />
+  </ItemGroup>
+
   <ItemGroup>
     <None Update="gamecontrollerdb.txt;gamecontrollerdb.LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
