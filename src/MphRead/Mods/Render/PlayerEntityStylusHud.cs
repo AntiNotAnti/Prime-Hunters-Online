@@ -142,14 +142,14 @@ namespace MphRead.Entities
                             _scene.DrawHudTexture(left, top, left + width, top + height,
                                 nativeTexture, alpha, smooth: false);
 
-                            // The large WPN square is a live control on the DS:
-                            // it shows the weapon in your hands and tapping it
-                            // advances to the next one. The background owns the
-                            // box; the icon is dynamic OAM art and therefore is
-                            // not present in the decoded tilemap itself.
+                            // The large WPN square is the affinity quick slot:
+                            // it shows the affinity weapon chosen by the wheel
+                            // and tapping it equips that exact weapon. The
+                            // background owns the box; the icon is dynamic OAM
+                            // art and therefore is not in the tilemap itself.
                             if (!_hudWeaponMenuOpen && nativeTexture == _stylusBottomTexture)
                             {
-                                ModDrawStylusEquippedWeapon(alpha);
+                                ModDrawStylusAffinityWeapon(alpha);
                             }
                         }
                     }
@@ -200,14 +200,17 @@ namespace MphRead.Entities
         }
 
         /// <summary>
-        /// Draw the weapon currently in the player's hands into the native
-        /// WPN button. The button's centre comes from the same StylusZone
-        /// geometry that owns its hit test, so the icon cannot drift away
-        /// from the control after moving or resizing the zone.
+        /// Draw the currently stored affinity quick-slot weapon into the
+        /// native WPN button. This is deliberately not CurrentWeapon: Power
+        /// Beam and Missile may be in the player's hands while WPN continues
+        /// to advertise the affinity weapon that a tap will equip.
+        ///
+        /// The button's centre comes from the same StylusZone geometry that
+        /// owns its hit test, so the icon cannot drift after moving/resizing.
         /// </summary>
-        private void ModDrawStylusEquippedWeapon(float alpha)
+        private void ModDrawStylusAffinityWeapon(float alpha)
         {
-            int index = (int)CurrentWeapon;
+            int index = (int)_weaponSlots[2];
             if (index < 0 || index >= _weaponListIcons.Length
                 || index > (int)BeamType.OmegaCannon)
             {

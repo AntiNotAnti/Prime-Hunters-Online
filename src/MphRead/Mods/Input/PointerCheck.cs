@@ -628,7 +628,7 @@ namespace MphRead.Mods.Input
                 {
                     StylusRegion.PowerBeam => controls.PowerBeam,
                     StylusRegion.Missile => controls.Missile,
-                    StylusRegion.Weapons => controls.NextWeapon,
+                    StylusRegion.Weapons => controls.AffinitySlot,
                     StylusRegion.WeaponSelect => controls.WeaponMenu,
                     _ => controls.Morph
                 };

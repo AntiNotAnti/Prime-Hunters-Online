@@ -158,10 +158,10 @@ namespace MphRead.Entities
             {
                 Mods.Input.StylusRegion.PowerBeam => controls.PowerBeam,
                 Mods.Input.StylusRegion.Missile => controls.Missile,
-                // The big one is the weapon itself, which on the DS steps to
-                // the next; the small one beside it opens the select, and is
-                // handled above because it is a hold.
-                Mods.Input.StylusRegion.Weapons => controls.NextWeapon,
+                // The large WPN button is the quick-select slot for the
+                // affinity weapon chosen by the wheel. The small SEL button
+                // beside it opens that wheel and is handled above as a hold.
+                Mods.Input.StylusRegion.Weapons => controls.AffinitySlot,
                 Mods.Input.StylusRegion.AltForm => controls.Morph,
                 _ => null
             };
