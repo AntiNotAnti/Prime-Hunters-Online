@@ -34,6 +34,8 @@ namespace MphRead.Mods.Network
         /// said, 1 biped, 2 alt.
         /// </summary>
         private readonly byte[] _formSaid = new byte[PlayerEntity.SlotCapacity];
+        private readonly ushort[] _jumpPadEventSeen = new ushort[PlayerEntity.SlotCapacity];
+        private readonly bool[] _jumpPadEventKnown = new bool[PlayerEntity.SlotCapacity];
 
         public string FormSaidByAuthority()
         {
@@ -689,6 +691,10 @@ namespace MphRead.Mods.Network
             ForgetSlot(slot);
             _appliedLifeId[slot] = state.LifeId;
             _lifeApplied[slot] = true;
+            // Baseline rather than replay: joining a match or starting a new life
+            // must not emit a launch that happened before this machine observed it.
+            _jumpPadEventSeen[slot] = state.JumpPadEventId;
+            _jumpPadEventKnown[slot] = true;
             _host.BeginLife(player, state);
             player.ModResetNetworkHistory();
             player.Controls?.ClearAll();
@@ -719,6 +725,7 @@ namespace MphRead.Mods.Network
             if (fresh) BeginRemoteLife(player, state);
             bool spawned = (state.Flags & PlayerState.FlagSpawned) != 0 && state.Health > 0;
             _formSaid[slot] = (byte)((state.Flags & PlayerState.FlagAltForm) != 0 ? 2 : 1);
+            ReplayJumpPadCue(player, state, isLocal, spawned);
             // During room-change settling, snapshots from the finished
             // match can still arrive. Never seed the fresh match with the old
             // winning score.
@@ -765,6 +772,33 @@ namespace MphRead.Mods.Network
             }
             player.ModSetFrozen((state.Flags & PlayerState.FlagFrozen) != 0);
             ApplyAfflictions(player, state);
+        }
+
+        private void ReplayJumpPadCue(PlayerEntity player, in PlayerState state, bool isLocal, bool spawned)
+        {
+            int slot = player.SlotIndex;
+            if (!_jumpPadEventKnown[slot])
+            {
+                _jumpPadEventSeen[slot] = state.JumpPadEventId;
+                _jumpPadEventKnown[slot] = true;
+                return;
+            }
+
+            ushort previous = _jumpPadEventSeen[slot];
+            ushort current = state.JumpPadEventId;
+            if (current == previous || !NetLifecycleTracker.Newer(current, previous))
+            {
+                return;
+            }
+
+            _jumpPadEventSeen[slot] = current;
+            // The local hunter already played this at trigger time. Replay replicas
+            // keep their existing deterministic audio path; this correction is only
+            // for live remote puppets whose trigger crossing may have been skipped.
+            if (spawned && !isLocal && _host.Active && !_host.IsAuthority && !_host.IsReplica)
+            {
+                player.ModPlayReplicatedJumpPadSfx();
+            }
         }
 
         private void ApplyAfflictions(PlayerEntity player, PlayerState state)
@@ -897,6 +931,8 @@ namespace MphRead.Mods.Network
             _formReconciliation[slot].Reset();
             _lifeApplied[slot] = false;
             _appliedLifeId[slot] = 0;
+            _jumpPadEventSeen[slot] = 0;
+            _jumpPadEventKnown[slot] = false;
             _lastPressFrame[slot] = 0;
             _pressSeen[slot] = false;
             _edgeReceivers[slot].Reset();

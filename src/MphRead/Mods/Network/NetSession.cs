@@ -1821,6 +1821,7 @@ namespace MphRead.Mods.Network
                     Health = (ushort)Math.Clamp(player.Health, 0, ushort.MaxValue),
                     HalfturretActive = player.Flags2.TestFlag(PlayerFlags2.Halfturret),
                     HalfturretHealth = (ushort)Math.Clamp(player.Halfturret?.Health ?? 0, 0, ushort.MaxValue),
+                    JumpPadEventId = player.ModJumpPadAudioEventId,
                     CurrentWeapon = (byte)player.CurrentWeapon,
                     Team = (byte)player.Team
                 };

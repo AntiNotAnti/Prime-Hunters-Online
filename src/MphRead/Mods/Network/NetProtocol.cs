@@ -1590,9 +1590,17 @@ namespace MphRead.Mods.Network
     {
         public ushort SlotGeneration;
         public ushort LifeId;
-        public const int Size = 57 + DamageEvent.Size * DamageHistory;
+        private const int HalfturretOffset = 54 + DamageEvent.Size * DamageHistory;
+        private const int JumpPadEventOffset = HalfturretOffset + 3;
+        public const int Size = JumpPadEventOffset + 2;
         public bool HalfturretActive;
         public ushort HalfturretHealth;
+        /// <summary>
+        /// Monotonic per-player launch sequence. Remote clients use this to play
+        /// jump-pad audio even when packet loss skips the trigger-volume crossing.
+        /// Zero means no launch has been authored yet.
+        /// </summary>
+        public ushort JumpPadEventId;
 
         public byte SlotIndex;
         public byte Flags;          // bit 0 = active, bit 1 = alt form, bit 2 = spawned
@@ -1723,8 +1731,9 @@ namespace MphRead.Mods.Network
             BinaryPrimitives.WriteUInt16LittleEndian(dest[48..], SlotGeneration);
             BinaryPrimitives.WriteUInt16LittleEndian(dest[50..], LifeId);
             BinaryPrimitives.WriteUInt16LittleEndian(dest[52..], DamageEventId);
-            dest[Size - 3] = HalfturretActive ? (byte)1 : (byte)0;
-            BinaryPrimitives.WriteUInt16LittleEndian(dest[(Size - 2)..], HalfturretHealth);
+            dest[HalfturretOffset] = HalfturretActive ? (byte)1 : (byte)0;
+            BinaryPrimitives.WriteUInt16LittleEndian(dest[(HalfturretOffset + 1)..], HalfturretHealth);
+            BinaryPrimitives.WriteUInt16LittleEndian(dest[JumpPadEventOffset..], JumpPadEventId);
             for (int i = 0; i < DamageHistory; i++)
             {
                 EventAt(i).Write(dest[(54 + i * DamageEvent.Size)..]);
@@ -1749,8 +1758,9 @@ namespace MphRead.Mods.Network
                 SlotGeneration = BinaryPrimitives.ReadUInt16LittleEndian(src[48..]),
                 LifeId = BinaryPrimitives.ReadUInt16LittleEndian(src[50..]),
                 DamageEventId = BinaryPrimitives.ReadUInt16LittleEndian(src[52..]),
-                HalfturretActive = src[Size - 3] != 0,
-                HalfturretHealth = BinaryPrimitives.ReadUInt16LittleEndian(src[(Size - 2)..]),
+                HalfturretActive = src[HalfturretOffset] != 0,
+                HalfturretHealth = BinaryPrimitives.ReadUInt16LittleEndian(src[(HalfturretOffset + 1)..]),
+                JumpPadEventId = BinaryPrimitives.ReadUInt16LittleEndian(src[JumpPadEventOffset..]),
                 Damage0 = DamageEvent.Read(src[54..]),
                 Damage1 = DamageEvent.Read(src[(54 + DamageEvent.Size)..]),
                 Damage2 = DamageEvent.Read(src[(54 + 2 * DamageEvent.Size)..]),
@@ -2243,8 +2253,12 @@ namespace MphRead.Mods.Network
         /// Shock Coil damage/ammo cadence. Mixed peers must be refused because the
         /// realtime intent length changed and older SessionState readers reject the
         /// newer rule/profile values.
+        /// Version 23 appends a 16-bit jump-pad launch sequence to PlayerState.
+        /// Remote clients no longer have to infer a pad crossing from sampled
+        /// puppet positions, so a lost snapshot cannot silently drop the launch
+        /// cue. Mixed peers must be refused because PlayerState grew by two bytes.
         /// </summary>
-        public const int ProtocolVersion = 22;
+        public const int ProtocolVersion = 23;
         /// <summary>
         /// Frames between intent packets. One, so every frame.
         ///
