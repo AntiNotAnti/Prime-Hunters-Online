@@ -85,9 +85,10 @@ namespace MphRead.Mods.MapGen
             // brush the test exists to drop.
             var drawnMin = new Vector3(Single.MaxValue);
             var drawnMax = new Vector3(Single.MinValue);
-            foreach (Q3Face face in bsp.Faces)
+            for (int sourceFaceIndex = 0; sourceFaceIndex < bsp.Faces.Count; sourceFaceIndex++)
             {
                 cancellation.ThrowIfCancellationRequested();
+                Q3Face face = bsp.Faces[sourceFaceIndex];
                 if (face.Type != 1 && face.Type != 2 && face.Type != 3)
                 {
                     skipped++;
@@ -151,6 +152,10 @@ namespace MphRead.Mods.MapGen
                     }
                     if (solidPatch)
                     {
+                        built.CollisionSource = "Patch";
+                        built.CollisionSourceId = sourceFaceIndex;
+                        built.CollisionShader = texture.Name;
+                        built.CollisionConfidence = .99f;
                         fullPatchCollision.Add(built);
                     }
                 }
@@ -171,7 +176,8 @@ namespace MphRead.Mods.MapGen
             int clipBrushes = 0;
             var brushPlanes = new List<Vector4[]>();
             var brushBounds = new List<(Vector3 Min, Vector3 Max)>();
-            var sides = new List<(int Brush, Vector3[] Points, Vector3 Normal)>();
+            var sides = new List<(int Brush, int SourceBrush, Vector3[] Points, Vector3 Normal, bool Clip, string Shader)>();
+            var buriedCandidates = new List<BuiltFace>();
             // Model 0 is the level; models 1 and up are its moving and
             // triggering parts, and their brushes are in the same list. A
             // trigger's brush is a volume, not a wall -- but this format keeps
@@ -238,7 +244,7 @@ namespace MphRead.Mods.MapGen
                 brushBounds.Add((brushMin, brushMax));
                 foreach ((Vector3[] points, Vector3 normal) in polygons)
                 {
-                    sides.Add((index, points, normal));
+                    sides.Add((index, brushIndex, points, normal, clip, texture.Name));
                 }
             }
 
@@ -253,16 +259,27 @@ namespace MphRead.Mods.MapGen
             // its listings.
             Dictionary<(int, int, int), List<int>> lookup = BuildBrushLookup(brushBounds);
             int buried = 0;
-            foreach ((int owner, Vector3[] points, Vector3 normal) in sides)
+            foreach ((int owner, int sourceBrush, Vector3[] points, Vector3 normal, bool clip, string shader) in sides)
             {
+                Vector3[] world = points.Select(p => ToWorld(p, unit)).ToArray();
+                var collisionFace = new BuiltFace(world, new Vector2[world.Length],
+                    ToDirection(new[] { normal.X, normal.Y, normal.Z }), 0, 1f)
+                {
+                    CollisionSource = clip ? "PlayerClip" : "Brush",
+                    CollisionSourceId = sourceBrush,
+                    CollisionShader = shader,
+                    PlayerClip = clip,
+                    // Quake player clips stop players but not weapon fire.
+                    IgnoreBeams = clip,
+                    CollisionConfidence = .99f
+                };
                 if (IsBuried(points, normal, owner, brushPlanes, brushBounds, lookup))
                 {
                     buried++;
+                    buriedCandidates.Add(collisionFace);
                     continue;
                 }
-                Vector3[] world = points.Select(p => ToWorld(p, unit)).ToArray();
-                map.Solid.Add(new BuiltFace(world, new Vector2[world.Length],
-                    ToDirection(new[] { normal.X, normal.Y, normal.Z }), 0, 1f));
+                map.Solid.Add(collisionFace);
             }
 
             int patchCollisionLevel = 0;
@@ -302,6 +319,8 @@ namespace MphRead.Mods.MapGen
             map.ImportedPatchCollisionSourceFaces = fullPatchCollision.Count;
             map.ImportedPatchCollisionFaces = selectedPatchCollision.Count;
 
+            MapCollisionHealer.Heal(map, import, buriedCandidates, cancellation);
+
             // From here on, anything appended is Project Prime-authored
             // geometry rather than immutable BSP architecture. Keep the split
             // so the viewport can cache/rebuild each side independently.
@@ -309,7 +328,7 @@ namespace MphRead.Mods.MapGen
             map.ImportedCollisionFaceCount = map.Solid.Count;
             int nativeMaterialOffset = pack?.Entries.Count ?? 0;
             MapBuilder.AddAuthoredGeometry(map, def, cancellation, nativeMaterialOffset);
-            AddEntities(map, def, bsp, import, verbose);
+            AddEntities(map, def, bsp, import, verbose, cancellation);
 
             // A converted level has no authored viewpoint to borrow, and its
             // extent is only known once it is built, so frame it from what
@@ -1044,7 +1063,8 @@ namespace MphRead.Mods.MapGen
             return result;
         }
 
-        private static void AddEntities(BuiltMap map, MapDefinition def, Q3Bsp bsp, MapImport import, bool verbose)
+        private static void AddEntities(BuiltMap map, MapDefinition def, Q3Bsp bsp, MapImport import, bool verbose,
+            CancellationToken cancellation)
         {
             var targets = new Dictionary<string, Vector3>(StringComparer.OrdinalIgnoreCase);
             foreach (Dictionary<string, string> entity in bsp.Entities)
@@ -1139,6 +1159,7 @@ namespace MphRead.Mods.MapGen
                 Console.WriteLine($"  {def.Spawns.Count} spawns, {pads} jump pads,"
                     + $" {def.Items.Count} items{note}");
             }
+            MapCollisionHealer.RepairGameplayObjects(map, def, cancellation);
             MapBuilder.AddEntities(map, def);
         }
 
