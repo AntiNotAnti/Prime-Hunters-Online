@@ -773,6 +773,33 @@ namespace MphRead.Mods.Launcher.Gui
             Field("Light 1 direction",string.Join(",",d.Light1Vector),(m,s)=>m.Light1Vector=ParseVector(s,3));
             Field("Light 2 color (0–31)",string.Join(",",d.Light2Color),(m,s)=>m.Light2Color=ParseVector(s,3).Select(v=>(int)v).ToArray());
             Field("Fog color (0–31)",string.Join(",",d.FogColor),(m,s)=>m.FogColor=ParseVector(s,3).Select(v=>(int)v).ToArray());
+            if(d.NativeRoom is {} native)
+            {
+                _inspector.Children.Add(Text("NATIVE ROOM REMIX"));
+                _inspector.Children.Add(Text($"Source: {native.Room}\nOriginal architecture is preserved from the extracted game files and never overwritten."));
+                foreach(var pair in new[]{
+                    ("Preserve unsupported/native entities",native.PreserveEntities),
+                    ("Editable native spawns",native.EditableSpawns),
+                    ("Editable native pickups",native.EditableItems),
+                    ("Use native collision",native.UseNativeCollision),
+                    ("Multiplayer layer only",native.MultiplayerLayerOnly)})
+                {
+                    var check=new CheckBox{Content=pair.Item1,IsChecked=pair.Item2};_inspector.Children.Add(check);
+                    edits.Add(m=>
+                    {
+                        var n=m.NativeRoom!;
+                        switch(pair.Item1)
+                        {
+                            case "Preserve unsupported/native entities":n.PreserveEntities=check.IsChecked==true;break;
+                            case "Editable native spawns":n.EditableSpawns=check.IsChecked==true;break;
+                            case "Editable native pickups":n.EditableItems=check.IsChecked==true;break;
+                            case "Use native collision":n.UseNativeCollision=check.IsChecked==true;break;
+                            case "Multiplayer layer only":n.MultiplayerLayerOnly=check.IsChecked==true;break;
+                        }
+                    });
+                }
+                _inspector.Children.Add(Text("Add Project Prime boxes, wedges, prisms, meshes, prefabs, spawns, pickups and navigation normally; the native source remains the immutable base."));
+            }
             if(d.Import is {} import)
             {
                 _inspector.Children.Add(Text("IMPORTED ARCHITECTURE + HYBRID AUTHORING"));
@@ -807,7 +834,7 @@ namespace MphRead.Mods.Launcher.Gui
                 AddButton(_inspector,"Reimport Q3 source",()=>_=PickReimportSource());
             }
             var fog=new CheckBox {Content="Fog enabled",IsChecked=d.FogEnabled};_inspector.Children.Add(fog);edits.Add(m=>m.FogEnabled=fog.IsChecked==true);
-            AddButton(_inspector,"Apply",()=>{try{_document.Edit("Environment",map=>{foreach(var edit in edits)edit(map);},MapChangeDomain.Environment | MapChangeDomain.Metadata | (d.Import != null ? MapChangeDomain.Import : MapChangeDomain.None));}catch(Exception ex){Failure(ex);}});
+            AddButton(_inspector,"Apply",()=>{try{_document.Edit("Environment",map=>{foreach(var edit in edits)edit(map);},MapChangeDomain.Environment | MapChangeDomain.Metadata | (d.Import != null || d.NativeRoom != null ? MapChangeDomain.Import : MapChangeDomain.None));}catch(Exception ex){Failure(ex);}});
             AddButton(_inspector,"Upgrade project",()=>_document.Upgrade());
             AddButton(_inspector,"Use camera as preview",()=>{if(_viewport!=null){var p=_viewport.CameraPosition;var t=_viewport.CameraTarget;_document.Edit("Preview camera",m=>m.Preview=new(){Position=new[]{p.X,p.Y,p.Z},Target=new[]{t.X,t.Y,t.Z}});}});
         }
