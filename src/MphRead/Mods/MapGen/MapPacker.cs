@@ -505,7 +505,8 @@ namespace MphRead.Mods.MapGen
             {
                 throw new ProgramException("A map needs at least one solid face.");
             }
-            return MapCollisionPacker.Pack(editors);
+            MapRuntimePartitionPlan plan=MapRuntimePartitioner.Create(map.Faces,map.Definition.Partitioning);
+            return MapCollisionPacker.Pack(editors,plan.PortalCullingApplied?plan.Portals:null);
         }
 
         public static int GetPrimaryAxis(Vector3 normal)
