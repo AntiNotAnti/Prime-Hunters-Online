@@ -198,6 +198,14 @@ try
     var floorId = Guid.NewGuid();
     var floorFaces = new[] { new MapViewportFace(floorId, new[] { new Vector3(-20,0,-20), new Vector3(-20,0,20), new Vector3(20,0,20), new Vector3(20,0,-20) }, 1, 0, true) };
     Check(MapLayoutCommands.FloorBelow(new(0,5,0), floorFaces) == 0 && MapLayoutCommands.FloorBelow(new(40,5,0), floorFaces) == null, "floor snap intersects the actual surface");
+    var floorIndex=new MapFaceSpatialIndex(floorFaces);
+    Check(floorIndex.Column(new(0,5,0)).Count==1&&floorIndex.Column(new(40,5,0)).Count==0,
+        "spatial floor query prunes distant imported faces");
+    var chunkFaces=Enumerable.Range(0,128).Select(i=>new MapViewportFace(Guid.Empty,
+        new[]{new Vector3(i*8,0,0),new Vector3(i*8+1,0,0),new Vector3(i*8,1,0)},1,0,true)).ToArray();
+    var chunks=MapViewportChunker.Create(chunkFaces,chunkFaces);
+    Check(chunks.Count>1&&chunks.Sum(x=>x.Faces.Count)==chunkFaces.Length,"large imported geometry partitions into stable viewport chunks");
+    Check(MapCollisionHeatmap.Build(chunkFaces).Count>1,"collision heatmap aggregates large-map cost spatially");
     layoutDocument.EditObjects("Floor", layoutIds, d => MapLayoutCommands.SnapToFloor(d, layoutIds, floorFaces));
     Check(layoutDocument.Project.Definition.Geometry.All(g => Math.Abs(g.Transform.Position[1] - .5f) < .001), "floor snap lands selected bounds");
     layoutDocument.History.Undo();
