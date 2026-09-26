@@ -200,30 +200,22 @@ namespace MphRead.Mods.Network
             if (c.RollUp.IsPressed) pressed |= IntentButtons.RollUp;
             if (c.RollDown.IsPressed) pressed |= IntentButtons.RollDown;
             _pressHistory = _edgeSender.Record(_host.Frame, pressed);
-            // The charge that will be spent by the shot this frame fires, and
-            // the ram that will be spent by the boost it releases.
+            // A projectile release needs the weapon charge and homing decision
+            // from the frame before ProcessInput spends/resets them. Capture
+            // that release every frame, then hold it until the next intent is
+            // actually sent.
             //
-            // Sampled here rather than in CaptureIntent because this runs
-            // every frame and that one does not: a packet goes out every other
-            // frame, so the current value at capture time is the charge as it
-            // stands *after* the release, which is zero. What the authority
-            // needs is the value the trigger was let go on, so it is latched
-            // on the frame of the release and held until a packet carries it.
-            // Nothing is latched on a frame with no release, and the current
-            // value is sent then, which is what keeps a puppet's charge
-            // tracking its owner's while the trigger is still held.
-            if (c.Shoot.IsReleased || c.Boost.IsReleased || c.AltAttack.IsPressed)
+            // Morph-ball boost damage deliberately is not latched here. Samus
+            // computes _boostDamage later in the simulation step, and it stays
+            // valid while the ram is active; CaptureIntent reads that live
+            // owner-authored result on the following packet.
+            if (c.Shoot.IsReleased)
             {
                 _latchedCharge = player.ModChargeLevel;
-                _latchedHomingTarget = c.Shoot.IsReleased
-                    ? player.ModPickNetworkHomingTarget()
-                    : default;
-                if (c.Shoot.IsReleased)
-                {
-                    // The owner's visual projectile consumes the same decision
-                    // that is put on the wire for the authority/observers.
-                    player.ModSetPendingHomingTarget(_latchedHomingTarget);
-                }
+                _latchedHomingTarget = player.ModPickNetworkHomingTarget();
+                // The owner's visual projectile consumes the same decision
+                // that is put on the wire for the authority/observers.
+                player.ModSetPendingHomingTarget(_latchedHomingTarget);
                 _hasLatch = true;
             }
         }
