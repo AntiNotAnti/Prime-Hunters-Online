@@ -328,6 +328,7 @@ namespace MphRead.Mods.Network
                 GameState.MatchDamageDealt[i] = 0;
                 GameState.MatchDamageTaken[i] = 0;
                 GameState.LongestKillStreak[i] = 0;
+                GameState.HeadshotKills[i] = 0;
                 GameState.KillStreak[i] = 0;
             }
             MatchReportStats.ResetTracking();
