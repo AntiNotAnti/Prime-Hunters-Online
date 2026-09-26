@@ -11,6 +11,9 @@ namespace MphRead.Mods.MapGen
         public static void Analyze(BuiltMap map, MapValidationResult result)
         {
             var solid = map.Solid.SelectMany(MapPacker.CollisionParts).ToArray();
+            MapCollisionOptimizer.Result collision=MapCollisionOptimizer.Optimize(
+                MapCollisionOptimizer.FromFaces(map.Solid));
+            MapCollisionOptimizer.Metrics collisionMetrics=MapCollisionOptimizer.Measure(collision.Editors);
             Add(result, "Geometry faces", map.Faces.Count);
             Add(result, "Vertices", map.Faces.Sum(f => (long)f.Points.Length));
             if(map.Faces.Count>0)
@@ -20,9 +23,9 @@ namespace MphRead.Mods.MapGen
                 Add(result,"Render meshes",render.Meshes,UInt16.MaxValue/2);
                 Add(result,"Render command bytes",render.CommandBytes,MapPackageReader.MaxEntryBytes);
             }
-            Add(result, "Collision faces", solid.Length, 65535);
-            Add(result, "Collision points", map.Solid.SelectMany(f => f.Points).Distinct().LongCount(), 65535);
-            Add(result, "Collision point indices", solid.Sum(f => (long)f.Points.Length + 1), 65535);
+            Add(result, "Collision faces", collisionMetrics.Faces, 65535);
+            Add(result, "Collision points", collisionMetrics.Points, 65535);
+            Add(result, "Collision point indices", collisionMetrics.PointIndices, 65535);
             Add(result, "Entities", map.Entities.Count, 32767);
             int materialCount=Math.Max(map.Definition.Materials.Count,map.Faces.Count==0?0:map.Faces.Max(f=>f.Material)+1);
             Add(result, "Materials", materialCount, 32767);
@@ -37,22 +40,13 @@ namespace MphRead.Mods.MapGen
                     result.Error("FP-MAP-013", "Collision face normal must be normalized.");
                 foreach (var p in face.Points) { min = Vector3.ComponentMin(min, p); max = Vector3.ComponentMax(max, p); }
             }
-            long cells = 1;
-            for (int axis = 0; axis < 3; axis++) cells = SaturatingMultiply(cells, (long)Math.Floor((max[axis] - min[axis]) / 4.0) + 1);
-            Add(result, "Collision grid cells", cells, MaxGridCells);
-            long references = 0;
-            foreach (var face in solid)
-            {
-                long count = 1;
-                for (int axis = 0; axis < 3; axis++)
-                {
-                    int a = axis;
-                    double low = face.Points.Min(p => p[a]), high = face.Points.Max(p => p[a]);
-                    count = SaturatingMultiply(count, (long)(Math.Floor((high - min[axis]) / 4) - Math.Floor((low - min[axis]) / 4) + 1));
-                }
-                references = count > long.MaxValue - references ? long.MaxValue : references + count;
-            }
-            Add(result, "Collision references", references, 65535);
+            Add(result, "Collision grid cells", collisionMetrics.GridCells, MaxGridCells);
+            Add(result, "Collision references", collisionMetrics.References, 65535);
+            if(collision.RemovedVertices>0||collision.MergedFaces>0)
+                result.Warning("FP-MAP-018",
+                    $"Collision compaction removed {collision.RemovedVertices:N0} redundant vertices and merged "
+                    +$"{collision.MergedFaces:N0} adjacent coplanar faces; point indices "
+                    +$"{collision.OriginalPointIndices:N0} -> {collision.OptimizedPointIndices:N0}.");
             if (map.Definition.Import is { CollisionPatchLevel: -1 }
                 && map.Definition.Collision == null
                 && map.ImportedPatchCollisionLevel >= 0
@@ -75,54 +69,14 @@ namespace MphRead.Mods.MapGen
 
         public static bool CollisionFits(IEnumerable<BuiltFace> faces)
         {
-            const long max16 = 65535;
-            var parts = new List<BuiltFace>();
-            var points = new HashSet<Vector3>();
-            long pointIndices = 0;
-            Vector3 min = new(float.MaxValue), max = new(float.MinValue);
-            foreach (BuiltFace face in faces)
-            {
-                foreach (BuiltFace part in MapPacker.CollisionParts(face))
-                {
-                    if (parts.Count + 1 >= max16) return false;
-                    pointIndices += part.Points.Length + 1L;
-                    if (pointIndices >= max16) return false;
-                    parts.Add(part);
-                    foreach (Vector3 point in part.Points)
-                    {
-                        points.Add(point);
-                        if (points.Count >= max16) return false;
-                        min = Vector3.ComponentMin(min, point);
-                        max = Vector3.ComponentMax(max, point);
-                    }
-                }
-            }
-            if (parts.Count == 0) return false;
-            long cells = 1;
-            for (int axis = 0; axis < 3; axis++)
-            {
-                cells = SaturatingMultiply(cells,
-                    (long)Math.Floor((max[axis] - min[axis]) / 4.0) + 1);
-                if (cells >= MaxGridCells) return false;
-            }
-            long references = 0;
-            foreach (BuiltFace face in parts)
-            {
-                long count = 1;
-                for (int axis = 0; axis < 3; axis++)
-                {
-                    int a = axis;
-                    double low = face.Points.Min(p => p[a]);
-                    double high = face.Points.Max(p => p[a]);
-                    count = SaturatingMultiply(count,
-                        (long)(Math.Floor((high - min[axis]) / 4)
-                            - Math.Floor((low - min[axis]) / 4) + 1));
-                }
-                references = references > long.MaxValue - count
-                    ? long.MaxValue : references + count;
-                if (references >= max16) return false;
-            }
-            return true;
+            MapCollisionOptimizer.Result optimized=MapCollisionOptimizer.Optimize(
+                MapCollisionOptimizer.FromFaces(faces));
+            MapCollisionOptimizer.Metrics metrics=MapCollisionOptimizer.Measure(optimized.Editors);
+            return metrics.Faces < 65535
+                && metrics.Points < 65535
+                && metrics.PointIndices <= 65535
+                && metrics.GridCells < MaxGridCells
+                && metrics.References < 65535;
         }
 
         private static long SaturatingMultiply(long a, long b) => a <= 0 || b <= 0 || a > long.MaxValue / b ? long.MaxValue : a * b;

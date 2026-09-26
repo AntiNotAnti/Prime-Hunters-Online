@@ -18,7 +18,7 @@ namespace MphRead.Mods.MapGen
     /// notice. A level with tens of thousands does -- it is quadratic twice
     /// over, and the second one is cells times faces.
     ///
-    /// Same format, same conventions, two changes: points are deduplicated
+    /// Same format, same runtime semantics: points are deduplicated
     /// through a dictionary, and faces are pushed into the cells their bounds
     /// cover instead of every cell interrogating every face. Cells claim a
     /// face by its bounding box rather than by the exact polygon test, which
@@ -33,6 +33,8 @@ namespace MphRead.Mods.MapGen
 
         public static byte[] Pack(IReadOnlyList<CollisionDataEditor> data)
         {
+            MapCollisionOptimizer.Result optimization=MapCollisionOptimizer.Optimize(data);
+            data=optimization.Editors;
             if (data.Count == 0)
             {
                 throw new ProgramException("A map needs at least one solid face.");
@@ -62,7 +64,10 @@ namespace MphRead.Mods.MapGen
                     planeIds.Add(editor.Plane, planeIndex);
                 }
                 int start = pointIndices.Count;
-                if(start+editor.Points.Count+1>=ushort.MaxValue)throw new MapAuthoringException("FP-MAP-003","Collision point index budget exceeded.");
+                if(start+editor.Points.Count>ushort.MaxValue)
+                    throw new MapAuthoringException("FP-MAP-003",
+                        $"Collision point index budget exceeded after lossless compaction "
+                        + $"({optimization.OriginalPointIndices:N0} -> {optimization.OptimizedPointIndices:N0}).");
                 foreach (Vector3 point in editor.Points)
                 {
                     if(!float.IsFinite(point.X)||!float.IsFinite(point.Y)||!float.IsFinite(point.Z)||Math.Abs(point.X)>=524288||Math.Abs(point.Y)>=524288||Math.Abs(point.Z)>=524288)
@@ -83,9 +88,11 @@ namespace MphRead.Mods.MapGen
                     }
                     pointIndices.Add(pointIndex);
                 }
-                // the list repeats each face's first point after its last, the
-                // way the game's own files do
-                pointIndices.Add(pointIndices[start]);
+                // Shipped wc01 files carry an extra copy of the first point
+                // after every face, but PointIndexCount explicitly excludes
+                // it and the runtime edge walker wraps its local index to zero.
+                // Custom maps do not need that round-trip padding. Omitting it
+                // saves one 16-bit index per collision face.
                 faces.Add((planeIndex, editor, (ushort)editor.Points.Count, (ushort)start));
             }
 
