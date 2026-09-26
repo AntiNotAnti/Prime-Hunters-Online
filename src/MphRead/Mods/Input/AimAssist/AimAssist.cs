@@ -663,8 +663,9 @@ namespace MphRead.Mods.Input.AimAssist
         private static Vector2 TrackMotion(Vector2 filtered, Vector2 acceleration,
             Vector2 error, Vector2 previous, Vector2 cameraDelta, float previousDt,
             float dt, bool history, bool preserveHistory, float rate,
-            ref Vector2 direction, out Vector2 nextAcceleration)
+            ref Vector2 direction, out Vector2 nextAcceleration, out bool transition)
         {
+            transition = false;
             if (preserveHistory)
             {
                 nextAcceleration = acceleration;
@@ -685,6 +686,19 @@ namespace MphRead.Mods.Input.AimAssist
 
             Vector2 measured = AimAssistMath.ClampLength(motion / previousDt,
                 AimAssistTuning.MaxTrackedSpeed);
+            float filteredSpeedBefore = filtered.Length();
+            float measuredSpeedBefore = measured.Length();
+            transition = filteredSpeedBefore > 2 && measuredSpeedBefore > 2
+                    && Vector2.Dot(filtered, measured) < -.15f * filteredSpeedBefore * measuredSpeedBefore
+                || (measured - filtered).Length() >= AimAssistTuning.MotionTransitionVelocityDelta;
+            if (transition)
+            {
+                // A strafe reversal, jump apex/landing or impulse should not drag
+                // the previous acceleration estimate into the new motion phase.
+                acceleration = Vector2.Zero;
+                if (measuredSpeedBefore > .05f) direction = measured / measuredSpeedBefore;
+                rate *= 2.5f;
+            }
 
             // Couple yaw/pitch through a persistent target-motion direction. This
             // suppresses minor-axis corkscrew noise on diagonal strafe+jump motion
