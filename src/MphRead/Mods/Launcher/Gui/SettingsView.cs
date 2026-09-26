@@ -207,6 +207,7 @@ namespace MphRead.Mods.Launcher.Gui
         private ChoiceRow _languageRow = null!;
         private SliderRow _sensitivity = null!;
         private SliderRow _imperialistZoomSensitivity = null!;
+        private SliderRow _imperialistZoomAmount = null!;
         private SliderRow _altSwipeSensitivity = null!;
         private ToggleRow _invertY = null!;
         private ToggleRow _invertX = null!;
@@ -1417,8 +1418,14 @@ namespace MphRead.Mods.Launcher.Gui
                 v => $"{SliderToSensitivity(v).ToString("0.00", CultureInfo.InvariantCulture)}x",
                 min: (int)(InputSettings.MinImperialistZoomSensitivity * 100),
                 max: (int)(InputSettings.MaxImperialistZoomSensitivity * 100), keyStep: 1));
-            Explain(page, "Additional mouse multiplier used only while the Imperialist is zoomed. "
-                + "1.00x preserves the current scoped feel.");
+            _imperialistZoomAmount = Add(page, new SliderRow("Imperialist zoom amount",
+                (int)MathF.Round(InputSettings.ImperialistZoomAmount * 100),
+                v => $"{v}%",
+                min: (int)(InputSettings.MinImperialistZoomAmount * 100),
+                max: (int)(InputSettings.MaxImperialistZoomAmount * 100), keyStep: 5));
+            Explain(page, "Imperialist zoom sensitivity changes mouse speed while scoped. "
+                + "Zoom amount changes magnification: 100% is the original scope, lower values zoom less, "
+                + "and higher values zoom more.");
             _invertY = Add(page, new ToggleRow("Invert vertical aim", InputSettings.InvertMouseY));
             _invertX = Add(page, new ToggleRow("Invert horizontal aim", InputSettings.InvertMouseX));
             if (OperatingSystem.IsAndroid())
@@ -1596,6 +1603,7 @@ namespace MphRead.Mods.Launcher.Gui
                 InputSettings.Reset();
                 _sensitivity.Value = SensitivityToSlider(InputSettings.MouseSensitivity);
                 _imperialistZoomSensitivity.Value = SensitivityToSlider(InputSettings.ImperialistZoomSensitivity);
+                _imperialistZoomAmount.Value = (int)MathF.Round(InputSettings.ImperialistZoomAmount * 100);
                 _altSwipeSensitivity.Value = (int)MathF.Round(InputSettings.AltSwipeSensitivity * 100);
                 _invertY.On = InputSettings.InvertMouseY;
                 _invertX.On = InputSettings.InvertMouseX;
@@ -2144,6 +2152,7 @@ namespace MphRead.Mods.Launcher.Gui
             // Controls
             InputSettings.MouseSensitivity = SliderToSensitivity(_sensitivity.Value);
             InputSettings.ImperialistZoomSensitivity = SliderToSensitivity(_imperialistZoomSensitivity.Value);
+            InputSettings.ImperialistZoomAmount = _imperialistZoomAmount.Value / 100f;
             InputSettings.AltSwipeSensitivity = _altSwipeSensitivity.Value / 100f;
             InputSettings.InvertMouseY = _invertY.On;
             InputSettings.InvertMouseX = _invertX.On;
