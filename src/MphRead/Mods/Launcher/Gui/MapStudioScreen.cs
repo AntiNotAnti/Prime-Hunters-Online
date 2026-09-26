@@ -44,6 +44,7 @@ namespace MphRead.Mods.Launcher.Gui
         private bool _refreshing;
         private string _hierarchySignature = "";
         private string _inspectorPage = "Inspector";
+        private MapStudioState _studioState = new();
         private long _editorGeneration;
         private bool _detached;
         private MapAutosaveService _autosave = new();
@@ -256,7 +257,9 @@ namespace MphRead.Mods.Launcher.Gui
             _lastBuild = null; _hierarchySignature = "";
             foreach(var preview in _materialPreviewCache.Values)preview.Bitmap.Dispose();_materialPreviewCache.Clear();
             if(_document!=null)_document.Changed-=Changed;
-            _document=new(project,path);_document.Changed+=Changed;_viewport=new(_document);_viewport.SelectionChanged+=()=>{RefreshHierarchy();ShowInspectorPage(_inspectorPage,false);};
+            _document=new(project,path);_document.Changed+=Changed;
+            _studioState=MapStudioStateStore.Load(project.Definition);MapStudioStateStore.Prune(project.Definition,_studioState);
+            _viewport=new(_document);_viewport.SelectionChanged+=()=>{RefreshHierarchy();ShowInspectorPage(_inspectorPage,false);};
             _viewportHost.Children.Clear();_viewportHost.Children.Add(_viewport);_path.Text=path??Path.Combine(CustomRooms.MapDirectory,project.Definition.Name.ToLowerInvariant()+".json");
             Dismiss();Changed();_viewport.FrameAll();
             if(_document.HasRecovery(CustomRooms.MapDirectory))Recovery();
@@ -563,6 +566,30 @@ namespace MphRead.Mods.Launcher.Gui
             AddButton(_inspector, "Create array", () => Duplicate(false));
             AddButton(_inspector, "Create radial array", () => Duplicate(true));
             AddButton(_inspector, "Duplicate in place", () => EditSelection("Duplicate in place", (d, ids) => MapLayoutCommands.Array(d, ids, 1, System.Numerics.Vector3.Zero)));
+            _inspector.Children.Add(Text("SELECTION SETS"));
+            var setName=new TextBox{PlaceholderText="Selection set name"};_inspector.Children.Add(setName);
+            AddButton(_inspector,"Save current selection",()=>
+            {
+                string name=(setName.Text??"").Trim();
+                if(String.IsNullOrWhiteSpace(name)||_document.Selection.Count==0){_status.Text="Name the set and select at least one object.";return;}
+                _studioState.SelectionSets[name]=_document.Selection.ToArray();
+                MapStudioStateStore.Save(_document.Project.Definition,_studioState);ArrangeInspector();
+            });
+            foreach(var pair in _studioState.SelectionSets.OrderBy(p=>p.Key,StringComparer.OrdinalIgnoreCase))
+            {
+                string name=pair.Key;Guid[] ids=pair.Value;
+                _inspector.Children.Add(Text($"{name} · {ids.Length} objects"));
+                AddButton(_inspector,"Recall "+name,()=>
+                {
+                    var existing=MapObjects.All(_document.Project.Definition).Select(o=>o.Id).ToHashSet();
+                    _document.Selection.Clear();foreach(Guid id in ids.Where(existing.Contains))_document.Selection.Add(id);
+                    _document.ActiveObjectId=_document.Selection.FirstOrDefault();_document.SelectionChanged();_viewport?.FrameSelection();
+                });
+                AddButton(_inspector,"Delete "+name,()=>
+                {
+                    _studioState.SelectionSets.Remove(name);MapStudioStateStore.Save(_document.Project.Definition,_studioState);ArrangeInspector();
+                });
+            }
             AddButton(_inspector, "Save selection as prefab", SavePrefab);
             AddButton(_inspector, "Insert prefab", InsertPrefab);
         }
