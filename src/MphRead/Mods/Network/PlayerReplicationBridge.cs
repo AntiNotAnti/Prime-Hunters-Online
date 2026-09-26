@@ -323,7 +323,9 @@ namespace MphRead.Mods.Network
                 BoostDamage = (byte)Math.Clamp(player.ModBoostDamage, 0, 255),
                 ShotFlags = (byte)((player.DoubleDamage ? IntentPacket.FlagDoubleDamage : 0)
                     | (player.IsPrimeHunter ? IntentPacket.FlagPrimeHunter : 0)
-                    | (player.Flags1.TestFlag(PlayerFlags1.Boosting) ? IntentPacket.FlagBoosting : 0)),
+                    | (player.Flags1.TestFlag(PlayerFlags1.Boosting) ? IntentPacket.FlagBoosting : 0)
+                    | (player.ModReportSpawnProtectionReleased()
+                        ? IntentPacket.FlagSpawnProtectionReleased : 0)),
                 Target = player.CurrentWeapon == BeamType.ShockCoil ? player.ModContinuousNetworkTarget
                     : _hasLatch ? _latchedHomingTarget : default,
                 HasState = true,
@@ -441,6 +443,14 @@ namespace MphRead.Mods.Network
                 ShootPressAge[player.SlotIndex] = 0;
                 player.ModSetSpectating(((intent.Buttons & IntentButtons.SpectatingState) == IntentButtons.SpectatingState));
                 return;
+            }
+            if (intent.HasState
+                && (intent.ShotFlags & IntentPacket.FlagSpawnProtectionReleased) != 0)
+            {
+                // The owner can only surrender protection with this bit. It cannot
+                // create invulnerability, and the intent's life/generation fence
+                // prevents a delayed release from touching a later respawn.
+                player.ModReleaseSpawnProtectionFromNetwork();
             }
             Set(c.MoveLeft, ((intent.Buttons & IntentButtons.MoveLeft) == IntentButtons.MoveLeft), ((missed & IntentButtons.MoveLeft) == IntentButtons.MoveLeft));
             Set(c.MoveRight, ((intent.Buttons & IntentButtons.MoveRight) == IntentButtons.MoveRight), ((missed & IntentButtons.MoveRight) == IntentButtons.MoveRight));
@@ -717,6 +727,10 @@ namespace MphRead.Mods.Network
             }
             bool fresh = !_lifeApplied[slot] || _appliedLifeId[slot] != state.LifeId;
             if (fresh) BeginRemoteLife(player, state);
+            // Spawn() necessarily starts a local timer when a new life is
+            // materialized. Replace that guess immediately with the authority's
+            // actual answer; this is what fixes join-in-progress false protection.
+            player.ModSetSpawnProtectionFromAuthority(state.SpawnProtected);
             bool spawned = (state.Flags & PlayerState.FlagSpawned) != 0 && state.Health > 0;
             _formSaid[slot] = (byte)((state.Flags & PlayerState.FlagAltForm) != 0 ? 2 : 1);
             // During room-change settling, snapshots from the finished
