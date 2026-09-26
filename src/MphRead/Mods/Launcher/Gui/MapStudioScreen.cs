@@ -344,7 +344,7 @@ namespace MphRead.Mods.Launcher.Gui
                 try{Load(NativeRoomProject.Create(row.Room.Name,(name.Text??"").Trim()));}
                 catch(Exception ex){Failure(ex);}
             }));
-            AddButton(panel,"Cancel",Dismiss);Modal(new ScrollViewer{Content=panel,MaxHeight=560,VerticalScrollBarVisibility=ScrollBarVisibility.Auto});
+            AddButton(panel,"Cancel",Dismiss);Modal(new ScrollViewer{Content=panel,MaxHeight=560,VerticalScrollBarVisibility=Avalonia.Controls.Primitives.ScrollBarVisibility.Auto});
         }
 
         private sealed record NativeRoomRow(RoomMetadata Room)
