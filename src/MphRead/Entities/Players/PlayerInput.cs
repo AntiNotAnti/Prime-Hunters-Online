@@ -986,6 +986,11 @@ namespace MphRead.Entities
                             CheckZoomTargets(EntityType.EnemyInstance);
                             CheckZoomTargets(EntityType.Object);
                             zoomFov *= 2;
+                            if (CurrentWeapon == BeamType.Imperialist)
+                            {
+                                float normalFov = Fixed.ToFloat(Values.NormalFov) * 2;
+                                zoomFov = Mods.InputSettings.ScaleImperialistZoomFov(normalFov, zoomFov);
+                            }
                             float currentFov = CameraInfo.Fov;
                             if (zoomFov > currentFov)
                             {

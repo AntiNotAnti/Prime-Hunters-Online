@@ -67,6 +67,54 @@ namespace MphRead.Mods
         public static float MouseAimSensitivity(bool imperialistZoomed)
             => MouseSensitivity * (imperialistZoomed ? ImperialistZoomSensitivity : 1f);
 
+        public const float MinImperialistZoomAmount = 0.25f;
+        public const float MaxImperialistZoomAmount = 2f;
+        private static float _imperialistZoomAmount = 1f;
+
+        /// <summary>
+        /// Strength of the Imperialist's optical zoom relative to the authored scope.
+        /// 1.0 preserves the original zoom, lower values reduce it, and higher values
+        /// increase it. This scales perspective magnification rather than FOV degrees.
+        /// </summary>
+        public static float ImperialistZoomAmount
+        {
+            get => _imperialistZoomAmount;
+            set => _imperialistZoomAmount = Single.IsFinite(value)
+                ? Math.Clamp(value, MinImperialistZoomAmount, MaxImperialistZoomAmount)
+                : 1f;
+        }
+
+        /// <summary>
+        /// Scale an Imperialist scope target while preserving perspective. Zoom is
+        /// proportional to 1/tan(FOV/2), so linearly changing FOV degrees would make
+        /// the low and high ends of the slider feel very different.
+        /// </summary>
+        public static float ScaleImperialistZoomFov(float normalFov, float zoomFov)
+        {
+            if (!Single.IsFinite(normalFov) || !Single.IsFinite(zoomFov)
+                || normalFov <= 0 || zoomFov <= 0 || zoomFov >= normalFov
+                || MathF.Abs(ImperialistZoomAmount - 1f) < 0.0001f)
+            {
+                return zoomFov;
+            }
+
+            normalFov = Math.Clamp(normalFov, 1f, 175f);
+            zoomFov = Math.Clamp(zoomFov, 1f, normalFov);
+            float normalHalfTan = MathF.Tan(normalFov * MathF.PI / 360f);
+            float zoomHalfTan = MathF.Tan(zoomFov * MathF.PI / 360f);
+            if (zoomHalfTan <= 0)
+            {
+                return zoomFov;
+            }
+
+            float authoredMagnification = normalHalfTan / zoomHalfTan;
+            float scaledMagnification = 1f
+                + (authoredMagnification - 1f) * ImperialistZoomAmount;
+            float scaledHalfTan = normalHalfTan / MathF.Max(1f, scaledMagnification);
+            return Math.Clamp(2f * MathF.Atan(scaledHalfTan) * 180f / MathF.PI,
+                1f, normalFov);
+        }
+
         public static bool InvertMouseY { get; set; }
         public static bool InvertMouseX { get; set; }
 
@@ -465,6 +513,15 @@ namespace MphRead.Mods
                         }
                         continue;
                     }
+                    if (key == "imperialist_zoom_amount")
+                    {
+                        if (Single.TryParse(value, NumberStyles.Float,
+                            CultureInfo.InvariantCulture, out float parsed))
+                        {
+                            ImperialistZoomAmount = parsed;
+                        }
+                        continue;
+                    }
                     if (key == "invert_y" && Boolean.TryParse(value, out bool invertY))
                     {
                         InvertMouseY = invertY;
@@ -754,6 +811,7 @@ namespace MphRead.Mods
                     $"# {Branding.Name} controls. Delete a line to go back to the default.",
                     $"sensitivity={MouseSensitivity.ToString("0.###", CultureInfo.InvariantCulture)}",
                     $"imperialist_zoom_sensitivity={ImperialistZoomSensitivity.ToString("0.###", CultureInfo.InvariantCulture)}",
+                    $"imperialist_zoom_amount={ImperialistZoomAmount.ToString("0.###", CultureInfo.InvariantCulture)}",
                     $"invert_y={InvertMouseY.ToString().ToLowerInvariant()}",
                     $"invert_x={InvertMouseX.ToString().ToLowerInvariant()}",
                     $"mouse_movement_boost={MouseMovementBoost.ToString().ToLowerInvariant()}",
@@ -841,6 +899,7 @@ namespace MphRead.Mods
             _creating = false;
             MouseSensitivity = 1;
             ImperialistZoomSensitivity = 1;
+            ImperialistZoomAmount = 1;
             InvertMouseY = false;
             InvertMouseX = false;
             MouseMovementBoost = true;
