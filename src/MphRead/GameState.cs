@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using MphRead.Entities;
 using MphRead.Formats;
+using MphRead.Mods;
 using MphRead.Sound;
 using MphRead.Text;
 

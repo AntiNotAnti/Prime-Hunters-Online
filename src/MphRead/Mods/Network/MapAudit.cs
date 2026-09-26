@@ -1622,7 +1622,6 @@ namespace MphRead.Mods.Network
                 Width = ClientSize.X,
                 Height = ClientSize.Y,
                 RenderScale = RenderOptions.ResolutionScale,
-                DrawRate = DrawRate,
                 PresentationHz = Math.Clamp(PerformanceHz, 60, 240),
                 DrawRate = Math.Clamp(PerformanceHz, 60, 240) / 60.0,
                 DrawSamples = _perfDrawMs.Count,
