@@ -144,6 +144,7 @@ public static class MapCollisionOptimizer
         }
 
         var output=groups.OrderBy(g=>g.Key.X).ThenBy(g=>g.Key.Y).ThenBy(g=>g.Key.Z).ThenBy(g=>g.Key.W)
+            .ThenBy(g=>g.Key.LayerMask).ThenBy(g=>g.Key.Flags)
             .SelectMany(g=>g.Value).ToArray();
         return new(output,originalFaces,originalIndices,output.Length,
             output.Sum(e=>e.Points.Count),removedVertices,mergedFaces);
