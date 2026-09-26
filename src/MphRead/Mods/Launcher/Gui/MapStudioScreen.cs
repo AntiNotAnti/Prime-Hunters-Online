@@ -87,7 +87,7 @@ namespace MphRead.Mods.Launcher.Gui
             _hierarchy.Foreground = _problems.Foreground = PrimeTheme.TextBrush;
             _hierarchy.BorderBrush = _problems.BorderBrush = PrimeTheme.BorderBrush;
             var toolbar=new WrapPanel { Orientation=Orientation.Horizontal };
-            AddButton(toolbar,"Back",Close);AddButton(toolbar,"Library",ShowLibrary);AddButton(toolbar,"New",NewMap);
+            AddButton(toolbar,"Back",Close);AddButton(toolbar,"Library",ShowLibrary);AddButton(toolbar,"New",NewMap);AddButton(toolbar,"Clone built-in",CloneBuiltIn);
             AddButton(toolbar,"Open",()=>Browse("Open project",false,p=>Open(p),".json",".ppmap"));
             AddButton(toolbar,"Import Q3",Import);AddButton(toolbar,"Save",Save);AddButton(toolbar,"Save as",()=>Browse("Save project",true,p=>SaveTo(p),".json"));
             AddButton(toolbar,"Undo",()=>_document?.History.Undo());AddButton(toolbar,"Redo",()=>_document?.History.Redo());
@@ -263,7 +263,7 @@ namespace MphRead.Mods.Launcher.Gui
             _viewportHost.Children.Clear();_viewportHost.Children.Add(_viewport);_path.Text=path??Path.Combine(CustomRooms.MapDirectory,project.Definition.Name.ToLowerInvariant()+".json");
             Dismiss();Changed();_viewport.FrameAll();
             if(_document.HasRecovery(CustomRooms.MapDirectory))Recovery();
-            if(project.Definition.Import!=null)
+            if(project.Definition.Import!=null||project.Definition.NativeRoom!=null)
             {
                 // Import completion calls Load from inside the active import
                 // Job. Queue the visual preview behind that job so the busy
@@ -312,6 +312,46 @@ namespace MphRead.Mods.Launcher.Gui
         }
         private void EditSelection(string label,Action<MapDefinition,ISet<Guid>> edit)
         {if(_document==null)return;var ids=_document.Selection.ToHashSet();_document.EditObjects(label,ids,d=>edit(d,ids));}
+        private void CloneBuiltIn()
+        {
+            if(!GameFiles.Ready){_status.Text="Set up game files before cloning a built-in room.";return;}
+            try{GameFiles.ApplyPaths();}catch(Exception ex){Failure(ex);return;}
+            var panel=new StackPanel{Spacing=8,MinWidth=560};panel.Children.Add(Text("CLONE BUILT-IN MAP"));
+            var search=new TextBox{PlaceholderText="Search rooms"};panel.Children.Add(search);
+            var rooms=Metadata.RoomMetadata.Values.GroupBy(r=>r.Name,StringComparer.OrdinalIgnoreCase)
+                .Select(g=>g.First()).OrderByDescending(r=>r.Multiplayer).ThenBy(r=>r.InGameName??r.Name,StringComparer.OrdinalIgnoreCase).ToArray();
+            var list=new ListBox{MaxHeight=330};panel.Children.Add(list);
+            void Refresh()
+            {
+                string q=(search.Text??"").Trim();
+                list.ItemsSource=rooms.Where(r=>q.Length==0||(r.InGameName??r.Name).Contains(q,StringComparison.OrdinalIgnoreCase)
+                    ||r.Name.Contains(q,StringComparison.OrdinalIgnoreCase))
+                    .Select(r=>new NativeRoomRow(r)).ToArray();
+            }
+            search.TextChanged+=(_,_)=>Refresh();Refresh();
+            var name=new TextBox{PlaceholderText="New runtime name"};panel.Children.Add(name);
+            list.SelectionChanged+=(_,_)=>
+            {
+                if(list.SelectedItem is NativeRoomRow row&&String.IsNullOrWhiteSpace(name.Text))
+                {
+                    string candidate=(row.Room.Name+" REMIX").Replace('/',' ').Replace('\\',' ');
+                    name.Text=candidate.Length<=40?candidate:candidate[..40].TrimEnd();
+                }
+            };
+            AddButton(panel,"Create remix",()=>WithUnsaved(()=>
+            {
+                if(list.SelectedItem is not NativeRoomRow row){_status.Text="Choose a built-in room.";return;}
+                try{Load(NativeRoomProject.Create(row.Room.Name,(name.Text??"").Trim()));}
+                catch(Exception ex){Failure(ex);}
+            }));
+            AddButton(panel,"Cancel",Dismiss);Modal(new ScrollViewer{Content=panel,MaxHeight=560,VerticalScrollBarVisibility=ScrollBarVisibility.Auto});
+        }
+
+        private sealed record NativeRoomRow(RoomMetadata Room)
+        {
+            public override string ToString()=>$"{Room.InGameName??Room.Name} · {Room.Name} · {(Room.Multiplayer?"Multiplayer":"Adventure")}";
+        }
+
         private void NewMap()
         {
             var view=new StackPanel {Spacing=10};view.Children.Add(Text("NEW MAP"));var name=new TextBox {Text="My Arena"};view.Children.Add(name);
@@ -391,7 +431,8 @@ namespace MphRead.Mods.Launcher.Gui
                 if(Entry.Definition is not {} d)return Path.GetFileName(Entry.Path)+" · Invalid source";
                 string status=Entry.Validation.IsValid?"Ready to validate":"Source problems";
                 try{if(Entry.Validation.IsValid&&GameFiles.Ready)status=CustomRooms.NeedsGenerating(d)?"Needs build":"Built";}catch(IOException){status="Needs build";}
-                return $"{d.InGameName??d.Name} · {d.Author??""} {d.Version??""}\n{(d.Import==null?"Native":"Q3")} · {status} · {Entry.Validation.Diagnostics.Count} diagnostics";
+                string source=d.NativeRoom!=null?"Native remix":d.Import!=null?"Q3":"Project Prime";
+                return $"{d.InGameName??d.Name} · {d.Author??""} {d.Version??""}\n{source} · {status} · {Entry.Validation.Diagnostics.Count} diagnostics";
             }
         }
         private void Browse(string title,bool save,Action<string> selected,params string[] extensions)
@@ -1032,24 +1073,22 @@ namespace MphRead.Mods.Launcher.Gui
             _inspector.Children.Add(Text("Scale step"));_inspector.Children.Add(scale);_inspector.Children.Add(local);
             AddButton(_inspector,"Apply",()=>{try{float g=Number(grid.Text??""),a=Number(angle.Text??""),s=Number(scale.Text??"");if(g<0||g>100||a<1||a>180||s<=0||s>10)throw new FormatException("Use grid spacing 0–100, rotation step 1–180 and scale step above 0 through 10.");_viewport.Snap=g;_viewport.AngleSnap=a;_viewport.ScaleSnap=s;_viewport.LocalAxes=local.IsChecked==true;}catch(Exception ex){Failure(ex);}});
         }
-        private Task PreviewImport()=>Work("Preparing imported map preview",async(p,token)=>
+        private Task PreviewImport()=>Work("Preparing source map preview",async(p,token)=>
         {
-            if(p.Definition.Import==null)return;
-            int authoredDetail=p.Definition.Import.PatchLevel;
-            p.Definition.Import.PatchLevel=1;
+            if(p.Definition.Import==null&&p.Definition.NativeRoom==null)return;
+            int authoredDetail=p.Definition.Import?.PatchLevel??0;
+            if(p.Definition.Import!=null)p.Definition.Import.PatchLevel=1;
             var result=await MapBuildScheduler.Shared.AnalyzeAsync(MapBuildSnapshot.Capture(p),cancellation:token);
             GuardJob(token);
             if(result.Faces.Length>0)
             {
                 _viewport?.SetImported(result);
+                string kind=p.Definition.NativeRoom!=null?"Native room":"Imported map";
                 _status.Text=result.Succeeded
-                    ? $"Imported map preview ready · runtime patch detail {authoredDetail}"
-                    : $"Imported map preview ready · runtime limits need attention · press Validate for detail {authoredDetail}";
+                    ? $"{kind} preview ready"+(authoredDetail>0?$" · runtime patch detail {authoredDetail}":"")
+                    : $"{kind} preview ready · runtime limits need attention";
             }
-            else
-            {
-                Problems(result.Validation());
-            }
+            else Problems(result.Validation());
         });
         private Task Validate()=>Work("Validating",async(p,token)=>
         {
@@ -1058,7 +1097,7 @@ namespace MphRead.Mods.Launcher.Gui
             // Invalid runtime budgets should not make the authoring viewport
             // disappear. If geometry compiled, show it and keep the errors as
             // build blockers.
-            if(p.Definition.Import!=null&&result.Faces.Length>0)_viewport?.SetImported(result);
+            if((p.Definition.Import!=null||p.Definition.NativeRoom!=null)&&result.Faces.Length>0)_viewport?.SetImported(result);
         });
         private Task Navigation()=>Work("Generating navigation",async(p,token)=>
         {
