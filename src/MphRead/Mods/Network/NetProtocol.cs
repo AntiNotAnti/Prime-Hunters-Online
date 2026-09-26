@@ -1344,6 +1344,14 @@ namespace MphRead.Mods.Network
         /// Samus' legal base damage.
         /// </summary>
         public const byte FlagBoosting = 1 << 2;
+        /// <summary>
+        /// The owner successfully spawned a real weapon shot during this life.
+        /// Kept set until the next spawn so packet loss or reconnection cannot
+        /// resurrect protection. The authority may trust this only to REMOVE
+        /// spawn protection, which can never benefit a dishonest sender, and
+        /// lifecycle fencing prevents an old-life report from touching a respawn.
+        /// </summary>
+        public const byte FlagSpawnProtectionReleased = 1 << 3;
 
         /// <summary>
         /// Whether the sender included the block at all. False for a client
@@ -1591,9 +1599,12 @@ namespace MphRead.Mods.Network
         public ushort SlotGeneration;
         public ushort LifeId;
         private const int HalfturretOffset = 54 + DamageEvent.Size * DamageHistory;
+        private const byte AuxHalfturretActive = 1 << 0;
+        private const byte AuxSpawnProtected = 1 << 1;
         private const int JumpPadEventOffset = HalfturretOffset + 3;
         public const int Size = JumpPadEventOffset + 2;
         public bool HalfturretActive;
+        public bool SpawnProtected;
         public ushort HalfturretHealth;
         /// <summary>
         /// Monotonic per-player launch sequence. Remote clients use this to play
@@ -1731,7 +1742,8 @@ namespace MphRead.Mods.Network
             BinaryPrimitives.WriteUInt16LittleEndian(dest[48..], SlotGeneration);
             BinaryPrimitives.WriteUInt16LittleEndian(dest[50..], LifeId);
             BinaryPrimitives.WriteUInt16LittleEndian(dest[52..], DamageEventId);
-            dest[HalfturretOffset] = HalfturretActive ? (byte)1 : (byte)0;
+            dest[HalfturretOffset] = (byte)((HalfturretActive ? AuxHalfturretActive : 0)
+                | (SpawnProtected ? AuxSpawnProtected : 0));
             BinaryPrimitives.WriteUInt16LittleEndian(dest[(HalfturretOffset + 1)..], HalfturretHealth);
             BinaryPrimitives.WriteUInt16LittleEndian(dest[JumpPadEventOffset..], JumpPadEventId);
             for (int i = 0; i < DamageHistory; i++)
@@ -1742,6 +1754,7 @@ namespace MphRead.Mods.Network
 
         public static PlayerState Read(ReadOnlySpan<byte> src)
         {
+            byte auxiliary = src[HalfturretOffset];
             var state = new PlayerState
             {
                 SlotIndex = src[0],
@@ -1758,7 +1771,8 @@ namespace MphRead.Mods.Network
                 SlotGeneration = BinaryPrimitives.ReadUInt16LittleEndian(src[48..]),
                 LifeId = BinaryPrimitives.ReadUInt16LittleEndian(src[50..]),
                 DamageEventId = BinaryPrimitives.ReadUInt16LittleEndian(src[52..]),
-                HalfturretActive = src[HalfturretOffset] != 0,
+                HalfturretActive = (auxiliary & AuxHalfturretActive) != 0,
+                SpawnProtected = (auxiliary & AuxSpawnProtected) != 0,
                 HalfturretHealth = BinaryPrimitives.ReadUInt16LittleEndian(src[(HalfturretOffset + 1)..]),
                 JumpPadEventId = BinaryPrimitives.ReadUInt16LittleEndian(src[JumpPadEventOffset..]),
                 Damage0 = DamageEvent.Read(src[54..]),
@@ -2257,8 +2271,13 @@ namespace MphRead.Mods.Network
         /// Remote clients no longer have to infer a pad crossing from sampled
         /// puppet positions, so a lost snapshot cannot silently drop the launch
         /// cue. Mixed peers must be refused because PlayerState grew by two bytes.
+        /// Version 24 turns PlayerState's existing turret-active byte into a bitfield:
+        /// bit 0 remains Weavel turret activity and bit 1 carries authoritative
+        /// spawn-protection state. It also spends a spare ShotFlags bit on a
+        /// life-fenced successful-shot release signal. Mixed v23/v24 peers must be
+        /// refused because those existing bytes now have new gameplay semantics.
         /// </summary>
-        public const int ProtocolVersion = 23;
+        public const int ProtocolVersion = 24;
         /// <summary>
         /// Frames between intent packets. One, so every frame.
         ///

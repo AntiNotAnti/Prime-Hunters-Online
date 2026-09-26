@@ -306,6 +306,11 @@ namespace MphRead.Entities
             {
                 _spawnInvulnTimer--;
             }
+            if (_matchSpawnProtectionTimer > 0)
+            {
+                _matchSpawnProtectionTimer--;
+            }
+            ModTickSpawnProtectionPresentation();
             if (_disruptedTimer > 0)
             {
                 _disruptedTimer--;

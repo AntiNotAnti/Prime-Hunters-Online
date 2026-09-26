@@ -339,17 +339,17 @@ namespace MphRead.Entities
 
         private bool ShouldFlashSpawnProtection()
         {
-            if (!_scene.GameState.Multiplayer || !_scene.GameState.SpawnProtection
-                || _spawnInvulnTimer == 0 || _health <= 0
+            if (!ModMatchSpawnProtectionActive
                 || Flags2.TestFlag(PlayerFlags2.Cloaking)
                 || BrightSkinStatusOverride || BrightSkinFrozenOverlay)
             {
                 return false;
             }
 
-            int remaining = Math.Min(_spawnInvulnTimer, MatchSpawnProtectionFrames);
-            int elapsed = MatchSpawnProtectionFrames - remaining;
-            return (elapsed / SpawnProtectionFlashHalfPeriodFrames & 1) == 0;
+            // Presentation has its own local clock. Protection truth comes from
+            // the authority, but a cosmetic pulse does not need its remaining
+            // frame count and therefore cannot drift the gameplay timer.
+            return (ModSpawnProtectionVisualTicks / SpawnProtectionFlashHalfPeriodFrames & 1) == 0;
         }
 
         private void GetDrawItems(ModelInstance inst, Node node, float alpha, int polygonId = -1, int recolor = -1,

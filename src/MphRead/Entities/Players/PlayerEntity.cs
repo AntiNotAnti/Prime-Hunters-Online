@@ -452,7 +452,11 @@ namespace MphRead.Entities
         private float _lostOctolithSpeed;
         private const ushort MatchSpawnProtectionFrames = 3 * 60;
         private ushort _damageInvulnTimer = 0;
+        // The engine's original short invulnerability timer is also used by
+        // scripted/bot states. Keep the custom multiplayer rule separate so an
+        // AI flag cannot accidentally shorten a three-second match protection.
         private ushort _spawnInvulnTimer = 0;
+        private ushort _matchSpawnProtectionTimer = 0;
         private ushort _camSwitchTimer = 0;
         private ushort _doubleDmgTimer = 0;
         public bool DoubleDamage => _doubleDmgTimer > 0;
@@ -615,6 +619,8 @@ namespace MphRead.Entities
             _bombAmmo = 3;
             _damageInvulnTimer = 0;
             _spawnInvulnTimer = 0;
+            _matchSpawnProtectionTimer = 0;
+            ModResetSpawnProtectionReplication();
             _abilities = AbilityFlags.None;
             _walkSfxTimer = 0;
             _walkSfxIndex = 0;
@@ -940,13 +946,19 @@ namespace MphRead.Entities
             _bombRefillTimer = 0;
             _bombAmmo = 3;
             _damageInvulnTimer = 0;
+            _matchSpawnProtectionTimer = 0;
+            ModResetSpawnProtectionReplication();
             if (IsBot && _scene.GameState.SinglePlayer)
             {
                 _spawnInvulnTimer = 0;
             }
             else if (_scene.GameState.Multiplayer)
             {
-                _spawnInvulnTimer = _scene.GameState.SpawnProtection
+                // The Project Prime rule is its own timer. _spawnInvulnTimer is
+                // also used by native scripted/AI invulnerability and must not be
+                // allowed to overwrite or extend this match rule.
+                _spawnInvulnTimer = 0;
+                _matchSpawnProtectionTimer = _scene.GameState.SpawnProtection
                     ? MatchSpawnProtectionFrames : (ushort)0;
             }
             else
@@ -1778,7 +1790,10 @@ namespace MphRead.Entities
                 }
                 CamSeqEntity.CancelCurrent(_scene);
             }
-            if (_spawnInvulnTimer > 0 && !flags.TestFlag(DamageFlags.Death) && !flags.TestFlag(DamageFlags.IgnoreInvuln))
+            if ((_spawnInvulnTimer > 0 || ModMatchSpawnProtectionActive)
+                && !flags.TestFlag(DamageFlags.Death)
+                && !flags.TestFlag(DamageFlags.IgnoreInvuln)
+                && !Mods.Network.NetDamage.Replaying)
             {
                 return;
             }

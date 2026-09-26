@@ -8,9 +8,11 @@ claim grace, smoothing, and the 45-frame production rewind limit are unchanged.
 
 ## Combat state
 
-`PlayerState` is 117 bytes. Its final three bytes contain `HalfturretActive` and
-little-endian `HalfturretHealth`. Fast replication and WorldBootstrap use the
-same canonical fields; the maximum eight-player fast datagram is 927 bytes.
+`PlayerState` is 119 bytes. Its final five bytes contain one auxiliary bitfield
+(bit 0 `HalfturretActive`, bit 1 authoritative `SpawnProtected`), little-endian
+`HalfturretHealth`, and the 16-bit `JumpPadEventId`. Fast replication and
+WorldBootstrap use the same canonical fields; the maximum eight-player fast
+datagram is 943 bytes.
 Generation/life acceptance precedes application. Form transitions create the
 entity. A health update never creates one. A predicted destroyed turret remains
 an inert, hidden replica while its owner is alive in alt form, allowing a newer

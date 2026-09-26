@@ -25,6 +25,7 @@ namespace MphRead.NetTest
                     _ => { }, () => { }, initializeRuntime: false);
                 Wire();
                 PresentationStateSafety();
+                SpawnProtectionState();
                 ClientAuthorityPacketsRejected();
                 StateMachine();
                 LoopbackAdmission();
@@ -63,11 +64,14 @@ namespace MphRead.NetTest
         private static void Wire()
         {
             Check(NetUnlagged.PressAgeEnabled, "recovered trigger pulls include their age by default");
-            Check(PlayerState.Size == 117, "compact player wire size includes four event history entries");
+            Check(PlayerState.Size == 119, "compact player wire size includes four event history entries and jump-pad sequence");
             Check(1 + SnapshotHeader.Size + PlayerState.Size * PlayerEntity.SlotCapacity <= NetConfig.MaxPacketSize
                 && NetConfig.MaxPacketSize <= 1472, "eight-player snapshot fits one Ethernet UDP datagram");
             byte[] buffer = new byte[NetConfig.MaxPacketSize];
             var state = State(ushort.MaxValue, 99, 65400);
+            state.SpawnProtected = true;
+            state.HalfturretActive = false;
+            state.JumpPadEventId = 65534;
             state.DamageEventId = 65535;
             state.Damage3 = new DamageEvent { EventId = 65535,
                 AttackerSlot = 0, AttackerGeneration = 123, Damage = 32,
@@ -76,17 +80,26 @@ namespace MphRead.NetTest
             PlayerState read = PlayerState.Read(buffer);
             Check(read.LifeId == 65535 && read.SlotGeneration == 65400 && read.Damage3.Damage == 32
                 && (read.Damage3.Direction - state.Damage3.Direction).Length < 0.0002f
-                && read.Damage3.AttackerGeneration == 123 && read.AttackerSlot == 0,
-                "player and damage event round trip");
+                && read.Damage3.AttackerGeneration == 123 && read.AttackerSlot == 0
+                && read.SpawnProtected && !read.HalfturretActive && read.JumpPadEventId == 65534,
+                "player, damage, jump-pad and spawn-protection state round trip");
+            state.SpawnProtected = false;
+            state.HalfturretActive = true;
+            state.Write(buffer);
+            read = PlayerState.Read(buffer);
+            Check(!read.SpawnProtected && read.HalfturretActive,
+                "spawn protection and Weavel turret activity use independent bits");
             var intent = new IntentPacket { MatchId = 51, AuthorityEpoch = 9, SlotGeneration = 22,
                 LifeId = 65535, Frame = uint.MaxValue, Position = state.Position, Aim = state.Facing,
-                ChargeLevel = 99, ShotFlags = 2, HomingTarget = 0x82, AckSubFrame = 77,
-                MoveX = 48, MoveY = -64 };
+                ChargeLevel = 99, ShotFlags = (byte)(2 | IntentPacket.FlagSpawnProtectionReleased),
+                HomingTarget = 0x82, AckSubFrame = 77, MoveX = 48, MoveY = -64 };
             intent.Write(buffer);
             IntentPacket input = IntentPacket.Read(buffer.AsSpan(0, IntentPacket.FullSize));
             Check(input.MatchId == 51 && input.AuthorityEpoch == 9 && input.SlotGeneration == 22
                 && input.LifeId == 65535 && input.ChargeLevel == 99 && input.HomingTarget == 0x82
-                && input.AckSubFrame == 77 && input.HasAnalogMove && input.MoveX == 48 && input.MoveY == -64, "intent round trip");
+                && (input.ShotFlags & IntentPacket.FlagSpawnProtectionReleased) != 0
+                && input.AckSubFrame == 77 && input.HasAnalogMove && input.MoveX == 48 && input.MoveY == -64,
+                "intent and spawn-protection release round trip");
             var claim = new HitClaimPacket { MatchId = 51, AuthorityEpoch = 3, ShooterGeneration = 5,
                 ShooterLifeId = 8, VictimGeneration = 10, VictimLifeId = 9, HitPoint = state.Position,
                 ClaimId = 65535, Damage = 127, LaunchFrame = 72,
@@ -149,6 +162,62 @@ namespace MphRead.NetTest
                 BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(player, Array.Empty<object>());
             Check(player.HudDisruptedState == 3 && (ushort)disruptionTimer.GetValue(player)! == 0,
                 "zero disruption timer cannot underflow into a stuck distorted HUD");
+        }
+
+        private static void SpawnProtectionState()
+        {
+            _scene.GameState.Mode = GameMode.Battle;
+            _scene.GameState.SpawnProtection = true;
+            PlayerEntity player = Player(1, 99);
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            FieldInfo matchTimer = typeof(PlayerEntity).GetField("_matchSpawnProtectionTimer", flags)!;
+            FieldInfo nativeTimer = typeof(PlayerEntity).GetField("_spawnInvulnTimer", flags)!;
+            PropertyInfo active = typeof(PlayerEntity).GetProperty("ModMatchSpawnProtectionActive", flags)!;
+            MethodInfo reset = typeof(PlayerEntity).GetMethod("ModResetSpawnProtectionReplication", flags)!;
+            MethodInfo authority = typeof(PlayerEntity).GetMethod("ModSetSpawnProtectionFromAuthority", flags)!;
+            MethodInfo release = typeof(PlayerEntity).GetMethod("ModReleaseSpawnProtection", flags)!;
+            MethodInfo releaseNetwork = typeof(PlayerEntity).GetMethod("ModReleaseSpawnProtectionFromNetwork", flags)!;
+            MethodInfo report = typeof(PlayerEntity).GetMethod("ModReportSpawnProtectionReleased", flags)!;
+
+            reset.Invoke(player, Array.Empty<object>());
+            matchTimer.SetValue(player, (ushort)180);
+            Check((bool)active.GetValue(player)!, "fresh local match timer presents spawn protection");
+
+            authority.Invoke(player, new object[] { false });
+            // Recreate the old join-in-progress failure: a replayed Spawn() had
+            // started a brand-new local 180-frame timer even though the server
+            // said this life was already vulnerable.
+            matchTimer.SetValue(player, (ushort)180);
+            Check(!(bool)active.GetValue(player)!,
+                "authoritative unprotected state defeats stale join-in-progress timer");
+
+            reset.Invoke(player, Array.Empty<object>());
+            matchTimer.SetValue(player, (ushort)180);
+            authority.Invoke(player, new object[] { true });
+            Check((bool)active.GetValue(player)!, "authoritative protected state is presented");
+            releaseNetwork.Invoke(player, Array.Empty<object>());
+            Check(!(bool)active.GetValue(player)! && (ushort)matchTimer.GetValue(player)! == 0,
+                "successful-shot network signal releases authority protection immediately");
+
+            reset.Invoke(player, Array.Empty<object>());
+            matchTimer.SetValue(player, (ushort)180);
+            release.Invoke(player, Array.Empty<object>());
+            bool persistent = true;
+            for (int i = 0; i < 64; i++)
+            {
+                persistent &= (bool)report.Invoke(player, Array.Empty<object>())!;
+            }
+            Check(persistent,
+                "successful shot release remains reportable for the rest of the life");
+            reset.Invoke(player, Array.Empty<object>());
+            Check(!(bool)report.Invoke(player, Array.Empty<object>())!,
+                "new life clears the previous life's successful-shot release");
+
+            reset.Invoke(player, Array.Empty<object>());
+            matchTimer.SetValue(player, (ushort)0);
+            nativeTimer.SetValue(player, (ushort)2);
+            Check(!(bool)active.GetValue(player)!,
+                "native scripted invulnerability is not advertised as match spawn protection");
         }
 
         private static void LoopbackAdmission()
