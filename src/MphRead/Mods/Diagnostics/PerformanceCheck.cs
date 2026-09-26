@@ -44,7 +44,7 @@ namespace MphRead.Mods.Diagnostics
                 RenderOptions.ShowFps = false;
 
                 MapAudit.DrawRate = 1;
-                MapAudit.PerformanceHz = Math.Clamp(presentationHz, 30, 240);
+                MapAudit.PerformanceHz = Math.Clamp(presentationHz, 60, 240);
                 MapAudit.WindowSize = new Vector2i(1920, 1080);
                 MapAudit.PerformanceMode = true;
                 MapAudit.PerformanceOutput = output ?? DefaultOutput(MapAudit.PerformanceHz);
