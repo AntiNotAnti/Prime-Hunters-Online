@@ -4178,12 +4178,12 @@ namespace MphRead.Entities
                 int lines = HudMessageLineCount(native);
                 float scale = native.Scale <= 0 ? 1 : native.Scale;
                 float spacing = Math.Max(1, native.FontSize) * scale;
-                float top = native.Position.Y - CombatNotificationCollisionPad;
+                float nativeTop = native.Position.Y - CombatNotificationCollisionPad;
                 float bottom = native.Position.Y
                     + (lines - 1) * spacing
                     + CombatNotificationGlyphHeight * scale
                     + CombatNotificationCollisionPad;
-                occupied.Add((top, bottom));
+                occupied.Add((nativeTop, bottom));
             }
 
             float totalHeight = CombatLaneHeight(lane);
