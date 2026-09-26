@@ -591,14 +591,24 @@ namespace MphRead.Mods.Launcher.Gui
         private void RequestMatchLoadIfNeeded()
         {
             if (_matchRequestIssued || !NetSession.ShouldLoadMatch) return;
+
+            // The coordinator hydrates a newly assigned lobby immediately. During
+            // join-in-progress that tick can arrive while StartScreen is still
+            // wiring the gameplay handoff. Do not consume the one-shot request
+            // until somebody is actually listening for it.
+            EventHandler<LaunchPlan>? handler = MatchRequested;
+            if (handler == null) return;
+
             _matchRequestIssued = true;
             _startAfterSave = false;
-            _status.Text = "Loading match... waiting for all players.";
+            _status.Text = NetSession.IsPlaying
+                ? "Joining match in progress..."
+                : "Loading match... waiting for all players.";
             _ready.IsEnabled = false;
             _start.IsEnabled = false;
             Suspend();
             MatchDefinition match = NetSession.ActiveMatchDefinition!.Value;
-            MatchRequested?.Invoke(this, new LaunchPlan
+            handler.Invoke(this, new LaunchPlan
             {
                 Kind = LaunchKind.Online,
                 Hunter = NetSession.LocalHunter,

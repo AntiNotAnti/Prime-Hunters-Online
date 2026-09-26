@@ -102,7 +102,13 @@ namespace MphRead.Mods.Launcher.Gui
                         Match = new MatchDefinition { RoomKey = "MP1 SANCTORUS", Mode = GameMode.Battle }
                     });
                     var lobby = new LobbyScreen(new[] { "MP1 SANCTORUS" });
-                    using var coordinator = new LobbySessionCoordinator { Screen = lobby };
+                    using var coordinator = new LobbySessionCoordinator();
+                    coordinator.Start();
+                    coordinator.Screen = lobby;
+                    Check(!lobby.IsSuspended,
+                        "early in-progress hydration waits for the gameplay handoff subscriber");
+                    coordinator.Stop();
+
                     int requests = 0;
                     lobby.MatchRequested += (_, plan) =>
                     {

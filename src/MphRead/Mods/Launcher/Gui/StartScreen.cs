@@ -287,7 +287,6 @@ namespace MphRead.Mods.Launcher.Gui
             {
                 _spectateNextMatch = plan.Spectate;
                 _lobby = new LobbyScreen(_rooms, plan.Lobby) { Overlays = _prime.Overlays };
-                _session.Screen = _lobby;
                 _lobby.HubRequested += (_, _) => _prime.Router.Navigate(PrimeRoute.News);
                 _lobby.MatchRequested += (_, match) =>
                 {
@@ -300,6 +299,10 @@ namespace MphRead.Mods.Launcher.Gui
                 _lobby.Closed += (_, reason) => LobbyClosed(reason);
                 _prime.Workspaces.Set(PrimeRoute.Lobby, _lobby);
                 _prime.Router.Navigate(PrimeRoute.Lobby); _prime.Refresh();
+                // Assign the coordinator only after every handoff event is wired.
+                // Screen assignment performs an immediate hydration tick, and an
+                // already-running match can request its scene during that tick.
+                _session.Screen = _lobby;
             }
             else Finish(plan);
         }
