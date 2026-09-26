@@ -18,6 +18,8 @@ namespace MphRead
 
     public class MenuSettings()
     {
+        // Missing in pre-migration files, so zero deliberately means legacy.
+        public int SettingsSchemaVersion { get; set; }
         public string RoomKey { get; set; } = "MP3 PROVING GROUND";
         public string Mode { get; set; } = "auto-select";
         public string Player1 { get; set; } = "Samus 0";

@@ -201,7 +201,7 @@ namespace MphRead.Mods.Launcher.Gui
                     shell.Back(); Check(resumed && !shell.Overlays.IsOpen, "Back dispatches overlay cancellation semantics");
                     shell.Router.Navigate(PrimeRoute.Settings); Drain(window);
                     var settings = (SettingsView)shell.Workspaces.Content!;
-                    Check(settings.GetVisualDescendants().OfType<PrimeTabButton>().Count() == 7
+                    Check(settings.GetVisualDescendants().OfType<PrimeTabButton>().Count() == 8
                         && !settings.GetVisualDescendants().OfType<Control>().Any(c =>
                             c.GetValue(ControllerNav.NavIdProperty)?.StartsWith("settings.detail.Display", StringComparison.OrdinalIgnoreCase) == true),
                         "shell settings has one category strip without a duplicate sidebar");

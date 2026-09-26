@@ -1699,11 +1699,25 @@ namespace MphRead
                     }
                     if (settings.MenuSettings != null)
                     {
-                        return settings.MenuSettings;
+                        MenuSettings menu = settings.MenuSettings;
+                        if (SettingsMigration.Apply(menu, out string migration))
+                        {
+                            DebugLog.Line("settings", migration);
+                            try { CommitSettings(menu); }
+                            catch (Exception ex)
+                            {
+                                DebugLog.Line("settings", "could not persist migration: " + ex.Message);
+                            }
+                        }
+                        return menu;
                     }
                 }
             }
-            return new MenuSettings();
+            var defaults = new MenuSettings
+            {
+                SettingsSchemaVersion = SettingsMigration.CurrentSchema
+            };
+            return defaults;
         }
 
         public void CommitSettings(MenuSettings menuSettings)

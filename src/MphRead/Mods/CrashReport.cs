@@ -111,6 +111,7 @@ namespace MphRead.Mods
             text.AppendLine($"base={AppContext.BaseDirectory}");
             text.AppendLine($"command line={Environment.CommandLine}");
             text.AppendLine($"source={source}");
+            DebugLog.AppendRecent(text);
             text.AppendLine();
             text.AppendLine(ex.ToString());
             // Named .log because LogArchive gathers "*.log", and this has to

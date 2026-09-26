@@ -30,11 +30,7 @@ namespace MphRead.Mods
     /// what the driver calls itself, and the stack of anything that killed the
     /// process.
     ///
-    /// On by default, on every platform, and switchable off by the one switch
-    /// in the corner of the launcher, which stays where it is left. It costs a
-    /// file handle, a lock per line and a directory that grows; a crash report
-    /// with nothing behind it costs more. See
-    /// <see cref="Launcher.LauncherPrefs.DebugLogs"/>.
+    /// A small in-memory ring is always kept for crash reports. Persistent disk\n    /// logging is opt-in: normal gameplay does not synchronously write every\n    /// diagnostic line. See\n    /// <see cref="Launcher.LauncherPrefs.DebugLogs"/>.
     /// </summary>
     public static class DebugLog
     {
@@ -42,9 +38,13 @@ namespace MphRead.Mods
         private static readonly object _lock = new();
         private static bool _hooked;
         private static bool _forced;
+        private static bool _initialized;
         private static TextWriter? _consoleWas;
+        private const int RecentLimit = 2048;
+        private static readonly Queue<string> _recent = new();
+        private static int _linesSinceFlush;
 
-        /// <summary>Whether lines are going anywhere.</summary>
+        /// <summary>Whether persistent disk logging is active.</summary>
         public static bool Active => _writer != null;
 
         /// <summary>Where the file ended up, for the launcher to show.</summary>
@@ -62,11 +62,35 @@ namespace MphRead.Mods
         public static void Force() => _forced = true;
 
         /// <summary>
+        /// Start the memory-only diagnostic session. This does no file I/O.
+        /// </summary>
+        public static void Initialize()
+        {
+            if (_initialized) return;
+            _initialized = true;
+            WriteHeader();
+        }
+
+        /// <summary>Append the recent in-memory diagnostic ring to a crash report.</summary>
+        public static void AppendRecent(StringBuilder text)
+        {
+            lock (_lock)
+            {
+                if (_recent.Count == 0) return;
+                text.AppendLine();
+                text.AppendLine("Recent Project Prime diagnostics:");
+                foreach (string line in _recent) text.AppendLine(line);
+            }
+        }
+
+
+        /// <summary>
         /// Start logging if it has been asked for. Safe to call as often as
         /// anybody likes: the second call does nothing.
         /// </summary>
         public static void Attach()
         {
+            Initialize();
             if (_writer != null || (!_forced && !LauncherPrefs.DebugLogs))
             {
                 return;
@@ -89,7 +113,15 @@ namespace MphRead.Mods
                 // that is about to crash.
                 var stream = new FileStream(Path, FileMode.Create, FileAccess.Write,
                     FileShare.ReadWrite);
-                _writer = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true };
+                _writer = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = false };
+                lock (_lock)
+                {
+                    foreach (string line in _recent)
+                    {
+                        _writer.WriteLine(line);
+                    }
+                    _writer.Flush();
+                }
             }
             catch (Exception ex)
             {
@@ -101,7 +133,6 @@ namespace MphRead.Mods
             }
             Hook();
             CaptureNativeErrors();
-            WriteHeader();
         }
 
         /// <summary>Where native stderr was sent, if it was.</summary>
@@ -382,31 +413,37 @@ namespace MphRead.Mods
                 + "/" + System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture;
         }
 
-        /// <summary>One line, with a category in front of it. Cheap when off.</summary>
+        /// <summary>
+        /// One diagnostic line. Memory-only capture is always available; disk
+        /// logging is optional and flushed in small batches.
+        /// </summary>
         public static void Line(string category, string message)
         {
-            if (_writer == null)
-            {
-                return;
-            }
+            string line = $"[{DateTime.Now:HH:mm:ss.fff}] [{category}] {message}";
             lock (_lock)
             {
-                _writer?.WriteLine(
-                    $"[{DateTime.Now:HH:mm:ss.fff}] [{category}] {message}");
+                _recent.Enqueue(line);
+                while (_recent.Count > RecentLimit) _recent.Dequeue();
+                if (_writer != null)
+                {
+                    _writer.WriteLine(line);
+                    if (++_linesSinceFlush >= 32)
+                    {
+                        _writer.Flush();
+                        _linesSinceFlush = 0;
+                    }
+                }
             }
         }
 
         /// <summary>An exception and everything under it, indented.</summary>
         public static void Exception(string category, Exception? ex)
         {
-            if (_writer == null || ex == null)
-            {
-                return;
-            }
+            if (ex == null) return;
             Line(category, $"{ex.GetType().FullName}: {ex.Message}");
-            lock (_lock)
+            if (!String.IsNullOrWhiteSpace(ex.StackTrace))
             {
-                _writer?.WriteLine(ex.StackTrace);
+                Line(category, ex.StackTrace!);
             }
             if (ex.InnerException != null)
             {

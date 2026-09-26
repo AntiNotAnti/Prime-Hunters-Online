@@ -25,6 +25,7 @@ namespace MphRead.Mods.Launcher
         public static string Directory { get; set; } = Platform.AppPaths.UserDataDirectory;
 
         private static string Path => System.IO.Path.Combine(Directory, "launcher.txt");
+        private const int CurrentPreferencesSchema = 1;
 
         /// <summary>
         /// The project's own server, so that a fresh install can press "play
@@ -196,19 +197,13 @@ namespace MphRead.Mods.Launcher
         /// Whether the program writes a file of everything it can say about
         /// itself. See <see cref="Mods.DebugLog"/>.
         ///
-        /// On, everywhere, and switchable off in the corner of the front
-        /// screen.
-        ///
-        /// It used to be off and asked for, which reads as the careful choice
-        /// and is the wrong one: the reports it exists to answer -- a crash
-        /// while a map loads, on a machine nobody here can plug in -- are
-        /// exactly the ones where nobody thought to turn it on beforehand, and
-        /// asking a player to reproduce a crash with logging enabled is asking
-        /// them to hit it twice. It costs a directory that grows and a lock on
-        /// every line printed; that is a cheaper price than a bug report
-        /// nobody can act on.
+        /// Off by default for disk I/O. A bounded in-memory diagnostic ring is
+        /// still always available to CrashReport, so ordinary gameplay keeps
+        /// useful failure context without locking and flushing a file for every
+        /// diagnostic line. Turn this on when a persistent session transcript
+        /// is specifically needed.
         /// </summary>
-        public static bool DebugLogs { get; set; } = true;
+        public static bool DebugLogs { get; set; } = false;
 
         /// <summary>Replay library soft limit. Zero means unlimited.</summary>
         public static int ReplayStorageLimitGb { get; set; } = 10;
@@ -230,6 +225,7 @@ namespace MphRead.Mods.Launcher
             }
             try
             {
+                int loadedSchema = 0;
                 foreach (string raw in File.ReadAllLines(Path))
                 {
                     string line = raw.Trim();
@@ -242,6 +238,13 @@ namespace MphRead.Mods.Launcher
                     string value = line[(split + 1)..].Trim();
                     switch (key)
                     {
+                        case "prefs_schema":
+                            if (Int32.TryParse(value, NumberStyles.Integer,
+                                CultureInfo.InvariantCulture, out int schema))
+                            {
+                                loadedSchema = Math.Max(0, schema);
+                            }
+                            break;
                         case "favorite_servers":
                             FavoriteServers.Clear();
                             foreach (string endpoint in value.Split('|', StringSplitOptions.RemoveEmptyEntries))
@@ -537,6 +540,20 @@ namespace MphRead.Mods.Launcher
                             break;
                     }
                 }
+
+                if (loadedSchema < CurrentPreferencesSchema)
+                {
+                    // Pre-schema launcher files were written while disk debug
+                    // logging defaulted on. That is exactly the state that
+                    // makes an upgraded install do more steady-state I/O than
+                    // a fresh install, so converge it once. A player who wants
+                    // a persistent transcript can turn it back on afterwards.
+                    if (loadedSchema == 0)
+                    {
+                        DebugLogs = false;
+                    }
+                    Save();
+                }
             }
             catch (Exception)
             {
@@ -577,6 +594,7 @@ namespace MphRead.Mods.Launcher
                 File.WriteAllLines(Path, new[]
                 {
                     $"# {Branding.Name} launcher preferences.",
+                    $"prefs_schema={CurrentPreferencesSchema.ToString(CultureInfo.InvariantCulture)}",
                     $"server_address={ServerAddress}",
                     $"favorite_servers={string.Join("|", FavoriteServers)}",
                     $"server_port={ServerPort.ToString(CultureInfo.InvariantCulture)}",

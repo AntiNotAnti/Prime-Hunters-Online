@@ -834,7 +834,9 @@ namespace MphRead.Entities
             }
             _unloadModel = null;
             LoaderDoor = null;
-            GC.Collect(generation: 2, GCCollectionMode.Forced, blocking: false, compacting: true);
+            // Let the runtime schedule Gen 2 collection. Forcing a compacting
+            // collection here turned room transitions into avoidable frame-time
+            // spikes on machines already under memory or storage pressure.
             _scene.GameState.TransitionState = TransitionState.None;
             _scene.GameState.TransitionRoomId = -1;
         }

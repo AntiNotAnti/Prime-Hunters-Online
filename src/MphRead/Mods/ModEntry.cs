@@ -194,6 +194,7 @@ namespace MphRead.Mods
             if (!HasFlag(args, "spireposecheck") && !HasFlag(args, "formcheck"))
             {
                 Update.DesktopUpdate.Clean();
+                Maintenance.RunStartup();
             }
             // And the desktop's own installer, unless a platform head has
             // already put its own in place.
@@ -1499,6 +1500,41 @@ namespace MphRead.Mods
                 }
                 Environment.ExitCode = Network.ServerSimCheck.Run(simCheck, simPlayers,
                     simSeconds, simMode, formCheck: HasFlag(args, "formcheck"));
+                return true;
+            }
+
+            if (HasFlag(args, "perfcheck"))
+            {
+                string perfRoom = ValueAfter(args, "perfcheck") ?? "MP3 PROVING GROUND";
+                if (perfRoom.StartsWith('-')) perfRoom = "MP3 PROVING GROUND";
+                int perfPlayers = 8;
+                if (ValueAfter(args, "players") is string perfPlayerValue
+                    && Int32.TryParse(perfPlayerValue, out int parsedPerfPlayers))
+                {
+                    perfPlayers = parsedPerfPlayers;
+                }
+                double perfSeconds = 20;
+                if (ValueAfter(args, "seconds") is string perfSecondsValue
+                    && Double.TryParse(perfSecondsValue,
+                        System.Globalization.CultureInfo.InvariantCulture, out double parsedPerfSeconds))
+                {
+                    perfSeconds = parsedPerfSeconds;
+                }
+                int perfHz = 60;
+                if (ValueAfter(args, "hz") is string perfHzValue
+                    && Int32.TryParse(perfHzValue, out int parsedPerfHz))
+                {
+                    perfHz = parsedPerfHz;
+                }
+                else if (ValueAfter(args, "drawrate") is string perfDrawValue
+                    && Int32.TryParse(perfDrawValue, out int parsedPerfDraw))
+                {
+                    // Compatibility with the first version of -perfcheck.
+                    perfHz = parsedPerfDraw * 60;
+                }
+                Environment.ExitCode = Diagnostics.PerformanceCheck.Run(
+                    perfRoom, perfPlayers, perfSeconds, perfHz,
+                    ValueAfter(args, "output"));
                 return true;
             }
 

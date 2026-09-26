@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
 using System.Text;
+using System.Text.Json;
 using MphRead.Entities;
 using OpenTK.Graphics.OpenGL;
 using OpenTK.Mathematics;
@@ -53,6 +57,18 @@ namespace MphRead.Mods.Network
         private readonly bool[] _everBurned = new bool[PlayerEntity.SlotCapacity];
         private readonly bool[] _everDisrupted = new bool[PlayerEntity.SlotCapacity];
         private double _lowestY = Double.MaxValue;
+
+        // Performance-mode samples are work times, not wall-clock frame
+        // intervals: hidden audit windows do not wait on a monitor.
+        private readonly List<double> _perfDrawMs = new();
+        private readonly List<double> _perfSimulationMs = new();
+        private long _perfAllocatedBytes;
+        private int _performanceDrawAccumulator;
+        private readonly int[] _perfGcStart =
+        {
+            GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2)
+        };
+
 
         // The render probe. A map whose geometry does not draw is a map that
         // passes every check above -- the players spawn, the pads fire, the
@@ -256,6 +272,19 @@ namespace MphRead.Mods.Network
         /// </summary>
         public static int DrawRate { get; set; } = 1;
 
+        /// <summary>Skip intrusive render sampling and emit timing JSON.</summary>
+        public static bool PerformanceMode { get; set; }
+
+        /// <summary>
+        /// Presentation cadence for PerformanceMode. The simulation remains 60 Hz;
+        /// e.g. 144 yields 12 draws across each five simulation steps.
+        /// </summary>
+        public static int PerformanceHz { get; set; } = 60;
+
+        /// <summary>Optional JSON destination for <see cref="PerformanceMode"/>.</summary>
+        public static string? PerformanceOutput { get; set; }
+
+
         /// <summary>
         /// What -size WxH asked for, before the window is built.
         ///
@@ -352,18 +381,41 @@ namespace MphRead.Mods.Network
             // One simulation step, then however many pictures of it were
             // asked for. _frame counts steps, not pictures, so -seconds still
             // means seconds of game and every existing probe keeps its timing.
+            long simStarted = PerformanceMode ? Stopwatch.GetTimestamp() : 0;
             Scene.OnSimulationFrame();
+            if (PerformanceMode)
+            {
+                _perfSimulationMs.Add(Stopwatch.GetElapsedTime(simStarted).TotalMilliseconds);
+            }
             ulong frameCountBefore = Scene.FrameCount;
-            int draws = Math.Max(1, DrawRate);
+            int draws;
+            if (PerformanceMode)
+            {
+                _performanceDrawAccumulator += Math.Clamp(PerformanceHz, 60, 240);
+                draws = Math.Max(1, _performanceDrawAccumulator / 60);
+                _performanceDrawAccumulator -= draws * 60;
+            }
+            else
+            {
+                draws = Math.Max(1, DrawRate);
+            }
             (ulong Signature, int TrailCount) previousTrail = default;
             for (int i = 0; i < draws; i++)
             {
+                long drawStarted = PerformanceMode ? Stopwatch.GetTimestamp() : 0;
+                long allocatedBefore = PerformanceMode ? GC.GetAllocatedBytesForCurrentThread() : 0;
                 Scene.OnDrawFrame();
                 if (!Scene.OnRenderFrame())
                 {
                     return;
                 }
-                if (DrawRate > 1)
+                if (PerformanceMode)
+                {
+                    _perfDrawMs.Add(Stopwatch.GetElapsedTime(drawStarted).TotalMilliseconds);
+                    _perfAllocatedBytes += Math.Max(0,
+                        GC.GetAllocatedBytesForCurrentThread() - allocatedBefore);
+                }
+                if (draws > 1)
                 {
                     var trail = Scene.ModLockjawTrailSignature();
                     if (i > 0 && (trail.TrailCount > 0 || previousTrail.TrailCount > 0))
@@ -427,7 +479,7 @@ namespace MphRead.Mods.Network
             Drive();
             StepScoreboard();
             Observe();
-            SampleRender();
+            if (!PerformanceMode) SampleRender();
             SwapBuffers();
             Scene.AfterRenderFrame();
             base.OnRenderFrame(args);
@@ -1397,10 +1449,14 @@ namespace MphRead.Mods.Network
                     + $" ({_litSamples} samples)");
             }
             Console.WriteLine(line.ToString());
+            if (PerformanceMode) ReportPerformance();
 
-            if (DrawRate > 1)
+            if (DrawRate > 1 || (PerformanceMode && PerformanceHz > 60))
             {
-                Console.WriteLine($"FRAMETIMING {_room} | {DrawRate} draws per step"
+                string cadence = PerformanceMode
+                    ? $"{Math.Clamp(PerformanceHz, 60, 240)} Hz presentation"
+                    : $"{DrawRate} draws per step";
+                Console.WriteLine($"FRAMETIMING {_room} | {cadence}"
                     + $" | {_frame} steps, {Scene.FrameCount} counted"
                     + $" | draws advancing the game: {_drawAdvancedTheGame}"
                     + $" | active Lockjaw trail checks: {_lockjawTrailChecks}"
@@ -1419,6 +1475,14 @@ namespace MphRead.Mods.Network
             }
             int lockjawFailures = (_lockjawTrailMismatches > 0 ? 1 : 0)
                 + (_lockjawDrawRngChanges > 0 ? 1 : 0);
+
+            // PerformanceCheck uses MapAudit as a real renderer workload, not
+            // as a content correctness audit. Keep draw-purity failures, but do
+            // not let unrelated map probes make a valid timing run exit nonzero.
+            if (PerformanceMode)
+            {
+                return lockjawFailures;
+            }
 
             if (_itemProbe)
             {
@@ -1523,6 +1587,76 @@ namespace MphRead.Mods.Network
             return problems.Count + lockjawFailures;
         }
 
+        private void ReportPerformance()
+        {
+            if (_perfDrawMs.Count == 0) return;
+            double[] draw = _perfDrawMs.OrderBy(value => value).ToArray();
+            double[] simulation = _perfSimulationMs.OrderBy(value => value).ToArray();
+            double avg = _perfDrawMs.Average();
+            double p50 = Percentile(draw, 0.50);
+            double p95 = Percentile(draw, 0.95);
+            double p99 = Percentile(draw, 0.99);
+            double p999 = Percentile(draw, 0.999);
+            double oneLow = p99 > 0 ? 1000.0 / p99 : 0;
+            double pointOneLow = p999 > 0 ? 1000.0 / p999 : 0;
+            double allocated = _perfAllocatedBytes / (double)_perfDrawMs.Count;
+            int gen0 = GC.CollectionCount(0) - _perfGcStart[0];
+            int gen1 = GC.CollectionCount(1) - _perfGcStart[1];
+            int gen2 = GC.CollectionCount(2) - _perfGcStart[2];
+            double simP99 = simulation.Length == 0 ? 0 : Percentile(simulation, 0.99);
+
+            Console.WriteLine($"PERF {_room} | draws {_perfDrawMs.Count} | rate {DrawRate}x60 presentation"
+                + $" | draw avg {avg:0.000} ms p50 {p50:0.000} p95 {p95:0.000}"
+                + $" p99 {p99:0.000} p99.9 {p999:0.000}"
+                + $" | 1% low {oneLow:0.0} fps 0.1% low {pointOneLow:0.0} fps"
+                + $" | sim p99 {simP99:0.000} ms | allocated {allocated:0} B/draw"
+                + $" | GC {gen0}/{gen1}/{gen2}");
+
+            var document = new
+            {
+                Version = 1,
+                Build = Update.BuildVersion.Display,
+                Room = _room,
+                Players = _players,
+                Seconds = _seconds,
+                Width = ClientSize.X,
+                Height = ClientSize.Y,
+                RenderScale = RenderOptions.ResolutionScale,
+                DrawRate = DrawRate,
+                PresentationHz = Math.Clamp(PerformanceHz, 60, 240),
+                DrawRate = Math.Clamp(PerformanceHz, 60, 240) / 60.0,
+                DrawSamples = _perfDrawMs.Count,
+                DrawAverageMs = avg,
+                DrawP50Ms = p50,
+                DrawP95Ms = p95,
+                DrawP99Ms = p99,
+                DrawP999Ms = p999,
+                OnePercentLowFps = oneLow,
+                PointOnePercentLowFps = pointOneLow,
+                SimulationP99Ms = simP99,
+                AllocatedBytesPerDraw = allocated,
+                Gen0Collections = gen0,
+                Gen1Collections = gen1,
+                Gen2Collections = gen2
+            };
+            if (!String.IsNullOrWhiteSpace(PerformanceOutput))
+            {
+                string path = Path.GetFullPath(PerformanceOutput!);
+                string? directory = Path.GetDirectoryName(path);
+                if (!String.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+                File.WriteAllText(path, JsonSerializer.Serialize(document,
+                    new JsonSerializerOptions { WriteIndented = true }));
+                Console.WriteLine($"PERFJSON {path}");
+            }
+        }
+
+        private static double Percentile(double[] sorted, double percentile)
+        {
+            if (sorted.Length == 0) return 0;
+            int index = (int)Math.Ceiling(percentile * sorted.Length) - 1;
+            return sorted[Math.Clamp(index, 0, sorted.Length - 1)];
+        }
+
         /// <summary>
         /// Which hunter slot 0 -- the one whose eyes and whose HUD every
         /// capture is taken through -- plays as.
@@ -1543,7 +1677,8 @@ namespace MphRead.Mods.Network
         {
             MapAudit? window = null;
             BombEntity.ModLockjawDrawRngChanges = 0;
-            BombEntity.ModAuditLockjawDrawRng = DrawRate > 1;
+            BombEntity.ModAuditLockjawDrawRng = DrawRate > 1
+                || (PerformanceMode && PerformanceHz > 60);
             try
             {
                 window = new MapAudit(room, Math.Clamp(players, 1, PlayerEntity.SlotCapacity),

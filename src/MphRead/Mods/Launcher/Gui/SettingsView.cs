@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -23,7 +25,7 @@ namespace MphRead.Mods.Launcher.Gui
     /// the same strip of names across the top, the same two marks in the
     /// bottom corners.
     ///
-    /// Seven pages: Display, Graphics, Audio, Controls, Replays, Profile, Credits. There is no
+    /// Eight pages: Display, Graphics, Audio, Controls, Replays, Profile, Maintenance, Credits. There is no
     /// "Match rules" page -- point goal, time limit, damage, team play,
     /// friendly fire, hunter radar, affinity weapons and shadow freeze are
     /// not exposed here at all any more, and stay at whatever
@@ -573,6 +575,7 @@ namespace MphRead.Mods.Launcher.Gui
             "Controls" => Color.FromRgb(0x86, 0xb8, 0xff),
             "Replays" => Color.FromRgb(0xa7, 0x9b, 0xf5),
             "Profile" => HubTheme.Warm,
+            "Maintenance" => Color.FromRgb(0xf0, 0xb4, 0x63),
             "Credits" => HubTheme.TextDim,
             _ => HubTheme.Accent
         };
@@ -585,6 +588,7 @@ namespace MphRead.Mods.Launcher.Gui
             "Controls" => "Keyboard, mouse, controller, touch and stylus.",
             "Replays" => "Instant clips, replay storage and playback controls.",
             "Profile" => "Player identity, hunter, servers, updates and game files.",
+            "Maintenance" => "Verify the install, clean reproducible caches and diagnose performance.",
             "Credits" => "Project attribution, community contributors and technology.",
             _ => ""
         };
@@ -674,7 +678,7 @@ namespace MphRead.Mods.Launcher.Gui
         }
 
         /// <summary>
-        /// Seven pages: display, graphics, audio, controls, replays, profile and credits.
+        /// Eight pages: display, graphics, audio, controls, replays, profile, maintenance and credits.
         /// </summary>
         private void BuildPages()
         {
@@ -684,7 +688,212 @@ namespace MphRead.Mods.Launcher.Gui
             BuildControls(AddSection("Controls"));
             BuildReplays(AddSection("Replays"));
             BuildLauncher(AddSection("Profile"));
+            BuildMaintenance(AddSection("Maintenance"));
             BuildCredits(AddSection("Credits"));
+        }
+
+        private void BuildMaintenance(StackPanel page)
+        {
+            Heading(page, "Installation");
+            var status = Explain(page, Maintenance.PerformanceSummary(_settings));
+            var storage = Explain(page, Maintenance.StorageSummary());
+
+            var verify = new HubNavButton("VERIFY INSTALLATION",
+                "Check every release-owned file without touching player data", compact: true)
+            {
+                MinHeight = 48,
+                Margin = new Thickness(0, 6, 0, 4)
+            };
+            ControllerNav.Identify(verify, "settings.maintenance.verify");
+            verify.Click += (_, _) =>
+            {
+                status.Text = Update.DesktopUpdate.VerifyInstallation();
+            };
+            page.Children.Add(verify);
+
+            var clean = new HubNavButton("CLEAN TEMPORARY CACHE",
+                "Prune old map builds, replay materializations and stale previews", compact: true)
+            {
+                MinHeight = 48,
+                Margin = new Thickness(0, 4, 0, 4)
+            };
+            ControllerNav.Identify(clean, "settings.maintenance.clean");
+            clean.Click += async (_, _) =>
+            {
+                clean.IsEnabled = false;
+                status.Text = "Cleaning reproducible caches...";
+                MaintenanceReport report = await Task.Run(Maintenance.CleanReproducibleData);
+                status.Text = report.Summary;
+                storage.Text = Maintenance.StorageSummary();
+                clean.IsEnabled = true;
+            };
+            page.Children.Add(clean);
+
+            var clearMaps = new HubNavButton("CLEAR MAP BUILD CACHE",
+                "Remove compiled map binaries; they are rebuilt on demand", compact: true)
+            {
+                MinHeight = 48,
+                Margin = new Thickness(0, 4, 0, 4)
+            };
+            ControllerNav.Identify(clearMaps, "settings.maintenance.clear-map-cache");
+            clearMaps.Click += async (_, _) =>
+            {
+                clearMaps.IsEnabled = false;
+                MaintenanceReport report = await Task.Run(Maintenance.ClearMapBuildCache);
+                status.Text = report.Summary;
+                storage.Text = Maintenance.StorageSummary();
+                clearMaps.IsEnabled = true;
+            };
+            page.Children.Add(clearMaps);
+
+            var rebuildThumbs = new HubNavButton("REBUILD MAP THUMBNAILS",
+                "Clear previews and render every available arena again", compact: true)
+            {
+                MinHeight = 48,
+                Margin = new Thickness(0, 4, 0, 4),
+                IsEnabled = !_inGame && ThumbnailHost.CanRender
+            };
+            ControllerNav.Identify(rebuildThumbs, "settings.maintenance.rebuild-thumbnails");
+            rebuildThumbs.Click += async (_, _) =>
+            {
+                rebuildThumbs.IsEnabled = false;
+                MaintenanceReport cleared = await Task.Run(Maintenance.ClearThumbnails);
+                status.Text = cleared.Summary + " Rebuilding previews...";
+                status.Text = await RunThumbnailRebuild();
+                storage.Text = Maintenance.StorageSummary();
+                rebuildThumbs.IsEnabled = !_inGame && ThumbnailHost.CanRender;
+            };
+            page.Children.Add(rebuildThumbs);
+            Explain(page, "Cleanup never deletes settings, controls, saves, extracted cartridge data, real replays, custom maps or user media.");
+
+            Heading(page, "Performance");
+            var reset = new HubNavButton("RESET PERFORMANCE SETTINGS",
+                "Return rendering and frame pacing to clean-install defaults", compact: true)
+            {
+                MinHeight = 48,
+                Margin = new Thickness(0, 6, 0, 4)
+            };
+            ControllerNav.Identify(reset, "settings.maintenance.reset-performance");
+            reset.Click += (_, _) =>
+            {
+                _resolutionScale.Value = 100;
+                _fovRow.Value = RenderOptions.DefaultFov;
+                _lightingRow.On = true;
+                _fogRow.On = true;
+                _filteringRow.On = false;
+                _mipmapRow.On = false;
+                _anisotropyRow.Index = 0;
+                _fpsRow.On = false;
+                _smoothNativeHud.On = true;
+                _fpsLimitRow.Value = FpsLimitStopIndex(FrameTiming.DisplayRate);
+                _celRow.On = false;
+                _celBandsRow.Value = 8;
+                _celEdgeRow.Value = 50;
+                ShowTextureQualityRows();
+                ShowCelRows();
+                status.Text = "Performance settings reset in this draft. Apply changes to save them.";
+            };
+            page.Children.Add(reset);
+
+            var benchmark = new HubNavButton("RUN PERFORMANCE DIAGNOSTIC",
+                "20-second 1080p / 144 Hz-equivalent bot workload with JSON frame-time results", compact: true)
+            {
+                MinHeight = 48,
+                Margin = new Thickness(0, 4, 0, 4),
+                IsEnabled = !_inGame && !OperatingSystem.IsAndroid()
+            };
+            ControllerNav.Identify(benchmark, "settings.maintenance.perf");
+            benchmark.Click += async (_, _) =>
+            {
+                benchmark.IsEnabled = false;
+                status.Text = "Running performance diagnostic in an isolated process...";
+                status.Text = await RunPerformanceDiagnostic();
+                benchmark.IsEnabled = !_inGame && !OperatingSystem.IsAndroid();
+                storage.Text = Maintenance.StorageSummary();
+            };
+            page.Children.Add(benchmark);
+            if (_inGame)
+            {
+                Explain(page, "Performance diagnostics are available from the launcher so the benchmark does not compete with a live match.");
+            }
+            else if (OperatingSystem.IsAndroid())
+            {
+                Explain(page, "The isolated desktop performance harness is not available on Android; Android frame pacing continues to use its device-side diagnostics.");
+            }
+
+            Heading(page, "Current effective settings");
+            Explain(page, Maintenance.PerformanceSummary(_settings));
+            Explain(page, "Command-line equivalent: ProjectPrime -perfcheck \"MP3 PROVING GROUND\" -seconds 20 -hz 144");
+        }
+
+        private static async Task<string> RunThumbnailRebuild()
+        {
+            try
+            {
+                if (!ThumbnailHost.CanRender)
+                    return "Thumbnail rendering is not available on this platform.";
+                int written = await ThumbnailHost.RenderMissingAsync(
+                    line => DebugLog.Line("thumbnails", line));
+                int missing = ThumbnailGenerator.MissingThumbnails().Count;
+                return missing == 0
+                    ? $"Map thumbnails rebuilt ({written} rendered)."
+                    : $"Rendered {written} thumbnail(s); {missing} still unavailable.";
+            }
+            catch (Exception ex)
+            {
+                return "Thumbnail rebuild failed: " + ex.Message;
+            }
+        }
+
+        private static async Task<string> RunPerformanceDiagnostic()
+        {
+            try
+            {
+                string? executable = Environment.ProcessPath;
+                if (String.IsNullOrEmpty(executable))
+                {
+                    return "Could not locate the Project Prime executable.";
+                }
+                string directory = Path.Combine(LauncherPrefs.Directory, "perf");
+                Directory.CreateDirectory(directory);
+                string output = Path.Combine(directory,
+                    $"perf-manual-{DateTime.Now:yyyyMMdd-HHmmss}.json");
+                var start = new ProcessStartInfo(executable)
+                {
+                    WorkingDirectory = AppContext.BaseDirectory,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+                start.ArgumentList.Add("-perfcheck");
+                start.ArgumentList.Add("MP3 PROVING GROUND");
+                start.ArgumentList.Add("-seconds");
+                start.ArgumentList.Add("20");
+                start.ArgumentList.Add("-hz");
+                start.ArgumentList.Add("144");
+                start.ArgumentList.Add("-output");
+                start.ArgumentList.Add(output);
+                using Process? process = Process.Start(start);
+                if (process == null) return "Could not start the performance diagnostic.";
+                string stdout = await process.StandardOutput.ReadToEndAsync();
+                string stderr = await process.StandardError.ReadToEndAsync();
+                await process.WaitForExitAsync();
+                if (process.ExitCode != 0)
+                {
+                    string detail = stderr.Trim().Length > 0 ? stderr.Trim()
+                        : stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.Trim() ?? "";
+                    return "Performance diagnostic failed"
+                        + (detail.Length > 0 ? ": " + detail : ".");
+                }
+                return File.Exists(output)
+                    ? "Performance report saved to " + output
+                    : "Performance diagnostic completed, but no JSON report was written.";
+            }
+            catch (Exception ex)
+            {
+                return "Performance diagnostic failed: " + ex.Message;
+            }
         }
 
         /// <summary>
