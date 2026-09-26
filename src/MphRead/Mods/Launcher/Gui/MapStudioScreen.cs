@@ -413,6 +413,10 @@ namespace MphRead.Mods.Launcher.Gui
             });AddButton(buttons,"Cancel",Dismiss);Refresh();Modal(view);
         }
         private sealed record BrowserRow(string Path){public override string ToString()=>(Directory.Exists(Path)?"[folder] ":"")+System.IO.Path.GetFileName(Path);}
+        private sealed record PrefabRow(string Path,int Objects,int Materials)
+        {
+            public override string ToString()=>$"{System.IO.Path.GetFileNameWithoutExtension(Path)} · {Objects} objects · {Materials} materials";
+        }
         private void AddObject(string kind)
         {
             _document?.EditObjects("Create "+kind,Array.Empty<Guid>(),d=>
@@ -618,13 +622,34 @@ namespace MphRead.Mods.Launcher.Gui
         {
             if(_document==null)return;
             string directory=Path.Combine(CustomRooms.MapDirectory,".prefabs");
-            var panel=new StackPanel{Spacing=8};panel.Children.Add(Text("INSERT PREFAB"));
-            var list=new ListBox{MaxHeight=340};
-            list.ItemsSource=Directory.Exists(directory)?Directory.EnumerateFiles(directory,"*.json")
-                .OrderBy(Path.GetFileName).Select(p=>new BrowserRow(p)).ToArray():Array.Empty<BrowserRow>();
-            panel.Children.Add(list);
+            var panel=new StackPanel{Spacing=8};panel.Children.Add(Text("PREFAB BROWSER"));
+            var search=new TextBox{PlaceholderText="Search prefabs"};panel.Children.Add(search);
+            var list=new ListBox{MaxHeight=340};panel.Children.Add(list);
+            PrefabRow[] ReadRows()
+            {
+                if(!Directory.Exists(directory))return Array.Empty<PrefabRow>();
+                var rows=new List<PrefabRow>();
+                foreach(string path in Directory.EnumerateFiles(directory,"*.json"))
+                {
+                    try
+                    {
+                        var d=MapDefinition.Load(path);
+                        int count=d.Geometry.Count+d.Brushes.Count+d.Spawns.Count+d.Items.Count+d.JumpPads.Count+d.NavigationLinks.Count;
+                        rows.Add(new(path,count,d.Materials.Count));
+                    }
+                    catch(Exception ex) when(ex is IOException or InvalidDataException or UnauthorizedAccessException or System.Text.Json.JsonException or ProgramException or ArgumentException){ }
+                }
+                return rows.OrderByDescending(r=>_studioState.RecentPrefabs.Contains(r.Path,StringComparer.OrdinalIgnoreCase))
+                    .ThenBy(r=>System.IO.Path.GetFileName(r.Path),StringComparer.OrdinalIgnoreCase).ToArray();
+            }
+            var rows=ReadRows();list.ItemsSource=rows;
+            search.TextChanged+=(_,_)=>
+            {
+                string q=(search.Text??"").Trim();
+                list.ItemsSource=rows.Where(r=>q.Length==0||r.ToString().Contains(q,StringComparison.OrdinalIgnoreCase)).ToArray();
+            };
             AddButton(panel,"Insert",()=>{
-                if(list.SelectedItem is not BrowserRow row)return;
+                if(list.SelectedItem is not PrefabRow row)return;
                 try
                 {
                     string root=_document.Project.Definition.BaseDirectory??CustomRooms.MapDirectory;
@@ -637,10 +662,15 @@ namespace MphRead.Mods.Launcher.Gui
                         _document.Selection.Clear();foreach(Guid id in inserted.ObjectIds)_document.Selection.Add(id);
                         _document.SelectionChanged();_viewport?.FrameSelection();
                     }
+                    _studioState.RecentPrefabs.RemoveAll(p=>p.Equals(row.Path,StringComparison.OrdinalIgnoreCase));
+                    _studioState.RecentPrefabs.Insert(0,row.Path);
+                    if(_studioState.RecentPrefabs.Count>12)_studioState.RecentPrefabs.RemoveRange(12,_studioState.RecentPrefabs.Count-12);
+                    MapStudioStateStore.Save(_document.Project.Definition,_studioState);
                     Dismiss();_status.Text=$"Inserted {inserted?.ObjectIds.Count??0} prefab objects.";
                 }
                 catch(Exception ex){Failure(ex);}
             });
+            AddButton(panel,"Refresh",()=>{rows=ReadRows();list.ItemsSource=rows;});
             AddButton(panel,"Cancel",Dismiss);Modal(panel);
         }
         private void NavigationInspector()
