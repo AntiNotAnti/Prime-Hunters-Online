@@ -69,6 +69,12 @@ namespace MphRead.Mods.MapGen
         public MapNativeRoomSource? NativeRoom { get; set; }
 
         /// <summary>
+        /// Optional runtime spatial-partition policy. Null means automatic
+        /// render partitioning with portal culling disabled.
+        /// </summary>
+        public MapPartitionSettings? Partitioning { get; set; }
+
+        /// <summary>
         /// Collision read from a Wavefront OBJ, replacing whatever the
         /// geometry would have produced. See <see cref="MapCollision"/>.
         /// </summary>
@@ -165,6 +171,22 @@ namespace MphRead.Mods.MapGen
         {
             return JsonSerializer.Serialize(this, _options);
         }
+    }
+
+    public sealed class MapPartitionSettings
+    {
+        public bool Enabled { get; set; } = true;
+        public float CellSize { get; set; } = 64f;
+        public int FaceThreshold { get; set; } = 8192;
+        public int MaxVerticesPerDisplayList { get; set; } = 60000;
+        /// <summary>
+        /// Generate virtual room-part portals between adjacent spatial cells.
+        /// Applied only when every generated part belongs to one connected
+        /// adjacency graph; otherwise the compiler safely falls back to one
+        /// room part while retaining render partitioning.
+        /// </summary>
+        public bool PortalCulling { get; set; }
+        public float PortalVerticalMargin { get; set; } = 6f;
     }
 
     public sealed class MapNativeRoomSource
