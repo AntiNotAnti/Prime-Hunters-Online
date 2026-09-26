@@ -39,7 +39,7 @@ namespace MphRead.Mods.Input
             int b = (a + 1) & 7;
             float t = position - MathF.Floor(position);
             float radius = Radius(a) + (Radius(b) - Radius(a)) * t;
-            radius = Math.Clamp(radius, .65f, 1.25f);
+            radius = Math.Clamp(radius, .65f, 1.45f);
             float corrected = Math.Clamp(length / radius, 0, 1);
             float scale = corrected / length;
             return (x * scale, y * scale);
