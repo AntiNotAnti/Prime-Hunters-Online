@@ -371,7 +371,7 @@ namespace MphRead.Mods.Network
             _pendingLoadedScene = null;
             NetTelemetry.NewMatch();
             NetHealthSync.BeginRoom();
-            NetPlayerSetup.Reset(); SpectatorMode.Reset(); NetMatchSync.Reset();
+            NetPlayerSetup.Reset(); SpectatorMode.Reset(preservePreference: true); NetMatchSync.Reset();
             NetSlotManager.Reset(); NetDamage.Reset(resetSessionTotals: false);
             if (!preserveRoomChange) NetRoomChange.Reset();
             NetMatchEnd.Reset();
