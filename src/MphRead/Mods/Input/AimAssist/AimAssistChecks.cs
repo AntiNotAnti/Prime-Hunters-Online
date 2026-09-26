@@ -648,7 +648,7 @@ namespace MphRead.Mods.Input.AimAssist
             var profile = AimAssistWeaponProfile.For(BeamType.PowerBeam);
             var budgetState = new AimAssistState();
             var budgetTarget = new AimAssistTarget(1, 1, new(.8f, 0), new(3, 3), 12, true, false,
-                BodyRegion: new(.6f, 1f, -.3f, .3f),
+                BodyRegion: new(.4f, 1.2f, -.5f, .5f),
                 BodySurface: new(new(.8f, 0), false), BodyVisibility: 1);
             float assistTotal = 0;
             AimAssistResult budgetResult = default;
