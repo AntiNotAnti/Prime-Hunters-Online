@@ -2318,7 +2318,7 @@ namespace MphRead
                 return null;
             }
             byte[] buffer = new byte[width * height * 3];
-            GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, _frameBuffer);
+            GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, GraphicsReadFramebuffer());
             GL.ReadBuffer(ReadBufferMode.ColorAttachment0);
             GL.PixelStore(PixelStoreParameter.PackAlignment, 1);
             GL.ReadPixels(0, 0, width, height, PixelFormat.Rgb, PixelType.UnsignedByte, buffer);
@@ -2356,8 +2356,9 @@ namespace MphRead
         /// </summary>
         private void UpdateDepthAttachment(Vector2i target)
         {
-            bool want = !_depthTextureRefused && Mods.RenderOptions.CelShading
-                && Mods.RenderOptions.CelEdge > 0;
+            bool want = !_depthTextureRefused
+                && ((Mods.RenderOptions.CelShading && Mods.RenderOptions.CelEdge > 0)
+                    || Mods.RenderOptions.NeedsReadableDepth);
             if (want == (_depthTexture != 0))
             {
                 return;
@@ -2913,6 +2914,10 @@ namespace MphRead
                 this.Players.Main.DrawHudModels();
                 UnsetHudLayerUniforms();
             }
+
+            // Process the completed scene target before it is presented. The full
+            // visor/HUD is still drawn afterwards at window resolution.
+            ApplyGraphicsPostProcess();
 
             // After the weapon, so it is drawn around too, and before the
             // target is put on screen, so the helmet and the HUD are not.
