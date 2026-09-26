@@ -29,6 +29,8 @@ namespace MphRead.Entities
         private static readonly Vector4 _stylusInk = new Vector4(0.85f, 0.30f, 0.30f, 1);
         private static readonly Vector4 _stylusFill = new Vector4(0.55f, 0.16f, 0.16f, 1);
         private static readonly Vector4 _stylusLit = new Vector4(1f, 0.72f, 0.35f, 1);
+        private static readonly StylusZone.Button _stylusEquippedWeaponSlot =
+            Array.Find(StylusZone.Buttons, button => button.Region == StylusRegion.Weapons);
 
         private int _stylusBottomTexture = -1;
         private int _stylusAltTexture = -1;
@@ -113,9 +115,21 @@ namespace MphRead.Entities
                 float height = StylusZone.Height * 192f;
                 if (width > 1 && height > 1)
                 {
-                    int nativeTexture = _hudWeaponMenuOpen
-                        ? _stylusWeaponSelectTexture
-                        : IsAltForm ? _stylusAltTexture : _stylusBottomTexture;
+                    // Never fall out of the native overlay just because one
+                    // of the state-specific cartridge layers cannot be decoded.
+                    // The normal lower screen is a complete, aligned fallback;
+                    // the old red guide is only the final fallback when no
+                    // native lower-screen art exists at all.
+                    int nativeTexture = _stylusBottomTexture;
+                    if (_hudWeaponMenuOpen && _stylusWeaponSelectTexture > 0)
+                    {
+                        nativeTexture = _stylusWeaponSelectTexture;
+                    }
+                    else if (IsAltForm && _stylusAltTexture > 0)
+                    {
+                        nativeTexture = _stylusAltTexture;
+                    }
+
                     bool nativeAvailable = !StylusZone.Placing && StylusZone.NativeUi
                         && nativeTexture > 0;
                     if (nativeAvailable)
@@ -127,6 +141,16 @@ namespace MphRead.Entities
                             // not a photographic thumbnail.
                             _scene.DrawHudTexture(left, top, left + width, top + height,
                                 nativeTexture, alpha, smooth: false);
+
+                            // The large WPN square is a live control on the DS:
+                            // it shows the weapon in your hands and tapping it
+                            // advances to the next one. The background owns the
+                            // box; the icon is dynamic OAM art and therefore is
+                            // not present in the decoded tilemap itself.
+                            if (!_hudWeaponMenuOpen && nativeTexture == _stylusBottomTexture)
+                            {
+                                ModDrawStylusEquippedWeapon(alpha);
+                            }
                         }
                     }
 
@@ -172,6 +196,58 @@ namespace MphRead.Entities
             if (drawCursor)
             {
                 DrawStylusCursor();
+            }
+        }
+
+        /// <summary>
+        /// Draw the weapon currently in the player's hands into the native
+        /// WPN button. The button's centre comes from the same StylusZone
+        /// geometry that owns its hit test, so the icon cannot drift away
+        /// from the control after moving or resizing the zone.
+        /// </summary>
+        private void ModDrawStylusEquippedWeapon(float alpha)
+        {
+            int index = (int)CurrentWeapon;
+            if (index < 0 || index >= _weaponListIcons.Length
+                || index > (int)BeamType.OmegaCannon)
+            {
+                return;
+            }
+            HudObjectInstance icon = _weaponListIcons[index];
+            if (icon == null || _stylusEquippedWeaponSlot.Region != StylusRegion.Weapons)
+            {
+                return;
+            }
+
+            IconBounds bounds = _weaponListIconBounds[index];
+            // About half the WPN button's 60-DS-pixel diameter. The source
+            // art itself is ~20 pixels across, so this keeps it comfortably
+            // inside the frame while remaining recognizable at low opacity.
+            float side = 34f * StylusZone.Height;
+            float scale = side / Math.Max(bounds.Width, bounds.Height);
+            float aspect = HudAspectFix;
+            float centerX = (StylusZone.Left
+                + _stylusEquippedWeaponSlot.X / StylusZone.DsWidth * StylusZone.Width) * 256f;
+            float centerY = (StylusZone.Top
+                + _stylusEquippedWeaponSlot.Y / StylusZone.DsHeight * StylusZone.Height) * 192f;
+
+            float oldX = icon.PositionX;
+            float oldY = icon.PositionY;
+            float oldAlpha = icon.Alpha;
+            try
+            {
+                Mods.Render.SmoothHudIcon.Tint(icon, _weaponListSheetData, index,
+                    _weaponListColors[index], _scene);
+                icon.Alpha = alpha;
+                icon.PositionX = (centerX - bounds.CentreX * scale * aspect) / 256f;
+                icon.PositionY = (centerY - bounds.CentreY * scale) / 192f;
+                _scene.DrawHudObject(icon, mode: 1, scale: scale);
+            }
+            finally
+            {
+                icon.PositionX = oldX;
+                icon.PositionY = oldY;
+                icon.Alpha = oldAlpha;
             }
         }
 
