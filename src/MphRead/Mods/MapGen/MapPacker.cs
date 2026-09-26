@@ -258,9 +258,8 @@ namespace MphRead.Mods.MapGen
 
         internal static RenderLayoutEstimate EstimateRenderLayout(BuiltMap map)
         {
-            IEnumerable<IGrouping<(int X,int Y,int Z),BuiltFace>> groups = map.Faces.Count<RenderPartitionThreshold
-                ? new[]{map.Faces.GroupBy(_=>(0,0,0)).Single()}
-                : map.Faces.GroupBy(FaceCell);
+            IEnumerable<IGrouping<(int X,int Y,int Z),BuiltFace>> groups =
+                map.Faces.GroupBy(face=>map.Faces.Count<RenderPartitionThreshold?(0,0,0):FaceCell(face));
             int partitions=0,meshes=0,vertices=0;long bytes=0;
             foreach(var chunk in groups)
             {
