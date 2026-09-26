@@ -24,6 +24,9 @@ namespace MphRead.Mods.MapGen
         // the immutable BSP portion so the editor can cache it separately.
         public int ImportedFaceCount { get; set; }
         public int ImportedCollisionFaceCount { get; set; }
+        public int ImportedPatchCollisionLevel { get; set; } = -2;
+        public int ImportedPatchCollisionSourceFaces { get; set; }
+        public int ImportedPatchCollisionFaces { get; set; }
 
         public BuiltMap(MapDefinition definition)
         {

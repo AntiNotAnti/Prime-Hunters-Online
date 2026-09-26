@@ -680,6 +680,15 @@ namespace MphRead.Mods.Launcher.Gui
                 _inspector.Children.Add(Text("IMPORTED ARCHITECTURE + HYBRID AUTHORING"));
                 Field("Q3 units per world unit",import.UnitsPerUnit.ToString(CultureInfo.InvariantCulture),(m,s)=>m.Import!.UnitsPerUnit=Number(s));
                 Field("Patch detail (1–8)",import.PatchLevel.ToString(),(m,s)=>m.Import!.PatchLevel=int.Parse(s,CultureInfo.InvariantCulture));
+                var collisionPatch=new ComboBox
+                {
+                    ItemsSource=new[]{"Auto","Off","Level 1","Level 2","Level 3","Level 4","Level 5","Level 6","Level 7","Level 8"},
+                    SelectedIndex=import.CollisionPatchLevel<0?0:import.CollisionPatchLevel+1
+                };
+                _inspector.Children.Add(Text("Patch collision"));
+                _inspector.Children.Add(collisionPatch);
+                edits.Add(m=>m.Import!.CollisionPatchLevel=collisionPatch.SelectedIndex==0?-1:collisionPatch.SelectedIndex-1);
+                _inspector.Children.Add(Text("Auto keeps full patch collision when it fits, then tries level 1, then structural BSP brushes/clips only."));
                 foreach(var pair in new[]{("Use source spawns",import.KeepSpawns),("Keep player clips",import.KeepClip),("Keep sky",import.KeepSky),("Keep source pickups",import.KeepItems)})
                 {
                     var check=new CheckBox{Content=pair.Item1,IsChecked=pair.Item2};_inspector.Children.Add(check);

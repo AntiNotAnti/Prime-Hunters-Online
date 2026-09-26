@@ -77,6 +77,8 @@ namespace MphRead.Mods.MapGen
             int skipped = 0;
             int patches = 0;
             int patchTriangles = 0;
+            var fullPatchCollision = new List<BuiltFace>();
+            var patchCollisionSources = new List<Q3Face>();
             // The bounds the shell test below uses, taken from the level's
             // architecture only. Sky surfaces are drawn now, and they sit
             // outside everything: letting them widen this box would keep every
@@ -119,9 +121,11 @@ namespace MphRead.Mods.MapGen
                 }
                 (int width, int height) = textureSizes[material];
                 bool patch = face.Type == 2;
+                bool solidPatch = patch && (texture.Contents & Q3Bsp.ContentsSolid) != 0;
                 if (patch)
                 {
                     patches++;
+                    if (solidPatch) patchCollisionSources.Add(face);
                 }
                 foreach (BuiltFace built in patch
                     ? Tessellate(bsp, face, unit, width, height, material, sky, import.PatchLevel, cancellation)
@@ -145,14 +149,9 @@ namespace MphRead.Mods.MapGen
                             drawnMax = Vector3.ComponentMax(drawnMax, point);
                         }
                     }
-                    // A patch is where the level's curves are -- an archway, a
-                    // ramp, a pipe -- and in Quake its collision comes from the
-                    // patch itself rather than from a brush behind it. Skipping
-                    // them left a doorway you could see through and walk
-                    // through and an arch that was not there.
-                    if (patch && (texture.Contents & Q3Bsp.ContentsSolid) != 0)
+                    if (solidPatch)
                     {
-                        map.Solid.Add(built);
+                        fullPatchCollision.Add(built);
                     }
                 }
             }
@@ -266,6 +265,43 @@ namespace MphRead.Mods.MapGen
                     ToDirection(new[] { normal.X, normal.Y, normal.Z }), 0, 1f));
             }
 
+            int patchCollisionLevel = 0;
+            IReadOnlyList<BuiltFace> selectedPatchCollision = Array.Empty<BuiltFace>();
+            if (import.CollisionPatchLevel != 0 && fullPatchCollision.Count > 0)
+            {
+                if (import.CollisionPatchLevel == -1)
+                {
+                    if (MapBudgetValidator.CollisionFits(map.Solid.Concat(fullPatchCollision)))
+                    {
+                        patchCollisionLevel = import.PatchLevel;
+                        selectedPatchCollision = fullPatchCollision;
+                    }
+                    else
+                    {
+                        IReadOnlyList<BuiltFace> coarse = import.PatchLevel == 1
+                            ? fullPatchCollision
+                            : BuildPatchCollision(bsp, patchCollisionSources, unit, 1, cancellation);
+                        if (MapBudgetValidator.CollisionFits(map.Solid.Concat(coarse)))
+                        {
+                            patchCollisionLevel = 1;
+                            selectedPatchCollision = coarse;
+                        }
+                    }
+                }
+                else
+                {
+                    patchCollisionLevel = import.CollisionPatchLevel;
+                    selectedPatchCollision = patchCollisionLevel == import.PatchLevel
+                        ? fullPatchCollision
+                        : BuildPatchCollision(bsp, patchCollisionSources, unit,
+                            patchCollisionLevel, cancellation);
+                }
+            }
+            map.Solid.AddRange(selectedPatchCollision);
+            map.ImportedPatchCollisionLevel = patchCollisionLevel;
+            map.ImportedPatchCollisionSourceFaces = fullPatchCollision.Count;
+            map.ImportedPatchCollisionFaces = selectedPatchCollision.Count;
+
             // From here on, anything appended is Project Prime-authored
             // geometry rather than immutable BSP architecture. Keep the split
             // so the viewport can cache/rebuild each side independently.
@@ -321,6 +357,13 @@ namespace MphRead.Mods.MapGen
                     + $" ({shellBrushes} shell brushes outside the level left out,"
                     + $" {buried} sides buried inside other brushes"
                     + (clipBrushes > 0 ? $", {clipBrushes} invisible-wall brushes dropped" : "") + ")");
+                if (import.CollisionPatchLevel == -1 && patchCollisionLevel < import.PatchLevel
+                    && fullPatchCollision.Count > selectedPatchCollision.Count)
+                {
+                    Console.WriteLine(patchCollisionLevel == 0
+                        ? $"  patch collision auto-disabled: {fullPatchCollision.Count:N0} render patch triangles would exceed MPH collision budgets"
+                        : $"  patch collision auto-reduced: {fullPatchCollision.Count:N0} -> {selectedPatchCollision.Count:N0} faces at level {patchCollisionLevel}");
+                }
                 Bounds(map, out Vector3 min, out Vector3 max);
                 Console.WriteLine($"  extent {max.X - min.X:0.0} x {max.Y - min.Y:0.0} x {max.Z - min.Z:0.0} units"
                     + $" at {unit:0.#} Quake units each");
@@ -726,6 +769,19 @@ namespace MphRead.Mods.MapGen
                 }
             }
             return best == null ? import.DefaultMaterial : import.ShaderMaterials[best];
+        }
+
+        private static IReadOnlyList<BuiltFace> BuildPatchCollision(Q3Bsp bsp,
+            IReadOnlyList<Q3Face> sources, float unit, int level, CancellationToken cancellation)
+        {
+            var result = new List<BuiltFace>();
+            foreach (Q3Face face in sources)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                result.AddRange(Tessellate(bsp, face, unit, 1, 1, 0, false,
+                    level, cancellation));
+            }
+            return result;
         }
 
         /// <summary>

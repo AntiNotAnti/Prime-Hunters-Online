@@ -187,6 +187,7 @@ public static class Q3ImportService
                 merged.Import.KeepSpawns = previousImport.KeepSpawns;
                 merged.Import.KeepItems = previousImport.KeepItems;
                 merged.Import.PatchLevel = previousImport.PatchLevel;
+                merged.Import.CollisionPatchLevel = previousImport.CollisionPatchLevel;
                 merged.Import.TexScale = previousImport.TexScale;
                 merged.Import.DefaultMaterial = previousImport.DefaultMaterial;
                 merged.Import.ShaderMaterials = new Dictionary<string, int>(previousImport.ShaderMaterials,

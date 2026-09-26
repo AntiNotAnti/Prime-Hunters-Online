@@ -257,6 +257,14 @@ try
         grayTga[12] = 32; grayTga[14] = 32; grayTga[16] = 8; grayTga[17] = 0x20;
         for (int i = 18; i < grayTga.Length; i++) grayTga[i] = (byte)(i & 255);
         Check(MapTextureBake.BakeImage(grayTga).Length > 0, "grayscale Q3 texture bake");
+        var collisionTriangle=new BuiltFace(
+            new[]{new OpenTK.Mathematics.Vector3(0,0,0),new OpenTK.Mathematics.Vector3(1,0,0),new OpenTK.Mathematics.Vector3(0,0,1)},
+            new[]{OpenTK.Mathematics.Vector2.Zero,OpenTK.Mathematics.Vector2.Zero,OpenTK.Mathematics.Vector2.Zero},
+            OpenTK.Mathematics.Vector3.UnitY,0,1);
+        Check(MapBudgetValidator.CollisionFits(Enumerable.Repeat(collisionTriangle,10000)),
+            "collision fit accepts representable point-index load");
+        Check(!MapBudgetValidator.CollisionFits(Enumerable.Repeat(collisionTriangle,17000)),
+            "collision fit rejects 16-bit point-index overflow");
         stopped = false;
         try { Q3Bsp.Load("missing.bsp", null, cancelled.Token); }
         catch (OperationCanceledException) { stopped = true; }
