@@ -16,6 +16,106 @@ namespace MphRead.Mods.Input.AimAssist
         public static bool InsideRegion(AimAssistRegion region) => RegionError(region) == Vector2.Zero;
         public static float RegionDistance(AimAssistRegion region) => RegionError(region).Length();
 
+        public static Vector2 RegionHalfExtents(AimAssistRegion region)
+            => new(Math.Max(.05f, Math.Abs(region.Width) * .5f),
+                Math.Max(.05f, Math.Abs(region.Height) * .5f));
+
+        public static Vector2 NormalizeToRegion(Vector2 value, AimAssistRegion region)
+        {
+            Vector2 half = RegionHalfExtents(region);
+            return new(value.X / half.X, value.Y / half.Y);
+        }
+
+        public static Vector2 DenormalizeFromRegion(Vector2 value, AimAssistRegion region)
+        {
+            Vector2 half = RegionHalfExtents(region);
+            return new(value.X * half.X, value.Y * half.Y);
+        }
+
+        public static Vector2 NormalizedRegionError(AimAssistRegion region)
+            => NormalizeToRegion(RegionError(region), region);
+
+        public static Vector2 NormalizedBodyError(in AimAssistTarget target)
+            => target.BodyRegion is { } r ? NormalizeToRegion(BodyError(target), r) : BodyError(target);
+
+        public static Vector2 NormalizedHeadError(in AimAssistTarget target)
+            => target.HeadRegion is { } r ? NormalizeToRegion(HeadError(target), r) : HeadError(target);
+
+        public static float NormalizedSelectionDistance(in AimAssistTarget target,
+            AimAssistWeaponProfile profile)
+        {
+            if (VisibleHead(target, profile) && target.HeadRegion is { } hr)
+            {
+                Vector2 head = NormalizeToRegion(HeadError(target), hr);
+                if (!target.BodyVisible || target.BodyRegion is not { } br) return head.Length();
+                Vector2 body = NormalizeToRegion(BodyError(target), br);
+                return Math.Min(head.Length(), body.Length());
+            }
+            return target.BodyRegion is { } bodyRegion
+                ? NormalizeToRegion(BodyError(target), bodyRegion).Length()
+                : BodyError(target).Length();
+        }
+
+        /// <summary>
+        /// Critically damped second-order follower in target-relative coordinates.
+        /// Error is normalized by apparent target half-width/half-height so one
+        /// target radius means the same thing at four units or forty.
+        /// </summary>
+        public static Vector2 CriticallyDampedServo(ref Vector2 servoVelocity,
+            Vector2 error, Vector2 targetRelativeVelocity, AimAssistRegion? region,
+            float frequency, float dt, float maxSpeed)
+        {
+            if (!Finite(error) || !Finite(targetRelativeVelocity) || !float.IsFinite(dt)
+                || dt <= 0 || frequency <= 0 || maxSpeed <= 0)
+            {
+                servoVelocity = Vector2.Zero;
+                return Vector2.Zero;
+            }
+            Vector2 half = region is { } r ? RegionHalfExtents(r) : Vector2.One;
+            Vector2 normalizedError = new(error.X / half.X, error.Y / half.Y);
+            Vector2 normalizedTargetVelocity = new(targetRelativeVelocity.X / half.X,
+                targetRelativeVelocity.Y / half.Y);
+            Vector2 normalizedServoVelocity = new(servoVelocity.X / half.X,
+                servoVelocity.Y / half.Y);
+            float omega = Math.Clamp(frequency, 2, 30);
+            Vector2 acceleration = omega * omega * normalizedError
+                + 2 * omega * (normalizedTargetVelocity - normalizedServoVelocity);
+            servoVelocity += new Vector2(acceleration.X * half.X,
+                acceleration.Y * half.Y) * dt;
+            servoVelocity = ClampLength(servoVelocity, maxSpeed);
+            if (!Finite(servoVelocity)) servoVelocity = Vector2.Zero;
+            return servoVelocity * dt;
+        }
+
+        public static Vector2 FittedCameraVelocity(Vector2 newest, Vector2 oneBack,
+            Vector2 twoBack, Vector2 threeBack)
+            => (newest * 4 + oneBack * 3 + twoBack * 2 + threeBack) / 10f;
+
+        public static Vector2 FittedCameraAcceleration(Vector2 newest, Vector2 oneBack,
+            Vector2 twoBack, float dt)
+        {
+            if (!float.IsFinite(dt) || dt <= 0) return Vector2.Zero;
+            Vector2 recent = (newest + oneBack) * .5f;
+            Vector2 older = (oneBack + twoBack) * .5f;
+            return ClampLength((recent - older) / dt, AimAssistTuning.MaxTrackedAcceleration);
+        }
+
+        public static float NormalizedLandingMiss(AimAssistRegion region, Vector2 relativeOffset)
+        {
+            AimAssistRegion shifted = region.Shift(relativeOffset.X, relativeOffset.Y);
+            return NormalizeToRegion(RegionError(shifted), shifted).Length();
+        }
+
+        public static Vector2 HeadGeometryGain(AimAssistRegion region,
+            float horizontalBase, float verticalBase)
+        {
+            Vector2 half = RegionHalfExtents(region);
+            float aspect = Math.Clamp(half.X / half.Y, .35f, 3f);
+            float x = horizontalBase / MathF.Sqrt(aspect);
+            float y = verticalBase * MathF.Sqrt(aspect);
+            return new(Math.Clamp(x, .65f, 1.35f), Math.Clamp(y, .8f, 2.25f));
+        }
+
         public static Vector2 SafeRegionError(AimAssistRegion region, float inset)
         {
             inset = Math.Clamp(inset, 0, .49f);
