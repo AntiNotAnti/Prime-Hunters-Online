@@ -95,6 +95,7 @@ namespace MphRead.Mods
             RenderOptions.CelEdge = Math.Clamp(
                 RenderOptions.ParseInt(settings.CelEdge,
                     (int)MathF.Round(RenderOptions.CelEdge * 100)) / 100f, 0, 1);
+            DebugLog.Line("performance", Maintenance.PerformanceSummary(settings));
         }
 
         /// <summary>
