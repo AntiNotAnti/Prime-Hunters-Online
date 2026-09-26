@@ -275,6 +275,7 @@ namespace MphRead.Mods.Launcher.Gui
         {
             if (NetSession.Active && NetSession.PersistentLobby)
             {
+                SpectatorMode.SetSessionPreference(plan.Spectate);
                 _spectateNextMatch = plan.Spectate;
                 _lobby = new LobbyScreen(_rooms, plan.Lobby) { Overlays = _prime.Overlays };
                 _session.Screen = _lobby;
@@ -285,6 +286,7 @@ namespace MphRead.Mods.Launcher.Gui
                     // any configuration draft, close sheets and show the countdown.
                     _prime.Overlays.Clear(); _bypassGuard = true;
                     _prime.Router.Navigate(PrimeRoute.Lobby); _bypassGuard = false;
+                    _spectateNextMatch = SpectatorMode.PreferSpectator;
                     MatchRequested?.Invoke(this, match with { Spectate = _spectateNextMatch });
                 };
                 _lobby.Closed += (_, reason) => LobbyClosed(reason);
