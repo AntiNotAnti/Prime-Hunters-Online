@@ -168,7 +168,8 @@ namespace MphRead.Mods.MapGen
                 // Imported architecture itself remains read-only, but native
                 // Project Prime primitives may be layered on top as hybrid geometry.
                 if (!float.IsFinite(import.UnitsPerUnit) || import.UnitsPerUnit <= 0 || !float.IsFinite(import.TexScale) || import.TexScale <= 0
-                    || import.PatchLevel is < 1 or > 8) r.Error("FP-MAP-017", "Import scale/UV scale must be positive and patch level 1–8.");
+                    || import.PatchLevel is < 1 or > 8 || import.CollisionPatchLevel is < -1 or > 8)
+                    r.Error("FP-MAP-017", "Import scale/UV scale must be positive; render patch level must be 1–8 and collision patch level -1 (auto), 0 (off), or 1–8.");
                 if (checkSources)
                 {
                     string? source = import.Resolve();
