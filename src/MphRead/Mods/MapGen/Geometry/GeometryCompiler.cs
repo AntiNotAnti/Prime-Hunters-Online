@@ -37,6 +37,16 @@ namespace MphRead.Mods.MapGen
                 indices.Add(Enumerable.Range(prism.Sides, prism.Sides).ToArray());
                 for (int i = 0; i < prism.Sides; i++) indices.Add(new[] { i, (i+1)%prism.Sides, (i+1)%prism.Sides+prism.Sides, i+prism.Sides });
             }
+            else if (geometry is MapMesh mesh)
+            {
+                if (mesh.Vertices == null || mesh.Faces == null || mesh.Vertices.Count is < 3 or > 65535
+                    || mesh.Faces.Count is < 1 or > 65535
+                    || mesh.Vertices.Any(v => !MapValidator.Vector(v))
+                    || mesh.Faces.Any(f => f == null || f.Length is < 3 or > 32 || f.Any(i => i < 0 || i >= mesh.Vertices.Count)))
+                    throw new MapAuthoringException("FP-MAP-013", "Invalid mesh vertices or faces.");
+                vertices.AddRange(mesh.Vertices.Select(MapBuilder.ToVector));
+                indices.AddRange(mesh.Faces);
+            }
             else if (geometry is MapConvexBrush convex)
             {
                 if (convex.Vertices == null || convex.Faces == null || convex.Vertices.Count is < 4 or > 256 || convex.Faces.Count is < 4 or > 256
@@ -87,7 +97,10 @@ namespace MphRead.Mods.MapGen
                     return new Vector2(x*cos-y*sin+uv.Offset[0], x*sin+y*cos+uv.Offset[1]);
                 }).ToArray();
                 if (coords.Any(p => Math.Abs(p.X) >= 2048 || Math.Abs(p.Y) >= 2048)) throw new MapAuthoringException("FP-MAP-001", "UV coordinates exceed the runtime range; lower texture scale.");
-                result.Add(new BuiltFace(points,coords,normal,geometry.Material + materialOffset,geometry.Shade * (.7f+.3f*Math.Max(0,normal.Y)))
+                int material = geometry.Material;
+                if (geometry is MapMesh mesh && mesh.FaceMaterials != null && faceIndex < mesh.FaceMaterials.Count)
+                    material = mesh.FaceMaterials[faceIndex];
+                result.Add(new BuiltFace(points,coords,normal,material + materialOffset,geometry.Shade * (.7f+.3f*Math.Max(0,normal.Y)))
                 { Damaging = geometry.Damaging, Terrain = Enum.TryParse<Terrain>(geometry.Terrain, true, out var terrain) ? terrain : Terrain.Metal });
             }
             return result;
