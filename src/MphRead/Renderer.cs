@@ -1478,8 +1478,14 @@ namespace MphRead
             }
             Texture texture = model.Recolors[recolorId].Textures[textureId];
             GL.BindTexture(TextureTarget.Texture2D, _lastTextureId);
-            GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba, texture.Width, texture.Height, 0,
-                PixelFormat.Rgba, PixelType.UnsignedByte, pixels.ToArray());
+            bool replaced = Mods.Render.TextureReplacementPack.TryUpload(model,
+                textureId, paletteId, recolorId, out _, out _);
+            if (!replaced)
+            {
+                GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba,
+                    texture.Width, texture.Height, 0, PixelFormat.Rgba,
+                    PixelType.UnsignedByte, pixels.ToArray());
+            }
             // Mipmaps are generated lazily if/when the player enables them.
             // The default DS/competitive path therefore pays no extra upload
             // time or GPU memory simply because the option exists.
