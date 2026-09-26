@@ -31,6 +31,7 @@ public static class MapMeshEditing
         {
             mesh.Faces.Add(face.Points.Select(Vertex).ToArray());
             mesh.FaceMaterials.Add(face.Material);
+            mesh.FaceTexcoords.Add(face.Texcoords.Select(uv=>new[]{uv.X,uv.Y}).ToArray());
         }
         mesh.Vertices=vertices;
         return mesh;
@@ -46,41 +47,50 @@ public static class MapMeshEditing
 
     public static void FlipFace(MapMesh mesh,int face)
     {
-        RequireFace(mesh,face);
+        RequireFace(mesh,face);EnsureChannels(mesh);
         Array.Reverse(mesh.Faces[face]);
+        if(mesh.FaceTexcoords[face] is {} uv)Array.Reverse(uv);
     }
 
     public static void DeleteFace(MapMesh mesh,int face)
     {
-        RequireFace(mesh,face);
+        RequireFace(mesh,face);EnsureChannels(mesh);
         mesh.Faces.RemoveAt(face);
-        if(face<mesh.FaceMaterials.Count)mesh.FaceMaterials.RemoveAt(face);
+        mesh.FaceMaterials.RemoveAt(face);
+        mesh.FaceTexcoords.RemoveAt(face);
         Compact(mesh);
     }
 
     public static int SubdivideFace(MapMesh mesh,int face)
     {
-        RequireFace(mesh,face);
-        int[] source=mesh.Faces[face];
+        RequireFace(mesh,face);EnsureChannels(mesh);
+        int[] source=(int[])mesh.Faces[face].Clone();
         int material=Material(mesh,face);
+        float[][]? sourceUv=CloneUv(mesh.FaceTexcoords[face]);
         NVector3 center=source.Select(i=>V(mesh.Vertices[i])).Aggregate(NVector3.Zero,(a,b)=>a+b)/source.Length;
         int centerId=mesh.Vertices.Count;mesh.Vertices.Add(A(center));
-        mesh.Faces.RemoveAt(face);if(face<mesh.FaceMaterials.Count)mesh.FaceMaterials.RemoveAt(face);
+        float[]? centerUv=sourceUv==null?null:new[]{
+            sourceUv.Average(v=>v[0]),sourceUv.Average(v=>v[1])};
+        mesh.Faces.RemoveAt(face);mesh.FaceMaterials.RemoveAt(face);mesh.FaceTexcoords.RemoveAt(face);
         int first=mesh.Faces.Count;
         for(int i=0;i<source.Length;i++)
         {
-            mesh.Faces.Add(new[]{source[i],source[(i+1)%source.Length],centerId});
+            int n=(i+1)%source.Length;
+            mesh.Faces.Add(new[]{source[i],source[n],centerId});
             mesh.FaceMaterials.Add(material);
+            mesh.FaceTexcoords.Add(sourceUv==null?null:new[]{
+                (float[])sourceUv[i].Clone(),(float[])sourceUv[n].Clone(),(float[])centerUv!.Clone()});
         }
         return first;
     }
 
     public static int ExtrudeFace(MapMesh mesh,int face,float distance)
     {
-        RequireFace(mesh,face);
+        RequireFace(mesh,face);EnsureChannels(mesh);
         if(!float.IsFinite(distance)||MathF.Abs(distance)<.0001f)throw new ArgumentOutOfRangeException(nameof(distance));
         int[] source=(int[])mesh.Faces[face].Clone();
         int material=Material(mesh,face);
+        float[][]? sourceUv=CloneUv(mesh.FaceTexcoords[face]);
         NVector3 normal=Normal(mesh,source);
         int[] lifted=new int[source.Length];
         for(int i=0;i<source.Length;i++)
@@ -88,35 +98,46 @@ public static class MapMeshEditing
             NVector3 point=V(mesh.Vertices[source[i]])+normal*distance;
             lifted[i]=mesh.Vertices.Count;mesh.Vertices.Add(A(point));
         }
-        mesh.Faces[face]=lifted;SetMaterial(mesh,face,material);
+        mesh.Faces[face]=lifted;SetMaterial(mesh,face,material);mesh.FaceTexcoords[face]=sourceUv;
         for(int i=0;i<source.Length;i++)
         {
             int n=(i+1)%source.Length;
             mesh.Faces.Add(new[]{source[i],source[n],lifted[n],lifted[i]});
             mesh.FaceMaterials.Add(material);
+            mesh.FaceTexcoords.Add(null);
         }
         return face;
     }
 
     public static int InsetFace(MapMesh mesh,int face,float ratio)
     {
-        RequireFace(mesh,face);
+        RequireFace(mesh,face);EnsureChannels(mesh);
         if(!float.IsFinite(ratio)||ratio<=0||ratio>=.95f)throw new ArgumentOutOfRangeException(nameof(ratio));
         int[] source=(int[])mesh.Faces[face].Clone();
         int material=Material(mesh,face);
+        float[][]? sourceUv=CloneUv(mesh.FaceTexcoords[face]);
         NVector3 center=source.Select(i=>V(mesh.Vertices[i])).Aggregate(NVector3.Zero,(a,b)=>a+b)/source.Length;
+        float[]? centerUv=sourceUv==null?null:new[]{
+            sourceUv.Average(v=>v[0]),sourceUv.Average(v=>v[1])};
         int[] inner=new int[source.Length];
+        float[][]? innerUv=sourceUv==null?null:new float[source.Length][];
         for(int i=0;i<source.Length;i++)
         {
             NVector3 point=NVector3.Lerp(V(mesh.Vertices[source[i]]),center,ratio);
             inner[i]=mesh.Vertices.Count;mesh.Vertices.Add(A(point));
+            if(innerUv!=null)innerUv[i]=new[]{
+                sourceUv![i][0]+(centerUv![0]-sourceUv[i][0])*ratio,
+                sourceUv[i][1]+(centerUv[1]-sourceUv[i][1])*ratio};
         }
-        mesh.Faces[face]=inner;SetMaterial(mesh,face,material);
+        mesh.Faces[face]=inner;SetMaterial(mesh,face,material);mesh.FaceTexcoords[face]=innerUv;
         for(int i=0;i<source.Length;i++)
         {
             int n=(i+1)%source.Length;
             mesh.Faces.Add(new[]{source[i],source[n],inner[n],inner[i]});
             mesh.FaceMaterials.Add(material);
+            mesh.FaceTexcoords.Add(sourceUv==null?null:new[]{
+                (float[])sourceUv[i].Clone(),(float[])sourceUv[n].Clone(),
+                (float[])innerUv![n].Clone(),(float[])innerUv[i].Clone()});
         }
         return face;
     }
@@ -144,15 +165,17 @@ public static class MapMeshEditing
         foreach(int[] face in mesh.Faces)
             for(int i=0;i<face.Length;i++)face[i]=replacement[face[i]];
         int removed=mesh.Vertices.Count-kept.Count;mesh.Vertices=kept;
-        var faces=new List<int[]>();var materials=new List<int>();
+        EnsureChannels(mesh);
+        var faces=new List<int[]>();var materials=new List<int>();var texcoords=new List<float[][]?>();
         for(int i=0;i<mesh.Faces.Count;i++)
         {
             int[] face=mesh.Faces[i];
             if(face.Distinct().Count()<3)continue;
             faces.Add(face);
-            materials.Add(i<mesh.FaceMaterials.Count?mesh.FaceMaterials[i]:mesh.Material);
+            materials.Add(mesh.FaceMaterials[i]);
+            texcoords.Add(CloneUv(mesh.FaceTexcoords[i]));
         }
-        mesh.Faces=faces;mesh.FaceMaterials=materials;
+        mesh.Faces=faces;mesh.FaceMaterials=materials;mesh.FaceTexcoords=texcoords;
         return removed;
     }
 
@@ -164,6 +187,16 @@ public static class MapMeshEditing
         foreach(int[] face in mesh.Faces)
             for(int i=0;i<face.Length;i++)face[i]=remap[face[i]];
     }
+
+    private static void EnsureChannels(MapMesh mesh)
+    {
+        while(mesh.FaceMaterials.Count<mesh.Faces.Count)mesh.FaceMaterials.Add(mesh.Material);
+        while(mesh.FaceTexcoords.Count<mesh.Faces.Count)mesh.FaceTexcoords.Add(null);
+        while(mesh.FaceMaterials.Count>mesh.Faces.Count)mesh.FaceMaterials.RemoveAt(mesh.FaceMaterials.Count-1);
+        while(mesh.FaceTexcoords.Count>mesh.Faces.Count)mesh.FaceTexcoords.RemoveAt(mesh.FaceTexcoords.Count-1);
+    }
+    private static float[][]? CloneUv(float[][]? uv)
+        =>uv?.Select(value=>(float[])value.Clone()).ToArray();
 
     private static int Material(MapMesh mesh,int face)
         =>face<mesh.FaceMaterials.Count?mesh.FaceMaterials[face]:mesh.Material;
