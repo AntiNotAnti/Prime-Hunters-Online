@@ -14,8 +14,11 @@ namespace MphRead.Mods.Input.AimAssist
 
         public static AimAssistResult Apply(AimAssistState state, ReadOnlySpan<AimAssistTarget> targets,
             Vector2 raw, Vector2 physicalStick, float moveIntent, float dt, bool eligible,
-            AimAssistWeaponProfile profile, bool firing = false)
+            AimAssistWeaponProfile profile, bool firing = false,
+            AimAssistShotPhase shotPhase = AimAssistShotPhase.None)
         {
+            if (shotPhase == AimAssistShotPhase.None && firing)
+                shotPhase = AimAssistShotPhase.Continuous;
             float stickIntent = physicalStick.Length();
             if (!AimAssistMath.Finite(raw)) raw = Vector2.Zero;
             if (!eligible || !AimAssistMath.Finite(physicalStick) || !float.IsFinite(dt) || dt <= 0 || dt > .1f)
@@ -32,8 +35,15 @@ namespace MphRead.Mods.Input.AimAssist
                 && moveIntent >= .15f && state.SecondsSinceLookIntent <= .45f;
 
             Vector2 cameraVelocity = raw / dt;
-            Vector2 cameraAcceleration = AimAssistMath.ClampLength(
-                (cameraVelocity - state.PreviousCameraVelocity) / dt, 900f);
+            bool haveCameraHistory = state.PreviousDeltaTime > 0;
+            Vector2 fittedCameraVelocity = haveCameraHistory
+                ? AimAssistMath.FittedCameraVelocity(cameraVelocity, state.CameraVelocity0,
+                    state.CameraVelocity1, state.CameraVelocity2)
+                : cameraVelocity;
+            Vector2 cameraAcceleration = haveCameraHistory
+                ? AimAssistMath.FittedCameraAcceleration(cameraVelocity, state.CameraVelocity0,
+                    state.CameraVelocity1, dt)
+                : Vector2.Zero;
             float previousMagnitude = state.PreviousStick.Length();
             Vector2 stickDelta = physicalStick - state.PreviousStick;
             float directionalSpeed = stickDelta.Length() / dt;
@@ -78,11 +88,13 @@ namespace MphRead.Mods.Input.AimAssist
             }
 
             state.ShotCommitSeconds = Math.Max(0, state.ShotCommitSeconds - dt);
-            bool firePressed = firing && !state.PreviousFiring;
-            if (firePressed && state.TargetSlot >= 0)
+            bool commitEvent = shotPhase is AimAssistShotPhase.Pressed
+                or AimAssistShotPhase.Released or AimAssistShotPhase.Fired;
+            if (commitEvent && state.TargetSlot >= 0)
             {
                 bool nearCommit = profile.Precision
-                    ? state.PreviousInsideHead || state.PreviousHeadError.Length() <= .65f
+                    ? state.PreviousInsideHead
+                        || state.PreviousHeadError.Length() <= .65f
                     : state.PreviousInsideHead || state.PreviousInsideBody
                         || state.PreviousError.Length() <= .5f;
                 if (nearCommit) state.ShotCommitSeconds = AimAssistTuning.ShotCommitSeconds;
@@ -96,7 +108,7 @@ namespace MphRead.Mods.Input.AimAssist
                 return new(raw.X, raw.Y);
             }
 
-            Vector2 trajectoryTravel = cameraVelocity * AimAssistTuning.TrajectoryHorizon;
+            Vector2 trajectoryTravel = fittedCameraVelocity * AimAssistTuning.TrajectoryHorizon;
             bool flickSelecting = state.FlickActive && state.FlickTarget < 0;
             int best = -1, retained = -1, occludedRetained = -1;
             float bestScore = -1, retainedScore = -1, bestAlignment = 0;
@@ -109,10 +121,13 @@ namespace MphRead.Mods.Input.AimAssist
                 if (shotCommitted && state.TargetSlot >= 0 && !keep) continue;
                 float rangeScale = 1 - .4f * AimAssistMath.Smooth(25, 60, t.Distance);
                 float cone = (keep ? profile.ReleaseCone : profile.Cone) * rangeScale;
+                float normalizedLimit = keep ? profile.NormalizedRelease : profile.NormalizedAcquire;
                 Vector2 selectionError = AimAssistMath.SelectionError(t, profile);
                 float angle = selectionError.Length();
+                float normalizedDistance = AimAssistMath.NormalizedSelectionDistance(t, profile);
                 if (!t.Eligible || !AimAssistMath.Finite(selectionError) || !AimAssistMath.Finite(t.BodyError)
-                    || !float.IsFinite(t.Distance) || t.Distance < .2f || t.Distance > 60 || angle > cone)
+                    || !float.IsFinite(t.Distance) || t.Distance < .2f || t.Distance > 60
+                    || angle > cone * 1.5f || normalizedDistance > normalizedLimit)
                 {
                     continue;
                 }
@@ -123,11 +138,16 @@ namespace MphRead.Mods.Input.AimAssist
                     if (keep) occludedRetained = i;
                     continue;
                 }
+                if (!keep && Math.Max(t.BodyVisibility, t.HeadVisibility) < .20f)
+                    continue;
 
                 float alignment = AimAssistMath.Alignment(physicalStick, selectionError);
-                float score = AimAssistMath.Score(angle, cone, t.Distance, keep,
-                    keep ? Math.Min(state.AngularVelocity.Length() / 45, 1) : 0, alignment)
-                    + (angle == 0 ? .30f : .12f * (1 - AimAssistMath.Smooth(0, 1, angle)))
+                float closeness = 1 - Math.Clamp(normalizedDistance / Math.Max(.1f, normalizedLimit), 0, 1);
+                float score = .50f * closeness + (keep ? .15f : 0)
+                    + .10f * (1 - Math.Clamp(t.Distance / 60, 0, 1)) + .08f
+                    + .05f * (keep ? Math.Min(state.AngularVelocity.Length() / 45, 1) : 0)
+                    + AimAssistTuning.InputAlignmentWeight * Math.Clamp(alignment, 0, 1)
+                    + (normalizedDistance == 0 ? .30f : .12f * (1 - AimAssistMath.Smooth(0, 1, normalizedDistance)))
                     + (keep && firing ? .18f : 0)
                     - (!keep && state.TargetSlot >= 0 ? .12f * (1 - alignment) : 0);
 
