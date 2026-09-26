@@ -209,6 +209,7 @@ namespace MphRead.Entities
             {
                 _field553--;
             }
+            bool cameraObstructed = false;
             if ((CameraInfo.Position - Volume.SpherePosition).LengthSquared >= 6 * 6)
             {
                 _field551 = 255;
@@ -483,11 +484,16 @@ namespace MphRead.Entities
                 {
                     _field552 = 255;
                 }
+                else
+                {
+                    cameraObstructed = true;
+                }
             }
             CollisionResult targResult = default;
             if (CollisionDetection.CheckBetweenPoints(CameraInfo.Target, CameraInfo.Position,
                 TestFlags.Players, _scene, ref targResult))
             {
+                cameraObstructed = true;
                 if (_field552 < 15 * 2) // todo: FPS stuff
                 {
                     _field552++;
@@ -501,6 +507,21 @@ namespace MphRead.Entities
             else
             {
                 _field552 = 0;
+            }
+
+            if (cameraObstructed && IsMainPlayer)
+            {
+                // Rolling alt-form movement is camera-relative, but the third-person
+                // camera can orbit or get pushed around the ball while resolving
+                // terrain and door collisions. ProcessAlt normally copies that camera
+                // basis into the WASD/analogue roll basis every simulation step. If we
+                // let a collision-adjusted camera rewrite it immediately, "forward"
+                // can rotate sharply or even appear inverted while the same input is
+                // still held. Reuse the existing morph/external-camera settle timer:
+                // keep the last trustworthy roll basis for as long as the camera is
+                // obstructed, then allow it to re-anchor after the camera has been
+                // clear and stable for the normal settling window.
+                _timeSinceMorphCamera = 0;
             }
         }
 
