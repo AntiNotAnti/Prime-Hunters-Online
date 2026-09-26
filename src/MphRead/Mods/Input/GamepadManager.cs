@@ -21,6 +21,7 @@ namespace MphRead.Mods.Input
         internal bool LeftTriggerHeld, RightTriggerHeld;
         internal bool GameplayLeftTriggerHeld, GameplayRightTriggerHeld;
         internal long LeftTriggerBelowSince = -1, RightTriggerBelowSince = -1;
+        internal float LeftDriftX, LeftDriftY, RightDriftX, RightDriftY;
         internal GamepadButtons GameplayButtons;
         internal GamepadRuntimeConfig Runtime = new();
         internal long Revision;
@@ -116,6 +117,24 @@ namespace MphRead.Mods.Input
                 device.RawState = state;
                 (state.LeftX, state.LeftY) = options.LeftCalibration.Normalize(state.LeftX, state.LeftY);
                 (state.RightX, state.RightY) = options.RightCalibration.Normalize(state.RightX, state.RightY);
+
+                // Runtime centre compensation is intentionally ephemeral and
+                // only learns while the controller is visibly at rest.
+                bool restSample = state.Buttons == 0 && state.LeftTrigger < .1f && state.RightTrigger < .1f;
+                if (restSample)
+                {
+                    GamepadAnalog.UpdateRuntimeCenter(ref device.LeftDriftX, ref device.LeftDriftY,
+                        state.LeftX, state.LeftY, options.LeftInner);
+                    GamepadAnalog.UpdateRuntimeCenter(ref device.RightDriftX, ref device.RightDriftY,
+                        state.RightX, state.RightY, options.RightInner);
+                }
+                (state.LeftX, state.LeftY) = GamepadAnalog.ApplyRuntimeCenter(
+                    state.LeftX, state.LeftY, device.LeftDriftX, device.LeftDriftY);
+                (state.RightX, state.RightY) = GamepadAnalog.ApplyRuntimeCenter(
+                    state.RightX, state.RightY, device.RightDriftX, device.RightDriftY);
+                (state.LeftX, state.LeftY) = options.LeftRadial.Normalize(state.LeftX, state.LeftY);
+                (state.RightX, state.RightY) = options.RightRadial.Normalize(state.RightX, state.RightY);
+
                 state.LeftTrigger = GamepadCalibration.Trigger(state.LeftTrigger, options.LeftTriggerMin, options.LeftTriggerMax);
                 state.RightTrigger = GamepadCalibration.Trigger(state.RightTrigger, options.RightTriggerMin, options.RightTriggerMax);
                 long now = milliseconds ?? Environment.TickCount64;
@@ -187,6 +206,12 @@ namespace MphRead.Mods.Input
                 rightX = GamepadAnalog.Finite(rightX); rightY = GamepadAnalog.Finite(rightY);
                 (leftX, leftY) = options.LeftCalibration.Normalize(leftX, leftY);
                 (rightX, rightY) = options.RightCalibration.Normalize(rightX, rightY);
+                (leftX, leftY) = GamepadAnalog.ApplyRuntimeCenter(leftX, leftY,
+                    _active.LeftDriftX, _active.LeftDriftY);
+                (rightX, rightY) = GamepadAnalog.ApplyRuntimeCenter(rightX, rightY,
+                    _active.RightDriftX, _active.RightDriftY);
+                (leftX, leftY) = options.LeftRadial.Normalize(leftX, leftY);
+                (rightX, rightY) = options.RightRadial.Normalize(rightX, rightY);
                 GamepadState state = _active.State;
                 state.LeftX = leftX; state.LeftY = leftY;
                 state.RightX = rightX; state.RightY = rightY;
@@ -250,6 +275,7 @@ namespace MphRead.Mods.Input
                 device.LeftTriggerHeld = device.RightTriggerHeld = false;
                 device.GameplayLeftTriggerHeld = device.GameplayRightTriggerHeld = false;
                 device.LeftTriggerBelowSince = device.RightTriggerBelowSince = -1;
+                device.LeftDriftX = device.LeftDriftY = device.RightDriftX = device.RightDriftY = 0;
                 device.GameplayButtons = 0;
                 if (_active == device) { _revision++; Publish(); }
             }

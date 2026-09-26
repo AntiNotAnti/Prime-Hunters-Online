@@ -27,6 +27,7 @@ namespace MphRead.Mods.Input.AimAssist
 
     public enum AimAssistPointType { CenterMass, UpperChest, Head }
     public enum AimAssistMotionPhase { None, Approaching, Braking, Matched, Overshooting, Escaping }
+    public enum AimAssistShotPhase { None, Pressed, Charging, Released, Continuous, Fired }
 
     public readonly record struct AimAssistTarget(int Slot, long Life, Vector2 BodyError, Vector2 HeadError,
         float Distance, bool BodyVisible, bool HeadVisible, bool Eligible = true,
@@ -45,5 +46,10 @@ namespace MphRead.Mods.Input.AimAssist
         bool Firing = false, AimAssistMotionPhase MotionPhase = AimAssistMotionPhase.None,
         float BodyTrackingConfidence = 0, float HeadTrackingConfidence = 0,
         float FlickLandingError = 0, bool FlickBraking = false, bool ShotCommitted = false,
-        float VisibilityCoverage = 0, float FilterRelease = 0);
+        float VisibilityCoverage = 0, float FilterRelease = 0,
+        float TurnAccelerationBrake = 0, float NormalizedError = 0,
+        float PlayerContribution = 0, float AssistContribution = 0,
+        float CorrectionBudget = 0, float ScopeBlend = 0,
+        AimAssistShotPhase ShotPhase = AimAssistShotPhase.None,
+        bool MotionTransition = false);
 }

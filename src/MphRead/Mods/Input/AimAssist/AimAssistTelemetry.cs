@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Numerics;
 using System.Text.Json;
 using MphRead.Entities;
 
@@ -39,6 +40,26 @@ namespace MphRead.Mods.Input.AimAssist
             public int OvershootSamples { get; set; }
             public int EscapingSamples { get; set; }
             public int ShotCommitSamples { get; set; }
+            public int MotionTransitions { get; set; }
+            public int OvershootsBeforeShot { get; set; }
+            public int HeadExitsFromPlayerInput { get; set; }
+            public int HeadExitsFromTargetMotion { get; set; }
+            public int ScopeTransitionSamples { get; set; }
+            public int ScopeTransitionTargetLosses { get; set; }
+            public int ScopeReacquires { get; set; }
+            public double PlayerContributionSum { get; set; }
+            public double AssistContributionSum { get; set; }
+            public double CorrectionBeforeShotSum { get; set; }
+            public double HeadDwellBeforeShotSum { get; set; }
+            public double ScopeReacquireSecondsSum { get; set; }
+            public double MeanPlayerContribution => Samples == 0 ? 0 : PlayerContributionSum / Samples;
+            public double MeanAssistContribution => Samples == 0 ? 0 : AssistContributionSum / Samples;
+            public double MeanAssistShare => PlayerContributionSum + AssistContributionSum <= 0 ? 0
+                : AssistContributionSum / (PlayerContributionSum + AssistContributionSum);
+            public double MeanCorrectionBeforeShot => Shots == 0 ? 0 : CorrectionBeforeShotSum / Shots;
+            public double MeanHeadDwellBeforeShot => Shots == 0 ? 0 : HeadDwellBeforeShotSum / Shots;
+            public double MeanScopeReacquireSeconds => ScopeReacquires == 0 ? 0
+                : ScopeReacquireSecondsSum / ScopeReacquires;
             public double MeanVisibilityCoverage => Samples == 0 ? 0 : VisibilityCoverageSum / Samples;
             public double MeanBodyConfidence => Samples == 0 ? 0 : BodyConfidenceSum / Samples;
             public double MeanHeadConfidence => Samples == 0 ? 0 : HeadConfidenceSum / Samples;
@@ -84,8 +105,13 @@ namespace MphRead.Mods.Input.AimAssist
         private static Bucket? _current;
         private static readonly Bucket?[] LastShot = new Bucket[16];
 
-        private static bool _insideHead, _nearHead, _flick, _capture;
+        private static bool _insideHead, _nearHead, _flick, _capture, _overshootSinceShot;
         private static readonly bool[] LastFlickShot = new bool[16];
+        private static double _correction0, _correction1, _correction2, _headDwell;
+        private static float _lastScopeBlend;
+        private static int _scopeTarget = -1;
+        private static bool _scopeLost;
+        private static double _scopeLostSeconds;
 
         public static void Shot(BeamType weapon)
         {
@@ -93,6 +119,12 @@ namespace MphRead.Mods.Input.AimAssist
             {
                 _current.Shots++;
                 if (_nearHead && AimInputSourceTracker.Current == AimInputSource.Gamepad) _current.HeadshotAttempts++;
+                if (_overshootSinceShot) _current.OvershootsBeforeShot++;
+                _current.CorrectionBeforeShotSum += _correction0 + _correction1 + _correction2;
+                _current.HeadDwellBeforeShotSum += _headDwell;
+                _overshootSinceShot = false;
+                _correction0 = _correction1 = _correction2 = 0;
+                _headDwell = 0;
                 LastFlickShot[Math.Clamp((int)weapon, 0, 15)] = _capture;
                 LastShot[Math.Clamp((int)weapon, 0, 15)] = _current;
             }
@@ -149,7 +181,16 @@ namespace MphRead.Mods.Input.AimAssist
                 bucket.HeadVerticalErrorSum += Math.Abs(headError.Y);
             }
             if (inside && (!_insideHead || result.TargetSlot != _lastTarget)) bucket.HeadRegionEntries++;
-            if (_insideHead && (!inside || result.TargetSlot != _lastTarget)) bucket.HeadRegionExits++;
+            if (_insideHead && (!inside || result.TargetSlot != _lastTarget))
+            {
+                bucket.HeadRegionExits++;
+                var exitError = AimAssistMath.HeadError(target);
+                bool playerExit = result.StickIntent.LengthSquared() > .0225f
+                    && AimAssistMath.Finite(exitError)
+                    && Vector2.Dot(result.StickIntent, exitError) < 0;
+                if (playerExit) bucket.HeadExitsFromPlayerInput++;
+                else bucket.HeadExitsFromTargetMotion++;
+            }
             _insideHead = inside;
             bool capturing = result.TrackingState == AimAssistTrackingState.FlickCapturingHead;
             if (result.FlickActive && !_flick) bucket.FlickAttempts++;
@@ -161,6 +202,12 @@ namespace MphRead.Mods.Input.AimAssist
                 bucket.TargetSwitchesWhileFiring++;
             bucket.TrackingCorrectionSum += result.TrackingCorrection.Length();
             bucket.PositionCorrectionSum += result.PositionCorrection.Length();
+            bucket.PlayerContributionSum += result.PlayerContribution;
+            bucket.AssistContributionSum += result.AssistContribution;
+            _correction2 = _correction1; _correction1 = _correction0; _correction0 = correction;
+            if (inside) _headDwell += 1d / 60; else _headDwell = 0;
+            if (result.MotionPhase == AimAssistMotionPhase.Overshooting) _overshootSinceShot = true;
+            if (result.MotionTransition) bucket.MotionTransitions++;
             bucket.VisibilityCoverageSum += result.VisibilityCoverage;
             bucket.BodyConfidenceSum += result.BodyTrackingConfidence;
             bucket.HeadConfidenceSum += result.HeadTrackingConfidence;
@@ -211,6 +258,40 @@ namespace MphRead.Mods.Input.AimAssist
             {
                 _lastHeadTarget = -1;
             }
+            bool scopeChanged = Math.Abs(result.ScopeBlend - _lastScopeBlend)
+                >= AimAssistTuning.ScopeTransitionEpsilon;
+            if (scopeChanged && _lastTarget >= 0)
+            {
+                bucket.ScopeTransitionSamples++;
+                _scopeTarget = _lastTarget;
+                _scopeLost = false;
+                _scopeLostSeconds = 0;
+            }
+            if (_scopeTarget >= 0)
+            {
+                if (result.TargetSlot != _scopeTarget)
+                {
+                    _scopeLostSeconds += 1d / 60;
+                    if (!_scopeLost)
+                    {
+                        bucket.ScopeTransitionTargetLosses++;
+                        _scopeLost = true;
+                    }
+                }
+                else if (_scopeLost)
+                {
+                    bucket.ScopeReacquires++;
+                    bucket.ScopeReacquireSecondsSum += _scopeLostSeconds;
+                    _scopeTarget = -1;
+                    _scopeLost = false;
+                    _scopeLostSeconds = 0;
+                }
+                else if (!scopeChanged && Math.Abs(result.ScopeBlend - _lastScopeBlend) < .001f)
+                {
+                    _scopeTarget = -1;
+                }
+            }
+            _lastScopeBlend = result.ScopeBlend;
             _lastTarget = result.TargetSlot;
         }
 

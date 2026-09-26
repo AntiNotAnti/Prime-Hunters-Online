@@ -46,6 +46,31 @@ namespace MphRead.Mods.Input
                 Near(diagonal.X * diagonal.X + diagonal.Y * diagonal.Y, 1, "maximum magnitude");
                 Near(GamepadAnalog.ApplyRadialDeadZone(.8f, 0, .2f, .2f).X, 1, "outer deadzone");
                 Check(GamepadAnalog.ApplyRadialDeadZone(float.NaN, 0, .2f) == (0, 0), "invalid axis neutral");
+                var radialCalibration = new StickRadialCalibration(1, .8f, 1, 1, 1, 1, 1, 1);
+                var radialCorrected = radialCalibration.Normalize(.4f, .4f);
+                Check(radialCorrected.X > .4f && radialCorrected.Y > .4f
+                    && radialCorrected.X < .6f && radialCorrected.Y < .6f,
+                    "radial calibration restores diagonal gate travel without changing direction");
+                float driftX = 0, driftY = 0;
+                for (int i = 0; i < 5000; i++)
+                    GamepadAnalog.UpdateRuntimeCenter(ref driftX, ref driftY, .018f, -.012f, .12f);
+                var driftCorrected = GamepadAnalog.ApplyRuntimeCenter(.018f, -.012f, driftX, driftY);
+                Check(Math.Abs(driftX) <= .03f && Math.Abs(driftY) <= .03f
+                    && MathF.Sqrt(driftCorrected.X * driftCorrected.X + driftCorrected.Y * driftCorrected.Y) < .004f,
+                    "runtime centre compensation learns only a bounded resting offset");
+                float blockedDriftX = driftX, blockedDriftY = driftY;
+                for (int i = 0; i < 100; i++)
+                    GamepadAnalog.UpdateRuntimeCenter(ref blockedDriftX, ref blockedDriftY, .5f, 0, .12f);
+                Near(blockedDriftX, driftX, "runtime centre compensation ignores real stick input");
+                var optionsRoundTrip = new GamepadOptionState
+                {
+                    LeftRadial = radialCalibration,
+                    RightRadial = new(1, 1, .9f, 1, 1, 1, 1, 1)
+                };
+                var optionLines = new List<string>(); optionsRoundTrip.Write(optionLines);
+                var loadedOptions = new GamepadOptionState(); loadedOptions.Load(optionLines);
+                Near(loadedOptions.LeftRadial.R1, .8f, "left radial calibration persists");
+                Near(loadedOptions.RightRadial.R2, .9f, "right radial calibration persists");
                 var analogControls = Entities.PlayerControls.GetDefault();
                 analogControls.SetAnalogMovement(.25f, -.75f);
                 Near(analogControls.AnalogScaleX(1), .25f, "analog right scales strafe traction");

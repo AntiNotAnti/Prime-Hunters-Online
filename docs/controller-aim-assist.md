@@ -9,8 +9,10 @@ selection, filtering, flick state, motion history, button edges, firing or telem
 The next simulation step consumes the exact previewed aim axes before accepting a
 newer hardware sample, preventing double-turn or presentation/gameplay disagreement.
 Mouse/touch, menus, spectating, death, alternate form, replay actors and remote
-players bypass assistance. Device, input source, weapon, zoom and context changes
-clear history.
+players bypass assistance. Device, input source, weapon and room/context changes
+clear history. A zoom transition does not: camera FOV is already the common angular
+unit, so the retained target, body/head confidence and target-motion history survive
+scope-in/out while transient flick and shot-commit state is cleared.
 
 ## Geometry and intent
 
@@ -41,17 +43,29 @@ is separately used for rotation, velocity compensation and overshoot limits.
 
 ## Acquisition, retention and precision
 
-Acquisition requires right-stick intent. Selection favors region overlap,
-proximity and input alignment. A retained firing/charging target receives an
-extra bonus. Challengers must clear both a score ratio and an absolute margin;
-strong aligned input reduces the switching penalty.
+Acquisition requires right-stick intent. The broad degree cone remains a safety
+fence, but primary acquisition/release distance is normalized by the target's
+projected half-width and half-height. One target radius therefore means the same
+thing at close, medium and long range instead of a fixed number of degrees changing
+meaning with distance. Selection favors normalized surface proximity, trajectory
+intersection and input alignment. Challengers must clear both a score ratio and an
+absolute margin; strong aligned input reduces the switching penalty.
 
-Position correction and motion tracking have separate gains and independent speed
-limits. Their sum is not re-clamped through the old MaxSpeed ceiling, so a precision
-profile can keep conservative positional magnetism while matching a fast retained
-target. The servo now supplies only target angular velocity the player's camera is not
-already matching. Target yaw/pitch motion also shares a persistent direction estimate,
-which damps minor-axis corkscrew noise during diagonal strafe+jump motion.
+Production tuning is per `BeamType`, not only a generic weapon category. Power Beam,
+Volt Driver, Imperialist, Shock Coil, Missile, Magmaul, Judicator, Battlehammer and
+Omega each have internal acquisition, friction, body-height, tracking, servo and
+correction-budget behavior. These are curated constants, not player-facing options.
+Imperialist additionally blends hip and scoped profiles continuously from the actual
+animated camera FOV, so a quick scope does not abruptly replace the controller model.
+
+Position correction and motion tracking still have independent caps during acquisition.
+After a target has been deliberately retained for roughly 75 ms, the follower changes
+to a critically damped second-order servo in target-normalized coordinates. The
+proportional term is normalized surface error and the derivative term is only the
+target angular velocity the player's camera is not already supplying. This removes
+range-dependent tuning and reduces ringing on AD strafes without increasing initial
+snap. Target yaw/pitch motion still shares a persistent direction estimate to suppress
+minor-axis corkscrew noise on diagonal strafe+jump motion.
 
 The control law classifies each sample as approaching, braking, matched, overshooting or
 escaping from the target surface. Approach receives little resistance; braking and
@@ -63,18 +77,22 @@ Retention is continuous rather than a timer switch. Body and head tracking have 
 Neutral right stick never acquires. While the player strafes, blended body/head confidence
 scales retained motion tracking from 18% to 35%; positional attraction remains disabled.
 
+Visibility coverage is temporally filtered: loss decays quickly while newly exposed
+surface rises more slowly. A fresh target must expose a meaningful surface slice before
+it can acquire, while an already-retained target keeps the short occlusion grace.
 Brief occlusion still applies zero friction and zero rotation, but the last visible
 velocity/acceleration estimate decays internally instead of being erased. Hidden positions
 are never used to update it. A target that reappears within grace therefore resumes from
 remembered motion rather than a dead stop.
 
 Flick detection recognizes both rapid magnitude rise and fast vector changes, and keeps
-short physical-stick history. It detects the braking/settling half of a flick and predicts
-the unassisted landing from current camera velocity/acceleration. Capture is allowed only
-when the natural trajectory already reaches or nearly reaches the mechanically valid head
-region. Flick speed changes the finishing envelope: fast intentional flicks get a modestly
-larger radius and shorter landing horizon; slow micro-aim stays narrow; very fast misses
-shrink again. The selected head is locked for the short capture window.
+short physical-stick and camera-velocity history. Landing prediction fits the four most
+recent camera-velocity samples instead of trusting one frame, then evaluates the miss in
+projected head radii. Capture is allowed only when that natural fitted trajectory already
+reaches or nearly reaches the mechanically valid head region. Flick speed changes the
+finishing envelope: fast intentional flicks get a modestly larger normalized radius and
+shorter landing horizon; slow micro-aim stays narrow; very fast misses shrink again. The
+selected head is locked for the short capture window.
 
 The real headshot band remains the outer validity region. Inside it, a weak inset safe
 pocket shifts by at most 12% with target angular motion, always clamped back inside the
@@ -83,19 +101,35 @@ damps the component about to overshoot the approached edge, and the next frame's
 filter becomes more transparent near precision boundaries so tiny corrective reversals
 are preserved.
 
-A short shot-commit state locks retained target identity for roughly 50 ms when fire is
-pressed near a valid target/head surface. It can slightly strengthen edge protection but
-never increases positional snap. Normal target selection is also trajectory-aware outside
-flicks, preferring a target the current camera path will cross over a marginally closer
-off-path candidate.
+Shot commitment is weapon-state aware. Immediate weapons may commit on the firing press;
+charge weapons commit around release/actual shot rather than the beginning of a long
+charge; continuous fire is identified separately. A short commit locks retained identity
+for roughly 50 ms near a valid surface and may strengthen edge protection, but never
+increases positional snap. Abrupt target-motion transitions such as a strafe reversal,
+jump apex/landing or impulse clear stale acceleration and temporarily speed convergence.
+Normal target selection remains trajectory-aware outside flicks.
 
-## Stick response
+## Correction budget and stick response
 
-The existing Linear, Classic, Precision and Dynamic serialized values remain
-unchanged. Linear remains linear; other presets use micro-aim (0–35%), tracking
-(35–80%) and fast-turn segments. A small exponential filter smooths low-speed
-noise, bypassing reversals and large flicks. Outer-stick acceleration smoothly
-approaches a magnitude-dependent maximum rather than using a hard delay.
+Each weapon/state has a small leaky correction budget measured in assisted camera
+degrees. Tiny rescue corrections can therefore be sharp, but sustained automatic
+pull spends the budget and must recover before more assist can be supplied. Deliberate
+player input always remains outside this budget and escapes immediately. Projected
+head aspect also redistributes horizontal/vertical precision gain: a narrow vertical
+band receives more vertical precision without inventing a stronger horizontal pull.
+
+The existing Linear, Classic, Precision and Dynamic serialized curve values remain
+unchanged. Linear remains linear; other presets use micro-aim, tracking and fast-turn
+segments. Near a precision boundary, the low-speed noise filter becomes more transparent
+and outer-stick acceleration is actively driven back toward 1x during braking,
+overshoot, head refinement and shot commitment. This prevents the controller's own
+turn acceleration from fighting the precision controller.
+
+Explicit calibration now also measures eight radial gate sectors so a square/elliptical
+or worn stick produces uniform circular travel after normal axis calibration. At runtime
+each connected device keeps a tiny unsaved centre offset learned only while the stick is
+well inside its deadzone with buttons/triggers at rest. It is clamped to +/-0.03 and
+never becomes a player-visible setting.
 
 ## Diagnostics and validation
 
@@ -113,7 +147,10 @@ state is added to networking.
 position/tracking corrections, flick age/alignment, velocity and strafe retention.
 `-gamepadassisttelemetry <path>` saves per-input/weapon/range buckets at exit.
 Metrics include head-region entries/exits and errors, nearby headshot attempts,
-flick attempts/captures, firing switches, opposition breaks and correction means.
+flick attempts/captures, firing switches, opposition breaks and correction means,
+plus player-vs-assist angular contribution, assist share, correction in the final
+frames before a shot, pre-shot head dwell, overshoots, motion transitions, player-
+versus-target-caused head exits, scope-transition target loss and reacquire time.
 Confirmed headshots come only from authoritative damage flags; speculative client
 hits are excluded. Thus confirmed-headshot metrics require host/offline play.
 Hit events are attributed to the latest shot bucket for that weapon, as in the

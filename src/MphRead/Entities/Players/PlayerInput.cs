@@ -413,10 +413,27 @@ namespace MphRead.Entities
             _facingVector = _facingVector.Normalized();
         }
 
+        private float AimScopeBlend()
+        {
+            float normalFov = Fixed.ToFloat(Values.NormalFov) * 2;
+            if (normalFov <= 0 || EquipInfo.Weapon == null)
+            {
+                return EquipInfo.Zoomed ? 1 : 0;
+            }
+            float zoomFov = Fixed.ToFloat(EquipInfo.Weapon.ZoomFov) * 2;
+            float span = normalFov - zoomFov;
+            if (!float.IsFinite(span) || MathF.Abs(span) < .001f)
+            {
+                return EquipInfo.Zoomed ? 1 : 0;
+            }
+            return Math.Clamp((normalFov - CameraInfo.Fov) / span, 0, 1);
+        }
+
         private float AimZoomScale()
         {
             float normalFov = Fixed.ToFloat(Values.NormalFov) * 2;
-            return EquipInfo.Zoomed && normalFov != 0 ? CameraInfo.Fov / normalFov : 1;
+            return normalFov > 0 && AimScopeBlend() > 0
+                ? Math.Clamp(CameraInfo.Fov / normalFov, .05f, 1) : 1;
         }
 
         private void UpdateAimY(float amount, bool applyInputSettings = true)

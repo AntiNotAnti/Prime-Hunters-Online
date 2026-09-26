@@ -116,6 +116,7 @@ namespace MphRead.Mods.Input.AimAssist
             RegionAndIntentChecks();
             TrackingChecks();
             V3Checks();
+            V4Checks();
             AimAssistCameraChecks.Run();
 
             AimInputSourceTracker.Reset();
@@ -582,6 +583,139 @@ namespace MphRead.Mods.Input.AimAssist
                 && Math.Abs(coupledState.MotionDirection.X) > .1f
                 && Math.Abs(coupledState.MotionDirection.Y) > .1f,
                 "target motion direction couples yaw and pitch for diagonal tracking");
+        }
+
+        private static void V4Checks()
+        {
+            void Check(bool ok, string name) => GamepadChecks.Check(ok, "aim v4: " + name);
+            const float dt = 1f / 60;
+
+            var small = new AimAssistRegion(.5f, .7f, -.1f, .1f);
+            var large = new AimAssistRegion(1f, 1.4f, -.2f, .2f);
+            var smallTarget = new AimAssistTarget(1, 1, new(.5f, 0), new(3, 3), 20, true, false,
+                BodyRegion: small, BodySurface: new(new(.5f, 0), false));
+            var largeTarget = new AimAssistTarget(1, 1, new(1f, 0), new(3, 3), 10, true, false,
+                BodyRegion: large, BodySurface: new(new(1f, 0), false));
+            float smallNorm = AimAssistMath.NormalizedBodyError(smallTarget).Length();
+            float largeNorm = AimAssistMath.NormalizedBodyError(largeTarget).Length();
+            Check(Math.Abs(smallNorm - largeNorm) < .0001f,
+                "apparent-size normalization gives equal target-radius error");
+
+            var impHip = AimAssistWeaponProfile.For(BeamType.Imperialist, 0);
+            var impHalf = AimAssistWeaponProfile.For(BeamType.Imperialist, .5f);
+            var impScope = AimAssistWeaponProfile.For(BeamType.Imperialist, 1);
+            Check(impScope.Cone < impHalf.Cone && impHalf.Cone < impHip.Cone
+                && impScope.ServoFrequency > impHip.ServoFrequency
+                && impScope.CorrectionBudgetDegrees < impHip.CorrectionBudgetDegrees,
+                "Imperialist profile blends continuously through scope FOV");
+            Check(AimAssistWeaponProfile.For(BeamType.ShockCoil).PositionGain
+                    < AimAssistWeaponProfile.For(BeamType.VoltDriver).PositionGain
+                && AimAssistWeaponProfile.For(BeamType.Missile).BodyAimHeight
+                    < AimAssistWeaponProfile.For(BeamType.PowerBeam).BodyAimHeight,
+                "actual weapons receive distinct internal aim profiles");
+
+            var scopeState = new AimAssistState
+            {
+                TargetSlot = 3, TargetLife = 9, BodyTrackingConfidence = .8f,
+                HeadTrackingConfidence = .7f, AngularVelocity = new(8, 2),
+                FlickActive = true, FlickTarget = 3, ShotCommitSeconds = .04f
+            };
+            scopeState.BeginScopeTransition(.25f);
+            Check(scopeState.TargetSlot == 3 && scopeState.TargetLife == 9
+                && scopeState.AngularVelocity == new Vector2(8, 2)
+                && scopeState.BodyTrackingConfidence == .8f
+                && !scopeState.FlickActive && scopeState.FlickTarget == -1
+                && scopeState.ShotCommitSeconds == 0,
+                "scope transition preserves target/motion confidence but clears transient capture");
+
+            Vector2 servo = Vector2.Zero;
+            var servoRegion = new AimAssistRegion(-1, 1, -.5f, .5f);
+            float prior = float.MaxValue;
+            bool monotonic = true;
+            Vector2 servoError = new(1, .25f);
+            for (int i = 0; i < 60; i++)
+            {
+                Vector2 step = AimAssistMath.CriticallyDampedServo(ref servo, servoError,
+                    Vector2.Zero, servoRegion, 12, dt, 30);
+                servoError -= step;
+                float now = AimAssistMath.NormalizeToRegion(servoError, servoRegion).Length();
+                monotonic &= now <= prior + .0001f;
+                prior = now;
+            }
+            Check(monotonic && prior < .05f,
+                "critically damped retained-target servo converges without ringing");
+
+            var profile = AimAssistWeaponProfile.For(BeamType.PowerBeam);
+            var budgetState = new AimAssistState();
+            var budgetTarget = new AimAssistTarget(1, 1, new(.8f, 0), new(3, 3), 12, true, false,
+                BodyRegion: new(.4f, 1.2f, -.5f, .5f),
+                BodySurface: new(new(.8f, 0), false), BodyVisibility: 1);
+            float assistTotal = 0;
+            AimAssistResult budgetResult = default;
+            for (int i = 0; i < 30; i++)
+            {
+                budgetResult = AimAssist.Apply(budgetState, new[] { budgetTarget }, Vector2.Zero,
+                    new Vector2(.5f, 0), 0, dt, true, profile);
+                assistTotal += budgetResult.AssistContribution;
+            }
+            Check(budgetResult.CorrectionBudget <= 1.0001f
+                && budgetState.CorrectionBudgetUsed <= profile.CorrectionBudgetDegrees + .0001f
+                && assistTotal > 0,
+                "rolling correction budget bounds sustained automatic work");
+
+            var shotState = new AimAssistState
+            {
+                TargetSlot = 1, TargetLife = 1, RetainedSeconds = .2f,
+                PreviousInsideBody = true, BodyTrackingConfidence = 1
+            };
+            var shotTarget = budgetTarget with { BodySurface = new(Vector2.Zero, true),
+                BodyRegion = new(-.3f, .3f, -.3f, .3f) };
+            var charging = AimAssist.Apply(shotState, new[] { shotTarget }, Vector2.Zero,
+                new Vector2(.3f, 0), 0, dt, true, profile, true, AimAssistShotPhase.Charging);
+            var released = AimAssist.Apply(shotState, new[] { shotTarget }, Vector2.Zero,
+                new Vector2(.3f, 0), 0, dt, true, profile, false, AimAssistShotPhase.Released);
+            Check(!charging.ShotCommitted && released.ShotCommitted
+                && released.ShotPhase == AimAssistShotPhase.Released,
+                "charge hold does not commit aim until release/firing edge");
+
+            var transitionState = new AimAssistState
+            {
+                TargetSlot = 1, TargetLife = 1, RetainedSeconds = .3f,
+                BodyTrackingConfidence = 1, PreviousBodyVisible = true,
+                PreviousError = new(-.5f, 0), PreviousDeltaTime = dt,
+                AngularVelocity = new(-20, 0)
+            };
+            var transitionTarget = budgetTarget with { BodyError = new(.5f, 0),
+                BodySurface = new(new(.5f, 0), false) };
+            var transition = AimAssist.Apply(transitionState, new[] { transitionTarget },
+                Vector2.Zero, new Vector2(.4f, 0), 0, dt, true, profile);
+            Check(transition.MotionTransition,
+                "abrupt target-direction reversal flags a motion transition");
+
+            var aspectWide = AimAssistMath.HeadGeometryGain(new(-1, 1, -.2f, .2f), 1, 1.7f);
+            var aspectTall = AimAssistMath.HeadGeometryGain(new(-.2f, .2f, -1, 1), 1, 1.7f);
+            Check(aspectWide.Y > aspectTall.Y && aspectWide.X < aspectTall.X,
+                "projected head aspect allocates precision to the tighter axis");
+
+            var fit = AimAssistMath.FittedCameraVelocity(new(8, 0), new(6, 0), new(4, 0), new(2, 0));
+            Check(fit.X > 5 && fit.X < 8,
+                "four-sample camera fit follows the recent flick trend without trusting one sample");
+            float normalizedMiss = AimAssistMath.NormalizedLandingMiss(
+                new(-.5f, .5f, -.25f, .25f), new(.5f, .25f));
+            Check(normalizedMiss <= .0001f,
+                "flick landing miss is expressed in projected head radii");
+
+            var brakeState = new AimAssistState
+            {
+                TargetSlot = 1, TargetLife = 1, RetainedSeconds = .3f,
+                BodyTrackingConfidence = 1, PreviousBodyVisible = true,
+                PreviousError = new(.6f, 0), PreviousDeltaTime = dt,
+                PreviousClosingSpeed = 10
+            };
+            var brake = AimAssist.Apply(brakeState, new[] { budgetTarget },
+                new Vector2(.05f, 0), new Vector2(.4f, 0), 0, dt, true, profile);
+            Check(brake.TurnAccelerationBrake > .5f,
+                "precision braking tells outer-stick acceleration to unwind");
         }
 
         private static float SimulateTracking(int hz, bool moving, bool head)

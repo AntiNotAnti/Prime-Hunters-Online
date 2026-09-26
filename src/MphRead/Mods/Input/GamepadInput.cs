@@ -164,30 +164,35 @@ namespace MphRead.Mods.Input
         /// </summary>
         private const float TurnRate = 3.5f;
         private static System.Numerics.Vector2 _filteredAimStick;
-        private static float _aimPrecisionRelease;
+        private static float _aimPrecisionRelease, _aimTurnAccelerationBrake;
         private const float TurnAccelerationMax = 1.5f;
         private static float _turnRateScale = 1;
 
         private static void ResetAimRamp()
         {
             _filteredAimStick = default;
-            _aimPrecisionRelease = 0;
+            _aimPrecisionRelease = _aimTurnAccelerationBrake = 0;
             _turnRateScale = 1;
         }
 
-        internal static void SetAimPrecisionContext(float release)
-            => _aimPrecisionRelease = float.IsFinite(release)
-                ? Math.Clamp(release, 0, 1) : 0;
+        internal static void SetAimPrecisionContext(float release, float turnAccelerationBrake = 0)
+        {
+            _aimPrecisionRelease = float.IsFinite(release) ? Math.Clamp(release, 0, 1) : 0;
+            _aimTurnAccelerationBrake = float.IsFinite(turnAccelerationBrake)
+                ? Math.Clamp(turnAccelerationBrake, 0, 1) : 0;
+        }
 
-        private static float NextTurnRateScale(float magnitude, float current)
+        private static float NextTurnRateScale(float magnitude, float current, float brake = 0)
         {
             float outer = Math.Clamp((magnitude - .8f) / .2f, 0, 1);
-            float desired = 1 + (TurnAccelerationMax - 1) * outer * outer;
-            return current + (desired - current) * (1 - MathF.Exp(-8f / 60));
+            brake = Math.Clamp(brake, 0, 1);
+            float desired = 1 + (TurnAccelerationMax - 1) * outer * outer * (1 - brake);
+            float rate = 8f + AimAssist.AimAssistTuning.TurnAccelerationBrakeResponse * brake;
+            return current + (desired - current) * (1 - MathF.Exp(-rate / 60));
         }
 
         private static void UpdateAimRamp(float magnitude)
-            => _turnRateScale = NextTurnRateScale(magnitude, _turnRateScale);
+            => _turnRateScale = NextTurnRateScale(magnitude, _turnRateScale, _aimTurnAccelerationBrake);
 
         private static (float X, float Y) PreviewAim(GamepadSnapshot snapshot)
         {
@@ -199,7 +204,7 @@ namespace MphRead.Mods.Input
                 : GamepadAnalog.ApplyRadialDeadZone(state.RightX, state.RightY,
                     options.RightInner, options.RightOuter);
             float magnitude = MathF.Sqrt(x * x + y * y);
-            float scale = NextTurnRateScale(magnitude, _turnRateScale);
+            float scale = NextTurnRateScale(magnitude, _turnRateScale, _aimTurnAccelerationBrake);
             var filtered = GamepadAnalog.FilterAim(_filteredAimStick,
                 new System.Numerics.Vector2(x, y), 1f / 60, _aimPrecisionRelease);
             (x, y) = GamepadAnalog.ApplyRadialResponseCurve(filtered.X, filtered.Y, options.Curve);
