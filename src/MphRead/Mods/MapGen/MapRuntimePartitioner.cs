@@ -22,6 +22,7 @@ public sealed record MapRuntimePartitionPlan(IReadOnlyList<MapRuntimePartition> 
 /// </summary>
 public static class MapRuntimePartitioner
 {
+    public const int MaxPortalParts=32;
     public static MapPartitionSettings Effective(MapPartitionSettings? settings)
         => settings??new MapPartitionSettings();
 
@@ -44,7 +45,7 @@ public static class MapRuntimePartitioner
             parts.Add(new(i,groups[i].Key.Item1,groups[i].Key.Item2,$"rmP{i:D4}",min,max,group));
         }
 
-        if(!settings.PortalCulling||parts.Count<2)
+        if(!settings.PortalCulling||parts.Count<2||parts.Count>MaxPortalParts)
             return new(parts.AsReadOnly(),Array.Empty<Portal>(),false,cell);
 
         var byCell=parts.ToDictionary(p=>(p.X,p.Z));
