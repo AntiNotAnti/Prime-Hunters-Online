@@ -263,7 +263,7 @@ namespace MphRead.Mods
         /// Named bundles for the modern presentation path. Individual values remain
         /// authoritative so a saved preset can be edited into a custom setup.
         /// </summary>
-        public static GraphicsPreset GraphicsPreset { get; set; } = GraphicsPreset.Original;
+        public static GraphicsPreset Preset { get; set; } = GraphicsPreset.Original;
 
         public static AntiAliasingMode AntiAliasing { get; set; } = AntiAliasingMode.Off;
 
@@ -334,7 +334,7 @@ namespace MphRead.Mods
 
         public static void ApplyGraphicsPreset(GraphicsPreset preset)
         {
-            GraphicsPreset = preset;
+            Preset = preset;
             switch (preset)
             {
             case GraphicsPreset.Original:
