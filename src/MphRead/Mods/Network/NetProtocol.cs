@@ -1344,6 +1344,14 @@ namespace MphRead.Mods.Network
         /// Samus' legal base damage.
         /// </summary>
         public const byte FlagBoosting = 1 << 2;
+        /// <summary>
+        /// The owner successfully spawned a real weapon shot since the previous
+        /// intent. Repeated for several frames by the sender. The authority may
+        /// trust this only to REMOVE spawn protection, which can never benefit a
+        /// dishonest sender, and lifecycle fencing prevents an old-life report
+        /// from touching a respawn.
+        /// </summary>
+        public const byte FlagSpawnProtectionReleased = 1 << 3;
 
         /// <summary>
         /// Whether the sender included the block at all. False for a client
@@ -1591,7 +1599,10 @@ namespace MphRead.Mods.Network
         public ushort SlotGeneration;
         public ushort LifeId;
         public const int Size = 57 + DamageEvent.Size * DamageHistory;
+        private const byte AuxHalfturretActive = 1 << 0;
+        private const byte AuxSpawnProtected = 1 << 1;
         public bool HalfturretActive;
+        public bool SpawnProtected;
         public ushort HalfturretHealth;
 
         public byte SlotIndex;
@@ -1723,7 +1734,8 @@ namespace MphRead.Mods.Network
             BinaryPrimitives.WriteUInt16LittleEndian(dest[48..], SlotGeneration);
             BinaryPrimitives.WriteUInt16LittleEndian(dest[50..], LifeId);
             BinaryPrimitives.WriteUInt16LittleEndian(dest[52..], DamageEventId);
-            dest[Size - 3] = HalfturretActive ? (byte)1 : (byte)0;
+            dest[Size - 3] = (byte)((HalfturretActive ? AuxHalfturretActive : 0)
+                | (SpawnProtected ? AuxSpawnProtected : 0));
             BinaryPrimitives.WriteUInt16LittleEndian(dest[(Size - 2)..], HalfturretHealth);
             for (int i = 0; i < DamageHistory; i++)
             {
@@ -1733,6 +1745,7 @@ namespace MphRead.Mods.Network
 
         public static PlayerState Read(ReadOnlySpan<byte> src)
         {
+            byte auxiliary = src[Size - 3];
             var state = new PlayerState
             {
                 SlotIndex = src[0],
@@ -1749,7 +1762,8 @@ namespace MphRead.Mods.Network
                 SlotGeneration = BinaryPrimitives.ReadUInt16LittleEndian(src[48..]),
                 LifeId = BinaryPrimitives.ReadUInt16LittleEndian(src[50..]),
                 DamageEventId = BinaryPrimitives.ReadUInt16LittleEndian(src[52..]),
-                HalfturretActive = src[Size - 3] != 0,
+                HalfturretActive = (auxiliary & AuxHalfturretActive) != 0,
+                SpawnProtected = (auxiliary & AuxSpawnProtected) != 0,
                 HalfturretHealth = BinaryPrimitives.ReadUInt16LittleEndian(src[(Size - 2)..]),
                 Damage0 = DamageEvent.Read(src[54..]),
                 Damage1 = DamageEvent.Read(src[(54 + DamageEvent.Size)..]),
@@ -2243,8 +2257,16 @@ namespace MphRead.Mods.Network
         /// Shock Coil damage/ammo cadence. Mixed peers must be refused because the
         /// realtime intent length changed and older SessionState readers reject the
         /// newer rule/profile values.
+        /// Version 22 assigns the spare shot-state bit to Samus' active boost so
+        /// authority contact damage uses the owner's real ram state.
+        /// Version 23 turns PlayerState's existing turret-active byte into a bitfield
+        /// without changing packet size: bit 0 remains Weavel turret activity and bit
+        /// 1 carries authoritative spawn-protection state. It also spends another
+        /// spare ShotFlags bit on a redundant successful-shot release signal. Mixed
+        /// v22/v23 peers must be refused because those existing bytes now have new
+        /// gameplay semantics.
         /// </summary>
-        public const int ProtocolVersion = 22;
+        public const int ProtocolVersion = 23;
         /// <summary>
         /// Frames between intent packets. One, so every frame.
         ///
