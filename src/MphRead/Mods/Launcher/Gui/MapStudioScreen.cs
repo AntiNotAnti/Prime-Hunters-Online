@@ -732,27 +732,80 @@ namespace MphRead.Mods.Launcher.Gui
         }
         private void MaterialInspector()
         {
-            _inspector.Children.Clear();if(_document==null)return;_inspector.Children.Add(Text("MATERIALS"));
-            for(int i=0;i<_document.Project.Definition.Materials.Count;i++)
+            _inspector.Children.Clear();if(_document==null)return;
+            _inspector.Children.Add(Text("MATERIAL BROWSER"));
+            var filter=new TextBox{PlaceholderText="Search materials"};_inspector.Children.Add(filter);
+            var panels=new List<(Control Panel,string Search)>();
+            var definition=_document.Project.Definition;
+            var order=Enumerable.Range(0,definition.Materials.Count)
+                .OrderByDescending(i=>_studioState.FavoriteMaterials.Contains(MaterialKey(definition.Materials[i]),StringComparer.OrdinalIgnoreCase))
+                .ThenBy(i=>definition.Materials[i].Name,StringComparer.OrdinalIgnoreCase).ToArray();
+            foreach(int i in order)
             {
-                int index=i;var m=_document.Project.Definition.Materials[i];_inspector.Children.Add(Text($"{i} · {m.Name}"));
-                try{if(m.Texture!=null||GameFiles.Ready){string key=PreviewCacheKey(_document.Project.Definition,m);if(!_materialPreviewCache.TryGetValue(key,out var preview)){preview=MapMaterialPreview.Create(_document.Project.Definition,m);_materialPreviewCache[key]=preview;}_inspector.Children.Add(new Image {Source=preview.Bitmap,Width=64,Height=64,HorizontalAlignment=HorizontalAlignment.Left});_inspector.Children.Add(Text(preview.Details));}}
-                catch(Exception ex)when(ex is IOException or InvalidDataException or ProgramException or ArgumentException or InvalidOperationException){_inspector.Children.Add(Text("Preview unavailable: "+ex.Message));}
-                var source=new TextBox{Text=m.SourceMaterial.ToString()};var scale=new TextBox{Text=m.TexScale.ToString(CultureInfo.InvariantCulture)};_inspector.Children.Add(Text("Source material / texels per unit"));_inspector.Children.Add(source);_inspector.Children.Add(scale);
-                AddButton(_inspector,"Apply material",()=>{try{_document.EditMaterial(index,m=>{m.SourceMaterial=int.Parse(source.Text??"",CultureInfo.InvariantCulture);m.TexScale=Number(scale.Text??"");});}catch(Exception ex){Failure(ex);}});
+                int index=i;var m=definition.Materials[i];
+                int uses=definition.Geometry.Count(g=>g.Material==index)+definition.Brushes.Count(b=>b.Material==index);
+                bool favorite=_studioState.FavoriteMaterials.Contains(MaterialKey(m),StringComparer.OrdinalIgnoreCase);
+                var panel=new StackPanel{Spacing=4,Margin=new Thickness(0,4,0,8)};
+                panel.Children.Add(Text($"{(favorite?"★ ":"")}{index} · {m.Name} · {uses} uses"));
+                try
+                {
+                    if(m.Texture!=null||GameFiles.Ready)
+                    {
+                        string key=PreviewCacheKey(definition,m);
+                        if(!_materialPreviewCache.TryGetValue(key,out var preview))
+                        {preview=MapMaterialPreview.Create(definition,m);_materialPreviewCache[key]=preview;}
+                        panel.Children.Add(new Image{Source=preview.Bitmap,Width=72,Height=72,HorizontalAlignment=HorizontalAlignment.Left});
+                        panel.Children.Add(Text(preview.Details));
+                    }
+                }
+                catch(Exception ex)when(ex is IOException or InvalidDataException or ProgramException or ArgumentException or InvalidOperationException)
+                {panel.Children.Add(Text("Preview unavailable: "+ex.Message));}
+                var source=new TextBox{Text=m.SourceMaterial.ToString(CultureInfo.InvariantCulture)};
+                var scale=new TextBox{Text=m.TexScale.ToString(CultureInfo.InvariantCulture)};
+                panel.Children.Add(Text("Source material / texels per unit"));panel.Children.Add(source);panel.Children.Add(scale);
+                AddButton(panel,"Assign to selection",()=>
+                {
+                    if(_document.Selection.Count==0){_status.Text="Select authored geometry first.";return;}
+                    var ids=_document.Selection.ToHashSet();
+                    _document.EditObjects("Assign material",ids,d=>
+                    {
+                        foreach(var g in d.Geometry)g.Material=index;
+                        foreach(var b in d.Brushes)b.Material=index;
+                    });
+                });
+                AddButton(panel,favorite?"Unfavorite":"Favorite",()=>
+                {
+                    string key=MaterialKey(m);
+                    _studioState.FavoriteMaterials.RemoveAll(x=>x.Equals(key,StringComparison.OrdinalIgnoreCase));
+                    if(!favorite)_studioState.FavoriteMaterials.Add(key);
+                    MapStudioStateStore.Save(definition,_studioState);MaterialInspector();
+                });
+                AddButton(panel,"Apply material",()=>{try{_document.EditMaterial(index,value=>{value.SourceMaterial=int.Parse(source.Text??"",CultureInfo.InvariantCulture);value.TexScale=Number(scale.Text??"");});}catch(Exception ex){Failure(ex);}});
                 if(m.Texture==null&&GameFiles.Ready)
                 {
                     try
                     {
-                        var materials=Read.GetRoomModelInstance(_document.Project.Definition.TextureSource).Model.Materials;
-                        var choices=new ComboBox {ItemsSource=materials.Select((material,n)=>$"{n} · {material.Name}").ToArray(),SelectedIndex=m.SourceMaterial};_inspector.Children.Add(choices);
+                        var materials=Read.GetRoomModelInstance(definition.TextureSource).Model.Materials;
+                        var choices=new ComboBox{ItemsSource=materials.Select((material,n)=>$"{n} · {material.Name}").ToArray(),SelectedIndex=m.SourceMaterial};
+                        panel.Children.Add(choices);
                         choices.SelectionChanged+=(_,_)=>{if(choices.SelectedIndex>=0)source.Text=choices.SelectedIndex.ToString(CultureInfo.InvariantCulture);};
                     }
-                    catch(Exception ex){_inspector.Children.Add(Text("Source materials unavailable: "+ex.Message));}
+                    catch(Exception ex){panel.Children.Add(Text("Source materials unavailable: "+ex.Message));}
                 }
+                _inspector.Children.Add(panel);
+                panels.Add((panel,$"{index} {m.Name} {m.Texture} {m.SourceMaterial}"));
             }
+            filter.TextChanged+=(_,_)=>
+            {
+                string q=(filter.Text??"").Trim();
+                foreach(var item in panels)item.Panel.IsVisible=q.Length==0||item.Search.Contains(q,StringComparison.OrdinalIgnoreCase);
+            };
             AddButton(_inspector,"Add material",()=>_document.Edit("Add material",d=>d.Materials.Add(new(){Id=Guid.NewGuid(),Name="Material "+d.Materials.Count})));
         }
+
+        private static string MaterialKey(MapMaterial material)
+            => material.Id==Guid.Empty?material.Name:material.Id.ToString("N");
+
         private sealed record ProblemRow(MapDiagnostic Diagnostic){public override string ToString()=>$"{Diagnostic.Severity} · {Diagnostic.Code} · {Diagnostic.Message}";}
 
         private void FixSelectedProblem()
