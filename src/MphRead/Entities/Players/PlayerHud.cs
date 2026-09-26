@@ -4022,12 +4022,17 @@ namespace MphRead.Entities
         }
 
         private const byte CombatNotificationCategory = 8;
-        private const float CombatNotificationAnchorY = 60;
         private const float CombatNotificationLineSpacing = 10;
         private const float CombatNotificationGlyphHeight = 8;
         private const float CombatNotificationGap = 4;
         private const float CombatNotificationLifetime = 2.1f;
         private const float CombatNotificationFadeSeconds = 0.35f;
+        private const float CombatNotificationScale = 0.78f;
+        private const float CombatNotificationCollisionPad = 6;
+        private const float CombatNotificationUpperTop = 18;
+        private const float CombatNotificationUpperBottom = 76;
+        private const float CombatNotificationLowerTop = 114;
+        private const float CombatNotificationLowerBottom = 176;
         private long _combatNotificationSerial;
 
         /// <summary>
@@ -4077,9 +4082,10 @@ namespace MphRead.Entities
                 .First();
             Array.Fill(message.Text, '\0');
             Array.Copy(buffer, message.Text, message.Text.Length);
-            message.Position = new Vector2(128, CombatNotificationAnchorY);
+            message.Position = new Vector2(128, CombatNotificationUpperBottom);
             message.MaxWidth = 220;
             message.FontSize = CombatNotificationLineSpacing;
+            message.Scale = CombatNotificationScale;
             message.Color = new ColorRgba(0x3FEF);
             message.Alpha = 1;
             message.Align = Align.Center;
@@ -4087,26 +4093,176 @@ namespace MphRead.Entities
             message.Lifetime = CombatNotificationLifetime;
             message.DialogHide = true;
             message.IsCombatNotification = true;
+            message.CombatDeferred = false;
             message.CombatLines = Math.Max(1, lineCount);
             message.CombatSerial = ++_combatNotificationSerial;
+            ReflowCombatNotifications();
+        }
 
-            // Reflow from newest to oldest. Position is the first line's
-            // baseline, so account for each block's own line count before
-            // placing the next block above it.
+        /// <summary>
+        /// Keep the medal lane clear of native centered HUD text.
+        ///
+        /// The original implementation picked one fixed Y coordinate. That
+        /// cannot work reliably because native messages use 40, 50, 70, 120,
+        /// 133, 150, 160 and 170 depending on the mode. Reflow on every frame
+        /// against the messages that are actually alive instead. The reticle's
+        /// center band stays reserved, so the two candidate regions are above
+        /// and below it.
+        /// </summary>
+        private void ReflowCombatNotifications()
+        {
             List<HudMessage> lane = _hudMessageQueue
-                .Where(existing => existing.IsCombatNotification && existing.Lifetime > 0)
-                .OrderByDescending(existing => existing.CombatSerial)
-                .Take(maxVisible)
+                .Where(message => message.IsCombatNotification && message.Lifetime > 0)
+                .OrderBy(message => message.CombatSerial)
                 .ToList();
-            float bottom = CombatNotificationAnchorY;
+            if (lane.Count == 0)
+            {
+                return;
+            }
+
+            List<(float Top, float Bottom)> occupied = new();
+            foreach (HudMessage native in _hudMessageQueue)
+            {
+                if (native.Lifetime <= 0 || native.IsCombatNotification)
+                {
+                    continue;
+                }
+                // Native callouts that can visually cross the center lane are
+                // overwhelmingly centered at x=128. Ignore corner/status
+                // messages that cannot intersect the medal block.
+                if (native.Align != Align.Center
+                    && (native.Position.X < 80 || native.Position.X > 176))
+                {
+                    continue;
+                }
+                int lines = HudMessageLineCount(native);
+                float scale = native.Scale <= 0 ? 1 : native.Scale;
+                float spacing = Math.Max(1, native.FontSize) * scale;
+                float top = native.Position.Y - CombatNotificationCollisionPad;
+                float bottom = native.Position.Y
+                    + (lines - 1) * spacing
+                    + CombatNotificationGlyphHeight * scale
+                    + CombatNotificationCollisionPad;
+                occupied.Add((top, bottom));
+            }
+
+            float totalHeight = CombatLaneHeight(lane);
+            if (!TryFindCombatLaneTop(totalHeight, occupied, out float top))
+            {
+                // History is expendable; the newest award is not. If two
+                // single-line medals do not fit around native text, drop the
+                // older breadcrumb and try again with just the current award.
+                while (lane.Count > 1)
+                {
+                    HudMessage stale = lane[0];
+                    stale.Lifetime = 0;
+                    stale.IsCombatNotification = false;
+                    stale.CombatDeferred = false;
+                    lane.RemoveAt(0);
+                }
+                totalHeight = CombatLaneHeight(lane);
+            }
+
+            if (!TryFindCombatLaneTop(totalHeight, occupied, out top))
+            {
+                // Both safe bands are occupied. Do not draw through the native
+                // message. Freeze this medal's presentation lifetime until a
+                // band opens, then give it the full readable duration.
+                foreach (HudMessage message in lane)
+                {
+                    message.CombatDeferred = true;
+                }
+                return;
+            }
+
+            float y = top;
             for (int i = 0; i < lane.Count; i++)
             {
-                HudMessage current = lane[i];
-                float top = bottom - (current.CombatLines - 1) * CombatNotificationLineSpacing;
-                current.Position = new Vector2(128, top);
-                current.Alpha = i == 0 ? 1f : 0.68f;
-                bottom = top - CombatNotificationGap - CombatNotificationGlyphHeight;
+                HudMessage message = lane[i];
+                message.CombatDeferred = false;
+                message.Scale = CombatNotificationScale;
+                message.Position = new Vector2(128, y);
+                message.Alpha = i == lane.Count - 1 ? 1f : 0.62f;
+                y += CombatNotificationHeight(message) + CombatNotificationGap;
             }
+        }
+
+        private static int HudMessageLineCount(HudMessage message)
+        {
+            int lines = 1;
+            for (int i = 0; i < message.Text.Length && message.Text[i] != '\0'; i++)
+            {
+                if (message.Text[i] == '\n')
+                {
+                    lines++;
+                }
+            }
+            return lines;
+        }
+
+        private static float CombatNotificationHeight(HudMessage message)
+        {
+            float scale = message.Scale <= 0 ? CombatNotificationScale : message.Scale;
+            return CombatNotificationGlyphHeight * scale
+                + (Math.Max(1, message.CombatLines) - 1)
+                    * CombatNotificationLineSpacing * scale;
+        }
+
+        private static float CombatLaneHeight(IReadOnlyList<HudMessage> lane)
+        {
+            float height = 0;
+            for (int i = 0; i < lane.Count; i++)
+            {
+                if (i > 0)
+                {
+                    height += CombatNotificationGap;
+                }
+                height += CombatNotificationHeight(lane[i]);
+            }
+            return height;
+        }
+
+        private static bool TryFindCombatLaneTop(float height,
+            IReadOnlyList<(float Top, float Bottom)> occupied, out float top)
+        {
+            // Prefer the upper region and bottom-align there so medals remain
+            // close to their old location without touching the reticle.
+            for (float y = CombatNotificationUpperBottom - height;
+                y >= CombatNotificationUpperTop; y -= 1)
+            {
+                if (CombatLaneClear(y, y + height, occupied))
+                {
+                    top = y;
+                    return true;
+                }
+            }
+            // If native headshot/Prime-Hunter text fills the upper region,
+            // move the whole medal block below the reticle instead.
+            for (float y = CombatNotificationLowerTop;
+                y + height <= CombatNotificationLowerBottom; y += 1)
+            {
+                if (CombatLaneClear(y, y + height, occupied))
+                {
+                    top = y;
+                    return true;
+                }
+            }
+            top = 0;
+            return false;
+        }
+
+        private static bool CombatLaneClear(float top, float bottom,
+            IReadOnlyList<(float Top, float Bottom)> occupied)
+        {
+            for (int i = 0; i < occupied.Count; i++)
+            {
+                (float otherTop, float otherBottom) = occupied[i];
+                if (bottom > otherTop && top < otherBottom)
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         public void QueueHudMessage(float x, float y, float duration,
@@ -4173,7 +4329,9 @@ namespace MphRead.Entities
             message.Position = new Vector2(x, y);
             message.MaxWidth = maxWidth;
             message.FontSize = fontSize;
+            message.Scale = 1;
             message.IsCombatNotification = false;
+            message.CombatDeferred = false;
             message.CombatLines = 0;
             message.CombatSerial = 0;
             message.Color = color;
@@ -4310,11 +4468,16 @@ namespace MphRead.Entities
 
         public void ProcessHudMessageQueue()
         {
+            ReflowCombatNotifications();
             for (int i = 0; i < _hudMessageQueue.Count; i++)
             {
                 HudMessage message = _hudMessageQueue[i];
                 if (message.Lifetime > 0)
                 {
+                    if (message.IsCombatNotification && message.CombatDeferred)
+                    {
+                        continue;
+                    }
                     message.Lifetime -= _scene.FrameTime;
                     if (message.Lifetime < 0)
                     {
@@ -4328,10 +4491,15 @@ namespace MphRead.Entities
         {
             if (!_scene.GameState.MenuPause)
             {
+                // Queue order can add a native callout after the update-time
+                // reflow. Re-check immediately before drawing so no frame ever
+                // renders the two through each other.
+                ReflowCombatNotifications();
                 for (int i = 0; i < _hudMessageQueue.Count; i++)
                 {
                     HudMessage message = _hudMessageQueue[i];
                     if (message.Lifetime > 0
+                        && (!message.IsCombatNotification || !message.CombatDeferred)
                         && ((message.Category & 1) == 0 || (_scene.FrameCount & (7 * 2)) <= 3 * 2) // todo: FPS stuff
                         && (!_scene.GameState.DialogPause || !message.DialogHide))
                     {
@@ -4343,7 +4511,8 @@ namespace MphRead.Entities
                                 message.Lifetime / CombatNotificationFadeSeconds, 0, 1);
                         }
                         DrawText2D(message.Position.X, message.Position.Y, message.Align, palette: 0,
-                            message.Text, message.Color, alpha, fontSpacing: message.FontSize);
+                            message.Text, message.Color, alpha, fontSpacing: message.FontSize,
+                            scale: message.Scale <= 0 ? 1 : message.Scale);
                     }
                 }
             }
@@ -4353,6 +4522,7 @@ namespace MphRead.Entities
         {
             public Vector2 Position { get; set; }
             public float FontSize { get; set; }
+            public float Scale { get; set; } = 1;
             public ColorRgba Color { get; set; }
             public float Lifetime { get; set; }
             public float Alpha { get; set; }
@@ -4362,6 +4532,7 @@ namespace MphRead.Entities
             public char[] Text { get; } = new char[256];
             public bool DialogHide { get; set; }
             public bool IsCombatNotification { get; set; }
+            public bool CombatDeferred { get; set; }
             public int CombatLines { get; set; }
             public long CombatSerial { get; set; }
         }
