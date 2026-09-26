@@ -194,6 +194,7 @@ namespace MphRead.Mods.MapGen
                 Q3Texture texture = bsp.Textures[brush.Texture];
                 bool solid = (texture.Contents & Q3Bsp.ContentsSolid) != 0;
                 bool clip = (texture.Contents & Q3Bsp.ContentsPlayerClip) != 0;
+                bool playerClipOnly = !solid && clip;
                 if (!solid && clip && !import.KeepClip)
                 {
                     // The level's invisible walls. They are load-bearing in the
@@ -244,7 +245,7 @@ namespace MphRead.Mods.MapGen
                 brushBounds.Add((brushMin, brushMax));
                 foreach ((Vector3[] points, Vector3 normal) in polygons)
                 {
-                    sides.Add((index, brushIndex, points, normal, clip, texture.Name));
+                    sides.Add((index, brushIndex, points, normal, playerClipOnly, texture.Name));
                 }
             }
 
