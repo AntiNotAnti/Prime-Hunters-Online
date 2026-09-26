@@ -220,6 +220,41 @@ try
     var partitionValidation=new MapValidationResult();MapBudgetValidator.Analyze(partitionMap,partitionValidation);
     Check(partitionValidation.Budgets.Single(b=>b.Name=="Render partitions").Used>1,
         "large runtime geometry is spatially partitioned before packing");
+
+    var portalFaces=new System.Collections.Generic.List<BuiltFace>();
+    for(int i=0;i<300;i++)
+    {
+        float x=i<150?1:9;
+        float z=(i%10)*.05f;
+        portalFaces.Add(new BuiltFace(
+            new[]{new OpenTK.Mathematics.Vector3(x,0,z),new OpenTK.Mathematics.Vector3(x+.2f,0,z),new OpenTK.Mathematics.Vector3(x,1,z+.2f)},
+            new[]{OpenTK.Mathematics.Vector2.Zero,OpenTK.Mathematics.Vector2.Zero,OpenTK.Mathematics.Vector2.Zero},
+            OpenTK.Mathematics.Vector3.UnitY,0,1));
+    }
+    var portalSettings=new MapPartitionSettings{Enabled=true,CellSize=8,FaceThreshold=256,PortalCulling=true};
+    var portalPlan=MapRuntimePartitioner.Create(portalFaces,portalSettings);
+    Check(portalPlan.Parts.Count==2&&portalPlan.PortalCullingApplied&&portalPlan.Portals.Count==1,
+        "connected spatial parts generate one safe runtime portal");
+    var partitionSpawn=new MphRead.Editor.PlayerSpawnEntityEditor{Position=new OpenTK.Mathematics.Vector3(9,1,0)};
+    MapRuntimePartitioner.AssignEntityNodes(new MphRead.Editor.EntityEditorBase[]{partitionSpawn},portalPlan);
+    Check(partitionSpawn.NodeName==portalPlan.Parts[1].RoomNodeName,
+        "runtime entity is assigned to containing generated room part");
+    var collisionEditor=new MphRead.Utility.CollisionDataEditor
+    {
+        Plane=new OpenTK.Mathematics.Vector4(OpenTK.Mathematics.Vector3.UnitY,0),
+        LayerMask=5
+    };
+    collisionEditor.Points.AddRange(new[]{new OpenTK.Mathematics.Vector3(0,0,0),new OpenTK.Mathematics.Vector3(0,0,1),new OpenTK.Mathematics.Vector3(1,0,0)});
+    byte[] portalCollision=MapCollisionPacker.Pack(new[]{collisionEditor},portalPlan.Portals);
+    var portalHeader=MphRead.Read.ReadStruct<MphRead.Formats.Collision.CollisionHeader>(portalCollision);
+    Check(portalHeader.PortalCount==1,"optimized collision packer publishes generated room portal");
+    var partitionRoundtrip=new MapDefinition{Name="PARTITION_SERIALIZE",FormatVersion=2,MapId=Guid.NewGuid(),
+        Partitioning=portalSettings};
+    partitionRoundtrip.Materials.Add(new(){Id=Guid.NewGuid()});
+    partitionRoundtrip.Geometry.Add(new MapBox());
+    partitionRoundtrip.Spawns.Add(new(){Id=Guid.NewGuid(),Position=new[]{0f,2,0}});
+    Check(MapProjectSerializer.Clone(partitionRoundtrip).Partitioning?.PortalCulling==true,
+        "partition policy survives project serialization");
     layoutDocument.EditObjects("Floor", layoutIds, d => MapLayoutCommands.SnapToFloor(d, layoutIds, floorFaces));
     Check(layoutDocument.Project.Definition.Geometry.All(g => Math.Abs(g.Transform.Position[1] - .5f) < .001), "floor snap lands selected bounds");
     layoutDocument.History.Undo();
