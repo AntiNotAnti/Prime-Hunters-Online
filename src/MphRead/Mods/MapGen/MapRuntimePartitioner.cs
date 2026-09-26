@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using MphRead.Editor;
 using MphRead.Formats.Collision;
 using OpenTK.Mathematics;
 
@@ -65,6 +66,28 @@ public static class MapRuntimePartitioner
             portals.Add(MakePortal(link.A,link.B,link.Normal,cell,
                 Math.Clamp(settings.PortalVerticalMargin,0,64)));
         return new(parts.AsReadOnly(),portals.AsReadOnly(),true,cell);
+    }
+
+    public static string NodeForPosition(MapRuntimePartitionPlan plan,Vector3 position)
+    {
+        if(!plan.PortalCullingApplied||plan.Parts.Count==0)return "rmMain";
+        int x=(int)MathF.Floor(position.X/plan.CellSize);
+        int z=(int)MathF.Floor(position.Z/plan.CellSize);
+        MapRuntimePartition? direct=plan.Parts.FirstOrDefault(p=>p.X==x&&p.Z==z);
+        if(direct!=null)return direct.RoomNodeName;
+        return plan.Parts.OrderBy(p=>DistanceSquaredXZ(position,(p.Min+p.Max)*.5f)).First().RoomNodeName;
+    }
+
+    public static void AssignEntityNodes(IReadOnlyList<EntityEditorBase> entities,
+        MapRuntimePartitionPlan plan)
+    {
+        foreach(EntityEditorBase entity in entities)
+            entity.NodeName=NodeForPosition(plan,entity.Position);
+    }
+
+    private static float DistanceSquaredXZ(Vector3 a,Vector3 b)
+    {
+        float x=a.X-b.X,z=a.Z-b.Z;return x*x+z*z;
     }
 
     private static (int,int) Cell(BuiltFace face,float cell)
