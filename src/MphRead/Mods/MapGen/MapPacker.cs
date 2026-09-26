@@ -32,6 +32,8 @@ namespace MphRead.Mods.MapGen
             lock (MapCompiler.ContentReadLock) (model, vertices) = BuildModel(map);
             cancellation.ThrowIfCancellationRequested();
             byte[] collision = BuildCollision(map);
+            MapRuntimePartitionPlan runtimePlan=MapRuntimePartitioner.Create(map.Faces,def.Partitioning);
+            MapRuntimePartitioner.AssignEntityNodes(map.Entities,runtimePlan);
             byte[] entities = Repack.PackEntities(map.Entities);
             (byte[] nodes, int nodeCount, int edges) = MapNodePacker.Pack(map.Solid,def.NavigationLinks,cancellation);
             // Build every byte before replacing any output. The manifest is the
