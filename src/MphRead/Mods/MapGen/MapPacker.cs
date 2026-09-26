@@ -191,7 +191,7 @@ namespace MphRead.Mods.MapGen
             // logical room part while giving the renderer bounded child nodes
             // with useful culling bounds.
             IEnumerable<(int X,int Y,int Z,IReadOnlyList<BuiltFace> Faces)> chunks;
-            if(map.Faces.Count<8192)
+            if(map.Faces.Count<RenderPartitionThreshold)
                 chunks=new[]{(0,0,0,(IReadOnlyList<BuiltFace>)map.Faces)};
             else
                 chunks=map.Faces.GroupBy(FaceCell).OrderBy(g=>g.Key.X).ThenBy(g=>g.Key.Y).ThenBy(g=>g.Key.Z)
@@ -205,7 +205,7 @@ namespace MphRead.Mods.MapGen
                     if(materialGroup.Key<0||materialGroup.Key>=materials.Count)
                         throw new MapAuthoringException("FP-MAP-001",$"Geometry references material {materialGroup.Key}, but only {materials.Count} exist.");
                     var normalized=materialGroup.SelectMany(face=>face.Points.Length<=4?new[]{face}:Fan(face)).ToArray();
-                    foreach(var batch in RenderBatches(normalized,60000))
+                    foreach(var batch in RenderBatches(normalized,MaxRenderVerticesPerList))
                     {
                         if(renders.Count>=UInt16.MaxValue)
                             throw new MapAuthoringException("FP-MAP-003","Render display-list budget exceeded; increase spatial partition size or simplify geometry.");
@@ -250,7 +250,44 @@ namespace MphRead.Mods.MapGen
             return (bytes, vertexCount);
         }
 
-        private const float RenderCellSize=64f;
+        internal const int RenderPartitionThreshold=8192;
+        internal const int MaxRenderVerticesPerList=60000;
+        internal const float RenderCellSize=64f;
+
+        internal readonly record struct RenderLayoutEstimate(int Partitions,int Meshes,int Vertices,long CommandBytes);
+
+        internal static RenderLayoutEstimate EstimateRenderLayout(BuiltMap map)
+        {
+            IEnumerable<IGrouping<(int X,int Y,int Z),BuiltFace>> groups = map.Faces.Count<RenderPartitionThreshold
+                ? new[]{map.Faces.GroupBy(_=>(0,0,0)).Single()}
+                : map.Faces.GroupBy(FaceCell);
+            int partitions=0,meshes=0,vertices=0;long bytes=0;
+            foreach(var chunk in groups)
+            {
+                bool any=false;
+                foreach(var material in chunk.GroupBy(f=>f.Material))
+                {
+                    var normalized=material.SelectMany(face=>face.Points.Length<=4?new[]{face}:Fan(face)).ToArray();
+                    foreach(var batch in RenderBatches(normalized,MaxRenderVerticesPerList))
+                    {
+                        any=true;meshes++;
+                        int batchVertices=batch.Sum(f=>f.Points.Length);
+                        int instructions=2; // BEGIN/END
+                        long arguments=1; // BEGIN primitive argument
+                        foreach(var face in batch)
+                        {
+                            instructions+=2+2*face.Points.Length;
+                            arguments+=2+3L*face.Points.Length;
+                        }
+                        instructions=(instructions+3)/4*4;
+                        bytes+=(instructions/4)*4+arguments*4;
+                        vertices+=batchVertices;
+                    }
+                }
+                if(any)partitions++;
+            }
+            return new(partitions,meshes,vertices,bytes);
+        }
         private static (int X,int Y,int Z) FaceCell(BuiltFace face)
         {
             if(face.Points.Length==0)return(0,0,0);
